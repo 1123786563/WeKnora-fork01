@@ -172,7 +172,7 @@ test('clicking an IM channel card reopens the wizard prefilled like Vue openDraw
   const container = await mountPage({ imChannels: [channel], onUpdateIm: async (id, input) => { updates.push({ id, input }); } });
   await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
 
-  const drawerTitle = container.querySelector('form h3');
+  const drawerTitle = container.querySelector('.setting-drawer__title');
   assert.equal(drawerTitle?.textContent, '客服渠道');
   const platformSelect = Array.from(container.querySelectorAll('select')).find((select) => select.disabled) as HTMLSelectElement | undefined;
   assert.equal(platformSelect?.value, 'slack', 'platform select disabled and pinned while editing');

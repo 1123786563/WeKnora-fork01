@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"net/http"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -109,6 +110,13 @@ func mcpMetadataAppError(err error, refresh bool) *errors.AppError {
 	switch {
 	case stderrors.Is(err, types.ErrMCPServiceNotFound):
 		return errors.NewNotFoundError("MCP service not found")
+	case stderrors.Is(err, service.ErrPluginManagedService):
+		// OCR 终局 F09: a plugin-materialized row is a deterministic policy
+		// rejection on every metadata face (refresh leaks the live directory
+		// to a Viewer; read/persist serve the plugin domain's snapshot APIs
+		// instead) — 409 like the plugin-domain handler, never the default
+		// 400 refresh-failure text or the read face's default 500.
+		return errors.NewConflictError(err.Error())
 	case stderrors.Is(err, types.ErrMCPOAuthPrincipalRequired):
 		return errors.NewUnauthorizedError("OAuth metadata requires an authenticated user")
 	case stderrors.Is(err, types.ErrMCPMetadataStorage):

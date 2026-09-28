@@ -22,6 +22,13 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // tdesign-react Select/Popup 运行时（parserSettings 平移为 tdesign Select）。
+  Element: dom.window.Element,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Node: dom.window.Node,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -197,6 +204,32 @@ function findButton(label: string): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
+// ---- tdesign Select（Vue t-select 同构）驱动 helper ------------------------
+function parserTrigger(group: string): HTMLElement {
+  const row = document.body.querySelector(`[data-parser-group="${group}"]`);
+  const trigger = row?.querySelector('.t-select__wrap') as HTMLElement | null;
+  assert.ok(trigger, `expected the ${group} parser engine select`);
+  return trigger;
+}
+function parserTriggerValue(group: string): string {
+  return (parserTrigger(group).querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
+}
+async function pickParserEngine(group: string, optionText: string): Promise<void> {
+  const inner = parserTrigger(group).querySelector('.t-input') as HTMLElement;
+  await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  let options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  if (options.length === 0) {
+    await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  }
+  const target = options.find((el) => (el.textContent ?? '').trim() === optionText);
+  assert.ok(target, `option missing: ${optionText} (have ${options.map((el) => el.textContent).join(',')})`);
+  await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
 afterEach(async () => {
   if (mountedRoot) {
     const root = mountedRoot;
@@ -253,13 +286,10 @@ test('a successful save persists the Vue update payload carrying the pending par
     const sectionButton = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Parser'));
     sectionButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
-  const select = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
-  assert.ok(select, 'expected the per-file-type parser engine select for the pdf group');
-  assert.equal(select.value, 'mineru', 'the committed pdf rule preselects the group select');
-  await act(async () => {
-    [...select.options].forEach((option) => { option.selected = option.value === 'builtin'; });
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  // tdesign Select（台账 #8：data-parser-group 挂包裹 span，trigger 是
+  // .t-select__wrap）。
+  assert.match(parserTriggerValue('pdf'), /MinerU/, 'the committed pdf rule preselects the group select');
+  await pickParserEngine('pdf', 'Built-in');
   await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount probe plus the Vue doSubmit pair: base update first, then the config PUT');
@@ -279,19 +309,14 @@ test('a failed save keeps the form state and surfaces the error message', async 
     const sectionButton = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Parser'));
     sectionButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
-  const select = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
-  assert.ok(select, 'expected the per-file-type parser engine select for the pdf group');
-  await act(async () => {
-    [...select.options].forEach((option) => { option.selected = option.value === 'builtin'; });
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  parserTrigger('pdf');
+  await pickParserEngine('pdf', 'Built-in');
   await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.match(document.body.textContent ?? '', /storage backend unavailable/, 'the server error message must surface');
   assert.equal(document.body.textContent?.includes('Configuration saved successfully'), false, 'no success feedback on failure');
-  const selectAfter = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
-  assert.equal(selectAfter.value, 'builtin', 'the pending selection must survive a failed save');
-  assert.equal(selectAfter.disabled, false, 'the form must stay editable after a failed save');
+  assert.match(parserTriggerValue('pdf'), /Built-in/, 'the pending selection must survive a failed save');
+  assert.equal(parserTrigger('pdf').classList.contains('t-is-disabled'), false, 'the form must stay editable after a failed save');
   await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount probe plus the original pair and the retry PUT');

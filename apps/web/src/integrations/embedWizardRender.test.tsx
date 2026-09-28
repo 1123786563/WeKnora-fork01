@@ -363,16 +363,18 @@ test('the wizard walks all steps with localized copy and no raw key leaks', asyn
 test('embed drawer closes through the Vue cancel surfaces', async () => {
   const container = await mountEmbedPage();
   await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
-  assert.ok(container.querySelector('.wk-integration-drawer'), 'drawer mounted');
+  // B4：抽屉换 Vue SettingDrawer 同构 chrome（.t-drawer）；Vue closeBtn 关——
+  // 关闭面 = 遮罩点击 + Escape（旧栈 × 按钮随 Vue 对齐删除）。
+  assert.ok(container.querySelector('.t-drawer.setting-drawer'), 'drawer mounted');
 
   await act(async () => {
-    const close = container.querySelector<HTMLButtonElement>('.wk-integration-drawer-close');
-    assert.ok(close);
-    close!.click();
+    const mask = container.querySelector<HTMLElement>('.t-drawer__mask');
+    assert.ok(mask);
+    mask!.click();
   });
-  assert.equal(container.querySelector('.wk-integration-drawer'), null, 'header close unmounts drawer');
+  assert.equal(container.querySelector('.t-drawer.setting-drawer'), null, 'mask click unmounts drawer');
 
   await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
   await act(async () => { window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
-  assert.equal(container.querySelector('.wk-integration-drawer'), null, 'Escape unmounts drawer');
+  assert.equal(container.querySelector('.t-drawer.setting-drawer'), null, 'Escape unmounts drawer');
 });

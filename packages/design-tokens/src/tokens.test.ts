@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { designTokens } from './tokens.ts';
 
@@ -43,4 +44,13 @@ test('maps shadcn semantic slots to Tailwind CSS variables instead of stock colo
   assert.equal(designTokens.tailwind.borderRadius.md, 'var(--radius-control)');
   assert.equal(designTokens.shadcn.primary, 'accent');
   assert.equal(designTokens.shadcn.ring, 'focus');
+});
+
+test('tdesign-theme.css carries the verbatim Vue TDesign theme token overrides', () => {
+  const theme = readFileSync(new URL('./tdesign-theme.css', import.meta.url), 'utf8');
+  // 4 个关键锚点（Task 4 brief）：防止平移截断——品牌绿梯度、圆角、dark 分支、字体族根变量。
+  assert.ok(theme.includes('--td-brand-color-4: #07c05f'), 'brand green gradient anchor missing');
+  assert.ok(theme.includes('--td-radius-default: 3px'), 'radius anchor missing');
+  assert.ok(theme.includes('[theme-mode="dark"]'), 'dark-mode branch anchor missing');
+  assert.ok(theme.includes('--app-font-family'), 'app font-family root variable anchor missing');
 });

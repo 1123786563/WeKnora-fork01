@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  MARKDOWN_FIXTURE_SECTIONS,
-  renderMarkdownFixture,
-  shouldRenderCustomMarkdown,
-} from './DevMarkdownPage.tsx';
+/* S7：页面现引入 views-chat-u.css——node 测试运行器需 stub 解析（OrganizationsPage.test 同款）。 */
+{
+  const hooks = (await import('node:module')) as unknown as { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+  if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
+}
+const { MARKDOWN_FIXTURE_SECTIONS, renderMarkdownFixture, shouldRenderCustomMarkdown } = await import('./DevMarkdownPage.tsx');
 
 test('development Markdown fixture uses the shared safe renderer', () => {
   const html = renderMarkdownFixture('# Fixture\n\n<script>alert(1)</script>\n\n```mermaid\ngraph TD; A-->B\n```');

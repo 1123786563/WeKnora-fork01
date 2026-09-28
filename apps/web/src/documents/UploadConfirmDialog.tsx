@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Dialog, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈，Button/Dialog 换 tdesign（playbook §1：
+// open/title/className → visible/header/dialogClassName；variant text/primary 直译/换 theme）；
+// Status 无 TDesign 对应，走 shared/wk-legacy（.wk-status 族）。
+import { Button as TButton, Dialog as TDialog } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { getUploadConfirmDefaultSection, getUploadConfirmSections, isUploadConfirmDismissible, requestUploadConfirmClose, validateUploadConfirm, type UploadConfirmMode, type UploadConfirmSection, type UploadConfirmSource } from './upload-confirm.ts';
+import './documents-u.css';
 
 export interface UploadConfirmDialogProps {
   open: boolean;
@@ -46,7 +51,7 @@ export function UploadConfirmDialog({ open, mode = 'file', files = [], urls = []
     onConfirm();
   };
 
-  return <Dialog open={open} title={mode === 'reparse' ? 'Reparse document' : 'Confirm upload'} onClose={close} className="wk-upload-confirm-dialog">
+  return <TDialog visible={open} header={mode === 'reparse' ? 'Reparse document' : 'Confirm upload'} footer={false} onClose={close} dialogClassName="wk-upload-confirm-dialog">
     <div className="wk-upload-confirm-layout">
       <nav aria-label="Upload configuration" role="tablist">
         {sections.map((section) => <button key={section.key} ref={(node) => { sectionRefs.current[section.key] = node; }} type="button" role="tab" tabIndex={activeSection === section.key ? 0 : -1} aria-selected={activeSection === section.key} aria-controls={`upload-confirm-${section.key}`} onClick={() => setActiveSection(section.key)}>{section.label}{validation.issues.includes(section.key) ? ' — needs setup' : ''}</button>)}
@@ -57,11 +62,11 @@ export function UploadConfirmDialog({ open, mode = 'file', files = [], urls = []
       </section>)}
     </div>
     {!validation.valid && !validation.firstIssueSection ? <Status tone="error">Select a file, URL, or manual content before continuing.</Status> : null}
-    <div className="flex items-center justify-end gap-2">
-      <Button type="button" variant="text" onClick={close} disabled={loading}>Cancel</Button>
-      <Button type="button" variant="primary" loading={loading} disabled={!validation.valid} onClick={confirm}>Confirm</Button>
+    <div className="wk-ucd-1">
+      <TButton type="button" variant="text" onClick={close} disabled={loading}>Cancel</TButton>
+      <TButton type="button" theme="primary" loading={loading} disabled={!validation.valid} onClick={confirm}>Confirm</TButton>
     </div>
-  </Dialog>;
+  </TDialog>;
 }
 
 export type { UploadConfirmMode, UploadConfirmSection, UploadConfirmSource } from './upload-confirm.ts';

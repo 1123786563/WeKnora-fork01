@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as nodeModule from 'node:module';
+import * as React from 'react';
+
+// KnowledgeSettingsPage.tsx JSX 走 classic 编译且无 React import 的模块按自由
+// 标识符落 globalThis.React 解析——挂全局（settings-error-ux 判例同款）。
+(Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });

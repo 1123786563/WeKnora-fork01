@@ -1,0 +1,780 @@
+/* kb-u.css — S7 Tailwind utilities 平移（knowledge-bases 域：KnowledgeBasesPage 留守段 /
+ * KnowledgeBaseActivityPanel / KnowledgeBaseShareDialog）
+ * 前缀 wk-kbl-* / wk-kba-* / wk-kbs-*；值 = utilities 编码的生效值。
+ * 导入顺序：须在 kb-list.td.css / kb-editor-parity.css 之前（冲突以 .td.css 为准）。 */
+
+
+.wk-kbl-1 {
+  display: grid;
+  gap: 16px;
+}
+
+.wk-kbl-2 {
+  /* Vue KnowledgeBaseEditorModal.vue .section-title color: var(--td-text-color-primary) */
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 7;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kbl-3 {
+  /* Vue .section-desc color: var(--td-text-color-placeholder) */
+  margin: 0;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbl-4 {
+  display: grid;
+  gap: 4px;
+}
+
+.wk-kbl-5 {
+  /* Vue .form-label color: var(--td-text-color-primary) */
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kbl-6 {
+  margin-left: 4px;
+  color: #e34d59;
+}
+
+.wk-kbl-7 {
+  /* Vue .form-tip color: var(--td-text-color-placeholder) */
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbl-8 {
+  /* Vue .section-desc color: var(--td-text-color-placeholder) */
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbl-9 {
+  /* Vue .form-tip color: var(--td-text-color-placeholder) */
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbl-10 {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wk-kbl-11 {
+  font-size: 13px;
+}
+
+.wk-kbl-12 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.wk-kbl-13 {
+  font-size: 12px;
+  line-height: 5;
+  color: var(--color-text-placeholder);
+}
+
+.wk-kbl-14 {
+  max-height: 34rem;
+  overflow: auto;
+}
+
+
+.wk-kba-1 {
+  position: relative;
+  display: inline-flex;
+}
+
+.wk-kba-2 {
+  /* Vue 弹层 .t-popup__content border: var(--td-component-stroke) */
+  position: absolute;
+  right: 0;
+  top: calc(100%+4px);
+  z-index: 20;
+  display: grid;
+  min-width: 180px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #ffffff;
+  padding: 4px;
+  box-shadow: 0 8px 20px rgb(16 24 40/14%);
+}
+
+.wk-kba-3 {
+  display: grid;
+  gap: 12px;
+}
+
+.wk-kba-4 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wk-kba-5 {
+  /* Vue KnowledgeBaseActivitySettings.vue .section-title primary */
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 7;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kba-6 {
+  /* Vue .section-desc placeholder */
+  margin: 0;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kba-7 {
+  /* Vue .kb-activity-filter-bar secondary */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  background-color: #f3f3f3;
+  padding-inline: 12px;
+  padding-block: 8px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-kba-8 {
+  overflow: auto;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  /* Vue KnowledgeBaseActivitySettings.vue .data-table-shell border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
+}
+
+.wk-kba-9 {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.wk-kba-10 {
+  /* tdesign .t-table thead th: border var(--td-component-border); color var(--td-text-color-placeholder) */
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #dcdcdc;
+  background-color: #f3f3f3;
+  text-align: left;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kba-11 {
+  padding-inline: 12px;
+  padding-block: 8px;
+}
+
+.wk-kba-12 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-kba-13 {
+  /* tdesign .t-table td border-bottom: var(--td-component-border) */
+  cursor: pointer;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #dcdcdc;
+}
+
+.wk-kba-13:last-child {
+  border-style: solid;
+  border-width: 0;
+}
+
+.wk-kba-13:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-kba-14 {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-kba-15 {
+  /* Vue .audit-target-diff secondary */
+  display: block;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-kba-16 {
+  /* Vue .audit-actor-name primary */
+  padding-inline: 12px;
+  padding-block: 8px;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kba-17 {
+  display: block;
+}
+
+.wk-kba-18 {
+  display: block;
+  font-size: 12px;
+}
+
+.wk-kba-19 {
+  /* Vue .audit-end-hint color: var(--td-text-color-disabled) */
+  margin: 0;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.26);
+}
+
+.wk-kba-20 {
+  display: grid;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.wk-kba-21 {
+  margin: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wk-kba-22 {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.wk-kba-23 {
+  display: grid;
+  /* codemod 误译修正：双列直写，去掉非法 repeat() 包裹。 */
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 12px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #edf0f5;
+  padding-block: 8px;
+}
+
+.wk-kba-24 {
+  /* Vue .audit-detail-field placeholder */
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kba-25 {
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+.wk-kba-26 {
+  overflow-wrap: anywhere;
+}
+
+.wk-kba-27 {
+  margin: 0;
+  max-height: 256px;
+  overflow: auto;
+  border-radius: 6px;
+  background-color: #f3f3f3;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.wk-kba-28 {
+  /* Vue .audit-detail-json border: var(--td-component-stroke) */
+  margin: 0;
+  max-height: 256px;
+  overflow: auto;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #f3f3f3;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.wk-kba-29 {
+  display: inline-flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  background-color: transparent;
+  font-size: 12px;
+}
+
+.wk-kba-30 {
+  border-style: solid;
+  border-color: #07c05f;
+  color: #07c05f;
+}
+
+.wk-kba-31 {
+  /* Vue .kb-activity-filter-trigger secondary */
+  border-color: transparent;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-kba-31:hover {
+  background-color: #f2f5fa;
+}
+
+.wk-kba-32 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 8px;
+  padding-block: 6px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.wk-kba-32:hover {
+  background-color: #f2f5fa;
+}
+
+.wk-kba-33 {
+  color: #07c05f;
+}
+
+.wk-kba-34 {
+  /* Vue .audit-detail-json primary */
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kba-35 {
+  /* tdesign .t-tag--default：文本 primary；描边 var(--td-component-stroke) */
+  border-radius: 999px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  padding-inline: 8px;
+  padding-block: 4px;
+  font-size: 12px;
+}
+
+.wk-kba-36 {
+  color: #b42318;
+}
+
+.wk-kba-37 {
+  color: #137333;
+}
+
+.wk-kba-38 {
+  color: #9a6700;
+}
+
+.wk-kba-39 {
+  border-radius: 999px;
+  background-color: #f3f3f3;
+  padding-inline: 8px;
+  padding-block: 4px;
+  font-size: 12px;
+}
+
+
+.wk-kbs-1 {
+  position: relative;
+}
+
+.wk-kbs-2 {
+  /* Vue ShareKnowledgeBaseDialog.vue 选项文本 primary */
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-height: 2.45rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  background-color: #ffffff;
+  padding-inline: 0.55rem;
+  padding-block: 0.35rem;
+  text-align: left;
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-kbs-3 {
+  /* Vue .org-option-meta placeholder */
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbs-4 {
+  /* Vue 弹层 border: var(--td-component-stroke) */
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  display: grid;
+  max-height: 280px;
+  overflow-y: auto;
+  border-radius: 7px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #ffffff;
+  padding: 0.25rem;
+  box-shadow: 0 12px 30px rgb(23 32 51 / 18%);
+}
+
+.wk-kbs-5 {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 0%;
+  gap: 0.3rem;
+}
+
+.wk-kbs-6 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-kbs-7 {
+  /* Vue .share-panel-count-badge color: var(--td-text-color-primary) */
+  border-radius: 999px;
+  background-color: #eef1f6;
+  padding-inline: 0.45rem;
+  padding-block: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kbs-8 {
+  /* Vue .org-option-meta placeholder */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-kbs-8 span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.wk-kbs-8 svg {
+  flex: none;
+}
+
+.wk-kbs-9 {
+  display: inline-flex;
+  width: fit-content;
+  overflow: hidden;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+}
+
+.wk-kbs-10 {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.wk-kbs-11 {
+  /* Vue 选中项文本 primary */
+  position: absolute;
+  box-sizing: border-box;
+  height: 1px;
+  width: 100%;
+  min-height: 2.45rem;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  background-color: #ffffff;
+  padding-inline: 0.65rem;
+  padding-block: 0.55rem;
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wk-kbs-12 {
+  /* Vue .permission-tip secondary */
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  border-radius: 6px;
+  background-color: #f4f6fa;
+  padding-inline: 0.75rem;
+  padding-block: 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-kbs-13 {
+  /* Vue 分隔线 var(--td-component-stroke) */
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-top-style: solid;
+  border-top-width: 1px;border-color: #e7e7e7;
+  padding-top: 16px;
+}
+
+.wk-kbs-14 {
+  flex: 1 1 0%;
+}
+
+.wk-kbs-15 {
+  /* Vue .share-item border-color: var(--td-component-stroke) */
+  display: grid;
+  gap: 0.9rem;
+  padding-top: 0.5rem;
+}
+
+.wk-kbs-16 {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-kbs-17 {
+  margin: 0;
+  display: grid;
+  list-style-type: none;
+  max-height: 280px;
+  gap: 0.6rem;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.wk-kbs-18 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #edf0f5;
+  background-color: #f7f9fc;
+  padding: 12px;
+  transition: background 0.2s,border-color 0.2s;
+}
+
+.wk-kbs-18:hover {
+  border-style: solid;
+  border-color: #d8e0ec;
+  background-color: #f1f4f9;
+}
+
+@media (max-width: 640px) {
+.wk-kbs-18 {
+  flex-direction: column;
+  align-items: flex-start;
+}
+}
+
+.wk-kbs-19 {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-kbs-20 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-kbs-21 {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+.wk-kbs-21 {
+  align-self: flex-end;
+}
+}
+
+.wk-kbs-22 {
+  display: grid;
+  gap: 12px;
+}
+
+.wk-kbs-23 {
+  /* Vue .share-panel-title primary */
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 7;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-kbs-24 {
+  /* Vue .share-panel-desc secondary */
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-kbs-25 {
+  width: 520px !important;
+  max-width: calc(100vw-2rem);
+}
+
+.wk-kbs-26 {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 7px;
+  border-style: solid;
+  border-width: 0;
+  padding-inline: 0.65rem;
+  padding-block: 0.55rem;
+  text-align: left;
+}
+
+.wk-kbs-27 {
+  background-color: rgba(7, 192, 95, 0.08);
+}
+
+.wk-kbs-27:hover {
+  background-color: rgba(7, 192, 95, 0.08);
+}
+
+.wk-kbs-28 {
+  background-color: #f1f4f9;
+}
+
+.wk-kbs-28:hover {
+  background-color: #f1f4f9;
+}
+
+.wk-kbs-29 {
+  background-color: transparent;
+}
+
+.wk-kbs-29:hover {
+  background-color: #f1f4f9;
+}
+
+.wk-kbs-30 {
+  min-height: 32px;
+  cursor: pointer;
+  border-top-width: 0px;
+  border-bottom-width: 0px;
+  border-left-width: 0px;
+  border-right-style: solid;
+  border-right-width: 1px;border-color: #e7e7e7;
+  padding-inline: 16px;
+  padding-block: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-kbs-30:last-child {
+  border-right-width: 0px;
+}
+
+.wk-kbs-31 {
+  background-color: #07c05f;
+  color: #fff;
+}
+
+.wk-kbs-32 {
+  background-color: #ffffff;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-kbs-32:hover {
+  color: #07c05f;
+}
+
+.wk-kbs-32:focus-visible {
+  color: #07c05f;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-kbs-33 {
+  border-radius: 999px;
+  padding-inline: 8px;
+  padding-block: 2px;
+  font-size: 12px;
+}
+
+.wk-kbs-34 {
+  background-color: #fffaeb;
+  color: #9a6700;
+}
+
+.wk-kbs-35 {
+  /* tdesign .t-tag--default primary */
+  background-color: #f3f3f3;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+
+/* 手工段：任意子代变体与 justify-self（flex-1 / truncate / end） */
+.wk-kbs-trigger > span:nth-child(2) { flex: 1 1 0%; }
+.wk-kbs-name > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-kbl-count-end { justify-self: end; }
+.wk-kbl-link-start { justify-self: start; }

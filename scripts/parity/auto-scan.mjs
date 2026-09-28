@@ -90,8 +90,13 @@ const ALL_PAGES = [
   // login/register 的展示轮播（SLIDES 自动切换）相位在两端独立，截图会落在
   // 不同 slide 上产生假差异。截图前冻结动画（pause/play 接口或 animation-play-state），
   // 并等待首帧 slide 稳定，使两端定格在同一张。
-  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true },
-  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true },
+  // syncAnimPhase：.animated-bg 装饰动画（nodePulse/lineFlow 纯 CSS 循环动画）在
+  // settle 后 pause 的暂停相位是任意的，双端冻结相位不同 → run 间 275↔1387px 波动。
+  // 确定性处理：把每条无限循环 CSS 动画 seek 到 keyframe 0% 相位（currentTime=
+  // effect.delay，见 waitForSteady 注释——React 端 delay 类未生成规则故全部 0，
+  // Vue 端 0~3s 错峰，seek 到各自 delay 才能让双端统一落在同一 keyframe 相位）。
+  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
+  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
   // —— 重定向行为（两端应落到同一目标页） ——
   { id: 'redirect-system', path: '/platform/system' },
   { id: 'redirect-integrations', path: '/platform/integrations' },
@@ -100,6 +105,9 @@ const ALL_PAGES = [
   // —— 设置：全部 section（Vue Settings.vue navItems 权威键表） ——
   ...SETTINGS_SECTION_KEYS.map((key) => ({
     id: 'settings-' + key, path: '/platform/settings?section=' + key, settle: 2000,
+    // runtime-queues 为活数据页（5s 轮询真实队列计数），双端顺序截图受数据
+    // 搅动影响——标记走请求级快照冻结（见 PAGES 循环 liveFreeze 处理）。
+    ...(key === 'runtime-queues' ? { liveFreeze: 'queues' } : {}),
   })),
   ...INTEGRATION_TAB_KEYS.map((key) => ({
     id: 'settings-integration-' + key, path: '/platform/settings?section=integration-' + key, settle: 2000,
@@ -138,7 +146,14 @@ const ALL_PAGES = [
   { id: 'ix-chat-header-menu', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['更多操作', '更多'] }] },
   { id: 'ix-chat-mention', kind: 'chat', name: '工具调用 Parity Fixture',
-    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickText: ['@'] }] },
+    // composer 的 @ 按钮：双端同名 data-guide="chat-kb-mention"（Vue
+    // Input-field.vue:2769 / React packages/views composer.tsx）。clickAria 全
+    // miss——Vue 是纯图标 div 无 aria/title，React aria-label='知识库' 又与
+    // 侧栏「知识库」导航同名会误伤；clickCss 精确命中后双端各自打开 @ 弹层
+    // （Vue .mention-menu / React #wk-chat-mention-listbox）。clickText '@' 兜底
+    // 有坑：DOM 序更早的侧栏邮箱 parity-test@local.dev 含 '@'，仅在前两级
+    // 同时失效时才会误中（点击冒泡到 user-button 偶然打开菜单）。
+    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickCss: ['[data-guide="chat-kb-mention"]'], clickText: ['@'] }] },
   // 两端新建按钮均为纯图标（Vue AgentList.vue:11-15 t-tooltip 无 aria；React
   // AgentsPage.tsx:582 aria/title=创建智能体）；data-guide 两端同名可命中 Vue。
   { id: 'ix-agents-create', path: '/platform/agents',
@@ -151,6 +166,248 @@ const ALL_PAGES = [
     actions: [{ clickCss: ['.header-action-btn:has(.org-create-icon)'], clickAria: ['创建共享空间'], clickText: ['创建共享空间', '新建共享空间', '创建空间'] }] },
   { id: 'ix-kb-doc-detail', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickText: ['mermaid-arch-demo'] }] },
+  // —— 面板扫描项（panel-matrix Phase I 全量入表，55 项；id 规范 px-<页面>-<面板>）——
+  // 来源：docs/migrations/react/evidence/vue-react-parity/panel-matrix/matrix.md
+  // 「建议新增扫描项 55 项 = 表内 53 行（parser 10 卡归并代表入口）+ 全局壳 2」；
+  // 选择器兜底链照 matrix（含 C 类命名异构归并：.kb-info-button↔aria 查看知识库信息、
+  // .t-select-input↔.t-select、composer 触发器异构等）。破坏性面板只打开不确认；
+  // hover 门控触发器用真实 hover 序列（hoverCss，矩阵已标注）。
+  //
+  // —— 批 1：全局壳 + 对话域 ——
+  // 用户菜单 dropdown（42 个登录页通用壳触发器，代表页 kb-list；双端同名 .user-button）
+  { id: 'px-shell-user-menu', path: '/platform/knowledge-bases',
+    actions: [{ clickCss: ['.user-button'] }] },
+  // 会话行"更多" popover：hover 门控（matrix：hover .submenu_item → click .menu-more-wrap，
+  // 双端同名；React 端菜单面板常驻 DOM 打开只切状态——aria-expanded 口径，matrix 口径 4）
+  { id: 'px-shell-session-more', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ hoverCss: ['.submenu_item'], clickCss: ['.menu-more-wrap'] }] },
+  // chat 沙箱终端：Vue drawer(chat-sandbox-panel) vs React 首检出 tooltip（异构 A3，待核）
+  { id: 'px-chat-sandbox', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['沙箱终端'], clickCss: ['.sandbox-header-toggle__btn'] }] },
+  // chat 添加到知识库：Vue drawer(t-drawer--right) vs React dialog(wk-bookmark-dialog)（异构 A1）。
+  // 双端均为 answer-toolbar 纯图标 t-button（title=添加到知识库，无可见文本），
+  // clickText 无命中——走 clickAria(title) + 图标 CSS 兜底；pickLast 取最新一条
+  // 回答的工具栏（React 历史消息也渲染 toolbar，首个可见匹配会错位取景）。
+  { id: 'px-chat-addtokb', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['添加到知识库'], clickCss: ['.answer-toolbar button:has(.t-icon-bookmark-add)', '.wk-chat-bookmark'], pickLast: true }] },
+  // chat 请求信息：Vue popover(chat-request-info-popup) vs React dialog(chat-request-card)（异构 A2）。
+  // 触发器同为纯图标按钮 title=请求信息（Vue ChatRequestInfoButton.vue / React message-face.tsx），
+  // pickLast 同上取最新一条回答。
+  { id: 'px-chat-reqinfo', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['请求信息'], pickLast: true }] },
+  // composer 智能体选择（B1 组）：Vue .control-btn.agent-mode-btn（文案"快速问答"）与
+  // React .wk-chat-agent-chip（aria=选择智能体）打开同一 agent-selector overlay——
+  // 双端触发器异构、面板同功能，一条兜底链覆盖两行矩阵记录
+  { id: 'px-chat-agent-selector', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['选择智能体'], clickCss: ['.agent-mode-btn', '.wk-chat-agent-chip'], clickText: ['快速问答'] }] },
+  // composer 模型选择：Vue .model-selector-trigger → model-selector-overlay；React 为
+  // native select 的 .wk-chat-model-chip（B1 待核实对端）
+  { id: 'px-chat-model-selector', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickCss: ['.model-selector-trigger', '.wk-chat-model-chip'] }] },
+  // chat 附件按钮 tooltip（B8）：hover 门控 t-tooltip（Vue .attachment-upload-btn /
+  // React aria=上传附件 的 .wk-chat-control-icon），纯 hover 序列不点击（避免文件选择器）
+  { id: 'px-chat-attach-tooltip', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ hoverCss: ['.attachment-upload-btn', '[aria-label="上传附件"]'] }] },
+  // —— 批 2：知识库域 ——
+  // KB 面包屑下拉（A4：Vue t-popup vs React 自定义 dropdown，5 页同款逐页入表）
+  { id: 'px-kb-faq-breadcrumb', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-demo-breadcrumb', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-tab-graph-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=graph', settle: 3500,
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-tab-wiki-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  // FAQ 卡片更多菜单（.card-more-btn 双端一致）
+  { id: 'px-kb-faq-card-more', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.card-more-btn'] }] },
+  // 查看知识库信息（.kb-info-button(Vue) ↔ aria 查看知识库信息(React)，popover+drawer；代表页 kb-faq）
+  { id: 'px-kb-faq-kb-info', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.kb-info-button'], clickAria: ['查看知识库信息'] }] },
+  // 按标签筛选 select 两半区（ix-faq-tagfilter 已扫主区；prefix/suffix 半区 3 页逐项）
+  { id: 'px-kb-faq-tagfilter-prefix', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-faq-tagfilter-suffix', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  { id: 'px-kb-demo-tagfilter-prefix', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-demo-tagfilter-suffix', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  { id: 'px-kb-wiki-tagfilter-prefix', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-wiki-tagfilter-suffix', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  // KB 文档工具栏筛选 select（.t-select-input(Vue) ↔ .t-select(React) 命名异构；
+  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）。
+  // B2 批 2 修正：FAQ KB 的 FAQ 视图工具栏没有该 select（matrix kb-faq 行无此
+  // 触发器，基线假零）——代表页改文档库 kb-demo；kb-wiki 页同款由下项覆盖。
+  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
+  { id: 'px-kb-wiki-doctype-select', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
+  // wiki 工具栏（B2：树形视图/新建目录/全库概览 React 未检出，新建页面双端 dialog）
+  { id: 'px-kb-wiki-tab-wiki-newpage', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500, mouseAway: true,
+    actions: [{ clickAria: ['新建页面'], clickCss: ['.wiki-tab-bar-action'] }] },
+  { id: 'px-kb-wiki-tab-wiki-newdir', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickAria: ['新建目录'] }] },
+  { id: 'px-kb-wiki-tab-wiki-treeview', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickAria: ['树形视图'], clickCss: ['.wiki-view-toggle-btn.active'] }] },
+  { id: 'px-kb-wiki-tab-wiki-overview', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickText: ['全库概览'] }] },
+  // —— 批 3：设置——账户/模型/引擎卡片 ——
+  // userprofile 修改密码（popover+confirm；只开第一层 popover，绝不点确认）
+  { id: 'px-userprofile-change-password', path: '/platform/settings?section=userprofile', settle: 2000,
+    actions: [{ clickAria: ['修改密码'] }] },
+  { id: 'px-mymemory-usage-hint', path: '/platform/settings?section=mymemory', settle: 2000,
+    actions: [{ clickAria: ['查看哪些记忆会在对话里被使用'] }] },
+  // models 模型卡片 drawer（代表 mock-embedding-model；React 为 wk-model-editor 异构 DOM）
+  { id: 'px-models-model-card', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-card--embedding.model-card--clickable'], clickText: ['mock-embedding-model'] }] },
+  // models 卡片更多菜单（A9：.model-card__more(Vue .t-button__text span) / React lost 待补测）
+  { id: 'px-models-card-more', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-card__more', '.model-card__action-btn'] }] },
+  // parser 引擎卡片 drawer（代表：内置 DocReader；其余 9 张同款归并——matrix 批 3.5）
+  { id: 'px-parser-engine-builtin', path: '/platform/settings?section=parser', settle: 2000,
+    actions: [{ clickCss: ['.engine-card--builtin'] }] },
+  // storage backend 卡片 drawer（代表 Parity COS）+ 卡片更多菜单（A9 同族）
+  { id: 'px-storage-backend-card', path: '/platform/settings?section=storage', settle: 2000,
+    actions: [{ clickCss: ['.backend-card--cos.backend-card--clickable'], clickText: ['Parity COS'] }] },
+  { id: 'px-storage-card-more', path: '/platform/settings?section=storage', settle: 2000,
+    actions: [{ clickCss: ['.backend-card__action-btn'] }] },
+  // vectorstore 添加数据库（B4：Vue drawer / React 未检出）+ PostgreSQL 卡片（B5：React drawer）
+  { id: 'px-vectorstore-add-db', path: '/platform/settings?section=vectorstore', settle: 2000,
+    actions: [{ clickCss: ['.store-card--add'], clickText: ['添加数据库'] }] },
+  { id: 'px-vectorstore-pg-card', path: '/platform/settings?section=vectorstore', settle: 2000,
+    actions: [{ clickCss: ['.backend-card.is-env'], clickText: ['PostgreSQL'] }] },
+  // hint 类 popover（hint-trigger 同款两处）
+  { id: 'px-sandbox-what-is-hint', path: '/platform/settings?section=sandbox', settle: 2000,
+    actions: [{ clickAria: ['什么是沙箱？'], clickCss: ['.hint-trigger'] }] },
+  { id: 'px-envvars-sandbox-key-hint', path: '/platform/settings?section=envvars', settle: 2000,
+    actions: [{ clickAria: ['沙箱密钥说明'], clickCss: ['.hint-trigger'] }] },
+  // skills 添加技能（A8：Vue drawer vs React dialog+drawer）
+  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000, mouseAway: true,
+    actions: [{ clickText: ['添加技能'] }] },
+  // mcp 添加服务 drawer（双端一致）
+  { id: 'px-mcp-add-service', path: '/platform/settings?section=mcp', settle: 2000,
+    actions: [{ clickCss: ['.service-card--add'], clickText: ['添加服务'] }] },
+  // websearch provider 卡片 drawer（代表 Tavily）+ 卡片更多菜单（A9 同族）
+  { id: 'px-websearch-provider-card', path: '/platform/settings?section=websearch', settle: 2000,
+    actions: [{ clickCss: ['.provider-card--tavily.provider-card--clickable'], clickText: ['Tavily'] }] },
+  { id: 'px-websearch-card-more', path: '/platform/settings?section=websearch', settle: 2000,
+    actions: [{ clickCss: ['.provider-card__more'] }] },
+  // platform-api-keys 创建（drawer 双端一致；只开不创建）
+  { id: 'px-platform-api-keys-create', path: '/platform/settings?section=platform-api-keys', settle: 2000,
+    actions: [{ clickText: ['创建平台 API Key'] }] },
+  // members 角色权限说明（A7：popover vs popover+dialog）
+  { id: 'px-members-rbac-hint', path: '/platform/settings?section=members', settle: 2000,
+    actions: [{ clickAria: ['角色权限说明'] }] },
+  // ollama 重新检测（A11 低置信：React 检出疑似 backdrop，Vue 无）
+  { id: 'px-ollama-redetect', path: '/platform/settings?section=ollama', settle: 2000,
+    actions: [{ clickText: ['重新检测'] }] },
+  // —— 批 4：系统/集成/免登录 ——
+  // system-global（/platform/system 落点）：配置来源与优先级 hint + 创建用户（A5：popover vs dialog）
+  { id: 'px-system-auth-priority', path: '/platform/settings?section=system-global', settle: 2000,
+    actions: [{ clickAria: ['配置来源与优先级'], clickCss: ['.hint-trigger'] }] },
+  { id: 'px-system-create-user', path: '/platform/settings?section=system-global', settle: 2000,
+    actions: [{ clickCss: ['.create-user-trigger'], clickAria: ['创建用户'] }] },
+  // integration（/platform/integrations 落点 im）：按智能体筛选（A6）+ 添加渠道（B3）
+  { id: 'px-integrations-agent-filter', path: '/platform/integrations', settle: 2000,
+    actions: [{ clickAria: ['按智能体筛选'], clickCss: ['.integrations-agent-filter'] }] },
+  { id: 'px-integrations-add-channel', path: '/platform/integrations', settle: 2000,
+    actions: [{ clickCss: ['.channel-card--add'], clickText: ['添加渠道'] }] },
+  { id: 'px-integration-embed-agent-filter', path: '/platform/settings?section=integration-embed', settle: 2000,
+    actions: [{ clickAria: ['按智能体筛选'] }] },
+  // integration-api 创建 API Key（B6：Vue drawer / React 未检出）
+  { id: 'px-integration-api-create-key', path: '/platform/settings?section=integration-api', settle: 2000,
+    actions: [{ clickText: ['创建 API Key'] }] },
+  // 免登录：语言切换 dropdown + 创建账户（mode 切换到注册表单；postSettle 覆盖切换过渡）
+  { id: 'px-login-lang', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true,
+    actions: [{ clickText: ['简体中文'], clickCss: ['.header-link'] }] },
+  { id: 'px-register-lang', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true,
+    actions: [{ clickText: ['简体中文'], clickCss: ['.header-link'] }] },
+  { id: 'px-login-register-confirm', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true, postSettle: 3200,
+    actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
+  { id: 'px-register-register-confirm', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true, postSettle: 3200,
+    actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
+  // —— 三期：无弹层交互面（tab/分段/开关/折叠/树展开；id 规范 px2-<域>-<元素>）——
+  // 与前两期去重口径：视图切换器已由 ix-kb-listview（列表视图）+ px-kb-wiki-tab-wiki-treeview
+  // （树形视图）覆盖，网格为默认态点击无态变（探针实证 viewbtn-active 前后不变）不重复入表；
+  // 轮播指示点（login/register .swiper-pagination-bullet 双端 4 枚实证存在）因 autoplay 4s
+  // 相位双端独立、扫描器无 post-action 重同步机制，入表必假阳 → 列存疑不入表（见
+  // baseline-px2.md）。序内污染声明：fontradio/sidebar-collapse 点击写 localStorage
+  //（WeKnora_<uid>_fontsize / sidebar_collapsed，跨 goto 存续），置于本块最末，其后无
+  // authed 项；单页重验其前置项不受影响，重验 sidebar-collapse 需按 ALL_PAGES 顺序连同
+  // fontradio 一起过滤（PAGES 过滤保序）。全部项只切换不确认，无服务端写。
+  //
+  // —— kb 域：Wiki KB 面包屑 tab（文档/Wiki/图谱 三 tab 双端同构 span.breadcrumb-tab，
+  // KnowledgeBase.vue:2424-2438；静态项只扫 URL 态，本组补 tab 点击切换态）——
+  { id: 'px2-kb-wiki-tab', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-tab >> nth=1'], clickText: ['Wiki'] }] },
+  { id: 'px2-kb-graph-tab', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-tab >> nth=2'], clickText: ['图谱'] }] },
+  // wiki reader 头部 tab（知识/摘要 .wiki-tab：Vue div / React button 异构标签，
+  // 同名类；点击切 reader 视图，WikiBrowser doc-content 内联切换非弹层）
+  { id: 'px2-kb-wiki-reader-tab', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.wiki-tab >> nth=1'], clickText: ['摘要'] }] },
+  // wiki 目录树行展开（.wiki-directory-item 行点击=toggleDirectory 懒加载子级，
+  // Vue WikiBrowser.vue:292 / React WikiPage.tsx:1249 同名类族；树节点展开代表）
+  { id: 'px2-kb-wiki-tree-expand', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.wiki-directory-item >> nth=0'] }] },
+  // KB 设置抽屉内导航（ix-kb-settings 只开抽屉；本项补抽屉内 settings-nav 的
+  // nav-item 分区切换）。React 首开有秒级异步延迟（编辑器 chunk 懒加载），
+  // postSettle 3500 保证第二步选择器到场。
+  { id: 'px2-kb-settings-nav', kind: 'kb', name: 'Parity KB Demo', postSettle: 3500,
+    actions: [
+      { clickCss: ['.kb-settings-button'], clickAria: ['知识库设置', '设置'] },
+      { clickCss: ['.settings-nav .nav-item:has-text("分块设置")'], clickText: ['分块设置'] },
+    ] },
+  // 分块设置「父子分块」开关（KBChunkingSettings.vue:113 t-switch）——已知异构：
+  // React chunkingSection.tsx:195-201 是 native input[type=checkbox]（aria-label=
+  // 父子分块），clickAria 兜底命中 React、clickCss .t-switch 命中 Vue，本项即
+  // 暴露该组件级差异的扫描哨兵。表单态无保存按钮不落库。
+  { id: 'px2-kb-settings-chunkswitch', kind: 'kb', name: 'Parity KB Demo', postSettle: 3500,
+    actions: [
+      { clickCss: ['.kb-settings-button'], clickAria: ['知识库设置', '设置'] },
+      { clickCss: ['.settings-nav .nav-item:has-text("分块设置")'], clickText: ['分块设置'] },
+      { clickCss: ['.section .t-switch'], clickAria: ['父子分块'] },
+    ] },
+  // —— settings 域：t-tabs 内联过滤 tab（点击改列表过滤，纯客户端）——
+  // models 类型过滤（全部/对话/Embedding/…6 项双端同构，ModelSettings.vue:38）
+  { id: 'px2-settings-models-tab', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-type-tabs .t-tabs__nav-item >> nth=1'], clickText: ['对话'] }] },
+  // sandbox 类型过滤（SandboxSettings.vue:59）
+  { id: 'px2-settings-sandbox-tab', path: '/platform/settings?section=sandbox', settle: 2000,
+    actions: [{ clickCss: ['.sandbox-type-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // mymemory 状态过滤（生效中/待确认/…6 项，MemorySettings.vue:154；注意挂在
+  // mymemory 分区而非 memory——memory 分区是 MemoryWorkspaceSettings）
+  { id: 'px2-settings-mymemory-tab', path: '/platform/settings?section=mymemory', settle: 2500,
+    actions: [{ clickCss: ['.status-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // system-global 系统设置分区 tab（账户与访问/空间默认值/…4 项，
+  // SystemSettings.vue:69；settings-system 分区是 SystemInfo 无 tab）
+  { id: 'px2-settings-systemglobal-tab', path: '/platform/settings?section=system-global', settle: 2500,
+    actions: [{ clickCss: ['.settings-section-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // runtime-queues 自动刷新开关（客户端 5s 轮询开关，无服务端写；clickAria 先行
+  // 因 React 该页有 2 个 switch，aria 唯一定位自动刷新；双端探针实证命中）
+  { id: 'px2-settings-runtimequeues-autorefresh', path: '/platform/settings?section=runtime-queues', settle: 2000, liveFreeze: 'queues',
+    actions: [{ clickAria: ['自动刷新'], clickCss: ['.t-switch'] }] },
+  // 常规设置字号分段控件（小/正常/大 t-radio-button 三段双端同构，
+  // GeneralSettings.vue:114-121；localStorage-only（preferenceStorage.ts:69
+  // safeSetItem），无服务端写。点击后全 run 后续页大字号渲染（双端同改、parity
+  // 不破），故置于本块倒数第二。postSettle 3500：双端点击均弹
+  // MessagePlugin.success t-message（3000ms 自动消失，Vue GeneralSettings.vue:274
+  // / React GeneralPreferencesPanel.tsx da187f072 判例同构），而扫描器先点 vue 再点
+  // react、vue 截图恒晚一个 action+steady 周期——vue toast 必已消失而 react toast
+  // 仍在场，构成确定性瞬态差；3500ms 让双端 toast 都过期后再截图（px2-kb-settings-nav
+  // postSettle 先例同款处置）。
+  { id: 'px2-settings-general-fontradio', path: '/platform/settings?section=general', settle: 2000, postSettle: 3500,
+    actions: [{ clickCss: ['.t-radio-button:has-text("大")'], clickText: ['大'] }] },
+  // —— chat 域：会话侧栏折叠（menu.vue:22 .sidebar-toggle / React PlatformShell.tsx:1087
+  // 同名类同 localStorage 键 sidebar_collapsed；纯壳态无服务端写。点击后全 run 后续
+  // 页折叠态渲染，置于 authed 项最末 + mouseAway 清 hover 工件（判例 #26 同族）——
+  { id: 'px2-chat-sidebar-collapse', kind: 'chat', name: '工具调用 Parity Fixture', mouseAway: true,
+    actions: [{ clickCss: ['.sidebar-toggle'] }] },
 ];
 const PAGES = PAGE_FILTER.length ? ALL_PAGES.filter(p => PAGE_FILTER.includes(p.id)) : ALL_PAGES;
 
@@ -202,7 +459,7 @@ async function newAuthedPage(ctx, base, auth) {
   const page = await ctx.newPage();
   await page.setViewportSize({ width: 1280, height: 720 });
   // 先访问 origin 一次以获得 localStorage 写入权限
-  await page.goto(base + '/login', { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.goto(base + '/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.evaluate(([a, guideKeys, isReact]) => {
     localStorage.setItem('weknora_token', a.token);
     if (a.refreshToken) localStorage.setItem('weknora_refresh_token', a.refreshToken);
@@ -263,8 +520,18 @@ async function clickFirst(page, action) {
           ...await page.getByText(c.t, { exact: false }).all(),
         ];
       }
-      for (const loc of locs) {
-        if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+      // pickLast（panel-matrix px 项）：消息工具栏类触发器双端 DOM 数量不同（Vue
+      // 只给最后一条回答渲染 toolbar，React 每条 assistant 消息都有）——首个可见
+      // 匹配在 React 端可能是滚出视口上缘的历史消息按钮，click 自动滚动会错位
+      // 双端取景。取最后一个可见匹配＝最新消息的工具栏，双端同一逻辑按钮。
+      if (action.pickLast) {
+        for (let i = locs.length - 1; i >= 0; i--) {
+          if (await locs[i].isVisible().catch(() => false)) { await locs[i].click(); return true; }
+        }
+      } else {
+        for (const loc of locs) {
+          if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+        }
       }
     } catch { /* next candidate */ }
   }
@@ -276,6 +543,57 @@ function pixdiff(vuePng, reactPng, diffPng) {
     join(ROOT, 'scripts/parity/pixdiff.py'), vuePng, reactPng, diffPng,
   ], { encoding: 'utf8' });
   return JSON.parse(out);
+}
+
+// 稳态门：双端各自截图前统一执行——网络空闲 → 字体就绪 → 差异化 settle → 冻结动画定格。
+// 目的：消除 Vue 端路由切换瞬态白屏 / 字体闪烁 / 过渡动画中间态被截入的伪差
+// （历史坑：瞬态白屏伪造恶化）。与 login/register 的 freezeCarousel 叠加生效
+// （后者冻结轮播相位，本门只冻结过渡动画，不改变已渲染稳态）。
+// 顺序注意：freeze 必须在 settle 之后、紧贴截图前——若放在 settle 前，点击/路由
+// 触发的入场过渡会被冻在开头（实测：新建知识库对话框半透明幽灵态 46% 伪差）。
+// noFreeze：getAnimations().pause() 会把 spinner/进度条等循环动画冻在中间态，
+// 若某页确证因此抬差，在 ALL_PAGES 该项加 noFreeze:true 跳过动画冻结。
+// syncPhase（页标志 syncAnimPhase:true）：pause 只保证动画停在"某个"相位——
+// 暂停时刻取决于双端各自的导航时序，是任意的。装饰循环动画（login/register
+// .animated-bg 的 nodePulse/lineFlow）因此 run 间波动（275↔1387px）。确定性
+// 定格：把每条无限循环 CSS 动画 seek 到 currentTime = effect.delay（= 该动画
+// keyframe 0% 相位）。注意不能统一 currentTime=0——delay>0 的动画在 0 时刻
+// 处于 fill:none 延迟期渲染基线态，而 delay=0 的落在 keyframe 0%，两端 delay
+// 不一致时会系统性分叉（实证：React auth 页 [animation-delay:${...}] 模板
+// 插值类 Tailwind 未生成规则，全部 delay=0；Vue 端 0~3s 错峰 → currentTime=0
+// 双端 44k px 分叉）。seek 到各自 delay 后双端统一落在 keyframe 0%（nodePulse
+// opacity .65/scale 1、lineFlow dashoffset 0），与端侧 delay 是否生效无关。
+//   - 仅 iterations===Infinity 的 CSSAnimation 参与 seek：一次性入场/切换动画
+//     必须保持 pause 末态（fill:forwards 已稳定），seek 回 0 会回退 UI 状态。
+//   - CSSTransition 一律不 seek（归零会把已完成过渡回退到过渡前状态，破坏
+//     freezeCarousel 已定格的轮播态）。
+//   - SVG SMIL：根 svg.setCurrentTime(0)（无 SMIL 元素时为无害 no-op）。
+//   - rAF/canvas：本仓库无此类装饰动画（headless 探针实证 login 双端 24 个
+//     全为 CSSAnimation），如未来出现需页面侧提供确定性时间源，扫描器无法注入。
+async function waitForSteady(page, settleMs, noFreeze, syncPhase) {
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.waitForTimeout(settleMs);
+  if (!noFreeze) {
+    await page.evaluate((syncPhase) => {
+      document.getAnimations().forEach(a => {
+        a.pause?.();
+        if (!syncPhase) return;
+        if (typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation) {
+          const t = a.effect?.getTiming?.();
+          // 无限循环装饰动画：seek 到 keyframe 0% 相位（delay 起点，负 delay 钳 0）
+          if (t && t.iterations === Infinity) {
+            try { a.currentTime = Math.max(0, t.delay || 0); } catch { /* 不可 seek 则保持 pause 态 */ }
+          }
+        }
+      });
+      if (syncPhase) {
+        for (const svg of document.querySelectorAll('svg')) {
+          if (typeof svg.setCurrentTime === 'function') { try { svg.setCurrentTime(0); } catch { /* next */ } }
+        }
+      }
+    }, !!syncPhase).catch(() => {});
+  }
 }
 
 async function main() {
@@ -303,9 +621,42 @@ async function main() {
   try {
     const vuePage = await newAuthedPage(await browser.newContext(), VUE, auth);
     const reactPage = await newAuthedPage(await browser.newContext(), REACT, auth);
-    // 免登录页（login/register 等）：全新 context，不注入任何会话
-    const anonVue = await (await browser.newContext()).newPage();
-    const anonReact = await (await browser.newContext()).newPage();
+    // T12c：settings-system 的「服务运行时长」行 = live(Date.now()-started_at)，
+    // 两端顺序截图（相隔数秒）必差秒数文本。login/register freezeCarousel 同款
+    // 确定性处理：全 run 冻结一次时钟字面量，经 addInitScript 注入（URL guard
+    // 只在 section=system 生效，其余页面不受影响）；两端同一冻结值 → 运行时长
+    // 文本完全一致。
+    const scanClock = Date.now();
+    for (const authedPage of [vuePage, reactPage]) {
+      // 精确匹配 section 参数（'system' 而非 'system-global' 等前缀子串，
+      // 避免误冻结其他系统管理分区的轮询/计时逻辑）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'system') { const frozen = ${scanClock}; Date.now = () => frozen; }`);
+      // T12c：settings-runtime-queues 的「更新于 HH:mm:ss」由 5s 轮询响应的
+      // server timestamp 驱动，双端截图相位不同必差秒数文本。冻结
+      // toLocaleTimeString 为同一字面量（渲染值确定性；系统时钟本身不受影响）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'runtime-queues') { const frozen = new Date(${scanClock}).toLocaleTimeString('zh-CN', { hour12: false }); Date.prototype.toLocaleTimeString = function () { return frozen; }; }`);
+    }
+    // 免登录页（login/register 等）：全新 context，不注入任何会话。
+    // 轮播冻结（三期验收 R25）：login/register 展示轮播 autoplay 4s（Vue Swiper
+    // 内部 setTimeout 链 + React 裸 setInterval），两端相位独立会落入不同 slide
+    // 造成整块假差异（实测 ~10% 恒定；相位对齐实验归 0.84%）。旧版轮询步进器
+    // 读的是 authed 页面对象（vuePage/reactPage）而非实际截图的 anon 页，从未
+    // 生效。改为 context 级拦截 3.5-4.5s 定时器，双端确定性停在 slide 0——
+    // anon context 仅服务 login/register 族页面，拦截范围天然受控（toast 3s、
+    // 轮询 5s 均在窗外）。
+    const anonVueCtx = await browser.newContext();
+    const anonReactCtx = await browser.newContext();
+    const CAROUSEL_FREEZE = `(() => {
+      const hit = (ms) => typeof ms === 'number' && ms >= 3500 && ms <= 4500;
+      const _si = window.setInterval.bind(window);
+      window.setInterval = (fn, ms, ...a) => hit(ms) ? 0 : _si(fn, ms, ...a);
+      const _st = window.setTimeout.bind(window);
+      window.setTimeout = (fn, ms, ...a) => hit(ms) ? 0 : _st(fn, ms, ...a);
+    })();`;
+    await anonVueCtx.addInitScript(CAROUSEL_FREEZE);
+    await anonReactCtx.addInitScript(CAROUSEL_FREEZE);
+    const anonVue = await anonVueCtx.newPage();
+    const anonReact = await anonReactCtx.newPage();
     const anonPages = { vue: anonVue, react: anonReact };
 
     for (const p of PAGES) {
@@ -313,44 +664,157 @@ async function main() {
       const path = p.kind ? (fixturePath ? fixturePath + (p.suffix || '') : undefined) : p.path;
       const entry = { id: p.id, path: path || p.path, status: 'ok', diff_pct: null };
       if (!path) { entry.status = 'skipped-no-fixture'; results.push(entry); console.log(`[skip] ${p.id}（fixture 未找到）`); continue; }
+      let liveFreezePat = null;
       try {
         const shots = [];
         const warnings = [];
-        if (p.freezeCarousel) {
-          // login/register 展示轮播由 JS 定时器切换，两端相位独立会落入不同
-          // slide 造成整块假差异。轮询双端左半区特征文本，直到一致（≤15s）。
-          const readSlides = async (pg) => pg.evaluate(() => {
-            const out = [];
-            for (const e of document.querySelectorAll('body *')) {
-              if (e.children.length > 0) continue;
-              const r = e.getBoundingClientRect();
-              if (r.x > 700 || r.x < 300 || r.y < 150 || r.y > 650 || r.width === 0) continue;
-              const t = (e.textContent || '').trim().replace(/\s+/g, ' ');
-              if (t) out.push(t);
-            }
-            return out.sort().join('|');
-          }).catch(() => '');
-          const deadline = Date.now() + 15000;
-          let a = '', b2 = '';
-          while (Date.now() < deadline) {
-            a = await readSlides(vuePage);
-            b2 = await readSlides(reactPage);
-            if (a && a === b2) break;
-            await new Promise((r) => setTimeout(r, 700));
-          }
+        // 活数据冻结（三期验收）：runtime-queues 页渲染真实队列计数（active/
+        // pending/archived 等，5s 轮询），双端顺序截图间隔中作业状态变化会造
+        // 成整表假差异（实测 1.3%→25%→91% 随机耀斑；同步探针证明 UI 本身
+        // 一致、数据对齐轮恒 0）。请求级快照：vue 首个 /queues 请求透传并捕
+        // 获响应体，其后双端所有同名请求一律 fulfill 同一快照 → 两端渲染同
+        // 一份数据。项末统一 unroute（错误路径亦然），不污染后续项。
+        if (p.liveFreeze === 'queues') {
+          liveFreezePat = /\/api\/v1\/system\/admin\/runtime\/queues(\?|$)/;
+          let snap = null;
+          const handler = async (route) => {
+            try {
+              if (snap === null) {
+                const resp = await route.fetch();
+                snap = await resp.body();
+                await route.fulfill({ response: resp });
+              } else {
+                await route.fulfill({ status: 200, contentType: 'application/json', body: snap });
+              }
+            } catch { await route.continue().catch(() => {}); }
+          };
+          await Promise.all([vuePage, reactPage].map(pg => pg.route(liveFreezePat, handler)));
         }
+        // 轮播定格由 anon context 级 initScript 完成（见 context 创建处注释），
+        // 此处不再步进；旧版 authed 页面文本轮询步进器已删除（读错页面对象，
+        // 从未对实际截图的 anon 页生效）。
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
-          await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-          // dev server 首次编译/HMR full-reload 会打断首帧；等网络空闲再走 settle，
-          // 否则首页截图会踩到 Loading（R5xx chat 页间歇 93% 假阳性的根因）。
-          await active.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
-          await active.waitForTimeout(p.settle ?? 2400);
+          await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          // dev server 首次编译/HMR full-reload 会打断首帧；稳态门（网络空闲 +
+          // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
+          // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
+          await waitForSteady(active, p.settle ?? 2400, p.noFreeze, p.syncAnimPhase);
+          // T12c：集成页展示的 API base URL 取 window.location.origin（Vue
+          // :5174 / React :5175 各自渲染），双端文本必差。截图前把双端
+          // localhost:端口 统一替换为同一字面量（chrome connect 输入框值、
+          // claw env 示例、cli/api tab 的 base 展示）。输入框走原型级 value
+          // setter 拦截——React remount/受控回写会重置直接赋值。确定性归一
+          // 同款于 system 时钟冻结。仅 integration-* 分区执行。
+          if (p.id.startsWith('settings-integration-')) {
+            await active.evaluate(() => {
+              const fix = (str) => str.replace(/localhost:\d{2,5}/g, 'localhost:port');
+              const walk = (node) => {
+                for (const child of node.childNodes) {
+                  if (child.nodeType === 3 && child.textContent && child.textContent.includes('localhost:')) {
+                    child.textContent = fix(child.textContent);
+                  } else if (child.nodeType === 1) {
+                    walk(child);
+                  }
+                }
+              };
+              walk(document.body);
+              for (const proto of [HTMLInputElement.prototype, HTMLTextAreaElement.prototype]) {
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (!desc || !desc.set) continue;
+                Object.defineProperty(proto, 'value', {
+                  ...desc,
+                  set(v) { desc.set.call(this, typeof v === 'string' && v.includes('localhost:') ? fix(v) : v); },
+                });
+              }
+              for (const input of document.querySelectorAll('input, textarea')) {
+                if (typeof input.value === 'string' && input.value.includes('localhost:')) input.value = fix(input.value);
+              }
+            }).catch(() => {});
+          }
+          // T12c：settings-system 的「UI 版本」行 commit 后缀 = 各自 dev server
+          // 启动时 vite define 烘进的 git HEAD 短哈希（frontend/ 树与 tdm-int
+          // worktree 树不同 HEAD，dev server 长驻进程、无法按轮注入），双端渲染
+          // `0.8.0 (176704368)` / `0.8.0 (754bfb5d0)` 必差。确定性归一（同
+          // system 时钟冻结 / integration localhost 归一先例）：截图前把匹配
+          // `v\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?` 的文本统一替换为固定
+          // 字面量 v0.0.0 (parity)。作用域仅 section=system（URLSearchParams
+          // 精确匹配，不误伤 system-global / runtime-queues 等分区）。注意两端
+          // 版本与 commit 均为独立文本节点（"0.8.0 " 文本节点 + span.commit-info
+          // "(hash)"），合并正则在单节点内匹配不到，需按节点分别归一：
+          // commit-info span 整体替换为 "(parity)"（顺带抹平 React JSX 前导
+          // 空格差），其前邻版本文本节点归一为 v0.0.0。MutationObserver 兜底
+          // 轮询重渲染回写原始哈希（归一幂等，重入无害）。
+          if (p.id === 'settings-system') {
+            await active.evaluate(() => {
+              if (new URLSearchParams(location.search).get('section') !== 'system') return;
+              // test 与 replace 分用字面量：/g 正则的 test 有 lastIndex 状态，
+              // 循环里会跨节点泄漏命中位置（replace 则始终从头扫描）。
+              const COMBINED_T = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/;
+              const COMBINED = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/g;
+              const VERSION_T = /v?\d+\.\d+\.\d+(-\w+)?/;
+              const VERSION = /v?\d+\.\d+\.\d+(-\w+)?/g;
+              // 括号锚定：避免误伤纯数字行（如数据库迁移版本号）；"(unknown)" 不匹配。
+              const COMMIT = /\([0-9a-f]{7,9}\)/;
+              const normalize = () => {
+                // 1) 合并形态：单节点内完整的 "v1.2.3 (a1b2c3d)"。
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                  if (COMBINED_T.test(n.textContent)) {
+                    n.textContent = n.textContent.replace(COMBINED, 'v0.0.0 (parity)');
+                  }
+                }
+                // 2) 分裂节点形态（当前双端实况）：span.commit-info + 前邻版本文本节点。
+                for (const ci of document.querySelectorAll('.commit-info')) {
+                  if (COMMIT.test(ci.textContent || '')) ci.textContent = '(parity)';
+                  let prev = ci.previousSibling;
+                  while (prev && !(prev.nodeType === 3 && prev.textContent.trim())) prev = prev.previousSibling;
+                  if (prev && VERSION_T.test(prev.textContent)) {
+                    prev.textContent = prev.textContent.replace(VERSION, 'v0.0.0');
+                  }
+                }
+              };
+              normalize();
+              new MutationObserver(normalize).observe(document.body, { childList: true, subtree: true, characterData: true });
+            }).catch(() => {});
+          }
           if (p.actions) {
             for (const action of p.actions) {
-              const ok = await clickFirst(active, action);
+              let ok = false;
+              // hover 门控触发器（panel-matrix 标注）：先真实 hover 揭示/触发（CSS
+              // :hover 门控的会话行"更多"、t-tooltip 类附件提示），再走点击兜底链。
+              // hover 与 click 一样按候选链取首个可见命中；命中后停留 hoverWait 让
+              // 揭示过渡/tooltip 展示走完——此间不冻结动画（freeze 会把揭示过渡冻
+              // 在开头），定格交给点击后的稳态门。
+              if (action.hoverCss) {
+                for (const s of action.hoverCss) {
+                  try {
+                    for (const loc of await active.locator(s).all()) {
+                      if (await loc.isVisible().catch(() => false)) { await loc.hover(); ok = true; break; }
+                    }
+                  } catch { /* next candidate */ }
+                  if (ok) break;
+                }
+                await active.waitForTimeout(action.hoverWait ?? 700);
+              }
+              if (action.clickAria || action.clickCss || action.clickText) {
+                ok = await clickFirst(active, action);
+              }
               if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
-              await active.waitForTimeout(1100);
+              // 点击可能触发新的过渡动画/数据请求，截图前再过一遍稳态门定格。
+              // postSettle：面板项可覆盖（如 login 创建账户点击后同路由切注册表单，
+              // 需要更长过渡窗口）。
+              await waitForSteady(active, p.postSettle ?? 1100, p.noFreeze, p.syncAnimPhase);
+            }
+            // mouseAway（页标志）：点击把指针留在触发点，面板弹开后 headless 的
+            // :hover 链会间歇落在面板内元素上（px-kb-wiki-tab-wiki-newpage 实测：
+            // Vue 端指针 hover 链落进 slug 输入框 → .t-input:hover 品牌色边框环，
+            // React 端落空白；两库 hover 规则逐字相同，属指针位置工件而非面板差异，
+            // probe 取证 mouse=(555,226) 但 :hover 链在 slug inner、scrollY=0）。
+            // 双端统一把指针移到角落清掉 hover 态再截图，消除这类偶然伪差。
+            if (p.mouseAway) {
+              await active.mouse.move(4, 4).catch(() => {});
+              await active.waitForTimeout(300);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);
@@ -367,6 +831,7 @@ async function main() {
         entry.status = 'error'; entry.error = e.message.split(String.fromCharCode(10))[0];
         console.log(`[err ] ${p.id}: ${entry.error}`);
       }
+      if (liveFreezePat) await Promise.all([vuePage, reactPage].map(pg => pg.unroute(liveFreezePat).catch(() => {})));
       results.push(entry);
     }
   } finally {

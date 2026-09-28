@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,20 @@ func TestMCPMetadataAppErrorDoesNotLeakUpstreamDetails(t *testing.T) {
 	require.Equal(t, "Failed to refresh MCP tools. Check the connection and try again.", refresh.Message)
 	require.NotContains(t, refresh.Error(), "secret.internal")
 	require.NotContains(t, refresh.Error(), "10.1.2.3")
+}
+
+// TestMCPMetadataAppErrorMapsPluginManagedConflict（OCR 终局 F09）：服务层
+// 对插件物化行的 ErrPluginManagedService 是确定性策略拒绝——refresh 面
+// 不得落 default 的 400 失败文案、读取面不得落 default 500（污染 5xx 告警），
+// 与 mcp_service.go pluginManagedConflict 同口径映射 409。
+func TestMCPMetadataAppErrorMapsPluginManagedConflict(t *testing.T) {
+	refresh := mcpMetadataAppError(service.ErrPluginManagedService, true)
+	require.Equal(t, http.StatusConflict, refresh.HTTPCode,
+		"a plugin-managed refresh is a deterministic policy rejection, not a generic refresh failure")
+
+	read := mcpMetadataAppError(service.ErrPluginManagedService, false)
+	require.Equal(t, http.StatusConflict, read.HTTPCode,
+		"the read face shares the plugin-managed verdict (usage-instructions generation flows through GetMCPMetadata)")
 }
 
 func TestMayWriteSharedMCPMetadata(t *testing.T) {

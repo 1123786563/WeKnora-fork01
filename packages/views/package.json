@@ -39,7 +39,6 @@
     "@weknora/contracts": "workspace:*",
     "@weknora/core": "workspace:*",
     "@weknora/domain": "workspace:*",
-    "@weknora/ui": "workspace:*",
     "dompurify": "3.4.11",
     "katex": "^0.16.25",
     "marked": "^17.0.5",

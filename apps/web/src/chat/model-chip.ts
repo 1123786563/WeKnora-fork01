@@ -62,10 +62,16 @@ export interface ChatModelLike {
   parameters?: unknown;
 }
 
-/** One composer dropdown option (id + resolved display label). */
+/** One composer dropdown option (id + resolved display label + dropdown row extras). */
 export interface ChatModelOption {
   id: string;
   name: string;
+  /** Vue model-option-raw-name — the raw model name, shown when display_name is set. */
+  rawName?: string;
+  /** Vue formatContextWindow(parameters.context_window) for the dropdown row suffix. */
+  contextLabel?: string;
+  /** Vue model-option-ctx is-default. */
+  contextIsDefault?: boolean;
 }
 
 /**
@@ -78,6 +84,9 @@ export interface ChatModelOption {
  * the empty string, so the empty-name guard dropped the only chat model and
  * the chip degraded to the disabled variant with no dropdown. Options whose
  * id or resolved name is blank stay dropped.
+ *
+ * rawName follows the Vue truthy check (`v-if="model.display_name"`): an
+ * empty-string display_name renders no raw-name suffix.
  */
 export function resolveChatModelOptions<T extends ChatModelLike>(models: readonly T[]): ChatModelOption[] {
   return models
@@ -85,7 +94,15 @@ export function resolveChatModelOptions<T extends ChatModelLike>(models: readonl
       const id = String(model.id ?? '').trim();
       const displayName = typeof model.display_name === 'string' ? model.display_name.trim() : '';
       const name = typeof model.name === 'string' ? model.name.trim() : '';
-      return { id, name: displayName || name || id };
+      const parameters = model.parameters as { context_window?: unknown } | undefined | null;
+      const contextWindow = parameters && typeof parameters === 'object' ? parameters.context_window : undefined;
+      return {
+        id,
+        name: displayName || name || id,
+        ...(displayName ? { rawName: name } : {}),
+        contextLabel: formatContextWindow(contextWindow),
+        contextIsDefault: isDefaultContextWindow(contextWindow),
+      };
     })
     .filter((model) => model.id.length > 0 && model.name.length > 0);
 }

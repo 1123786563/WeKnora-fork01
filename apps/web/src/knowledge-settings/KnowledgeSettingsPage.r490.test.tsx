@@ -36,6 +36,12 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // 分块段换 tdesign 控件（Select/Slider/Switch/InputNumber，弹层 Popup 系
+  // 需要 Element/Node/SVGElement/rAF —— SandboxSettingsPanel.test 同款先例）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -148,52 +154,34 @@ test('#13 the chunking sliders render the Vue numeric marks tiers', async () => 
   await openSection('chunking');
   const body = document.body;
 
+  /* px2-kb-settings-*：滑杆换 tdesign Slider——marks 是 .t-slider__mark-text
+     （Vue t-slider marks 同款 DOM）。 */
+  const marksOf = (slider: Element): string[] => [...slider.querySelectorAll('.t-slider__mark-text')].map((mark) => (mark.textContent ?? '').trim());
+
   // Vue chunkSizeMarks {100,1000,2000,4000} and chunkOverlapMarks {0,250,500}
   // render as tick labels under the two always-visible sliders.
-  const sizeSlider = body.querySelector('input[type="range"][aria-label*="chunk size" i], input[type="range"][min="100"][max="4000"]');
-  assert.ok(sizeSlider, 'expected the chunk-size range input');
-  const sizeMarks = sizeSlider!.parentElement!.querySelector('[data-slider-marks]');
-  assert.ok(sizeMarks, 'the chunk-size slider renders a marks tier row (Vue t-slider marks)');
-  const sizeMarksText = (sizeMarks! as HTMLElement).textContent;
-  for (const mark of ['100', '1000', '2000', '4000']) {
-    assert.ok(sizeMarksText.includes(mark), `chunk-size marks include ${mark}`);
-  }
-
-  const overlapSlider = body.querySelector('input[type="range"][min="0"][max="500"]');
-  assert.ok(overlapSlider, 'expected the chunk-overlap range input');
-  const overlapMarks = overlapSlider!.parentElement!.querySelector('[data-slider-marks]');
-  assert.ok(overlapMarks, 'the chunk-overlap slider renders a marks tier row');
-  const overlapMarksText = (overlapMarks! as HTMLElement).textContent;
-  for (const mark of ['0', '250', '500']) {
-    assert.ok(overlapMarksText.includes(mark), `chunk-overlap marks include ${mark}`);
-  }
+  const sliders = [...body.querySelectorAll('.kb-chunking-settings .t-slider')];
+  assert.equal(sliders.length, 2, 'the size/overlap sliders always render');
+  assert.deepEqual(marksOf(sliders[0]!), ['100', '1000', '2000', '4000'], 'chunk-size marks tiers');
+  assert.deepEqual(marksOf(sliders[1]!), ['0', '250', '500'], 'chunk-overlap marks tiers');
 });
 
 test('#13 the parent-child sliders render the Vue marks tiers once enabled', async () => {
   await renderPage();
   await openSection('chunking');
 
-  // Toggle the parent-child switch on (Vue v-if="localEnableParentChild").
-  const toggle = document.body.querySelector('input[type="checkbox"][aria-label*="parent" i]');
+  // Toggle the parent-child switch on (Vue v-if="localEnableParentChild");
+  // tdesign Switch 根是 button.t-switch（台账 #2），点击切换。
+  const toggle = document.body.querySelector('.kb-chunking-settings .setting-row--toggle .t-switch') as HTMLElement;
   assert.ok(toggle, 'expected the parent-child toggle');
   await act(async () => { toggle!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); });
 
-  const parentSlider = document.body.querySelector('input[type="range"][min="512"][max="8192"]');
-  assert.ok(parentSlider, 'expected the parent chunk-size range input');
-  const parentMarks = (parentSlider!.parentElement!.querySelector('[data-slider-marks]') as HTMLElement | null);
-  assert.ok(parentMarks, 'the parent slider renders a marks tier row');
-  for (const mark of ['512', '2048', '4096', '8192']) {
-    assert.ok(parentMarks!.textContent.includes(mark), `parent marks include ${mark}`);
-  }
-
-  const childSlider = document.body.querySelector('input[type="range"][min="64"][max="2048"]');
-  assert.ok(childSlider, 'expected the child chunk-size range input');
-  const childMarks = (childSlider!.parentElement!.querySelector('[data-slider-marks]') as HTMLElement | null);
-  assert.ok(childMarks, 'the child slider renders a marks tier row');
-  for (const mark of ['64', '384', '1024', '2048']) {
-    assert.ok(childMarks!.textContent.includes(mark), `child marks include ${mark}`);
-  }
+  const sliders = [...document.body.querySelectorAll('.kb-chunking-settings .t-slider')];
+  assert.equal(sliders.length, 4, 'the parent/child sliders join once the switch is on');
+  const marksOf = (slider: Element): string[] => [...slider.querySelectorAll('.t-slider__mark-text')].map((mark) => (mark.textContent ?? '').trim());
+  assert.deepEqual(marksOf(sliders[2]!), ['512', '2048', '4096', '8192'], 'parent marks tiers');
+  assert.deepEqual(marksOf(sliders[3]!), ['64', '384', '1024', '2048'], 'child marks tiers');
 });
 
 // #18 — Vue KBStorageSettings.vue: ONE bound-instance select + hint + the

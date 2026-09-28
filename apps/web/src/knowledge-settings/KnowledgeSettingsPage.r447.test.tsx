@@ -39,6 +39,12 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // 分块段换 tdesign 控件（Select/Slider/Switch/InputNumber，弹层 Popup 系
+  // 需要 Element/Node/SVGElement/rAF —— SandboxSettingsPanel.test 同款先例）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -208,14 +214,15 @@ test('the strategy select shows the Vue placeholder on its empty option instead 
   await renderPage(clientFor(calls));
   await openSection('chunking');
 
-  const select = [...document.body.querySelectorAll<HTMLSelectElement>('select')].find((candidate) => candidate.getAttribute('aria-label') === 'Chunking Strategy');
-  assert.ok(select, 'expected the chunking strategy select');
-  const emptyOption = [...select.options].find((option) => option.value === '');
-  assert.ok(emptyOption, 'expected the not-set empty option');
+  /* px2-kb-settings-*：策略控件换 tdesign Select——原生 option 行不复存在，
+     未选中态的占位文案渲染在触发器 input 的 placeholder（Vue t-select 同款）。 */
+  const trigger = document.body.querySelector<HTMLInputElement>('.kb-chunking-settings .strategy-control .t-select__wrap input');
+  assert.ok(trigger, 'expected the chunking strategy tdesign select');
+  assert.equal(trigger.value, '', 'the not-set strategy keeps the trigger empty');
   assert.equal(
-    (emptyOption.textContent ?? '').trim(),
+    (trigger.placeholder ?? '').trim(),
     'Select a chunking strategy (splits by length if left empty)',
-    `the empty option must carry the Vue placeholder text, got: ${JSON.stringify(emptyOption.textContent)}`,
+    `the trigger placeholder must carry the Vue placeholder text, got: ${JSON.stringify(trigger.placeholder)}`,
   );
 });
 

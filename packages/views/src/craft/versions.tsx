@@ -5,7 +5,7 @@
 // conflated with restorable: the eligibility projection (domain rules)
 // disables restore with a readable reason while download stays available.
 import React, { useState } from 'react';
-import { Button, Dialog } from '@weknora/ui';
+import { Button, Dialog } from './td.tsx';
 import {
   restoreEligibility,
   type CraftVersionFact,

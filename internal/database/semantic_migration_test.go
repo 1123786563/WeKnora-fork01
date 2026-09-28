@@ -19,7 +19,9 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	version, dirty := sqliteMigrationState(t, db)
 	// 多 lane 合并后 semantic 三连迁移为 105-107，其后还会继续叠加独立迁移
 	// （agent_versions 108、tenant_agent_marketplace 109、task_archive 110、
-	// workbench_notifications 111、agent_adoption_variants 112……），全量 up 的
+	// workbench_notifications 111、agent_adoption_variants 112+……以及 main 侧
+	// 撞号 dedupe 后挪至轨道尾部的 plugin_previews 124 / plugin_installations
+	// 125），全量 up 的
 	// 终态是当前迁移 head，与 TestSQLiteMigrationsCreateVersionedSchema 同源。
 	expectedHead := sqliteMigrationHead(t, root)
 	require.Equal(t, expectedHead, version)

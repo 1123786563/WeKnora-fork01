@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
@@ -124,15 +125,13 @@ async function renderPage(client: WeKnoraClient): Promise<Root> {
 }
 
 function openRowMenu(): HTMLElement {
-  // Scope to the document card: the breadcrumb KB switcher and the add-source
-  // dropdown also carry aria-haspopup="menu".
-  const trigger = document.querySelector('.knowledge-card [aria-haspopup="menu"]') as HTMLElement | null;
+  // tdesign 平移后（Vue DocumentCardView DOM）：卡片三点触发器是
+  // .more-wrap（t-popup trigger），菜单 portal 到 body 的 .card-menu。
+  const trigger = document.querySelector('.knowledge-card .more-wrap') as HTMLElement | null;
   assert.ok(trigger, 'document row more trigger is mounted');
   act(() => { trigger.click(); });
-  const menus = [...document.querySelectorAll('[role="menu"]')] as HTMLElement[];
-  // The breadcrumb KB switcher keeps its own (hidden) menu mounted; the row
-  // menu is the visible one.
-  const menu = menus.find((candidate) => !candidate.hasAttribute('hidden') && candidate.querySelector('[role="menuitem"]'));
+  const menus = [...document.querySelectorAll('.card-menu')] as HTMLElement[];
+  const menu = menus.find((candidate) => candidate.querySelector('[role="menuitem"]'));
   assert.ok(menu, 'row action menu opened');
   return menu;
 }
@@ -193,7 +192,8 @@ test('selecting a target shows the Vue confirm panel and posts the move on 确�
   assert.ok(moveItem);
   act(() => { (moveItem as HTMLElement).click(); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
-  const target = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Wiki Parity Fixture'));
+  // Vue move targets render as .card-menu-item rows (divs, not buttons).
+  const target = [...document.querySelectorAll('.card-menu-item')].find((row) => row.textContent?.includes('Wiki Parity Fixture')) as HTMLElement | undefined;
   assert.ok(target, 'target row is clickable');
   act(() => { target.click(); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });

@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialSummary, UsageRow } from '@weknora/contracts';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from '../analytics/analytics-range.ts';
 import { formatBillingSummary } from './GeneralPreferencesPanel.tsx';
 
@@ -50,11 +51,7 @@ export function usageTotals(rows: readonly UsageModelAggregate[]): UsageModelAgg
   );
 }
 
-// 与 AnalyticsPage 相同的日期输入样式（analytics-range 选区契约共用）。
-const USAGE_DATE_INPUT = 'box-border h-[32px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[8px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
-const USAGE_TABLE = 'w-full border-collapse text-[13px]';
-const USAGE_TABLE_CELL = 'border-b border-[#eef1f5] px-[10px] py-[8px] text-left';
-const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' text-right tabular-nums';
+/* S6 Tailwind 收编：USAGE_* 常量 → settings-wrapper.css .usage-* 规则。 */
 
 function errorText(reason: unknown, fallback: string): string { return reason instanceof Error ? reason.message : fallback; }
 
@@ -114,63 +111,63 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
   const budgetCopy = budget ? formatBillingSummary(locale, budget) : null;
 
   return (
-    <div data-testid="usage-panel" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-[8px]">
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+    <div data-testid="usage-panel" className="usage-panel">
+      <div className="usage-filters">
+        <label className="usage-filter">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className={USAGE_DATE_INPUT} value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
+          <input type="date" className="usage-input" value={fromInput} onChange={(value) => setFromInput(String(value))} />
         </label>
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+        <label className="usage-filter">
           {t('settings.usage.rangeTo')}
-          <input type="date" className={USAGE_DATE_INPUT} value={toInput} onChange={(event) => setToInput(event.target.value)} />
+          <input type="date" className="usage-input" value={toInput} onChange={(value) => setToInput(String(value))} />
         </label>
-        <Button type="button" onClick={applyRange}>{t('settings.usage.apply')}</Button>
+        <TButton type="button" onClick={applyRange}>{t('settings.usage.apply')}</TButton>
       </div>
 
       {budget && budgetCopy ? (
-        <Card data-testid="usage-budget-card" className="flex flex-wrap gap-x-[24px] gap-y-[6px]">
-          <h3 className="w-full m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('settings.usage.budgetTitle')}</h3>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.planLabel')}：</span>{budgetCopy.plan}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.paidUntilLabel')}：</span>{budgetCopy.paidUntil}</span>
+        <Card data-testid="usage-budget-card" className="usage-budget-card">
+          <h3>{t('settings.usage.budgetTitle')}</h3>
+          <span><span className="usage-budget-label">{t('settings.usage.planLabel')}：</span>{budgetCopy.plan}</span>
+          <span><span className="usage-budget-label">{t('settings.usage.paidUntilLabel')}：</span>{budgetCopy.paidUntil}</span>
         </Card>
       ) : null}
 
       {loading ? (
         <Status>{t('common.loading')}</Status>
       ) : error ? (
-        <div role="alert" className="flex flex-wrap items-center gap-2">
+        <div role="alert" className="usage-inline-error">
           <Status tone="error">{error}</Status>
-          <Button type="button" onClick={() => void load()}>{t('common.retry')}</Button>
+          <TButton type="button" onClick={() => void load()}>{t('common.retry')}</TButton>
         </div>
       ) : modelRows.length === 0 ? (
         <Status>{t('common.empty')}</Status>
       ) : (
-        <table className={USAGE_TABLE} data-testid="usage-model-table">
+        <table className="usage-table" data-testid="usage-model-table">
           <thead>
-            <tr className="border-b border-[#e7e7ea]">
-              <th className={USAGE_TABLE_CELL + ' font-semibold'}>{t('settings.usage.colModel')}</th>
-              <th className={USAGE_NUMBER_CELL + ' font-semibold'}>{t('settings.usage.colInput')}</th>
-              <th className={USAGE_NUMBER_CELL + ' font-semibold'}>{t('settings.usage.colOutput')}</th>
-              <th className={USAGE_NUMBER_CELL + ' font-semibold'}>{t('settings.usage.colCache')}</th>
-              <th className={USAGE_NUMBER_CELL + ' font-semibold'}>{t('settings.usage.colCost')}</th>
+            <tr>
+              <th className="usage-th">{t('settings.usage.colModel')}</th>
+              <th className="usage-th usage-th--num">{t('settings.usage.colInput')}</th>
+              <th className="usage-th usage-th--num">{t('settings.usage.colOutput')}</th>
+              <th className="usage-th usage-th--num">{t('settings.usage.colCache')}</th>
+              <th className="usage-th usage-th--num">{t('settings.usage.colCost')}</th>
             </tr>
           </thead>
           <tbody>
             {modelRows.map((row) => (
               <tr key={row.model}>
-                <td className={USAGE_TABLE_CELL}>{row.model}</td>
-                <td className={USAGE_NUMBER_CELL}>{number(row.input)}</td>
-                <td className={USAGE_NUMBER_CELL}>{number(row.output)}</td>
-                <td className={USAGE_NUMBER_CELL}>{number(row.cache)}</td>
-                <td className={USAGE_NUMBER_CELL}>{number(row.cost)}</td>
+                <td className="usage-td">{row.model}</td>
+                <td className="usage-td usage-td--num">{number(row.input)}</td>
+                <td className="usage-td usage-td--num">{number(row.output)}</td>
+                <td className="usage-td usage-td--num">{number(row.cache)}</td>
+                <td className="usage-td usage-td--num">{number(row.cost)}</td>
               </tr>
             ))}
-            <tr className="font-semibold">
-              <td className={USAGE_TABLE_CELL}>{t('settings.usage.total')}</td>
-              <td className={USAGE_NUMBER_CELL}>{number(totals.input)}</td>
-              <td className={USAGE_NUMBER_CELL}>{number(totals.output)}</td>
-              <td className={USAGE_NUMBER_CELL}>{number(totals.cache)}</td>
-              <td className={USAGE_NUMBER_CELL}>{number(totals.cost)}</td>
+            <tr className="usage-total-row">
+              <td className="usage-td">{t('settings.usage.total')}</td>
+              <td className="usage-td usage-td--num">{number(totals.input)}</td>
+              <td className="usage-td usage-td--num">{number(totals.output)}</td>
+              <td className="usage-td usage-td--num">{number(totals.cache)}</td>
+              <td className="usage-td usage-td--num">{number(totals.cost)}</td>
             </tr>
           </tbody>
         </table>

@@ -3,7 +3,8 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { OrderView, QuoteView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './surface.tsx';
 import { orderMessage } from './order-state.ts';
 
 const POLL_INTERVAL_MS = 3000;
@@ -131,7 +132,7 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         {state.status === 'error' ? (
           <>
             <Status tone="error">{state.message}</Status>
-            <Button type="button" onClick={() => setRetryToken((value) => value + 1)}>重试（复用原订单与幂等键，不重复下单）</Button>
+            <Button type="button" theme="default" variant="outline" onClick={() => setRetryToken((value) => value + 1)}>重试（复用原订单与幂等键，不重复下单）</Button>
           </>
         ) : null}
         {state.status === 'ready' ? (
@@ -139,7 +140,7 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
             <section aria-live="polite">
               <h2>{spaceName} 的订单</h2>
               <p>{orderMessage(state.order)}</p>
-              <Button type="button" onClick={refreshOrder}>刷新订单状态</Button>
+              <Button type="button" theme="default" variant="outline" onClick={refreshOrder}>刷新订单状态</Button>
             </section>
             <ul className="wk-list">
               <li><strong>订单号</strong><span>{state.order.id}</span></li>

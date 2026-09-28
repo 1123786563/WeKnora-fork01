@@ -7,12 +7,21 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
-import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
+import { findSharedKBGrant } from "../wiki/edit-permission.ts";
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button/Input/Textarea 换 tdesign
+// （playbook §1：onChange 改 (value) 签名）；Dialog 是测试锚定弹层
+// （[role="dialog"]/.wk-dialog-close）且宿主 KnowledgeSettingsPage 依赖
+// .wk-dialog* DOM，走 shared/wk-legacy WkDialog；Card/Status 同走 wk-legacy。
+import { Button as TButton, Dialog as TdDialog, Input as TdInput, Popconfirm, Select as TdSelect, Textarea as TdTextarea, Tooltip } from "tdesign-react";
+import { WkCard as Card, WkDialog as Dialog, WkStatus as Status } from "../shared/wk-legacy.tsx";
+import { Icon as TIcon } from "tdesign-icons-react";
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
+import type { KBInfoPopoverKB } from "../documents/KBInfoPopover.tsx";
 import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
 import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createSourceRefTitleHydrator, type SourceRefTitleHydrator } from "./source-titles.ts";
+import { WikiFolderActions } from "./WikiFolderActions.tsx";
 import {
   assembleWikiIndexMarkdown,
   handleWikiBodyClick,
@@ -21,7 +30,9 @@ import {
   stripDuplicateLeadingTitle,
   wikiSlugDisplayName,
 } from "./markdown.ts";
+import "./wiki-u.css";
 import "./wiki-reader.css";
+import "../documents/documents.td.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { navigate } from "../platform/navigation.ts";
 import { pagerState } from "../pagination.ts";
@@ -77,15 +88,15 @@ export function WikiGlyph({ kind, size = 14 }: { kind: "search" | "index" | "tre
 
 // Vue getPageIcon (WikiBrowser.vue:1980-1990) gives each page_type its own
 // 15px placeholder-gray glyph in the sidebar tree/list rows.
-function WikiPageTypeGlyph({ pageType }: { pageType: string }) {
+function WikiPageTypeGlyph({ pageType, size = 15 }: { pageType: string; size?: number }) {
   const kind = pageType === "entity" ? "tag"
     : pageType === "concept" ? "lightbulb"
     : pageType === "synthesis" ? "relativity"
     : pageType === "comparison" ? "view-module"
     : "file";
   return (
-    <span className="flex h-[15px] w-[15px] shrink-0 items-center justify-center text-[rgba(0,0,0,0.4)]" aria-hidden="true">
-      <WikiGlyph kind={kind} size={15} />
+    <span className="wk-wiki-1" aria-hidden="true">
+      <WikiGlyph kind={kind} size={size} />
     </span>
   );
 }
@@ -121,7 +132,7 @@ export function WikiImagePreview({ src, onClose }: { src: string; onClose: () =>
   }, [onClose]);
   return (
     <div
-      className="wk-wiki-img-preview fixed inset-0 z-[1100] flex items-center justify-center"
+      className="wk-wiki-img-preview wk-wiki-2"
       role="dialog"
       aria-modal="true"
       onClick={(event) => {
@@ -130,28 +141,28 @@ export function WikiImagePreview({ src, onClose }: { src: string; onClose: () =>
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="wk-wiki-img-preview-mask absolute inset-0 bg-black/85" aria-hidden="true" />
+      <div className="wk-wiki-img-preview-mask wk-wiki-3 wk-wiki-mask-85" aria-hidden="true" />
       <img
-        className="wk-wiki-img-preview-image relative max-h-[90vh] max-w-[90vw] select-none object-contain"
+        className="wk-wiki-img-preview-image wk-wiki-4"
         src={src}
         alt=""
         style={{ transform: `scale(${scale})` }}
         draggable={false}
       />
-      <div className="wk-wiki-img-preview-toolbar absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md bg-black/60 px-3 py-2 text-white">
+      <div className="wk-wiki-img-preview-toolbar wk-wiki-5 wk-wiki-mask-60">
         <button
           type="button"
-          className="wk-wiki-img-preview-zoom-out cursor-pointer border-0 bg-transparent px-2 py-1 text-lg leading-none text-white"
+          className="wk-wiki-img-preview-zoom-out wk-wiki-6"
           onClick={() => setScale((value) => wikiPreviewStep(value, -0.25))}
         >
           −
         </button>
-        <span className="wk-wiki-img-preview-scale min-w-[3.5rem] text-center text-xs tabular-nums">
+        <span className="wk-wiki-img-preview-scale wk-wiki-7">
           {Math.round(scale * 100)}%
         </span>
         <button
           type="button"
-          className="wk-wiki-img-preview-zoom-in cursor-pointer border-0 bg-transparent px-2 py-1 text-lg leading-none text-white"
+          className="wk-wiki-img-preview-zoom-in wk-wiki-6"
           onClick={() => setScale((value) => wikiPreviewStep(value, 0.25))}
         >
           +
@@ -159,7 +170,7 @@ export function WikiImagePreview({ src, onClose }: { src: string; onClose: () =>
       </div>
       <button
         type="button"
-        className="wk-wiki-img-preview-close absolute right-6 top-6 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-black/60 text-xl leading-none text-white"
+        className="wk-wiki-img-preview-close wk-wiki-8 wk-wiki-mask-60"
         aria-label="×"
         onClick={onClose}
       >
@@ -262,6 +273,44 @@ const WIKI_INDEX_TYPE_LABEL_KEYS: Record<string, string> = {
   comparison: "wikiBrowser.filterComparison",
 };
 
+
+// --- Vue WikiBrowser reader 头部辅助（B2 批 2 平移） ------------------------------
+
+/** Vue formatDate（WikiBrowser.vue）：YYYY/MM/DD HH:mm:ss（本地时区）。 */
+export function wikiFormatDate(dateStr: string) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+type WikiTranslate = (key: string, values?: Record<string, string | number>) => string;
+
+/** Vue editSourceVisible：仅 user/agent/revert 展示来源 badge。 */
+export function wikiEditSourceVisible(source: string): boolean {
+  return source === "user" || source === "agent" || source === "revert";
+}
+
+/** Vue editSourceLabel：默认（pipeline 等）走 editSourcePipeline。 */
+export function wikiEditSourceLabel(t: WikiTranslate, source: string): string {
+  switch (source) {
+    case "user": return t("wikiBrowser.editSourceUser");
+    case "agent": return t("wikiBrowser.editSourceAgent");
+    case "revert": return t("wikiBrowser.editSourceRevert");
+    default: return t("wikiBrowser.editSourcePipeline");
+  }
+}
+
+/** Vue editSourceIcon。 */
+export function wikiEditSourceIcon(source: string): string {
+  switch (source) {
+    case "user": return "user";
+    case "agent": return "tools";
+    case "revert": return "rollback";
+    default: return "file-code";
+  }
+}
+
 export function WikiIndexView({
   indexView,
   loading,
@@ -304,17 +353,17 @@ export function WikiIndexView({
   return (
     <>
       <div
-        className="wiki-reader-body wiki-index-body m-0 box-border min-h-[22rem]"
+        className="wiki-reader-body wiki-index-body wk-wiki-9"
         onClick={(event) => handleWikiBodyClick(event, { navigate: onNavigate, openImage: onOpenImage })}
         dangerouslySetInnerHTML={{
           __html: renderWikiMarkdown(markdown, { resolveSlugName: (slug) => slug }),
         }}
       />
       {hasMore ? (
-        <div className="wiki-index-sentinel flex items-center justify-center px-0 pb-6 pt-4">
-          <Button type="button" disabled={loading} onClick={onLoadMore}>
+        <div className="wiki-index-sentinel wk-wiki-10">
+          <TButton type="button" disabled={loading} onClick={onLoadMore}>
             {loading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}
-          </Button>
+          </TButton>
         </div>
       ) : null}
     </>
@@ -353,7 +402,13 @@ export function WikiPage({
   const [folders, setFolders] = useState<WikiFolderNode[]>([]);
   // Vue expandable directory tree (WikiBrowser.vue toggleDirectory): folders
   // expand in place; children (sub-folders + pages) load lazily per path.
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  // Vue collapsedDirectories（WikiBrowser.vue:935）语义：集合内=折叠；初始虽为
+  // 空集，但 initializeDefaultCollapsedDirectories（WikiBrowser.vue:1739）会在
+  // 页面/目录批次到达时把含页面的目录全部收进折叠集——即树默认收起，展开才
+  // 懒加载子级（headless DOM 实测：目录行 chevron-right、无子行）。
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
+  // Vue touchedDirectories：用户点过的目录不再被默认收起逻辑覆盖。
+  const touchedDirs = useRef<Set<string>>(new Set());
   const [dirChildren, setDirChildren] = useState<Record<string, { folders: WikiFolderNode[]; pages: WikiPageModel[] }>>({});
   const [dirLoading, setDirLoading] = useState<Record<string, boolean>>({});
   const [indexView, setIndexView] = useState<WikiIndexResponse | null>(null);
@@ -372,6 +427,9 @@ export function WikiPage({
   // dialog derives the slug from "<type>/<slugified-title>" until the user
   // edits it. The inline editor below only serves page EDIT mode.
   const [createOpen, setCreateOpen] = useState(false);
+  // Vue navFromSystemView（WikiBrowser.vue）：页面从 index 系统视图打开时
+  // reader 顶部渲染「← 索引」返回链接（B2 批 2 reader 头部平移）。
+  const [navFromSystemView, setNavFromSystemView] = useState(false);
   const [createForm, setCreateForm] = useState({ title: "", slug: "", pageType: "concept", content: "" });
   const [createSlugTouched, setCreateSlugTouched] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -397,6 +455,10 @@ export function WikiPage({
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   const [canManage, setCanManage] = useState(false);
+  // KBInfoPopover 访问段（B2 批 2）：Vue authStore user id + orgStore share 行。
+  const [meId, setMeId] = useState("");
+  const [infoSharedKb, setInfoSharedKb] = useState<{ orgName: string; sharedAt: string } | null>(null);
+  const [infoPermission, setInfoPermission] = useState("");
   const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const supportedFileTypes = useMemo(() => {
@@ -469,8 +531,24 @@ export function WikiPage({
     ] as const).then(([kb, me, sharedRows, list, engines]) => {
       if (!active) return;
       setKbMeta(kb as KBSurfaceKB);
+      const meRow = me as { user?: { id?: unknown } } | null;
+      setMeId(meRow?.user && typeof meRow.user.id === 'string' ? meRow.user.id : '');
+      const grant = findSharedKBGrant(sharedRows, knowledgeBaseId);
+      const row = Array.isArray(sharedRows)
+        ? (sharedRows as Array<Record<string, unknown>>).find((entry) => {
+          const entryKb = entry?.knowledge_base as { id?: unknown } | null | undefined;
+          return entryKb && String(entryKb.id) === knowledgeBaseId;
+        })
+        : null;
+      setInfoSharedKb(grant && row ? {
+        orgName: typeof row.org_name === "string" ? row.org_name : "",
+        sharedAt: typeof row.shared_at === "string" ? row.shared_at : "",
+      } : null);
+      setInfoPermission(grant?.permission ?? "");
       setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
-      setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
+      // Vue KBSwitcherDropdown iconFor(item.type)：faq→chat-bubble-help、其余
+      // folder——type 不透传会让首行图标回落 folder（tab=wiki 面包屑残差根因）。
+      setKbList((list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name), type: typeof item.type === "string" ? item.type : undefined })));
       setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
       if (!me) return;
       setCanContribute(
@@ -505,6 +583,24 @@ export function WikiPage({
       // per-type buckets independent of the active tab.
       setPages(response.pages);
       setPageTotal(response.total ?? response.pages.length);
+      // Vue initializeDefaultCollapsedDirectories（WikiBrowser.vue:1739，页面
+      // 批次到达时调用）：把已加载页面 category_path 的每级目录前缀收进折叠集
+      // （用户点过的 touched 目录除外）——树默认收起。
+      setCollapsedDirs((current) => {
+        const next = new Set(current);
+        let changed = false;
+        for (const entry of response.pages) {
+          const cp = (entry as Record<string, unknown>).category_path as string[] | undefined;
+          if (!cp) continue;
+          for (let i = 1; i <= cp.length; i++) {
+            const key = cp.slice(0, i).join("/");
+            if (touchedDirs.current.has(key) || next.has(key)) continue;
+            next.add(key);
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
       const requested = initialSlug?.trim();
       const requestedPage = requested
         ? response.pages.find((page) => page.slug === requested)
@@ -561,7 +657,9 @@ export function WikiPage({
     const pageTypes = activeBucket === "knowledge"
       ? ["entity", "concept", "synthesis", "comparison"]
       : activeBucket === "summary" ? ["summary"] : [];
-    void client.wiki.folders(knowledgeBaseId, folderId, pageTypes).then((result) => setFolders(result.folders)).catch(() => setFolders([]));
+    void client.wiki.folders(knowledgeBaseId, folderId, pageTypes).then((result) => {
+      setFolders(result.folders);
+    }).catch(() => setFolders([]));
   }, [client, knowledgeBaseId, folderId, viewMode, activeBucket]);
 
   async function reloadFolders() {
@@ -576,9 +674,10 @@ export function WikiPage({
 
   // Vue toggleDirectory (WikiBrowser.vue:1706): expanding a directory lazily
   // loads its child folders and its pages; collapsing just hides the rows.
-  async function ensureDirChildren(folder: WikiFolderNode) {
+  async function ensureDirChildren(folder: WikiFolderNode): Promise<{ folders: WikiFolderNode[]; pages: WikiPageModel[] } | undefined> {
     const key = folder.path;
-    if (dirChildren[key] || dirLoading[key]) return;
+    if (dirChildren[key]) return dirChildren[key];
+    if (dirLoading[key]) return undefined;
     setDirLoading((current) => ({ ...current, [key]: true }));
     const pageTypes = activeBucket === "knowledge"
       ? ["entity", "concept", "synthesis", "comparison"]
@@ -589,6 +688,7 @@ export function WikiPage({
         client.wiki.list(knowledgeBaseId, { page: 1, page_size: WIKI_PAGE_SIZE, category_path: folder.path }).catch(() => ({ pages: [] as WikiPageModel[] })),
       ]);
       setDirChildren((current) => ({ ...current, [key]: { folders: childFolders.folders, pages: childPages.pages } }));
+      return { folders: childFolders.folders, pages: childPages.pages };
     } finally {
       setDirLoading((current) => ({ ...current, [key]: false }));
     }
@@ -596,22 +696,27 @@ export function WikiPage({
 
   function toggleDirectory(folder: WikiFolderNode) {
     const key = folder.path;
-    const willExpand = !expandedDirs.has(key);
-    setExpandedDirs((current) => {
+    // Vue toggleDirectory：折叠集合 add/delete 反转 + 展开时懒加载子级 +
+    // touchedDirectories 记录（默认收起逻辑不再覆盖用户选择）。
+    const willCollapse = !collapsedDirs.has(key);
+    setCollapsedDirs((current) => {
       const next = new Set(current);
-      if (willExpand) next.add(key); else next.delete(key);
+      if (willCollapse) next.add(key); else next.delete(key);
       return next;
     });
-    if (willExpand) void ensureDirChildren(folder);
+    touchedDirs.current.add(key);
+    if (!willCollapse) void ensureDirChildren(folder);
   }
 
 
   async function openIndex() {
     if (typeof client.wiki.index !== "function") return;
     // Vue openIndexView: entering the index overview clears the selected page
-    // (and any open editor) — the reader area shows one thing at a time.
+    // (and any open editor) — the reader area shows one thing at a time; the
+    // system-view origin back link resets as well (goBack lands here).
     setSelected(null);
     setEditing(false);
+    setNavFromSystemView(false);
     setIndexLoading(true);
     setIndexError(null);
     try {
@@ -653,6 +758,10 @@ export function WikiPage({
   }
 
   function switchViewMode(next: "tree" | "list") {
+    // Vue switchSidebarViewMode（WikiBrowser.vue:1596）：mode 未变时直接 return
+    // ——点击已激活的视图按钮不重置 reader（索引视图保持打开，B2 批 2 treeview
+    // 行为差根因：原实现无条件 setIndexView(null) 把自动落地的索引概览关掉）。
+    if (next === viewMode) return;
     setViewMode(next);
     setIndexView(null);
     setFolderId("");
@@ -696,6 +805,17 @@ export function WikiPage({
     if (name) await createFolder(name);
   }
 
+  // Vue WikiFolderActions @create → createFolder(item.folderId, item.path, name)：
+  // 在指定目录（非当前 folderId 视图）下创建子目录。
+  async function createChildFolder(parent: WikiFolderNode, name: string) {
+    const finalName = name.trim();
+    if (!finalName || folderBusy) return;
+    setFolderBusy(true);
+    try { await client.wiki.createFolder(knowledgeBaseId, parent.id, finalName); await reloadFolders(); }
+    catch (error) { setState({ status: "error", message: error instanceof Error ? error.message : t("wikiBrowser.createFolderFailed") }); }
+    finally { setFolderBusy(false); }
+  }
+
   function startRenameFolder(folder: WikiFolderNode) {
     setRenamingFolderId(folder.id);
     setRenamingName(folder.name);
@@ -729,7 +849,9 @@ export function WikiPage({
 
   function choose(page: WikiPageModel) {
     setSelected(page);
-    // Vue navigateToSlug clears the index overview when a page is opened.
+    // Vue navigateToSlug clears the index overview when a page is opened;
+    // the system-view origin arms the reader's 「← 索引」 back link.
+    setNavFromSystemView(indexView !== null);
     setIndexView(null);
     setTitle(page.title);
     setSlug(page.slug);
@@ -779,8 +901,8 @@ export function WikiPage({
   // required (content stays optional), the slug pattern gates the shape, the
   // payload posts { slug, title, page_type, content } — no summary on create —
   // and a successful create closes the dialog.
-  async function submitCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitCreate(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!canContribute || createBusy) return;
     const trimmedTitle = createForm.title.trim();
     const trimmedSlug = createForm.slug.trim().replace(/^\/+|\/+$/g, "");
@@ -1052,7 +1174,7 @@ export function WikiPage({
     const walk = (fs: WikiFolderNode[], depth: number) => {
       for (const folder of fs) {
         treeRows.push({ kind: "dir", folder, depth });
-        if (expandedDirs.has(folder.path)) {
+        if (!collapsedDirs.has(folder.path)) {
           const children = dirChildren[folder.path];
           if (children) {
             walk(children.folders, depth + 1);
@@ -1068,27 +1190,35 @@ export function WikiPage({
   }
   // Vue .wiki-view-toggle: 2px-padded 1px-stroke pill, two 24×22 buttons
   // (radius 4); the active button gets the brand tint + a hairline shadow.
+  // 每个按钮包 t-tooltip（placement top，无原生 title）——扫描点击后鼠标停留
+  // 会揭示 tooltip 气泡，native title 不进截图（B2 批 2 treeview 残差）。
   const viewToggle = (
-    <div className="wiki-view-toggle inline-flex items-center rounded-[6px] border border-[#e7e7e7] bg-white p-[2px]" role="group" aria-label={t("wikiBrowser.viewModeToggle")}>
-      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "tree" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><WikiGlyph kind="tree" size={15} /></button>
-      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "list" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}><WikiGlyph kind="list" size={15} /></button>
+    <div className="wiki-view-toggle wk-wiki-11" role="group" aria-label={t("wikiBrowser.viewModeToggle")}>
+      <Tooltip content={t("wikiBrowser.viewTree")} placement="top">
+        <button type="button" className={`wk-wiki-66 ${viewMode === "tree" ? "wk-wiki-67" : "wk-wiki-68"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><TIcon name="tree-list" size="15px" /></button>
+      </Tooltip>
+      <Tooltip content={t("wikiBrowser.viewList")} placement="top">
+        <button type="button" className={`wk-wiki-66 ${viewMode === "list" ? "wk-wiki-67" : "wk-wiki-68"}`} aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}><TIcon name="view-list" size="15px" /></button>
+      </Tooltip>
     </div>
   );
-  // Vue .wiki-tab-bar-action: borderless 26×26 icon buttons (15px icon).
+  // Vue .wiki-tab-bar-action: borderless 26×26 icon buttons (15px icon),
+  // each wrapped in a t-tooltip (placement top).
   const tabAction = (props: { label: string; disabled?: boolean; onClick: () => void; kind: "folder-add" | "page-add" }) => (
-    <button
-      type="button"
-      className="wiki-tab-bar-action flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] [font:inherit] transition-colors duration-150 hover:bg-[#f3f3f3] hover:text-[#07c05f]"
-      disabled={props.disabled}
-      aria-label={props.label}
-      title={props.label}
-      onClick={props.onClick}
-    >
-      <WikiGlyph kind={props.kind} size={15} />
-    </button>
+    <Tooltip content={props.label} placement="top">
+      <button
+        type="button"
+        className="wiki-tab-bar-action wk-wiki-12"
+        disabled={props.disabled}
+        aria-label={props.label}
+        onClick={props.onClick}
+      >
+        <WikiGlyph kind={props.kind} size={15} />
+      </button>
+    </Tooltip>
   );
   const tabActions = (
-    <div className="wiki-tab-bar-actions flex shrink-0 items-center gap-[6px]">
+    <div className="wiki-tab-bar-actions wk-wiki-13">
       {viewToggle}
       {canContribute ? tabAction({ label: t("wikiBrowser.newRootFolder"), disabled: folderBusy, onClick: startInlineCreate, kind: "folder-add" }) : null}
       {canContribute ? tabAction({ label: t("wikiBrowser.newPageBtn"), onClick: newPage, kind: "page-add" }) : null}
@@ -1098,62 +1228,101 @@ export function WikiPage({
     <>
       {/* Vue .wiki-tab-bar: sticky 4px/6px padded row; tabs are 13px text with
           a 2px brand underline inset 2px (::after) rather than a full border. */}
-      <div className="wiki-tab-bar sticky top-0 z-10 flex items-center gap-2 bg-white pt-1 pb-[6px]" role="tablist" aria-label={t("wikiBrowser.viewModeToggle")}>
-        <div className="wiki-tab-bar-scroll flex min-w-0 flex-1 items-center gap-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="wiki-tab-bar wk-wiki-14" role="tablist" aria-label={t("wikiBrowser.viewModeToggle")}>
+        <div className="wiki-tab-bar-scroll wk-wiki-15 wk-wiki-noscrollbar">
           {bucketTabs.map((tab) => <button
             key={tab.type}
             type="button"
             role="tab"
             aria-selected={activeBucket === tab.type}
-            className={`wiki-tab relative flex shrink-0 cursor-pointer items-center gap-[5px] rounded-none border-0 bg-transparent px-[2px] pt-[7px] pb-[8px] [font:inherit] transition-colors duration-150 after:absolute after:inset-x-[2px] after:bottom-[1px] after:h-[2px] after:rounded-t-[2px] after:content-[''] ${activeBucket === tab.type ? "is-active font-semibold text-[#07c05f] after:bg-[#07c05f]" : "text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)] after:bg-transparent"}`}
+            className={`wiki-tab wk-wiki-69 ${activeBucket === tab.type ? "is-active wk-wiki-70" : "wk-wiki-71"}`}
             onClick={() => { setActiveBucket((current) => (current === tab.type ? "" : tab.type)); setPage(1); }}
           >
-            <span className={`wiki-tab-label text-[13px] leading-[18px] ${activeBucket === tab.type ? "font-semibold" : "font-normal"}`}>{tab.label}</span>
-            <span className={`wiki-tab-count text-[11px] leading-none ${activeBucket === tab.type ? "font-medium text-[#07c05f]" : "font-normal text-[rgba(0,0,0,0.4)]"}`}>{tab.total}</span>
+            <span className={`wiki-tab-label wk-wiki-72 ${activeBucket === tab.type ? "wk-wiki-73" : "wk-wiki-74"}`}>{tab.label}</span>
+            <span className={`wiki-tab-count wk-wiki-75 ${activeBucket === tab.type ? "wk-wiki-76" : "wk-wiki-77"}`}>{tab.total}</span>
           </button>)}
         </div>
         {tabActions}
       </div>
-      {inlineCreating ? <div className="wk-wiki-directory-item flex items-center gap-2 border-b border-line-soft py-[0.55rem]">
-        <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus
+      {/* Vue creatingRootFolder 行（WikiBrowser.vue L284-303）：editing 目录行 =
+          rename input + trailing ✓/✗ 图标 t-button（wiki-folder-action-btn）。 */}
+      {inlineCreating ? <div
+        className="wiki-directory-item wiki-directory-item--editing"
+        style={{ ['--wiki-tree-depth' as string]: 0 } as React.CSSProperties}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input className="wiki-directory-rename-input" autoFocus
           placeholder={t("wikiBrowser.folderNamePlaceholder")}
+          value={inlineCreatingName}
           onChange={(event) => setInlineCreatingName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter") void submitInlineCreate(); if (event.key === "Escape") { setInlineCreating(false); setInlineCreatingName(""); } }} />
-        <Button type="button" disabled={folderBusy} onClick={() => void submitInlineCreate()}>{t("common.save")}</Button>
-        <Button type="button" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>{t("common.cancel")}</Button>
+        <div className="wiki-tree-trailing wiki-folder-inline-actions">
+          <TButton type="button" variant="text" theme="default" size="small" className="wiki-folder-action-btn confirm" disabled={folderBusy} onClick={() => void submitInlineCreate()}>
+            <TIcon name="check" size="16px" />
+          </TButton>
+          <TButton type="button" variant="text" theme="default" size="small" className="wiki-folder-action-btn cancel" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>
+            <TIcon name="close" size="16px" />
+          </TButton>
+        </div>
       </div> : null}
-      {folderTrail.length > 0 ? <div className="flex items-center gap-1 pb-1 text-[12px] text-[#66758b]">
-        <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[#66758b] hover:text-[#07c05f] [font:inherit]" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</button>
-        {folderTrail.map((crumb) => <span key={crumb.path} className="text-[#344054]">/ {crumb.name}</span>)}
+      {folderTrail.length > 0 ? <div className="wk-wiki-18">
+        <button type="button" className="wk-wiki-19" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</button>
+        {folderTrail.map((crumb) => <span key={crumb.path} className="wk-wiki-20">/ {crumb.name}</span>)}
       </div> : null}
       {viewMode === "tree" ? treeRows.map((row) => row.kind === "dir" ? (
+        /* Vue wiki-directory-item（WikiBrowser.vue L284-340，B2 批 2 平移）：
+           chevron toggle + title + trailing(count + hover-reveal 目录操作菜单)。 */
         <div key={row.folder.id}
-          className="group/wiki-folder flex h-[34px] shrink-0 items-center gap-[6px] rounded-[6px] border-0 pr-[10px] transition-colors duration-150 hover:bg-[#f3f3f8]"
-          style={{ paddingLeft: `${(10 + row.depth * 14) / 16}rem` }}
+          className="wiki-directory-item"
+          style={{ ['--wiki-tree-depth' as string]: row.depth } as React.CSSProperties}
+          onClick={() => toggleDirectory(row.folder)}
           onDragOver={(event) => { if (canContribute) event.preventDefault(); }}
-          onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), row.folder); } }}>
+          onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); event.stopPropagation(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), row.folder); } }}>
           {renamingFolderId === row.folder.id ? (
-            <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus value={renamingName}
-              onChange={(event) => setRenamingName(event.target.value)}
-              onBlur={() => { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); }}
-              onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
+            <>
+              <input className="wiki-directory-rename-input" autoFocus value={renamingName}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => setRenamingName(event.target.value)}
+                onBlur={() => { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); }}
+                onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
+              <div className="wiki-tree-trailing wiki-folder-inline-actions">
+                <TButton type="button" variant="text" theme="default" size="small" className="wiki-folder-action-btn confirm" disabled={folderBusy}
+                  onClick={(event) => { event.stopPropagation(); void renameFolder(row.folder, renamingName); setRenamingFolderId(""); }}>
+                  <TIcon name="check" size="16px" />
+                </TButton>
+                <TButton type="button" variant="text" theme="default" size="small" className="wiki-folder-action-btn cancel"
+                  onClick={(event) => { event.stopPropagation(); setRenamingFolderId(""); }}>
+                  <TIcon name="close" size="16px" />
+                </TButton>
+              </div>
+            </>
           ) : (
             <>
-              <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-[6px] border-0 bg-transparent p-0 text-left [font:inherit]" onClick={() => toggleDirectory(row.folder)}>
-                <span className={`wiki-folder-chevron flex h-[15px] w-[15px] shrink-0 items-center justify-center text-[rgba(0,0,0,0.4)] transition-transform ${expandedDirs.has(row.folder.path) ? "rotate-90" : ""}`} aria-hidden><WikiGlyph kind="chevron" size={15} /></span>
-                <span className="wiki-directory-title min-w-0 flex-1 truncate text-[13px] font-semibold leading-[18px] text-[rgba(0,0,0,0.9)]">{row.folder.name}</span>
-                {/* Vue reserves a 15px hover-reveal slot after the count
-                    (wiki-directory-action--reveal), so the count sits 17px in
-                    from the row's right inset. */}
-                <span className="ml-auto mr-[17px] min-w-[16px] shrink-0 text-right text-[11px] leading-[18px] tabular-nums text-[rgba(0,0,0,0.4)]">{row.folder.page_count}</span>
-              </button>
-              {canContribute ? <span className="hidden shrink-0 items-center gap-[2px] group-hover/wiki-folder:flex"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(row.folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(row.folder)}>🗑</Button></span> : null}
+              <TIcon
+                name={collapsedDirs.has(row.folder.path) ? "chevron-right" : "chevron-down"}
+                className="wiki-directory-toggle"
+              />
+              <span className="wiki-directory-title">{row.folder.name}</span>
+              <div className="wiki-tree-trailing">
+                <span className="wiki-directory-count">{row.folder.page_count}</span>
+                {canContribute ? (
+                  <WikiFolderActions
+                    t={t}
+                    name={row.folder.name}
+                    pageCount={row.folder.page_count}
+                    hasChildren={(dirChildren[row.folder.path]?.folders.length ?? 0) > 0}
+                    onCreate={(name) => void createChildFolder(row.folder, name)}
+                    onRename={() => startRenameFolder(row.folder)}
+                    onDelete={() => void deleteFolder(row.folder)}
+                  />
+                ) : null}
+              </div>
             </>
           )}
         </div>
       ) : (
         <button
-          className={`wk-wiki-page-item group/wiki-item flex h-[34px] w-full shrink-0 cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent pr-[10px] text-left [font:inherit] transition-colors duration-150 hover:bg-[#f3f3f3] ${selected?.id === row.page.id ? "bg-[#f3f3f3]" : ""}`}
+          className={`wk-wiki-page-item wk-wiki-80 ${selected?.id === row.page.id ? "wk-wiki-81" : ""}`}
           key={row.page.id}
           type="button"
           style={{ paddingLeft: `${(10 + row.depth * 14) / 16}rem` }}
@@ -1162,65 +1331,58 @@ export function WikiPage({
           onClick={() => choose(row.page)}
         >
           <WikiPageTypeGlyph pageType={String((row.page as Record<string, unknown>).page_type ?? "")} />
-          <span className="wk-wiki-page-item-title min-w-0 flex-1 truncate text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.9)]">{row.page.title}</span>
+          <span className="wk-wiki-page-item-title wk-wiki-26">{row.page.title}</span>
         </button>
       )) : null}
     </>
   );
 
   return (
-    /* Vue KnowledgeBase.vue page shell: .knowledge-layout = margin 0 16px 0 4px
-       + padding 24px 32px 0 + gap 20px between header / .wiki-main-area / a
-       trailing 0-height sibling — mirrored with the pl/pr/pb utilities below
-       so the wiki surface lands on the same box as the Vue screenshot. */
-    /* Vue App.vue also renders text with -webkit-font-smoothing: antialiased
-       (inherited); the platform shell lacks it, so the page root re-arms it
-       to keep glyph rasterization identical. */
-    <main className="wk-page [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] flex min-h-0 flex-1 flex-col box-border pl-[36px] pr-[28px] pt-6 pb-5">
-      <header className="wk-header mb-5">
-        <DocumentsBreadcrumb
-          t={t}
-          knowledgeBaseId={knowledgeBaseId}
-          kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
-          kbList={kbList}
-          kbMeta={{
-            type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-            description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-            createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-          }}
-          supportedFileTypes={supportedFileTypes}
-          canManage={canManage}
-          onOpenSettings={() => setSettingsOpen(true)}
-          tabs={kbTabs}
-        />
-        {/* Vue .document-header-title gap 4px offsets the subtitle from the
-            title row; the wrapper margin (collapsing with ParserHint's own
-            2px) yields the 6px hint gap. */}
-        <p className="document-subtitle m-0 mt-[4px] text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t("knowledgeEditor.document.subtitle")}</p>
-        <div className="mt-[6px]">
+    /* Vue KnowledgeBase.vue page shell: .knowledge-layout（margin 0 16px 0 4px
+       + padding 24px 32px 0 + gap 20px）> .document-header + .wiki-main-area；
+       样式平移在 documents/documents.td.css（breadcrumb/容器同源共享）。 */
+    <div className="knowledge-layout">
+      <div className="document-header">
+        <div className="document-header-title">
+          <DocumentsBreadcrumb
+            t={t}
+            knowledgeBaseId={knowledgeBaseId}
+            kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
+            kbList={kbList}
+            kbInfo={kbMeta as unknown as KBInfoPopoverKB | null}
+            infoUserId={meId}
+            infoSharedKb={infoSharedKb}
+            infoPermission={infoPermission}
+            supportedFileTypes={supportedFileTypes}
+            canManage={canManage}
+            onOpenSettings={() => setSettingsOpen(true)}
+            tabs={kbTabs}
+          />
+          <p className="document-subtitle">{t("knowledgeEditor.document.subtitle")}</p>
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
             onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
         </div>
-      </header>
-      {/* Vue .wiki-browser: a full-bleed white flex row (sidebar + reader
-          separated by the sidebar's 1px right border — no gap, no card
-          chrome). */}
-      <div className="wk-wiki-layout flex min-h-0 flex-1 items-stretch bg-white max-[720px]:flex-col">
-        <aside className="wk-wiki-sidebar flex w-[280px] min-w-[240px] shrink-0 flex-col border-r border-[#e7e7e7] bg-white max-[720px]:w-full">
-          <div className="wk-wiki-sidebar-header pb-2 pr-[10px]">
-            {/* Vue sidebar search = a single 32px t-input (border #dcdcdc,
-                radius 3, 16px prefix icon, 8px gaps). box-border keeps the
-                32px height inclusive of the 1px border (no preflight here). */}
-            <form className="wk-wiki-search box-border flex h-8 w-full items-center gap-2 rounded-[3px] border border-[#dcdcdc] bg-white px-2 text-[rgba(0,0,0,0.4)]" role="search" aria-label={t("wikiBrowser.page.search")} onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
-              <WikiGlyph kind="search" size={16} />
-              <Input
-                className="h-full min-w-0 flex-1 rounded-[3px]! border-0! bg-transparent! p-0! text-[14px] shadow-none! outline-none! focus-visible:outline-none! focus:shadow-none placeholder:text-[rgba(0,0,0,0.4)]"
+      </div>
+      {/* Vue .wiki-main-area：flex:1 + overflow hidden；.wiki-browser 全出血白底行。 */}
+      <div className="wiki-main-area">
+      <div className="wk-wiki-layout wk-wiki-27">
+        <aside className="wk-wiki-sidebar wk-wiki-28">
+          <div className="wk-wiki-sidebar-header wk-wiki-29">
+            {/* Vue sidebar search = a single t-input（prefix t-icon-search sprite，
+                border #dcdcdc、radius 3）；几何由平移 CSS .wk-wiki-search-input 段承载。 */}
+            <form className="wk-wiki-search" role="search" aria-label={t("wikiBrowser.page.search")} onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
+              <TdInput
+                className="wk-wiki-search-input"
                 value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
+                onChange={(value: unknown) => setSearchDraft(String(value ?? ""))}
+                clearable
                 placeholder={t("wikiBrowser.searchPlaceholder")}
+                prefixIcon={<TIcon name="search" />}
+                onEnter={() => submitSearch()}
+                onClear={() => setSearchDraft("")}
               />
             </form>
           </div>
@@ -1229,19 +1391,19 @@ export function WikiPage({
               active state is a #f3f3f3 pill with brand-tinted icon+text. */}
           <button
             type="button"
-            className={`wiki-nav-item mr-2 flex min-h-[30px] shrink-0 cursor-pointer items-center gap-2 rounded-[6px] border-0 px-[10px] text-left [font:inherit] transition-colors duration-150 ${indexView ? "bg-[#f3f3f3] text-[#07c05f]" : "bg-transparent text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]"}`}
+            className={`wiki-nav-item wk-wiki-82 ${indexView ? "wk-wiki-83" : "wk-wiki-84"}`}
             aria-current={indexView ? "page" : undefined}
             onClick={() => void openIndex()}
           >
             <WikiGlyph kind="index" size={16} />
-            <span className="wiki-nav-text text-[14px] font-normal leading-[20px]">{t("wikiBrowser.indexTitle")}</span>
+            <span className="wiki-nav-text wk-wiki-30">{t("wikiBrowser.indexTitle")}</span>
           </button>
-          <div className="wiki-sidebar-divider my-[6px] border-t border-[#e7e7e7]" aria-hidden />
-          <nav className="wk-wiki-page-list flex flex-1 flex-col overflow-y-auto pr-2 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t('wikiBrowser.pageActions')}>
+          <div className="wiki-sidebar-divider wk-wiki-31" aria-hidden />
+          <nav className="wk-wiki-page-list wk-wiki-32 wk-wiki-noscrollbar" aria-label={t('wikiBrowser.pageActions')}>
             {directory}
               {viewMode === "list" ? listPages.filter((page) => pageInBucket(page, activeBucket)).map((page) => (
                 <button
-                  className={`wk-wiki-page-item group/wiki-item flex min-h-[30px] w-full shrink-0 cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-[10px] py-[6px] text-left [font:inherit] transition-colors duration-150 hover:bg-[#f3f3f3] ${selected?.id === page.id ? "bg-[#f3f3f3]" : ""}`}
+                  className={`wk-wiki-page-item wk-wiki-85 ${selected?.id === page.id ? "wk-wiki-81" : ""}`}
                   key={page.id}
                   type="button"
                   draggable={canContribute}
@@ -1249,7 +1411,7 @@ export function WikiPage({
                   onClick={() => choose(page)}
                 >
                   <WikiPageTypeGlyph pageType={String((page as Record<string, unknown>).page_type ?? "")} />
-                  <span className="wk-wiki-page-item-title min-w-0 flex-1 truncate text-[13px] leading-[18px] text-[rgba(0,0,0,0.9)]">{page.title}</span>
+                  <span className="wk-wiki-page-item-title wk-wiki-33">{page.title}</span>
                 </button>
               )) : null}
               {state.status === "loading" ? (
@@ -1259,39 +1421,39 @@ export function WikiPage({
                 <Status tone="error">{state.message}</Status>
               ) : null}
               {state.status === "success" && listPages.length === 0 ? (
-                <div className="wk-wiki-empty flex flex-1 flex-col items-center justify-center gap-0 px-5 py-[60px] text-center">
-                  <span className="wk-wiki-empty-icon mb-4 flex size-16 items-center justify-center rounded-full bg-[#f3f3f3] text-[rgba(0,0,0,0.4)]" aria-hidden="true">
+                <div className="wk-wiki-empty wk-wiki-34">
+                  <span className="wk-wiki-empty-icon wk-wiki-35" aria-hidden="true">
                     <WikiGlyph kind="file" size={36} />
                   </span>
-                  <strong className="m-0 mb-1 text-[14px] font-medium text-[rgba(0,0,0,0.6)]">{keyword ? t("wikiBrowser.searchNoResults") : t("wikiBrowser.emptyTitle")}</strong>
-                  {!keyword ? <span className="text-[13px] text-[rgba(0,0,0,0.4)]">{t("wikiBrowser.emptyDesc")}</span> : null}
+                  <strong className="wk-wiki-36">{keyword ? t("wikiBrowser.searchNoResults") : t("wikiBrowser.emptyTitle")}</strong>
+                  {!keyword ? <span className="wk-wiki-37">{t("wikiBrowser.emptyDesc")}</span> : null}
                 </div>
               ) : null}
             </nav>
           </aside>
         {/* Vue .wiki-content + .wiki-reader: no card chrome; the reader
             scrolls with 24px side / 16px bottom padding. */}
-        <section className="wk-wiki-reader-pane flex min-w-0 flex-1 flex-col overflow-y-auto bg-white px-6 pb-4 max-[720px]:p-4">
+        <section className="wk-wiki-reader-pane wk-wiki-38">
           {!selected && !editing && !indexView ? (() => {
             const emptyState = wikiReaderEmptyState(t, pages.length > 0);
             // Vue .wiki-reader-empty: browse icon in a 64px circle, 14px title,
             // 13px description, all in placeholder grays.
-            return <div className="wk-wiki-reader-empty flex min-h-[22rem] min-w-0 flex-1 flex-col items-center justify-center px-5 py-[60px] text-center">
-              <span className="wk-wiki-empty-icon mb-4 flex size-16 items-center justify-center rounded-full bg-[#f3f3f3] text-[rgba(0,0,0,0.4)]" aria-hidden="true">
+            return <div className="wk-wiki-reader-empty wk-wiki-39">
+              <span className="wk-wiki-empty-icon wk-wiki-35" aria-hidden="true">
                 <WikiGlyph kind="browse" size={48} />
               </span>
-              {emptyState.title ? <p className="m-0 mb-1 text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{emptyState.title}</p> : null}
-              {emptyState.description ? <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.4)]">{emptyState.description}</p> : null}
+              {emptyState.title ? <p className="wk-wiki-40">{emptyState.title}</p> : null}
+              {emptyState.description ? <p className="wk-wiki-41">{emptyState.description}</p> : null}
             </div>;
           })() : null}
           {indexView ? (
-            <article className="wk-wiki-reader w-full min-w-0" aria-label={t("wikiBrowser.indexTitle")}>
+            <article className="wk-wiki-reader wk-wiki-42" aria-label={t("wikiBrowser.indexTitle")}>
               {/* Vue .wiki-reader-header: 26px/1.3 near-black title + a small
                   light-outline t-tag (bg #f3f3f3, 1px #dcdcdc, radius 3). */}
-              <div className="wk-header mb-6 flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="wiki-reader-title m-0 text-[26px] font-semibold leading-[1.3] text-[rgba(0,0,0,0.9)]">{t("wikiBrowser.indexTitle")}</h2>
-                  <p className="wiki-reader-meta m-0 flex h-5 w-fit box-border items-center rounded-[3px] border border-[#dcdcdc] bg-[#f3f3f3] px-[4px] text-[12px] leading-none text-[rgba(0,0,0,0.9)]">{t("wikiBrowser.indexOverviewTag")}</p>
+              <div className="wk-header wk-wiki-43">
+                <div className="wk-wiki-44">
+                  <h2 className="wiki-reader-title wk-wiki-45">{t("wikiBrowser.indexTitle")}</h2>
+                  <p className="wiki-reader-meta wk-wiki-46">{t("wikiBrowser.indexOverviewTag")}</p>
                 </div>
               </div>
               <WikiIndexView
@@ -1310,26 +1472,97 @@ export function WikiPage({
             </article>
           ) : null}
           {selected && !editing ? (
-            <article className="wk-wiki-reader w-full min-w-0" aria-label={selected.title}>
-              <div className="wk-header mb-6 flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="wiki-reader-title m-0 text-[26px] font-semibold leading-[1.3] text-[rgba(0,0,0,0.9)]">{selected.title}</h2>
-                  <p className="wk-muted m-0 mt-1 text-[13px] text-[rgba(0,0,0,0.4)]">{selected.summary || "—"}</p>
+            <article className="wk-wiki-reader wk-wiki-42" aria-label={selected.title}>
+              {/* Vue wiki-reader-inner（WikiBrowser.vue L392-560，B2 批 2 平移）：
+                  「← 索引」back + title-row（title/badges/lead + aside actions/meta）。 */}
+              {navFromSystemView ? (
+                <div className="wiki-nav-bar">
+                  <a href="#" className="wiki-nav-back" onClick={(event) => { event.preventDefault(); void openIndex(); }}>
+                    <TIcon name="arrow-left" size="14px" />
+                    <span>{t("wikiBrowser.indexTitle")}</span>
+                  </a>
                 </div>
-                <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                  {canContribute ? <Button type="button" onClick={() => setEditing(true)}>
-                    {t("wikiBrowser.editBtn")}
-                  </Button> : null}
-                  <Button type="button" onClick={() => void openHistory()}>
-                    {t("wikiBrowser.historyBtn")}
-                  </Button>
-                  {canContribute ? <Button
-                    type="button"
-                    loading={deleteBusy}
-                    onClick={() => void deleteWikiPage()}
-                  >
-                    {t("wikiBrowser.deletePageBtn")}
-                  </Button> : null}
+              ) : null}
+              <div className="wiki-reader-header">
+                <div className="wiki-reader-title-row">
+                  <div className="wiki-reader-title-block">
+                    <h2 className="wiki-reader-title">
+                      <span className="wiki-reader-title-text">{selected.title}</span>
+                    </h2>
+                    <div className="wiki-reader-title-badges wiki-reader-title-badges--secondary">
+                      <span className="wiki-badge wiki-badge--type">
+                        {/* Vue .wiki-badge .t-icon 13px（WikiBrowser.vue badge 区
+                            font-size:13px 缩放 t-icon；WikiGlyph 是定宽 svg 需显式传）。 */}
+                        <WikiPageTypeGlyph pageType={String((selected as Record<string, unknown>).page_type ?? "")} size={13} />
+                        {WIKI_INDEX_TYPE_LABEL_KEYS[String((selected as Record<string, unknown>).page_type ?? "")]
+                          ? t(WIKI_INDEX_TYPE_LABEL_KEYS[String((selected as Record<string, unknown>).page_type ?? "")])
+                          : String((selected as Record<string, unknown>).page_type ?? "")}
+                      </span>
+                      <span className="wiki-badge wiki-badge--ver">
+                        {t("wikiBrowser.version", { ver: selected.version })}
+                      </span>
+                      {wikiEditSourceVisible(String((selected as Record<string, unknown>).last_edit_source ?? "")) ? (
+                        <Tooltip content={wikiEditSourceLabel(t, String((selected as Record<string, unknown>).last_edit_source ?? ""))} placement="top">
+                          <span className="wiki-badge wiki-badge--source">
+                            <TIcon name={wikiEditSourceIcon(String((selected as Record<string, unknown>).last_edit_source ?? ""))} />
+                            {wikiEditSourceLabel(t, String((selected as Record<string, unknown>).last_edit_source ?? ""))}
+                          </span>
+                        </Tooltip>
+                      ) : null}
+                      {Array.isArray((selected as Record<string, unknown>).aliases)
+                        ? ((selected as Record<string, unknown>).aliases as string[]).map((alias) => (
+                          <span key={alias} className="wiki-badge wiki-badge--alias" title={`${t("wikiBrowser.aliases")} ${alias}`}>
+                            <TIcon name="link" />
+                            {alias}
+                          </span>
+                        ))
+                        : null}
+                    </div>
+                    {selected.summary ? <p className="wiki-reader-lead">{selected.summary}</p> : null}
+                  </div>
+                  <div className="wiki-reader-aside">
+                    {/* Vue .wiki-reader-actions toolbar: 编辑(canEdit) / 历史 /
+                        在图谱中查看 / 删除(canEdit, t-popconfirm)。 */}
+                    <div className="wiki-reader-actions" role="toolbar" aria-label={t("wikiBrowser.pageActions")}>
+                      {canContribute ? (
+                        <Tooltip content={t("wikiBrowser.editBtn")} placement="top">
+                          <button type="button" className="wiki-action-btn" aria-label={t("wikiBrowser.editBtn")} onClick={() => setEditing(true)}>
+                            <TIcon name="edit" />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                      <Tooltip content={t("wikiBrowser.historyBtn")} placement="top">
+                        <button type="button" className="wiki-action-btn" aria-label={t("wikiBrowser.historyBtn")} onClick={() => void openHistory()}>
+                          <TIcon name="history" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content={t("wikiBrowser.viewInGraph")} placement="top">
+                        <button
+                          type="button"
+                          className="wiki-action-btn"
+                          aria-label={t("wikiBrowser.viewInGraph")}
+                          onClick={() => navigate(`/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}?tab=graph&slug=${encodeURIComponent(selected.slug)}`)}
+                        >
+                          <TIcon name="chart-bubble" />
+                        </button>
+                      </Tooltip>
+                      {canContribute ? (
+                        <Popconfirm theme="danger" content={t("wikiBrowser.deletePageConfirm", { title: selected.title })} onConfirm={() => void deleteWikiPage()}>
+                          <Tooltip content={t("wikiBrowser.deletePageBtn")} placement="top">
+                            <button type="button" className="wiki-action-btn wiki-action-btn--danger" aria-label={t("wikiBrowser.deletePageBtn")}>
+                              <TIcon name="delete" />
+                            </button>
+                          </Tooltip>
+                        </Popconfirm>
+                      ) : null}
+                    </div>
+                    <div className="wiki-reader-aside-meta">
+                      <span className="wiki-reader-aside-meta-item">
+                        <TIcon name="time" size="14px" />
+                        {wikiFormatDate(String((selected as Record<string, unknown>).updated_at ?? ""))}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
               {saveState?.status === "error" ? <Status tone="error">{saveState.message}</Status> : null}
@@ -1342,7 +1575,7 @@ export function WikiPage({
                 });
                 return (
                   <div
-                    className="wk-wiki-reader-content wiki-reader-body m-0 box-border min-h-[22rem]"
+                    className="wk-wiki-reader-content wiki-reader-body wk-wiki-9"
                     onClick={(event) => handleWikiBodyClick(event, { navigate: navigateToSlug, openImage: setPreviewSrc })}
                     dangerouslySetInnerHTML={{ __html: rendered }}
                   />
@@ -1359,7 +1592,7 @@ export function WikiPage({
             </article>
           ) : null}
           {canContribute ? <form
-            className="wk-wiki-editor grid gap-[0.7rem]"
+            className="wk-wiki-editor wk-wiki-49"
             // The inline editor serves page EDIT mode only (Vue opens it from
             // the 编辑 action); creation lives in the 新建 Wiki 页面 dialog and
             // the index/reader views never show this form.
@@ -1368,55 +1601,55 @@ export function WikiPage({
           >
             <label>
               {t("wikiBrowser.newPageTitleLabel")}{" "}
-              <Input
+              <TdInput
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(value) => setTitle(String(value))}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageSlugLabel")}{" "}
-              <Input
+              <TdInput
                 value={slug}
-                onChange={(event) => setSlug(event.target.value)}
+                onChange={(value) => setSlug(String(value))}
                 disabled
               />
             </label>
             <label>
               {t("wikiBrowser.editSummaryPlaceholder")}{" "}
-              <Input
+              <TdInput
                 value={summary}
-                onChange={(event) => setSummary(event.target.value)}
+                onChange={(value) => setSummary(String(value))}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageContentLabel")}{" "}
-              <Textarea
+              <TdTextarea
                 value={content}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(value) => setContent(String(value))}
                 rows={14}
               />
             </label>
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <span className="mr-auto text-[0.85rem] text-muted">{t("wikiBrowser.version", { ver: version })}</span>
-              <Button type="submit">
+            <div className="wk-list-actions wk-wiki-48">
+              <span className="wk-wiki-50">{t("wikiBrowser.version", { ver: version })}</span>
+              <TButton type="submit">
                 {t("wikiBrowser.editSave")}
-              </Button>
-              <Button type="button" onClick={cancelEdit}>
+              </TButton>
+              <TButton type="button" onClick={cancelEdit}>
                 {t("common.cancel")}
-              </Button>
-              <Button type="button" onClick={() => void reloadSelected()}>
+              </TButton>
+              <TButton type="button" onClick={() => void reloadSelected()}>
                 {t("wikiBrowser.editConflictReload")}
-              </Button>
-              <Button type="button" onClick={() => void openHistory()}>
+              </TButton>
+              <TButton type="button" onClick={() => void openHistory()}>
                 {t("wikiBrowser.historyBtn")}
-              </Button>
+              </TButton>
             </div>
             {saveState?.status === "conflict" ? (
-              <div className="wk-wiki-conflict flex items-center justify-between gap-[0.5rem]">
+              <div className="wk-wiki-conflict wk-wiki-51">
                 <Status tone="warning">{saveState.message}</Status>
-                <Button type="button" onClick={() => void overwriteConflict()}>
+                <TButton type="button" onClick={() => void overwriteConflict()}>
                   {t("wikiBrowser.editConflictOverwrite")}
-                </Button>
+                </TButton>
               </div>
             ) : null}
             {saveState?.status === "error" ? (
@@ -1430,29 +1663,29 @@ export function WikiPage({
       </div>
       {pager.total > WIKI_PAGE_SIZE ? (
         <nav
-          className="wk-pagination flex items-center justify-center gap-3 pt-4"
+          className="wk-pagination wk-wiki-52"
           aria-label={t("wikiBrowser.page.title")}
         >
-          <Button
+          <TButton
             type="button"
             disabled={!pager.hasPrevious}
             onClick={() => setPage((value) => value - 1)}
           >
             {t("wikiBrowser.page.previous")}
-          </Button>
+          </TButton>
           <span>
             {t("wikiBrowser.page.page", {
               page: pager.page,
               total: pager.total,
             })}
           </span>
-          <Button
+          <TButton
             type="button"
             disabled={!pager.hasNext}
             onClick={() => setPage((value) => value + 1)}
           >
             {t("wikiBrowser.page.next")}
-          </Button>
+          </TButton>
         </nav>
       ) : null}
       {settingsOpen ? (
@@ -1461,90 +1694,82 @@ export function WikiPage({
           title={t('knowledgeBase.settings')}
           closeLabel={t('common.close')}
           onClose={() => setSettingsOpen(false)}
-          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+          className="wk-wiki-53"
         >
           <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} />
         </Dialog>
       ) : null}
-      {/* Vue create page dialog (WikiBrowser.vue L733-765): a t-dialog
-          「新建 Wiki 页面」 with 标题 / Slug + hint / 页面类型 / 正文（可选）and a
-          取消 outline + 确认 primary footer; confirming posts and closes. */}
+      {/* Vue create page dialog (WikiBrowser.vue L733-765): t-dialog「新建
+          Wiki 页面」 520px，wiki-create-page-form 四字段（标题 / Slug+hint /
+          页面类型 t-select / 正文 autosize），footer 取消 + 确认(loading)。
+          cancelBtn variant:base 补齐台账 #1（vue-next 默认灰底取消钮）。 */}
       {canContribute ? (
-        <Dialog
-          open={createOpen}
-          title={t("wikiBrowser.newPageTitle")}
-          closeLabel={t("common.close")}
+        <TdDialog
+          visible={createOpen}
+          header={t("wikiBrowser.newPageTitle")}
+          width="520px"
+          cancelBtn={{ content: t("common.cancel"), theme: "default", variant: "base" }}
+          confirmBtn={{ content: t("common.confirm"), loading: createBusy }}
           onClose={cancelCreate}
-          className="w-[min(520px,100%)]!"
+          onConfirm={() => void submitCreate()}
         >
-          <form className="wk-wiki-create-form grid gap-[0.7rem]" onSubmit={submitCreate}>
-            <label>
-              {t("wikiBrowser.newPageTitleLabel")}{" "}
-              <Input
+          <div className="wiki-create-page-form">
+            <div className="wiki-create-page-field">
+              <label>{t("wikiBrowser.newPageTitleLabel")}</label>
+              <TdInput
                 value={createForm.title}
-                onChange={(event) => onTitleInputForCreate(event.target.value)}
+                onChange={(value) => onTitleInputForCreate(String(value))}
                 placeholder={t("wikiBrowser.newPageTitlePlaceholder")}
               />
-            </label>
-            <label>
-              {t("wikiBrowser.newPageSlugLabel")}{" "}
-              <Input
+            </div>
+            <div className="wiki-create-page-field">
+              <label>{t("wikiBrowser.newPageSlugLabel")}</label>
+              <TdInput
                 value={createForm.slug}
-                onChange={(event) => {
-                  setCreateForm((current) => ({ ...current, slug: event.target.value }));
+                onChange={(value) => {
+                  setCreateForm((current) => ({ ...current, slug: String(value) }));
                   setCreateSlugTouched(true);
                 }}
                 placeholder={t("wikiBrowser.newPageSlugPlaceholder")}
               />
-              <span className="mt-[2px] block text-[12px] leading-[1.4] text-muted">{t("wikiBrowser.newPageSlugHint")}</span>
-            </label>
-            <label>
-              {t("wikiBrowser.newPageTypeLabel")}{" "}
-              <select
-                className="h-8 w-full cursor-pointer rounded-[4px] border border-line-input bg-white px-2 text-[13px] text-ink"
+              <div className="wiki-create-page-hint">{t("wikiBrowser.newPageSlugHint")}</div>
+            </div>
+            <div className="wiki-create-page-field">
+              <label>{t("wikiBrowser.newPageTypeLabel")}</label>
+              <TdSelect
                 value={createForm.pageType}
-                onChange={(event) => setCreateForm((current) => ({ ...current, pageType: event.target.value }))}
+                onChange={(value) => setCreateForm((current) => ({ ...current, pageType: String(value) }))}
               >
-                <option value="concept">{t("wikiBrowser.filterConcept")}</option>
-                <option value="entity">{t("wikiBrowser.filterEntity")}</option>
-                <option value="synthesis">{t("wikiBrowser.filterSynthesis")}</option>
-                <option value="comparison">{t("wikiBrowser.filterComparison")}</option>
-              </select>
-            </label>
-            <label>
-              {t("wikiBrowser.newPageContentLabel")}{" "}
-              <Textarea
+                <TdSelect.Option value="concept">{t("wikiBrowser.filterConcept")}</TdSelect.Option>
+                <TdSelect.Option value="entity">{t("wikiBrowser.filterEntity")}</TdSelect.Option>
+                <TdSelect.Option value="synthesis">{t("wikiBrowser.filterSynthesis")}</TdSelect.Option>
+                <TdSelect.Option value="comparison">{t("wikiBrowser.filterComparison")}</TdSelect.Option>
+              </TdSelect>
+            </div>
+            <div className="wiki-create-page-field">
+              <label>{t("wikiBrowser.newPageContentLabel")}</label>
+              <TdTextarea
                 value={createForm.content}
-                onChange={(event) => setCreateForm((current) => ({ ...current, content: event.target.value }))}
-                rows={6}
+                onChange={(value) => setCreateForm((current) => ({ ...current, content: String(value) }))}
+                autosize={{ minRows: 6, maxRows: 16 }}
                 placeholder={t("wikiBrowser.editContentPlaceholder")}
               />
-            </label>
-            <div className="wk-list-actions flex items-center justify-end gap-[0.5rem]">
-              {/* Vue create dialog footer: 取消 outline + 确认 primary with a
-                  loading confirm (creatingPage). */}
-              <Button type="button" onClick={cancelCreate}>
-                {t("common.cancel")}
-              </Button>
-              <Button type="submit" loading={createBusy}>
-                {t("common.confirm")}
-              </Button>
             </div>
-            {createError ? <Status tone="error">{createError}</Status> : null}
-          </form>
-        </Dialog>
+          </div>
+          {createError ? <Status tone="error">{createError}</Status> : null}
+        </TdDialog>
       ) : null}
       {previewSrc ? <WikiImagePreview src={previewSrc} onClose={() => setPreviewSrc(null)} /> : null}
       {historyOpen && selected ? (
-        <Card className="wk-wiki-history mt-4">
-          <div className="wk-header mb-6 flex items-start justify-between gap-4">
+        <Card className="wk-wiki-history wk-wiki-58">
+          <div className="wk-header wk-wiki-43">
             <div>
               <h2>{t("wikiBrowser.historyTitle", { title: selected.title })}</h2>
-              <p className="wk-muted text-muted">{t("wikiBrowser.revisionCurrentHint")}</p>
+              <p className="wk-muted wk-wiki-59">{t("wikiBrowser.revisionCurrentHint")}</p>
             </div>
-            <Button type="button" onClick={() => setHistoryOpen(false)}>
+            <TButton type="button" onClick={() => setHistoryOpen(false)}>
               {t("common.close")}
-            </Button>
+            </TButton>
           </div>
           {historyError ? <Status tone="error">{historyError}</Status> : null}
           {historyLoading && !revision ? (
@@ -1553,19 +1778,19 @@ export function WikiPage({
           {!historyLoading && revisions.length === 0 ? (
             <Status>{t("wikiBrowser.revisionEmpty")}</Status>
           ) : null}
-          <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5 max-[720px]:grid-cols-1">
+          <div className="wk-wiki-history-layout wk-wiki-60">
             <nav aria-label={t('wikiBrowser.historyBtn')}>
-              <ul className="wk-list m-0 list-none p-0">
+              <ul className="wk-list wk-wiki-61">
                 {revisions.map((item) => (
-                  <li key={item.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+                  <li key={item.id} className="wk-wiki-62">
                     <button
-                      className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
+                      className="wk-wiki-63"
                       type="button"
                       onClick={() => void chooseRevision(item)}
                     >
                       {t("wikiBrowser.version", { ver: item.version })}
                     </button>
-                    <span className="font-mono text-[0.8rem] text-muted">{item.edit_source ?? "user"}</span>
+                    <span className="wk-wiki-64">{item.edit_source ?? "user"}</span>
                   </li>
                 ))}
               </ul>
@@ -1573,22 +1798,22 @@ export function WikiPage({
             <div>
               {revision ? (
                 <>
-                  <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+                  <div className="wk-list-actions wk-wiki-48">
                     <strong>
                       v{revision.version} → v{selected.version}
                     </strong>
-                    {canContribute ? <Button
+                    {canContribute ? <TButton
                       type="button"
                       onClick={() => void revertRevision()}
                       loading={reverting}
                     >
                       {t("wikiBrowser.revertBtn")}
-                    </Button> : null}
+                    </TButton> : null}
                   </div>
                   {revisionDiff.length === 0 ? (
                     <Status>{t("wikiBrowser.revisionDiffEmpty")}</Status>
                   ) : (
-                    <div className="wk-diff grid gap-3">
+                    <div className="wk-diff wk-wiki-65">
                       {revisionDiff.map((section) => (
                         <section key={section.field}>
                           <h3>{section.field}</h3>
@@ -1596,7 +1821,7 @@ export function WikiPage({
                             {section.lines.map((line, index) => (
                               <span
                                 key={`${section.field}-${index}`}
-                                className={`wk-diff-${line.type} block ${line.type === "add" ? "bg-[#ecfdf3] text-[#137333]" : line.type === "del" ? "bg-[#fef3f2] text-[#b42318]" : ""}`}
+                                className={`wk-diff-${line.type} wk-wiki-86 ${line.type === "add" ? "wk-wiki-87" : line.type === "del" ? "wk-wiki-88" : ""}`}
                               >
                                 {line.type === "add"
                                   ? "+"
@@ -1620,6 +1845,9 @@ export function WikiPage({
           </div>
         </Card>
       ) : null}
-    </main>
+      </div>
+      {/* Vue DocContent 宿主（关闭态 0 高度，参与 knowledge-layout gap 布局）。 */}
+      <div className="doc_content" />
+    </div>
   );
 }

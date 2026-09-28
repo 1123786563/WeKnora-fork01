@@ -17,6 +17,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+// classic JSX 产物在无 React import 的模块（kb-list-icons.tsx 经 markdown.ts
+// import 链加载）里按自由标识符落 globalThis 解析——挂全局（settings-error-ux
+// 判例同款），否则 kb-list-icons.tsx:44 'React is not defined'。
+(Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
+
 const { renderWikiMarkdown, stripDuplicateLeadingTitle, wikiSlugDisplayName, handleWikiBodyClick, stripLegacyIndexDirectory, appendWikiIndexDirectoryLines, assembleWikiIndexMarkdown, parseWikiSourceRefs } = await import('./markdown.ts');
 const { WikiPage, WikiImagePreview, WikiIndexView, WikiReaderFooter, wikiPreviewStep } = await import('./WikiPage.tsx');
 

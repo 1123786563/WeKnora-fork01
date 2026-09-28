@@ -28,6 +28,12 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // 分块段换 tdesign 控件（Select/Slider/Switch/InputNumber，弹层 Popup 系
+  // 需要 Element/Node/SVGElement/rAF —— SandboxSettingsPanel.test 同款先例）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -127,8 +133,13 @@ async function renderSection(section: string, kb: KnowledgeSettingsInput = baseK
 }
 
 function heading(): { title: string; description: string } {
-  const title = document.body.querySelector('#knowledge-settings-section-title');
-  const description = [...document.body.querySelectorAll('.wk-muted')][0];
+  /* chunking 分区例外（px2-kb-settings-nav 同构）：Vue KBChunkingSettings
+     自带 sticky .section-header（h2 + .section-description），页级 h3 不渲染。 */
+  const chunkingH2 = document.body.querySelector('.kb-chunking-settings .section-header h2');
+  const title = chunkingH2 ?? document.body.querySelector('#knowledge-settings-section-title');
+  const description = chunkingH2
+    ? document.body.querySelector('.kb-chunking-settings .section-header .section-description')
+    : [...document.body.querySelectorAll('.wk-muted')][0];
   assert.ok(title && description, 'expected the section title and description nodes');
   return { title: title.textContent ?? '', description: description.textContent ?? '' };
 }

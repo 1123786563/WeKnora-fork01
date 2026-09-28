@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import * as React from "react";
 import type {
   ModelConfiguration,
   WeKnoraClient,
 } from "@weknora/api-client";
-import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
+import { Icon as TIcon } from "tdesign-icons-react";
+import {
+  Button as TButton,
+  Dropdown as TDropdown,
+  Empty as TEmpty,
+  Input as TInput,
+  InputNumber as TInputNumber,
+  Loading as TLoading,
+  Popconfirm as TPopconfirm,
+  Switch as TSwitch,
+  Tabs,
+  Tooltip as TTooltip,
+} from "tdesign-react";
+// S6 抽屉收编：packages/ui 旧栈 表单栈离开（T15 硬前置）。Status 为无 TDesign 对应
+// 的语义 p 封装，走 shared/wk-legacy 原生标签 + .wk-status 类平移。
+import { WkStatus as Status } from "../shared/wk-legacy.tsx";
+import { SettingDrawer } from "./SettingDrawer.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
@@ -51,15 +66,120 @@ type Props = {
   initialSubSection?: string;
 };
 const TYPES: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
-// Tailwind 迁移：原 settings-wrapper.css 的 .model-card--<type> .model-card__badge
-// 配色改为静态映射 utilities（rgba/hex 任意值精确还原）。
-const CARD_BADGE_TONE: Record<ModelType, string> = {
-  chat: "bg-[rgba(0,82,217,0.1)] text-[#0052d9]",
-  embedding: "bg-[rgba(98,53,187,0.1)] text-[#6235bb]",
-  rerank: "bg-[rgba(184,92,0,0.12)] text-[#b85c00]",
-  vllm: "bg-[rgba(201,62,62,0.1)] text-[#c93e3e]",
-  asr: "bg-[rgba(17,128,83,0.1)] text-[#118053]",
+// Vue ModelSettings.vue typeIcon（L395-404）：TDesign 自带 icon name 直译。
+const TYPE_ICON: Record<ModelType, string> = {
+  chat: "chat",
+  embedding: "chart-bubble",
+  rerank: "filter-sort",
+  vllm: "image",
+  asr: "sound",
 };
+/* CredentialResource.vue 同构端口（frontend/src/components/credentials/
+ * CredentialResource.vue）：configured=faux input(✓ 已配置 + 更换|移除)、
+ * confirm-remove=⚠ 确认行、unconfigured=faux empty(配置)、editing=t-input
+ * + 底部 取消/保存。字段 row-label 仅在多字段（api_key+app_secret）时渲染，
+ * 单字段沿用父级 .form-label（ModelEditorDialog API key / MCP 同款约定）。 */
+function CredentialResourcePort(props: {
+  t: (key: string) => string;
+  fields: Array<{ key: "api_key" | "app_secret"; label: string }>;
+  configured: Record<string, boolean>;
+  values: Record<string, string>;
+  onValueChange: (key: "api_key" | "app_secret", value: string) => void;
+  onSave: (key: "api_key" | "app_secret") => void;
+  onRemove: (key: "api_key" | "app_secret") => void;
+  busy: boolean;
+}) {
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
+  const single = props.fields.length === 1;
+  return (
+    <div className="credential-resource">
+      {props.fields.map((field) => {
+        const configured = !!props.configured[field.key];
+        const editing = editingKey === field.key;
+        const pendingRemove = pendingRemoveKey === field.key;
+        return (
+          <div className="credential-row" key={field.key}>
+            {!single ? <div className="credential-row-label">{field.label}</div> : null}
+            {editing ? (
+              <div className="credential-edit">
+                <TInput
+                  type="password"
+                  autocomplete="new-password"
+                  prefixIcon={<TIcon name="lock-on" />}
+                  value={props.values[field.key] ?? ""}
+                  placeholder={props.t("credential.inputPlaceholder")}
+                  onChange={(value) => props.onValueChange(field.key, String(value))}
+                />
+                <div className="credential-edit-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => { setEditingKey(null); props.onValueChange(field.key, ""); }}>
+                    {props.t("common.cancel")}
+                  </TButton>
+                  <TButton
+                    size="small"
+                    theme="primary"
+                    loading={props.busy}
+                    disabled={!(props.values[field.key] ?? "").trim()}
+                    type="button"
+                    onClick={() => { props.onSave(field.key); setEditingKey(null); }}
+                  >
+                    {props.t("common.save")}
+                  </TButton>
+                </div>
+              </div>
+            ) : configured && pendingRemove ? (
+              <div className="credential-faux-input is-confirm-remove">
+                <TIcon name="error-circle-filled" className="status-icon warn" />
+                <span className="credential-faux-text danger">{props.t("credential.confirmRemovePrompt")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => setPendingRemoveKey(null)}>
+                    {props.t("common.cancel")}
+                  </TButton>
+                  <span className="action-divider" />
+                  <TButton
+                    size="small"
+                    variant="text"
+                    theme="danger"
+                    loading={props.busy}
+                    type="button"
+                    onClick={() => { props.onRemove(field.key); setPendingRemoveKey(null); }}
+                  >
+                    {props.t("credential.confirmRemove")}
+                  </TButton>
+                </div>
+              </div>
+            ) : configured ? (
+              <div className="credential-faux-input" title={props.t("credential.configured")}>
+                <TIcon name="check-circle-filled" className="status-icon success" />
+                <span className="credential-faux-text">{props.t("credential.configured")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => setEditingKey(field.key)}>
+                    {props.t("credential.update")}
+                  </TButton>
+                  <span className="action-divider" />
+                  <TButton size="small" variant="text" theme="danger" type="button" onClick={() => setPendingRemoveKey(field.key)}>
+                    {props.t("credential.remove")}
+                  </TButton>
+                </div>
+              </div>
+            ) : (
+              <div className="credential-faux-input is-empty" onClick={() => setEditingKey(field.key)}>
+                <TIcon name="lock-on" className="status-icon muted" />
+                <span className="credential-faux-text muted">{props.t("credential.unconfigured")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" theme="primary" type="button" onClick={(event) => { event.stopPropagation(); setEditingKey(field.key); }}>
+                    {props.t("credential.configure")}
+                  </TButton>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
 const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
   { value: "none", key: "none" },
@@ -96,6 +216,10 @@ function payloadNumber(value: unknown, key: string): number | undefined {
   const candidate = (value as Record<string, unknown>)[key];
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
 }
+function fromTInputNumber(value: number | string): number | "" {
+  if (typeof value === "number") return value;
+  return value.trim() === "" ? "" : Number(value);
+}
 function toNumberInput(value: string): number | "" {
   if (value === "") return "";
   const parsed = Number(value);
@@ -128,8 +252,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   // Ollama combobox dropdown state (ModelEditorDialog.vue filterable select).
   const [ollamaOpen, setOllamaOpen] = useState(false);
   const [ollamaHighlight, setOllamaHighlight] = useState(0);
-  // Which card action menu is open (ModelSettings.vue ellipsis dropdown).
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
   const [ollamaStatus, setOllamaStatus] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<Awaited<ReturnType<WeKnoraClient["settings"]["ollama"]["models"]>>>([]);
@@ -676,7 +798,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
 
   async function remove(model: ModelConfiguration) {
     if (!canCreate || isBuiltin(model) || busy) return;
-    if (!window.confirm(t("modelSettings.confirmDelete", { name: label(model) }))) return;
+    // Vue 侧确认由卡面 t-popconfirm 承载（ModelSettings.vue L82-91），此处直删。
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -842,19 +964,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     }
   }
 
-  // Type badge icons per ModelSettings.vue typeIcon (lines 395-404) —
-  // stroke SVGs mirroring the t-icon names (chat / chart-bubble /
-  // filter-sort / image / sound).
-  function badgeIcon(type: ModelType): ReactNode {
-    const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-    const map: Record<ModelType, ReactNode> = {
-      chat: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>,
-      embedding: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M5 20V10M12 20V4M19 20v-7" /></svg>,
-      rerank: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M3 6h13M3 12h9M3 18h5" /><path d="M16 14l4 4 4-4" transform="scale(0.75) translate(4 4)" /></svg>,
-      vllm: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>,
-      asr: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M11 5L6 9H2v6h4l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" /></svg>,
-    };
-    return map[type];
+  // Type badge icon per ModelSettings.vue typeIcon (L395-404) — t-icon glyph 直译。
+  function typeIconName(type: ModelType): string {
+    return TYPE_ICON[type];
   }
   function typeLabelOf(type: ModelType): string {
     return t(`modelSettings.typeShort.${type}`);
@@ -917,61 +1029,52 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   })), [t]);
 
   return (
-    <section className="grid gap-4" data-testid="model-settings">
-      {/* Vue ModelSettings.vue section-header: mb28, h2 20/600 mb8 normal,
-          desc 14px lh1.6 secondary; the builtin-models-hint box lives INSIDE
-          the header (mt12, pad 10/12, radius 6) so the mb28 → tabs chain
-          lands on Vue's t-tabs y=245.5. */}
+    <div className="model-settings" data-testid="model-settings">
+      {/* Vue ModelSettings.vue section-header 逐节点平移（T12b）：h2 + 描述 +
+          模型测试 t-button（#icon slot → icon prop；label 前导空格单文本节点，
+          台账 #11/#13 先例）+ builtin-models-hint 提示盒。样式 settings.td.css §12。 */}
       <div className="section-header">
-        <div className="flex items-center justify-between gap-5 max-[720px]:flex-col max-[720px]:items-start">
-        <div>
-          <h2>{t("modelSettings.title")}</h2>
-          <p className="section-description m-0">{t("modelSettings.description")}</p>
+        <div className="section-header__top">
+          <div>
+            <h2>{t("modelSettings.title")}</h2>
+            <p className="section-description">{t("modelSettings.description")}</p>
+          </div>
+          {canCreate ? (
+            <TButton type="button" theme="primary" variant="text" size="medium" className="model-test-trigger" icon={<TIcon name="play-circle" />} onClick={() => setDebugOpen(true)}>
+              {` ${t("modelSettings.actions.debugModel")}`}
+            </TButton>
+          ) : null}
         </div>
-        {canCreate ? (
-          <button type="button" className="inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent px-0 py-[6px] font-[inherit] text-sm font-semibold text-[#07c05f] hover:text-[#06b04d] focus-visible:text-[#06b04d]" onClick={() => setDebugOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M10 8.8v6.4l5.4-3.2z" fill="currentColor" /></svg>
-            {t("modelSettings.actions.debugModel")}
-          </button>
-        ) : null}
-        </div>
-        <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px] leading-[18px]" role="note">
-          <p className="m-0 mb-1 text-xs font-medium leading-[17px] tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong className="font-medium">{t("modelSettings.builtinModels.title")}</strong></p>
-          <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
+        <div className="builtin-models-hint" role="note">
+          <p className="builtin-hint-label">{t("modelSettings.builtinModels.title")}</p>
+          <p className="builtin-hint-text">
             {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
           </p>
-          <a className="inline-flex items-center gap-1 align-top text-[13px] leading-[18px] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
-            {t("modelSettings.builtinModels.viewGuide")}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" /><path d="M14 10a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" /></svg>
+          {/* Vue 文本插值与 t-icon 间换行缩进＝尾部空格文本节点，单文本节点复刻。 */}
+          <a className="doc-link" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+            {`${t("modelSettings.builtinModels.viewGuide")} `}
+            <TIcon name="link" className="link-icon" />
           </a>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-      <nav className="wk-model-tabs flex flex-wrap gap-0 border-b border-b-[#e7e7e7]" aria-label={t("model.editor.typeLabel")}>
-        <button
-          type="button"
-          className={filter === "all" ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
-          onClick={() => setFilter("all")}
-        >
-          {t("common.all")}({models.length})
-        </button>
+      {/* Vue t-tabs（v-model=activeTypeFilter）：label-only 面板，content 区
+          display:none（§12 :deep 平移）。 */}
+      <Tabs value={filter} onChange={(value) => setFilter(value as "all" | ModelType)} className="model-type-tabs">
+        <Tabs.TabPanel value="all" label={`${t("common.all")}(${models.length})`} />
         {TYPES.map((type) => (
-          <button
-            type="button"
-            key={type}
-            className={filter === type ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
-            onClick={() => setFilter(type)}
-          >
-            {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
-          </button>
+          <Tabs.TabPanel key={type} value={type} label={`${typeLabelOf(type)}(${models.filter((item) => modelType(item) === type).length})`} />
         ))}
-      </nav>
+      </Tabs>
+      <TLoading loading={false} size="small" className="model-list-loading">
       {!canCreate && visible.length === 0 ? (
-        <Status>{emptyHint}</Status>
+        <div className="empty-state">
+          <TEmpty description={emptyHint} />
+        </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))]! gap-3!">
+        <div className="model-grid">
           {visible.map((model) => {
             const type = modelType(model);
             const modelParams = params(model);
@@ -985,72 +1088,70 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 : undefined;
             const contextWindow = typeof modelParams.context_window === "number" ? modelParams.context_window : undefined;
             const supportsVision = modelParams.supports_vision === true;
-            const menuOpen = menuFor === model.id;
             return (
               <div
-                key={model.id}
-                className={"wk-vmodel-card group/card relative box-border flex min-w-0 items-start gap-3 rounded-[10px] border border-[#e7e7e7] px-4 py-[14px] transition-[border-color,box-shadow] duration-[180ms] ease-[ease]"
-                  + (builtin ? " bg-[#f3f3f3] hover:border-[#e7e7e7] hover:shadow-none" : " bg-white")
-                  + (canEdit ? " cursor-pointer" : "")
-                  + (canEdit && !builtin ? " hover:border-[rgba(7,192,95,0.65)] hover:shadow-[0_4px_14px_rgba(15,23,42,0.08)] hover:outline-none focus-visible:border-[rgba(7,192,95,0.65)] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus-visible:outline-none" : "")}
+                key={`${type}-${model.id}`}
+                className={"model-card model-card--" + type
+                  + (builtin ? " model-card--builtin" : "")
+                  + (canEdit ? " model-card--clickable" : "")}
+                role={canEdit ? "button" : undefined}
+                tabIndex={canEdit ? 0 : undefined}
                 onClick={canEdit ? () => openEdit(model) : undefined}
+                onKeyDown={canEdit ? (event) => { if (event.key === "Enter") openEdit(model); } : undefined}
               >
-                <div className={"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-base " + CARD_BADGE_TONE[type]} aria-label={typeLabelOf(type)}>{badgeIcon(type)}</div>
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <h3 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4]">{label(model)}</h3>
+                <div className="model-card__badge" aria-label={typeLabelOf(type)}>
+                  <TIcon name={typeIconName(type)} size="18px" />
+                </div>
+                <div className="model-card__body">
+                  <div className="model-card__header">
+                    <h3 className="model-card__title">{label(model)}</h3>
                     {builtin ? (
-                      <span className="shrink-0 text-[13px] text-[#8a97ab] opacity-60 group-hover/card:opacity-100" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
-                        {role === "system-admin"
-                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
-                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>}
+                      <span className="model-card__lock" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
+                        <TIcon name={role === "system-admin" ? "edit-1" : "lock-on"} />
                       </span>
                     ) : null}
                     {canEdit ? (
-                      <div className="group/actions relative flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#7a879c]"
-                          aria-haspopup="menu"
-                          aria-expanded={menuOpen}
-                          onClick={() => setMenuFor(menuOpen ? null : model.id)}
+                      <div className="model-card__actions" onClick={(event) => event.stopPropagation()}>
+                        {/* Vue getModelOptions：builtin（system-admin）→仅编辑；
+                            非 builtin（admin）→编辑+复制。 */}
+                        <TDropdown
+                          options={builtin
+                            ? [{ content: t("common.edit"), value: "edit" }]
+                            : [{ content: t("common.edit"), value: "edit" }, { content: t("common.copy"), value: "copy" }]}
+                          placement="bottom-right"
+                          trigger="click"
+                          onClick={(data) => {
+                            const value = String(data?.value ?? "");
+                            if (value === "edit") openEdit(model);
+                            else if (value === "copy") void copyModel(model);
+                          }}
                         >
-                          {/* Vue card menu is an icon glyph (no text node). */}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
-                        </button>
-                        {menuOpen ? (
-                          <div className="absolute right-0 top-[26px] z-[5] flex min-w-[96px] flex-col rounded-lg border border-[rgba(120,135,155,0.3)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.16)]" role="menu">
-                            <button type="button" role="menuitem" className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); openEdit(model); }}>
-                              {t("common.edit")}
-                            </button>
-                            {!builtin ? (
-                              <button type="button" role="menuitem" disabled={busy} className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); void copyModel(model); }}>
-                                {t("common.copy")}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                          <TButton variant="text" shape="square" size="small" className="model-card__action-btn model-card__more">
+                            <TIcon name="ellipsis" />
+                          </TButton>
+                        </TDropdown>
                         {!builtin ? (
-                          <button
-                            type="button"
-                            className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#c23434]"
-                            title={t("common.delete")}
-                            aria-label={t("common.delete")}
-                            disabled={busy}
-                            onClick={() => void remove(model)}
+                          <TPopconfirm
+                            content={t("modelSettings.confirmDelete", { name: label(model) })}
+                            confirmBtn={{ content: t("common.delete"), theme: "danger" }}
+                            cancelBtn={{ content: t("common.cancel") }}
+                            placement="bottom-right"
+                            onConfirm={() => void remove(model)}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" /></svg>
-                          </button>
+                            <TTooltip content={t("common.delete")} placement="top">
+                              <TButton theme="danger" shape="square" variant="text" size="small" className="model-card__action-btn model-card__delete" icon={<TIcon name="delete" />} onClick={(event) => event.stopPropagation()} />
+                            </TTooltip>
+                          </TPopconfirm>
                         ) : null}
                       </div>
                     ) : null}
                   </div>
-                  <p className="m-0 mt-[2px] truncate text-xs leading-[1.5] text-[#5c6b83]">
+                  <p className="model-card__subtitle">
                     <span>{vendorLabel(model)}</span>
                     {type === "embedding" && typeof dimension === "number" ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
-                        <span>{t("model.editor.dimensionLabel")} {dimension}</span>
+                        <span className="model-card__sep">·</span>
+                        <span>{`${t("model.editor.dimensionLabel")} ${dimension}`}</span>
                       </>
                     ) : null}
                     {/* Vue ModelSettings.vue L110-117 renders the ctx chip for
@@ -1058,9 +1159,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         the 200K default (dimmed) when no value is stored. */}
                     {(type === "chat" || type === "vllm") ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
+                        <span className="model-card__sep">·</span>
                         <span
-                          className="tabular-nums"
+                          className={"model-card__ctx" + (isDefaultContextWindow(contextWindow) ? " model-card__ctx--default" : "")}
                           title={isDefaultContextWindow(contextWindow)
                             ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
                             : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
@@ -1071,8 +1172,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     ) : null}
                     {type === "chat" && supportsVision ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
-                        <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
+                        <span className="model-card__sep">·</span>
+                        <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>
+                          <TIcon name="image" size="12px" />
+                        </span>
                       </>
                     ) : null}
                   </p>
@@ -1081,96 +1184,131 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             );
           })}
           {canCreate ? (
-            <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent px-4 py-[14px] font-[inherit] text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f]" onClick={openAdd}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
-              <span className="text-[13px] font-medium leading-[18px]">{t("modelSettings.actions.addModel")}</span>
+            <button type="button" className="model-card model-card--add" data-guide="settings-add-model" onClick={openAdd}>
+              <span className="model-card--add__icon" aria-hidden="true">
+                <TIcon name="add" />
+              </span>
+              <span className="model-card--add__label">{t("modelSettings.actions.addModel")}</span>
             </button>
           ) : null}
         </div>
       )}
-      {draft ? (
-        <div
-          className="wk-model-editor-overlay fixed inset-0 z-[1300] flex items-stretch justify-end bg-[rgba(23,32,51,.34)]"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}
-        >
-        <div
-          className="wk-model-editor wk-model-editor-drawer box-border h-full w-[560px] max-w-full overflow-y-auto border-l border-l-[#dce3ed] bg-white pt-[1.25rem] pr-6 pb-8 pl-6 shadow-[-10px_0_30px_rgba(23,32,51,.12)] max-[720px]:w-full max-[720px]:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
-        >
-          <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
-            <div>
-              <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
-              <p className="wk-muted text-muted m-0">
-                {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
-              </p>
-            </div>
-            <Button type="button" disabled={busy} onClick={closeEditor}>
-              {t("common.close")}
-            </Button>
-          </div>
-          <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={(event) => void save(event)}>
-            {!draft.id ? (
-              <div className="form-item">
-                <h4>{t("model.editor.sectionType")}</h4>
-                <div className="wk-model-type-options" role="radiogroup" aria-label={t("model.editor.typeLabel")}>
-                  {TYPES.map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      role="radio"
-                      aria-checked={draft.type === type}
-                      className={draft.type === type ? "is-active" : ""}
-                      onClick={() => void selectModelType(type)}
-                    >
-                      {typeLabelOf(type)}
-                    </button>
-                  ))}
-                </div>
+      </TLoading>
+      {/* Vue ModelEditorDialog.vue:1-403 — SettingDrawer 抽屉（
+          model-editor-drawer 家族 + sectionType 类型 pill + sectionSource 来源
+          + remote 厂商 section + sectionAdvanced）。基线册 px-models-model-card
+          根因收敛：wk-model-editor 居中壳 → SettingDrawer 家族。 */}
+      {draft ? <SettingDrawer
+        visible
+        title={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
+        description={t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
+        icon={TYPE_ICON[draft.type]}
+        confirmLoading={busy}
+        confirmDisabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
+        drawerClass="model-editor-drawer"
+        footerLeft={draft.source === "remote" ? <>
+          <TButton
+            variant="outline"
+            loading={checking}
+            disabled={
+              !draft.name ||
+              (!draft.baseUrl && draft.provider !== "weknoracloud") ||
+              (draft.provider === "weknoracloud" && wkcState !== "configured")
+            }
+            onClick={() => void testConnection()}
+          >
+            {!checking && remoteMessage?.ok ? <TIcon name="check-circle-filled" className="status-icon available" />
+              : !checking && remoteMessage && !remoteMessage.ok ? <TIcon name="close-circle-filled" className="status-icon unavailable" /> : null}
+            {t("model.editor.testConnection")}
+          </TButton>
+          {remoteMessage ? (
+            <span className={'footer-test-message ' + (remoteMessage.ok ? 'success' : 'error')} title={remoteMessage.text}>
+              {remoteMessage.text}
+            </span>
+          ) : null}
+        </> : undefined}
+        onVisibleChange={(visible) => { if (!visible) closeEditor(); }}
+        onCancel={closeEditor}
+        onConfirm={() => { void save(new Event("submit") as unknown as React.FormEvent<HTMLFormElement>); }}
+      >
+        <form className="t-form t-form--layout-vertical" onSubmit={(event) => void save(event)}>
+          {!draft.id ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionType")}</h4>
+              <div className="model-type-options" role="radiogroup" aria-label={t("model.editor.typeLabel")}>
+                {TYPES.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.type === type}
+                    className={'model-type-option' + (draft.type === type ? ' is-active' : '')}
+                    onClick={() => void selectModelType(type)}
+                  >
+                    <TIcon name={TYPE_ICON[type]} className="model-type-option__icon" />
+                    <span className="model-type-option__label">{typeLabelOf(type)}</span>
+                  </button>
+                ))}
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
+          {/* Vue ModelEditorDialog.vue:54-149 — sectionSource：来源 pill +
+              rerank/ollama 提示 + Ollama 本地模型选择行 */}
+          <section className="setting-drawer__section">
+            <h4 className="setting-drawer__section-title">{t("model.editor.sectionSource")}</h4>
             <div className="form-item">
-              <h4>{t("model.editor.sectionSource")}</h4>
-              <div className="wk-source-options" role="radiogroup" aria-label={t("model.editor.sourceLabel")}>
+              <div className="source-options" role="radiogroup" aria-label={t("model.editor.sourceLabel")}>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={draft.source === "remote"}
-                  className={draft.source === "remote" ? "is-active" : ""}
+                  className={'source-option' + (draft.source === "remote" ? ' is-active' : '')}
                   onClick={() => selectSource("remote")}
                 >
-                  {t("model.editor.sourceRemote")}
+                  <TIcon name="cloud" className="source-option__icon" />
+                  <span className="source-option__label">{t("model.editor.sourceRemote")}</span>
                 </button>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={draft.source === "local"}
-                  className={draft.source === "local" ? "is-active" : ""}
+                  className={'source-option' + (draft.source === "local" ? ' is-active' : '') + (ollamaStatus === false || draft.type === "rerank" ? ' is-disabled' : '')}
                   disabled={ollamaStatus === false || draft.type === "rerank"}
                   onClick={() => selectSource("local")}
                 >
-                  {t("model.editor.sourceLocal")}
+                  <TIcon name="server" className="source-option__icon" />
+                  <span className="source-option__label">{t("model.editor.sourceLocal")}</span>
                 </button>
               </div>
               {draft.type === "rerank" ? (
-                <p className="wk-muted text-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
+                <div className="ollama-unavailable-tip rerank-tip">
+                  <TIcon name="info-circle-filled" className="tip-icon info" />
+                  <span className="tip-text">{t("model.editor.ollamaNotSupportRerank")}</span>
+                </div>
               ) : draft.source === "local" && ollamaStatus === false ? (
-                <p className="wk-muted text-muted">
-                  {t("model.editor.ollamaUnavailable")}{" "}
-                  <Button type="button" onClick={() => navigate("/platform/settings?section=ollama")}>
+                <div className="ollama-unavailable-tip">
+                  <TIcon name="error-circle-filled" className="tip-icon" />
+                  <span className="tip-text">{t("model.editor.ollamaUnavailable")}</span>
+                  <TButton type="button" variant="text" size="small" className="tip-link" onClick={() => navigate("/platform/settings?section=ollama")}>
+                    <TIcon name="jump" />
                     {t("model.editor.goToOllamaSettings")}
-                  </Button>
-                </p>
+                  </TButton>
+                </div>
               ) : null}
               {draft.source === "local" ? (
                 <div className="form-item">
-                  <label>
-                    {t("model.modelName")}
-                  </label>
-                  <div className="wk-ollama-combobox-wrap relative grid w-full gap-1">
-                      <Input
+                  <label className="form-label required">{t("model.modelName")}</label>
+                  {/* Vue ModelEditorDialog.vue:109-147 — .model-select-row：
+                      filterable t-select（自研 combobox 逻辑零改动保留）+ 刷新
+                      按钮（text small refresh icon）。 */}
+                  <div className="model-select-row">
+                  <div className="wk-ollama-combobox-wrap">
+                      {/* 自研 combobox（Vue 端为 ModelEditorDialog.vue 的 filterable
+                          t-select；React 侧逻辑零改动保留自研键盘导航），input 走原生
+                          标签以保住 role/aria 契约（tdesign Input 不透传，台账 #8 同因），
+                          chrome 由 .wk-ollama-combobox-wrap input 对齐 t-input。 */}
+                      <input
                         role="combobox"
                         aria-expanded={ollamaOpen}
                         aria-controls="wk-ollama-listbox"
@@ -1183,19 +1321,19 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         onKeyDown={onComboboxKeyDown}
                       />
                       {ollamaOpen ? (
-                        <div className="relative z-[6] grid max-h-[220px] overflow-auto rounded-lg border border-[rgba(120,135,155,0.35)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.14)]" id="wk-ollama-listbox" role="listbox">
+                        <div className="wk-ollama-listbox" id="wk-ollama-listbox" role="listbox">
                           {ollamaSuggestions.map((item, index) => (
                             <button
                               type="button"
                               key={item.name}
                               role="option"
                               aria-selected={index === ollamaHighlight}
-                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (index === ollamaHighlight ? " bg-[rgba(7,192,95,0.1)]" : "")}
+                              className={"wk-ollama-option" + (index === ollamaHighlight ? " is-active" : "")}
                               onMouseDown={(event) => { event.preventDefault(); selectOllamaModel(item.name); }}
                             >
-                              <span className="text-xs text-[#0a8f4c]" aria-hidden="true">✓</span>
-                              <span className="flex-1 text-[13px]">{item.name}</span>
-                              <span className="text-xs text-[#7a879c]">{formatModelSize((item as Record<string, unknown>).size)}</span>
+                              <span className="wk-ollama-option__check" aria-hidden="true">✓</span>
+                              <span className="wk-ollama-option__name">{item.name}</span>
+                              <span className="wk-ollama-option__size">{formatModelSize((item as Record<string, unknown>).size)}</span>
                             </button>
                           ))}
                           {ollamaDownloadOffered ? (
@@ -1203,22 +1341,22 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                               type="button"
                               role="option"
                               aria-selected={ollamaHighlight === ollamaSuggestions.length}
-                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (ollamaHighlight === ollamaSuggestions.length ? " bg-[rgba(7,192,95,0.1)]" : "")}
+                              className={"wk-ollama-option" + (ollamaHighlight === ollamaSuggestions.length ? " is-active" : "")}
                               onMouseDown={(event) => { event.preventDefault(); setOllamaOpen(false); void downloadOllamaModel(); }}
                             >
                               <span aria-hidden="true">⬇</span>
-                              <span className="flex-1 text-[13px] text-[#0a8f4c]">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
+                              <span className="wk-ollama-option__name wk-ollama-option__download">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
                             </button>
                           ) : null}
                         </div>
                       ) : null}
-                    </div>
-                    {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
-                  <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                    <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
-                      {t("model.editor.refreshList")}
-                    </Button>
                   </div>
+                  <TButton type="button" variant="text" size="small" className="refresh-btn" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
+                    <TIcon name="refresh" />
+                    {t("model.editor.refreshList")}
+                  </TButton>
+                  </div>
+                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
                   {ollamaBusy ? <Status>{t("common.loading")}</Status> : null}
                   {downloadTask || downloadProgress !== null ? (
                     <Status>{`${draft.name} · ${downloadProgress !== null ? `${downloadProgress.toFixed(1)}%` : "0%"}`}</Status>
@@ -1226,322 +1364,276 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 </div>
               ) : null}
             </div>
+          </section>
 
-            {draft.source === "remote" ? (
+          {draft.source === "remote" ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionProvider")}</h4>
               <div className="form-item">
-                <h4>{t("model.editor.sectionProvider")}</h4>
-                <label>
-                  {t("model.editor.providerLabel")}
-                  <ModelOptionSelect
-                    value={draft.provider}
-                    disabled={loadingProviders}
-                    options={editorProviderOptions}
-                    onChange={onProviderChange}
-                  />
-                </label>
-                {draft.provider === "weknoracloud" ? (
-                  wkcState === "loading" ? (
-                    <Status>{t("settings.weknoraCloud.checkingStatus")}</Status>
-                  ) : wkcState === "configured" ? (
-                    <Status tone="success">{t("settings.weknoraCloud.modelHintConfigured")}</Status>
-                  ) : (
-                    <Status tone="warning">
-                      {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}{" "}
-                      <Button type="button" onClick={() => navigate("/platform/settings?section=weknoracloud")}>
-                        {t("settings.weknoraCloud.goToSettings")}
-                      </Button>
-                    </Status>
-                  )
-                ) : null}
-                <label>
-                  {t("model.modelName")}
-                  <Input
-                    required
-                    maxLength={100}
-                    placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
-                    disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
-                    value={draft.name}
-                    onChange={(event) => changeName(event.target.value)}
-                    onBlur={blurName}
-                  />
-                  {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
-                </label>
-                <label>
-                  {t("model.editor.displayNameLabel")}
-                      <Input
-                    maxLength={100}
-                    placeholder={t("model.editor.displayNamePlaceholder")}
-                    value={draft.displayName}
-                    onChange={(event) => updateDraft("displayName", event.target.value)}
-                  />
-                  <span className="wk-muted text-muted">{t("model.editor.displayNameDesc")}</span>
-                </label>
-                {draft.provider !== "weknoracloud" ? (
-                  <>
-                    <label>
-                      {t("model.editor.baseUrlLabel")}
-                      <Input
-                        type="url"
-                        required
-                        placeholder={t(baseUrlPlaceholderKey(draft.type))}
-                        value={draft.baseUrl}
-                        onChange={(event) => changeBaseUrl(event.target.value)}
-                        onBlur={blurBaseUrl}
-                      />
-                      {baseUrlError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{baseUrlError}</span> : null}
-                    </label>
-                    {draft.id ? (
-                      <div className="form-item">
-                        <label>
-                          {apiKeyLabel}
-                          <Input
-                            type="password"
-                            autoComplete="new-password"
-                            placeholder={apiKeyPlaceholder}
-                            value={credentialValues.apiKey}
-                            onChange={(event) => setCredentialValues((current) => ({ ...current, apiKey: event.target.value }))}
-                          />
-                        </label>
-                        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                          {draft.credentials?.api_key?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
-                          <Button
-                            type="button"
-                            disabled={credentialBusy || !credentialValues.apiKey.trim()}
-                            onClick={() => void saveCredentialField("apiKey")}
-                          >
-                            {t("common.save")}
-                          </Button>
-                          {draft.credentials?.api_key?.configured ? (
-                            <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("api_key")}>
-                              {t("common.delete")}
-                            </Button>
-                          ) : null}
-                        </div>
-                        {signed ? (
-                          <>
-                            <label>
-                              {secretKeyLabel}
-                              <Input
-                                type="password"
-                                autoComplete="new-password"
-                                placeholder={secretKeyPlaceholder}
-                                value={credentialValues.appSecret}
-                                onChange={(event) => setCredentialValues((current) => ({ ...current, appSecret: event.target.value }))}
-                              />
-                            </label>
-                            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                              {draft.credentials?.app_secret?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
-                              <Button
-                                type="button"
-                                disabled={credentialBusy || !credentialValues.appSecret.trim()}
-                                onClick={() => void saveCredentialField("appSecret")}
-                              >
-                                {t("common.save")}
-                              </Button>
-                              {draft.credentials?.app_secret?.configured ? (
-                                <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("app_secret")}>
-                                  {t("common.delete")}
-                                </Button>
-                              ) : null}
-                            </div>
-                            <p className="wk-muted text-muted">{credentialHint}</p>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <>
-                        <label>
-                          {apiKeyLabel}
-                  <Input
-                            type="password"
-                            autoComplete="new-password"
-                            spellCheck={false}
-                            placeholder={apiKeyPlaceholder}
-                            value={draft.apiKey}
-                            onChange={(event) => updateDraft("apiKey", event.target.value)}
-                          />
-                        </label>
-                        {signed ? (
-                          <>
-                            <label>
-                              {secretKeyLabel}
-                      <Input
-                                type="password"
-                                autoComplete="new-password"
-                                spellCheck={false}
-                                placeholder={secretKeyPlaceholder}
-                                value={draft.appSecret}
-                                onChange={(event) => updateDraft("appSecret", event.target.value)}
-                              />
-                            </label>
-                            <p className="wk-muted text-muted">{credentialHint}</p>
-                          </>
-                        ) : null}
-                      </>
-                    )}
-                    {signed === "lkeap" ? (
-                      <label>
-                        {t("model.editor.lkeap.regionLabel")}
-                        <Input
-                          placeholder={t("model.editor.lkeap.regionPlaceholder")}
-                          value={draft.lkeapRegion}
-                          onChange={(event) => updateDraft("lkeapRegion", event.target.value)}
-                        />
-                        <span className="wk-muted text-muted">{t("model.editor.lkeap.regionDesc")}</span>
-                      </label>
-                    ) : null}
-                    <fieldset>
-                      <legend>{t("model.editor.customHeadersLabel")}</legend>
-                      <p className="wk-muted text-muted">{t("model.editor.customHeadersDesc")}</p>
-                      {draft.customHeaders.map((item, index) => (
-                        <div className="wk-model-header-row" key={index}>
-                                <Input
-                            value={item.key}
-                            placeholder={t("model.editor.customHeadersKeyPlaceholder")}
-                            aria-label={t("model.editor.customHeadersKeyPlaceholder")}
-                            onChange={(event) => updateCustomHeader(index, "key", event.target.value)}
-                          />
-                          <Input
-                            value={item.value}
-                            placeholder={t("model.editor.customHeadersValuePlaceholder")}
-                            aria-label={t("model.editor.customHeadersValuePlaceholder")}
-                            onChange={(event) => updateCustomHeader(index, "value", event.target.value)}
-                          />
-                          <Button
-                            type="button"
-                            aria-label={t("common.delete")}
-                            onClick={() => removeCustomHeader(index)}
-                          >
-                            ✕
-                          </Button>
-                        </div>
-                      ))}
-                      <Button type="button" onClick={addCustomHeader}>
-                        {t("model.editor.customHeadersAdd")}
-                      </Button>
-                    </fieldset>
-                  </>
-                ) : null}
+                <label className="form-label">{t("model.editor.providerLabel")}</label>
+                <ModelOptionSelect
+                  value={draft.provider}
+                  disabled={loadingProviders}
+                  options={editorProviderOptions}
+                  onChange={onProviderChange}
+                />
               </div>
-            ) : null}
-
-            {["embedding", "chat", "vllm"].includes(draft.type) ? (
+              {draft.provider === "weknoracloud" ? (
+                wkcState === "loading" ? (
+                  <div className="weknoracloud-hint">
+                    <TIcon name="loading" className="spinning hint-icon hint-icon--loading" />
+                    <span>{t("settings.weknoraCloud.checkingStatus")}</span>
+                  </div>
+                ) : wkcState === "configured" ? (
+                  <div className="weknoracloud-hint weknoracloud-hint--ok">
+                    <TIcon name="check-circle-filled" className="hint-icon hint-icon--ok" />
+                    <div>{t("settings.weknoraCloud.modelHintConfigured")}</div>
+                  </div>
+                ) : (
+                  <div className="weknoracloud-hint weknoracloud-hint--warn">
+                    <TIcon name="error-circle-filled" className="hint-icon hint-icon--warn" />
+                    <div style={{ flex: 1 }}>
+                      {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}
+                      <div style={{ marginTop: 8 }}>
+                        <TButton type="button" variant="text" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => navigate("/platform/settings?section=weknoracloud")}>
+                          <TIcon name="jump" />
+                          {t("settings.weknoraCloud.goToSettings")}
+                        </TButton>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : null}
               <div className="form-item">
-                <h4>{t("model.editor.sectionAdvanced")}</h4>
-                {draft.type === "embedding" ? (
-                  <>
-                    <label>
-                      {t("model.editor.dimensionLabel")}
-                      <NumberInput
+                <label className="form-label required">{t("model.modelName")}</label>
+                <TInput
+                  maxlength={100}
+                  placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
+                  disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
+                  value={draft.name}
+                  onChange={(value) => changeName(String(value))}
+                  onBlur={blurName}
+                />
+                {nameError ? <span className="wk-field-error">{nameError}</span> : null}
+              </div>
+              <div className="form-item">
+                <label className="form-label">{t("model.editor.displayNameLabel")}</label>
+                <TInput
+                  maxlength={100}
+                  placeholder={t("model.editor.displayNamePlaceholder")}
+                  value={draft.displayName}
+                  onChange={(value) => updateDraft("displayName", String(value))}
+                />
+                <p className="form-desc">{t("model.editor.displayNameDesc")}</p>
+              </div>
+              {draft.provider !== "weknoracloud" ? (
+                <>
+              <div className="form-item">
+                <label className="form-label required">{t("model.editor.baseUrlLabel")}</label>
+                <TInput
+                  type="url"
+                  placeholder={t(baseUrlPlaceholderKey(draft.type))}
+                  value={draft.baseUrl}
+                  onChange={(value) => changeBaseUrl(String(value))}
+                  onBlur={blurBaseUrl}
+                />
+                {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
+              </div>
+                {draft.id ? (
+                  <div className="form-item">
+                    <label className="form-label">{apiKeyLabel}</label>
+                    {/* Vue edit 模式：凭证由 CredentialResource 卡管理
+                        （ModelEditorDialog.vue:251-252），signed rerank 追加
+                        app_secret 字段行 + 提示。 */}
+                    <CredentialResourcePort
+                      t={t}
+                      fields={[
+                        { key: "api_key", label: apiKeyLabel },
+                        ...(signed ? [{ key: "app_secret" as const, label: secretKeyLabel }] : []),
+                      ]}
+                      configured={{
+                        api_key: !!draft.credentials?.api_key?.configured,
+                        app_secret: !!draft.credentials?.app_secret?.configured,
+                      }}
+                      values={{ apiKey: credentialValues.apiKey, app_secret: credentialValues.appSecret }}
+                      onValueChange={(key, value) => setCredentialValues((current) => ({ ...current, [key === "api_key" ? "apiKey" : "appSecret"]: value }))}
+                      onSave={(key) => void saveCredentialField(key === "api_key" ? "apiKey" : "appSecret")}
+                      onRemove={(key) => void removeCredentialField(key)}
+                      busy={credentialBusy}
+                    />
+                    {signed ? <p className="form-desc">{credentialHint}</p> : null}
+                  </div>
+                ) : (
+                  <div className="form-item">
+                    <label className="form-label">{apiKeyLabel}</label>
+                    <TInput
+                      type="password"
+                      autocomplete="new-password"
+                      spellCheck={false}
+                      placeholder={apiKeyPlaceholder}
+                      value={draft.apiKey}
+                      onChange={(value) => updateDraft("apiKey", String(value))}
+                    />
+                    {signed ? (
+                      <>
+                        <label className="form-label">{secretKeyLabel}</label>
+                        <TInput
+                          type="password"
+                          autocomplete="new-password"
+                          spellCheck={false}
+                          placeholder={secretKeyPlaceholder}
+                          value={draft.appSecret}
+                          onChange={(value) => updateDraft("appSecret", String(value))}
+                        />
+                        <p className="form-desc">{credentialHint}</p>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+                {signed === "lkeap" ? (
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.lkeap.regionLabel")}</label>
+                    <TInput
+                      placeholder={t("model.editor.lkeap.regionPlaceholder")}
+                      value={draft.lkeapRegion}
+                      onChange={(value) => updateDraft("lkeapRegion", String(value))}
+                    />
+                    <p className="form-desc">{t("model.editor.lkeap.regionDesc")}</p>
+                  </div>
+                ) : null}
+              <div className="form-item">
+                <div className="custom-headers-header">
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t("model.editor.customHeadersLabel")}</label>
+                  <TButton variant="text" size="small" theme="primary" type="button" icon={<TIcon name="add" />} onClick={addCustomHeader}>
+                    {t("model.editor.customHeadersAdd")}
+                  </TButton>
+                </div>
+                <p className="form-desc custom-headers-desc">{t("model.editor.customHeadersDesc")}</p>
+                {draft.customHeaders.length > 0 ? <div className="custom-headers-list">
+                  {draft.customHeaders.map((item, index) => (
+                    <div className="custom-header-row" key={index}>
+                      <TInput
+                        className="custom-header-key"
+                        value={item.key}
+                        placeholder={t("model.editor.customHeadersKeyPlaceholder")}
+                        onChange={(value) => updateCustomHeader(index, "key", String(value))}
+                      />
+                      <TInput
+                        className="custom-header-value"
+                        value={item.value}
+                        placeholder={t("model.editor.customHeadersValuePlaceholder")}
+                        onChange={(value) => updateCustomHeader(index, "value", String(value))}
+                      />
+                      <TButton
+                        variant="text"
+                        shape="square"
+                        size="small"
+                        className="custom-header-remove"
+                        aria-label={t("common.delete")}
+                        type="button"
+                        onClick={() => removeCustomHeader(index)}
+                      >
+                        <TIcon name="close" />
+                      </TButton>
+                    </div>
+                  ))}
+                </div> : null}
+              </div>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+
+          {/* Vue ModelEditorDialog.vue:316-399 — sectionAdvanced */}
+          {["embedding", "chat", "vllm"].includes(draft.type) ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionAdvanced")}</h4>
+              {draft.type === "embedding" ? (
+                <>
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.dimensionLabel")}</label>
+                    <div className="dimension-control">
+                      <TInputNumber
                         min={128}
                         max={4096}
                         placeholder={t("model.editor.dimensionPlaceholder")}
                         disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
                         value={draft.dimension}
-                        onValueChange={(value) => updateDraft("dimension", value)}
+                        onChange={(value) => updateDraft("dimension", fromTInputNumber(value))}
                       />
-                    </label>
-                    {draft.source === "local" && draft.name ? (
-                      <Button type="button" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
-                        {t("model.editor.checkDimension")}
-                      </Button>
-                    ) : null}
+                      {draft.source === "local" && draft.name ? (
+                        <TButton type="button" variant="text" size="small" className="dimension-check-btn" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
+                          <TIcon name="refresh" />
+                          {t("model.editor.checkDimension")}
+                        </TButton>
+                      ) : null}
+                    </div>
                     {dimensionMessage ? (
-                      <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
+                      <p className={'dimension-hint' + (dimensionMessage.ok ? ' success' : '')}>{dimensionMessage.text}</p>
                     ) : null}
-                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
-                      <Switch checked={draft.supportsDimensionOverride} onCheckedChange={(checked) => updateDraft("supportsDimensionOverride", checked)} aria-label={t("model.editor.dimensionOverrideLabel")} />
-                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.dimensionOverrideLabel")}</span>
-                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.dimensionOverrideDesc")}</span>
+                  </div>
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.dimensionOverrideLabel")}</label>
+                    <div className="vision-toggle">
+                      <TSwitch value={draft.supportsDimensionOverride} onChange={(checked) => updateDraft("supportsDimensionOverride", Boolean(checked))} />
+                      <span className="form-desc form-desc--inline">{t("model.editor.dimensionOverrideDesc")}</span>
                     </div>
-                  </>
-                ) : null}
-                {draft.type === "chat" || draft.type === "vllm" ? (
-                  <label>
-                    {t("model.editor.contextWindowLabel")}
-                    <NumberInput
-                      min={1024}
-                      max={10000000}
-                      placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
-                      value={draft.contextWindow}
-                      onValueChange={(value) => updateDraft("contextWindow", value)}
-                    />
-                    <span className="wk-muted text-muted">{t("model.editor.contextWindowDesc")}</span>
-                  </label>
-                ) : null}
-                {draft.type === "chat" ? (
-                  <>
-                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
-                      <Switch checked={draft.supportsVision} onCheckedChange={(checked) => updateDraft("supportsVision", checked)} aria-label={t("model.editor.supportsVisionLabel")} />
-                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.supportsVisionLabel")}</span>
-                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.supportsVisionDesc")}</span>
-                    </div>
-                  </>
-                ) : null}
-                {draft.type === "chat" && draft.source === "remote" ? (
-                  <label>
-                    {t("model.editor.thinkingControlLabel")}
-                    <ModelOptionSelect
-                      value={draft.thinkingControl}
-                      options={thinkingOptions}
-                      onChange={(value) => {
-                        setThinkingManual(true);
-                        updateDraft("thinkingControl", value);
-                      }}
-                    />
-                    <span className="wk-muted text-muted">{t("model.editor.thinkingControlDesc")}</span>
-                  </label>
-                ) : null}
-                <label>
-                  {t("model.editor.maxConcurrencyLabel")}
-                  <NumberInput
-                    min={0}
-                    max={4096}
-                    placeholder={t("model.editor.maxConcurrencyPlaceholder")}
-                    value={draft.maxConcurrency}
-                    onValueChange={(value) => updateDraft("maxConcurrency", value)}
+                  </div>
+                </>
+              ) : null}
+              {draft.type === "chat" || draft.type === "vllm" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.contextWindowLabel")}</label>
+                  <TInputNumber
+                    min={1024}
+                    max={10000000}
+                    placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
+                    value={draft.contextWindow}
+                    onChange={(value) => updateDraft("contextWindow", fromTInputNumber(value))}
                   />
-                  <span className="wk-muted text-muted">{t("model.editor.maxConcurrencyDesc")}</span>
-                </label>
+                  <p className="form-desc">{t("model.editor.contextWindowDesc")}</p>
+                </div>
+              ) : null}
+              {draft.type === "chat" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.supportsVisionLabel")}</label>
+                  <div className="vision-toggle">
+                    <TSwitch value={draft.supportsVision} onChange={(checked) => updateDraft("supportsVision", Boolean(checked))} />
+                    <span className="form-desc form-desc--inline">{t("model.editor.supportsVisionDesc")}</span>
+                  </div>
+                </div>
+              ) : null}
+              {draft.type === "chat" && draft.source === "remote" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.thinkingControlLabel")}</label>
+                  <ModelOptionSelect
+                    value={draft.thinkingControl}
+                    options={thinkingOptions}
+                    onChange={(value) => {
+                      setThinkingManual(true);
+                      updateDraft("thinkingControl", value);
+                    }}
+                  />
+                  <p className="form-desc">{t("model.editor.thinkingControlDesc")}</p>
+                </div>
+              ) : null}
+              <div className="form-item">
+                <label className="form-label">{t("model.editor.maxConcurrencyLabel")}</label>
+                <TInputNumber
+                  min={0}
+                  max={4096}
+                  placeholder={t("model.editor.maxConcurrencyPlaceholder")}
+                  value={draft.maxConcurrency}
+                  onChange={(value) => updateDraft("maxConcurrency", fromTInputNumber(value))}
+                />
+                <p className="form-desc">{t("model.editor.maxConcurrencyDesc")}</p>
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
-            {draftError ? <Status tone="error">{draftError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              {draft.source === "remote" ? (
-                <Button
-                  type="button"
-                  loading={checking}
-                  disabled={
-                    !draft.name ||
-                    (!draft.baseUrl && draft.provider !== "weknoracloud") ||
-                    (draft.provider === "weknoracloud" && wkcState !== "configured")
-                  }
-                  onClick={() => void testConnection()}
-                >
-                  {t("model.editor.testConnection")}
-                </Button>
-              ) : null}
-              {remoteMessage ? (
-                <Status tone={remoteMessage.ok ? "success" : "error"}>{remoteMessage.text}</Status>
-              ) : null}
-              {/* R484 G4 D4 — Vue footer order (SettingDrawer.vue footer):
-                  footer-left 测试连接, footer-right 取消 then 保存. */}
-              <Button type="button" disabled={busy} onClick={closeEditor}>
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="submit"
-                loading={busy}
-                disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
-              >
-                {t("common.save")}
-              </Button>
-            </div>
-          </form>
-        </div>
-        </div>
-      ) : null}
+          {draftError ? <Status tone="error">{draftError}</Status> : null}
+        </form>
+      </SettingDrawer> : null}
       {debugOpen ? (
         <ModelDebugPanel
           client={client}
@@ -1549,6 +1641,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           onClose={() => setDebugOpen(false)}
         />
       ) : null}
-    </section>
+    </div>
   );
 }

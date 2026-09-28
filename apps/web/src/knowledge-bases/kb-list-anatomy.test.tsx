@@ -18,13 +18,29 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge-bases' });
+/* tdesign 运行时依赖的 DOM 构造器全局补齐（pilot agents 同款）。
+ * renderAdapter 注入 createRoot，保证 MessagePlugin 等命令式 API 与组件同一
+ * React 实例（main.tsx 同款 react-19 adapter，node/tsx 下直接注入）。 */
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 // The live parity environment runs zh-CN (locale seeded via localStorage); the
@@ -32,6 +48,11 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' });
 
 const { createRoot } = await import('react-dom/client');
+/* tdesign 命令式 API（MessagePlugin）的 React19 render adapter（main.tsx 同款）。 */
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { KnowledgeBasesPage } = await import('../App.tsx');
 
 let mountedRoot: Root | undefined;
@@ -99,11 +120,11 @@ async function mountPage(client: WeKnoraClient, search = '') {
 
 test('(b) renders the vertical icon rail (all/favorites/recents/workspace) and drops the chips toolbar', async () => {
   const container = await mountPage(makeClient());
-  const rail = container.querySelector('.kb-list-rail');
-  assert.ok(rail, 'expected a .kb-list-rail element (ListSpaceSidebar port)');
-  const labels = Array.from(rail.querySelectorAll('.kb-list-rail-label')).map((el) => el.textContent);
+  const rail = container.querySelector('.list-space-sidebar');
+  assert.ok(rail, 'expected a .list-space-sidebar element (ListSpaceSidebar.vue port)');
+  const labels = Array.from(rail.querySelectorAll('.icon-strip .icon-label')).map((el) => el.textContent);
   assert.deepEqual(labels, ['全部', '收藏', '最近', '本空间']);
-  const active = rail.querySelector('.kb-list-rail-item.kb-list-rail-item-active .kb-list-rail-label');
+  const active = rail.querySelector('.icon-item-labeled.active .icon-label');
   assert.equal(active?.textContent, '本空间', 'contributor defaults to the workspace scope like Vue');
   assert.equal(container.querySelector('.wk-toolbar'), null, 'no horizontal search/creator toolbar');
   assert.equal(container.querySelector('.wk-kb-scope'), null, 'no horizontal scope chips');
@@ -112,66 +133,68 @@ test('(b) renders the vertical icon rail (all/favorites/recents/workspace) and d
 
 test('(a) renders compact cards in a responsive grid with hover-revealed star and more control', async () => {
   const container = await mountPage(makeClient());
-  const grid = container.querySelector('.kb-list-grid');
-  assert.ok(grid, 'expected a .kb-list-grid element');
-  const cards = Array.from(container.querySelectorAll('.kb-list-card'));
+  const grid = container.querySelector('.kb-card-wrap');
+  assert.ok(grid, 'expected a .kb-card-wrap element (Vue grid)');
+  const cards = Array.from(container.querySelectorAll('.kb-card'));
   assert.equal(cards.length, 3);
-  const faq = container.querySelector('.kb-list-card.kb-list-card-faq');
+  const faq = container.querySelector('.kb-card.kb-type-faq');
   assert.ok(faq, 'faq card carries the faq type class');
-  assert.ok(container.querySelector('.kb-list-card.kb-list-card-document'), 'document card carries the document type class');
+  assert.ok(container.querySelector('.kb-card.kb-type-document'), 'document card carries the document type class');
   for (const card of cards) {
     assert.ok(card.querySelector('.kb-favorite-star'), 'favorite star present on every card');
-    assert.ok(card.querySelector('.kb-list-card-more'), 'more control present on every card');
-    assert.ok(card.querySelector('.kb-list-card-desc'), 'description block present');
+    assert.ok(card.querySelector('.more-wrap'), 'more control present on every card');
+    assert.ok(card.querySelector('.card-description'), 'description block present');
     assert.ok(card.getAttribute('data-kb-id'), 'data-kb-id preserved for highlight/scroll');
   }
   assert.equal(container.querySelector('.wk-kb-card-actions'), null, 'no always-visible action button row');
   const docCard = container.querySelector('[data-kb-id="kb-doc"]');
-  const countText = docCard?.querySelector('.kb-list-badge-count')?.textContent ?? '';
+  const countText = docCard?.querySelector('.badge-count')?.textContent ?? '';
   assert.match(countText, /2/, 'document badge renders the knowledge count');
 });
 
 test('(a) section headers carry label/count and collapse on click', async () => {
   const container = await mountPage(makeClient());
-  const headers = Array.from(container.querySelectorAll('.kb-list-section-header'));
+  const headers = Array.from(container.querySelectorAll('.kb-section-header'));
   assert.ok(headers.length >= 1, 'at least one section header renders');
   const mine = headers.find((el) => (el.textContent ?? '').includes('我创建的'));
   assert.ok(mine, 'mine section header renders');
-  assert.match(mine?.querySelector('.kb-list-section-count')?.textContent ?? '', /3/);
-  assert.notEqual(mine?.getAttribute('aria-expanded'), null, 'header exposes aria-expanded');
-  const before = container.querySelectorAll('.kb-list-card').length;
+  assert.match(mine?.querySelector('.kb-section-count')?.textContent ?? '', /3/);
+  assert.equal(mine?.getAttribute('role'), 'button', 'Vue header is role=button with tabindex');
+  const before = container.querySelectorAll('.kb-card').length;
   await act(async () => {
     mine.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
-  const after = container.querySelectorAll('.kb-list-card').length;
-  assert.ok(after < before, 'clicking the section header collapses its cards');
+  const after = container.querySelectorAll('.kb-card').length;
+  assert.equal(after, before, 'Vue v-show keeps collapsed cards in the DOM');
+  const hidden = Array.from(container.querySelectorAll('.kb-card')).filter((card) => (card as HTMLElement).style.display === 'none');
+  assert.equal(hidden.length, before, 'collapsing the section hides all its cards (v-show)');
 });
 
 test('(a) q deep-link filters the Vue section rows as well as the cards', async () => {
   const container = await mountPage(makeClient(), '?q=faq');
-  const cards = Array.from(container.querySelectorAll('.kb-list-card'));
+  const cards = Array.from(container.querySelectorAll('.kb-card'));
   assert.equal(cards.length, 1, 'query should only render matching cards');
   assert.equal(cards[0]?.getAttribute('data-kb-id'), 'kb-faq');
-  const mine = container.querySelector('.kb-list-section-header');
+  const mine = container.querySelector('.kb-section-header');
   assert.ok(mine, 'filtered results keep the section header');
-  assert.equal(mine?.querySelector('.kb-list-section-count')?.textContent, '1', 'section count follows filtered results');
+  assert.equal(mine?.querySelector('.kb-section-count')?.textContent, '1', 'section count follows filtered results');
 });
 
 test('(c) uninitialized KBs render the amber warning banner with icon + text', async () => {
   const container = await mountPage(makeClient());
-  const banner = container.querySelector('.kb-list-warning');
-  assert.ok(banner, 'expected .kb-list-warning element');
-  assert.ok(banner.querySelector('svg'), 'banner carries an info icon');
+  const banner = container.querySelector('.warning-banner');
+  assert.ok(banner, 'expected .warning-banner element');
+  assert.ok(banner.querySelector('svg.t-icon'), 'banner carries an info icon');
   assert.match(banner.textContent ?? '', /部分知识库尚未初始化/);
 });
 
 test('(d) list-fetch failure falls back to the Vue empty state and never leaks the raw error', async () => {
   const container = await mountPage(makeClient({ failList: true }));
-  const empty = container.querySelector('.kb-list-empty');
+  const empty = container.querySelector('.empty-state');
   assert.ok(empty, 'error state renders the empty-state fallback');
-  assert.ok(container.querySelector('.kb-list-empty-img'), 'empty state carries the illustration');
-  assert.match(container.querySelector('.kb-list-empty-title')?.textContent ?? '', /暂无知识库/);
+  assert.ok(container.querySelector('.empty-state .empty-img'), 'empty state carries the illustration');
+  assert.match(container.querySelector('.empty-state .empty-txt')?.textContent ?? '', /暂无知识库/);
   const cta = container.querySelector('[data-guide="kb-list-create"]');
   assert.ok(cta, 'create CTA present in the empty state');
   assert.equal(document.body.textContent?.includes('mock failure'), false, 'raw backend JSON must not leak into the UI');
@@ -181,20 +204,21 @@ test('(d) list-fetch failure falls back to the Vue empty state and never leaks t
   // create CTA (KnowledgeBaseList.vue:645-659); ?scope deep link covered here,
   // the rail-click path by the live screenshot evidence.
   const favContainer = await mountPage(makeClient(), '?scope=favorites');
-  assert.match(favContainer.querySelector('.kb-list-empty-title')?.textContent ?? '', /暂无收藏/);
-  assert.equal(favContainer.querySelector('.kb-list-empty [data-guide="kb-list-create"]'), null, 'favorites empty must not offer the create CTA');
-  assert.equal(favContainer.querySelector('.kb-list-empty-img'), null, 'favorites empty uses an icon, not the illustration');
+  assert.match(favContainer.querySelector('.empty-state .empty-txt')?.textContent ?? '', /暂无收藏/);
+  assert.equal(favContainer.querySelector('.empty-state [data-guide="kb-list-create"]'), null, 'favorites empty must not offer the create CTA');
+  assert.equal(favContainer.querySelector('.empty-state .empty-img'), null, 'favorites empty uses an icon, not the illustration');
 });
 
 test('(a) the more menu exposes exactly the Vue card actions', async () => {
   const container = await mountPage(makeClient());
-  const more = container.querySelector('[data-kb-id="kb-doc"] .kb-list-card-more');
+  const more = container.querySelector('[data-kb-id="kb-doc"] .more-wrap');
   assert.ok(more, 'more control present');
   await act(async () => {
     more.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
-  const menu = container.querySelector('.kb-list-more-menu');
+  // t-popup 内容 portal 到 body（card-more-popup overlayClassName 限定）。
+  const menu = document.body.querySelector('.card-more-popup .popup-menu');
   assert.ok(menu, 'menu opens');
   const text = menu.textContent ?? '';
   for (const label of ['置顶', '创建副本', '设置', '删除']) {
@@ -208,13 +232,13 @@ test('(a) pinned cards use the filled pin icon in the more menu', async () => {
   const container = await mountPage(makeClient({
     owned: [{ id: 'kb-pinned', name: 'Pinned KB', type: 'document', is_pinned: true, creator_id: 'u-1' }],
   }));
-  const more = container.querySelector('[data-kb-id="kb-pinned"] .kb-list-card-more');
+  const more = container.querySelector('[data-kb-id="kb-pinned"] .more-wrap');
   assert.ok(more);
   await act(async () => {
     more.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
-  assert.ok(container.querySelector('.kb-list-more-menu svg[data-kb-icon="pin-filled"]'), 'pinned action uses pin-filled');
+  assert.ok(document.body.querySelector('.card-more-popup use[href="#t-icon-pin-filled"]'), 'pinned action uses pin-filled (t-icon sprite)');
 });
 
 test('favorites star still persists to localStorage (existing behavior kept)', async () => {
@@ -227,8 +251,24 @@ test('favorites star still persists to localStorage (existing behavior kept)', a
   await act(async () => {});
   const stored = JSON.parse(dom.window.localStorage.getItem('wk-kb-favorites') ?? '[]') as string[];
   assert.ok(stored.includes('kb-doc'), 'favorite persisted');
-  const favRailItem = Array.from(container.querySelectorAll('.kb-list-rail-item'))[1];
-  assert.match(favRailItem.getAttribute('title') ?? '', /\(1\)/, 'rail favorites tooltip reflects the star count (Vue tooltipText)');
+  // Vue 折叠条计数经 t-tooltip content 呈现（无原生 title）；展开面板可见
+  // 收藏徽标 = 1（ListSpaceSidebar.vue:93 仅 >0 渲染）。
+  const railEl = container.querySelector('.list-space-sidebar') as HTMLElement;
+  const handle = railEl.querySelector('.resize-handle') as HTMLElement;
+  await act(async () => {
+    handle.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 100 }));
+  });
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mousemove', { bubbles: true, clientX: 190 }));
+  });
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
+  });
+  await act(async () => {});
+  const panel = railEl.querySelector('.expanded-panel');
+  assert.ok(panel, 'rail expanded for the count check');
+  const favCount = Array.from(panel.querySelectorAll('.item-count'))[1];
+  assert.equal(favCount?.textContent, '1', 'rail favorites count reflects the star (Vue :93 >0 renders)');
 });
 
 // R009 rail drag-expand slice (Vue ListSpaceSidebar.vue:146-235, 296-343): the
@@ -239,12 +279,12 @@ test('favorites star still persists to localStorage (existing behavior kept)', a
 
 test('(b) rail drag past the 120px snap threshold expands into the panel with full labels + counts and drags back collapsed', async () => {
   const container = await mountPage(makeClient());
-  const rail = container.querySelector('.kb-list-rail') as HTMLElement;
+  const rail = container.querySelector('.list-space-sidebar') as HTMLElement;
   assert.ok(rail);
-  assert.equal(rail.classList.contains('kb-list-rail-expanded'), false, 'starts collapsed (Vue default)');
-  assert.ok(rail.querySelector('.kb-list-rail-strip'), 'collapsed strip DOM');
-  assert.equal(rail.querySelector('.kb-list-rail-panel'), null, 'no expanded panel while collapsed');
-  const handle = rail.querySelector('.kb-list-rail-handle');
+  assert.equal(rail.classList.contains('expanded'), false, 'starts collapsed (Vue default)');
+  assert.ok(rail.querySelector('.icon-strip'), 'collapsed strip DOM');
+  assert.equal(rail.querySelector('.expanded-panel'), null, 'no expanded panel while collapsed');
+  const handle = rail.querySelector('.resize-handle');
   assert.ok(handle, 'right-edge resize handle present (Vue .resize-handle)');
 
   // Drag right by +90px from 56 -> 146 (< 120 delta from collapsed start? no:
@@ -252,7 +292,7 @@ test('(b) rail drag past the 120px snap threshold expands into the panel with fu
   await act(async () => {
     handle.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 100 }));
   });
-  assert.equal(rail.classList.contains('kb-list-rail-dragging'), true, 'dragging class disables the width transition');
+  assert.equal(rail.classList.contains('dragging'), true, 'dragging class disables the width transition');
   assert.equal((rail as HTMLElement).style.width, '56px', 'inline width tracks from the collapsed start (ListSpaceSidebar.vue:3)');
   assert.equal(document.body.style.cursor, 'col-resize', 'body cursor matches Vue onDragStart');
   await act(async () => {
@@ -262,17 +302,17 @@ test('(b) rail drag past the 120px snap threshold expands into the panel with fu
   await act(async () => {
     document.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
   });
-  assert.equal(rail.classList.contains('kb-list-rail-expanded'), true, 'width 146 >= snap threshold 120 expands');
+  assert.equal(rail.classList.contains('expanded'), true, 'width 146 >= snap threshold 120 expands');
   assert.equal((rail as HTMLElement).style.width, '', 'expanded width comes from CSS (208px), not inline');
   assert.equal(document.body.style.cursor, '', 'body cursor restored on drag end');
-  const panel = rail.querySelector('.kb-list-rail-panel');
+  const panel = rail.querySelector('.expanded-panel');
   assert.ok(panel, 'expanded nav panel DOM (Vue .expanded-panel, ListSpaceSidebar.vue:77)');
-  const labels = Array.from(panel.querySelectorAll('.kb-list-rail-panel-label')).map((el) => el.textContent);
+  const labels = Array.from(panel.querySelectorAll('.item-label')).map((el) => el.textContent);
   assert.deepEqual(labels, ['全部', '收藏', '最近', '本空间'], 'expanded panel renders the full text labels');
-  const counts = Array.from(panel.querySelectorAll('.kb-list-rail-panel-count')).map((el) => el.textContent);
+  const counts = Array.from(panel.querySelectorAll('.item-count')).map((el) => el.textContent);
   assert.deepEqual(counts, ['3', '3'], 'count badges: all + mine always, favorites/recents hidden at 0 (Vue :83/:93/:101/:109)');
-  assert.equal(panel.querySelectorAll('.kb-list-rail-divider').length, 1, 'divider between recents and workspace (Vue :103)');
-  const activeLabel = panel.querySelector('.kb-list-rail-panel-item-active .kb-list-rail-panel-label');
+  assert.equal(panel.querySelectorAll('.sidebar-divider').length, 1, 'divider between recents and workspace (Vue :103)');
+  const activeLabel = panel.querySelector('.sidebar-item.active .item-label');
   assert.equal(activeLabel?.textContent, '本空间', 'active state carried into the expanded panel');
   assert.equal(dom.window.localStorage.getItem('sidebar-collapsed-list-expanded'), 'true', 'expanded state persisted (Vue storageKey :198/:232)');
 
@@ -287,33 +327,33 @@ test('(b) rail drag past the 120px snap threshold expands into the panel with fu
   await act(async () => {
     document.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
   });
-  assert.equal(rail.classList.contains('kb-list-rail-expanded'), false, 'drag under the threshold collapses back');
-  assert.ok(rail.querySelector('.kb-list-rail-strip'), 'collapsed strip DOM restored');
-  assert.equal(rail.querySelector('.kb-list-rail-panel'), null, 'panel unmounted after collapse');
+  assert.equal(rail.classList.contains('expanded'), false, 'drag under the threshold collapses back');
+  assert.ok(rail.querySelector('.icon-strip'), 'collapsed strip DOM restored');
+  assert.equal(rail.querySelector('.expanded-panel'), null, 'panel unmounted after collapse');
   assert.equal(dom.window.localStorage.getItem('sidebar-collapsed-list-expanded'), 'false', 'collapsed state persisted');
 });
 
 test('(b) rail expanded state round-trips through localStorage (Vue storageKey sidebar-collapsed-list-expanded)', async () => {
   dom.window.localStorage.setItem('sidebar-collapsed-list-expanded', 'true');
   const container = await mountPage(makeClient());
-  const rail = container.querySelector('.kb-list-rail') as HTMLElement;
+  const rail = container.querySelector('.list-space-sidebar') as HTMLElement;
   assert.ok(rail);
-  assert.equal(rail.classList.contains('kb-list-rail-expanded'), true, 'seeds expanded from localStorage like Vue (:200)');
-  assert.ok(rail.querySelector('.kb-list-rail-panel'), 'panel mounted directly');
-  assert.equal(rail.querySelector('.kb-list-rail-strip'), null, 'strip not rendered while expanded (Vue v-if/v-else)');
+  assert.equal(rail.classList.contains('expanded'), true, 'seeds expanded from localStorage like Vue (:200)');
+  assert.ok(rail.querySelector('.expanded-panel'), 'panel mounted directly');
+  assert.equal(rail.querySelector('.icon-strip'), null, 'strip not rendered while expanded (Vue v-if/v-else)');
 });
 
 test('(b) expanded panel keeps the ?scope deep-link semantics (setSpace path unchanged)', async () => {
   dom.window.localStorage.setItem('sidebar-collapsed-list-expanded', 'true');
   const container = await mountPage(makeClient());
-  const fav = Array.from(container.querySelectorAll('.kb-list-rail-panel-item'))[1] as HTMLButtonElement;
+  const fav = Array.from(container.querySelectorAll('.expanded-panel .sidebar-item'))[1] as HTMLElement;
   assert.equal(fav?.textContent, '收藏', 'favorites panel item present');
   await act(async () => {
     fav.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
   assert.equal(dom.window.location.search, '?scope=favorites', 'panel click still writes ?scope to the URL');
-  assert.equal(fav.classList.contains('kb-list-rail-panel-item-active'), true, 'panel item reflects the active scope');
+  assert.equal(fav.classList.contains('active'), true, 'panel item reflects the active scope');
 });
 // R009 org rail slice (Vue ListSpaceSidebar.vue:111-125 / :35-49 +
 // KnowledgeBaseList.vue:897-985): orgs with a positive share count render a
@@ -348,42 +388,42 @@ const orgSharedRows = (): SharedRow[] => [
 
 test('(b) rail appends per-org entries for orgs with shared KBs (countByOrg > 0 only)', async () => {
   const container = await mountPage(makeClient({ shared: orgSharedRows() }));
-  const strip = container.querySelector('.kb-list-rail-strip');
+  const strip = container.querySelector('.icon-strip');
   assert.ok(strip, 'collapsed strip renders');
-  const labels = Array.from(strip.querySelectorAll('.kb-list-rail-label')).map((el) => el.textContent);
+  const labels = Array.from(strip.querySelectorAll('.icon-label')).map((el) => el.textContent);
   assert.deepEqual(labels, ['全部', '收藏', '最近', '本空间', '设计组', '后端组'],
     'org entries render below the workspace bucket (ListSpaceSidebar.vue:113-125)');
-  const orgItem = strip.querySelectorAll('.kb-list-rail-item')[4] as HTMLElement;
-  assert.match(orgItem.getAttribute('title') ?? '', /设计组 \(2\)/, 'org tooltip is tooltipText(name, count)');
-  assert.ok(strip.querySelector('.kb-list-rail-divider'), 'divider separates workspace from the org group (Vue :41)');
-  assert.ok(container.querySelector('.kb-list-rail-panel') === null, 'stays collapsed by default');
+  const orgItem = strip.querySelectorAll('.icon-item-labeled')[4] as HTMLElement;
+  assert.ok(orgItem.textContent?.includes('设计组'), 'org entry renders with its SpaceAvatar + label');
+  assert.ok(strip.querySelector('.icon-strip-divider'), 'divider separates workspace from the org group (Vue :41)');
+  assert.ok(container.querySelector('.expanded-panel') === null, 'stays collapsed by default');
   // Org with zero shares must not render an entry (organizationsWithCount
   // filters count > 0, ListSpaceSidebar.vue:271-274).
   const bare = await mountPage(makeClient());
-  assert.equal((bare.querySelector('.kb-list-rail-strip')?.querySelectorAll('.kb-list-rail-item').length ?? 0), 4, 'no org entries without shares');
+  assert.equal((bare.querySelector('.icon-strip')?.querySelectorAll('.icon-item-labeled').length ?? 0), 4, 'no org entries without shares');
 });
 
 test('(b) clicking an org rail entry writes ?scope=<orgId> and filters merged cards to that org', async () => {
   const container = await mountPage(makeClient({ shared: orgSharedRows() }));
-  const strip = container.querySelector('.kb-list-rail-strip') as HTMLElement;
-  const orgItem = strip.querySelectorAll('.kb-list-rail-item')[4] as HTMLElement;
+  const strip = container.querySelector('.icon-strip') as HTMLElement;
+  const orgItem = strip.querySelectorAll('.icon-item-labeled')[4] as HTMLElement;
   await act(async () => {
     orgItem.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
   assert.equal(dom.window.location.search, '?scope=org-alpha', 'per-space view lives in ?scope (KnowledgeBaseList.vue:821)');
-  const active = container.querySelector('.kb-list-rail-item.kb-list-rail-item-active .kb-list-rail-label');
+  const active = container.querySelector('.icon-item-labeled.active .icon-label');
   assert.equal(active?.textContent, '设计组', 'active state follows the org scope');
-  const cards = Array.from(container.querySelectorAll('.kb-list-card')).map((el) => el.getAttribute('data-kb-id'));
+  const cards = Array.from(container.querySelectorAll('.kb-card')).map((el) => el.getAttribute('data-kb-id'));
   assert.deepEqual(cards.sort(), ['kb-sh-a1', 'kb-sh-a2'], 'only the org shared KBs render');
-  assert.equal(container.querySelectorAll('.kb-list-section-header').length, 0, 'per-space view renders a flat grid (Vue sortedSpaceKbsList)');
+  assert.equal(container.querySelectorAll('.kb-section-header').length, 0, 'per-space view renders a flat grid (Vue sortedSpaceKbsList)');
 });
 
 test('(b) ?scope=<orgId> deep link activates the org entry and filters cards', async () => {
   const container = await mountPage(makeClient({ shared: orgSharedRows() }), '?scope=org-alpha');
-  const active = container.querySelector('.kb-list-rail-item.kb-list-rail-item-active .kb-list-rail-label');
+  const active = container.querySelector('.icon-item-labeled.active .icon-label');
   assert.equal(active?.textContent, '设计组', 'deep-linked org entry is active');
-  const cards = Array.from(container.querySelectorAll('.kb-list-card')).map((el) => el.getAttribute('data-kb-id'));
+  const cards = Array.from(container.querySelectorAll('.kb-card')).map((el) => el.getAttribute('data-kb-id'));
   assert.deepEqual(cards.sort(), ['kb-sh-a1', 'kb-sh-a2'], 'cards filtered by organization_id');
   const readonlyCard = container.querySelector('[data-kb-id="kb-sh-a2"]');
   assert.ok(readonlyCard, 'viewer-permission shared KB still renders in its org view');
@@ -391,40 +431,40 @@ test('(b) ?scope=<orgId> deep link activates the org entry and filters cards', a
 
 test('(b) unknown org scope keeps the Vue shared-empty state without the create CTA', async () => {
   const container = await mountPage(makeClient(), '?scope=org-gone');
-  const empty = container.querySelector('.kb-list-empty');
+  const empty = container.querySelector('.empty-state');
   assert.ok(empty, 'per-space empty state renders');
-  assert.match(container.querySelector('.kb-list-empty-title')?.textContent ?? '', /暂无共享知识库/);
-  assert.match(container.querySelector('.kb-list-empty-desc')?.textContent ?? '', /加入共享空间/);
-  assert.ok(container.querySelector('.kb-list-empty-img'), 'per-space empty keeps the illustration (KnowledgeBaseList.vue:674-678)');
-  assert.equal(container.querySelector('.kb-list-empty [data-guide="kb-list-create"]'), null, 'no create CTA in the per-space empty state');
+  assert.match(container.querySelector('.empty-state .empty-txt')?.textContent ?? '', /暂无共享知识库/);
+  assert.match(container.querySelector('.empty-state .empty-desc')?.textContent ?? '', /加入共享空间/);
+  assert.ok(container.querySelector('.empty-state .empty-img'), 'per-space empty keeps the illustration (KnowledgeBaseList.vue:674-678)');
+  assert.equal(container.querySelector('.empty-state [data-guide="kb-list-create"]'), null, 'no create CTA in the per-space empty state');
 });
 
 test('(b) stale ?scope=shared deep link resets to the all view', async () => {
   const container = await mountPage(makeClient({ shared: orgSharedRows() }), '?scope=shared');
-  const active = container.querySelector('.kb-list-rail-item.kb-list-rail-item-active .kb-list-rail-label');
+  const active = container.querySelector('.icon-item-labeled.active .icon-label');
   assert.equal(active?.textContent, '全部', 'legacy aggregate scope falls back to all (KnowledgeBaseList.vue:1246-1251)');
   const staleSearch = dom.window.location.search;
   assert.ok(staleSearch === '' || staleSearch === '?scope=all', 'stale scope cleaned from the URL, got ' + staleSearch);
-  assert.equal(container.querySelectorAll('.kb-list-card').length, 6, 'all view shows owned + shared cards again');
+  assert.equal(container.querySelectorAll('.kb-card').length, 6, 'all view shows owned + shared cards again');
 });
 
 test('(b) expanded panel renders the shared-spaces section title and full org labels', async () => {
   dom.window.localStorage.setItem('sidebar-collapsed-list-expanded', 'true');
   const container = await mountPage(makeClient({ shared: orgSharedRows() }));
-  const panel = container.querySelector('.kb-list-rail-panel');
+  const panel = container.querySelector('.expanded-panel');
   assert.ok(panel, 'expanded panel mounted');
-  const title = panel.querySelector('.kb-list-rail-section-title');
+  const title = panel.querySelector('.section-title');
   assert.equal(title?.textContent, '共享给我', 'section title (Vue .sidebar-section, listSpaceSidebar.spaces)');
-  const labels = Array.from(panel.querySelectorAll('.kb-list-rail-panel-label')).map((el) => el.textContent);
+  const labels = Array.from(panel.querySelectorAll('.item-label')).map((el) => el.textContent);
   assert.deepEqual(labels, ['全部', '收藏', '最近', '本空间', '设计组', '后端组'], 'full org labels in the panel');
-  const counts = Array.from(panel.querySelectorAll('.kb-list-rail-panel-count')).map((el) => el.textContent);
+  const counts = Array.from(panel.querySelectorAll('.item-count')).map((el) => el.textContent);
   assert.deepEqual(counts, ['6', '3', '2', '1'], 'all + mine always, favorites/recents at 0 hidden, org counts from shares');
-  const orgPanelItem = panel.querySelectorAll('.kb-list-rail-panel-item')[4] as HTMLElement;
+  const orgPanelItem = panel.querySelectorAll('.sidebar-item')[4] as HTMLElement;
   await act(async () => {
     orgPanelItem.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
   await act(async () => {});
   assert.equal(dom.window.location.search, '?scope=org-alpha', 'panel org click writes the per-space scope');
-  const active = panel.querySelector('.kb-list-rail-panel-item-active .kb-list-rail-panel-label');
+  const active = panel.querySelector('.sidebar-item.active .item-label');
   assert.equal(active?.textContent, '设计组', 'panel active state follows the org scope');
 });

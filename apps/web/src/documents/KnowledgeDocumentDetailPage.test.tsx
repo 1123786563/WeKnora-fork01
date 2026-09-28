@@ -10,9 +10,9 @@ import type { Root } from 'react-dom/client';
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const resolveCSS: ResolveHook = (specifier, context, nextResolve) => {
   if (specifier.endsWith('.css') || specifier.endsWith('.svg')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
-  // @weknora/ui is workspace-linked and Node resolves its real path outside
-  // apps/web, so direct node:test runs need the consuming app's React DOM.
-  if (specifier === 'react-dom') return { shortCircuit: true, url: new URL('../../node_modules/react-dom/index.js', import.meta.url).href };
+  // react-dom 不再短路到具体文件 URL：Node 22 的 cjs-module-lexer 识别不出
+  // react-dom/index.js 的再导出（createPortal 丢失）。pnpm 下 packages/ui 与
+  // apps/web 解析到同一 react-dom 实例，无需重定向。
   return nextResolve(specifier, context);
 };
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
@@ -20,7 +20,6 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
 else nodeModule.register('data:text/javascript,' + encodeURIComponent([
   'export async function resolve(specifier, context, nextResolve) {',
   "  if (specifier.endsWith('.css') || specifier.endsWith('.svg')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };",
-  "  if (specifier === 'react-dom') return { shortCircuit: true, url: new URL('../../node_modules/react-dom/index.js', import.meta.url).href };",
   '  return nextResolve(specifier, context);',
   '}',
 ].join('\n')), import.meta.url);
@@ -378,7 +377,7 @@ test('trace drawer matches the Vue pending contract: no per-row status text, —
   assert.ok(drawerText.includes('2/5'), 'the counter counts done stages plus the pending one like Vue currentStageIndex');
   // Waterfall rows: the pending chunking row carries no status text and a
   // '—' duration even though duration_ms is present.
-  const waterfallRows = Array.from(drawer.querySelectorAll('.overflow-x-auto li')) as HTMLLIElement[];
+  const waterfallRows = Array.from(drawer.querySelectorAll('.wk-kdd-18 li')) as HTMLLIElement[];
   const chunkingRow = waterfallRows.find((row) => (row.textContent || '').includes('chunking'));
   assert.ok(chunkingRow, 'the chunking span renders a waterfall row');
   assert.equal(chunkingRow.getAttribute('data-state'), 'pending');

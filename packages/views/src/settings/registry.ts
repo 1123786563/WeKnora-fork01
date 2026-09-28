@@ -39,6 +39,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'usage', viewId: 'UsageSettings', apiDomain: 'usage', scope: 'user', minRole: 'viewer', operations: ['read'], ported: true },
   { key: 'members', viewId: 'TenantMemberSettings', apiDomain: 'identity.tenants.members', scope: 'tenant', minRole: 'viewer', operations: ['read', 'save', 'delete'], ported: false },
   { key: 'mcp', viewId: 'McpServiceSettings', apiDomain: 'configuration.mcp', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'test', 'delete'], ported: false },
+  // Issue #108 T03 — 插件清单预览分区（管理员粘贴清单 URL 核验预览；安装确认 T08）。
+  { key: 'plugins', viewId: 'PluginSettings', apiDomain: 'plugins', scope: 'tenant', minRole: 'admin', operations: ['read', 'save'], ported: true },
   { key: 'sandbox', viewId: 'SandboxSettings', apiDomain: 'sandbox.configs', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'delete'], ported: false },
   { key: 'skills', viewId: 'SkillSettings', apiDomain: 'configuration.skills', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'delete'], ported: false },
   { key: 'storage', viewId: 'StorageEngineSettings', apiDomain: 'storage', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'test', 'delete', 'unavailable'], ported: true },

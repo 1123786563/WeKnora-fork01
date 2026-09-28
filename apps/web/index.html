@@ -7,6 +7,11 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
+    <!-- 离线部署兼容：本地加载 tdesign-icons SVG sprite（保证 name 图标同源渲染）。
+         只保留 0.4.5：Vue 端 tdesign-icons-vue-next 的 svg-sprite Icon 在运行时实际
+         命中 CDN 0.4.5 变体 glyph（台账 #10），React 离线守卫拦掉 CDN 后以此本地镜像
+         对齐；早期并存的 0.4.1 死资产已删除（Task 9.5，grep 零引用）。 -->
+    <script src="/tdesign-icons/0.4.5/fonts/index.js"></script>
     <div id="root"></div>
     <script src="/config.js"></script>
     <script>

@@ -1143,6 +1143,29 @@ func ResetSSRFWhitelistForTest() {
 	invalidateSSRFOutboundValidationCache()
 }
 
+// SnapshotSSRFWhitelistForTest captures the currently active SSRF whitelist
+// and returns a restore function that reinstates exactly that state. It is
+// the correct cleanup companion for tests that narrow the whitelist via
+// SetSSRFWhitelistFromRaw: pairing the Set with ResetSSRFWhitelistForTest
+// instead CLEARS the whitelist (subsequent loads fall back to the
+// SSRF_WHITELIST env var — typically unset in CI), which silently breaks
+// later tests in the same binary that rely on a package TestMain whitelist.
+// Observed in internal/container with -count>=2: the plugin tests' reset
+// cleanup wiped TestMain's "127.0.0.1,::1,localhost", and the second-round
+// engine tests failed with "hostname 127.0.0.1 is restricted".
+//
+// A nil snapshot (whitelist still on the ENV fallback path) restores to nil,
+// leaving the sync.Once-cached ENV fallback exactly as it was. NOT for
+// production use — the ForTest suffix is the contract, same as
+// ResetSSRFWhitelistForTest.
+func SnapshotSSRFWhitelistForTest() (restore func()) {
+	saved := ssrfWhitelistAtomic.Load()
+	return func() {
+		ssrfWhitelistAtomic.Store(saved)
+		invalidateSSRFOutboundValidationCache()
+	}
+}
+
 // FormatSSRFError takes the error returned by ValidateURLForSSRF and wraps
 // it with operator guidance — specifically how to add a host to the SSRF
 // allow-list. Without this hint, users hit "Base URL 未通过安全校验" with

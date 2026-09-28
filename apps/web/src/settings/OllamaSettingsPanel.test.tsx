@@ -11,17 +11,34 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings?section=ollama' });
+// T12b：面板迁 tdesign（Input/Progress 等需要 rAF/Element 等全局），jsdom
+// globals 扩展与 settings-error-ux.test 同款（T12a d1fba03aa 先例）。
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
+// tdesign 命令式 API（MessagePlugin 等）在 React 19 下需要适配器（main.tsx 引
+// es/_util/react-19-adapter；node/tsx 下组件走 lib 入口，直接对 lib 的
+// react-render 注入 createRoot，保证与组件同一模块实例——agent-editor.test 先例）。
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { OllamaSettingsPanel } = await import('./OllamaSettingsPanel.tsx');
 
 let mountedRoot: Root | undefined;
@@ -86,7 +103,8 @@ test('keeps the Vue model-library link in the download section', async () => {
   const link = container.querySelector('a[href="https://ollama.com/search"]');
   assert.ok(link, 'the Ollama model library link is rendered');
   assert.equal(link?.getAttribute('target'), '_blank');
-  assert.equal(link?.textContent, '浏览 Ollama 模型库');
+  // Vue 模板文本插值与 t-icon 之间的换行编译为尾部空格（单文本节点）。
+  assert.equal(link?.textContent, '浏览 Ollama 模型库 ');
 });
 
 test('disables the Vue download action until a non-blank model name is entered', async () => {
@@ -95,12 +113,13 @@ test('disables the Vue download action until a non-blank model name is entered',
     { status: { available: true }, models: [] },
     makeClient(() => { downloadCalls += 1; }),
   );
-  const downloadButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  // tdesign disabled 按钮渲染为 div.t-button.t-is-disabled（台账 #7）。
+  const downloadButton = Array.from(container.querySelectorAll<HTMLElement>('.t-button'))
     .find((button) => button.textContent?.includes('下载'));
   assert.ok(downloadButton, 'the download action renders');
-  assert.equal(downloadButton.disabled, true, 'Vue disables an empty download action');
+  assert.equal(downloadButton.classList.contains('t-is-disabled'), true, 'Vue disables an empty download action');
 
-  await act(async () => downloadButton.click());
+  await act(async () => downloadButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
   assert.equal(downloadCalls, 0, 'an empty model name must not call the download API');
 });
 

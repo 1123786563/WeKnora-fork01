@@ -36,6 +36,47 @@
 
 /* ---- Specificity guards vs shared styles.css rules (unlayered wins) ---- */
 
+/* ---- creatChat.vue 空态簇（Task 11b 平移，scoped → 原类名） ---- */
+.dialogue-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dialogue-answers {
+  display: flex;
+  flex-flow: column;
+  align-items: center;
+  width: 100%;
+  max-width: 960px;
+  gap: 24px;
+}
+
+.dialogue-title {
+  display: flex;
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 28px;
+  font-weight: 600;
+  align-items: center;
+  margin: 0;
+  line-height: normal;
+}
+
+.suggested-questions-container {
+  max-width: 960px;
+  width: 100%;
+  margin: 0;
+  padding: 0 16px;
+}
+
+/* Vue Input-field.vue .rich-input-container 双层投影（:2910-2915）——原
+ * shadow-[…] utility 因含逗号未生成（computed 0），平移到 unlayered 段。 */
+.wk-chat-input-shell {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 16px -4px rgba(0, 0, 0, 0.06);
+}
+
 /* Out-ranks the global h1 clamp rule in styles.css (utilities cannot: they
    are layered). Same values sit in utilities for the post-cleanup state. */
 .wk-chat-header h1 {

@@ -1,0 +1,1809 @@
+/*
+ * orgs 页 TDesign 同构样式（playbook §2 平移产物，Task 11b）。
+ *
+ * 事实源（Vue SFC <style> 逐块平移，less 嵌套已按 §2.3 展平）：
+ *  1. frontend/src/assets/dropdown-menu.less —— 卡片三点菜单子集
+ *     （card-more-popup / popup-menu / popup-menu-item；与 kb-list.td.css §1
+ *     同源，按页各持一份，Phase 4 归并）。
+ *  2. frontend/src/components/SpaceAvatar.vue —— .space-avatar*（§2 同上）。
+ *  3. frontend/src/components/ListSpaceSidebar.vue —— scoped → 根类前缀
+ *     .list-space-sidebar（organization 模式：全部/我创建的/我加入的）。
+ *  4. frontend/src/views/organization/OrganizationList.vue —— scoped 块 →
+ *     根类前缀 .org-list-container；unscoped 块（invite-preview 弹层）原样
+ *     平移（§2.5）；del-org-dialog 弹层以 dialogClassName 限定（:deep 段）。
+ *  5. frontend/src/views/organization/OrganizationSettingsModal.vue ——
+ *     scoped 块 → 根类前缀 .settings-overlay（Teleport 到 body，类名全局
+ *     唯一）；本文件覆盖壳层 + basic/permissions 段（ix-orgs-create 扫描态）
+ *     与 .settings-footer。
+ *
+ * 类名不改（§2.4）；--td-* / --app-font-family 变量原样平移（T4 接线）。
+ * @keyframes 名保留 Vue 端原名（contentFadeIn / sectionFadeIn / modal-*）。
+ */
+
+/* ============================================================================
+ * 1. dropdown-menu.less 子集（卡片三点菜单）
+ * ========================================================================== */
+
+@keyframes dropdownSlideIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-more-popup {
+  z-index: 99 !important;
+}
+
+.card-more-popup .t-popup__content {
+  padding: 4px !important;
+  margin-top: 4px !important;
+  min-width: 148px;
+  border-radius: 10px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  animation: dropdownSlideIn 0.18s cubic-bezier(0.2, 0, 0, 1) both;
+  overflow: hidden;
+}
+
+.popup-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.popup-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  border-radius: 6px;
+  position: relative;
+}
+
+.popup-menu-item .menu-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.popup-menu-item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.popup-menu-item:hover .menu-icon {
+  color: var(--td-text-color-primary);
+}
+
+.popup-menu-item:active {
+  background: var(--td-bg-color-container-active);
+  transform: scale(0.98);
+}
+
+.popup-menu-item.delete,
+.popup-menu-item.danger {
+  color: var(--td-error-color-6);
+  margin-top: 4px;
+  position: relative;
+}
+
+.popup-menu-item.delete::before,
+.popup-menu-item.danger::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: var(--td-component-stroke);
+}
+
+.popup-menu-item.delete .menu-icon,
+.popup-menu-item.danger .menu-icon {
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:hover,
+.popup-menu-item.danger:hover {
+  background: var(--td-error-color-1);
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:hover .menu-icon,
+.popup-menu-item.danger:hover .menu-icon {
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:active,
+.popup-menu-item.danger:active {
+  background: var(--td-error-color-2);
+}
+
+/* ============================================================================
+ * 2. SpaceAvatar.vue（scoped → 原样平移）
+ * ========================================================================== */
+
+.space-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+}
+
+.space-avatar.space-avatar-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.space-avatar.space-avatar-small .space-avatar-letter {
+  font-size: 11px;
+}
+
+.space-avatar.space-avatar-small .space-avatar-decoration {
+  display: none;
+}
+
+.space-avatar.space-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.space-avatar.space-avatar-large .space-avatar-letter {
+  font-size: 20px;
+}
+
+.space-avatar-decoration {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 55%;
+  height: 55%;
+  opacity: 0.35;
+  color: rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.space-avatar-emoji-char {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.space-avatar-small .space-avatar-emoji-char {
+  font-size: 14px;
+}
+
+.space-avatar-large .space-avatar-emoji-char {
+  font-size: 28px;
+}
+
+.space-avatar-emoji .space-avatar-emoji-char {
+  position: relative;
+  z-index: 1;
+  line-height: 1;
+  user-select: none;
+}
+
+.space-avatar-letter {
+  position: relative;
+  z-index: 1;
+  color: var(--td-text-color-anti);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--app-font-family);
+}
+
+/* ============================================================================
+ * 3. ListSpaceSidebar.vue（scoped → 根类前缀 .list-space-sidebar）
+ *    —— 与 kb-list.td.css §5 同源（organization 模式只用到 all/created/joined
+ *       条目与 resize-handle，规则全集平移保持同构）
+ * ========================================================================== */
+
+.list-space-sidebar {
+  width: 56px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 10;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  /* playbook §2.6：React 渲染在 PlatformShell（21px 行高）内，显式归位
+     Vue 的 body line-height normal。 */
+  line-height: normal;
+}
+
+.list-space-sidebar.expanded {
+  width: 208px;
+  margin-right: 0;
+}
+
+.list-space-sidebar.dragging {
+  transition: none;
+}
+
+.list-space-sidebar .resize-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.list-space-sidebar .resize-handle:hover .resize-handle-line,
+.list-space-sidebar.dragging .resize-handle .resize-handle-line {
+  opacity: 1;
+  background: var(--td-brand-color);
+}
+
+.list-space-sidebar .resize-handle-line {
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+  background: var(--td-bg-color-component-disabled);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.list-space-sidebar .icon-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 56px;
+  padding: 12px 0 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.list-space-sidebar .icon-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.list-space-sidebar .icon-item-labeled {
+  width: 46px;
+  padding: 5px 0 2px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .icon-item-labeled:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .icon-item-labeled.active {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .icon-item-labeled.active:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.list-space-sidebar .icon-item-labeled.active .icon-label {
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .icon-item-labeled .space-avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.list-space-sidebar .icon-label {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--td-text-color-secondary);
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.list-space-sidebar .icon-strip-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--td-bg-color-secondarycontainer);
+  margin: 3px 0;
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .expanded-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  border-right: 1px solid var(--td-component-stroke);
+}
+
+.list-space-sidebar .expanded-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.list-space-sidebar .sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.list-space-sidebar .sidebar-item .item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.list-space-sidebar .sidebar-item .item-icon {
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  transition: color 0.15s ease;
+}
+
+.list-space-sidebar .sidebar-item .item-avatar {
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .sidebar-item .item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 430;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.list-space-sidebar .sidebar-item .item-count {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  margin-left: 6px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.list-space-sidebar .sidebar-item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item:hover .item-icon {
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item:hover .item-count {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item.active {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active .item-icon {
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active .item-count {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.list-space-sidebar .sidebar-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--td-component-stroke);
+}
+
+.list-space-sidebar .sidebar-section {
+  padding: 8px 6px 2px;
+  margin-top: 2px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.list-space-sidebar .sidebar-section .section-title {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* ============================================================================
+ * 4. OrganizationList.vue scoped 块 → 根类前缀 .org-list-container
+ * ========================================================================== */
+
+.org-list-container {
+  margin: 0 16px 0 0;
+  height: 100%;
+  box-sizing: border-box;
+  flex: 1;
+  display: flex;
+  position: relative;
+  min-height: 0;
+  /* §2.6：shell 行高归位 + Vue App.vue 全局 antialiased。 */
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.org-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px 28px 0 28px;
+}
+
+.org-list-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+}
+
+.org-list-container .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.org-list-container .header .header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.org-list-container .header .title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.org-list-container .header h2 {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.org-list-container .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.org-list-container .header-subtitle {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.org-list-container .header-action-btn {
+  padding: 0 !important;
+  min-width: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--td-bg-color-secondarycontainer) !important;
+  border: 1px solid var(--td-component-stroke) !important;
+  border-radius: 6px !important;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--td-bg-color-container) 72%, transparent);
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.org-list-container .header-action-btn:hover {
+  background: var(--td-bg-color-secondarycontainer) !important;
+  border-color: var(--td-component-stroke) !important;
+  color: var(--td-text-color-primary);
+}
+
+.org-list-container .header-action-btn .t-icon,
+.org-list-container .header-action-btn .btn-icon-wrapper,
+.org-list-container .header-action-btn .org-create-icon {
+  color: var(--td-brand-color);
+}
+
+.org-list-container .header-action-btn .org-create-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* 空状态双按钮（Vue :1183-1222 scoped 段，empty-state-actions 内）。 */
+.org-list-container .org-join-btn {
+  border-color: rgba(7, 192, 95, 0.5);
+  color: var(--td-brand-color);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.org-list-container .org-join-btn .t-icon {
+  color: var(--td-brand-color);
+}
+
+.org-list-container .org-join-btn:hover {
+  background: rgba(7, 192, 95, 0.08);
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+}
+
+.org-list-container .org-join-btn:hover .t-icon {
+  color: var(--td-brand-color);
+}
+
+.org-list-container .org-create-btn {
+  background: var(--td-brand-color);
+  border: none;
+  color: var(--td-text-color-anti);
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(7, 192, 95, 0.25);
+  transition: all 0.25s ease;
+}
+
+.org-list-container .org-create-btn:hover {
+  background: var(--td-brand-color);
+  box-shadow: 0 4px 14px rgba(7, 192, 95, 0.35);
+}
+
+.org-list-container .org-create-btn .org-create-icon {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0) invert(1);
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.org-card-wrap {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  animation: contentFadeIn 0.32s ease-out;
+}
+
+/* 共享空间分组标题——与 KB / Agent 列表口径一致。 */
+.org-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.org-section-header > * {
+  pointer-events: auto;
+}
+
+.org-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--td-bg-color-container);
+  box-shadow: 0 -8px 0 0 var(--td-bg-color-container),
+    0 4px 0 0 var(--td-bg-color-container);
+  padding: 6px 4px 6px 0;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.org-section-header:hover {
+  color: var(--td-text-color-primary);
+}
+
+.org-section-header:focus-visible {
+  box-shadow: 0 0 0 2px var(--td-brand-color-focus, rgba(0, 82, 217, 0.2));
+}
+
+.org-section-header .t-icon {
+  color: inherit;
+}
+
+.org-section-header .org-section-toggle {
+  margin-left: 4px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.org-section-header .org-section-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.org-section-header:hover .org-section-toggle {
+  opacity: 1;
+}
+
+.org-card-skeleton {
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  height: 136px;
+  min-height: 136px;
+}
+
+/* 与知识库 / 智能体列表统一：紧凑 + 1px 描边 */
+.org-card {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--td-bg-color-container);
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  height: 136px;
+  min-height: 136px;
+}
+
+.org-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 120px;
+  height: 80px;
+  background: radial-gradient(ellipse 60% 50% at 100% 0%, rgba(7, 192, 95, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.org-card.joined-org:hover {
+  border-color: rgba(7, 192, 95, 0.4);
+  box-shadow: 0 4px 16px rgba(7, 192, 95, 0.08);
+}
+
+.org-card:hover {
+  border-color: rgba(7, 192, 95, 0.5);
+  box-shadow: 0 6px 20px rgba(7, 192, 95, 0.12);
+}
+
+.org-card .card-decoration {
+  color: rgba(7, 192, 95, 0.35);
+}
+
+.org-card:hover .card-decoration {
+  color: rgba(7, 192, 95, 0.55);
+}
+
+.org-card .card-header {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 6px;
+}
+
+.org-card .card-title {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.org-card .card-content {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 6px;
+}
+
+.org-card .card-bottom {
+  position: relative;
+  z-index: 1;
+  padding-top: 6px;
+}
+
+.org-card .card-description {
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.org-card .more-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.org-card .more-wrap .more-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* 卡片装饰：协作网络图形 */
+.card-decoration {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 0;
+  transition: color 0.3s ease;
+}
+
+.card-decoration .card-deco-svg {
+  display: block;
+  width: 56px;
+  height: 40px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.org-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more-wrap {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.org-card:hover .more-wrap {
+  opacity: 0.6;
+}
+
+.more-wrap:hover {
+  background: var(--td-bg-color-container-hover);
+  opacity: 1 !important;
+}
+
+.more-wrap.active-more {
+  background: var(--td-bg-color-container-hover);
+  opacity: 1 !important;
+}
+
+.more-wrap .more-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* 与知识库卡片内容区一致 */
+.card-content {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 三个列表卡片统一：描述字体 */
+.card-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: .5px solid var(--td-component-stroke);
+}
+
+.bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.feature-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.feature-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--app-font-family);
+  cursor: default;
+  transition: background 0.2s ease;
+}
+
+.feature-badge .t-icon {
+  flex-shrink: 0;
+}
+
+.feature-badge .badge-count {
+  line-height: 1;
+}
+
+.feature-badge.stat-member {
+  background: rgba(100, 116, 139, 0.08);
+  color: var(--td-text-color-secondary);
+}
+
+.feature-badge.stat-member .t-icon {
+  color: var(--td-text-color-secondary);
+}
+
+.feature-badge.stat-member:hover {
+  background: rgba(100, 116, 139, 0.12);
+}
+
+.feature-badge.stat-kb {
+  background: rgba(7, 192, 95, 0.08);
+  color: var(--td-brand-color);
+}
+
+.feature-badge.stat-kb .t-icon {
+  color: var(--td-brand-color);
+}
+
+.feature-badge.stat-kb:hover {
+  background: rgba(7, 192, 95, 0.12);
+}
+
+.feature-badge.stat-agent {
+  background: rgba(124, 77, 255, 0.08);
+  color: var(--td-brand-color);
+}
+
+.feature-badge.stat-agent .stat-agent-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  /* 将绿色 icon 着色为紫色，与标签统一 */
+  filter: brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(2476%) hue-rotate(236deg);
+}
+
+.feature-badge.stat-agent:hover {
+  background: rgba(124, 77, 255, 0.12);
+}
+
+/* 待审核角标：与 feature-badge 同高 */
+.pending-requests-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(250, 173, 20, 0.12);
+  color: var(--td-warning-color);
+  white-space: nowrap;
+}
+
+.bottom-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.relation-role-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--app-font-family);
+  background: rgba(107, 114, 128, 0.08);
+  color: var(--td-text-color-secondary);
+}
+
+.relation-role-tag .t-icon {
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.relation-role-tag.owner {
+  background: rgba(124, 77, 255, 0.1);
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.owner .t-icon {
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.admin {
+  background: rgba(7, 192, 95, 0.12);
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.admin .t-icon {
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.editor {
+  background: rgba(7, 192, 95, 0.08);
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.editor .t-icon {
+  color: var(--td-brand-color);
+}
+
+.relation-role-tag.viewer {
+  background: rgba(107, 114, 128, 0.08);
+  color: var(--td-text-color-secondary);
+}
+
+.relation-role-tag.viewer .t-icon {
+  color: var(--td-text-color-secondary);
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+}
+
+.empty-state .empty-img {
+  width: 162px;
+  height: 162px;
+  margin-bottom: 20px;
+}
+
+.empty-state .empty-txt {
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  margin-bottom: 8px;
+}
+
+.empty-state .empty-desc {
+  color: var(--td-text-color-disabled);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  margin-bottom: 0;
+}
+
+.empty-state .empty-state-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* 响应式布局 */
+@media (min-width: 900px) {
+  .org-card-wrap {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1250px) {
+  .org-card-wrap {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1600px) {
+  .org-card-wrap {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1900px) {
+  .org-card-wrap {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 2200px) {
+  .org-card-wrap {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* ============================================================================
+ * 5. 删除/离开确认对话框（OrganizationList.vue :deep(.del-org-dialog) 段，
+ *    以 dialogClassName 限定作用域——语义与 [data-v] 等价）
+ * ========================================================================== */
+
+.del-org-dialog {
+  padding: 0px !important;
+  border-radius: 6px !important;
+}
+
+.del-org-dialog .t-dialog__header {
+  display: none;
+}
+
+.del-org-dialog .t-dialog__body {
+  padding: 16px;
+}
+
+.del-org-dialog .t-dialog__footer {
+  padding: 0;
+}
+
+/* Vue scoped :deep(.t-dialog__position.t-dialog--top) 全局段（agents/
+   kb-list 同款先例：Vue 端 t-dialog 默认 top 定位 padding-top 40vh）。 */
+.t-dialog__position.t-dialog--top {
+  padding-top: 40vh !important;
+}
+
+.del-org-dialog .circle-wrap .dialog-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.del-org-dialog .circle-wrap .circle-img {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
+
+.del-org-dialog .circle-wrap .circle-title {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.del-org-dialog .circle-wrap .del-circle-txt {
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  display: inline-block;
+  margin-left: 29px;
+  margin-bottom: 21px;
+}
+
+.del-org-dialog .circle-wrap .circle-btn {
+  height: 22px;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.del-org-dialog .circle-wrap .circle-btn-txt {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.del-org-dialog .circle-wrap .circle-btn-txt:hover {
+  opacity: 0.8;
+}
+
+.del-org-dialog .circle-wrap .circle-btn-txt.confirm {
+  color: var(--td-error-color);
+  margin-left: 40px;
+}
+
+.del-org-dialog .circle-wrap .circle-btn-txt.confirm:hover {
+  opacity: 0.8;
+}
+
+/* ============================================================================
+ * 6. OrganizationSettingsModal.vue scoped → 根类前缀 .settings-overlay
+ *    （Teleport body 弹层，覆盖壳层 + create 模式 basic/permissions 段；
+ *      编辑模式成员/共享等留守段容器为 .section v-show，内部样式由
+ *      R490 留守实现自持）
+ * ========================================================================== */
+
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+  overscroll-behavior: none;
+  /* §2.6：body 弹层显式归位 Vue 行高链。 */
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.settings-modal {
+  position: relative;
+  width: 90vw;
+  max-width: 1100px;
+  height: 85vh;
+  max-height: 750px;
+  background: var(--td-bg-color-container);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.settings-modal .close-btn:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.settings-modal .settings-container {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.settings-modal .settings-sidebar {
+  width: 208px;
+  background-color: var(--td-bg-color-settings-modal);
+  border-right: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal .sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.settings-modal .sidebar-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-modal .settings-nav {
+  flex: 1;
+  padding: 8px 8px 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.settings-modal .nav-group-title {
+  padding: 6px 14px 2px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-modal .settings-nav > .nav-group-title:first-child {
+  padding-top: 2px;
+}
+
+.settings-modal .settings-nav > .nav-group-title:not(:first-child) {
+  padding-top: 8px;
+}
+
+.settings-modal .nav-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  user-select: none;
+}
+
+.settings-modal .nav-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.settings-modal .nav-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.settings-modal .nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.settings-modal .nav-icon.nav-icon-img {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-modal .nav-label {
+  flex: 1;
+}
+
+.settings-modal .nav-badge {
+  flex-shrink: 0;
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.settings-modal .nav-badge.nav-badge-count {
+  min-width: 20px;
+}
+
+.settings-modal .settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--td-bg-color-container);
+}
+
+.settings-modal .content-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 28px 40px 48px;
+  box-sizing: border-box;
+  scroll-padding-bottom: 24px;
+  overscroll-behavior: contain;
+}
+
+.settings-modal .tenant-role-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: var(--td-warning-color-light);
+  border: 1px solid var(--td-warning-color-focus);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-warning-color-active);
+}
+
+.settings-modal .tenant-role-hint .t-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.settings-modal .section {
+  width: 100%;
+  animation: sectionFadeIn 0.25s ease;
+}
+
+.settings-modal .section .section-header {
+  margin-bottom: 20px;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-modal .section .section-header h2 {
+  margin: 0;
+  font-family: var(--app-font-family);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-modal .section .section-header .section-header-titlewrap h2 {
+  line-height: 1.25;
+}
+
+.settings-modal .section .section-header .section-description {
+  margin: 8px 0 0;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
+
+@keyframes sectionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-modal .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-modal .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+  min-width: 0;
+}
+
+.settings-modal .setting-row:first-child {
+  padding-top: 0;
+}
+
+.settings-modal .setting-row:last-child {
+  border-bottom: none;
+}
+
+.settings-modal .setting-row .setting-info {
+  flex: 0 0 42%;
+  max-width: 42%;
+  min-width: 0;
+  padding-right: 0;
+}
+
+.settings-modal .setting-row .setting-info.full-width {
+  max-width: 100%;
+  padding-right: 0;
+}
+
+.settings-modal .setting-row .setting-info label {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  margin-bottom: 4px;
+}
+
+.settings-modal .setting-row .setting-info label .required {
+  color: var(--td-error-color);
+  margin-left: 2px;
+}
+
+.settings-modal .setting-row .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settings-modal .setting-row .setting-control {
+  flex: 1 1 58%;
+  min-width: 0;
+  max-width: 58%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  overflow: hidden;
+}
+
+.settings-modal .setting-row .setting-control.full-width {
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.settings-modal .setting-row .setting-control .t-select,
+.settings-modal .setting-row .setting-control .t-input,
+.settings-modal .setting-row .setting-control .t-textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-modal .setting-row.setting-row-vertical {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-modal .setting-row.setting-row-vertical .setting-info {
+  max-width: 100%;
+  padding-right: 0;
+}
+
+.settings-modal .setting-row.setting-row-vertical .setting-control {
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.settings-modal .avatar-trigger-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 4px;
+  border-radius: 12px;
+  transition: background 0.2s ease;
+}
+
+.settings-modal .avatar-trigger-wrap:hover {
+  background: var(--td-bg-color-container-hover);
+}
+
+.settings-modal .avatar-change-hint {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  line-height: 1.2;
+}
+
+.settings-modal .name-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.settings-modal .name-input-wrapper .name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 创建模式权限说明卡片 */
+.settings-modal .permissions-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-modal .permission-card {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--td-component-stroke);
+}
+
+.settings-modal .permission-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.settings-modal .permission-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--td-text-color-anti);
+}
+
+.settings-modal .permission-icon.admin {
+  background: linear-gradient(135deg, var(--td-brand-color), var(--td-brand-color-active));
+}
+
+.settings-modal .permission-icon.editor {
+  background: linear-gradient(135deg, var(--td-warning-color), var(--td-warning-color-active));
+}
+
+.settings-modal .permission-icon.viewer {
+  background: var(--td-bg-color-component-disabled);
+}
+
+.settings-modal .permission-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-modal .permission-title .role-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-modal .permission-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-modal .permission-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-modal .permission-list .check-icon {
+  color: var(--td-brand-color);
+  font-size: 14px;
+}
+
+.settings-modal .permission-list .close-icon {
+  color: var(--td-error-color);
+  font-size: 14px;
+}
+
+.settings-modal .info-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: var(--td-brand-color-light);
+  border-radius: 8px;
+  color: var(--td-brand-color);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.settings-modal .info-notice .t-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 头像 Emoji 弹层内容（t-popup portal 到 body，unscoped 语义——类名带
+   avatar- 前缀原样平移不加根前缀）。 */
+.avatar-popover-content {
+  padding: 12px;
+  min-width: 260px;
+}
+
+.avatar-popover-title {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.4;
+}
+
+.avatar-popover-content .avatar-emoji-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 280px;
+}
+
+.avatar-popover-content .avatar-emoji-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+  font-size: 18px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.avatar-popover-content .avatar-emoji-btn:hover {
+  border-color: var(--td-brand-color);
+  background: rgba(7, 192, 95, 0.06);
+}
+
+.avatar-popover-content .avatar-emoji-btn.is-selected {
+  border-color: var(--td-brand-color);
+  background: rgba(7, 192, 95, 0.12);
+}
+
+.avatar-popover-content .avatar-clear-btn {
+  margin-top: 10px;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+}
+
+.avatar-popover-content .avatar-clear-btn:hover {
+  color: var(--td-brand-color-active);
+}
+
+/* 底部操作按钮 */
+.settings-modal .settings-footer {
+  padding: 12px 40px;
+  border-top: 1px solid var(--td-component-stroke);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+  background-color: var(--td-bg-color-container);
+}
+
+/* ============================================================================
+ * 7. 留守段残留 keyframes（organizations.css 收口后由本文件承接）
+ *    —— R488 D-B4.2 refresh-invite-code spinner（编辑模式邀请卡，R490
+ *       留守段专用，React-only 名，非 Vue 平移物）。
+ * ========================================================================== */
+
+@keyframes orgSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

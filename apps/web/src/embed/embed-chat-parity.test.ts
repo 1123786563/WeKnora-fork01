@@ -31,6 +31,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
 
+import * as React from 'react';
+// EmbedEntryPage.tsx JSX 走 classic 编译且无 React import 的模块按自由标识符落
+// globalThis.React 解析——挂全局（settings-error-ux 判例同款，embed-r443 同款修复）。
+(Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
+
 test('mapHistoryMessages mirrors the Vue session rows into the entry face', () => {
   const rows = [
     { role: 'user', content: 'hello' },

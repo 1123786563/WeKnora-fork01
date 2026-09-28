@@ -543,3 +543,10 @@
 ## 交付声明
 
 本轮全部成果（**551 个提交**，`29c1e5635..da0f7f0d2`：34 个 Issue 的实现（Go 后端 + 移动端/小程序全栈 + iOS/Android 打包工程面）、五个并行波次共 37 个集成 merge、五轮 OCR 修复共 51 个修复任务、五轮 iOS 实测与修复、Android 验收 runbook、全部文档证据与 Mimosa 裁决）均为**本地 worktree 分支 `codex/issue30-mobile-office` 及并行分支 `codex/issue30-t*` 上的本地提交**：**未推送远端、未合并到 `main` 主分支、未关闭任何 GitHub Issue**（#30–#71 全部保持原 open 状态，#58 维持既有 closed）。本报告主仓库副本（`/Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/FINAL-REPORT.md`）仅为文件落盘，不改变主仓库 git 状态。
+
+<!-- merge note (merge main into codex/issue30-mobile-office, add/add 冲突裁决)：
+  main 侧携带的同名文件是本报告的旧版（2026-09-25 全轮终版，覆盖 B1–B4 / 23 个
+  Issue / 344 提交 / HEAD bf44a4671），issue30 侧此版（2026-09-28 全轮终版 v2，
+  覆盖 B1–B5 / 34 个 Issue / 551 提交 / HEAD da0f7f0d2）在文首自述取代该旧版，
+  故按“一侧为另一侧更新版则取更新版”的裁决保留 v2 全文；旧版内容已被 v2 完整
+  覆盖，不再拼接。 -->

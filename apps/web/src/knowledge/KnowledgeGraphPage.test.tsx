@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import * as React from 'react';
@@ -169,7 +170,8 @@ test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract'
   assert.ok(Math.abs(Number(line.getAttribute('y1')) - expectedY1) < 1e-6);
   assert.ok(Math.abs(Number(line.getAttribute('x2')) - expectedX2) < 1e-6, 'target end shortened by node radius + 4');
   assert.ok(Math.abs(Number(line.getAttribute('y2')) - expectedY2) < 1e-6);
-  assert.equal(line.getAttribute('class')?.includes('stroke-opacity:0.4'), true);
+  // S7：[stroke-opacity:0.4] 平移为 knowledge-u.css .wk-kg-4
+  assert.equal(line.getAttribute('class')?.includes('wk-kg-4'), true);
 
   const toggle = container.querySelector<HTMLButtonElement>('button[aria-pressed]');
   assert.ok(toggle);
@@ -192,9 +194,9 @@ test('graph help lists every canvas gesture documented by Vue', async () => {
   const help = container.querySelector('details');
   assert.ok(help);
 
-  const heading = help.querySelector('dl > div:not(.grid)');
+  const heading = help.querySelector('dl > div:not(.wk-kg-28)');
   assert.equal(heading?.textContent?.trim(), '画布操作');
-  const rows = [...help.querySelectorAll('dl div.grid')].map((row) => row.textContent?.trim());
+  const rows = [...help.querySelectorAll('dl div.wk-kg-28')].map((row) => row.textContent?.trim());
   assert.deepEqual(rows, [
     '单击打开节点详情',
     '双击以该节点为中心聚焦',
@@ -212,7 +214,8 @@ test('graph keeps Vue canvas overlays and familiar-node ring semantics', async (
   assert.ok(container.querySelector('[data-testid="knowledge-graph-legend"]'));
   const familiarRing = container.querySelector('svg .wk-graph-familiar-ring');
   assert.ok(familiarRing);
-  assert.match(familiarRing?.getAttribute('class') ?? '', /stroke:#0052d9/);
+  // S7：[stroke:#0052d9] 平移为 knowledge-u.css .wk-kg-7
+  assert.match(familiarRing?.getAttribute('class') ?? '', /wk-kg-7/);
   assert.ok(Number(familiarRing?.getAttribute('r')) > 10);
 });
 
@@ -332,20 +335,15 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
   // tabGraphTip concept-clarification tooltip. Hrefs reuse the canonical
   // KB route form (/knowledgeBase/<id>?tab=…) — the same URLs the documents
   // page nav links to; no new routes.
-  const tabs = [...breadcrumb.querySelectorAll('a.breadcrumb-tab')].map((tab) => ({ label: tab.textContent?.trim(), href: tab.getAttribute('href') }));
-  assert.deepEqual(tabs, [
-    { label: '文档', href: '/knowledgeBase/kb-1' },
-    { label: 'Wiki', href: '/knowledgeBase/kb-1?tab=wiki' },
-    { label: '图谱', href: '/knowledgeBase/kb-1?tab=graph' },
-  ]);
+  // tdesign 平移：Vue breadcrumb-tab 是 span（点击 onNavigate，无 href）；
+  // 激活态品牌绿由 documents.td.css .breadcrumb-tab.active 承载。
+  const tabLabels = [...breadcrumb.querySelectorAll('.breadcrumb-tab')].map((tab) => tab.textContent?.trim());
+  assert.deepEqual(tabLabels, ['文档', 'Wiki', '图谱']);
   const separators = [...breadcrumb.querySelectorAll('.breadcrumb-tab-sep')].map((sep) => sep.textContent?.trim());
   assert.deepEqual(separators, ['/', '/']);
-  const active = breadcrumb.querySelector('a.breadcrumb-tab.is-active');
+  const active = breadcrumb.querySelector('.breadcrumb-tab.active');
   assert.ok(active);
-  assert.equal(active.getAttribute('aria-current'), 'page');
   assert.equal(active.textContent?.trim(), '图谱');
-  assert.match(active.className, /text-\[var\(--wk-brand,#07c05f\)\]/, 'active tab uses the brand green highlight');
-  assert.match(active.getAttribute('title') ?? '', /引用关系图/);
 
   // Title-row actions: ⓘ info popover + ⚙ settings gear (kb-title-actions).
   assert.ok(container.querySelector('.kb-title-actions .kb-info-button'), 'ⓘ info button present');

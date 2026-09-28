@@ -108,6 +108,7 @@ func TestMCPExposureWithoutMentionReachesProviderAndExecutes(t *testing.T) {
 				0,
 				nil,
 				metadata,
+				nil,
 			)
 			require.NoError(t, err)
 			if deferred {

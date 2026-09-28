@@ -15,11 +15,19 @@ import { resolveChatModelOptions } from './model-chip.ts';
  * chip stays enabled with the model listed.
  */
 
+/*
+ * B1 model-selector convergence: every option also carries the dropdown-row
+ * extras rawName (Vue v-if="model.display_name" suffix) and
+ * contextLabel/contextIsDefault (Vue formatContextWindow on
+ * parameters.context_window; the 200K backend default when absent).
+ */
 test('a chat model with an empty display_name still yields a dropdown option (Vue display_name || name)', () => {
   const options = resolveChatModelOptions([
     { id: 'builtin-llm-mock', name: 'mock-stream-model', display_name: '', type: 'KnowledgeQA' },
   ]);
-  assert.deepEqual(options, [{ id: 'builtin-llm-mock', name: 'mock-stream-model' }]);
+  assert.deepEqual(options, [
+    { id: 'builtin-llm-mock', name: 'mock-stream-model', contextLabel: '200K', contextIsDefault: true },
+  ]);
 });
 
 test('a missing display_name keeps falling back to name, and a real display_name wins', () => {
@@ -28,8 +36,8 @@ test('a missing display_name keeps falling back to name, and a real display_name
     { id: 'm-set', name: 'internal-id', display_name: '显示名' },
   ]);
   assert.deepEqual(options, [
-    { id: 'm-absent', name: 'name-only-model' },
-    { id: 'm-set', name: '显示名' },
+    { id: 'm-absent', name: 'name-only-model', contextLabel: '200K', contextIsDefault: true },
+    { id: 'm-set', name: '显示名', rawName: 'internal-id', contextLabel: '200K', contextIsDefault: true },
   ]);
 });
 
@@ -41,7 +49,10 @@ test('models without an id stay dropped; the id stays the final label fallback',
     { id: '', name: 'no-id' },
     { id: 'm-ok', name: 'kept' },
   ]);
-  assert.deepEqual(options, [{ id: 'm-blank', name: 'm-blank' }, { id: 'm-ok', name: 'kept' }]);
+  assert.deepEqual(options, [
+    { id: 'm-blank', name: 'm-blank', contextLabel: '200K', contextIsDefault: true },
+    { id: 'm-ok', name: 'kept', contextLabel: '200K', contextIsDefault: true },
+  ]);
 });
 
 test('chat route builds the composer model options through the Vue-parity resolver', () => {

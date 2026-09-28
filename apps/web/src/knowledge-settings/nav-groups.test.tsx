@@ -26,6 +26,13 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // tdesign-react Select/Popup 运行时（parserSettings 平移为 tdesign Select）。
+  Element: dom.window.Element,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Node: dom.window.Node,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -208,7 +215,11 @@ test('clicking a nav item activates it (Vue .nav-item.active) and swaps the cont
   const parserButton = navButtons().find((button) => button.getAttribute('data-section') === 'parser');
   await act(async () => { parserButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   assert.equal(storageButton!.className.includes('is-active'), false, 'previous item loses the active state');
-  assert.match(document.body.textContent ?? '', /MinerU/);
+  // tdesign Select 闭合态：选中项 label 走 trigger input 的 value，不出现在
+  // textContent（原生 <option> 文本已随 <select> 移除）。
+  const parserTrigger = document.body.querySelector('[data-parser-group="pdf"] .t-select__wrap');
+  const parserValue = (parserTrigger?.querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
+  assert.match(parserValue, /MinerU/);
 });
 
 test('R441 ports the basic section: the name editor renders instead of the placeholder', async () => {

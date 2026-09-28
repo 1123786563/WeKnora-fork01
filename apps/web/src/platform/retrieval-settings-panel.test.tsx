@@ -28,8 +28,21 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 

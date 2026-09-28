@@ -1,0 +1,119 @@
+/*
+ * apps / apps-connections 页 TDesign 同构样式（playbook §2 平移产物，Task 11b）。
+ *
+ * 事实源（Vue SFC <style scoped lang="less"> → 显式根类前缀，§2.2）：
+ *  1. frontend/src/views/apps/AppsView.vue —— 根类前缀 .apps-view。
+ *  2. frontend/src/views/apps/ConnectionsView.vue —— 根类前缀 .connections-view。
+ *
+ * 类名不改（§2.4）；--td-* 变量原样平移（T4 token 已接线）。
+ * §2.6：两页根显式 line-height normal + antialiased（shell 行高/平滑归位）。
+ */
+
+/* ============================================================================
+ * 1. AppsView.vue（scoped → 根类前缀 .apps-view）
+ * ========================================================================== */
+
+.apps-view {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.apps-view .apps-view__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.apps-view .apps-view__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.apps-view .apps-view__desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.apps-view .apps-view__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.apps-view .apps-view__subtitle {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.apps-view .apps-view__error {
+  margin-top: 8px;
+}
+
+/* ============================================================================
+ * 2. ConnectionsView.vue（scoped → 根类前缀 .connections-view）
+ * ========================================================================== */
+
+.connections-view {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.connections-view .connections-view__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.connections-view .connections-view__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.connections-view .connections-view__desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.connections-view .connections-view__mono {
+  font-family: var(--td-font-family-code, monospace);
+}
+
+.connections-view .connections-view__ops {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.connections-view .connections-view__cleanup-note {
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
+
+.connections-view .connections-view__error {
+  margin-top: 0;
+}

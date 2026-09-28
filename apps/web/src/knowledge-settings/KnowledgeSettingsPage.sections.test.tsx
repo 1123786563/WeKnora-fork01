@@ -22,6 +22,12 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // 分块段换 tdesign 控件（Select/Slider/Switch/InputNumber，弹层 Popup 系
+  // 需要 Element/Node/SVGElement/rAF —— SandboxSettingsPanel.test 同款先例）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -203,59 +209,75 @@ test('models section renders live llm/embedding selectors from the settings cata
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);
 });
 
-test('chunking section renders the Vue sliders, strategy select and overlap warning, and saves edited chunking values', async () => {
+test('chunking section renders the Vue tdesign chunking form and saves edited chunking values', async () => {
   const calls: UiCalls = { requests: [] };
   await renderPage(clientFor(calls));
   await openSection('chunking');
 
-  const strategy = labeledControl('select', 'Chunking Strategy') as HTMLSelectElement;
-  assert.deepEqual([...strategy.options].map((option) => option.value), ['', 'auto', 'heading', 'heuristic', 'legacy']);
-  assert.equal(strategy.value, 'auto');
+  /* px2-kb-settings-*：分块段换 KBChunkingSettings.vue 同构（.kb-chunking-
+     settings 布局类族 + tdesign 控件），断言走 t-* DOM（SandboxSettingsPanel
+     .test 同款口径）。 */
+  const section = document.body.querySelector('.kb-chunking-settings');
+  assert.ok(section, 'the chunking section renders the Vue .kb-chunking-settings shell');
+  assert.match(section.querySelector('.section-header h2')?.textContent ?? '', /Chunking Settings/, 'the Vue section-header h2 rides inside the section component');
 
-  const size = labeledControl('input', 'Chunk Size') as HTMLInputElement;
-  assert.equal(size.type, 'range');
-  assert.equal(size.min, '100');
-  assert.equal(size.max, '4000');
-  assert.equal(size.step, '50');
-  assert.equal(size.value, '700');
+  // Strategy select (Vue t-select): the trigger shows the committed label.
+  const strategyWrap = section.querySelector('.strategy-control .t-select__wrap');
+  assert.ok(strategyWrap, 'the strategy control is a tdesign select');
+  assert.match((strategyWrap.querySelector('input') as HTMLInputElement)?.value ?? '', /Automatic/, 'the committed strategy label shows in the trigger');
 
-  const overlap = labeledControl('input', 'Chunk Overlap') as HTMLInputElement;
-  assert.equal(overlap.min, '0');
-  assert.equal(overlap.max, '500');
-  assert.equal(overlap.step, '20');
-  assert.equal(overlap.value, '90');
-  assert.equal(document.body.textContent?.includes('Overlap is large compared to chunk size'), false, 'no warning while overlap is below half the chunk size');
+  // Sliders (Vue t-slider): two rows always render (size/overlap) plus the
+  // parent/child pair while parent-child is on; marks render under the track.
+  const sliderMarks = () => [...section.querySelectorAll('.t-slider')].map((slider) => [...slider.querySelectorAll('.t-slider__mark-text')].map((mark) => mark.textContent));
+  assert.deepEqual(sliderMarks(), [
+    ['100', '1000', '2000', '4000'],
+    ['0', '250', '500'],
+    ['512', '2048', '4096', '8192'],
+    ['64', '384', '1024', '2048'],
+  ], 'size/overlap + parent/child sliders render the Vue numeric mark tiers');
+  const valueDisplays = [...section.querySelectorAll('.value-display')].map((node) => node.textContent);
+  assert.deepEqual(valueDisplays, ['700 characters', '90 characters', '4096 characters', '384 characters'], 'the live value displays ride beside each slider');
 
-  const parentChild = labeledControl('input', 'Parent-Child Chunking') as HTMLInputElement;
-  assert.equal(parentChild.type, 'checkbox');
-  assert.equal(parentChild.checked, true, 'the committed parent-child flag preselects the toggle');
-  assert.ok(labeledControl('input', 'Parent Chunk Size'), 'parent slider shows while parent-child is on');
-  assert.ok(labeledControl('input', 'Child Chunk Size'), 'child slider shows while parent-child is on');
+  assert.equal((section.textContent ?? '').includes('Overlap is large compared to chunk size'), false, 'no warning while overlap is below half the chunk size');
 
-  await act(async () => {
-    setNativeValue(size, '800');
-    setNativeValue(overlap, '400');
-  });
-  assert.match(document.body.textContent ?? '', /Overlap is large compared to chunk size/, 'raising overlap past chunkSize/2 surfaces the Vue warning');
+  // Parent-child switch (Vue t-switch) is on; the t-is-checked state class
+  // mirrors the committed flag (台账 #2 button-root 差异扫描豁免口径)。
+  const parentSwitch = section.querySelector('.setting-row--toggle .t-switch') as HTMLElement;
+  assert.ok(parentSwitch, 'the parent-child toggle renders as a tdesign switch');
+  assert.match(parentSwitch.className, /t-is-checked/, 'the committed parent-child flag preselects the switch');
 
-  const advancedToggle = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Advanced options'));
+  // Advanced options collapsed by default (Vue v-if).
+  const advancedToggle = [...section.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Advanced options'));
   assert.ok(advancedToggle, 'expected the collapsed advanced-options toggle');
-  assert.ok(!labeledControlSafe('input', 'Token limit per chunk'), 'token limit stays hidden until the toggle opens');
+  assert.ok(!section.querySelector('.advanced-section'), 'the advanced panel stays hidden until the toggle opens');
   await act(async () => { advancedToggle!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
-  const tokenLimit = labeledControl('input', 'Token limit per chunk') as HTMLInputElement;
-  assert.equal(tokenLimit.type, 'number');
-  assert.equal(tokenLimit.value, '0');
-  const languages = labeledControl('select', 'Language hints') as HTMLSelectElement;
-  assert.equal(languages.multiple, true);
-  assert.deepEqual([...languages.options].map((option) => option.value), ['de', 'en', 'zh']);
+  const tokenInput = section.querySelector('.advanced-section .t-input-number input') as HTMLInputElement;
+  assert.ok(tokenInput, 'the token limit renders as a tdesign input-number');
+  assert.equal(tokenInput.value, '0');
+
+  // Language hints select (multiple) renders its popup options on open.
+  // tdesign 弹层触发器在内层 .t-input（点 wrap 不开弹层，jsdom 实证）。
+  const languageInput = section.querySelector('.advanced-section .t-select__wrap .t-input') as HTMLElement;
+  assert.ok(languageInput, 'the language hints control is a tdesign multiple select');
+  await act(async () => { languageInput.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  const languageOptions = [...document.body.querySelectorAll('.t-select-option')].map((option) => (option.textContent ?? '').trim());
+  assert.ok(languageOptions.some((value) => /German/.test(value)) && languageOptions.some((value) => /Chinese/.test(value)), `the language popup lists the Vue options, got: ${JSON.stringify(languageOptions)}`);
+
+  // Strategy re-pick through the popup (SandboxSettingsPanel chooseBackend 同款；
+  // 触发器在内层 .t-input).
+  const strategyInput = strategyWrap.querySelector('.t-input') as HTMLElement;
+  await act(async () => { strategyInput.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  const headingOption = [...document.body.querySelectorAll('.t-select-option')].find((option) => (option.textContent ?? '').trim() === 'Heading-aware');
+  assert.ok(headingOption, 'the strategy popup lists the Vue options');
+  await act(async () => { headingOption!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
 
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount probe + base update + config PUT');
   const splitting = (calls.requests[2]!.body as Record<string, any>).documentSplitting;
-  assert.equal(splitting.chunkSize, 800);
-  assert.equal(splitting.chunkOverlap, 400);
-  assert.equal(splitting.strategy, 'auto');
+  assert.equal(splitting.chunkSize, 700);
+  assert.equal(splitting.chunkOverlap, 90);
+  assert.equal(splitting.strategy, 'heading', 'the popup re-pick reaches the save payload');
   assert.equal(splitting.enableParentChild, true);
   assert.equal(splitting.parentChunkSize, 4096);
   assert.equal(splitting.childChunkSize, 384);

@@ -1,11 +1,12 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Input, Range, Select, Status, Switch } from '@weknora/ui';
+import { Button as TButton, Input as TInput, Select as TSelect, Slider as TSlider, Switch as TSwitch } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { settingsConfigPatch, tenantModelIds } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
-type ConfigSection = 'retrieval' | 'chathistory' | 'parser';
+type ConfigSection = 'retrieval' | 'parser';
 type ConfigValues = Record<string, unknown>;
 
 export interface SettingsModelOption { readonly id: string; readonly name?: string }
@@ -36,7 +37,6 @@ function initialValues(section: ConfigSection, value: unknown): ConfigValues {
     rerank_threshold: number(row.rerank_threshold, 0.2),
     rerank_model_id: text(row.rerank_model_id),
   };
-  if (section === 'chathistory') return { enabled: row.enabled === true, embedding_model_id: text(row.embedding_model_id) };
   return {
     mineru_endpoint: text(row.mineru_endpoint), mineru_api_key: '', mineru_model: text(row.mineru_model) || 'pipeline',
     mineru_vlm_server_url: text(row.mineru_vlm_server_url), mineru_enable_formula: row.mineru_enable_formula !== false,
@@ -54,7 +54,6 @@ function initialValues(section: ConfigSection, value: unknown): ConfigValues {
 
 function configApi(client: WeKnoraClient, section: ConfigSection) {
   if (section === 'retrieval') return client.settings.retrieval;
-  if (section === 'chathistory') return client.settings.chatHistory.config;
   return client.settings.parser.config;
 }
 
@@ -62,22 +61,19 @@ function isDirty(section: ConfigSection, saved: ConfigValues, current: ConfigVal
   return Object.keys(saved).some((key) => String(saved[key]) !== String(current[key]));
 }
 
-export function ConfigSettingsPanel({ client, section, initialValue, models, embeddingLocked, stats, onSaved }: {
+export function ConfigSettingsPanel({ client, section, initialValue, models, onSaved }: {
   client: WeKnoraClient;
   section: ConfigSection;
   initialValue: unknown;
   models?: readonly SettingsModelOption[];
-  embeddingLocked?: boolean;
-  /** ChathistorySettings.vue stats block (getChatHistoryKBStats). */
-  stats?: unknown;
   onSaved?: () => void;
 }) {
   const api = configApi(client, section);
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const parserCopy = PARSER_COPY[locale];
-  const saveSuccessKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveSuccess' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveSuccess' : 'settings.parser.saveSuccess';
-  const saveFailedKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveFailed' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveFailed' : 'settings.parser.saveFailed';
+  const saveSuccessKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveSuccess' : 'settings.parser.saveSuccess';
+  const saveFailedKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveFailed' : 'settings.parser.saveFailed';
   const savedValues = useMemo(() => initialValues(section, initialValue), [section, initialValue]);
   const [values, setValues] = useState<ConfigValues>(savedValues);
   const [busy, setBusy] = useState(false);
@@ -109,10 +105,10 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     } finally { savingRef.current = false; setBusy(false); }
   }
 
-  // Vue RetrievalSettings and ChatHistorySettings persist changes after a
-  // 500ms debounce; retain the existing submit path for parser settings only.
+  // Vue RetrievalSettings persists changes after a 500ms debounce; retain the
+  // existing submit path for parser settings only.
   useEffect(() => {
-    if (section !== 'retrieval' && section !== 'chathistory') return;
+    if (section !== 'retrieval') return;
     if (!dirty || savingRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveValues(values); }, 500);
@@ -143,122 +139,72 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     finally { setBusy(false); }
   }
 
-  const modelSelect = (key: 'rerank_model_id' | 'embedding_model_id', disabled: boolean) => <Select
-    data-testid={key}
+  const modelSelect = (key: 'rerank_model_id', disabled: boolean) => <TSelect
+    className={"wk-config-sel-" + key}
     value={String(values[key] ?? '')}
     disabled={disabled}
-    onChange={(event) => setValue(key, event.target.value)}
-  >
-    <option value="">—</option>
-    {modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name ? model.name + ' (' + model.id + ')' : model.id}</option>)}
-  </Select>;
+    clearable
+    options={[{ value: '', label: '—' }, ...modelOptions.map((model) => ({ value: model.id, label: model.name ? model.name + ' (' + model.id + ')' : model.id }))]}
+    onChange={(value) => setValue(key, String(value))}
+  />;
 
-  const parserToggle = (key: string, label: string) => <label className="flex items-center gap-2 text-sm font-normal">
-    <Switch checked={values[key] === true} disabled={busy} onCheckedChange={(checked) => setValue(key, checked)} aria-label={label} />
+  const parserToggle = (key: string, label: string) => <label className="wk-config-toggle">
+    <TSwitch value={values[key] === true} disabled={busy} onChange={(checked) => setValue(key, Boolean(checked))} aria-label={label} />
     {label}
   </label>;
 
   const slider = (key: string, min: number, max: number, step: number, label: string, format: (value: number) => string = String) => {
     const value = number(values[key], min);
-    return <label className="grid gap-2 border-b border-line-soft py-4 last:border-b-0">
-      <span className="flex items-center justify-between text-sm font-medium text-ink"><span>{label}</span><output className="font-mono text-[13px] font-semibold text-accent">{format(value)}</output></span>
-      <Range min={min} max={max} step={step} value={value} disabled={busy} aria-label={label} onChange={(event) => setValue(key, Number(event.target.value))} />
+    return <label className="wk-config-slider-row">
+      <span className="wk-config-slider-head"><span>{label}</span><output className="wk-config-slider-value">{format(value)}</output></span>
+      <TSlider min={min} max={max} step={step} value={value} disabled={busy} aria-label={label} onChange={(value) => setValue(key, Number(value))} />
     </label>;
   };
 
-  // Vue ChatHistorySettings.vue renders the enable row + stats directly on the
-  // panel background — no outer card (only retrieval/parser keep it).
-  const Shell: typeof Card | typeof Fragment = section === 'chathistory' ? Fragment : Card;
-  // ChathistorySettings.vue rows sit on the full-width settings-group (the
-  // enable switch hugs the panel's right edge); the .wk-chathistory-settings
-  // root lets settings-wrapper.css drop the shared 620px form cap and grid
-  // gap for this section only.
   const content = (
     <>
-    <Shell>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
+    <Card>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
     the 配置知识库搜索和消息搜索的全局检索参数 description under it. */}
-    {section === 'retrieval' ? <div className="section-header mb-2 grid gap-1">
-      <h2 className="m-0 text-base font-semibold text-ink">{t('retrievalSettings.title')}</h2>
-      <p className="section-description m-0 text-xs leading-5 text-muted">{t('retrievalSettings.description')}</p>
-    </div> : null}<form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <>
-      {modelOptions.length > 0 ? <label className="grid gap-1 border-b border-line-soft py-4"><span className="text-sm font-medium text-ink">{t('retrievalSettings.rerankModelLabel')} <span className="text-danger">*</span></span><span className="text-xs font-normal leading-5 text-muted">{t('retrievalSettings.rerankModelDescription')}</span>{!values.rerank_model_id ? <span className="text-xs font-normal text-warning-text">{t('retrievalSettings.rerankModelRequired')}</span> : null}{modelSelect('rerank_model_id', busy)}</label> : null}
+    {section === 'retrieval' ? <div className="section-header wk-config-header">
+      <h2>{t('retrievalSettings.title')}</h2>
+      <p className="section-description">{t('retrievalSettings.description')}</p>
+    </div> : null}<form className="wk-settings-editor wk-config-editor" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <>
+      {modelOptions.length > 0 ? <label className="wk-config-model-row"><span className="wk-config-model-label">{t('retrievalSettings.rerankModelLabel')} <span className="wk-config-star">*</span></span><span className="wk-config-model-desc">{t('retrievalSettings.rerankModelDescription')}</span>{!values.rerank_model_id ? <span className="wk-config-model-warn">{t('retrievalSettings.rerankModelRequired')}</span> : null}{modelSelect('rerank_model_id', busy)}</label> : null}
       {slider('embedding_top_k', 1, 100, 1, t('retrievalSettings.embeddingTopKLabel'))}
       {slider('vector_threshold', 0, 1, 0.05, t('retrievalSettings.vectorThresholdLabel'), (value) => value.toFixed(2))}
       {slider('keyword_threshold', 0, 1, 0.05, t('retrievalSettings.keywordThresholdLabel'), (value) => value.toFixed(2))}
       {slider('rerank_top_k', 1, 100, 1, t('retrievalSettings.rerankTopKLabel'))}
       {slider('rerank_threshold', -10, 10, 0.1, t('retrievalSettings.rerankThresholdLabel'), (value) => value.toFixed(2))}
-      {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<Input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} /></label> : null}
-    </> : section === 'chathistory' ? <>
-      <div className="setting-row">
-        <div className="setting-info">
-          <label>{t('chatHistorySettings.enableLabel')}</label>
-          <p className="desc">{t('chatHistorySettings.enableDescription')}</p>
-        </div>
-        <div className="setting-control">
-          <Switch checked={values.enabled === true} disabled={busy} onCheckedChange={(checked) => setValue('enabled', checked)} aria-label={t('chatHistorySettings.enableLabel')} />
-        </div>
-      </div>
-      {values.enabled === true ? <div className="setting-row">
-        <div className="setting-info">
-          <label>{t('chatHistorySettings.embeddingModelLabel')}</label>
-          <p className="desc">{t('chatHistorySettings.embeddingModelDescription')}</p>
-          {embeddingLocked === true ? <p className="desc warning-text text-[#b26a08]" data-testid="embedding-locked-note">{t('chatHistorySettings.embeddingModelLocked')}</p> : null}
-        </div>
-        <div className="setting-control setting-control--model">
-          {modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true) : <Input value={String(values.embedding_model_id)} disabled={embeddingLocked === true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}
-        </div>
-      </div> : null}
+      {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<TInput value={String(values.rerank_model_id)} onChange={(value) => setValue('rerank_model_id', String(value))} /></label> : null}
     </> : <>
-      <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU</h3>
-        <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label>
-        <label>Backend<Select data-testid="mineru-model" value={String(values.mineru_model)} onChange={(event) => setValue('mineru_model', event.target.value)}><option value="pipeline">pipeline</option><option value="vlm-auto-engine">vlm-auto-engine</option><option value="vlm-http-client">vlm-http-client</option><option value="hybrid-auto-engine">hybrid-auto-engine</option><option value="hybrid-http-client">hybrid-http-client</option></Select></label>
-        <label>vLLM {t('settings.parser.serverUrl')}<Input data-testid="mineru-vllm-server-url" type="url" value={String(values.mineru_vlm_server_url)} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(event) => setValue('mineru_vlm_server_url', event.target.value)} /></label>
-        <label>{t('settings.parser.parseMethodLabel')}<Select data-testid="mineru-parse-method" value={String(values.mineru_parse_method)} onChange={(event) => setValue('mineru_parse_method', event.target.value)}><option value="auto">{t('settings.parser.parseMethodAuto')}</option><option value="ocr">{t('settings.parser.parseMethodOCR')}</option><option value="txt">{t('settings.parser.parseMethodText')}</option></Select></label>
-        <div className="flex flex-wrap gap-4">{parserToggle('mineru_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_enable_table', t('settings.parser.tableRecognition'))}</div>
-        <label>{t('settings.parser.language')}<Input data-testid="mineru-language" value={String(values.mineru_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => setValue('mineru_language', event.target.value)} /></label>
+      <section className="wk-config-section"><h3>MinerU</h3>
+        <label>{t('settings.parser.selfHostedEndpoint')}<TInput data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(value) => setValue('mineru_endpoint', String(value))} /></label>
+        <label>Backend<TSelect className="wk-config-sel-mineru-model" value={String(values.mineru_model)} options={[{ value: 'pipeline', label: 'pipeline' }, { value: 'vlm-auto-engine', label: 'vlm-auto-engine' }, { value: 'vlm-http-client', label: 'vlm-http-client' }, { value: 'hybrid-auto-engine', label: 'hybrid-auto-engine' }, { value: 'hybrid-http-client', label: 'hybrid-http-client' }]} onChange={(value) => setValue('mineru_model', String(value))} /></label>
+        <label>vLLM {t('settings.parser.serverUrl')}<TInput data-testid="mineru-vllm-server-url" type="url" value={String(values.mineru_vlm_server_url)} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(value) => setValue('mineru_vlm_server_url', String(value))} /></label>
+        <label>{t('settings.parser.parseMethodLabel')}<TSelect className="wk-config-sel-mineru-parse-method" value={String(values.mineru_parse_method)} options={[{ value: 'auto', label: t('settings.parser.parseMethodAuto') }, { value: 'ocr', label: t('settings.parser.parseMethodOCR') }, { value: 'txt', label: t('settings.parser.parseMethodText') }]} onChange={(value) => setValue('mineru_parse_method', String(value))} /></label>
+        <div className="wk-config-toggles">{parserToggle('mineru_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_enable_table', t('settings.parser.tableRecognition'))}</div>
+        <label>{t('settings.parser.language')}<TInput data-testid="mineru-language" value={String(values.mineru_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => setValue('mineru_language', String(value))} /></label>
       </section>
-      <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU Cloud</h3>
-        <label>{t('settings.sandbox.apiKey')}<Input type="password" autoComplete="new-password" placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} value={String(values.mineru_api_key)} onChange={(event) => setValue('mineru_api_key', event.target.value)} /></label>
-        <label>Model Version<Select data-testid="mineru-cloud-model" value={String(values.mineru_cloud_model)} onChange={(event) => setValue('mineru_cloud_model', event.target.value)}><option value="pipeline">pipeline</option><option value="vlm">VLM</option><option value="MinerU-HTML">MinerU-HTML</option></Select></label>
-        <div className="flex flex-wrap gap-4">{parserToggle('mineru_cloud_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_cloud_enable_table', t('settings.parser.tableRecognition'))}{parserToggle('mineru_cloud_enable_ocr', 'OCR')}</div>
-        <label>{t('settings.parser.language')}<Input value={String(values.mineru_cloud_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => setValue('mineru_cloud_language', event.target.value)} /></label>
+      <section className="wk-config-section"><h3>MinerU Cloud</h3>
+        <label>{t('settings.sandbox.apiKey')}<TInput type="password" autocomplete="new-password" placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} value={String(values.mineru_api_key)} onChange={(value) => setValue('mineru_api_key', String(value))} /></label>
+        <label>Model Version<TSelect className="wk-config-sel-mineru-cloud-model" value={String(values.mineru_cloud_model)} options={[{ value: 'pipeline', label: 'pipeline' }, { value: 'vlm', label: 'VLM' }, { value: 'MinerU-HTML', label: 'MinerU-HTML' }]} onChange={(value) => setValue('mineru_cloud_model', String(value))} /></label>
+        <div className="wk-config-toggles">{parserToggle('mineru_cloud_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_cloud_enable_table', t('settings.parser.tableRecognition'))}{parserToggle('mineru_cloud_enable_ocr', 'OCR')}</div>
+        <label>{t('settings.parser.language')}<TInput value={String(values.mineru_cloud_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => setValue('mineru_cloud_language', String(value))} /></label>
       </section>
-      <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">PaddleOCR-VL</h3>
-        <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="paddleocr-vl-endpoint" type="url" value={String(values.paddleocr_vl_endpoint)} placeholder={t('settings.parser.paddleOcrEndpointPlaceholder')} onChange={(event) => setValue('paddleocr_vl_endpoint', event.target.value)} /></label>
-        <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
+      <section className="wk-config-section"><h3>PaddleOCR-VL</h3>
+        <label>{t('settings.parser.selfHostedEndpoint')}<TInput data-testid="paddleocr-vl-endpoint" type="url" value={String(values.paddleocr_vl_endpoint)} placeholder={t('settings.parser.paddleOcrEndpointPlaceholder')} onChange={(value) => setValue('paddleocr_vl_endpoint', String(value))} /></label>
+        <div className="wk-config-toggles">{parserToggle('paddleocr_vl_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
       </section>
-      <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">PaddleOCR-VL Cloud</h3>
-        <label>Access Token<Input type="password" autoComplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(event) => setValue('paddleocr_vl_cloud_token', event.target.value)} /></label>
-        <label>Model<Select data-testid="paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} onChange={(event) => setValue('paddleocr_vl_cloud_model', event.target.value)}><option value="PaddleOCR-VL-1.6">PaddleOCR-VL-1.6</option><option value="PaddleOCR-VL-1.5">PaddleOCR-VL-1.5</option></Select></label>
-        <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_cloud_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_cloud_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
-      </section><p className="wk-muted text-muted">{parserCopy}</p></>}{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
+      <section className="wk-config-section"><h3>PaddleOCR-VL Cloud</h3>
+        <label>Access Token<TInput type="password" autocomplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(value) => setValue('paddleocr_vl_cloud_token', String(value))} /></label>
+        <label>Model<TSelect className="wk-config-sel-paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} options={[{ value: 'PaddleOCR-VL-1.6', label: 'PaddleOCR-VL-1.6' }, { value: 'PaddleOCR-VL-1.5', label: 'PaddleOCR-VL-1.5' }]} onChange={(value) => setValue('paddleocr_vl_cloud_model', String(value))} /></label>
+        <div className="wk-config-toggles">{parserToggle('paddleocr_vl_cloud_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_cloud_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
+      </section><p className="wk-muted">{parserCopy}</p></>}{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
           ChatHistorySettings (RetrievalSettings.vue handleParamChange →
           debouncedSave), so neither surface renders a save button; only the
-          parser section keeps its explicit 保存 + test-connection footer.
-          R5xx 清扫：chathistory/retrieval 不再渲染空的操作行——空的 12px
-          margin 会让 stats-section 整体下移（Vue 无此行）。 */}
-          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Shell>
-    {section === 'chathistory' ? (
-      <div className="stats-section mt-5" data-testid="chat-history-stats">
-        <h3 className="stats-title m-0 mb-4 text-[15px] font-semibold [line-height:normal]">{t('chatHistorySettings.statsTitle')}</h3>
-        {stats !== null && stats !== undefined && typeof stats === 'object' && (stats as Record<string, unknown>).enabled === true && (stats as Record<string, unknown>).knowledge_base_id ? (
-          <div className="stats-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-            <div className="stat-card rounded-[10px] border border-[rgba(120,135,155,0.3)] bg-white p-4 text-center">
-              <div className="stat-value text-[22px] font-semibold [font-variant-numeric:tabular-nums]">{String((stats as Record<string, unknown>).indexed_message_count ?? 0)}</div>
-              <div className="stat-label mt-1 text-xs text-[#5c6b83]">{t('chatHistorySettings.statsIndexedMessages')}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="stats-empty rounded-[8px] bg-[#f3f3f3] px-6 py-6 text-center [border:0]">
-            <p className="stats-empty-title m-0 mb-1 font-medium [line-height:normal]">{t('chatHistorySettings.statsNotConfigured')}</p>
-            <p className="stats-empty-desc m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
-          </div>
-        )}
-      </div>
-    ) : null}
+          parser section keeps its explicit 保存 + test-connection footer. */}
+          {section === 'parser' ? <div className="wk-list-actions"><TButton type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</TButton><TButton type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</TButton></div> : null}</form></Card>
     </>
   );
-  return section === 'chathistory'
-    ? <div className="wk-chathistory-settings">{content}</div>
-    : content;
+  return content;
 }

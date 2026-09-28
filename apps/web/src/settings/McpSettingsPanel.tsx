@@ -1,29 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
+// 批 3 终局：MCP 面板对齐 Vue McpSettings.vue（service-card 家族列表卡）+
+// McpServiceDialog.vue（SettingDrawer 抽屉，mcp-drawer--{transport} 家族）。
+import { Button as TButton, Input as TInput, Loading as TLoading, Switch as TSwitch, Textarea as TTextarea } from "tdesign-react";
+import { WkStatus as Status } from "../shared/wk-legacy.tsx";
+import { Icon as TIcon } from "tdesign-icons-react";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { pushSettingsToast } from "./settings-toast.tsx";
+import { SettingDrawer } from "./SettingDrawer.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
+import { MCP_OAUTH_CALLBACK_PATH, MCP_OAUTH_POLL_ATTEMPTS, MCP_OAUTH_POLL_INTERVAL_MS, MCP_OAUTH_POPUP_FEATURES, MCP_OAUTH_POPUP_NAME } from "../plugins/oauth.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
-/* Tailwind utilities migrated from the deleted .wk-mcp-* rules in styles.css
-   (see docs/plans/tailwind-shadcn-conventions.md). Values encode the effective
-   cascade result, including ! where a retained unlayered rule competes. */
-const mcpServerDocsButton = "ml-2 rounded-[4px] border-0 bg-transparent px-1 py-[0.1rem] text-[#2e6de6] cursor-pointer [font:inherit] hover:bg-[#eef4ff]";
-const mcpIconButton = "h-6 w-6 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-[16px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none";
-const mcpStepButton = "flex min-w-0 items-center gap-2 cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[#98a2b8] disabled:cursor-default disabled:opacity-60";
-const mcpMetadata = "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5";
-const mcpToolsLink = "inline-flex min-w-0 max-w-full items-center gap-1 rounded-[6px] border-0 bg-[#f3f5f8] px-1.5 py-0.5 text-left [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
-const mcpType = "shrink-0 text-[11px] leading-[18px] text-[#66758b]";
-const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] disabled:cursor-wait";
-const mcpSourceOptions = "inline-flex items-center gap-1 rounded-[8px] border border-[#dce3ed] bg-[#f2f4f8] p-[3px]";
-const mcpSourceOption = "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] border border-transparent bg-transparent px-3 py-[5px] text-[13px] leading-none text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#07c05f]";
-const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
-const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
-const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
-const mcpBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
+/* S6 Tailwind 收编：原 .wk-mcp-* utility 串（migrated 1:1 from the deleted
+   styles.css rules）→ settings-wrapper.css 的 scoped 规则；取值 = utilities
+   字面量。落在 tdesign 组件 className 上的 utility（TButton h-7/px-3 等）
+   在 v4 utilities layer 中本就敌不过 unlayered 的 .t-button* 规则——为保
+   现渲染不移植，仅保留语义 hook 类。 */
 
 function McpCardIcon({ name, size = 14 }: { name: "tools" | "edit" | "delete" | "add" | "chevron-right" | "error"; size?: number }) {
   const paths = {
@@ -108,13 +103,13 @@ function McpDrawerShell({ children }: { children: React.ReactElement<{ children?
 
   const handle = (
     <div
-      className={`group/mcp-resize fixed bottom-0 right-[var(--mcp-drawer-width)] top-0 z-[2600] w-3 cursor-col-resize ${resizing ? "is-active" : ""}`}
+      className={'wk-mcp-resize-handle' + (resizing ? " is-active" : "")}
       role="separator"
       aria-orientation="vertical"
       aria-label="调整抽屉宽度"
       onMouseDown={onHandleDown}
     >
-      <div className={`mx-auto h-full w-0.5 ${resizing ? "bg-primary" : "bg-transparent group-hover/mcp-resize:bg-primary"}`} />
+      <div className={'wk-mcp-resize-bar' + (resizing ? ' is-active' : '')} />
     </div>
   );
   const content = React.isValidElement(children)
@@ -122,7 +117,7 @@ function McpDrawerShell({ children }: { children: React.ReactElement<{ children?
     : children;
   return (
     <div
-      className="contents"
+      className="wk-settings-context-contents"
       data-resizing={resizing || undefined}
       style={{ "--mcp-drawer-width": `${width}px` } as React.CSSProperties}
     >
@@ -480,35 +475,35 @@ function McpMetadataSection({
       : date.toLocaleString();
   }
   return (
-    <section className="wk-mcp-metadata mt-[1.1rem] border-t border-[#edf0f5] pt-4" aria-label={t("mcpMetadata.tools")}>
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
+    <section className="wk-mcp-metadata" aria-label={t("mcpMetadata.tools")}>
+      <div className="wk-settings-panel-heading wk-mcp-sticky-head">
         <div>
           <h4>{t("mcpMetadata.tools")}</h4>
-          <p className="wk-muted text-muted m-0">{t("mcpMetadata.cacheHint")}</p>
+          <p className="wk-muted wk-mcp-head-desc">{t("mcpMetadata.cacheHint")}</p>
         </div>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          <Button
+        <div className="wk-list-actions">
+          <TButton
             type="button"
             disabled={busy || disabled}
             onClick={() => void load(true)}
           >
             {metadata ? t("mcpMetadata.refresh") : t("mcpMetadata.fetch")}
-          </Button>
+          </TButton>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {metadata ? (
         <>
-          <div className={`relative ${metadata.stale ? "text-[#b54708] text-[.85rem]" : "wk-muted text-muted"}`}>
+          <div className={'wk-mcp-sync-line' + (metadata.stale ? ' is-stale' : '')}>
             {t("mcpMetadata.toolCount", { count: metadata.tools.length })}
             {metadata.serverName
               ? " · " + metadata.serverName + " " + (metadata.serverVersion ?? "")
               : ""}
             {syncedAt ? " · " + t("mcpMetadata.syncedAt") + syncedAt : ""}
             {metadata.stale ? " · " + t("mcpMetadata.stale") : ""}
-            {metadata.instructions || metadata.serverDescription ? <><button type="button" className={`wk-mcp-server-docs-trigger ${mcpServerDocsButton}`} aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="absolute z-20 mt-[.4rem] grid w-[min(360px,calc(100vw_-_2rem))] gap-2 border border-[#dce3ed] rounded-[7px] bg-white p-3 shadow-[0_12px_30px_rgb(23_32_51_/_18%)] whitespace-normal text-[#172033]" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre className="m-0 max-h-[180px] overflow-auto whitespace-pre-wrap [font:inherit]">{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className={mcpServerDocsButton} aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
+            {metadata.instructions || metadata.serverDescription ? <><button type="button" className={'wk-mcp-server-docs-trigger wk-mcp-docs-btn'} aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="wk-mcp-docs-popover" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre>{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className="wk-mcp-docs-btn" aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
           </div>
-          <p className="wk-muted text-muted">{t("mcpMetadata.policyHint")}</p>
+          <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
             tools={metadata.tools}
             serviceId={metadata.stale ? undefined : serviceId}
@@ -587,29 +582,29 @@ function McpOAuthControl({
     }
   }
   return (
-    <div className="wk-mcp-oauth grid gap-2">
+    <div className="wk-mcp-oauth">
       <label>{t("mcpServiceDialog.oauthAuthorization")}</label>
-      <div className="wk-mcp-oauth-status flex flex-wrap items-center gap-2">
-        <span className={oauth?.authorized ? mcpBadgeOk : oauth?.state === "refreshable" ? mcpBadgeInfo : mcpBadgeWarn}>
+      <div className="wk-mcp-oauth-status">
+        <span className={'wk-mcp-badge ' + (oauth?.authorized ? 'wk-mcp-badge--ok' : oauth?.state === "refreshable" ? 'wk-mcp-badge--info' : 'wk-mcp-badge--warn')}>
           {oauth?.authorized ? t("mcpServiceDialog.oauthAuthorized") : oauth?.state === "refreshable" ? t("mcpServiceDialog.oauthRefreshable") : t("mcpServiceDialog.oauthUnauthorized")}
         </span>
-        <Button
+        <TButton
           type="button"
-          className="h-7 rounded-[6px] px-3 text-[12px]"
+          className="wk-mcp-oauth-btn"
           disabled={busy || authorizing}
           loading={authorizing}
           onClick={() => void onRequestAuthorize()}
         >
           {oauth?.state === "reauth_required" ? t("mcpServiceDialog.oauthAuthorize") : t("mcpServiceDialog.oauthReauthorize")}
-        </Button>
+        </TButton>
         {oauth && oauth.state !== "reauth_required" ? (
-          <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={busy || authorizing} onClick={() => void revoke()}>
+          <TButton type="button" className="wk-mcp-oauth-btn" disabled={busy || authorizing} onClick={() => void revoke()}>
             {t("mcpServiceDialog.oauthRevoke")}
-          </Button>
+          </TButton>
         ) : null}
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
-      <p className="wk-muted text-muted m-0 text-[12px] leading-[1.5]">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
+      <p className="wk-muted wk-mcp-oauth-hint">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
     </div>
   );
 }
@@ -689,6 +684,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const [generatingUsage, setGeneratingUsage] = useState(false);
   const [toolsSynced, setToolsSynced] = useState(false);
   const [metadataBusy, setMetadataBusy] = useState(false);
+  const [codeImportOpen, setCodeImportOpen] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   async function load() {
     setLoading(true);
@@ -835,17 +831,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     setError(null);
     try {
       const result = await client.configuration.mcp.oauth.authorizeUrl(savedId, {
-        redirectURI: window.location.origin + "/api/v1/mcp-oauth/callback",
+        redirectURI: window.location.origin + MCP_OAUTH_CALLBACK_PATH,
         frontendRedirect: window.location.href,
       });
       const popup = window.open(
         result.authorizationUrl,
-        "weknora_mcp_oauth",
-        "width=600,height=720",
+        MCP_OAUTH_POPUP_NAME,
+        MCP_OAUTH_POPUP_FEATURES,
       );
       if (!popup) throw new Error(t("mcpServiceDialog.toasts.updateFailed"));
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      for (let attempt = 0; attempt < MCP_OAUTH_POLL_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, MCP_OAUTH_POLL_INTERVAL_MS));
         const next = await client.configuration.mcp.oauth.status(
           savedId,
           result.authorizationAttempt,
@@ -920,6 +916,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     setGeneratingUsage(false);
     setError(null);
     setNotice(null);
+    // Vue watch visible（McpServiceDialog.vue:850-853）——同时重置代码导入
+    // 区域，避免上一个服务残留的粘贴内容/报错漂到新表单。
+    setCodeImportOpen(false);
   }
   function closeEditor() {
     setDraft(null);
@@ -928,455 +927,401 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const dialogBusy = saving || generatingUsage || metadataBusy;
   if (loading)
     return (
-      <Card data-testid="mcp-settings">
-        <Status>{t("common.loading")}</Status>
-      </Card>
+      <section className="mcp-settings" data-testid="mcp-settings">
+        {/* Vue McpSettings.vue:10-12 — loading-container + t-loading(text) */}
+        <div className="loading-container">
+          <TLoading text={t("common.loading")} />
+        </div>
+      </section>
     );
   return (
-    <section className="grid gap-4" data-testid="mcp-settings">
-      <div className="wk-mcp-page-header flex items-start justify-between gap-4 mb-3 max-[720px]:flex-col">
-        <div>
-          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal] text-[rgb(0_0_0_/_90%)]">{t("mcpSettings.title")}</h2>
-          <p className="wk-muted m-0 text-[14px] leading-[1.6] text-[rgb(0_0_0_/_60%)]">
-            {t("mcpSettings.description")}
-          </p>
-        </div>
+    <section className="mcp-settings" data-testid="mcp-settings">
+      {/* Vue McpSettings.vue:3-8 — 自持 section-header（样式 §21 平移） */}
+      <div className="section-header">
+        <h2>{t("mcpSettings.title")}</h2>
+        <p className="section-description">
+          {t("mcpSettings.description")}
+        </p>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {/* R472 A2 — Vue McpSettings.vue 加载失败：列表区替换为中央空态 +
           重试（toast 已在 load catch 推送）；标题与说明保持渲染。 */}
       {loadError ? (
-        <div data-testid="settings-load-empty" className="flex flex-col items-center justify-center px-4 py-16 text-center">
+        <div data-testid="settings-load-empty" className="empty-state">
           <EmptyState description={loadError}>
-            <Button type="button" variant="primary" onClick={() => { void load(); }}>{t("common.retry")}</Button>
+            <TButton type="button" theme="primary" onClick={() => { void load(); }}>{t("common.retry")}</TButton>
           </EmptyState>
         </div>
       ) : services.length === 0 && !canEdit ? (
         <Status>{t("mcpSettings.empty")}</Status>
       ) : (
-        <div className="grid items-stretch gap-2.5 grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] max-[720px]:grid-cols-1">
+        <div className="services-grid">
           {services.map((service) => (
-            <article key={service.id} className="wk-mcp-service-card min-w-0 overflow-hidden rounded-[10px] border border-[#dce3ed] bg-white">
-              <div className="wk-mcp-service-card-main flex min-w-0 flex-1 items-stretch p-3">
-                <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center self-start rounded-[7px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="tools" /></span>
-                <div className="wk-mcp-service-card-body flex min-w-0 flex-1 flex-col gap-2">
-                  <div className="wk-mcp-service-card-header flex min-h-[28px] items-center justify-between gap-[.7rem]">
-                    <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-5 text-[rgb(0_0_0_/_90%)]">{service.name}</h4>
-                  {service.is_builtin ? (
-                    <span className="text-[.75rem] text-[#2e6de6]">{t("mcpSettings.builtin")}</span>
-                  ) : null}
+            <article key={service.id} className="service-card">
+              <div className="service-card__main">
+                <div className="service-card__body">
+                  <div className="service-card__header">
+                    <div className="service-card__badge" aria-hidden="true">
+                      <TIcon name="tools" size="14px" />
+                    </div>
+                    <h3 className="service-card__title" title={service.name}>{service.name}</h3>
+                    {service.is_builtin ? <span className="service-card__builtin">{t("mcpSettings.builtin")}</span> : null}
                     {canEdit ? (
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <button type="button" className={mcpIconButton} title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}><McpCardIcon name="edit" /><span className="wk-sr-only">{t("common.edit")}</span></button>
-                        {service.is_builtin ? null : <button type="button" className={`${mcpIconButton} hover:text-[#b42318]! focus-visible:text-[#b42318]!`} title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}><McpCardIcon name="delete" /><span className="wk-sr-only">{t("common.delete")}</span></button>}
+                      <div className="service-card__actions">
+                        <button type="button" className="service-card__icon-btn" title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}><TIcon name="edit" size="14px" /></button>
+                        {!service.is_builtin ? <button type="button" className="service-card__icon-btn service-card__icon-btn--danger" disabled={busyId === service.id} title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}><TIcon name="delete" size="14px" /></button> : null}
                       </div>
                     ) : null}
                   </div>
-                  {serviceDescription(service) ? <p className="wk-mcp-service-card-desc min-h-[2.6rem] [overflow-wrap:anywhere]" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="self-start items-center border-0 bg-transparent p-0 text-[.82rem] text-[#245a9b] cursor-pointer [font:inherit] hover:underline focus-visible:underline" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="text-[.82rem] text-[#66758b]">{t("mcpSettings.noUsageInstructions")}</span>}
-                  <div className="wk-mcp-service-card-footer flex items-center justify-between gap-[.7rem]">
-                    <div className={mcpMetadata}>
-                      <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "bg-[#fffaeb] text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
-                        {service.catalog?.stale ? <McpCardIcon name="error" /> : null}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? <McpCardIcon name="chevron-right" /> : null}
-                      </button>
-                      <span className={mcpType}>{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
+                  {serviceDescription(service) ? <p className="service-card__desc" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : <div className="service-card__empty-usage">
+                    {canEdit && !service.is_builtin ? <button type="button" className="service-card__add-usage" onClick={() => openEditor(service, 1)}><TIcon name="add" size="14px" />{t("mcpSettings.addUsageInstructions")}</button> : <span>{t("mcpSettings.noUsageInstructions")}</span>}
+                  </div>}
+                  <div className="service-card__footer">
+                    <div className="service-card__metadata">
+                      {canEdit ? <button type="button" className={'service-card__tools' + (service.catalog?.stale ? ' is-stale' : '') + (!service.catalog ? ' is-missing' : '')} title={t("mcpMetadata.toolsAndUsage")} onClick={() => openEditor(service, 1)}>
+                        {service.catalog?.stale ? <TIcon name="error-circle" size="14px" /> : null}
+                        <span className="service-card__tools-label">{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")}{service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""}</span>
+                        <TIcon name="chevron-right" size="14px" />
+                      </button> : <span className={'service-card__tools' + (service.catalog?.stale ? ' is-stale' : '') + (!service.catalog ? ' is-missing' : '')}>
+                        {service.catalog?.stale ? <TIcon name="error-circle" size="14px" /> : null}
+                        <span className="service-card__tools-label">{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")}</span>
+                      </span>}
+                      <span className="service-card__type">{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
                     </div>
-                    {canEdit && !service.is_builtin ? <button type="button" className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className={`inline-block h-[5px] w-[5px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`}><span className={`inline-block h-[5px] w-[5px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
+                    {canEdit && !service.is_builtin ? <button type="button" className={'service-card__status' + (service.enabled !== false ? ' is-enabled' : '')} role="switch" aria-checked={service.enabled !== false} aria-label={`${service.name} · ${t("mcpServiceDialog.enableService")}`} disabled={busyId === service.id} onClick={() => void toggle(service)}>
+                      <span className="service-card__status-dot" aria-hidden="true" />
+                      {service.enabled !== false ? t("common.on") : t("common.off")}
+                    </button> : <span className={'service-card__status' + (service.enabled !== false || service.is_builtin ? ' is-enabled' : '')}>
+                      <span className="service-card__status-dot" aria-hidden="true" />
+                      {service.enabled !== false || service.is_builtin ? t("common.on") : t("common.off")}
+                    </span>}
                   </div>
                 </div>
               </div>
             </article>
           ))}
-          {/* Vue McpSettings.vue:308-334 — add 卡为 --td-component-stroke #e7e7e7
-              虚线、占位色文字 rgba(0,0,0,.4)；图标块 #f3f3f3 底 + secondary 色。 */}
-          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#e7e7e7] border-dashed bg-transparent p-3 text-center text-[rgba(0,0,0,0.4)] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[rgba(0,0,0,0.6)]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
+          {/* Vue McpSettings.vue:85-95 — add 卡 service-card--add（虚线 +
+              占位色文字）；类名换 Vue 原名（基线册 px-mcp-add-service 备注）。 */}
+          {canEdit ? <button type="button" className="service-card service-card--add" onClick={() => openEditor()}>
+            <span className="service-card--add__icon" aria-hidden="true">
+              <TIcon name="add" />
+            </span>
+            <span className="service-card--add__label">{t("mcpSettings.addService")}</span>
+          </button> : null}
         </div>
       )}
-      {draft ? (
-        <McpDrawerShell>
-        <div
-          className="wks-overlay wks-mcp-overlay z-[1200]!"
-          data-testid="mcp-editor-overlay"
-        >
-          <div
-            className="wks-modal wks-mcp-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
-          >
-            <div className="wk-settings-panel-heading relative -mx-[18px] box-border flex h-[104px] shrink-0 flex-col gap-2 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-[18px] pb-3 pt-[14px]">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${draft.transportType === "http-streamable" ? "bg-[rgba(0,82,217,.1)] text-[#0052d9]" : "bg-[rgba(17,128,83,.12)] text-[#118053]"}`} aria-hidden="true"><McpTransportIcon transport={draft.transportType === "http-streamable" ? "http-streamable" : "sse"} /></span>
-                <div className="flex min-w-0 flex-1 flex-col gap-px">
-                  <h3 className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[21px]">{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                  <p className="wk-muted text-muted m-0 flex items-center gap-2 text-[12px] leading-[18px]">
-                    {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
-                    <span className={draft.enabled ? mcpBadgeOk : mcpBadgeMuted}>
-                      {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              <nav className="flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
-                  <button
-                    type="button"
-                    className={`${mcpStepButton} flex-1 text-[13px] font-medium ${step === 0 ? "text-[#07c05f]!" : step > 0 ? "text-[#506078]!" : ""}`}
-                    aria-current={step === 0 ? "step" : undefined}
-                    disabled={dialogBusy}
-                    onClick={() => setStep(0)}
-                  >
-                    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold leading-none ${step === 0 ? "border-[#07c05f] bg-[#07c05f] text-white" : "border-[#07c05f] bg-[rgba(7,192,95,.12)] text-[#07c05f]"}`}>{step > 0 ? "✓" : "1"}</span>
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.connection")}</span>
-                    <span className={`mx-1 h-px min-w-4 flex-1 bg-[#dcdcdc] ${step > 0 ? "bg-[rgba(7,192,95,.35)]" : ""}`} aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    className={`${mcpStepButton} text-[13px] font-medium ${step === 1 ? "text-[#07c05f]!" : ""}`}
-                    aria-current={step === 1 ? "step" : undefined}
-                    disabled={dialogBusy}
-                    onClick={() => {
-                      if (step === 0) formRef.current?.requestSubmit();
-                    }}
-                  >
-                    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold leading-none ${step === 1 ? "border-[#07c05f] bg-[#07c05f] text-white" : "border-[#cbd5e1] text-[#98a2b8]"}`}>2</span>
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.toolsAndUsage")}</span>
-                  </button>
-              </nav>
-            </div>
-            <form
-              ref={formRef}
-              className="wk-mcp-form wk-settings-editor my-4 grid gap-[.8rem] max-w-none! [&_input]:h-8 [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-[4px] [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[9px] [&_input]:py-[7px] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-[4px] [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[9px] [&_textarea]:py-[7px] [&_select]:h-8 [&_select]:w-full [&_select]:rounded-[4px] [&_select]:[font:inherit]"
-              onSubmit={(event) => void save(event)}
+      {/* Vue McpServiceDialog.vue:1-361 — SettingDrawer 抽屉（width 680 /
+          min 560 / max 920 / storageKey mcp-config-v2 / mcp-drawer--{transport}
+          家族 + #headerIcon + #subtitle transport chip + #header-extra 步骤条 +
+          #footer-left 上一步）。基线册 px-mcp-add-service 根因收敛。 */}
+      {draft ? <SettingDrawer
+        visible
+        title={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
+        drawerClass={'mcp-drawer mcp-drawer--' + (draft.transportType === "http-streamable" ? "http-streamable" : "sse")}
+        confirmLoading={saving}
+        confirmDisabled={metadataBusy || generatingUsage || (step === 1 && !toolsSynced)}
+        confirmText={step === 0 ? t("mcpMetadata.saveNext") : t("common.save")}
+        width="680px"
+        minWidth={560}
+        maxWidth={920}
+        storageKey="setting-drawer:width:mcp-config-v2"
+        headerIcon={<TIcon name={draft.transportType === "http-streamable" ? "link" : "cast"} />}
+        subtitle={<>
+          <span>{draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}</span>
+          <span className={'subtitle-tag' + (draft.enabled ? ' subtitle-tag--ok' : ' subtitle-tag--muted')}>
+            {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
+          </span>
+        </>}
+        headerExtra={<nav className="mcp-steps" aria-label={t("mcpMetadata.setupProgress")}>
+          {[t("mcpMetadata.connection"), t("mcpMetadata.toolsAndUsage")].map((label, index) => (
+            <button
+              key={index}
+              type="button"
+              className={'mcp-step is-clickable' + (step === index ? ' is-active' : step > index ? ' is-done' : '')}
+              aria-current={step === index ? 'step' : undefined}
+              disabled={dialogBusy}
+              onClick={() => index === 0 ? setStep(0) : (step === 0 ? formRef.current?.requestSubmit() : undefined)}
             >
-              {step === 0 ? (
-                <>
-                  <details className="wk-mcp-code-import">
-                    <summary>{t("mcpServiceDialog.codeImport.toggle")}</summary>
-                    <p className="wk-muted text-muted">
-                      {t("mcpServiceDialog.codeImport.hint")}
-                    </p>
-                    <Textarea
-                      rows={5}
-                      value={draft.codeImport}
-                      placeholder={'{\n  "mcpServers": { "my-server": { "url": "https://example.com/sse" } }\n}'}
-                      onChange={(event) => setField("codeImport", event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        setDraft((current) =>
-                          current
-                            ? importMcpConfig(current.codeImport, current)
-                            : current,
-                        )
-                      }
-                    >
-                      {t("mcpServiceDialog.codeImport.parse")}
-                    </Button>
-                    {draft.codeImportError ? (
-                      <Status tone="error">{draft.codeImportError}</Status>
-                    ) : null}
-                  </details>
-                  <fieldset className="wk-mcp-group">
-                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.basicSection")}</legend>
-                    <label className="wk-mcp-required">
-                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.name")}</span>
-                      <Input
-                        required
-                        maxLength={128}
-                        value={draft.name}
-                        placeholder={t("mcpServiceDialog.namePlaceholder")}
-                        onChange={(event) => setField("name", event.target.value)}
-                      />
-                    </label>
-                    <div className="flex flex-wrap items-center gap-[.6rem]">
-                      <label className="wk-checkbox flex-none mt-0 whitespace-nowrap">
-                        <Checkbox
-                          type="checkbox"
-                          checked={draft.enabled}
-                          onChange={(event) => setField("enabled", event.target.checked)}
-                        />{" "}
-                        {t("mcpServiceDialog.enableService")}
-                      </label>
-                      <span className="wk-muted text-muted">
-                        {t("mcpServiceDialog.enableServiceDesc")}
-                      </span>
-                    </div>
-                  </fieldset>
-                  <fieldset className="wk-mcp-group">
-                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.connectionSection")}</legend>
-                    <label className="wk-mcp-required">
-                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.transportType")}</span>
-                      <div className={mcpSourceOptions} role="radiogroup" aria-label={t("mcpServiceDialog.transportType")}>
-                        {(["sse", "http-streamable"] as const).map((transport) => {
-                          const active = draft.transportType === transport;
-                          return <button key={transport} type="button" role="radio" aria-checked={active} className={`${mcpSourceOption} ${active ? "border-[#07c05f] bg-white font-medium text-[#07c05f] shadow-[0_1px_2px_rgba(15,23,42,.04)]" : ""}`} onClick={() => setField("transportType", transport)}><McpTransportIcon transport={transport} /><span>{transport === "http-streamable" ? "HTTP Streamable" : "SSE"}</span></button>;
-                        })}
-                      </div>
-                    </label>
-                    <label className="wk-mcp-required">
-                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.serviceUrl")}</span>
-                      <Input
-                        type="url"
-                        required
-                        value={draft.url}
-                        placeholder={t("mcpServiceDialog.serviceUrlPlaceholder")}
-                        onChange={(event) => setField("url", event.target.value)}
-                        />
-                    </label>
-                    <fieldset className="wk-mcp-custom-headers flex min-w-0 flex-col gap-[.7rem] border-0 p-0">
-                      <legend className="flex w-full items-center justify-between gap-3 p-0 text-[13px] font-semibold leading-[18px]">
-                        <span>{t("mcpServiceDialog.customHeaders.label")}</span>
-                        <Button
-                          type="button"
-                          className="inline-flex shrink-0 items-center gap-1 border-0 bg-transparent px-1.5 py-0.5 text-[12px] font-medium leading-[18px] text-[#07c05f] [font:inherit] hover:bg-[rgba(7,192,95,.08)] hover:outline-none focus-visible:bg-[rgba(7,192,95,.08)] focus-visible:outline-none"
-                          onClick={() =>
-                            setField("headers", [
-                              ...draft.headers,
-                              { key: "", value: "" },
-                            ])
-                          }
-                        >
-                          <McpCardIcon name="add" size={14} /> {t("mcpServiceDialog.customHeaders.add")}
-                        </Button>
-                      </legend>
-                      <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
-                      {draft.headers.map((header, index) => (
-                        <div className="wk-mcp-header-row" key={index}>
-                          <Input
-                            placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
-                            value={header.key}
-                            onChange={(event) =>
-                              setField(
-                                "headers",
-                                draft.headers.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, key: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                        />
-                          <Input
-                            placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
-                            value={header.value}
-                            onChange={(event) =>
-                              setField(
-                                "headers",
-                                draft.headers.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, value: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                          <Button
-                            type="button"
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none"
-                            onClick={() =>
-                              setField(
-                                "headers",
-                                draft.headers.filter(
-                                  (_, itemIndex) => itemIndex !== index,
-                                ),
-                              )
-                            }
-                          >
-                            <McpCardIcon name="delete" size={14} /><span className="wk-sr-only">{t("common.delete")}</span>
-                          </Button>
-                        </div>
-                      ))}
-                    </fieldset>
-                  </fieldset>
-                  <fieldset className="wk-mcp-group">
-                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.authConfig")}</legend>
-                    <label>
-                      {t("mcpServiceDialog.authType")}
-                      <div className={`${mcpSourceOptions} max-w-full flex-wrap`} role="radiogroup" aria-label={t("mcpServiceDialog.authType")}>
-                        {(["", "api_key", "oauth"] as const).map((authType) => {
-                          const active = draft.authType === authType;
-                          const label = authType === "" ? t("mcpServiceDialog.authTypeNone") : authType === "api_key" ? t("mcpServiceDialog.authTypeApiKey") : t("mcpServiceDialog.authTypeOAuth");
-                          return <button key={authType || "none"} type="button" role="radio" aria-checked={active} className={`${mcpSourceOption} ${active ? "border-[#07c05f] bg-white font-medium text-[#07c05f] shadow-[0_1px_2px_rgba(15,23,42,.04)]" : ""}`} onClick={() => setField("authType", authType)}>{label}</button>;
-                        })}
-                      </div>
-                    </label>
-                    {draft.authType === "oauth" ? (
-                      <>
-                        <label>
-                          {t("mcpServiceDialog.oauthScopes")}
-                          <Input
-                            value={draft.oauthScopes}
-                            placeholder={t("mcpServiceDialog.optional")}
-                            onChange={(event) =>
-                              setField("oauthScopes", event.target.value)
-                            }
-                          />
-                        </label>
-                        {draft.id ? (
-                          <McpOAuthControl
-                            client={client}
-                            serviceId={draft.id}
-                            busy={dialogBusy}
-                            onRequestAuthorize={authorizeOAuth}
-                          />
-                        ) : null}
-                      </>
-                    ) : null}
-                    {draft.authType === "api_key" ? (
-                      <>
-                        <label>
-                          {t("mcpServiceDialog.apiKeyHeader")}
-                          <Input
-                            value={draft.apiKeyHeader}
-                            placeholder="X-API-Key"
-                            onChange={(event) =>
-                              setField("apiKeyHeader", event.target.value)
-                            }
-                          />
-                        </label>
-                        <p className="wk-muted text-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
-                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
-                      </>
-                    ) : null}
-                  </fieldset>
-                  <fieldset className="wk-mcp-group">
-                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.advancedConfig")}</legend>
-                    <label>
-                      {t("mcpServiceDialog.timeoutSec")}
-                      <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={1}
-                          max={300}
-                          value={draft.timeout}
-                          onChange={(event) => setField("timeout", event.target.value === "" ? "" : Number(event.target.value))}
-                          onBlur={() => setField("timeout", normalizeMcpAdvancedNumber(draft.timeout, 30, 1, 300))}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
-                      </div>
-                    </label>
-                    <label>
-                      {t("mcpServiceDialog.retryCount")}
-                      <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={0}
-                          max={10}
-                          value={draft.retryCount}
-                          onChange={(event) => setField("retryCount", event.target.value === "" ? "" : Number(event.target.value))}
-                          onBlur={() => setField("retryCount", normalizeMcpAdvancedNumber(draft.retryCount, 3, 0, 10))}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitTimes")}</span>
-                      </div>
-                    </label>
-                    <label>
-                      {t("mcpServiceDialog.retryDelaySec")}
-                      <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={0}
-                          max={60}
-                          value={draft.retryDelay}
-                          onChange={(event) => setField("retryDelay", event.target.value === "" ? "" : Number(event.target.value))}
-                          onBlur={() => setField("retryDelay", normalizeMcpAdvancedNumber(draft.retryDelay, 1, 0, 60))}
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
-                      </div>
-                    </label>
-                  </fieldset>
-                </>
-              ) : (
-                <>
-                  <fieldset className="wk-mcp-group">
-                    <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
-                      <div>
-                        <h4>{t("mcpMetadata.usage")}</h4>
-                        <p className="wk-muted text-muted m-0">{t("mcpMetadata.usageHint")}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-[.8rem]">
-                      <label className="wk-form-label text-ink font-semibold wk-mcp-required">
-                        <span className="wk-mcp-label-text">{t("mcpMetadata.usageInstructions")}</span>
-                      </label>
-                      <Button
-                        type="button"
-                        disabled={
-                          !toolsSynced || metadataBusy || saving || generatingUsage
-                        }
-                        loading={generatingUsage}
-                        onClick={() => void generateUsage()}
-                      >
-                        {t("mcpMetadata.generateUsage")}
-                      </Button>
-                    </div>
-                    <Textarea
-                      required
-                      rows={5}
-                      maxLength={16000}
-                      value={draft.usageInstructions}
-                      placeholder={t("mcpMetadata.instructionsPlaceholder")}
-                      onChange={(event) =>
-                        setField("usageInstructions", event.target.value)
-                      }
-                    />
-                    <span className="wk-muted text-muted block text-right text-[.78rem]">
-                      {draft.usageInstructions.length}/16000
-                    </span>
-                    <p className="wk-muted text-muted">{t("mcpMetadata.generateHint")}</p>
-                  </fieldset>
-                  {draft.id ? (
-                    <McpMetadataSection
-                      client={client}
-                      serviceId={draft.id}
-                      disabled={saving || generatingUsage}
-                      onSyncedChange={setToolsSynced}
-                      onBusyChange={setMetadataBusy}
-                    />
-                  ) : null}
-                </>
-              )}
-            <div className="wk-mcp-footer sticky bottom-0 -mx-[18px] mt-[1.2rem] flex min-h-[53px] shrink-0 box-border items-center justify-between gap-3 border-t border-[#edf0f5] bg-white px-[18px] pt-[.6rem] pb-[.2rem]">
-                <div className="flex flex-1">
-                  {step === 1 ? (
-                    <Button
-                      type="button"
-                      disabled={dialogBusy}
-                      onClick={() => setStep(0)}
-                    >
-                      {t("mcpMetadata.previous")}
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="flex gap-[.6rem]">
-                  <Button
+              <span className="mcp-step__marker">{step > index ? <TIcon name="check" /> : index + 1}</span>
+              <span className="mcp-step__title">{label}</span>
+              {index === 0 ? <span className="mcp-step__line" aria-hidden="true" /> : null}
+            </button>
+          ))}
+        </nav>}
+        footerLeft={step === 1 ? <TButton variant="outline" disabled={dialogBusy} onClick={() => setStep(0)}>{t("mcpMetadata.previous")}</TButton> : undefined}
+        onVisibleChange={(visible) => { if (!visible) closeEditor(); }}
+        onCancel={closeEditor}
+        onConfirm={() => { void save(new Event("submit") as unknown as React.FormEvent<HTMLFormElement>); }}
+      >
+        <form
+          ref={formRef}
+          className="t-form t-form--label-align-top mcp-editor-form"
+          onSubmit={(event) => void save(event)}
+        >
+          <div className="connection-step" style={step === 0 ? undefined : { display: "none" }}>
+            <section className="setting-drawer__section code-import">
+              <button type="button" className="code-import__toggle" onClick={() => setCodeImportOpen(!codeImportOpen)}>
+                <TIcon name={codeImportOpen ? "chevron-down" : "chevron-right"} />
+                <span>{t("mcpServiceDialog.codeImport.toggle")}</span>
+              </button>
+              {codeImportOpen ? <div className="code-import__body">
+                <p className="form-desc">{t("mcpServiceDialog.codeImport.hint")}</p>
+                {draft.id ? <p className="form-desc code-import__warn">{t("mcpServiceDialog.codeImport.editOverwriteHint")}</p> : null}
+                <TTextarea
+                  autosize={{ minRows: 5, maxRows: 14 }}
+                  value={draft.codeImport}
+                  placeholder={'{\n  "mcpServers": {\n    "my-server": {\n      "url": "https://example.com/sse"\n    }\n  }\n}'}
+                  className="code-import__textarea"
+                  onChange={(value) => setField("codeImport", String(value))}
+                />
+                {draft.codeImportError ? <p className="code-import__error">{draft.codeImportError}</p> : null}
+                <div className="code-import__actions">
+                  <TButton
+                    theme="primary"
+                    variant="outline"
                     type="button"
-                    disabled={saving}
-                    onClick={closeEditor}
+                    onClick={() => setDraft((current) => (current ? importMcpConfig(current.codeImport, current) : current))}
                   >
-                    {t("common.cancel")}
-                  </Button>
-                  <Button
-                    type="submit"
-                    loading={saving}
-                    disabled={
-                      metadataBusy ||
-                      generatingUsage ||
-                      (step === 1 && !toolsSynced)
-                    }
-                  >
-                    {step === 0 ? t("mcpMetadata.saveNext") : t("common.save")}
-                  </Button>
+                    {t("mcpServiceDialog.codeImport.parse")}
+                  </TButton>
+                </div>
+              </div> : null}
+            </section>
+            <section className="setting-drawer__section mcp-settings-group">
+              <h4 className="setting-drawer__section-title">{t("mcpServiceDialog.basicSection")}</h4>
+              <div className="form-item">
+                <label className="form-label required">{t("mcpServiceDialog.name")}</label>
+                <TInput
+                  maxlength={128}
+                  value={draft.name}
+                  placeholder={t("mcpServiceDialog.namePlaceholder")}
+                  onChange={(value) => setField("name", String(value))}
+                />
+              </div>
+              <div className="form-item">
+                <label className="form-label">{t("mcpServiceDialog.enableService")}</label>
+                <div className="vision-toggle">
+                  <TSwitch value={draft.enabled} onChange={(value) => setField("enabled", Boolean(value))} />
+                  <span className="form-desc form-desc--inline">{t("mcpServiceDialog.enableServiceDesc")}</span>
                 </div>
               </div>
-            </form>
+            </section>
+            <section className="setting-drawer__section mcp-settings-group">
+              <h4 className="setting-drawer__section-title">{t("mcpServiceDialog.connectionSection")}</h4>
+              <div className="form-item">
+                <label className="form-label required">{t("mcpServiceDialog.transportType")}</label>
+                <div className="source-options" role="radiogroup">
+                  {(["sse", "http-streamable"] as const).map((transport) => (
+                    <button
+                      key={transport}
+                      type="button"
+                      className={'source-option' + (draft.transportType === transport ? ' is-active' : '')}
+                      onClick={() => setField("transportType", transport)}
+                    >
+                      <TIcon name={transport === "sse" ? "cast" : "link"} className="source-option__icon" />
+                      <span className="source-option__label">{transport === "http-streamable" ? "HTTP Streamable" : "SSE"}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="form-item">
+                <label className="form-label required">{t("mcpServiceDialog.serviceUrl")}</label>
+                <TInput
+                  value={draft.url}
+                  placeholder={t("mcpServiceDialog.serviceUrlPlaceholder")}
+                  onChange={(value) => setField("url", String(value))}
+                />
+              </div>
+              <div className="form-item">
+                <div className="custom-headers-header">
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t("mcpServiceDialog.customHeaders.label")}</label>
+                  <TButton variant="text" size="small" theme="primary" type="button" icon={<TIcon name="add" />} onClick={() => setField("headers", [...draft.headers, { key: "", value: "" }])}>
+                    {t("mcpServiceDialog.customHeaders.add")}
+                  </TButton>
+                </div>
+                <p className="form-desc custom-headers-desc">{t("mcpServiceDialog.customHeaders.desc")}</p>
+                {draft.headers.length > 0 ? <div className="custom-headers-list">
+                  {draft.headers.map((header, index) => (
+                    <div className="custom-header-row" key={index}>
+                      <TInput
+                        className="custom-header-key"
+                        placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
+                        value={header.key}
+                        onChange={(value) => setField("headers", draft.headers.map((item, itemIndex) => (itemIndex === index ? { ...item, key: String(value) } : item)))}
+                      />
+                      <TInput
+                        className="custom-header-value"
+                        placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
+                        value={header.value}
+                        onChange={(value) => setField("headers", draft.headers.map((item, itemIndex) => (itemIndex === index ? { ...item, value: String(value) } : item)))}
+                      />
+                      <TButton
+                        variant="text"
+                        shape="square"
+                        size="small"
+                        className="custom-header-remove"
+                        aria-label={t("common.delete")}
+                        type="button"
+                        onClick={() => setField("headers", draft.headers.filter((_, itemIndex) => itemIndex !== index))}
+                      >
+                        <TIcon name="close" />
+                      </TButton>
+                    </div>
+                  ))}
+                </div> : null}
+              </div>
+            </section>
+            <section className="setting-drawer__section mcp-settings-group">
+              <h4 className="setting-drawer__section-title">{t("mcpServiceDialog.authConfig")}</h4>
+              <div className="form-item">
+                <label className="form-label">{t("mcpServiceDialog.authType")}</label>
+                <div className="source-options" role="radiogroup">
+                  {(["", "api_key", "oauth"] as const).map((authType) => (
+                    <button
+                      key={authType || "none"}
+                      type="button"
+                      className={'source-option' + (draft.authType === authType ? ' is-active' : '')}
+                      onClick={() => setField("authType", authType)}
+                    >
+                      <span className="source-option__label">{authType === "" ? t("mcpServiceDialog.authTypeNone") : authType === "api_key" ? t("mcpServiceDialog.authTypeApiKey") : t("mcpServiceDialog.authTypeOAuth")}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {draft.authType === "oauth" ? (
+                <>
+                  <div className="form-item">
+                    <label className="form-label">{t("mcpServiceDialog.oauthScopes")}</label>
+                    <TInput
+                      value={draft.oauthScopes}
+                      placeholder={t("mcpServiceDialog.optional")}
+                      onChange={(value) => setField("oauthScopes", String(value))}
+                    />
+                  </div>
+                  {draft.id ? (
+                    <div className="form-item">
+                      <McpOAuthControl
+                        client={client}
+                        serviceId={draft.id}
+                        busy={dialogBusy}
+                        onRequestAuthorize={authorizeOAuth}
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+              {draft.authType === "api_key" ? (
+                <>
+                  <div className="form-item">
+                    <label className="form-label">{t("mcpServiceDialog.apiKeyHeader")}</label>
+                    <TInput
+                      value={draft.apiKeyHeader}
+                      placeholder="X-API-Key"
+                      onChange={(value) => setField("apiKeyHeader", String(value))}
+                    />
+                    <p className="form-desc">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
+                  </div>
+                  {draft.id ? <div className="wk-mcp-credential-card"><div className="wk-mcp-credential-head"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={'wk-mcp-credential-state' + (draft.credentialConfigured ? ' is-set' : '')}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<TInput type="password" autocomplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(value) => setField("apiKey", String(value))} /></label>{draft.credentialConfigured ? <TButton type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</TButton> : null}</div> : <div className="form-item">
+                    <label className="form-label">{t("mcpServiceDialog.credentialValue")}</label>
+                    <TInput
+                      type="password"
+                      autocomplete="new-password"
+                      prefixIcon={<TIcon name="lock-on" />}
+                      value={draft.apiKey}
+                      placeholder={t("mcpServiceDialog.optional")}
+                      onChange={(value) => setField("apiKey", String(value))}
+                    />
+                  </div>}
+                </>
+              ) : null}
+            </section>
+            <section className="setting-drawer__section mcp-settings-group">
+              <h4 className="setting-drawer__section-title">{t("mcpServiceDialog.advancedConfig")}</h4>
+              <div className="form-item">
+                <label className="form-label">{t("mcpServiceDialog.timeoutSec")}</label>
+                <TInput
+                  className="number-input"
+                  type="number"
+                  placeholder="30"
+                  value={draft.timeout === "" ? "" : String(draft.timeout)}
+                  onChange={(value) => setField("timeout", String(value) === "" ? "" : Number(String(value)))}
+                  onBlur={() => setField("timeout", normalizeMcpAdvancedNumber(draft.timeout, 30, 1, 300))}
+                  suffix={<span className="number-input__unit">{t("mcpServiceDialog.unitSecond")}</span>}
+                />
+              </div>
+              <div className="form-item">
+                <label className="form-label">{t("mcpServiceDialog.retryCount")}</label>
+                <TInput
+                  className="number-input"
+                  type="number"
+                  placeholder="3"
+                  value={draft.retryCount === "" ? "" : String(draft.retryCount)}
+                  onChange={(value) => setField("retryCount", String(value) === "" ? "" : Number(String(value)))}
+                  onBlur={() => setField("retryCount", normalizeMcpAdvancedNumber(draft.retryCount, 3, 0, 10))}
+                  suffix={<span className="number-input__unit">{t("mcpServiceDialog.unitTimes")}</span>}
+                />
+              </div>
+              <div className="form-item">
+                <label className="form-label">{t("mcpServiceDialog.retryDelaySec")}</label>
+                <TInput
+                  className="number-input"
+                  type="number"
+                  placeholder="1"
+                  value={draft.retryDelay === "" ? "" : String(draft.retryDelay)}
+                  onChange={(value) => setField("retryDelay", String(value) === "" ? "" : Number(String(value)))}
+                  onBlur={() => setField("retryDelay", normalizeMcpAdvancedNumber(draft.retryDelay, 1, 0, 60))}
+                  suffix={<span className="number-input__unit">{t("mcpServiceDialog.unitSecond")}</span>}
+                />
+              </div>
+            </section>
           </div>
-        </div>
-        </McpDrawerShell>
-      ) : null}
+          {step === 1 ? (
+            <>
+              <section className="setting-drawer__section mcp-settings-group">
+                <div className="section-title-block">
+                  <h4 className="setting-drawer__section-title">{t("mcpMetadata.usage")}</h4>
+                  <p className="form-desc">{t("mcpMetadata.usageHint")}</p>
+                </div>
+                <div className="form-item">
+                  <div className="usage-heading">
+                    <label className="form-label required">{t("mcpMetadata.usageInstructions")}</label>
+                    <TButton
+                      variant="text"
+                      theme="primary"
+                      size="small"
+                      loading={generatingUsage}
+                      disabled={!toolsSynced || metadataBusy || saving}
+                      icon={<TIcon name="lightbulb" />}
+                      onClick={() => void generateUsage()}
+                    >
+                      {t("mcpMetadata.generateUsage")}
+                    </TButton>
+                  </div>
+                  <TTextarea
+                    maxlength={16000}
+                    autosize={{ minRows: 3, maxRows: 8 }}
+                    disabled={generatingUsage || saving}
+                    value={draft.usageInstructions}
+                    placeholder={t("mcpMetadata.instructionsPlaceholder")}
+                    onChange={(value) => setField("usageInstructions", String(value))}
+                  />
+                  <p className="form-desc">{t("mcpMetadata.generateHint")}</p>
+                </div>
+              </section>
+              {draft.id ? (
+                <McpMetadataSection
+                  client={client}
+                  serviceId={draft.id}
+                  disabled={saving || generatingUsage}
+                  onSyncedChange={setToolsSynced}
+                  onBusyChange={setMetadataBusy}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </form>
+      </SettingDrawer> : null}
     </section>
   );
 }

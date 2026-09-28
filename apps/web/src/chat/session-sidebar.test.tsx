@@ -44,7 +44,9 @@ test('loading with an empty list renders Vue skeleton rows, not a text loading l
   }));
   assert.doesNotMatch(html, /Loading\.\.\./);
   assert.match(html, /加载中\.\.\./);
-  const skeletonBars = html.match(/animate-pulse/g)?.length ?? 0;
+  // Vue menu.vue:113-131 t-skeleton rowCol [{width:100%,height:14px}] ×4；
+  // DOM 复刻 tdesign skeleton 类名（样式由 tdesign.css + platform-shell.td.css 承载）。
+  const skeletonBars = html.match(/t-skeleton__col/g)?.length ?? 0;
   assert.equal(skeletonBars, 4, 'four skeleton rows like the Vue submenu boot state');
   assert.doesNotMatch(html, /暂无对话/, 'empty state stays hidden while loading');
 });
@@ -60,7 +62,7 @@ test('loading a later page keeps the loaded rows visible with a bottom spinner',
     onSelect: () => undefined,
   }));
   assert.match(html, /已加载的会话/);
-  assert.match(html, /animate-spin/);
+  assert.match(html, /session-list-loading/, 'bottom spinner row like Vue menu.vue:162-167');
   assert.doesNotMatch(html, /Loading\.\.\./);
 });
 

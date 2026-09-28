@@ -123,7 +123,7 @@ test('admin user menu exposes the Vue management shortcuts for members, models a
   await openUserMenu();
   const links = [...document.querySelectorAll<HTMLAnchorElement>('[role="menu"] a')];
   assert.deepEqual(links.map((link) => link.getAttribute('href')), [
-    '/platform/settings?section=userprofile',
+    '/platform/settings?section=general',
     '/platform/settings?section=tenant',
     '/platform/settings?section=members',
     '/platform/settings?section=models',

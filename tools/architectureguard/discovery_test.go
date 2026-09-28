@@ -181,15 +181,28 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
-// worker 23+23 两侧一致；hooks 58。 ----
+// issue #106 routes_plugins.go：首轮门控修复（dfc295b4e）时仅 1 条
+// /plugins/installations/preview（565 literal + 69 + 0 = 634）；其后 T06-T19
+// 治理端点落地，现共 15 条（全部 literal、全部 default-deny X-API-Key，apiKeyRoute
+// 不变）：confirm/disable/enable/upgrade-preview/upgrade-accept/drift×3/
+// tools×2/DELETE installations/:id/列表/详情/connections/me —— +14 条：
+// 579 literal + 69 + 0 = 648。
+// ---- issue30 合并（merge main into codex/issue30-mobile-office）后取两侧并集：
+// main 侧 tip（14d2d0660）实测 579 + 69 = 648（+15 literal，全 literal）；
+// issue30 侧 tip（db234c5eb）实测 613 + 87 = 700（+49 literal，+18 apiKeyRoute：
+// routes_agent_adoption 7 + routes_agent_upgrade 4 + routes_public_marketplace 7，
+// 该 tip 上旧常量 569/69/638 已过时）。并集 = 564 + 49 + 15 = 628 literal、
+// 69 + 18 = 87 apiKeyRoute、合计 715，与合并树实测一致。
+// worker 23+23 两侧一致；hooks：issue30 侧 tip（db234c5eb）已较 F0 基线 58
+// 增至 59（container.Invoke 新增挂点），main 侧仍为 58；合并树实测 = 59。 ----
 
 const (
-	wantRouteLiteral  = 569
-	wantRouteAPIKey   = 69
+	wantRouteLiteral  = 628
+	wantRouteAPIKey   = 87
 	wantRouteHandle   = 0
-	wantRouteTotal    = 638
+	wantRouteTotal    = 715
 	wantWorkersPerMix = 23
-	wantHooks         = 58
+	wantHooks         = 59
 )
 
 func repoRoot(t *testing.T) string {

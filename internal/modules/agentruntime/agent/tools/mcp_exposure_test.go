@@ -126,7 +126,7 @@ func TestMCPDirectExecutionPreservesValidationApprovalAndImages(t *testing.T) {
 	ctx := catalogTestContext()
 	registry := NewToolRegistry()
 	gate := &proxyApprovalGate{}
-	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, nil)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, nil, nil)
 	require.NoError(t, err)
 	registry.prepareMCPTools(ctx, time.Second)
 	name := MCPToolNamesByServiceID(registry)[service.ID][0]

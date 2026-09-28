@@ -58,16 +58,16 @@ export function EmptyState({ description, title, hint, children }: EmptyStatePro
   const locale = useAppLocale();
   // SkillSettings.vue:1292-1294 gives the t-empty description a 16px bottom
   // margin whenever the hint/actions follow it; .empty-hint adds its own 16px.
-  const gapBelowDescription = hint || children ? ' mb-4' : '';
+  const gapBelowDescription = hint || children ? ' wk-empty-description--gap-below' : '';
   return (
-    <div className="flex flex-col items-center text-center">
-      <span className="flex h-12 w-12 items-center justify-center text-[rgba(0_0_0_/.4)]" aria-hidden="true">
+    <div className="wk-empty">
+      <span className="wk-empty-image" aria-hidden="true">
         <EmptyIllustration />
       </span>
-      <p className="m-0 mt-2 text-sm leading-[22px] text-[rgba(0_0_0_/.6)]">{title ?? EMPTY_TITLES[locale]}</p>
-      <p className={`m-0 mt-1 text-sm leading-[22px] text-[rgba(0_0_0_/.4)]${gapBelowDescription}`}>{description}</p>
-      {hint ? <p className="m-0 mb-4 text-[13px] leading-[22px] text-[rgba(0_0_0_/.4)]">{hint}</p> : null}
-      {children ? <div className="flex items-center justify-center gap-2">{children}</div> : null}
+      <p className="wk-empty-title">{title ?? EMPTY_TITLES[locale]}</p>
+      <p className={`wk-empty-description${gapBelowDescription}`}>{description}</p>
+      {hint ? <p className="wk-empty-hint">{hint}</p> : null}
+      {children ? <div className="wk-empty-actions">{children}</div> : null}
     </div>
   );
 }

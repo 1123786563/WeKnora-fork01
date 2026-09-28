@@ -4,11 +4,16 @@ import test from 'node:test';
 import React from 'react';
 import { act } from 'react';
 import { createAgentMarketplaceApi } from './agent-marketplace-api.ts';
-import { AgentVersionActions } from './AgentVersionActions.tsx';
 
+/* S7：组件 tsx 现引入 am-u.css——node 测试运行器需 stub 解析（OrganizationsPage.test 同款）。 */
+{
+  const hooks = (await import('node:module')) as unknown as { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+  if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
+}
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
+const { AgentVersionActions } = await import('./AgentVersionActions.tsx');
 
 const version = { id: 'version-1', agent_id: 'agent-1', version_number: 1, source_sha256: 'a'.repeat(64), frozen_by: 'author-1', created_at: '2026-09-21T00:00:00Z' };
 const submission = { id: 'submission-1', tenant_id: 7, listing_id: 'listing-1', agent_version_id: 'version-1', source_agent_id: 'agent-1', author_id: 'author-1', semantic_version: '1.0.0', bundle_digest: 'b'.repeat(64), manifest: { display_name: 'Helpful agent', license_id: 'MIT' }, dependency_lock: { dependencies: [] }, payload: { system_prompt: 'fixed prompt', allowed_tools: [], skills: [], subagents: [], starter_prompts: [] }, status: 'pending_review', created_at: '2026-09-21T00:00:00Z' };

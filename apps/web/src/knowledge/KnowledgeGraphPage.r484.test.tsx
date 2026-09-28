@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 // R484 G2 — graph empty-state gating, parser warning banner, and the hosted
 // settings Dialog seeding, split out of KnowledgeGraphPage.test.tsx: the
 // 13-test single file hangs node:test inside the empty-state mount (runner

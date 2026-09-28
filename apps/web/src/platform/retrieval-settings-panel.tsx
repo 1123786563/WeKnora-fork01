@@ -11,6 +11,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import type { SettingsModelOption } from '../settings/ConfigSettingsPanel.tsx';
+import './platform-u.css';
 
 const ConfigSettingsPanel = lazy(() => import('../settings/ConfigSettingsPanel.tsx').then((m) => ({ default: m.ConfigSettingsPanel })));
 
@@ -43,9 +44,9 @@ export function PaletteRetrievalSettings({ client, locale }: PaletteRetrievalSet
     return () => { active = false; };
   }, [client]);
 
-  if (!loaded) return <p className="m-0 text-xs text-[#8a94a3]">{formatMessage(locale, 'common.loading')}</p>;
+  if (!loaded) return <p className="wk-rsp-1">{formatMessage(locale, 'common.loading')}</p>;
   return (
-    <Suspense fallback={<p className="m-0 text-xs text-[#8a94a3]">{formatMessage(locale, 'common.loading')}</p>}>
+    <Suspense fallback={<p className="wk-rsp-1">{formatMessage(locale, 'common.loading')}</p>}>
       <ConfigSettingsPanel client={client} section="retrieval" initialValue={value} models={models} />
     </Suspense>
   );

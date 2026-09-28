@@ -15,7 +15,20 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -132,9 +145,11 @@ test('shows the Vue loading indicator while the selected memory page is pending'
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  assert.equal(container.querySelector('[role="status"]')?.getAttribute('aria-label'), formatMessage('zh-CN', 'common.loading'), 'Vue t-loading equivalent is visible during list load');
+  // T12a：tdesign Loading 直译 Vue t-loading（spinner 遮罩，无文字）。
+  assert.ok(container.querySelector('.t-loading'), 'Vue t-loading equivalent is visible during list load');
   release();
   await act(async () => {});
+  assert.equal(container.querySelector('.t-loading'), null, 'loading mask leaves once the page resolves');
 });
 
 // Vue parity anchor: MemorySettings.vue onMounted → loadSettings + reload, and
@@ -143,9 +158,11 @@ test('mount loads settings, per-status counts and the active page with paginatio
   const { client, calls } = makeClient({ activeItems: [memoryItem()], pendingItems: [memoryItem({ id: 'p1', status: 'pending' })] });
   const container = await mountPanel(client);
 
-  const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+  // tdesign-react Tabs nav 无 role=tab 属性（Vue t-tabs 有——库间 DOM 差异，
+  // 类结构与选中态类 t-is-active 两端一致）。
+  const tabs = Array.from(container.querySelectorAll('.t-tabs__nav-item'));
   assert.equal(tabs.length, 6);
-  assert.equal(tabs[0]!.getAttribute('aria-selected'), 'true');
+  assert.equal(tabs[0]!.classList.contains('t-is-active'), true);
   assert.equal(tabs[1]!.textContent!.includes(formatMessage('zh-CN', 'memorySettings.statusPending') + '(1)'), true, 'pending tab shows its count');
 
   // Vue runs loadList and loadCounts concurrently (Promise.all), so only the
@@ -162,15 +179,15 @@ test('mount loads settings, per-status counts and the active page with paginatio
   // Vue toolbar count = totalAll (sum of the four status counts).
   assert.equal(container.querySelector('h3 + span')!.textContent, formatMessage('zh-CN', 'memorySettings.listCount', { count: 2 }));
   const switchButton = container.querySelector('[role="switch"]') as HTMLButtonElement;
-  assert.equal(switchButton.getAttribute('aria-checked'), 'true');
-  assert.equal(switchButton.disabled, false);
+  assert.equal(switchButton.classList.contains('t-is-checked'), true);
+  assert.equal(switchButton.classList.contains('t-is-disabled'), false);
 });
 test('tab switch refetches with the next status and pending rows confirm/reject like Vue', async () => {
   const { client, calls } = makeClient({ pendingItems: [memoryItem({ id: 'p1', status: 'pending', content: 'Guess: likes Rust' })] });
   const container = await mountPanel(client);
 
   await act(async () => {
-    (container.querySelectorAll('[role="tab"]')[1] as HTMLButtonElement).click();
+    (container.querySelectorAll('.t-tabs__nav-item')[1] as HTMLElement).click();
   });
   await act(async () => {});
 
@@ -200,7 +217,7 @@ test('tracking tab renders progress and promote jumps back to active', async () 
   const container = await mountPanel(client);
 
   await act(async () => {
-    (container.querySelectorAll('[role="tab"]')[2] as HTMLButtonElement).click();
+    (container.querySelectorAll('.t-tabs__nav-item')[2] as HTMLElement).click();
   });
   await act(async () => {});
 
@@ -214,8 +231,8 @@ test('tracking tab renders progress and promote jumps back to active', async () 
   await act(async () => { promote!.click(); });
   await act(async () => {});
   assert.ok(calls.some((call) => call.method === 'POST' && call.path === '/memory/topics/topic-1/promote'), 'promote endpoint hit');
-  const activeTab = container.querySelectorAll('[role="tab"]')[0] as HTMLButtonElement;
-  assert.equal(activeTab.getAttribute('aria-selected'), 'true', 'Vue promoteTopic switches tab to active');
+  const activeTab = container.querySelectorAll('.t-tabs__nav-item')[0] as HTMLElement;
+  assert.equal(activeTab.classList.contains('t-is-active'), true, 'Vue promoteTopic switches tab to active');
   assert.ok(calls.some((call) => call.path === '/memory/items?status=active&limit=20&offset=0'), 'active list refetched');
 });
 
@@ -224,7 +241,7 @@ test('documents tab builds the Vue knowledgeBase deep link and stop-tracking con
   const container = await mountPanel(client);
 
   await act(async () => {
-    (container.querySelectorAll('[role="tab"]')[3] as HTMLButtonElement).click();
+    (container.querySelectorAll('.t-tabs__nav-item')[3] as HTMLElement).click();
   });
   await act(async () => {});
 
@@ -254,11 +271,12 @@ test('toolbar clear is guarded by total emptiness and answers with the removed c
   const { client } = makeClient({ activeItems: [memoryItem()] });
   const container = await mountPanel(client);
   const clearButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.clear'))) as HTMLButtonElement;
-  assert.equal(clearButton.disabled, false, 'enabled while items exist');
+  assert.equal(clearButton.classList.contains('t-is-disabled'), false, 'enabled while items exist');
 
   await act(async () => { clearButton.click(); });
-  await act(async () => {});
-  const confirm = Array.from(container.querySelectorAll('[role="alertdialog"] button')).find((button) => button.textContent === formatMessage('zh-CN', 'memorySettings.clear')) as HTMLButtonElement;
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  // T12a：tdesign Popconfirm 弹层 portal 到 body。
+  const confirm = Array.from(document.body.querySelectorAll('.t-popconfirm button')).find((button) => button.textContent === formatMessage('zh-CN', 'memorySettings.clear')) as HTMLButtonElement;
   assert.ok(confirm, 'danger popconfirm opens with clearConfirm copy');
   await act(async () => { confirm!.click(); });
   await act(async () => {});
@@ -268,10 +286,12 @@ test('toolbar clear is guarded by total emptiness and answers with the removed c
 test('clear is disabled when every store is empty (Vue disabled condition)', async () => {
   const { client } = makeClient({});
   const container = await mountPanel(client);
-  const clearButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.clear'))) as HTMLButtonElement;
-  assert.equal(clearButton.disabled, true);
-  const consolidate = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.consolidate'))) as HTMLButtonElement;
-  assert.equal(consolidate.disabled, true, 'consolidate disabled when totalAll is 0');
+  // 台账 #7：tdesign disabled Button 渲染 div.t-button（非 button 标签）。
+  const buttons = Array.from(container.querySelectorAll<HTMLElement>('.t-button'));
+  const clearButton = buttons.find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.clear')))!;
+  assert.equal(clearButton.classList.contains('t-is-disabled'), true);
+  const consolidate = buttons.find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.consolidate')))!;
+  assert.equal(consolidate.classList.contains('t-is-disabled'), true, 'consolidate disabled when totalAll is 0');
 });
 
 test('pagination pages with offset like Vue t-pagination', async () => {
@@ -320,11 +340,12 @@ test('workspace-disabled notice gates the switch but keeps the list readable', a
   const notice = container.querySelector('[role="status"]');
   assert.ok(notice, 'workspace-disabled notice rendered');
   assert.equal(notice!.textContent!.includes(formatMessage('zh-CN', 'memorySettings.workspaceDisabled')), true);
-  const switchButton = container.querySelector('[role="switch"]') as HTMLButtonElement;
-  assert.equal(switchButton.disabled, true, 'switch disabled while workspace is off');
+  const switchButton = container.querySelector<HTMLElement>('[role="switch"], .t-switch')!;
+  assert.ok(switchButton, 'switch renders');
+  assert.equal(switchButton.classList.contains('t-is-disabled'), true, 'switch disabled while workspace is off');
   assert.ok(container.querySelector('li p'), 'list stays readable (Vue keeps the list visible)');
-  const add = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.add'))) as HTMLButtonElement;
-  assert.equal(add.disabled, true, 'write actions gated by effective=false');
+  const add = Array.from(container.querySelectorAll<HTMLElement>('.t-button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.add')))!;
+  assert.equal(add.classList.contains('t-is-disabled'), true, 'write actions gated by effective=false');
 });
 
 test('failed enable change reverts the switch and surfaces saveFailed (Vue handleEnabledChange)', async () => {
@@ -338,7 +359,7 @@ test('failed enable change reverts the switch and surfaces saveFailed (Vue handl
   await act(async () => {});
 
   const after = container.querySelector('[role="switch"]') as HTMLButtonElement;
-  assert.equal(after.getAttribute('aria-checked'), 'true', 'optimistic change reverted on failure');
+  assert.equal(after.classList.contains('t-is-checked'), true, 'optimistic change reverted on failure');
   assert.equal(container.querySelector('[role="alert"]')?.textContent, formatMessage('zh-CN', 'memorySettings.toasts.saveFailed', { message: 'network down' }));
 });
 test('consolidate reports the skip reason instead of a bare success', async () => {
@@ -347,10 +368,10 @@ test('consolidate reports the skip reason instead of a bare success', async () =
   personal.consolidate = async () => ({ merged: 0, demoted: 0, expired: 0, reviewed: 1, candidates: 0, skipped: 'too_few_items' });
   const container = await mountPanel(base.client);
   const consolidateButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.consolidate'))) as HTMLButtonElement;
-  assert.equal(consolidateButton.disabled, false, 'consolidate enabled while items exist');
+  assert.equal(consolidateButton.classList.contains('t-is-disabled'), false, 'consolidate enabled while items exist');
   await act(async () => { consolidateButton.click(); });
-  await act(async () => {});
-  const confirm = Array.from(container.querySelectorAll('[role="alertdialog"] button')).find((button) => button.textContent === formatMessage('zh-CN', 'memorySettings.consolidate')) as HTMLButtonElement;
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  const confirm = Array.from(document.body.querySelectorAll('.t-popconfirm button')).find((button) => button.textContent === formatMessage('zh-CN', 'memorySettings.consolidate')) as HTMLButtonElement;
   assert.ok(confirm, 'consolidate popconfirm opens');
   await act(async () => { confirm!.click(); });
   await act(async () => {});

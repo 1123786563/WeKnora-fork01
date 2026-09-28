@@ -95,8 +95,10 @@ test('create dialog renders the full Vue capability matrix in zh-CN', async () =
 
   const form = container.querySelector('form');
   assert.ok(form, 'create form rendered');
-  // Vue drawer description (integrations.api.createApiKeyDialogDesc).
-  assert.match(form?.textContent ?? '', /选择该 API Key 可用的能力和知识库范围/);
+  // Vue drawer description (integrations.api.createApiKeyDialogDesc)——B4 起
+  // 随 SettingDrawer 移入 header（.setting-drawer__subtitle），不再在 form 内。
+  const drawer = container.querySelector('.api-key-create-drawer');
+  assert.match(drawer?.textContent ?? form?.textContent ?? '', /选择该 API Key 可用的能力和知识库范围/);
 
   // 访问类型 radio: 能力授权 (scoped) default-on, 空间完全访问 (full).
   const accessGroup = Array.from(form?.querySelectorAll('[role="radiogroup"]') ?? []).find((group) => group.textContent?.includes('空间完全访问'));
@@ -156,7 +158,7 @@ test('scoped submit posts the Vue payload shape; empty selection is blocked', as
 
   // Defaults: scoped with retrieve/chat/read_agents.
   await act(async () => { setInputValue(form.querySelector('input[type="text"]') as HTMLInputElement, '集成只读 Key'); });
-  await act(async () => { (form.querySelector('button[type="submit"]') as HTMLButtonElement).click(); });
+  await act(async () => { buttonByText(container.querySelector('.api-key-create-drawer') as HTMLElement, '创建 API Key')!.click(); });
   assert.deepEqual(payloads[0], {
     name: '集成只读 Key',
     full_access: false,
@@ -173,7 +175,7 @@ test('scoped submit posts the Vue payload shape; empty selection is blocked', as
     const item = Array.from(reopened.querySelectorAll<HTMLElement>('.api-key-capability-item')).find((node) => node.querySelector('.wk-check-row')?.textContent === label);
     await act(async () => { setChecked(item?.querySelector('input') as HTMLInputElement, false); });
   }
-  await act(async () => { (reopened.querySelector('button[type="submit"]') as HTMLButtonElement).click(); });
+  await act(async () => { buttonByText(container.querySelector('.api-key-create-drawer') as HTMLElement, '创建 API Key')!.click(); });
   assert.equal(payloads.length, 1, 'no second payload');
   assert.match(reopened.querySelector('[role="alert"]')?.textContent ?? '', /至少需要选择一项能力/);
 });
@@ -190,7 +192,7 @@ test('group 全选 toggles the whole group and the payload follows the Vue canon
     const collaboration = Array.from(form.querySelectorAll('.api-key-capability-group')).find((group) => group.querySelector('.api-key-capability-group__header span')?.textContent === '成员与空间');
     buttonByText(collaboration as HTMLElement, '全选')?.click();
   });
-  await act(async () => { (form.querySelector('button[type="submit"]') as HTMLButtonElement).click(); });
+  await act(async () => { buttonByText(container.querySelector('.api-key-create-drawer') as HTMLElement, '创建 API Key')!.click(); });
   assert.deepEqual(payloads[0]?.capabilities, ['retrieve', 'chat', 'read_agents', 'manage_members', 'manage_spaces']);
 });
 
@@ -202,7 +204,7 @@ test('full-access submit empties capabilities and knowledge scope like Vue', asy
 
   await act(async () => { setInputValue(form.querySelector('input[type="text"]') as HTMLInputElement, '完全访问 Key'); });
   await act(async () => { (Array.from(form.querySelectorAll('[role="radio"]')).find((chip) => chip.textContent === '空间完全访问') as HTMLElement).click(); });
-  await act(async () => { (form.querySelector('button[type="submit"]') as HTMLButtonElement).click(); });
+  await act(async () => { buttonByText(container.querySelector('.api-key-create-drawer') as HTMLElement, '创建 API Key')!.click(); });
   assert.deepEqual(payloads[0], { name: '完全访问 Key', full_access: true, knowledge_base_ids: [], capabilities: [] });
 });
 

@@ -249,6 +249,9 @@ func TestArtifactVersionCrossTenantIsolation(t *testing.T) {
 		`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES ('u2', 'u2', 'u2@example.test', 'x', 2)`,
 	).Error)
 	require.NoError(t, db.Exec(
+		`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (2, 'u2', 'admin', 'active')`,
+	).Error)
+	require.NoError(t, db.Exec(
 		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1t2', 2, 'session-t2', 'u2', 'trpc')`,
 	).Error)
 	admission := testAdmission()

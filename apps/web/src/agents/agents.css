@@ -1,22 +1,19 @@
 /*
- * Agents list page - styles migrated to Tailwind utilities in AgentsPage.tsx.
+ * agents 页 TDesign 同构迁移后的 CSS 留守段（Task 9）。
  *
- * Retained on purpose (Tailwind migration):
- * 1. .wk-agent-section-header / .wk-agent-section-count also serve
- *    apps/web/src/configuration/ConfigurationPage.tsx (one rule, two consumer
- *    files) - kept per docs/plans/tailwind-shadcn-migration.md "CSS retention
- *    criteria"; to be folded away when the configuration domain migrates.
- * 2. @keyframes cannot be expressed as utilities; kept and referenced via
- *    animate-[name_...] arbitrary values:
- *    wk-agent-twinkle -> header/empty-state create button sparkles icon,
- *    wk-agent-shimmer -> loading skeleton cards.
- * 3. var(--wk-bg,#fff) is a legacy Vue theme variable; the React client never
- *    defines it (fallback #fff always applies). Preserved verbatim as
- *    arbitrary values per the theme-variable retention rule.
+ * 页面样式已全部平移到 agents.td.css（Vue SFC <style> 事实源）。
+ * 本文件只保留仍被其他未迁移页面消费的共享规则：
+ *
+ * 1. .wk-agent-section-header / .wk-agent-section-count —— 仍被
+ *    apps/web/src/configuration/ConfigurationPage.tsx 消费（一个规则两个
+ *    消费方，docs/plans/tailwind-shadcn-migration.md「CSS retention
+ *    criteria」）；随 AgentsPage 模块加载（router 静态引用），待
+ *    configuration 域迁移时清理（playbook §4.3）。
  */
 
-/* Section headers (AgentList.vue .agent-section-header, sticky like KB list) -
-   shared with configuration/ConfigurationPage.tsx */
+/* Section headers（迁移前 React 版样式；agents 页自身已改用 Vue 端
+   .agent-section-header，见 agents.td.css）——shared with
+   configuration/ConfigurationPage.tsx */
 .wk-agent-section-header {
   grid-column: 1 / -1;
   display: flex;
@@ -49,38 +46,4 @@
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
-}
-
-@keyframes wk-agent-twinkle {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.8; transform: scale(0.95); }
-}
-
-@keyframes wk-agent-shimmer {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
-}
-
-/* ---- AgentEditorModal form-control parity (Vue AgentEditorModal.vue) ----
-   Native button/input/select/textarea keep the UA font (13px Arial) instead
-   of inheriting the app stack like Vue's t-* components; the select chevron
-   is a background-image data-URI utility that Tailwind does not emit from the
-   vendored packages/ui class string. Both fixed with plain CSS. */
-[data-testid="agent-editor-modal"] button,
-[data-testid="agent-editor-modal"] input,
-[data-testid="agent-editor-modal"] select,
-[data-testid="agent-editor-modal"] textarea {
-  font-family: inherit;
-}
-
-[data-testid="agent-editor-modal"] .wk-ae-input,
-[data-testid="agent-editor-modal"] .wk-ae-select,
-[data-testid="agent-editor-modal"] .wk-ae-textarea {
-  font-size: 14px;
-}
-
-[data-testid="agent-editor-modal"] .wk-ae-select {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2366758b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
 }

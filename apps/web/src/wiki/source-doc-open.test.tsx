@@ -15,6 +15,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 
+// classic JSX 产物在无 React import 的模块（kb-list-icons.tsx 经 WikiPage.tsx
+// import 链加载）里按自由标识符落 globalThis 解析——挂全局（settings-error-ux
+// 判例同款），否则 kb-list-icons.tsx:44 'React is not defined'。
+(Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
+
 const { wikiSourceDocPath, createWikiSourceDocOpener } = await import('./source-doc-open.ts');
 const { WikiReaderFooter } = await import('./WikiPage.tsx');
 

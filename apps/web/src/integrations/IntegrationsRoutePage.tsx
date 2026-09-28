@@ -4,11 +4,61 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts, APIPrincipalConfig, IntegrationResource } from '@weknora/views/integrations/page';
 import type { ApiKeyRow } from '@weknora/views/integrations/apiKeys';
 import type { IntegrationKey } from '@weknora/views/integrations/registry';
-import { IntegrationsPage } from '@weknora/views/integrations/page';
+import { IntegrationsPage, setIntegrationSpriteIconRenderer } from '@weknora/views/integrations/page';
 import { integrationKeyFromQuery } from '@weknora/views/integrations/registry';
+// T12c：向集成视图注入 tdesign sprite 图标渲染器（本地镜像 0.4.5 与 Vue 端
+// t-icon glyph 同构，台账 #10）——@weknora/views 无 tdesign-icons-react 依赖，
+// 未注入时视图回退内置手绘 path。模块加载时注册一次。
+import { Icon as TIcon } from 'tdesign-icons-react';
+import './integrations-u.css';
+import './views-integrations-u.css';
+import './integrations.td.css';
+
+// S1 评审回收：外层 try/catch 已删——setIntegrationSpriteIconRenderer 为同步
+// 纯赋值不会抛，属死防御。tdesign-icons-react dist 未带 .t-icon{width/
+// height:1em} 基础规则（tdesign-vue-next dist 有，见 integrations.td.css
+// 注记）。与 Vue t-icon 渲染路径一致：仅传 font-size（1em 方形由
+// integrations.td.css 的 .t-icon 基础规则提供）；inline width/height 会引入
+// 亚像素光栅化差（chevron-down 实测 12-14px 单级 AA 残差，台账 #18）。
+setIntegrationSpriteIconRenderer((name, size) => {
+  const px = typeof size === 'number' ? `${size}px` : (size ?? '16px');
+  return <TIcon name={name} size={px} />;
+});
+
+// B4：平台 logo 渲染器注入（frontend/src/assets/img/im/* 同源资产平移）——
+// @weknora/views 无资产依赖（台账 #23 同因），IM 向导 header/平台 select 前缀
+// 经此拿到与 Vue platformLogo() 同源的位图。
+import { setIntegrationPlatformLogoRenderer } from '@weknora/views/integrations/page';
+import wecomLogo from '../assets/img/im/wecom.svg';
+import feishuLogo from '../assets/img/im/feishu.svg';
+import larkLogo from '../assets/img/im/lark.svg';
+import slackLogo from '../assets/img/im/slack.svg';
+import telegramLogo from '../assets/img/im/telegram.svg';
+import dingtalkLogo from '../assets/img/im/dingtalk.svg';
+import mattermostLogo from '../assets/img/im/mattermost.svg';
+import wechatLogo from '../assets/img/im/wechat.svg';
+import qqbotLogo from '../assets/img/im/qqbot.png';
+import yunzhijiaLogo from '../assets/img/im/yunzhijia.svg';
+const IM_PLATFORM_LOGOS: Record<string, string> = {
+  wecom: wecomLogo,
+  feishu: feishuLogo,
+  lark: larkLogo,
+  slack: slackLogo,
+  telegram: telegramLogo,
+  dingtalk: dingtalkLogo,
+  mattermost: mattermostLogo,
+  wechat: wechatLogo,
+  qqbot: qqbotLogo,
+  yunzhijia: yunzhijiaLogo,
+};
+setIntegrationPlatformLogoRenderer((platform) => IM_PLATFORM_LOGOS[platform] ?? null);
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';
+// 跨任务转交 T08-OCR2-F5：成员插件发现面板（T08 建成、T12 增授权入口）经
+// 共享页的 pluginsSlot 挂载——面板自管数据（挂载即 GET /plugins/installations），
+// 与本页各 tab 独立拉取的口径一致。
+import { PluginsPanel } from './PluginsPanel.tsx';
 import { resolveApiBaseUrl } from '../platform/api-base.ts';
 import { integrationsLocale, integrationsT } from '../../../../packages/views/src/integrations/messages.ts';
 
@@ -208,9 +258,9 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   };
 
   return <>
-    {embedPreviewNotice ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{embedPreviewNotice}</p> : null}
+    {embedPreviewNotice ? <p className="wk-status wk-status-error wk-irp-1" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); onTabChange?.(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); onTabChange?.(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} pluginsSlot={<PluginsPanel client={client} />} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />
   </>;
 }

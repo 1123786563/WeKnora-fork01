@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChatMessage, ChatSession, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
@@ -11,6 +11,14 @@ import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
 import { splitLiveThinking, type LiveThinkingState } from './live-thinking.ts';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import {
+  SandboxSidePanel,
+  collectSessionArtifacts,
+  initialSandboxPanelWidth,
+  type SandboxArtifactItem,
+  type SandboxPanelTab,
+} from './sandbox-side-panel.tsx';
+import { ChatQuestionMinimap, type ChatMessageLike } from './question-minimap.tsx';
 
 // Re-exported for route hosts on the mapped ./chat/page subpath: the
 // ChatRoutePage transient row strips `<think>` content with the same Vue
@@ -33,6 +41,8 @@ export interface ChatAgentOption {
   disabled?: boolean;
   description?: string;
   is_builtin?: boolean;
+  /** Vue CustomAgent.avatar —— 下拉 builtin-avatar emoji 分支。 */
+  avatar?: string;
   config?: Record<string, unknown>;
 }
 
@@ -84,6 +94,15 @@ export interface ChatTerminalView {
   status: string;
   output: string;
 }
+
+/**
+ * Vue index.vue:4 根 :class `'is-sidebar-collapsed': uiStore.sidebarCollapsed`
+ * 的 React 通道：折叠态由宿主壳（apps/web PlatformShell，localStorage
+ * `sidebar_collapsed`）持有，经本 Context 下发；.chat.is-sidebar-collapsed 的
+ * max-width:calc(100vw - 60px) 规则已平移在 chat.td.css:34。默认 false 与
+ * Vue uiStore 初值（localStorage 非 'true'）一致。
+ */
+export const ChatSidebarCollapsedContext = createContext(false);
 
 export interface ChatPageProps {
   sessions: readonly ChatSession[];
@@ -227,9 +246,11 @@ export interface ChatPageProps {
   modelContext?: string;
   /** True when the context spec is the 200K default (dims the suffix). */
   modelContextIsDefault?: boolean;
-  modelOptions?: readonly { id: string; name: string }[];
+  modelOptions?: readonly { id: string; name: string; rawName?: string; contextLabel?: string; contextIsDefault?: boolean }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
+  /** Vue 模型下拉「+ 添加模型」（handleGoToConversationModels → 设置页模型分区）。 */
+  onModelAdd?(): void;
   /**
    * R484 D15 — Vue Input-field.vue web-search toggle, forwarded to the
    * composer globe button. Visibility gates on readiness (tenant default
@@ -247,6 +268,22 @@ export interface ChatPageProps {
    * arrive pre-localized so the shared copy table stays untouched.
    */
   headerUtilityItems?: readonly { id: string; label: string; onActivate(): void }[];
+  /**
+   * 会话视图头部件注入（Vue ChatHeader.vue 同构）：本包不带 tdesign 依赖，
+   * 真实 t-popup 菜单由宿主（apps/web/src/chat/chat-header.tsx）以 ReactNode
+   * 注入。缺省回退为结构面（.chat-header 标题 + ⋯ 按钮，无弹层）。
+   */
+  headerSlot?: ReactNode;
+  /**
+   * Vue index.vue .sandbox-header-toggle 注入（宿主 t-tooltip 版）；缺省回退为
+   * 结构面。render-prop：open 即时开面板（Vue sandboxPanel.open()，无异步
+   * provision —— 供给在终端 tab 激活时才发生）。
+   */
+  sandboxToggleSlot?: (open: () => void) => ReactNode;
+  /** 会话产物行下载（SandboxSidePanel 产物 tab 行 + 消息面共用宿主动作）。 */
+  onArtifactDownloadPanel?(item: SandboxArtifactItem): void;
+  /** 会话产物行预览（宿主 artifact-preview 通道）。 */
+  onArtifactPreviewPanel?(item: SandboxArtifactItem): void;
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -272,28 +309,28 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
 function LiveThinking({ copy, live }: { copy: ChatCopyTable; live: LiveThinkingState }) {
   if (!live.showThink) return null;
   if (live.thinking) {
-    return <section className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copy.thinkingAlt}>
-      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
-        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+    return <section className="wk-chat-live-think wk-vc-page-1" aria-label={copy.thinkingAlt}>
+      <p role="status" className="wk-vc-page-2">
+        <span className="wk-vc-page-3 wk-mr-none" aria-hidden="true" />
         {copy.thinking}
       </p>
-      {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+      {live.thinkContent ? <p className="wk-vc-page-4">{live.thinkContent}</p> : null}
     </section>;
   }
-  return <details className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
-    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copy.deepThoughtCompleted}</summary>
-    {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+  return <details className="wk-chat-live-think wk-vc-page-5">
+    <summary className="wk-vc-page-6">{copy.deepThoughtCompleted}</summary>
+    {live.thinkContent ? <p className="wk-vc-page-4">{live.thinkContent}</p> : null}
   </details>;
 }
 
 function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
   const live = splitLiveThinking(stream.answer ?? '');
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
-  return <section aria-label={copy.streamStatus} className="wk-chat-live-response mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px] text-[13px]">
-    <p role="status" className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.streamStatus}: {stream.phase}</p>
-    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.artifactsPending}</p> : null}
+  return <section aria-label={copy.streamStatus} className="wk-chat-live-response wk-vc-page-7">
+    <p role="status" className="wk-vc-page-8">{copy.streamStatus}: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending wk-vc-page-8">{copy.artifactsPending}</p> : null}
     {stream.phase === 'streaming' ? <LiveThinking copy={copy} live={live} /> : null}
-    {stream.toolCalls.length > 0 ? <div><h2 className="mt-[8px] mb-[4px] text-[13px]">{copy.toolCallsTitle}</h2><ul className="wk-list m-0 list-none p-0">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="text-[rgba(0,0,0,0.4)]">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
+    {stream.toolCalls.length > 0 ? <div><h2 className="wk-vc-page-9">{copy.toolCallsTitle}</h2><ul className="wk-list wk-vc-page-10">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="wk-vc-page-11">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
   </section>;
 }
 
@@ -309,8 +346,8 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : props.copy.sendFailed); } finally { setBusy(null); }
   }
 
-  return <section aria-label={props.copy.chatActionsTitle} className="wk-chat-actions mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px]">
-    <h2 className="m-0 mb-[6px] text-[13px] text-[rgba(0,0,0,0.6)]">{props.copy.chatActionsTitle}</h2>
+  return <section aria-label={props.copy.chatActionsTitle} className="wk-chat-actions wk-vc-page-12">
+    <h2 className="wk-vc-page-13">{props.copy.chatActionsTitle}</h2>
     {error ? <p role="alert">{error}</p> : null}
     {toolApprovals.map((approval) => <ToolApprovalCard
       key={`tool-${approval.pendingId}`}
@@ -321,10 +358,10 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
         : undefined}
       copy={props.copy}
     />)}
-    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
-      <strong className="text-[13px]">{props.copy.oauthTitle}: {approval.serviceName ?? approval.serviceId ?? props.copy.oauthTool}</strong>
-      {approval.toolName ? <small className="text-[rgba(0,0,0,0.4)]">{props.copy.oauthTool}: {approval.toolName}</small> : null}
-      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>{props.copy.oauthAuthorize} {approval.serviceName ?? approval.serviceId}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>{props.copy.oauthCancel}</button></div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.authorized ? props.copy.oauthAuthorized : approval.reason ?? props.copy.approvalResolved}</small>}
+    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card wk-vc-page-14">
+      <strong className="wk-vc-page-15">{props.copy.oauthTitle}: {approval.serviceName ?? approval.serviceId ?? props.copy.oauthTool}</strong>
+      {approval.toolName ? <small className="wk-vc-page-11">{props.copy.oauthTool}: {approval.toolName}</small> : null}
+      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions wk-vc-page-16"><button type="button" className="wk-vc-page-17" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>{props.copy.oauthAuthorize} {approval.serviceName ?? approval.serviceId}</button><button type="button" className="wk-vc-page-17" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>{props.copy.oauthCancel}</button></div> : <small className="wk-vc-page-11">{approval.authorized ? props.copy.oauthAuthorized : approval.reason ?? props.copy.approvalResolved}</small>}
     </div>)}
   </section>;
 }
@@ -432,13 +469,13 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
     }
   }
 
-  return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
-    {mentionedItems.length > 0 ? <ul className="m-0 flex flex-wrap gap-[6px] p-0" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="inline-flex items-center gap-[5px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[7px] py-[3px] text-[12px] text-[rgba(0,0,0,0.65)]"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="border-0 bg-transparent p-0" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
-    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
-    <div className="relative flex items-center gap-[6px]"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[8px] py-[4px] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="absolute bottom-[34px] left-0 z-20 w-[260px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[5px] text-[12px]" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="block w-full rounded-[6px] border-0 bg-transparent px-[8px] py-[6px] text-left text-[12px] hover:bg-[#f3f3f3]" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="m-0 px-[8px] py-[6px] text-[12px] text-[rgba(0,0,0,0.45)]">{copy.mentionNoAvailable}</p>}</div> : null}</div>
+  return <form className="wk-chat-steer wk-vc-page-18" onSubmit={(event) => void submit(event)}>
+    <label htmlFor="wk-chat-steer-draft" className="wk-vc-page-19">{copy.steerCurrent}</label>
+    {mentionedItems.length > 0 ? <ul className="wk-vc-page-20" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="wk-vc-page-21"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="wk-vc-page-22" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="wk-vc-page-23" />
+    <div className="wk-vc-page-24"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="wk-vc-page-25" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="wk-vc-page-26"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="wk-vc-page-27" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="wk-vc-page-28" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="wk-vc-page-29">{copy.mentionNoAvailable}</p>}</div> : null}</div>
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
+    <button type="submit" disabled={busy || !draft.trim()} className="wk-vc-page-30">{copy.steerQueued}</button>
   </form>;
 }
 
@@ -467,153 +504,19 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
   }
   /* .wk-chat-sandbox-drawer .wk-chat-terminal scoped values folded in: the
      terminal only ever renders inside the drawer (page.tsx below). */
-  return <section ref={panelRef} aria-label={`${props.copy.sandboxPanelTitle} (Sandbox terminal)`} className="wk-chat-terminal m-0 flex min-h-0 w-full max-w-none flex-1 flex-col gap-[8px] overflow-auto rounded-none border-0 p-[12px] text-[12px]">
-    <div className="wk-settings-panel-heading m-0 flex items-center justify-between gap-[8px] border-b border-[#eef1f5] pb-[1rem]"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
-    {props.terminal?.output ? <pre className="m-0 min-h-[120px] flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#1f2430] p-[10px] text-[12px] leading-[1.5] text-[#d5dded]">{props.terminal.output}</pre> : null}
-    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint m-0 leading-[1.6] text-[rgba(0,0,0,0.4)]">{copy.startTerminal}</p> : null}
-    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open cursor-pointer self-start rounded-[6px] border-0 bg-[#07c05f] px-[14px] py-[6px] text-[13px] text-white" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
-    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)} className="flex items-center gap-[6px]"><label htmlFor="wk-chat-terminal-input" className="shrink-0 text-[rgba(0,0,0,0.4)]">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} className="flex-1 rounded-[6px] border border-[#dcdcdc] px-[8px] py-[5px] text-[13px]" /><button type="submit" disabled={busy || !input.trim()} className="cursor-pointer rounded-[6px] border-0 bg-[#07c05f] px-[10px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.sendInput}</button></form> : null}
-    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close cursor-pointer self-start rounded-[6px] border border-[#dcdcdc] bg-white px-[14px] py-[6px] text-[13px] text-[rgba(0,0,0,0.6)]" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
+  return <section ref={panelRef} aria-label={`${props.copy.sandboxPanelTitle} (Sandbox terminal)`} className="wk-chat-terminal wk-vc-page-31">
+    <div className="wk-settings-panel-heading wk-vc-page-32"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
+    {props.terminal?.output ? <pre className="wk-vc-page-33">{props.terminal.output}</pre> : null}
+    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint wk-vc-page-34">{copy.startTerminal}</p> : null}
+    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open wk-vc-page-35" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)} className="wk-vc-page-36"><label htmlFor="wk-chat-terminal-input" className="wk-vc-page-37">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} className="wk-vc-page-38" /><button type="submit" disabled={busy || !input.trim()} className="wk-vc-page-39">{copy.sendInput}</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close wk-vc-page-40" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
   </section>;
 }
 
-function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions' | 'headerUtilityItems'>) {
-  const copy = props.copy;
-  const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const [renameBusy, setRenameBusy] = useState(false);
-  const [headerDangerAction, setHeaderDangerAction] = useState<'clear' | 'delete' | null>(null);
-  const [headerDangerBusy, setHeaderDangerBusy] = useState(false);
-  const [headerDangerError, setHeaderDangerError] = useState<string | null>(null);
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const renameEditorRef = useRef<HTMLDivElement | null>(null);
-  const renameSubmittingRef = useRef(false);
-  const renameDetailsRef = useRef<HTMLDetailsElement | null>(null);
-  const renameTriggerRef = useRef<HTMLElement | null>(null);
-  // The rename-focus effect must run before the !session bail-out: when the
-  // selected session id points at a list entry that has not loaded yet (the
-  // immediate post-send jump), the first render returns null after the refs
-  // and the next render mounts this effect — React aborts the tree with
-  // "Rendered more hooks than during the previous render".
-  useEffect(() => {
-    if (!renameOpen) return;
-    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
-    return () => window.cancelAnimationFrame(frame);
-  }, [renameOpen]);
-  if (!session) return null;
-  const pinned = session.is_pinned === true;
-  const openRename = () => {
-    setRenameValue(session.title ?? '');
-    setRenameError(null);
-    renameDetailsRef.current?.removeAttribute('open');
-    setRenameOpen(true);
-  };
-  const closeRename = () => {
-    setRenameOpen(false);
-    setRenameError(null);
-    window.setTimeout(() => renameTriggerRef.current?.focus(), 0);
-  };
-  const submitRename = async () => {
-    if (renameSubmittingRef.current || !props.onRenameSession) return;
-    const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);
-    if (!title) {
-      setRenameError(copy.renameTitleRequired);
-      renameInputRef.current?.focus();
-      return;
-    }
-    const currentTitle = (session.title ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
-    if (title === currentTitle) { closeRename(); return; }
-    renameSubmittingRef.current = true;
-    setRenameBusy(true);
-    setRenameError(null);
-    try {
-      await props.onRenameSession(session.id, title);
-      closeRename();
-    } catch {
-      setRenameError(copy.renameTitleFailed);
-    } finally {
-      renameSubmittingRef.current = false;
-      setRenameBusy(false);
-    }
-  };
-  const submitHeaderDangerAction = async () => {
-    if (!headerDangerAction || headerDangerBusy) return;
-    const callback = headerDangerAction === 'clear' ? props.onClearSession : props.onDeleteSession;
-    if (!callback) return;
-    setHeaderDangerBusy(true);
-    setHeaderDangerError(null);
-    try {
-      if (headerDangerAction === 'clear') await props.onClearSession!();
-      else await props.onDeleteSession!(session.id);
-      setHeaderDangerAction(null);
-      renameDetailsRef.current?.removeAttribute('open');
-    } catch (error) {
-      setHeaderDangerError(error instanceof Error ? error.message : copy.operationFailed);
-    } finally {
-      setHeaderDangerBusy(false);
-    }
-  };
-  /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu).
-     Geometry + per-item leading icons mirror Vue ChatHeader.vue:505-643:
-     popup min-width 168 / width max-content, item min-height 32 / px 12 /
-     font 14 / gap 8 with a 16px secondary-coloured t-icon, divider
-     margin 2px 6px. */
-  const menuItem = 'flex min-h-[32px] cursor-pointer items-center gap-[8px] whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[12px] py-0 text-left text-[14px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
-  const menuIcon = 'shrink-0 text-[rgba(0,0,0,0.4)]';
-  const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
-  const menuSvg = (path: ReactNode) => <svg width="16" height="16" viewBox="0 0 16 16" {...stroke} aria-hidden="true" className={menuIcon}>{path}</svg>;
-  const headerMenuIcons: Record<string, ReactNode> = {
-    pin: menuSvg(<><path d="M9.7 2.3l4 4-2.6.9-1.7 1.7-.4 2.9-1.8-1.8-3.7 3.7-.7-.7L6.5 9.3 4.7 7.5l2.9-.4L9.3 5.5z" /><line x1="2.5" y1="13.5" x2="6.3" y2="9.7" /></>),
-    rename: menuSvg(<path d="M11.3 2.2l2.5 2.5L5.2 13.3l-3.2.7.7-3.2 8.6-8.6z" />),
-    copySessionId: menuSvg(<><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" /></>),
-    copyLink: menuSvg(<><path d="M6.5 9.5l3-3" /><path d="M7.5 4.5l1.2-1.2a2.5 2.5 0 0 1 3.5 3.5L11 8" /><path d="M8.5 11.5l-1.2 1.2a2.5 2.5 0 0 1-3.5-3.5L5 8" /></>),
-    copyMarkdown: menuSvg(<><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" /><path d="M4 10V6l2 2 2-2v4" /><path d="M11 6v4m0 0l-1.5-1.5M11 10l1.5-1.5" /></>),
-    openNewWindow: menuSvg(<><path d="M1.5 8a6.5 6.5 0 1 1 1.9 4.6" /><path d="M1.5 12.5V8.5h4" /><path d="M8 5.5V8l2 2" /></>),
-    clear: menuSvg(<><path d="M8 2v2.5" /><path d="M3.5 6.5h9l-.8 2.2a2 2 0 0 1-1.9 1.3H6.2a2 2 0 0 1-1.9-1.3z" /><path d="M5.5 10v3.5M10.5 10v3.5" /></>),
-    delete: menuSvg(<><path d="M2.5 4h11" /><path d="M5.5 4V2.5h5V4" /><path d="M4 4l.7 9a1.5 1.5 0 0 0 1.5 1.4h3.6a1.5 1.5 0 0 0 1.5-1.4L12 4" /><path d="M6.5 7v4.5M9.5 7v4.5" /></>),
-  };
-  return <>
-    <details ref={renameDetailsRef} className="wk-chat-header-menu relative">
-    <summary ref={renameTriggerRef} aria-label={copy.moreActions} title={copy.moreActions} className="inline-flex h-[24px] w-[24px] cursor-pointer list-none items-center justify-center rounded-[5px] border-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)] [&::-webkit-details-marker]:hidden">
-      {/* Vue uses the horizontal ellipsis (t-icon-ellipsis) here, not the
-          vertical kebab. */}
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
-    </summary>
-    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] flex w-max min-w-[160px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
-      {headerDangerAction ? <div className="wk-chat-header-confirm" role="dialog" aria-label={headerDangerAction === 'clear' ? copy.clearMessages : copy.deleteSession}>
-        <strong className="block px-[6px] text-[12px]">{headerDangerAction === 'clear' ? copy.clearConfirmTitle : copy.deleteConfirmTitle}</strong>
-        <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{headerDangerAction === 'clear' ? copy.clearConfirmBody : copy.deleteConfirmBody}</p>
-        {headerDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{headerDangerError}</p> : null}
-        <div className="flex justify-end gap-[4px] px-[6px]"><button type="button" className="min-h-[28px] border-0 bg-transparent px-[7px] text-[12px]" onClick={() => setHeaderDangerAction(null)} disabled={headerDangerBusy}>{copy.renameCancel}</button><button type="button" className="min-h-[28px] rounded-[5px] border-0 bg-[#e34d59] px-[7px] text-[12px] text-white" onClick={() => void submitHeaderDangerAction()} disabled={headerDangerBusy}>{headerDangerAction === 'clear' ? copy.clearConfirmAction : copy.deleteConfirmAction}</button></div>
-      </div> : <>
-        {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{headerMenuIcons.pin}{pinned ? copy.unpin : copy.pin}</button> : null}
-        {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{headerMenuIcons.rename}{copy.renameSession}</button> : null}
-        {/* R483 D16 — Vue ChatHeader utility block (ChatHeader.vue:61-78):
-            copyId / copyLink / copyMarkdown / openNewWindow framed by the two
-            Vue dividers between 修改标题 and 清空消息. Each activation closes
-            the popup like the Vue onMenuAction menuVisible = false. */}
-        {props.headerUtilityItems && props.headerUtilityItems.length > 0 ? <>
-          <div className="wk-chat-header-menu-divider mx-[6px] my-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
-          {props.headerUtilityItems.map((item) => <button key={item.id} type="button" role="menuitem" data-menu-action={item.id} className={menuItem} onClick={() => { item.onActivate(); renameDetailsRef.current?.removeAttribute('open'); }}>{headerMenuIcons[item.id]}{item.label}</button>)}
-          <div className="wk-chat-header-menu-divider mx-[6px] my-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
-        </> : null}
-        {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{headerMenuIcons.clear}{copy.clearMessages}</button> : null}
-        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem.replace('text-[rgba(0,0,0,0.9)]', '') + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{headerMenuIcons.delete}{copy.deleteSession}</button> : null}
-      </>}
-    </div>
-    </details>
-    {renameOpen ? <div ref={renameEditorRef} className="inline-flex min-w-0 items-center gap-[4px]" role="group" aria-label={copy.renameTitle}>
-      <input ref={renameInputRef} type="text" value={renameValue} placeholder={copy.renameTitlePlaceholder} maxLength={80} autoFocus disabled={renameBusy} aria-label={copy.renameTitle} aria-invalid={renameError ? 'true' : undefined} className="box-border min-w-0 w-[min(240px,50vw)] rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[3px] text-[14px] leading-[20px] outline-none" onChange={(event) => setRenameValue(event.target.value)} onBlur={(event) => { const next = event.relatedTarget; if (next instanceof Node && renameEditorRef.current?.contains(next)) return; void submitRename(); }} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeRename(); } if (event.key === 'Enter') { event.preventDefault(); void submitRename(); } }} />
-      <button type="button" aria-label={copy.renameConfirm} className="h-[24px] cursor-pointer rounded-[5px] border-0 bg-[#07c05f] px-[7px] text-[12px] text-white disabled:opacity-50" onClick={() => void submitRename()} disabled={renameBusy}>{renameBusy ? copy.renameSaving : copy.renameConfirm}</button>
-      <button type="button" aria-label={copy.renameCancel} className="h-[24px] cursor-pointer rounded-[5px] border-0 bg-transparent px-[5px] text-[12px] text-[rgba(0,0,0,0.55)] hover:bg-[#f3f3f3]" onClick={closeRename} disabled={renameBusy}>{copy.renameCancel}</button>
-      {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
-    </div> : null}
-  </>;
-}
-
 export function ChatPage(props: ChatPageProps) {
+  // Vue index.vue:4 — 根 :class 绑定 uiStore.sidebarCollapsed（壳层折叠态）。
+  const sidebarCollapsed = useContext(ChatSidebarCollapsedContext);
   // Chat copy resolves per locale: explicit prop wins, otherwise the app
   // convention (localStorage 'locale' set by the language switch, then
   // navigator.language). The switch dispatches 'weknora:locale-changed'
@@ -631,8 +534,22 @@ export function ChatPage(props: ChatPageProps) {
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
-  // Vue sandbox panel: closed until the header toggle opens it.
+  // Vue sandbox panel (useChatSandboxPanel)：closed until the header toggle
+  // opens it — 打开是即时状态翻转（Vue sandboxPanel.open()），终端供给发生在
+  // 终端 tab 激活后（TerminalPanel 自带启动面），与异步 provision 解耦。
   const [terminalOpen, setTerminalOpen] = useState(props.terminalOpen ?? false);
+  const [sandboxTab, setSandboxTab] = useState<SandboxPanelTab>('artifacts');
+  const [sandboxWidth, setSandboxWidth] = useState(() => initialSandboxPanelWidth());
+  function openSandboxPanel(tab?: SandboxPanelTab): void {
+    if (tab) setSandboxTab(tab);
+    setTerminalOpen(true);
+  }
+  function setSandboxPanelWidth(next: number): void {
+    const clamped = Math.min(1200, Math.max(320, Math.round(next)));
+    setSandboxWidth(clamped);
+    try { window.localStorage.setItem('sandbox_panel_width', String(clamped)); } catch { /* storage unavailable */ }
+  }
+  const sandboxArtifacts = useMemo(() => collectSessionArtifacts(props.messages), [props.messages]);
   // Vue chat references live behind the collapsed 检索完成 summary
   // (ChatReferencesDrawer); the shared panel stays closed until that opens it.
   const [referencesOpen, setReferencesOpen] = useState(false);
@@ -671,6 +588,48 @@ export function ChatPage(props: ChatPageProps) {
     const selected = props.sessions.find((session) => session.id === props.selectedSessionId);
     return selected?.title || (props.selectedSessionId ? copy.newSession : copy.newChat);
   })();
+  const selectedSession = props.sessions.find((session) => session.id === props.selectedSessionId) ?? null;
+  // Vue index.vue：回底按钮常驻 DOM（v-show），点击滚回 .chat_scroll_box 底部。
+  const scrollBoxRef = useRef<HTMLDivElement | null>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  /* Vue useStickyBottomOnResize：用户未上滚时，消息列表尺寸变化（沙箱面板
+     开合让位 padding-right → 气泡变窄换行增多）把 scrollTop 钉在底部——
+     px-chat-sandbox 实证：缺这层 React 停在顶部而 Vue 滚到底（41px 位差）。 */
+  useEffect(() => {
+    const box = scrollBoxRef.current;
+    const messageList = box?.firstElementChild;
+    if (!messageList || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (userScrolledUp) return;
+      const container = scrollBoxRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(messageList);
+    return () => observer.disconnect();
+  }, [userScrolledUp]);
+  /* Vue index.vue jumpToQuestion（367-382）：问答目录点击 → 目标消息行平滑滚入
+     + is-minimap-target 1.2s 品牌色闪烁（CSS 在 chat.td.css，动画名保留原名）。 */
+  const [minimapTargetId, setMinimapTargetId] = useState('');
+  const minimapFlashTimer = useRef<number | null>(null);
+  const jumpToQuestion = (id: string) => {
+    const root = scrollBoxRef.current;
+    if (!root || !id) return;
+    const el = root.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+
+    const offset = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+    const nearEnd = root.scrollHeight - offset < root.clientHeight + 80;
+    setUserScrolledUp(!nearEnd);
+
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+
+    setMinimapTargetId(id);
+    if (minimapFlashTimer.current) window.clearTimeout(minimapFlashTimer.current);
+    minimapFlashTimer.current = window.setTimeout(() => {
+      setMinimapTargetId('');
+      minimapFlashTimer.current = null;
+    }, 1200);
+  };
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
   // R471-A1: Vue isAgentStreamSession() parity — see the canSteer prop doc.
@@ -683,7 +642,169 @@ export function ChatPage(props: ChatPageProps) {
   /* main.wk-chat-page utilities carry the chat.css parity values; the
      retained guard block in chat.css keeps beating the legacy styles.css
      .wk-chat-page rule until the Orchestrator deletes that block. */
-  return <main className="wk-chat-page grid h-screen items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
+  /* Vue creatChat.vue 空态：composer 属于 .dialogue-answers 列（title → 推荐问题 → 输入区）；
+   * 会话视图仍由 conversation 流承载。Vue isReplying（Input-field.vue）在消息派发即翻转，
+   * 不等首个 SSE 事件——composer 的停止换位须覆盖发送前窗口。 */
+  const composerNode = (
+    <ChatComposer
+      copy={copy}
+      draft={props.draft}
+      focusSignal={props.composerFocusSignal}
+      disabled={sending || pending !== undefined || streaming}
+      onDraftChange={props.onDraftChange}
+      onSubmit={(submission) => void send(submission)}
+      attachments={props.attachments}
+      onAttachmentSelect={props.onAttachmentSelect}
+      onRemoveAttachment={props.onRemoveAttachment}
+      attachmentAccept={props.attachmentAccept}
+      mentionOptions={props.mentionOptions}
+      mentionedItems={props.mentionedItems}
+      mentionLoading={props.mentionLoading}
+      mentionError={props.mentionError}
+      mentionEmptyHint={props.mentionEmptyHint}
+      onMentionOpen={props.onMentionOpen}
+      onMentionSelect={props.onMentionSelect}
+      onMentionRemove={props.onMentionRemove}
+      agents={props.agents}
+      selectedAgentId={props.selectedAgentId}
+      onAgentChange={props.onAgentChange}
+      agentModels={props.agentModels}
+      onManageAgents={props.onManageAgents}
+      onConfigureAgent={props.onConfigureAgent}
+      onAgentNotReady={props.onAgentNotReady}
+      modelLabel={props.modelLabel}
+      modelContext={props.modelContext}
+      modelContextIsDefault={props.modelContextIsDefault}
+      modelOptions={props.modelOptions}
+      selectedModelId={props.selectedModelId}
+      onModelChange={props.onModelChange}
+      onModelAdd={props.onModelAdd}
+      webSearchVisible={props.webSearchVisible}
+      webSearchConfigured={props.webSearchConfigured}
+      webSearchEnabled={props.webSearchEnabled}
+      onWebSearchToggle={props.onWebSearchToggle}
+      streaming={streaming || sending}
+      canSteer={canSteer}
+      onStop={props.onStopStream}
+      steerQueue={props.steerQueue}
+      onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
+      onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
+      onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
+    />
+  );
+
+  /* 会话视图：Vue index.vue 外壳（.chat > ChatHeader + .chat_thread + 回底按钮 +
+   * .input-container）。空态（creatchat）保留 Task 11b 现状结构，勿重迁。 */
+  if (props.selectedSessionId) {
+    return <div
+      className={'chat'
+        + (sidebarCollapsed ? ' is-sidebar-collapsed' : '')
+        + (referencesOpen ? ' has-references-panel' : '')
+        + (terminalOpen ? ' has-sandbox-panel' : '')}
+      style={{ '--sandbox-panel-width': `${sandboxWidth}px` } as React.CSSProperties}>
+      {props.headerSlot ?? (
+        /* 结构回退面（无 tdesign 弹层）：.chat-header + 标题 + ⋯ 按钮。 */
+        <header className="chat-header">
+          <h1 className="chat-header__title" title={headerTitle}>
+            {selectedSession?.is_pinned === true ? <svg className="t-icon t-icon-pin chat-header__pin" viewBox="0 0 24 24" width="12px" height="12px" fill="none" aria-hidden="true"><use href="#t-icon-pin" /></svg> : null}
+            <span className="chat-header__title-text">{headerTitle}</span>
+          </h1>
+          <button type="button" className="chat-header__menu-btn wk-chat-header-menu" aria-label={copy.moreActions}>
+            <svg className="t-icon t-icon-ellipsis" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-ellipsis" /></svg>
+          </button>
+        </header>
+      )}
+      {/* 沙箱面板收起时：图标镜像会话左上角三个点（Vue index.vue sandbox-header-toggle）。 */}
+      {sandboxAvailable && !terminalOpen ? (props.sandboxToggleSlot ? props.sandboxToggleSlot(() => openSandboxPanel()) : (
+        <div className="sandbox-header-toggle">
+          <button type="button" className="sandbox-header-toggle__btn" aria-label={copy.openSandboxPanel} onClick={() => openSandboxPanel()}>
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="16" y1="7.5" x2="16" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      )) : null}
+      <div className="chat_thread">
+        <ChatActionCards {...props} copy={copy} />
+        {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
+        {props.error ? <p role="alert">{props.error}</p> : null}
+        {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
+        <MessageList
+          copy={copy}
+          messages={props.messages}
+          pending={pending}
+          onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined}
+          loadingOlder={props.loadingOlderMessages}
+          hasMore={props.hasMoreMessages}
+          onLoadOlder={props.onLoadOlderMessages}
+          sessionId={props.selectedSessionId}
+          typingIndicator={streaming && !props.stream!.thinking && !liveThinking.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
+          suggestions={props.suggestions}
+          onSuggestionClick={props.onSuggestionClick}
+          onRefreshSuggestions={props.onRefreshSuggestions}
+          onDismissSuggestions={props.onDismissSuggestions}
+          onCitationClick={activateCitation}
+          onToggleReferences={() => setReferencesOpen((open) => !open)}
+          referencesOpen={referencesOpen}
+          onBookmark={props.onBookmark}
+          onRateMessage={props.onRateMessage}
+          onRemoveRating={props.onRemoveRating}
+          ratingOf={props.ratingOf}
+          onForkMessage={props.onForkMessage}
+          canForkMessage={props.canForkMessage}
+          onArtifactDownload={props.onArtifactDownload}
+          onArtifactPreview={props.onArtifactPreview}
+          scrollContainerRef={scrollBoxRef}
+          onScrolledUpChange={setUserScrolledUp}
+          minimapTargetId={minimapTargetId}
+        />
+        {/* Vue index.vue:143 ChatQuestionMinimap —— .chat_scroll_box 的紧邻兄弟，
+            挂 .chat_thread 内（DOM 实测：Vue 端 minimap 父级即 .chat_thread，
+            relative x280/w580/h576，top:50%=288；挂外层 .chat 会左偏 20px、
+            下移 72px —— px-chat-sandbox 残差根因）。 */}
+        <ChatQuestionMinimap
+          copy={copy}
+          scrollContainerRef={scrollBoxRef}
+          messages={props.messages as unknown as readonly ChatMessageLike[]}
+          onJump={jumpToQuestion}
+        />
+      </div>
+      <div
+        className="scroll-to-bottom-btn wk-chat-scroll-bottom"
+        style={{ display: userScrolledUp ? undefined : 'none' }}
+        onClick={() => {
+          const box = scrollBoxRef.current;
+          if (box) box.scrollTo({ top: box.scrollHeight });
+        }}
+      >
+        <svg className="t-icon t-icon-chevron-down" viewBox="0 0 24 24" width="20px" height="20px" fill="none" aria-hidden="true"><use href="#t-icon-chevron-down" /></svg>
+      </div>
+      <div className="input-container">
+        {props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {composerNode}
+      </div>
+      {sandboxAvailable && terminalOpen ? <SandboxSidePanel
+        copy={copy}
+        visible={terminalOpen}
+        activeTab={sandboxTab}
+        width={sandboxWidth}
+        sessionId={props.selectedSessionId}
+        shifted={referencesOpen}
+        artifacts={sandboxArtifacts}
+        artifactsCollecting={props.stream?.artifactsPending}
+        terminal={<TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />}
+        onTabChange={(tab) => { setSandboxTab(tab); if (tab === 'terminal') { /* Vue 首切终端 tab 即供给（SandboxTerminal 连接）*/ void props.onOpenTerminal?.().catch(() => undefined); } }}
+        onClose={() => setTerminalOpen(false)}
+        onWidthChange={setSandboxPanelWidth}
+        onArtifactDownload={props.onArtifactDownloadPanel}
+        onArtifactPreview={props.onArtifactPreviewPanel}
+      /> : null}
+    </div>;
+  }
+
+  return <main className="wk-chat-page wk-vc-page-44">
     <SessionSidebar
       copy={copy}
       sessions={props.sessions}
@@ -708,79 +829,51 @@ export function ChatPage(props: ChatPageProps) {
       pageCount={props.sessionPageCount}
       onPageChange={props.onSessionPageChange}
     />
-    <section className="wk-chat-main relative flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
-      {/* Vue chat-header floats at x272 with only the titles' own 8px inset
-          (title text x280) and the sandbox toggle right edge at x1266 — the
-          former px-12 shifted both by 12px. */}
-      {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent pl-0 pr-0 pt-[10px] pb-0">
-        <div className="wk-chat-header-titles pointer-events-auto inline-flex items-center gap-[2px] max-w-[min(320px,100%)] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] pl-[8px] backdrop-blur-[8px]">
-          <h1 title={headerTitle} className="m-0 min-w-0 cursor-default overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{headerTitle}</h1>
-          <ChatHeaderMenu
-            copy={copy}
-            selectedSessionId={props.selectedSessionId}
-            sessions={props.sessions}
-            onRenameSession={props.onRenameSession}
-            onToggleSessionPin={props.onToggleSessionPin}
-            onDeleteSession={props.onDeleteSession}
-            onClearSession={props.onClearSession}
-            headerUtilityItems={props.headerUtilityItems}
-          />
-        </div>
-        <div className="wk-chat-header-actions pointer-events-auto inline-flex items-center gap-[8px] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] backdrop-blur-[8px]">
-            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle inline-flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.openSandboxPanel} title={copy.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
-                <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
-                <line x1="16" y1="7.5" x2="16" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-            </button> : null}
-          </div>
-        </header> : null}
-      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col pl-[20px] pr-0 pb-[20px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-0 pt-0'}>
-        {/* Vue creatChat.vue: the welcome heading is always part of the empty
-            state; suggested-question cards load per selected agent. The empty
-            view centers the welcome+composer cluster (.dialogue-wrap) and must
-            not render the flex:1 message scroll that pins the composer down. */}
-        {/* Vue creatChat.vue .dialogue-answers: welcome → composer gap is
-            48.8px (welcome bottom 293.2 to composer top 342 in the centered
-            212px cluster); the 56px padding made the whole cluster sit 3.6px
-            high and the composer 3.6px low. */}
+    <section className="wk-chat-main wk-vc-page-45" aria-label={copy.streamStatus}>
+      <div className="wk-chat-conversation wk-chat-conversation--empty wk-vc-page-46">
+        {/* Vue creatChat.vue 空态簇（Task 11b 平移）：.dialogue-wrap 居中 →
+            .dialogue-answers 列（gap 24，100%/max 960）→ .dialogue-title +
+            .suggested-questions-container + 输入区。整数 gap 几何取代旧
+            48.8px 分数 padding（其 0.5px 偏移一路放大成字形相位差）。 */}
         {!props.selectedSessionId ? (
-      <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[48.8px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
-            {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
-                whose padding override (0 0 24px) replaces the base 48px padding. */}
-            <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
+      <div className="dialogue-wrap wk-vc-page-47">
+      <div className="dialogue-answers wk-vc-page-48">
+      <h1 className="dialogue-title" style={{ '--wails-draggable': 'drag' } as React.CSSProperties}><span style={{ '--wails-draggable': 'drag' } as React.CSSProperties}>{copy.createChatTitle}</span></h1>
+      <div className={'suggested-questions-container' + (props.starterQuestionsLoading ? ' wk-chat-starters--loading' : '')} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {props.starterQuestionsLoading && (props.starterQuestions?.length ?? 0) === 0 ? (
-              <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
-                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton block h-[37px] w-[180px] rounded-[10px] bg-[linear-gradient(90deg,#eceef1_25%,#f6f7f8_50%,#eceef1_75%)] bg-[length:200%_100%] animate-[wk-chat-skeleton_1.4s_infinite_ease] motion-reduce:animate-none" aria-hidden="true" /></li>)}
+              <ul className="wk-chat-starters-grid wk-vc-page-49">
+                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton wk-mr-none wk-vc-page-50" aria-hidden="true" /></li>)}
               </ul>
             ) : (props.starterQuestions?.length ?? 0) > 0 ? (
               <>
-                <p className="wk-chat-starters-caption m-0 text-center text-[13px] tracking-[0.01em] text-[rgba(0,0,0,0.26)]">
+                <p className="wk-chat-starters-caption wk-vc-page-51">
                   <span>{copy.suggestedQuestions}</span>
                   {props.onRefreshStarterQuestions ? <button
                     type="button"
-                    className="wk-chat-starter-refresh inline-flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.26)] transition-[background,color] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[#07c05f] disabled:cursor-default disabled:opacity-70"
+                    className="wk-chat-starter-refresh wk-ease-ease wk-vc-page-52"
                     disabled={props.starterQuestionsLoading}
                     title={copy.refreshSuggestedQuestions}
                     aria-label={copy.refreshSuggestedQuestions}
                     onClick={props.onRefreshStarterQuestions}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={props.starterQuestionsLoading ? 'wk-chat-starter-refresh-icon animate-[wk-chat-sq-refresh-rotate_0.8s_linear_infinite] motion-reduce:animate-none' : 'wk-chat-starter-refresh-icon'}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={props.starterQuestionsLoading ? 'wk-chat-starter-refresh-icon wk-mr-none wk-vc-page-54' : 'wk-chat-starter-refresh-icon'}>
                       <path d="M10 3.5V1.5M10 1.5H8" /><path d="M10 1.5A4.5 4.5 0 1 0 10.7 7" />
                     </svg>
                   </button> : null}
                 </p>
-                <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
+                <ul className="wk-chat-starters-grid wk-vc-page-49">
                   {props.starterQuestions!.map((question, index) => (
                     <li key={index}>
-                      <button type="button" className="wk-chat-starter-card box-border max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow,background] duration-200 ease-[ease] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] focus-visible:border-[rgba(0,0,0,0.1)] focus-visible:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
+                      <button type="button" className="wk-chat-starter-card wk-ease-ease wk-vc-page-53" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
                     </li>
                   ))}
                 </ul>
               </>
             ) : null}
-          </section>
+      </div>
+      {composerNode}
+      </div>
+      </div>
         ) : null}
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
@@ -816,68 +909,7 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
         />}
-        {/* A follow-up queue only makes sense while an agent-pipeline turn is
-            actually running (Vue canSteer); when idle the main composer handles
-            the message (a steer would 409), and a quick-answer turn has no
-            steer affordance at all — stop is the only action. */}
-        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
-        {/* Vue isReplying (Input-field.vue) flips true when a turn is
-            dispatched, not when the first SSE event arrives; the composer's
-            stop swap must cover the pre-stream send window too. */}
-        <ChatComposer
-          copy={copy}
-          draft={props.draft}
-          focusSignal={props.composerFocusSignal}
-          disabled={sending || pending !== undefined || streaming}
-          onDraftChange={props.onDraftChange}
-          onSubmit={(submission) => void send(submission)}
-          attachments={props.attachments}
-          onAttachmentSelect={props.onAttachmentSelect}
-          onRemoveAttachment={props.onRemoveAttachment}
-          attachmentAccept={props.attachmentAccept}
-          mentionOptions={props.mentionOptions}
-          mentionedItems={props.mentionedItems}
-          mentionLoading={props.mentionLoading}
-          mentionError={props.mentionError}
-          mentionEmptyHint={props.mentionEmptyHint}
-          onMentionOpen={props.onMentionOpen}
-          onMentionSelect={props.onMentionSelect}
-          onMentionRemove={props.onMentionRemove}
-          agents={props.agents}
-          selectedAgentId={props.selectedAgentId}
-          onAgentChange={props.onAgentChange}
-          agentModels={props.agentModels}
-          onManageAgents={props.onManageAgents}
-          onConfigureAgent={props.onConfigureAgent}
-          onAgentNotReady={props.onAgentNotReady}
-          modelLabel={props.modelLabel}
-          modelContext={props.modelContext}
-          modelContextIsDefault={props.modelContextIsDefault}
-          modelOptions={props.modelOptions}
-          selectedModelId={props.selectedModelId}
-          onModelChange={props.onModelChange}
-          webSearchVisible={props.webSearchVisible}
-          webSearchConfigured={props.webSearchConfigured}
-          webSearchEnabled={props.webSearchEnabled}
-          onWebSearchToggle={props.onWebSearchToggle}
-          streaming={streaming || sending}
-          canSteer={canSteer}
-          onStop={props.onStopStream}
-          steerQueue={props.steerQueue}
-          onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
-          onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
-          onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
-        />
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head flex shrink-0 items-center justify-between border-b border-[#e7e7e7] px-[12px] py-[8px] text-[13px] font-medium text-[rgba(0,0,0,0.9)]">
-          <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close inline-flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-[#f3f3f3] text-[rgba(0,0,0,0.6)] hover:bg-[#eee] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
-          </button>
-        </div>
-        <TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
-      </aside> : null}
     </section>
   </main>;
 }

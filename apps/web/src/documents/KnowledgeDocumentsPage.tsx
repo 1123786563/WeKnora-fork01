@@ -25,7 +25,93 @@ import {
   type TraceSummary,
 } from "./doc-row-menu.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
+/* S6 换装（T15 前置）：R490 留守段（上传确认弹窗/URL/手工导入/追溯抽屉/各确认
+ * 弹层/移动目录条）的 packages/ui 旧栈 表单栈全部清栈——Button/Input/Textarea/
+ * Checkbox/Select 换 tdesign（playbook §1：onChange 改 (value)/(checked) 签名、
+ * maxLength→maxlength、原生 select 换 options 数组）；Dialog/Sheet 是扫描锚定
+ * 弹层（ix-kb-settings/上传弹窗 DOM），走 shared/wk-legacy 的 DOM 同构
+ * WkDialog/WkSheet（渲染树不变）；Status 同走 WkStatus（.wk-status 族）。 */
+import {
+  Button as TdButton,
+  Checkbox as TdCheckbox,
+  DateRangePicker,
+  Dropdown,
+  Loading as TdLoading,
+  Popconfirm,
+  Popup,
+  Radio as TdRadio,
+  Skeleton as TdSkeleton,
+  Select as TdSelect,
+  Tag as TdTag,
+  Tooltip,
+  Input as TdInput,
+  Textarea as TdTextarea,
+} from "tdesign-react";
+import { WkDialog as Dialog, WkSheet as Sheet, WkStatus as Status } from "../shared/wk-legacy.tsx";
+import { Icon as TIcon } from "tdesign-icons-react";
+// u.css（utilities 平移层）前置到 td.css（Vue 平移层）之前（S7 合并评审
+// Important：级联顺序 u.css → td.css，同特异性时 Vue 平移规则胜出）。
+import "./documents-u.css";
+import "./documents.td.css";
+
+/** Vue @/assets/img/more.png 内联副本（kb-list 同款，卡片三点菜单触发器）。 */
+const MORE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgBAMAAACBVGfHAAAAD1BMVEUAAAAwMTMwMDMwMjIwMTPbLw9bAAAABHRSTlMA3llYOk1BewAAABxJREFUKM9jGGnAUAiJAAERRwSBXUBRCIkYYQAAnNMDYY7Uun8AAAAASUVORK5CYII=';
+
+/** Vue utils/files getFileIcon（列表行文件类型图标名）。 */
+function getFileIconName(document: KnowledgeDocument): string {
+  const type = document.type;
+  if (type === 'manual') return 'edit';
+  if (type === 'url') return 'link';
+  const ext = (String((document as { file_type?: string }).file_type ?? '').toLowerCase() || (String(document.file_name ?? '').split('.').pop()?.toLowerCase() ?? ''));
+  if (!ext) return 'file';
+  if (['pdf'].includes(ext)) return 'file-pdf';
+  if (['doc', 'docx'].includes(ext)) return 'file-word';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'file-excel';
+  if (['ppt', 'pptx'].includes(ext)) return 'file-powerpoint';
+  if (['txt', 'md', 'markdown', 'json', 'log', 'yaml', 'yml', 'xml'].includes(ext)) return 'file';
+  if (['py', 'pyc', 'pyo', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'go', 'rs', 'java', 'c', 'cc', 'cpp', 'h', 'hpp', 'sh', 'bash', 'rb', 'php', 'sql', 'html', 'htm'].includes(ext)) return 'code';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+  if (['mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac'].includes(ext)) return 'sound';
+  if (['mp4', 'mov', 'webm', 'mkv', 'avi'].includes(ext)) return 'video';
+  return 'file';
+}
+
+/** Vue DocumentListView getSourceInfo（来源图标 + 标签）。 */
+function getSourceInfo(document: KnowledgeDocument, t: (key: string) => string): { icon: string; label: string } {
+  const ch = (document as { channel?: string }).channel;
+  if (ch === 'feishu') return { icon: 'cloud-download', label: t('knowledgeBase.channelFeishu') };
+  if (ch === 'feishu_drive') return { icon: 'cloud-download', label: t('knowledgeBase.channelFeishuDrive') };
+  if (ch === 'lark_drive') return { icon: 'cloud-download', label: t('knowledgeBase.channelLarkDrive') };
+  if (ch === 'notion') return { icon: 'cloud-download', label: t('knowledgeBase.channelNotion') };
+  if (ch === 'yuque') return { icon: 'cloud-download', label: t('knowledgeBase.channelYuque') };
+  if (ch === 'gitlab') return { icon: 'cloud-download', label: t('knowledgeBase.channelGitLab') };
+  if (ch === 'ima') return { icon: 'cloud-download', label: t('knowledgeBase.channelIma') };
+  if (ch === 'wechat') return { icon: 'cloud-download', label: t('knowledgeBase.channelWechat') };
+  if (ch === 'wecom') return { icon: 'cloud-download', label: t('knowledgeBase.channelWecom') };
+  if (ch === 'dingtalk') return { icon: 'cloud-download', label: t('knowledgeBase.channelDingtalk') };
+  if (ch === 'slack') return { icon: 'cloud-download', label: t('knowledgeBase.channelSlack') };
+  if (ch === 'im') return { icon: 'cloud-download', label: t('knowledgeBase.channelIm') };
+  if (document.type === 'url') return { icon: 'link', label: t('knowledgeBase.channelUrl') };
+  if (document.type === 'manual') return { icon: 'edit', label: t('knowledgeBase.channelManual') };
+  return { icon: 'upload', label: t('knowledgeBase.channelUpload') };
+}
+
+/** Vue DocumentListView computeStatus（行状态 tag 主题/图标）。 */
+function listRowStatus(document: KnowledgeDocument, t: (key: string) => string): { label: string; theme: 'success' | 'warning' | 'danger' | 'primary' | 'default'; icon?: string; spin?: boolean } {
+  const parse = String(document.parse_status ?? '');
+  const summaryInFlight = document.summary_status === 'pending' || document.summary_status === 'processing';
+  if (parse === 'pending' || parse === 'processing') return { label: t('knowledgeBase.statusProcessing'), theme: 'primary', icon: 'loading', spin: true };
+  if (parse === 'finalizing') {
+    if (summaryInFlight) return { label: t('knowledgeBase.generatingSummary'), theme: 'primary', icon: 'loading', spin: true };
+    return { label: t('knowledgeBase.statusFinalizing'), theme: 'primary', icon: 'loading', spin: true };
+  }
+  if (parse === 'failed') return { label: t('knowledgeBase.statusFailed'), theme: 'danger', icon: 'close-circle' };
+  if (parse === 'cancelled') return { label: t('knowledgeBase.statusCancelled'), theme: 'warning', icon: 'close-circle' };
+  if (parse === 'draft') return { label: t('knowledgeBase.statusDraft'), theme: 'warning' };
+  if (parse === 'completed' && summaryInFlight) return { label: t('knowledgeBase.generatingSummary'), theme: 'primary', icon: 'loading', spin: true };
+  if (parse === 'completed') return { label: t('knowledgeBase.statusCompleted'), theme: 'success' };
+  return { label: '--', theme: 'default' };
+}
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import { navigate } from "../platform/navigation.ts";
@@ -142,6 +228,7 @@ import {
   ListIcon,
   type KBChromeListItem,
 } from "./DocumentsPageChrome.tsx";
+import type { KBInfoPopoverKB } from "./KBInfoPopover.tsx";
 
 interface KnowledgeDocumentsPageProps {
   client: WeKnoraClient;
@@ -287,9 +374,9 @@ function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
   const visible = tags.slice(0, visibleLimit);
   const overflow = Math.max(0, tags.length - visibleLimit);
   return (
-    <span ref={ref} className="wk-row-tag-chips inline-flex min-w-0 max-w-full flex-nowrap gap-1 overflow-hidden font-mono! text-[0.8rem]! text-muted!" title={overflow ? tags.map((tag) => tag.name || "").join(", ") : undefined}>
-      {visible.map((tag) => <span key={tag.id} className="row-tag max-w-[120px] font-mono! text-[0.8rem]! text-muted! cursor-default overflow-hidden rounded-[3px] border border-[var(--wk-border,#e4e7ec)] px-[5px] py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)]">{tag.name}</span>)}
-      {overflow ? <span className="row-tag-overflow font-mono! text-[0.8rem]! text-muted! inline-flex h-[18px] min-w-[18px] flex-none cursor-default items-center justify-center rounded-full border border-[var(--wk-border,#e4e7ec)] px-[5px] py-0 text-[10px] leading-none text-[var(--wk-muted,#667085)]">+{overflow}</span> : null}
+    <span ref={ref} className="wk-row-tag-chips wk-kd-1" title={overflow ? tags.map((tag) => tag.name || "").join(", ") : undefined}>
+      {visible.map((tag) => <span key={tag.id} className="row-tag wk-kd-2">{tag.name}</span>)}
+      {overflow ? <span className="row-tag-overflow wk-kd-3">+{overflow}</span> : null}
     </span>
   );
 }
@@ -335,7 +422,7 @@ function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
-function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"}><path d="m5 8 7 7 7-7" /></Icon>; }
+function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "wk-kd-159" : "wk-kd-160"}><path d="m5 8 7 7 7-7" /></Icon>; }
 // R483 F4 menu icons (Vue t-icon chart-bar / close-circle / swap / queue /
 // chevron-left / root-list / arrow-right).
 function ChartIcon() { return <Icon size={16}><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></Icon>; }
@@ -346,7 +433,7 @@ function ChevronLeftIcon() { return <Icon size={16}><path d="m15 5-7 7 7 7" /></
 function KBListIcon() { return <Icon size={16}><path d="M4 6h16M4 6v12a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-8" /></Icon>; }
 function ArrowRightIcon() { return <Icon size={14}><path d="M5 12h14M13 6l6 6-6 6" /></Icon>; }
 
-function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, actions, traceAvailable, onMenuOpen, move, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, actions, traceAvailable, onMenuOpen, move, rowTrigger = false, onVisibleChange, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
   canDownload: boolean;
   canMutateKnowledge: boolean;
@@ -358,6 +445,10 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
   onMenuOpen?: () => void;
   /** Cross-KB move sub-flow (Vue moveMenuMode targets/confirm views). */
   move?: DocumentMoveKbController;
+  /** 列表行触发器：Vue row-more-btn（t-icon more）而非卡片 more-wrap。 */
+  rowTrigger?: boolean;
+  /** 列表行 menu-open 态回写（DocumentListRows moreOpenId）。 */
+  onVisibleChange?: (visible: boolean) => void;
   onDownload: () => void;
   onEdit: () => void;
   onViewTrace: () => void;
@@ -369,23 +460,33 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
 }) {
   const [open, setOpen] = useState(false);
   const close = () => { setOpen(false); move?.onBack(); };
-  // stopPropagation: the card's onClick opens the document drawer — menu
-  // choices (batch manage/move/delete/…) must not bubble into it (upstream
-  // renders the card menu outside the card's click target).
-  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={(event) => { event.stopPropagation(); close(); handler(); }}>{icon}<span>{label}</span></button>;
+  // Vue DocumentActionMenu 菜单项（.doc-action-menu-item + t-icon .icon）。
+  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => (
+    <div
+      className={'doc-action-menu-item' + (danger ? ' danger' : '')}
+      role="menuitem"
+      onClick={(event) => { event.stopPropagation(); close(); handler(); }}
+    >{icon}<span>{label}</span></div>
+  );
   // Vue handleAction keeps the popup open for the move sub-flow (and its
   // folder-picker sibling); everything else closes the menu.
-  const menuItemKeepOpen = (label: string, icon: ReactNode, handler: () => void) => <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); handler(); }}>{icon}<span>{label}</span></button>;
+  const menuItemKeepOpen = (label: string, icon: ReactNode, handler: () => void) => (
+    <div
+      className="doc-action-menu-item"
+      role="menuitem"
+      onClick={(event) => { event.stopPropagation(); handler(); }}
+    >{icon}<span>{label}</span></div>
+  );
   const icons: Record<DocumentMenuAction, ReactNode> = {
-    download: <DownloadIcon />,
-    edit: <EditIcon size={16} />,
-    "view-trace": <ChartIcon />,
-    reparse: <RefreshIcon />,
-    "cancel-parse": <CancelParseIcon />,
-    "move-folder": <MoveIcon />,
-    "move-kb": <SwapIcon />,
-    "batch-manage": <QueueIcon />,
-    delete: <DeleteIcon />,
+    download: <TIcon className="icon" name="download" />,
+    edit: <TIcon className="icon" name="edit" />,
+    "view-trace": <TIcon className="icon" name="chart-bar" />,
+    reparse: <TIcon className="icon" name="refresh" />,
+    "cancel-parse": <TIcon className="icon" name="close-circle" />,
+    "move-folder": <TIcon className="icon" name="folder" />,
+    "move-kb": <TIcon className="icon" name="swap" />,
+    "batch-manage": <TIcon className="icon" name="queue" />,
+    delete: <TIcon className="icon" name="delete" />,
   };
   const handlers: Record<DocumentMenuAction, () => void> = {
     download: onDownload,
@@ -407,37 +508,101 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
     traceAvailable,
   });
   const moveView = move && open && move.view !== "normal" ? move.view : undefined;
-  return <span className="relative inline-flex shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
-    <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; }); }}><MoreIcon /></button>
-    <span className="absolute right-0 top-[calc(100%+6px)] z-[220] flex min-w-[180px] flex-col rounded-[8px] border border-line-soft bg-surface p-1 shadow-[0_6px_24px_rgb(15_23_42/12%)] [&[hidden]]:hidden" role="menu" hidden={!open}>
-      {moveView === "targets" && move ? (
-        <span className="flex flex-col" data-move-view="targets">
-          <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[13px] font-semibold leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onBack(); }}><ChevronLeftIcon /><span>{t("knowledgeBase.moveToKnowledgeBase")}</span></button>
-          {move.loading ? <span className="px-3 py-2 text-[13px] text-muted">{t("common.loading")}</span> : move.targets.length === 0 ? <span className="px-3 py-2 text-[13px] text-muted">{t("knowledgeBase.moveNoTargets")}</span> : move.targets.map((kb) => <button key={kb.id} type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onSelectTarget(kb); }}><KBListIcon /><span className="min-w-0 flex-1 truncate">{kb.name}</span>{kb.knowledge_count !== undefined ? <span className="shrink-0 text-[12px] text-muted">{kb.knowledge_count}</span> : null}</button>)}
-        </span>
-      ) : moveView === "confirm" && move ? (
-        <span className="flex w-[280px] flex-col" data-move-view="confirm">
-          <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[13px] font-semibold leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onBack(); }}><ChevronLeftIcon /><span>{t("knowledgeBase.moveConfirmTitle")}</span></button>
-          <span className="flex items-center gap-1 px-3 py-1 text-[13px] text-ink"><ArrowRightIcon /><span className="min-w-0 truncate">{move.selectedTargetName}</span></span>
-          {(["reuse_vectors", "reparse"] as const).map((mode) => <button key={mode} type="button" role="menuitem" className={`flex w-full cursor-pointer items-start gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left [font:inherit] hover:bg-surface-wash ${move.mode === mode ? "bg-surface-wash" : ""}`} onClick={(event) => { event.stopPropagation(); move.onModeChange(mode); }} aria-checked={move.mode === mode}>
-            <span aria-hidden className="mt-[3px] inline-flex h-[14px] w-[14px] flex-none items-center justify-center rounded-full border border-line-soft">{move.mode === mode ? <span className="h-[6px] w-[6px] rounded-full bg-[var(--wk-accent,#07c05f)]" /> : null}</span>
-            <span className="flex min-w-0 flex-col">
-              <span className="text-[14px] leading-5 text-ink">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
-              <span className="text-[12px] leading-4 text-muted">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
-            </span>
-          </button>)}
-          <span className="mt-1 flex justify-end gap-2 border-t border-line-soft px-3 pt-2">
-            <Button type="button" size="small" onClick={(event) => { event.stopPropagation(); move.onBack(); }}>{t("common.cancel")}</Button>
-            <Button type="button" size="small" disabled={move.submitting} onClick={(event) => { event.stopPropagation(); move.onConfirm(); }}>{t("knowledgeBase.moveConfirm")}</Button>
-          </span>
-        </span>
-      ) : items.map((item) => item.action === "move-kb" && move
-        ? <Fragment key={item.action}>{menuItemKeepOpen(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
-        : item.action === "move-kb"
-          ? <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
-          : <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action], item.action === "delete")}</Fragment>)}
-    </span>
-  </span>;
+  return (
+    <Popup
+      visible={open}
+      overlayClassName="card-more"
+      trigger="click"
+      destroyOnClose
+      placement="bottom-right"
+      onVisibleChange={(visible) => {
+        if (visible) { setOpen(true); onMenuOpen?.(); onVisibleChange?.(true); return; }
+        setOpen(false);
+        move?.onBack();
+        onVisibleChange?.(false);
+      }}
+      content={(
+        <div className="card-menu" onClick={(event) => event.stopPropagation()}>
+          {moveView === "targets" && move ? (
+            <div className="move-menu" data-move-view="targets">
+              <div className="move-menu-header" onClick={() => move.onBack()}>
+                <TIcon name="chevron-left" size="16px" />
+                <span>{t("knowledgeBase.moveToKnowledgeBase")}</span>
+              </div>
+              {move.loading ? (
+                <div className="move-menu-loading"><TdLoading size="small" /></div>
+              ) : move.targets.length === 0 ? (
+                <div className="move-menu-empty">{t("knowledgeBase.moveNoTargets")}</div>
+              ) : move.targets.map((kb) => (
+                <div key={kb.id} className="card-menu-item" onClick={() => move.onSelectTarget(kb)}>
+                  <TIcon className="icon" name="root-list" />
+                  <span className="move-target-name">{kb.name}</span>
+                  {kb.knowledge_count !== undefined ? <span className="move-target-count">{kb.knowledge_count}</span> : null}
+                </div>
+              ))}
+            </div>
+          ) : moveView === "confirm" && move ? (
+            <div className="card-menu move-menu" data-move-view="confirm">
+              <div className="move-menu-header" onClick={() => move.onBack()}>
+                <TIcon name="chevron-left" size="16px" />
+                <span>{t("knowledgeBase.moveConfirmTitle")}</span>
+              </div>
+              <div className="move-confirm-body">
+                <div className="move-target-info">
+                  <TIcon name="arrow-right" size="14px" />
+                  <span>{move.selectedTargetName}</span>
+                </div>
+                {(["reuse_vectors", "reparse"] as const).map((mode) => (
+                  <div
+                    key={mode}
+                    className={'move-mode-item' + (move.mode === mode ? ' active' : '')}
+                    onClick={() => move.onModeChange(mode)}
+                    role="radio"
+                    aria-checked={move.mode === mode}
+                  >
+                    <TdRadio checked={move.mode === mode} />
+                    <div className="move-mode-text">
+                      <span className="move-mode-label">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
+                      <span className="move-mode-desc">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="move-confirm-actions">
+                  <TdButton size="small" variant="outline" onClick={() => move.onBack()}>{t("common.cancel")}</TdButton>
+                  <TdButton size="small" theme="primary" loading={move.submitting} onClick={() => move.onConfirm()}>{t("knowledgeBase.moveConfirm")}</TdButton>
+                </div>
+              </div>
+            </div>
+          ) : items.map((item) => item.action === "move-kb" && move
+            ? <Fragment key={item.action}>{menuItemKeepOpen(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
+            : item.action === "move-kb"
+              ? <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
+              : <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action], item.action === "delete")}</Fragment>)}
+        </div>
+      )}
+    >
+      {rowTrigger ? (
+        <button
+          type="button"
+          className="row-more-btn"
+          aria-label={t("knowledgeBase.columnActions")}
+        >
+          <TIcon name="more" size="16px" />
+        </button>
+      ) : (
+        <div
+          className={'more-wrap' + (open ? ' active-more' : '')}
+          aria-label={t("knowledgeBase.documents.title")}
+          title={t("knowledgeBase.documents.title")}
+          role="button"
+          tabIndex={0}
+          onClick={(event) => { event.stopPropagation(); setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; }); }}
+        >
+          <img className="more-icon" src={MORE_PNG} alt="" />
+        </div>
+      )}
+    </Popup>
+  );
 }
 
 export function documentCardHoverPosition(
@@ -481,10 +646,10 @@ function DocumentTraceCompact({ summary, t }: {
     ? t("knowledgeStages.totalDuration", { d: summary.duration })
     : `${t("knowledgeBase.timeline.title")}：${summary.stageIndex}/${summary.stageTotal}${summary.activeStage ? ` · ${t(`knowledgeBase.timeline.stage.${summary.activeStage}`)}` : ""}`;
   return <div className="document-trace-compact" data-trace-total={summary.duration}>
-    <div className="flex items-center gap-[6px]">
-      {summary.steps.map((step) => <span key={step.stage} aria-hidden className={`inline-block h-[8px] w-[8px] flex-none rounded-full document-trace-dot document-trace-dot-${step.state}`} title={`${t(`knowledgeBase.timeline.stage.${step.stage}`)} · ${t(`knowledgeBase.timeline.${step.state}`)}`} />)}
+    <div className="wk-kd-4">
+      {summary.steps.map((step) => <span key={step.stage} aria-hidden className={`document-trace-dot document-trace-dot- wk-kd-135${step.state}`} title={`${t(`knowledgeBase.timeline.stage.${step.stage}`)} · ${t(`knowledgeBase.timeline.${step.state}`)}`} />)}
     </div>
-    <div className="mt-1 text-[12px] text-muted">{caption}</div>
+    <div className="wk-kd-5">{caption}</div>
   </div>;
 }
 
@@ -508,17 +673,17 @@ function DocumentCardHoverPopover({ document, position, t, loadTrace }: {
     return () => { active = false; };
   }, [document.id, showTrace, loadTrace]);
   const statusLabel = failed ? t("knowledgeBase.parsingFailed") : inFlight ? documentStatus(document, t).label : undefined;
-  return <div className="knowledge-card-hover-popover fixed z-[250] w-[360px] max-w-[calc(100vw-20px)] rounded-[8px] border border-line-soft bg-surface px-4 py-3 text-[12px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" style={{ left: position.x, top: position.y }} role="tooltip">
-    <div className="mb-2 truncate text-[14px] font-semibold text-primary-deep" title={displayName(document)}>{displayName(document)}</div>
-    {showTrace ? <div className={`mb-2 ${failed ? "text-danger" : "text-warning"}`}>{trace ? <DocumentTraceCompact summary={trace} t={t} /> : statusLabel}</div> : typeof document.description === "string" && document.description ? <div className="mb-2 line-clamp-3 whitespace-pre-wrap break-words text-muted">{document.description}</div> : null}
-    {typeof document.source === "string" && document.source ? <div className="mb-2 flex min-w-0 items-center gap-1 truncate text-muted" title={document.source}><LinkIcon size={12} /> <span className="truncate">{document.source}</span></div> : null}
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+  return <div className="knowledge-card-hover-popover wk-kd-6" style={{ left: position.x, top: position.y }} role="tooltip">
+    <div className="wk-kd-7" title={displayName(document)}>{displayName(document)}</div>
+    {showTrace ? <div className={`wk-kd-136 ${failed ? "wk-kd-137" : "wk-kd-138"}`}>{trace ? <DocumentTraceCompact summary={trace} t={t} /> : statusLabel}</div> : typeof document.description === "string" && document.description ? <div className="wk-kd-8">{document.description}</div> : null}
+    {typeof document.source === "string" && document.source ? <div className="wk-kd-9" title={document.source}><LinkIcon size={12} /> <span className="wk-kd-10">{document.source}</span></div> : null}
+    <div className="wk-kd-11">
       {document.created_at ? <span>{t("knowledgeBase.createdAt")}：{formatDocumentTime(document.created_at)}</span> : null}
       {document.updated_at ? <span>{t("knowledgeBase.updatedAt")}：{formatDocumentTime(document.updated_at)}</span> : null}
       <span>{documentTypeLabel(document)}</span>
     </div>
-    {documentTags(document).length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{documentTags(document).map((tag) => <span key={tag.id} className="rounded-full border border-line-soft px-1.5 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</div> : null}
-    <div className="mt-2 text-[11px] text-muted">{t("knowledgeBase.clickToViewFull")}</div>
+    {documentTags(document).length > 0 ? <div className="wk-kd-12">{documentTags(document).map((tag) => <span key={tag.id} className="wk-kd-13">{tag.name}</span>)}</div> : null}
+    <div className="wk-kd-14">{t("knowledgeBase.clickToViewFull")}</div>
   </div>;
 }
 
@@ -556,6 +721,7 @@ export function DocumentCardGrid({
   canMutateKnowledge: canMutateKnowledgeProp,
   canDownload,
   t,
+  tagListCount,
   traceAvailableById,
   onProbeTrace,
   moveFor,
@@ -581,6 +747,8 @@ export function DocumentCardGrid({
   canMutateKnowledge?: boolean;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
+  /** Vue tagList.length — 页面无任何标签时整个 card-tag-selector 不渲染（v-if）。 */
+  tagListCount?: number;
   /** Vue traceAvailableById: probed /spans availability per document. */
   traceAvailableById?: Record<string, boolean>;
   onProbeTrace?: (document: KnowledgeDocument) => void;
@@ -614,14 +782,27 @@ export function DocumentCardGrid({
       setHovered({ document, position: documentCardHoverPosition(rect, { width: window.innerWidth, height: window.innerHeight }, { width: Math.min(360, window.innerWidth - 20), height: 300 }) });
     }, 300);
   };
-  return <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3" data-document-view="grid">
-    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-[240px] h-[136px] box-border flex flex-col overflow-hidden rounded-lg border border-[#dcdcdc] bg-surface p-0 text-left shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:bg-surface-wash hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
-      <span className="flex min-h-0 flex-1 flex-col justify-start gap-2 overflow-hidden px-[14px] pb-[10px] pt-3">
-        <FolderIcon size={28} className="shrink-0 text-primary opacity-[0.88]" />
-        <strong className="line-clamp-2 min-h-0 flex-1 text-sm font-medium leading-5 text-primary-deep">{folder.name}</strong>
-      </span>
-      <span className="shrink-0 border-t border-line-soft px-[14px] py-2 text-xs leading-[1.4] text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span>
-    </button>)}
+  return <div className="doc-card-view" data-document-view="grid">
+    <div className="doc-card-list doc-card-list-animated">
+      {folders.map((folder) => (
+        <div
+          key={`folder-${folder.path}`}
+          className="folder-card"
+          title={folder.path}
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpenFolder(folder.path)}
+          onKeyDown={(event) => { if (event.key === "Enter") onOpenFolder(folder.path); }}
+        >
+          <div className="folder-card__body">
+            <TIcon name="folder" className="folder-card__icon" />
+            <span className="folder-card__title">{folder.name}</span>
+          </div>
+          <div className="folder-card__footer">
+            {t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}
+          </div>
+        </div>
+      ))}
     {items.map((document) => {
       const status = documentStatus(document, t);
       const actions = documentRowActions(document.parse_status);
@@ -630,26 +811,397 @@ export function DocumentCardGrid({
       const summaryInFlight = document.summary_status === "pending" || document.summary_status === "processing";
       const description = typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root");
       const tags = documentTags(document);
-      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col cursor-pointer overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-[#dcdcdc]"} ${batchMode ? "batch-mode" : ""}`} onClick={() => onOpen(document)} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
-        <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
-          <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
-            {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
-            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-[rgba(0,0,0,0.9)]" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
-            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} traceAvailable={traceAvailableById?.[document.id]} onMenuOpen={() => onProbeTrace?.(document)} move={moveFor?.(document)} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+      return (
+        <div
+          key={document.id}
+          className={'knowledge-card' + (selected.has(document.id) ? ' is-selected' : '') + (batchMode ? ' batch-mode' : '')}
+          data-select-id={document.id}
+          onClick={() => onOpen(document)}
+          onMouseEnter={(event) => scheduleHover(event, document)}
+          onMouseLeave={clearHover}
+        >
+          <div className="card-content">
+            <div className="card-content-nav">
+              {(canContribute || canDownload) && batchMode ? (
+                <div className="card-nav-check" onClick={(event) => event.stopPropagation()}>
+                  <TdCheckbox
+                    className="card-select-checkbox t-size-s"
+                    checked={selected.has(document.id)}
+                    title={document.file_name}
+                    onChange={(checked) => onToggle(document.id, Boolean(checked))}
+                  />
+                </div>
+              ) : null}
+              <span className="card-content-title" title={displayName(document)}>{displayName(document)}</span>
+              {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} traceAvailable={traceAvailableById?.[document.id]} onMenuOpen={() => onProbeTrace?.(document)} move={moveFor?.(document)} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+            </div>
+            {/* 解析状态区（Vue card-analyze 族） */}
+            {parseInFlight ? (
+              <div className="card-analyze card-analyze-trace">
+                <TIcon name="loading" className="card-analyze-loading" />
+                <span
+                  className="card-analyze-txt card-analyze-trace-link"
+                  role="button"
+                  tabIndex={0}
+                  title={t("knowledgeStages.viewTrace")}
+                  onClick={(event) => { event.stopPropagation(); onViewTrace(document); }}
+                >{status.label}</span>
+                <button
+                  type="button"
+                  className="card-analyze-trace-btn"
+                  title={t("knowledgeStages.viewTrace")}
+                  aria-label={t("knowledgeStages.viewTrace")}
+                  onClick={(event) => { event.stopPropagation(); onViewTrace(document); }}
+                >
+                  <TIcon name="chart-line" />
+                </button>
+              </div>
+            ) : parseStatus === "failed" ? (
+              <div className="card-analyze failure card-analyze-trace">
+                <TIcon name="close-circle" className="card-analyze-loading failure" />
+                <span
+                  className="card-analyze-txt failure card-analyze-trace-link"
+                  role="button"
+                  tabIndex={0}
+                  title={t("knowledgeStages.viewTrace")}
+                  onClick={(event) => { event.stopPropagation(); onViewTrace(document); }}
+                >{t("knowledgeBase.parsingFailed")}</span>
+                <button
+                  type="button"
+                  className="card-analyze-trace-btn"
+                  title={t("knowledgeStages.viewTrace")}
+                  aria-label={t("knowledgeStages.viewTrace")}
+                  onClick={(event) => { event.stopPropagation(); onViewTrace(document); }}
+                >
+                  <TIcon name="chart-bar" />
+                </button>
+              </div>
+            ) : parseStatus === "draft" ? (
+              <div className="card-draft">
+                <TdTag size="small" theme="warning" variant="light-outline">{t("knowledgeBase.draft")}</TdTag>
+                <span className="card-draft-tip">{t("knowledgeBase.draftTip")}</span>
+              </div>
+            ) : parseStatus === "completed" && summaryInFlight ? (
+              <div className="card-analyze">
+                <TIcon name="loading" className="card-analyze-loading" />
+                <span className="card-analyze-txt">{t("knowledgeBase.generatingSummary")}</span>
+              </div>
+            ) : (
+              <div className="card-content-txt">{description}</div>
+            )}
           </div>
-          {/* Vue .card-analyze：内容顶对齐（items-start），图标 14px + 2px 顶距，
-              解析失败/解析中文本 11px（.doc-card-status 钉住字号）。失败态用
-              close-circle + chart-bar 图标（card-analyze-trace-btn）。 */}
-          {parseInFlight ? <button type="button" className="doc-card-status mt-[2px] inline-flex min-h-0 flex-1 items-start gap-2 self-start border-0 bg-transparent p-0 text-success-text [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="mt-[2px] inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="doc-card-status mt-[2px] inline-flex min-h-0 flex-1 items-start gap-2 self-start border-0 bg-transparent p-0 text-danger [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><Icon size={14} className="mt-[2px] shrink-0"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></Icon><span>{t("knowledgeBase.parsingFailed")}</span><span className="doc-card-status--trace-icon inline-flex shrink-0" aria-hidden="true"><Icon size={14}><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></Icon></span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
+          <div className="card-bottom">
+            {document.folder_path ? (
+              <button type="button" className="card-folder" title={document.folder_path} onClick={(event) => { event.stopPropagation(); onOpenFolder(document.folder_path ?? ""); }}>
+                <TIcon name="folder" />
+                <span>{document.folder_path}</span>
+              </button>
+            ) : (
+              <span className="card-time">{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
+            )}
+            <div className="card-bottom-right">
+              {(tagListCount ?? 0) > 0 && tags.length > 0 ? (
+                <div className="card-tag-selector" onClick={(event) => event.stopPropagation()}>
+                  <Tooltip content={tags.map((tag) => tag.name).join(", ")} placement="top">
+                    <div className="card-tag-chips" onClick={() => { if (canContribute) onTagEdit(document); }}>
+                      {tags.slice(0, 3).map((tag) => (
+                        <TdTag key={tag.id} size="small" variant="light-outline" className="card-tag-chip">
+                          <span className="tag-text">{tag.name}</span>
+                        </TdTag>
+                      ))}
+                    </div>
+                  </Tooltip>
+                </div>
+              ) : canContribute && (tagListCount ?? 0) > 0 ? (
+                <div className="card-tag-selector" onClick={(event) => event.stopPropagation()}>
+                  <span className="card-tag-add" onClick={() => onTagEdit(document)}>
+                    <TIcon name="add" size="12px" />
+                    <span>{t("knowledgeBase.tagLabel")}</span>
+                  </span>
+                </div>
+              ) : null}
+              <div className="card-type">
+                <span>{documentTypeLabel(document)}</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-[#e7e7e7] bg-surface px-[14px] text-[12px] text-[rgba(0,0,0,0.6)]">
-          <span>{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
-          <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px] overflow-hidden">{tags.length > 0 ? <button type="button" className={`min-w-0 border-0 bg-transparent p-0 ${canContribute ? "cursor-pointer" : "cursor-default"}`} onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }} title={tags.map((tag) => tag.name).join(", ")}><DocumentTagChips tags={tags} /></button> : null}<span className="shrink-0 text-[11px] font-medium leading-[13px] tracking-[.02em] text-[rgba(0,0,0,0.6)]">{documentTypeLabel(document)}</span></span>
-        </div>
-      </article>;
+      );
     })}
+    </div>
     {hovered ? <DocumentCardHoverPopover document={hovered.document} position={hovered.position} t={t} loadTrace={loadTrace} /> : null}
   </div>;
+}
+
+/** Vue DocumentListView.vue 平移（.doc-list-view DOM：sticky 表头 + 网格行）。 */
+function DocumentListRows({
+  items,
+  folders,
+  showFolderTree,
+  selected,
+  canContribute,
+  canMutateKnowledge,
+  canDownload,
+  t,
+  tt,
+  allOnPageSelected,
+  someOnPageSelected,
+  traceAvailableById,
+  moveFor,
+  onOpen,
+  onOpenFolder,
+  onToggleRow,
+  onToggleAll,
+  onProbeTrace,
+  onTagEdit,
+  onReparse,
+  onCancelParse,
+  onDownload,
+  onEdit,
+  onViewTrace,
+  onMove,
+  onBatchManage,
+  onDelete,
+}: {
+  items: KnowledgeDocument[];
+  folders: Array<{ path: string; name: string; total_count: number }>;
+  showFolderTree: boolean;
+  selected: Set<string>;
+  canContribute: boolean;
+  canMutateKnowledge?: boolean;
+  canDownload: boolean;
+  t: (key: string, values?: Record<string, string | number>) => string;
+  tt: (key: string, values?: Record<string, string | number>) => string;
+  allOnPageSelected: boolean;
+  someOnPageSelected: boolean;
+  traceAvailableById?: Record<string, boolean>;
+  moveFor?: (document: KnowledgeDocument) => DocumentMoveKbController;
+  onOpen: (document: KnowledgeDocument) => void;
+  onOpenFolder: (path: string) => void;
+  onToggleRow: (id: string, shiftKey: boolean) => void;
+  onToggleAll: (value: boolean) => void;
+  onProbeTrace?: (document: KnowledgeDocument) => void;
+  onTagEdit: (document: KnowledgeDocument) => void;
+  onReparse: (document: KnowledgeDocument) => void;
+  onCancelParse: (document: KnowledgeDocument) => void;
+  onDownload: (document: KnowledgeDocument) => void;
+  onEdit: (document: KnowledgeDocument) => void;
+  onViewTrace: (document: KnowledgeDocument) => void;
+  onMove: (document: KnowledgeDocument) => void;
+  onBatchManage: (document: KnowledgeDocument) => void;
+  onDelete: (document: KnowledgeDocument) => void;
+}) {
+  const [moreOpenId, setMoreOpenId] = useState<string | null>(null);
+  const canEditRow = canContribute || canDownload;
+  return (
+    <div className="doc-list-view">
+      <div className="doc-list-sticky-sentinel" aria-hidden="true"></div>
+      <div className="doc-list-header" role="row">
+        <div className="cell cell-check" role="columnheader" onClick={(event) => event.stopPropagation()}>
+          {canEditRow ? (
+            <TdCheckbox
+              className="doc-list-check t-size-s"
+              checked={allOnPageSelected}
+              indeterminate={someOnPageSelected}
+              disabled={!items.length}
+              title={t("knowledgeBase.selectAll")}
+              onChange={(value) => onToggleAll(Boolean(value))}
+            />
+          ) : null}
+        </div>
+        <div className="cell cell-name" role="columnheader">{t("knowledgeBase.columnName")}</div>
+        <div className="cell cell-tag" role="columnheader">{t("knowledgeBase.columnTag")}</div>
+        <div className="cell cell-source" role="columnheader">{t("knowledgeBase.columnSource")}</div>
+        <div className="cell cell-size" role="columnheader">{t("knowledgeBase.columnSize")}</div>
+        <div className="cell cell-status" role="columnheader">{t("knowledgeBase.columnStatus")}</div>
+        <div className="cell cell-time" role="columnheader">{t("knowledgeBase.columnUpdatedAt")}</div>
+        {canContribute ? <div className="cell cell-actions" role="columnheader" /> : null}
+      </div>
+
+      <div className="doc-list-body">
+        {/* Vue KnowledgeBase.vue L719-721: with the folder tree open it
+            already lists the same folders, so the list skips duplicate
+            sub-folder rows (tree closed keeps the navigable rows). */}
+        {!showFolderTree ? folders.map((folder) => (
+          <div
+            key={`folder-${folder.path}`}
+            className="doc-list-row doc-list-row--folder"
+            title={folder.path}
+            role="row"
+            onClick={() => onOpenFolder(folder.path)}
+          >
+            <div className="cell cell-check" aria-hidden="true"></div>
+            <div className="cell cell-name">
+              <span className="row-file-icon-wrap">
+                <TIcon name="folder" className="row-folder-icon" />
+              </span>
+              <div className="row-file-text">
+                <span className="row-file-name">{folder.name}</span>
+              </div>
+            </div>
+            <div className="cell cell-tag"></div>
+            <div className="cell cell-source">
+              <span className="row-folder-meta">
+                {t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}
+              </span>
+            </div>
+            <div className="cell cell-size"></div>
+            <div className="cell cell-status"></div>
+            <div className="cell cell-time"></div>
+            {canContribute ? <div className="cell cell-actions" aria-hidden="true"></div> : null}
+          </div>
+        )) : null}
+
+        {items.map((document) => {
+          const status = listRowStatus(document, t);
+          const actions = documentRowActions(document.parse_status);
+          const source = getSourceInfo(document, t);
+          const tags = documentTags(document);
+          return (
+            <div
+              key={document.id}
+              className={'doc-list-row' + (selected.has(document.id) ? ' selected' : '') + (moreOpenId === document.id ? ' menu-open' : '')}
+              data-select-id={document.id}
+              role="row"
+              onClick={() => onOpen(document)}
+            >
+              <div className="cell cell-check" onClick={(event) => event.stopPropagation()}>
+                {canEditRow ? (
+                  <TdCheckbox
+                    className="doc-list-check t-size-s"
+                    checked={selected.has(document.id)}
+                    title={document.file_name}
+                    onChange={(_value, ctx) => onToggleRow(document.id, Boolean((ctx as { e?: { shiftKey?: boolean } } | undefined)?.e?.shiftKey))}
+                  />
+                ) : null}
+              </div>
+
+              <div className="cell cell-name">
+                <span className="row-file-icon-wrap">
+                  <TIcon name={getFileIconName(document)} />
+                </span>
+                <div className="row-file-text">
+                  <span className="row-file-name" title={displayName(document)}>{displayName(document)}</span>
+                  {document.folder_path ? (
+                    <button type="button" className="row-file-folder" title={document.folder_path} onClick={(event) => { event.stopPropagation(); onOpenFolder(document.folder_path ?? ""); }}>
+                      <TIcon name="folder" />
+                      <span>{document.folder_path}</span>
+                    </button>
+                  ) : null}
+                  {document.description ? <span className="row-file-desc" title={String(document.description)}>{String(document.description)}</span> : null}
+                </div>
+              </div>
+
+              <div className="cell cell-tag">
+                {tags.length > 0 ? (
+                  <Tooltip content={tags.map((tag) => tag.name).join(", ")} placement="top">
+                    <div className={'row-tag-chips' + (canContribute ? ' is-clickable' : '')} onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }}>
+                      {tags.slice(0, 3).map((tag) => (
+                        <TdTag key={tag.id} size="small" variant="light-outline" className="row-tag">{tag.name}</TdTag>
+                      ))}
+                    </div>
+                  </Tooltip>
+                ) : (
+                  <span className="row-tag-chips is-clickable" onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }}>
+                    <span className="row-tag-add">+ {tt("knowledgeBase.tagLabel")}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="cell cell-source">
+                <TIcon className="row-source-icon" name={source.icon} />
+                <span className="row-source-label">{source.label}</span>
+              </div>
+
+              <div className="cell cell-size">
+                <span className="row-mono">{documentFileSizeLabel(document.file_size) || "--"}</span>
+              </div>
+
+              <div className="cell cell-status">
+                {status.label !== "--" ? (
+                  <TdTag size="small" theme={status.theme} variant="light-outline" className="row-status-tag" icon={status.icon ? <TIcon name={status.icon ?? ""} className={status.spin ? 'icon-spin' : undefined} /> : undefined}>
+                    {status.label}
+                  </TdTag>
+                ) : (
+                  <span className="row-muted">--</span>
+                )}
+              </div>
+
+              <div className="cell cell-time">
+                <span className="row-mono">{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
+              </div>
+
+              {canContribute ? (
+                <div className="cell cell-actions" onClick={(event) => event.stopPropagation()}>
+                  <ListRowMoreMenu
+                    document={document}
+                    canDownload={canDownload}
+                    canMutateKnowledge={canMutateKnowledge ?? canContribute}
+                    t={t}
+                    actions={actions}
+                    traceAvailable={traceAvailableById?.[document.id]}
+                    onMenuOpen={(visible) => { setMoreOpenId(visible ? document.id : null); if (visible) onProbeTrace?.(document); }}
+                    move={moveFor?.(document)}
+                    onDownload={() => onDownload(document)}
+                    onEdit={() => onEdit(document)}
+                    onViewTrace={() => onViewTrace(document)}
+                    onMove={() => onMove(document)}
+                    onBatchManage={() => onBatchManage(document)}
+                    onReparse={() => onReparse(document)}
+                    onCancelParse={() => onCancelParse(document)}
+                    onDelete={() => onDelete(document)}
+                  />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Vue DocumentListView 行尾 t-popup + row-more-btn（三点菜单，t-icon more）。 */
+function ListRowMoreMenu(props: {
+  document: KnowledgeDocument;
+  canDownload: boolean;
+  canMutateKnowledge: boolean;
+  t: (key: string, values?: Record<string, string | number>) => string;
+  actions: ReturnType<typeof documentRowActions>;
+  traceAvailable?: boolean;
+  onMenuOpen: (visible: boolean) => void;
+  move?: DocumentMoveKbController;
+  onDownload: () => void;
+  onEdit: () => void;
+  onViewTrace: () => void;
+  onMove: () => void;
+  onBatchManage: () => void;
+  onReparse: () => void;
+  onCancelParse: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DocumentCardActionMenu
+      document={props.document}
+      canDownload={props.canDownload}
+      canMutateKnowledge={props.canMutateKnowledge}
+      t={props.t}
+      actions={props.actions}
+      traceAvailable={props.traceAvailable}
+      onMenuOpen={() => props.onMenuOpen(true)}
+      move={props.move}
+      onDownload={props.onDownload}
+      onEdit={props.onEdit}
+      onViewTrace={props.onViewTrace}
+      onMove={props.onMove}
+      onBatchManage={props.onBatchManage}
+      onReparse={props.onReparse}
+      onCancelParse={props.onCancelParse}
+      onDelete={props.onDelete}
+      rowTrigger
+      onVisibleChange={props.onMenuOpen}
+    />
+  );
 }
 
 export function documentStatus(
@@ -782,7 +1334,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               }}
               onClick={() => props.onChoose(row.path)}
             >
-              <FolderIcon size={16} className="shrink-0" />
+              <FolderIcon size={16} className="wk-kd-15" />
               <span
                 style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
@@ -819,18 +1371,18 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               onClick={(event) => event.stopPropagation()}
             >
               <FolderIcon size={16} />
-              <Input
+              <TdInput
                 className="wk-folder-picker__input"
                 value={props.newFolderName}
                 placeholder={props.labels.newFolderPlaceholder}
                 aria-label={props.labels.newFolderPlaceholder}
-                onChange={(event) => props.onNewFolderNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => props.onNewFolderNameChange(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     props.onCommitNewFolder();
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
                     props.onCancelCreate();
                   }
                 }}
@@ -841,7 +1393,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
         )}
       </ul>
       {props.duplicateWarning ? (
-        <p role="alert" className="wk-muted text-muted" style={{ margin: "4px 0 0", fontSize: "0.85rem" }}>
+        <p role="alert" className="wk-muted wk-kd-16" style={{ margin: "4px 0 0", fontSize: "0.85rem" }}>
           {props.labels.duplicate}
         </p>
       ) : null}
@@ -902,7 +1454,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
         <p title={props.manualTitle} style={{ fontWeight: 600, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {props.manualTitle}
         </p>
-        <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
           {labels.manualCharCount(props.manualCharCount ?? 0)}
         </p>
       </div>
@@ -914,7 +1466,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
         <p title={props.reparseFileName} style={{ fontWeight: 600, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {props.reparseFileName || labels.reparseSource}
         </p>
-        <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
           {labels.reparseHint}
         </p>
       </div>
@@ -922,29 +1474,29 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
   }
   const itemCount = props.entries.length + props.urls.length;
   if (itemCount === 0) {
-    return <p className="wk-muted text-muted" style={{ margin: "0 0 0.75rem" }}>{labels.noItems}</p>;
+    return <p className="wk-muted wk-kd-16" style={{ margin: "0 0 0.75rem" }}>{labels.noItems}</p>;
   }
   return (
-    <ul className="wk-upload-confirm-files m-0 mb-3 max-h-56 list-none overflow-auto p-0">
+    <ul className="wk-upload-confirm-files wk-kd-17">
       {props.urls.map((url, index) => (
-        <li key={`url-${url}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--wk-muted,#667085)]"><LinkIcon size={16} /></span>
-          <div className="min-w-0 flex-1">
-            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={url}>{url}</span>
-            <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">{labels.urlItemLabel}</span>
+        <li key={`url-${url}-${index}`} className="wk-kd-18">
+          <span className="wk-kd-19"><LinkIcon size={16} /></span>
+          <div className="wk-kd-20">
+            <span className="wk-kd-21" title={url}>{url}</span>
+            <span className="wk-kd-22">{labels.urlItemLabel}</span>
           </div>
-          <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveUrl(index)}>×</button>
+          <button type="button" className="wk-kd-23" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveUrl(index)}>×</button>
         </li>
       ))}
       {props.entries.map((entry, index) => {
         const state = props.uploadStates[index];
         const relativeDir = uploadEntryRelativeDir(entry);
         return (
-        <li key={`${entry.name}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] text-[var(--wk-muted,#667085)]" aria-hidden>{fileTypeBadge(entry.name)}</span>
-            <div className="min-w-0 flex-1">
-              <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
-              <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">
+        <li key={`${entry.name}-${index}`} className="wk-kd-18">
+            <span className="wk-kd-24" aria-hidden>{fileTypeBadge(entry.name)}</span>
+            <div className="wk-kd-20">
+              <span className="wk-kd-21" title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
+              <span className="wk-kd-22">
               {relativeDir ? (
                 <>
                   <span title={relativeDir}>{relativeDir}</span>
@@ -957,7 +1509,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
             <Status tone={entryStatusTone(state?.status)}>
               {state?.status === "error" ? (state.message ?? labels.statusLabel("error")) : labels.statusLabel(state?.status ?? "pending")}
             </Status>
-            <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveEntry(index)}>×</button>
+            <button type="button" className="wk-kd-23" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveEntry(index)}>×</button>
           </li>
         );
       })}
@@ -984,7 +1536,7 @@ export interface UploadSectionNavItem {
 function NavIcon({ name }: { name: "chart-bubble" }) {
   if (name === "chart-bubble") {
     return (
-      <svg className="wk-upload-nav-icon text-[var(--wk-accent,#4a7dff)]" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden style={{ flex: "0 0 auto" }}>
+      <svg className="wk-upload-nav-icon wk-kd-25" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden style={{ flex: "0 0 auto" }}>
         <circle cx="5" cy="5" r="3" />
         <circle cx="11.5" cy="10.5" r="2.5" />
         <circle cx="4.5" cy="12" r="1.8" />
@@ -1016,9 +1568,9 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           type="button"
           className={[
             "wk-upload-nav-item",
-            "hover:bg-[var(--wk-bg-hover,#f3f5f8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]",
-            item.active ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)] text-[var(--wk-accent,#07c05f)]" : "",
-            item.issue ? "has-issue text-[var(--wk-danger,#d92d20)]" : "",
+            "wk-kd-ring wk-kd-161",
+            item.active ? "is-active wk-kd-162" : "",
+            item.issue ? "has-issue wk-kd-163" : "",
           ].filter(Boolean).join(" ")}
           aria-current={item.active ? "true" : undefined}
           data-section-target={item.key}
@@ -1041,9 +1593,9 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           onClick={() => props.onSelect(item.key)}
         >
           {item.icon ? <NavIcon name={item.icon} /> : null}
-          <span className="min-w-0 flex-1 flex-col gap-[3px] overflow-hidden"><span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium leading-[1.35]">{item.label}</span>
+          <span className="wk-kd-26"><span className="wk-kd-27">{item.label}</span>
           <span
-            className={`wk-upload-nav-status tone-${item.tone ?? "default"} block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35]`}
+            className={`wk-upload-nav-status tone-${item.tone ?? "default"} wk-kd-139`}
             title={item.statusTitle}
             style={{ color: item.tone === "error" ? "var(--wk-danger, #d92d20)" : item.tone === "warning" ? "var(--wk-warning, #b54708)" : "var(--wk-muted, #667085)" }}
           >
@@ -1083,7 +1635,8 @@ export interface UploadSourceDropdownProps {
  * multiple and webkitdirectory file inputs, URL opens the import sub-dialog.
  */
 export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
-  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   function openNativeInput(kind: "file" | "folder") {
     const input = wrapRef.current?.querySelector<HTMLInputElement>(`input[data-upload-source-input="${kind}"]`);
     input?.click();
@@ -1092,14 +1645,21 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
     props.onSelect(key);
     if (key === "file" || key === "folder") openNativeInput(key);
   }
+  // Vue KbUploadSourceDropdown prefixIcon 表（upload/folder-add/link/edit-1）。
+  const itemIcon: Record<UploadSourceDropdownAction, string> = {
+    file: "upload",
+    folder: "folder-add",
+    url: "link",
+    manual: "edit-1",
+  };
   return (
-    <span ref={wrapRef} className="wk-upload-source" style={{ position: "relative", display: "inline-flex" }}>
+    <div ref={wrapRef} className="kb-upload-source-dropdown">
       <input
         type="file"
         multiple
-        className="wk-upload-source__hidden-input"
+        className="hidden-file-input"
         data-upload-source-input="file"
-        style={{ display: "none" }}
+        autoComplete="off"
         aria-hidden
         tabIndex={-1}
         onChange={(event) => {
@@ -1112,9 +1672,9 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         type="file"
         multiple
         {...({ webkitdirectory: "" } as Record<string, unknown>)}
-        className="wk-upload-source__hidden-input"
+        className="hidden-file-input"
         data-upload-source-input="folder"
-        style={{ display: "none" }}
+        autoComplete="off"
         aria-hidden
         tabIndex={-1}
         onChange={(event) => {
@@ -1123,43 +1683,34 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
           if (files.length > 0) props.onFiles(files, event.currentTarget.dataset.uploadSourceInput === "folder");
         }}
       />
-      <button
-        type="button"
-        className="wk-upload-source__trigger"
-        aria-label={props.tooltip}
-        title={props.tooltip}
-        aria-haspopup="menu"
-        aria-expanded={props.open}
-        data-guide={props.guideTarget}
-        onClick={props.onToggle}
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "24px", border: "none", borderRadius: "3px", background: "transparent", cursor: "pointer", fontSize: "14px", color: "rgba(0, 0, 0, 0.6)" }}
-      >
-        <AddFileIcon />
-      </button>
-      {props.open ? (
-        <span
-          className="wk-upload-source__menu min-w-40"
-          role="menu"
-          aria-label={props.tooltip}
-          style={{ position: "absolute", top: "32px", left: 0, zIndex: 40, minWidth: "160px", padding: "4px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "8px", background: "var(--wk-surface, #fff)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}
+      <Tooltip content={props.tooltip} placement="top">
+        <Dropdown
+          trigger="click"
+          placement="bottom-right"
+          options={props.items.map((item) => ({
+            content: item.label,
+            value: item.key,
+            prefixIcon: <TIcon name={itemIcon[item.key]} size="16px" />,
+          }))}
+          popupProps={{ onVisibleChange: (visible: boolean) => setDropdownOpen(visible) }}
+          onClick={(data) => { setDropdownOpen(false); handleAction((data as { value: UploadSourceDropdownAction }).value); }}
         >
-          {props.items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="menuitem"
-              className="wk-upload-source__item hover:bg-[rgba(16,24,40,0.05)]"
-              data-upload-source={item.key}
-              onClick={() => handleAction(item.key)}
-              style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", border: "none", borderRadius: "6px", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "0.9rem" }}
-            >
-              {item.key === "file" ? <FileIcon size={16} /> : item.key === "folder" ? <FolderIcon size={16} /> : item.key === "url" ? <LinkIcon size={16} /> : <EditIcon size={16} />}
-              {item.label}
-            </button>
-          ))}
-        </span>
-      ) : null}
-    </span>
+          <TdButton
+            variant="text"
+            theme="default"
+            className="kb-upload-source-trigger content-bar-icon-btn"
+            data-guide={props.guideTarget}
+            size="small"
+            aria-label={props.tooltip}
+            title={props.tooltip}
+            aria-haspopup="menu"
+            aria-expanded={dropdownOpen || props.open}
+          >
+            <TIcon name="file-add" size="16px" />
+          </TdButton>
+        </Dropdown>
+      </Tooltip>
+    </div>
   );
 }
 
@@ -1218,13 +1769,13 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const choose = (index: number) => { const option = options[index]; if (!option || option.disabled) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
-  return <div className={`wk-upload-single-select relative w-[280px] max-[720px]:w-full ${className}`.trim()} ref={rootRef}>
-    <button type="button" className="wk-upload-single-select__trigger flex w-full min-h-8 items-center justify-between px-[10px] text-left bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] text-[var(--wk-text,#101828)] cursor-pointer [font:inherit] hover:border-[var(--wk-accent,#07c05f)] hover:shadow-[0_0_0_2px_rgb(7_192_95/15%)] focus-visible:border-[var(--wk-accent,#07c05f)] focus-visible:shadow-[0_0_0_2px_rgb(7_192_95/15%)] focus-visible:outline-none" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
+  return <div className={`wk-upload-single-select wk-kd-singlesel ${className}`.trim()} ref={rootRef}>
+    <button type="button" className="wk-upload-single-select__trigger wk-kd-28" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
       else if (event.key === "Escape") setOpen(false);
     }}><span>{options[selectedIndex]?.label ?? placeholder ?? value}</span>{clearable && value ? <span role="button" tabIndex={0} aria-label={`清除${ariaLabel}`} onClick={(event) => { event.stopPropagation(); onChange(""); setOpen(false); }}>×</span> : null}<span aria-hidden="true">⌄</span></button>
-    {open ? <div className="wk-upload-single-select__popup absolute left-0 right-0 top-[calc(100%+4px)] z-20 grid max-h-[240px] overflow-auto p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`${index === activeIndex ? "is-active " : ""}${option.disabled ? "is-disabled " : ""}rounded-[6px] px-[10px] py-2 text-left bg-transparent border-0 cursor-pointer [font:inherit] hover:bg-[rgb(7_192_95/10%)] disabled:text-[var(--wk-muted,#98a2b3)] disabled:cursor-not-allowed disabled:opacity-70 ${option.value === value ? "bg-[rgb(7_192_95/10%)]" : ""}`.trim() || undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
+    {open ? <div className="wk-upload-single-select__popup wk-kd-29" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`wk-kd-selopt ${index === activeIndex ? "is-active" : ""} ${option.disabled ? "is-disabled" : ""} ${option.value === value ? "wk-kd-selopt-selected" : ""}`.trim()} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
   </div>;
 }
 
@@ -1246,24 +1797,24 @@ export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const toggle = (value: string) => onChange(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
-  return <div className="relative w-[280px] max-[720px]:w-full wk-upload-multi-select" ref={rootRef}>
-    <div className="wk-upload-multi-select__field flex min-h-8 flex-wrap items-center gap-1 p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] focus-within:border-[var(--wk-accent,#07c05f)] focus-within:shadow-[0_0_0_2px_rgb(7_192_95/15%)]" onClick={() => setOpen(true)}>
-      {values.map((value) => <span className="wk-upload-multi-select__chip inline-flex max-w-full items-center gap-1 bg-[rgb(7_192_95/10%)] rounded-[4px] px-[6px] py-[3px] text-[var(--wk-text,#101828)] text-[12px]" key={value}>{options.find((option) => option.value === value)?.label ?? value}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)]" aria-label={`移除 ${value}`} onClick={(event) => { event.stopPropagation(); toggle(value); }}>×</button></span>)}
-      <input type="text" className="border-0 flex-1 min-w-[80px] outline-none px-1 py-[3px] [font:inherit]" role="combobox" aria-label={ariaLabel} aria-expanded={open} value={query} placeholder={values.length ? "" : ariaLabel} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={(event) => {
+  return <div className="wk-upload-multi-select wk-kd-30" ref={rootRef}>
+    <div className="wk-upload-multi-select__field wk-kd-31" onClick={() => setOpen(true)}>
+      {values.map((value) => <span className="wk-upload-multi-select__chip wk-kd-32" key={value}>{options.find((option) => option.value === value)?.label ?? value}<button type="button" className="wk-kd-33" aria-label={`移除 ${value}`} onClick={(event) => { event.stopPropagation(); toggle(value); }}>×</button></span>)}
+      <input type="text" className="wk-kd-34" role="combobox" aria-label={ariaLabel} aria-expanded={open} value={query} placeholder={values.length ? "" : ariaLabel} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((current) => Math.max(0, Math.min(filtered.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
         else if (event.key === "Enter" && filtered[activeIndex]) { event.preventDefault(); toggle(filtered[activeIndex].value); setQuery(""); }
         else if (event.key === "Backspace" && !query && values.length) toggle(values[values.length - 1]);
         else if (event.key === "Escape") { setOpen(false); setQuery(""); }
       }} />
     </div>
-    {open ? <div className="wk-upload-multi-select__popup absolute left-0 right-0 top-[calc(100%+4px)] z-20 grid max-h-[240px] overflow-auto p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" role="listbox" aria-label={ariaLabel}>{filtered.map((option, index) => <button type="button" role="option" aria-selected={values.includes(option.value)} className={`${index === activeIndex ? "is-active bg-[rgb(7_192_95/10%)]" : "bg-transparent"} border-0 rounded-[6px] cursor-pointer [font:inherit] px-[10px] py-2 text-left hover:bg-[rgb(7_192_95/10%)]`} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => toggle(option.value)}>{option.label}</button>)}{filtered.length === 0 ? <span className="wk-muted text-muted">{ariaLabel}</span> : null}</div> : null}
+    {open ? <div className="wk-upload-multi-select__popup wk-kd-29" role="listbox" aria-label={ariaLabel}>{filtered.map((option, index) => <button type="button" role="option" aria-selected={values.includes(option.value)} className={`${index === activeIndex ? "is-active wk-kd-140" : "wk-kd-141"} wk-kd-142`} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => toggle(option.value)}>{option.label}</button>)}{filtered.length === 0 ? <span className="wk-muted wk-kd-16">{ariaLabel}</span> : null}</div> : null}
   </div>;
 }
 
 export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }: { value: string; placeholder: string; ariaLabel: string; onChange: (value: string) => void }) {
-  return <div className="wk-upload-clearable-input relative flex w-[280px] items-center">
-    <Input className="box-border w-full pr-[28px]" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
-    {value ? <button type="button" className="absolute right-[2px] cursor-pointer border-0 bg-transparent p-[2px_6px] text-[var(--wk-muted,#667085)] text-[16px] leading-none" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
+  return <div className="wk-upload-clearable-input wk-kd-35">
+    <TdInput className="wk-kd-36" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(value) => onChange(String(value))} />
+    {value ? <button type="button" className="wk-kd-37" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
   </div>;
 }
 
@@ -1280,11 +1831,11 @@ export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, 
   const adjust = (delta: number) => onChange(clamp(value + delta));
   // CSS cascade: .wk-upload-number-input--wide overrode the 88px base width.
   const wide = className.includes("wk-upload-number-input--wide");
-  return <div className={`wk-upload-number-input ${className} inline-flex ${wide ? "w-[200px]" : "w-[88px]"} h-8 items-center overflow-hidden bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] focus-within:border-[var(--wk-accent,#07c05f)] focus-within:shadow-[0_0_0_2px_rgb(7_192_95/15%)]`.trim()}>
-    <button type="button" className="inline-flex h-full w-[25px] cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)] text-[16px] enabled:hover:bg-[rgb(7_192_95/10%)] enabled:hover:text-[var(--wk-text,#101828)] focus-visible:bg-[rgb(7_192_95/10%)] focus-visible:text-[var(--wk-text,#101828)] focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--wk-border,#d0d5dd)]" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
+  return <div className={`wk-upload-number-input ${className} wk-kd-num ${wide ? "wk-kd-num--wide" : ""}`.trim()}>
+    <button type="button" className="wk-kd-38" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
     <input
       type="number"
-      className="w-9 min-w-0 flex-1 border-0 bg-transparent box-border text-center text-[var(--wk-text,#101828)] outline-none [appearance:textfield] [font:inherit] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+      className="wk-kd-num-input wk-kd-39"
       min={min}
       max={max}
       step={step}
@@ -1295,22 +1846,22 @@ export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, 
       aria-valuenow={value}
       onChange={(event) => onChange(clamp(Number(event.target.value)))}
     />
-    <button type="button" className="inline-flex h-full w-[25px] cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)] text-[16px] enabled:hover:bg-[rgb(7_192_95/10%)] enabled:hover:text-[var(--wk-text,#101828)] focus-visible:bg-[rgb(7_192_95/10%)] focus-visible:text-[var(--wk-text,#101828)] focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--wk-border,#d0d5dd)]" aria-label={`增加${ariaLabel}`} disabled={value >= max} onClick={() => adjust(step)}>+</button>
+    <button type="button" className="wk-kd-38" aria-label={`增加${ariaLabel}`} disabled={value >= max} onClick={() => adjust(step)}>+</button>
   </div>;
 }
 
 export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolean; ariaLabel: string; onChange: (checked: boolean) => void }) {
-  return <button type="button" className={`wk-upload-switch${checked ? " is-checked" : ""} inline-flex h-5 w-9 cursor-pointer rounded-full border-0 p-[2px] [transition:background-color_.16s_ease] ${checked ? "bg-[var(--wk-accent,#07c05f)]" : "bg-[var(--wk-border,#d0d5dd)]"} focus-visible:[box-shadow:0_0_0_2px_rgb(7_192_95/15%)] focus-visible:[outline:2px_solid_var(--wk-accent,#07c05f)] focus-visible:[outline-offset:2px]`} role="switch" aria-checked={checked} aria-label={ariaLabel} onClick={() => onChange(!checked)}>
-    <span className={`wk-upload-switch__handle block h-4 w-4 rounded-full bg-white [transition:transform_.16s_ease] ${checked ? "[transform:translateX(16px)]" : "[transform:translateX(0px)]"}`} aria-hidden="true" />
+  return <button type="button" className={`wk-upload-switch${checked ? " is-checked" : ""} wk-kd-143 ${checked ? "wk-kd-144" : "wk-kd-145"} wk-kd-146`} role="switch" aria-checked={checked} aria-label={ariaLabel} onClick={() => onChange(!checked)}>
+    <span className={`wk-upload-switch__handle wk-kd-147 ${checked ? "wk-kd-148" : "wk-kd-149"}`} aria-hidden="true" />
   </button>;
 }
 
 function UploadSettingRow({ label, description, children, className = "" }: { label: ReactNode; description?: string; children: ReactNode; className?: string }) {
   // CSS cascade: .wk-upload-setting-row--separators stretched its control.
   const separators = className.includes("wk-upload-setting-row--separators");
-  return <div className={`wk-upload-setting-row ${className} flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col`.trim()}>
-    <div className="wk-upload-setting-info flex min-w-0 flex-1 flex-col gap-[5px]"><label className="font-medium">{label}</label>{description ? <p className="wk-muted text-muted m-0 text-[12px]">{description}</p> : null}</div>
-    <div className={`wk-upload-setting-control flex w-[280px] flex-none justify-end max-[720px]:w-full ${separators ? "items-stretch" : "items-start"}`}>{children}</div>
+  return <div className={`wk-upload-setting-row wk-kd-settingrow ${className}`.trim()}>
+    <div className="wk-upload-setting-info wk-kd-40"><label className="wk-kd-41">{label}</label>{description ? <p className="wk-muted wk-kd-42">{description}</p> : null}</div>
+    <div className={`wk-upload-setting-control wk-kd-150 ${separators ? "wk-kd-151" : "wk-kd-152"}`}>{children}</div>
   </div>;
 }
 
@@ -1392,7 +1943,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           <div className="setting-row" style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.5rem" }}>
             <div style={{ flex: 1 }}>
               <label htmlFor="wk-pdf-force-scanned">{t("uploadConfirm.pdfForceScanned.label")}</label>
-              <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+              <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
                 {t("uploadConfirm.pdfForceScanned.description")}
               </p>
             </div>
@@ -1402,16 +1953,16 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.parserLoading ? (
           <div className="wk-upload-parser-loading" role="status">{t("settings.parser.loading")}</div>
         ) : props.parserEngines.length === 0 ? (
-          <p className="wk-muted text-muted">{t("settings.parser.noEngineDetected")}</p>
+          <p className="wk-muted wk-kd-16">{t("settings.parser.noEngineDetected")}</p>
         ) : (
-          <div className="wk-upload-parser-group overflow-hidden rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface-subtle,#f8f9fb)]">
+          <div className="wk-upload-parser-group wk-kd-43">
           {parserFileGroups.map((group) => (
-            <div className="wk-upload-parser-row flex items-center justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] px-[14px] py-[10px] last:border-b-0 max-[720px]:flex-col max-[720px]:items-stretch" key={group.key}>
-              <div className="wk-upload-parser-info block min-w-0 flex-[0_0_168px] max-[720px]:flex-[0_0_auto]">
-                <strong className="text-[13px] font-medium">{group.label}</strong>
-                <span className="wk-upload-parser-extensions mt-0 flex flex-wrap gap-1">{group.extensions.map((extension) => <span className="rounded-[4px] bg-[rgb(120_135_155/10%)] px-[6px] py-[2px] text-[11px] text-[var(--wk-muted,#667085)] [font-family:var(--app-font-family-mono,ui-monospace,monospace)]" key={extension}>.{extension}</span>)}</span>
+            <div className="wk-upload-parser-row wk-kd-44" key={group.key}>
+              <div className="wk-upload-parser-info wk-kd-45">
+                <strong className="wk-kd-46">{group.label}</strong>
+                <span className="wk-upload-parser-extensions wk-kd-47">{group.extensions.map((extension) => <span className="wk-kd-48" key={extension}>.{extension}</span>)}</span>
               </div>
-              <div className="wk-upload-parser-control flex min-w-0 flex-1 flex-col items-stretch gap-[10px] max-[720px]:w-full">
+              <div className="wk-upload-parser-control wk-kd-49">
                 {(() => {
                   const options = parserEngineOptions(group.extensions);
                   return <>
@@ -1426,10 +1977,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                     return value ? [...remaining, { file_types: group.extensions, engine: value, ...(current?.xlsx_first_row_as_header === undefined ? {} : { xlsx_first_row_as_header: current.xlsx_first_row_as_header }) }] : remaining;
                   })() })}
                 />
-                {options.length === 0 ? <div className="wk-upload-parser-warning flex items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)]" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-[var(--wk-accent,#07c05f)] [font:inherit] hover:underline focus-visible:underline" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
+                {options.length === 0 ? <div className="wk-upload-parser-warning wk-kd-50" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="wk-kd-51" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
                 {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
-                  <label className="wk-upload-parser-xlsx-header inline-flex items-center gap-[5px] text-[12px] text-[var(--wk-muted,#667085)]">
-                    <Checkbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
+                  <label className="wk-upload-parser-xlsx-header wk-kd-52">
+                    <TdCheckbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(checked) => updateParserXlsxHeader(group.extensions, checked === true)} />
                     {t("kbSettings.parser.xlsxFirstRowAsHeader")}
                   </label>
                 ) : null}
@@ -1442,8 +1993,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         )}
       </fieldset>
       <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.chunking.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.chunking.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.chunking.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.chunking.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.chunking.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.chunking.description")}</p></div>
         <UploadSettingRow label={t("knowledgeEditor.chunking.strategyLabel")} description={t("knowledgeEditor.chunking.strategyDescription")}>
           <UploadSingleSelect
             className="wk-upload-chunk-strategy-select"
@@ -1461,7 +2012,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         </UploadSettingRow>
         <button
           type="button"
-          className="more-options-toggle mt-1 inline-flex items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-[13px] text-[var(--wk-accent,#07c05f)] [font:inherit] transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
+          className="more-options-toggle wk-kd-ring wk-kd-57"
           aria-expanded={props.moreOpen}
           onClick={props.onToggleMore}
         >
@@ -1495,10 +2046,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-multimodal" id="wk-upload-section-multimodal" data-section="multimodal" style={sectionStyle("multimodal")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.multimodal.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.multimodal.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.multimodal.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.multimodal.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.multimodal.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.multimodal.description")}</p></div>
         {props.multimodalIssue ? (
-          <p className="wk-muted text-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
+          <p className="wk-muted wk-kd-16" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
         ) : null}
         <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.label")} description={t("knowledgeEditor.advanced.multimodal.description")}>
           <UploadSwitch checked={state.multimodalEnabled} ariaLabel={t("knowledgeEditor.advanced.multimodal.label")} onChange={(checked) => update({ multimodalEnabled: checked })} />
@@ -1509,11 +2060,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.vllmModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
-                <Input
-                  className="box-border w-full"
-                  required
+                <TdInput
+                  className="wk-kd-58"
                   value={state.vllmModelId}
-                  onChange={(event) => update({ vllmModelId: event.target.value })}
+                  onChange={(value) => update({ vllmModelId: String(value) })}
                   placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")}
                 />
               )}
@@ -1522,22 +2072,22 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
             </UploadSettingRow>
             <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")} description={t("knowledgeEditor.advanced.multimodal.customInstructionsDescription")}>
-              <Textarea
+              <TdTextarea
                 rows={3}
-                maxLength={4000}
+                maxlength={4000}
                 placeholder={t("knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder")}
                 value={state.customInstructions}
-                onChange={(event) => update({ customInstructions: event.target.value })}
+                onChange={(value) => update({ customInstructions: String(value) })}
               />
             </UploadSettingRow>
           </>
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-asr" id="wk-upload-section-asr" data-section="asr" style={sectionStyle("asr")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.asr.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.asr.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.asr.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.asr.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.asr.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.asr.description")}</p></div>
         {props.asrIssue ? (
-          <p className="wk-muted text-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
+          <p className="wk-muted wk-kd-16" role="note">{t("uploadConfirm.asrSetupHint")}</p>
         ) : null}
         <UploadSettingRow label={t("knowledgeEditor.asr.label")} description={t("knowledgeEditor.asr.description")}>
           <UploadSwitch checked={state.asrEnabled} ariaLabel={t("knowledgeEditor.asr.label")} onChange={(checked) => update({ asrEnabled: checked })} />
@@ -1548,11 +2098,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.asrModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
-                <Input
-                  className="box-border w-full"
-                  required
+                <TdInput
+                  className="wk-kd-58"
                   value={state.asrModelId}
-                  onChange={(event) => update({ asrModelId: event.target.value })}
+                  onChange={(value) => update({ asrModelId: String(value) })}
                   placeholder={t("knowledgeEditor.asr.modelPlaceholder")}
                 />
               )}
@@ -1569,38 +2118,38 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p className="wk-kd-56">{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
         {/* R478 React-first mitigation (shared Vue+React UX defect, superset — NOT a parity claim):
             the backend silently skips question generation for KBs with vector
             and keyword search both off (kb.NeedsEmbeddingModel gate). Inform
             only; the switch and payload stay untouched so backend behavior
             is unchanged. */}
         {state.questionGenerationSkipped ? (
-          <p role="note" className="wk-question-skip-hint m-0 mb-3 rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-bg-muted,#f9fafb)] px-3 py-2 text-[12px] leading-normal text-[var(--wk-muted,#667085)]">{t("uploadConfirm.questionGeneration.skippedHint")}</p>
+          <p role="note" className="wk-question-skip-hint wk-kd-59">{t("uploadConfirm.questionGeneration.skippedHint")}</p>
         ) : null}
-        <div className="wk-upload-question-row flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col">
-          <div className="wk-upload-question-info grid min-w-0 flex-1 gap-1">
-            <label id="wk-question-enabled-label" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>
-            <p className="wk-muted text-muted m-0 text-[12px]">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
+        <div className="wk-upload-question-row wk-kd-60">
+          <div className="wk-upload-question-info wk-kd-61">
+            <label id="wk-question-enabled-label" className="wk-kd-41">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>
+            <p className="wk-muted wk-kd-42">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
           </div>
-          <div className="wk-upload-question-control flex items-center gap-[10px]">
+          <div className="wk-upload-question-control wk-kd-62">
             {state.questionEnabled ? <UploadNumberInput min={1} max={10} step={1} ariaLabel={t("knowledgeEditor.advanced.questionGeneration.countLabel")} value={state.questionCount} onChange={(value) => update({ questionCount: value })} /> : null}
             <GraphSwitch id="wk-question-enabled" checked={state.questionEnabled} labelId="wk-question-enabled-label" onChange={(checked) => update({ questionEnabled: checked })} />
           </div>
         </div>
         {state.questionEnabled ? (
-          <div className="wk-upload-question-instructions flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col">
-            <div className="wk-upload-question-info grid min-w-0 flex-1 gap-1">
-              <label htmlFor="wk-question-instructions" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
-              <p className="wk-muted text-muted m-0 text-[12px]">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
+          <div className="wk-upload-question-instructions wk-kd-60">
+            <div className="wk-upload-question-info wk-kd-61">
+              <label htmlFor="wk-question-instructions" className="wk-kd-41">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
+              <p className="wk-muted wk-kd-42">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
             </div>
-            <Textarea id="wk-question-instructions" className="box-border min-h-[72px] w-[280px] max-[720px]:w-full" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
+            <TdTextarea id="wk-question-instructions" className="wk-kd-63" rows={3} maxlength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(value) => update({ questionInstructions: String(value) })} />
           </div>
         ) : null}
       </fieldset>
       {props.graphAvailable && props.graphSettings ? (
-        <fieldset className="wk-upload-confirm-graph m-0 mb-3 rounded-[8px] border border-[var(--wk-border,#e4e7ec)] p-3" id="wk-upload-section-graph" data-section="graph" style={sectionStyle("graph")}>
+        <fieldset className="wk-upload-confirm-graph wk-kd-64" id="wk-upload-section-graph" data-section="graph" style={sectionStyle("graph")}>
           {props.graphSettings}
         </fieldset>
       ) : null}
@@ -1665,27 +2214,26 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
     setDraft("");
   };
   return (
-    <div className="wk-graph-tags-field flex min-h-8 min-w-[240px] flex-1 flex-wrap items-center gap-[6px] rounded-[6px] border border-[var(--wk-border,#d0d5dd)] bg-[var(--wk-bg,#fff)] px-2 py-1 focus-within:border-[var(--wk-accent,#4a7dff)] focus-within:shadow-[0_0_0_2px_rgb(74_125_255/14%)]" role="listbox" aria-label={ariaLabel} aria-multiselectable="true">
+    <div className="wk-graph-tags-field wk-kd-65" role="listbox" aria-label={ariaLabel} aria-multiselectable="true">
       {tags.map((tag) => (
-        <span key={tag} className="wk-graph-tag inline-flex max-w-full items-center gap-1 rounded-[4px] bg-[var(--wk-bg-muted,#f2f4f7)] px-[6px] py-[2px] text-[0.8125rem] text-[var(--wk-text,#344054)]" role="option" aria-selected="true">
+        <span key={tag} className="wk-graph-tag wk-kd-66" role="option" aria-selected="true">
           <span>{tag}</span>
-          <button type="button" className="cursor-pointer border-0 bg-transparent p-0 leading-none text-[var(--wk-muted,#667085)]" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
+          <button type="button" className="wk-kd-67" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
         </span>
       ))}
-      <Input
+      <TdInput
         type="text"
-        className="h-6 w-full min-w-[120px] flex-1 border-0 bg-transparent p-0 outline-none box-border"
-        role="combobox"
-        aria-autocomplete="list"
+        className="wk-kd-68"
+        {...({ role: "combobox", "aria-autocomplete": "list" } as Record<string, string>)}
         value={draft}
         placeholder={tags.length === 0 ? placeholder : ""}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addDraft(); }
-          else if (event.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
+        onChange={(value) => setDraft(String(value))}
+        onKeydown={(_, { e }) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addDraft(); }
+          else if (e.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
         }}
       />
-      {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear cursor-pointer border-0 bg-transparent p-0 leading-none text-[var(--wk-muted,#667085)]" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
+      {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear wk-kd-67" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
     </div>
   );
 }
@@ -1717,31 +2265,29 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
   }, [open]);
   const choose = (next: string) => { onChange(next); setFilter(""); setActiveIndex(0); setOpen(false); };
   return (
-    <div ref={rootRef} className="wk-graph-relation-select relative min-w-[150px] flex-1">
-      <Input
+    <div ref={rootRef} className="wk-graph-relation-select wk-kd-69">
+      <TdInput
         type="text"
-        className="box-border w-full"
-        role="combobox"
+        className="wk-kd-58"
+        {...({ role: "combobox", "aria-autocomplete": "list", "aria-expanded": String(open) } as Record<string, string>)}
         aria-label={ariaLabel}
-        aria-autocomplete="list"
-        aria-expanded={open}
         value={open ? filter : value}
         placeholder={open ? placeholder : (value || placeholder)}
         onFocus={() => { setOpen(true); setFilter(""); setActiveIndex(0); }}
-        onChange={(event) => { setFilter(event.target.value); setActiveIndex(0); setOpen(true); }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
-          if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
-          if (event.key === "Enter" && optionCount > 0) { event.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
-          if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
+        onChange={(value) => { setFilter(String(value)); setActiveIndex(0); setOpen(true); }}
+        onKeydown={(_, { e }) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
+          if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
+          if (e.key === "Enter" && optionCount > 0) { e.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
+          if (e.key === "Escape") { setOpen(false); e.currentTarget.blur(); }
         }}
       />
-      {clearable && value ? <button type="button" className="wk-graph-relation-clear absolute right-[6px] top-1/2 cursor-pointer border-0 bg-transparent px-[3px] py-0 text-[var(--wk-muted,#667085)] [transform:translateY(-50%)]" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
+      {clearable && value ? <button type="button" className="wk-graph-relation-clear wk-kd-70" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
       {open ? (
-        <div role="listbox" className="wk-graph-relation-options absolute inset-x-0 top-[calc(100%+4px)] z-[5] flex max-h-[180px] flex-col overflow-y-auto rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-1 shadow-[0_8px_20px_rgb(16_24_40/14%)]">
-          {filtered.map((option, index) => <button type="button" role="option" aria-selected={option === value} className={`px-2 py-[6px] text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--wk-bg-muted,#f2f4f7)] ${index === activeIndex || option === value ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)]" : ""}`} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
-          {canCreate ? <button type="button" role="option" className={`px-2 py-[6px] text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--wk-bg-muted,#f2f4f7)] ${activeIndex === filtered.length ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)]" : ""}`} onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
-          {filtered.length === 0 && !canCreate ? <span className="wk-muted text-muted">{placeholder}</span> : null}
+        <div role="listbox" className="wk-graph-relation-options inset-x-0 wk-kd-71">
+          {filtered.map((option, index) => <button type="button" role="option" aria-selected={option === value} className={`wk-kd-153 ${index === activeIndex || option === value ? "is-active wk-kd-154" : ""}`} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
+          {canCreate ? <button type="button" role="option" className={`wk-kd-153 ${activeIndex === filtered.length ? "is-active wk-kd-154" : ""}`} onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
+          {filtered.length === 0 && !canCreate ? <span className="wk-muted wk-kd-16">{placeholder}</span> : null}
         </div>
       ) : null}
     </div>
@@ -1758,13 +2304,13 @@ export function GraphSwitch({ id, checked, onChange, labelId }: {
     <button
       id={id}
       type="button"
-      className={`wk-graph-switch${checked ? " is-checked" : ""} relative inline-flex h-6 w-10 flex-none cursor-pointer items-center rounded-full border-0 p-0 [transition:background-color_.2s_cubic-bezier(0.38,0,0.24,1)] ${checked ? "bg-[var(--wk-accent,#07c05f)]" : "bg-[var(--wk-bg-muted,#d0d5dd)]"} focus-visible:[outline:2px_solid_var(--wk-accent,#4a7dff)] focus-visible:[outline-offset:2px]`}
+      className={`wk-graph-switch${checked ? " is-checked" : ""} wk-kd-155 ${checked ? "wk-kd-144" : "wk-kd-156"} wk-kd-157`}
       role="switch"
       aria-checked={checked}
       aria-labelledby={labelId}
       onClick={() => onChange(!checked)}
     >
-      <span className={`wk-graph-switch-handle absolute left-[3px] top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_3px_rgb(16_24_40/20%)] [transition:transform_.2s_cubic-bezier(0.38,0,0.24,1)] ${checked ? "[transform:translateX(16px)]" : "[transform:translateX(0px)]"}`} aria-hidden="true" />
+      <span className={`wk-graph-switch-handle wk-kd-158 ${checked ? "wk-kd-148" : "wk-kd-149"}`} aria-hidden="true" />
     </button>
   );
 }
@@ -1782,13 +2328,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const emit = (next: UploadNodeExtractState) => props.onChange(next);
   const [tagFabring, setTagFabring] = useState(false);
   const [textFabring, setTextFabring] = useState(false);
-  const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
-  const sampleTextRef = useRef<HTMLTextAreaElement | null>(null);
+  // S6 换装：tdesign Textarea ref 是命令式句柄（textareaElement 指内层原生 textarea）。
+  type TdTextareaRef = { currentElement: HTMLDivElement; textareaElement: HTMLTextAreaElement };
+  const instructionsRef = useRef<TdTextareaRef>(null);
+  const sampleTextRef = useRef<TdTextareaRef>(null);
 
   useEffect(() => {
     const fields = [
-      { node: instructionsRef.current, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
-      { node: sampleTextRef.current, value: graphExtract.text, minRows: 6, maxRows: 12 },
+      { node: instructionsRef.current?.textareaElement ?? null, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
+      { node: sampleTextRef.current?.textareaElement ?? null, value: graphExtract.text, minRows: 6, maxRows: 12 },
     ];
     fields.forEach(({ node, minRows, maxRows }) => {
       if (!node) return;
@@ -1869,21 +2417,21 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const [extracting, setExtracting] = useState(false);
 
   return (
-    <div className="wk-graph-settings w-full">
-      <div className="section-header mb-4">
-        <h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("graphSettings.title")}</h2>
-        <p className="section-desc m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("graphSettings.description")}</p>
+    <div className="wk-graph-settings wk-kd-72">
+      <div className="section-header wk-kd-54">
+        <h2 className="wk-kd-55">{t("graphSettings.title")}</h2>
+        <p className="section-desc wk-kd-56">{t("graphSettings.description")}</p>
       </div>
       {!props.graphDatabaseOn ? (
-        <p className="wk-graph-alert m-0 mb-3 rounded-[6px] bg-[rgba(183,121,8,0.08)] px-3 py-2 text-[.85rem] text-[var(--wk-warning,#b54708)]" role="alert">{t("graphSettings.disabledWarning")}</p>
+        <p className="wk-graph-alert wk-kd-73" role="alert">{t("graphSettings.disabledWarning")}</p>
       ) : null}
       <div className="settings-group">
-        <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-          <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-            <label id="wk-graph-enabled-label" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.enableLabel")}</label>
-            <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.enableDescription")}</p>
+        <div className="wk-graph-setting-row wk-kd-74">
+          <div className="setting-info wk-kd-75">
+            <label id="wk-graph-enabled-label" className="wk-kd-76">{t("graphSettings.enableLabel")}</label>
+            <p className="wk-muted wk-kd-77">{t("graphSettings.enableDescription")}</p>
           </div>
-          <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+          <div className="setting-control wk-kd-78">
             <GraphSwitch
               id="wk-graph-enabled"
               checked={graphExtract.enabled}
@@ -1895,30 +2443,30 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
 
         {graphExtract.enabled ? (
           <>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-instructions" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.customInstructionsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.customInstructionsDescription")}</p>
+                <label htmlFor="wk-graph-instructions" className="wk-kd-76">{t("graphSettings.customInstructionsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.customInstructionsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                <Textarea
+              <div className="setting-control is-full wk-kd-80">
+                <TdTextarea
                   ref={instructionsRef}
                   id="wk-graph-instructions"
                   rows={3}
-                  maxLength={4000}
+                  maxlength={4000}
                   placeholder={t("graphSettings.customInstructionsPlaceholder")}
                   value={graphExtract.customInstructions}
-                  onChange={(event) => patch({ customInstructions: event.target.value })}
+                  onChange={(value) => patch({ customInstructions: String(value) })}
                 />
               </div>
             </div>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-tags" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.tagsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.tagsDescription")}</p>
+                <label htmlFor="wk-graph-tags" className="wk-kd-76">{t("graphSettings.tagsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.tagsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                <div className="wk-graph-tags-group flex w-full items-start gap-3">
+              <div className="setting-control is-full wk-kd-80">
+                <div className="wk-graph-tags-group wk-kd-81">
                   {props.canRunExtract ? (
                     <button
                       type="button"
@@ -1945,33 +2493,34 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     ariaLabel={t("graphSettings.tagsLabel")}
                   />
                 </div>
-                <div className="wk-graph-add-tag w-full">
-                  <Input
-                    className="box-border w-full"
+                <div className="wk-graph-add-tag wk-kd-72">
+                  <TdInput
+                    className="wk-kd-58"
                     type="text"
                     placeholder={t("graphSettings.tagsPlaceholder")}
                     aria-label={t("graphSettings.tagsPlaceholder")}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      const value = event.currentTarget.value.trim();
+                    onKeydown={(_, { e }) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const field = e.target as HTMLInputElement;
+                      const value = field.value.trim();
                       if (value && !graphExtract.tags.includes(value)) patch({ tags: [...graphExtract.tags, value] });
-                      event.currentTarget.value = "";
+                      field.value = "";
                     }}
                   />
                 </div>
                 {!llmAvailable ? (
-                  <p className="wk-graph-tip m-0 flex items-center gap-[6px] text-[0.8rem] text-[var(--wk-muted,#667085)]">{t("graphSettings.completeModelConfig")}</p>
+                  <p className="wk-graph-tip wk-kd-82">{t("graphSettings.completeModelConfig")}</p>
                 ) : null}
               </div>
             </div>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-text" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.sampleTextLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.sampleTextDescription")}</p>
+                <label htmlFor="wk-graph-text" className="wk-kd-76">{t("graphSettings.sampleTextLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.sampleTextDescription")}</p>
               </div>
               <div className="setting-control is-full">
-                <div className="wk-graph-text-group flex w-full flex-col items-start gap-3">
+                <div className="wk-graph-text-group wk-kd-83">
                   {props.canRunExtract ? (
                     <button
                       type="button"
@@ -1991,42 +2540,42 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {t("graphSettings.generateRandomText")}
                     </button>
                   ) : null}
-                  <Textarea
+                  <TdTextarea
                     ref={sampleTextRef}
                     id="wk-graph-text"
                     rows={6}
-                    maxLength={5000}
+                    maxlength={5000}
                     placeholder={t("graphSettings.sampleTextPlaceholder")}
                     value={graphExtract.text}
-                    onChange={(event) => patch({ text: event.target.value })}
+                    onChange={(value) => patch({ text: String(value) })}
                     style={{ width: "100%" }}
                   />
-                  <span className="wk-graph-text-limit -mt-1 self-end text-[0.75rem] leading-[1.25] text-[var(--wk-muted,#667085)]" aria-live="polite">{graphExtract.text.length}/5000</span>
+                  <span className="wk-graph-text-limit wk-kd-84" aria-live="polite">{graphExtract.text.length}/5000</span>
                 </div>
                 {!llmAvailable ? (
-                  <p className="wk-graph-tip m-0 flex items-center gap-[6px] text-[0.8rem] text-[var(--wk-muted,#667085)]">{t("graphSettings.completeModelConfig")}</p>
+                  <p className="wk-graph-tip wk-kd-82">{t("graphSettings.completeModelConfig")}</p>
                 ) : null}
               </div>
             </div>
             {graphExtract.nodes.length > 0 ? (
-              <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+              <div className="wk-graph-setting-row is-vertical wk-kd-79">
                 <div className="setting-info">
-                  <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.entityListLabel")}</label>
-                  <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.entityListDescription")}</p>
+                  <label className="wk-kd-76">{t("graphSettings.entityListLabel")}</label>
+                  <p className="wk-muted wk-kd-77">{t("graphSettings.entityListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                  <div className="wk-graph-node-list flex w-full flex-col gap-4">
+                <div className="setting-control is-full wk-kd-80">
+                  <div className="wk-graph-node-list wk-kd-85">
                     {graphExtract.nodes.map((node, nodeIndex) => (
-                      <div key={nodeIndex} className="wk-graph-node-item rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-3" data-graph-node={node.name || undefined}>
-                        <div className="wk-graph-node-header mb-2 flex items-center gap-2">
+                      <div key={nodeIndex} className="wk-graph-node-item wk-kd-86" data-graph-node={node.name || undefined}>
+                        <div className="wk-graph-node-header wk-kd-87">
                           <span aria-hidden>👤</span>
-                          <Input
+                          <TdInput
                             type="text"
-                            className="wk-graph-node-name w-full flex-1 box-border"
+                            className="wk-graph-node-name wk-kd-88"
                             placeholder={t("graphSettings.nodeNamePlaceholder")}
                             aria-label={t("graphSettings.nodeNamePlaceholder")}
                             value={node.name}
-                            onChange={(event) => updateNode(nodeIndex, { ...node, name: event.target.value })}
+                            onChange={(value) => updateNode(nodeIndex, { ...node, name: String(value) })}
                           />
                           <button
                             type="button"
@@ -2036,19 +2585,19 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                             ✕
                           </button>
                         </div>
-                        <div className="wk-graph-node-attributes flex flex-col gap-[0.4rem] pl-[1.75rem]">
+                        <div className="wk-graph-node-attributes wk-kd-89">
                           {node.attributes.map((attribute, attrIndex) => (
-                            <div key={attrIndex} className="wk-graph-attribute-item flex items-center gap-2">
-                              <Input
+                            <div key={attrIndex} className="wk-graph-attribute-item wk-kd-90">
+                              <TdInput
                                 type="text"
-                                className="w-full flex-1 box-border"
+                                className="wk-kd-88"
                                 placeholder={t("graphSettings.attributePlaceholder")}
                                 aria-label={t("graphSettings.attributePlaceholder")}
                                 value={attribute}
-                                onChange={(event) =>
+                                onChange={(text) =>
                                   updateNode(nodeIndex, {
                                     ...node,
-                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? event.target.value : value)),
+                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? String(text) : value)),
                                   })
                                 }
                               />
@@ -2068,7 +2617,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                           ))}
                           <button
                             type="button"
-                            className="wk-graph-add-attr self-start"
+                            className="wk-graph-add-attr wk-kd-91"
                             onClick={() => updateNode(nodeIndex, { ...node, attributes: [...node.attributes, ""] })}
                           >
                             {t("graphSettings.addAttribute")}
@@ -2081,15 +2630,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             ) : null}
 
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.manageEntitiesLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.manageEntitiesDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.manageEntitiesLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.manageEntitiesDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
-                  className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="wk-graph-add-btn wk-kd-92"
                   onClick={() => patch({ nodes: [...graphExtract.nodes, { name: "", attributes: [] }] })}
                 >
                   {t("graphSettings.addEntity")}
@@ -2097,19 +2646,19 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             </div>
             {graphExtract.relations.length > 0 ? (
-              <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+              <div className="wk-graph-setting-row is-vertical wk-kd-79">
                 <div className="setting-info">
-                  <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.relationListLabel")}</label>
-                  <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.relationListDescription")}</p>
+                  <label className="wk-kd-76">{t("graphSettings.relationListLabel")}</label>
+                  <p className="wk-muted wk-kd-77">{t("graphSettings.relationListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                  <div className="wk-graph-relation-list flex w-full flex-col gap-[0.6rem]">
+                <div className="setting-control is-full wk-kd-80">
+                  <div className="wk-graph-relation-list wk-kd-93">
                     {graphExtract.relations.map((relation, index) => (
-                      <div key={index} className="wk-graph-relation-item flex items-center gap-[0.6rem] rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[0.6rem]">
+                      <div key={index} className="wk-graph-relation-item wk-kd-94">
                         <GraphRelationSelect value={relation.node1} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node1: value })} />
-                        <span aria-hidden className="flex-none text-[var(--wk-muted,#667085)]">→</span>
+                        <span aria-hidden className="wk-kd-95">→</span>
                         <GraphRelationSelect value={relation.type} options={graphExtract.tags} placeholder={t("graphSettings.selectRelationType")} ariaLabel={t("graphSettings.selectRelationType")} creatable clearable onChange={(value) => updateRelation(index, { ...relation, type: value })} />
-                        <span aria-hidden className="flex-none text-[var(--wk-muted,#667085)]">→</span>
+                        <span aria-hidden className="wk-kd-95">→</span>
                         <GraphRelationSelect value={relation.node2} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node2: value })} />
                         <button
                           type="button"
@@ -2124,32 +2673,32 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                 </div>
               </div>
             ) : null}
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.manageRelationsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.manageRelationsDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.manageRelationsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.manageRelationsDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
-                  className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="wk-graph-add-btn wk-kd-92"
                   onClick={() => patch({ relations: [...graphExtract.relations, { node1: "", node2: "", type: "" }] })}
                 >
                   {t("graphSettings.addRelation")}
                 </button>
               </div>
             </div>
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.extractActionsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.extractActionsDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.extractActionsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.extractActionsDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
-                <div className="wk-graph-actions flex flex-wrap gap-3">
+              <div className="setting-control wk-kd-78">
+                <div className="wk-graph-actions wk-kd-96">
                   {props.canRunExtract ? (
                     <button
                       type="button"
-                      className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="wk-graph-add-btn wk-kd-92"
                       disabled={!llmAvailable || !graphExtract.text || extracting}
                       onClick={() => {
                         setExtracting(true);
@@ -2169,8 +2718,8 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {extracting ? t("graphSettings.extracting") : t("graphSettings.startExtraction")}
                     </button>
                   ) : null}
-                  <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-3 py-1 text-[.85rem]" onClick={loadDefaultExample}>{t("graphSettings.defaultExample")}</button>
-                  <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-3 py-1 text-[.85rem]" onClick={clearExample}>{t("graphSettings.clearExample")}</button>
+                  <button type="button" className="wk-kd-97" onClick={loadDefaultExample}>{t("graphSettings.defaultExample")}</button>
+                  <button type="button" className="wk-kd-97" onClick={clearExample}>{t("graphSettings.clearExample")}</button>
                 </div>
               </div>
             </div>
@@ -2191,20 +2740,20 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
 export function UploadProgressMask({ percent, title = "Uploading", formats = ["pdf、doc", "text、markdown"] }: { percent: number; title?: string; formats?: readonly [string, string] }) {
   const clamped = clampUploadPercent(percent);
   return (
-    <div className="wk-upload-mask absolute inset-0 z-[5] flex items-center justify-center rounded-[8px] bg-[rgba(255,255,255,0.92)]" role="status" aria-live="polite">
-      <div className="wk-upload-mask__card flex flex-col items-center">
-        <img className="wk-upload-mask__illustration h-[162px] w-[164px]" src={uploadMaskIllustration} alt="" />
-        <span className="wk-upload-mask__label mt-3 mb-4 text-[24px] font-semibold leading-[26px] text-[var(--wk-accent,#4a7dff)]">{`${title} ${clamped}%`}</span>
-        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[0]}</span>
-        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[1]}</span>
+    <div className="wk-upload-mask wk-kd-98" role="status" aria-live="polite">
+      <div className="wk-upload-mask__card wk-kd-99">
+        <img className="wk-upload-mask__illustration wk-kd-100" src={uploadMaskIllustration} alt="" />
+        <span className="wk-upload-mask__label wk-kd-101">{`${title} ${clamped}%`}</span>
+        <span className="wk-upload-mask__type wk-kd-102">{formats[0]}</span>
+        <span className="wk-upload-mask__type wk-kd-102">{formats[1]}</span>
         <div
-          className="wk-upload-mask__bar h-[6px] w-64 max-w-[70vw] overflow-hidden rounded-[3px] bg-[var(--wk-border,#e4e7ec)]"
+          className="wk-upload-mask__bar wk-kd-103"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={clamped}
         >
-          <div className="wk-upload-mask__fill h-full bg-[var(--wk-accent,#4a7dff)] [transition:width_.2s_ease]" style={{ width: `${clamped}%` }} />
+          <div className="wk-upload-mask__fill wk-kd-104" style={{ width: `${clamped}%` }} />
         </div>
       </div>
     </div>
@@ -2219,10 +2768,10 @@ export function stageNoticeClass(tone: "neutral" | "success" | "warning" | "erro
 
 /** documents.css toast tone palette, now inlined as utilities (class stays a hook). */
 const STAGE_NOTICE_TONE_CLASS: Record<"neutral" | "success" | "warning" | "error", string> = {
-  neutral: "border-[var(--wk-border,#e4e7ec)] text-[var(--wk-text,#101828)]",
-  success: "border-[var(--wk-success,#12b76a)] text-[var(--wk-success,#027a48)]",
-  warning: "border-[var(--wk-warning,#b54708)] text-[var(--wk-warning,#9a3412)]",
-  error: "border-[var(--wk-danger,#d92d20)] text-[var(--wk-danger,#b42318)]",
+  neutral: "wk-kd-notice-neutral",
+  success: "wk-kd-notice-success",
+  warning: "wk-kd-notice-warning",
+  error: "wk-kd-notice-error",
 };
 
 export function KnowledgeDocumentsPage({
@@ -2303,7 +2852,7 @@ export function KnowledgeDocumentsPage({
   // explicitly enters batch-management mode from a card/row action menu.
   const [batchMode, setBatchMode] = useState(false);
   const lastSelectedIndex = useRef(-1);
-  const documentListRef = useRef<HTMLUListElement | null>(null);
+  const documentListRef = useRef<HTMLDivElement | null>(null);
   const [moving, setMoving] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
   // Vue page-level KbUploadSourceDropdown (doc-filter-actions) + its menu state.
@@ -2498,6 +3047,9 @@ export function KnowledgeDocumentsPage({
   const [systemInfo, setSystemInfo] = useState<Record<string, unknown> | null>(null);
   // Vue authStore.me — the admin gate for the graph extraction actions.
   const [me, setMe] = useState<KBSurfaceMe | null>(null);
+  // KBInfoPopover 访问段（B2 批 2）：Vue orgStore currentSharedKb /
+  // effectiveKBPermission 同源的 org share 行解析。
+  const [infoShared, setInfoShared] = useState<{ sharedKb: { orgName: string; sharedAt: string } | null; permission: string }>({ sharedKb: null, permission: "" });
   // Vue activeSection + the unavailable-fallback watch (L1309-1313).
   const [activeSection, setActiveSection] = useState<UploadConfirmSectionKey>("tags");
   // Vue KbUploadSourceDropdown: menu + URL sub-dialog state.
@@ -2607,6 +3159,22 @@ export function KnowledgeDocumentsPage({
         setKbMeta(kb as KBSurfaceKB);
         setKbMetaError(null);
         setMe(me as KBSurfaceMe | null);
+        {
+          const grant = findSharedKBGrant(sharedRows, knowledgeBaseId);
+          const row = Array.isArray(sharedRows)
+            ? (sharedRows as Array<Record<string, unknown>>).find((entry) => {
+              const entryKb = entry?.knowledge_base as { id?: unknown } | null | undefined;
+              return entryKb && String(entryKb.id) === knowledgeBaseId;
+            })
+            : null;
+          setInfoShared({
+            sharedKb: grant && row ? {
+              orgName: typeof row.org_name === "string" ? row.org_name : "",
+              sharedAt: typeof row.shared_at === "string" ? row.shared_at : "",
+            } : null,
+            permission: grant?.permission ?? "",
+          });
+        }
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
         setCanDownload(canDownloadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null, sharedRows));
@@ -3668,32 +4236,31 @@ export function KnowledgeDocumentsPage({
   };
 
   return (
-    <main className="wk-page wk-documents-page box-border ml-[4px] mr-0 mt-0 mb-0 w-full pl-8 pr-8 py-6">
-      {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)} fixed left-1/2 top-[1.25rem] z-[1000] -translate-x-1/2 max-w-[min(30rem,calc(100vw-2rem))] rounded-[6px] border bg-[var(--wk-surface,#fff)] px-[0.875rem] py-[0.625rem] text-[0.875rem] shadow-[0_6px_20px_rgb(16_24_40/14%)] ${STAGE_NOTICE_TONE_CLASS[stageNotice.tone]}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
-      <header className="wk-header wk-document-header mb-5 flex items-start justify-between gap-4">
-        <div className="document-header-title flex min-w-0 flex-col gap-1">
+    <div className="knowledge-layout">
+      {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)}wk-stage-notice`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
+      <div className="document-header">
+        <div className="document-header-title">
           <DocumentsBreadcrumb
             t={t}
             knowledgeBaseId={knowledgeBaseId}
             kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
             kbList={kbList}
-            kbMeta={{
-              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-            }}
+            kbInfo={kbMeta as unknown as KBInfoPopoverKB | null}
+            infoUserId={typeof me?.user?.id === "string" ? me.user.id : ""}
+            infoSharedKb={infoShared.sharedKb}
+            infoPermission={infoShared.permission}
             supportedFileTypes={[...supportedFileTypes]}
             canManage={canContribute}
             onOpenSettings={() => setKbSettingsOpen(true)}
             tabs={breadcrumbTabs}
           />
-          <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t("knowledgeEditor.document.subtitle")}</p>
+          <p className="document-subtitle">{t("knowledgeEditor.document.subtitle")}</p>
           {kbMetaError ? (
-            <div className="flex flex-wrap items-center gap-2" role="alert">
+            <div className="wk-kb-meta-error" role="alert">
               <Status tone="error">{kbMetaError.kind === "forbidden" ? `${kbMetaError.message} (403)` : kbMetaError.message}</Status>
-              <Button type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
+              <TdButton type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
                 {t("common.retry")}
-              </Button>
+              </TdButton>
             </div>
           ) : null}
           <ParserHint
@@ -3702,62 +4269,40 @@ export function KnowledgeDocumentsPage({
             onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
           {storageEngineMissing ? (
-            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}>
-              <Icon size={12} className="warning-icon shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>
+            <p className="storage-engine-warning" onClick={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}>
+              <TIcon name="info-circle" className="warning-icon" />
               <span>{t('knowledgeBase.missingStorageEngine')}</span>
-              <span className="warning-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToStorageSettings')} →</span>
+              <span className="warning-link">{t('knowledgeBase.goToStorageSettings')} →</span>
             </p>
           ) : null}
         </div>
-        {/* Vue's document header (KnowledgeBase.vue:2330-2408) has no
+        {/* Vue's document header (KnowledgeBase.vue:2392-2472) has no
             top-right actions: the tab row lives in the breadcrumb and there
             is no manual reload button — uploads/uploads-in-progress refresh
             the lists through their own watchers. */}
-      </header>
-      <div className="wk-documents-surface">
-        {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
-        <div
-            className={
-              dragActive && canContribute
-                ? showFolderTree
-                  ? "wk-documents-layout wk-dropzone is-active relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
-                  : "wk-documents-layout wk-dropzone is-active relative grid grid-cols-1 gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
-                : showFolderTree
-                  ? "wk-documents-layout wk-dropzone relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1"
-                  : "wk-documents-layout wk-dropzone relative grid grid-cols-1 gap-[1.25rem] max-[720px]:grid-cols-1"
+      </div>
+      <div className="knowledge-main" data-drag-active={dragActive && canContribute ? "true" : undefined}
+            onDragOver={
+              canContribute
+                ? (event) => {
+                    event.preventDefault();
+                    setDragActive(true);
+                  }
+                : undefined
             }
-          onDragOver={
-            canContribute
-              ? (event) => {
-                  event.preventDefault();
-                  setDragActive(true);
-                }
-              : undefined
-          }
-          onDragLeave={canContribute ? () => setDragActive(false) : undefined}
-          onDrop={
-            canContribute
-              ? (event) => {
-                  event.preventDefault();
-                  setDragActive(false);
-                  stageFiles(event.dataTransfer.files);
-                }
-              : undefined
-          }
-        >
-          {dragActive && canContribute ? (
-            <p className="wk-dropzone-hint m-0 mb-2 text-[.85rem] text-[var(--wk-muted,#667085)]" role="status">
-              {t("knowledgeBase.emptyKnowledgeDragDrop")}
-            </p>
-          ) : null}
-          {uploading && canContribute ? (
-            <UploadProgressMask
-              percent={batchUploadProgress(uploadStates)}
-              title={t("file.upload")}
-              formats={[t("knowledgeBase.pdfDocFormat"), t("knowledgeBase.textMarkdownFormat")]}
-            />
-          ) : null}
-          {showFolderTree ? <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
+            onDragLeave={canContribute ? () => setDragActive(false) : undefined}
+            onDrop={
+              canContribute
+                ? (event) => {
+                    event.preventDefault();
+                    setDragActive(false);
+                    stageFiles(event.dataTransfer.files);
+                  }
+                : undefined
+            }
+      >
+        {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
+          {showFolderTree ? <aside className="wk-folder-panel wk-kd-105">
             {/* Vue folderTree title (目录), not documents.folders (文件夹). */}
             <strong>{t("knowledgeBase.folderTree.title")}</strong>
             {folderState.status === "loading" ? (
@@ -3766,7 +4311,7 @@ export function KnowledgeDocumentsPage({
             {folderState.status === "error" ? (
               <Status tone="error">{folderState.message}</Status>
             ) : null}
-            <ul className="wk-folder-list mb-0 ml-0 mr-0 mt-[0.75rem] list-none p-0">
+            <ul className="wk-folder-list wk-kd-106">
               {folders.map((folder) => (
                 <li
                   key={folder.path}
@@ -3776,197 +4321,196 @@ export function KnowledgeDocumentsPage({
                     type="button"
                     className={
                       folderPath === (folder.path || undefined)
-                        ? "is-active w-full border-0 rounded-[5px] bg-surface-wash text-primary-deep cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
-                        : "w-full border-0 rounded-[5px] bg-transparent text-muted-strong cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
+                        ? "is-active wk-kd-164"
+                        : "wk-kd-165"
                     }
                     onClick={() => setFolderPath(folder.path || undefined)}
                   >
-                    {folder.path === "" ? rootRowLabel : folder.name} <span className="text-[0.8rem] text-muted">{folder.total_count}</span>
+                    {folder.path === "" ? rootRowLabel : folder.name} <span className="wk-kd-107">{folder.total_count}</span>
                   </button>
                 </li>
               ))}
             </ul>
           </aside> : null}
-          <section className="wk-document-results">
-            {showFolderTree ? <nav className="doc-folder-path mb-2 flex min-h-6 items-center gap-1 overflow-x-auto text-xs text-muted" aria-label={t("knowledgeBase.folderTree.title")}>
-              <button type="button" className={folderPath ? "doc-folder-path__crumb border-0 bg-transparent px-1 py-0.5 text-muted underline-offset-2 hover:text-primary-deep hover:underline" : "doc-folder-path__crumb is-current border-0 bg-transparent px-1 py-0.5 font-medium text-ink"} onClick={() => setFolderPath(undefined)}>
+          {uploading && canContribute ? (
+            <UploadProgressMask
+              percent={batchUploadProgress(uploadStates)}
+              title={t("file.upload")}
+              formats={[t("knowledgeBase.pdfDocFormat"), t("knowledgeBase.textMarkdownFormat")]}
+            />
+          ) : null}
+          <div className="tag-content">
+            <div className="doc-card-area">
+            {showFolderTree ? <nav className="doc-folder-path" aria-label={t("knowledgeBase.folderTree.title")}>
+              <button type="button" className="doc-folder-path__crumb is-current" onClick={() => setFolderPath(undefined)}>
                 {t("knowledgeBase.folderTree.rootRow")}
               </button>
-              {folderPathCrumbs(folderPath).map((crumb, index, crumbs) => <span key={crumb.path} className="contents">
-                <span className="doc-folder-path__sep px-0.5 text-muted" aria-hidden="true">›</span>
-                {index === crumbs.length - 1 ? <span className="doc-folder-path__crumb is-current px-1 py-0.5 font-medium text-ink">{crumb.name}</span> : <button type="button" className="doc-folder-path__crumb border-0 bg-transparent px-1 py-0.5 text-muted underline-offset-2 hover:text-primary-deep hover:underline" onClick={() => setFolderPath(crumb.path)}>{crumb.name}</button>}
+              {folderPathCrumbs(folderPath).map((crumb, index, crumbs) => <span key={crumb.path} className="wk-kd-108">
+                <TIcon name="chevron-right" className="doc-folder-path__sep" />
+                {index === crumbs.length - 1 ? <span className="doc-folder-path__crumb is-current">{crumb.name}</span> : <button type="button" className="doc-folder-path__crumb" onClick={() => setFolderPath(crumb.path)}>{crumb.name}</button>}
               </span>)}
-              {filtering ? <span className="doc-folder-path__scope ml-1 px-1 text-muted">({t("knowledgeBase.folderTree.searchingSubtree")})</span> : null}
+              {filtering ? <span className="doc-folder-path__scope">({t("knowledgeBase.folderTree.searchingSubtree")})</span> : null}
             </nav> : null}
-            <div className="doc-filter-bar grid shrink-0 items-center gap-x-3 gap-y-2 pb-3 [grid-template-areas:'search_trailing'_'filters_filters'] [grid-template-columns:1fr_auto] max-[960px]:[grid-template-areas:'search'_'trailing'_'filters'] max-[960px]:[grid-template-columns:1fr]">
-              <div className="doc-search-input relative flex min-w-0 w-full items-center [grid-area:search]">
-                <SearchIcon size={16} className="doc-search-icon pointer-events-none absolute left-[10px] text-[var(--wk-muted,#98a2b8)]" />
-                <Input
-                  className="doc-search-field box-border h-8 w-full rounded-full border border-transparent bg-[rgba(0,0,0,0.04)] py-2 pl-8 pr-3 text-[13px] text-[var(--wk-text,#101828)] outline-none [transition:border-color_.15s_ease,background-color_.15s_ease] focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+            <div className="doc-filter-bar">
+            <div className="doc-search-input">
+                <TdInput
+                  className="doc-search-field"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") setDebouncedQuery(query);
-                  }}
+                  onChange={(value: unknown) => setQuery(String(value ?? ""))}
+                  onEnter={() => setDebouncedQuery(query)}
+                  clearable
                   placeholder={t("knowledgeBase.docSearchPlaceholder")}
                   aria-label={t("knowledgeBase.docSearchPlaceholder")}
+                  prefixIcon={<TIcon name="search" size="16px" />}
                 />
               </div>
-              <div className="doc-filter-bar__filters box-border flex h-8 min-w-0 flex-nowrap items-center gap-3 overflow-x-auto [grid-area:filters] [scrollbar-width:thin]">
-                <div className="doc-filter-field doc-tag-filter relative w-[140px] flex-none">
-                  <button
-                    type="button"
-                    className="doc-tag-filter-trigger doc-filter-control inline-flex h-8 min-h-8 w-full cursor-pointer items-center justify-between gap-[6px] rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-2 py-0 text-left text-[13px] text-[var(--wk-text,#344054)]"
-                    aria-haspopup="true"
-                    aria-expanded={tagFilterOpen}
-                    aria-label={t("knowledgeBase.tagFilterTitle")}
-                    title={tagTriggerTitle}
-                    onClick={() => setTagFilterOpen((open) => !open)}
+              <div className="doc-filter-bar__filters">
+                <div className="doc-filter-field">
+                  <Popup
+                    visible={tagFilterOpen}
+                    trigger="click"
+                    placement="bottom-left"
+                    overlayClassName="tag-filter-popup"
+                    overlayInnerStyle={{ padding: 0 }}
+                    onVisibleChange={setTagFilterOpen}
+                    content={(
+                      <TagFilterPanel
+                        t={tt}
+                        tags={tags}
+                        selectedIds={selectedTagIds}
+                        onToggle={toggleTagFilter}
+                        onClear={clearTagFilter}
+                        onClose={() => setTagFilterOpen(false)}
+                        searchQuery={tagSearchQuery}
+                        onSearch={setTagSearchQuery}
+                        hasMore={tagHasMore}
+                        loadingMore={tagLoadingMore}
+                        onLoadMore={() => setTagPage((pageNumber) => pageNumber + 1)}
+                        total={tagTotal}
+                        canManage={canContribute}
+                        onManage={() => {
+                          // Vue openTagManageDrawer closes the filter panel first.
+                          setTagFilterOpen(false);
+                          setTagManageOpen(true);
+                        }}
+                      />
+                    )}
                   >
-                    {/* Vue trigger 前缀 t-icon discount 16px（placeholder 色）+ 8px 间距 */}
-                    <span className="doc-tag-filter-trigger__prefix mr-2 inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden>
-                      <Icon size={16}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.83z" /><path d="M7 7h.01" /></Icon>
-                    </span>
-                    <span className="doc-tag-filter-trigger__label min-w-0 flex-1 truncate text-left">{tagTriggerLabel}</span>
-                    <span className="doc-tag-filter-trigger__suffix ml-2 inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden>
-                      <Icon size={16}><path d="M6 9l6 6 6-6" /></Icon>
-                    </span>
-                  </button>
-                  {tagFilterOpen ? (
-                    <TagFilterPanel
-                      t={tt}
-                      tags={tags}
-                      selectedIds={selectedTagIds}
-                      onToggle={toggleTagFilter}
-                      onClear={clearTagFilter}
-                      onClose={() => setTagFilterOpen(false)}
-                      searchQuery={tagSearchQuery}
-                      onSearch={setTagSearchQuery}
-                      hasMore={tagHasMore}
-                      loadingMore={tagLoadingMore}
-                      onLoadMore={() => setTagPage((pageNumber) => pageNumber + 1)}
-                      total={tagTotal}
-                      canManage={canContribute}
-                      onManage={() => {
-                        // Vue openTagManageDrawer closes the filter panel first.
-                        setTagFilterOpen(false);
-                        setTagManageOpen(true);
-                      }}
-                    />
-                  ) : null}
+                    <div className="doc-filter-field">
+                      <button
+                        type="button"
+                        className={'doc-tag-filter-trigger doc-filter-field__control' + (tagFilterOpen ? ' open' : '')}
+                        aria-label={t("knowledgeBase.tagFilterTitle")}
+                        title={tagTriggerTitle}
+                      >
+                        <span className="doc-tag-filter-trigger__prefix" aria-hidden="true">
+                          <TIcon name="discount" size="16px" />
+                        </span>
+                        <span className="doc-tag-filter-trigger__label">{tagTriggerLabel}</span>
+                        <span className="doc-tag-filter-trigger__suffix">
+                          {selectedTagIds.length ? (
+                            <span
+                              className="t-input__suffix t-input__suffix-icon t-input__clear"
+                              aria-label={t("common.clear")}
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => { event.stopPropagation(); clearTagFilter(); }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                            >
+                              <TIcon name="close-circle-filled" className="t-input__suffix-clear" />
+                            </span>
+                          ) : (
+                            <TIcon
+                              name="chevron-down"
+                              size="16px"
+                              className={'doc-tag-filter-trigger__caret' + (tagFilterOpen ? ' open' : '')}
+                            />
+                          )}
+                        </span>
+                      </button>
+                    </div>
+                  </Popup>
                 </div>
-                <label className="doc-filter-field relative w-[140px] flex-none">
-                  <span className="wk-visually-hidden sr-only">{t("knowledgeBase.fileTypeFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg></span>
-                  {/* Vue t-select 空值时显示 dark 的“全部类型”（value='' 的选项标签），
-                      不是灰 placeholder；有选中值时隐藏（原生 select 文本接管）。 */}
-                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${fileType ? "opacity-0" : ""}`}>{t("knowledgeBase.allFileTypes")}</span>
-                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
-                  <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${fileType ? "" : "text-transparent"}`}
+                <div className="doc-filter-field">
+                  <TdSelect
+                    className="doc-type-select doc-filter-field__control"
                     value={fileType}
-                    onChange={(event) => setFileType(event.target.value)}
-                  >
-                    <option value="">{t("knowledgeBase.allFileTypes")}</option>
-                    {DOCUMENT_FILE_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.labelKey ? t(option.labelKey) : option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="doc-filter-field relative w-[140px] flex-none">
-                  <span className="wk-visually-hidden sr-only">{t("knowledgeBase.parseStatusFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9 12.5l2 2 4-4.5" /></svg></span>
-                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${parseStatus ? "opacity-0" : ""}`}>{t("knowledgeBase.allParseStatuses")}</span>
-                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
-                  <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${parseStatus ? "" : "text-transparent"}`}
+                    onChange={(value) => setFileType(String(value ?? ""))}
+                    placeholder={t("knowledgeBase.fileTypeFilter")}
+                    clearable
+                    prefixIcon={<TIcon name="file" size="16px" />}
+                    options={[
+                      { label: t("knowledgeBase.allFileTypes"), value: "" },
+                      ...DOCUMENT_FILE_TYPE_OPTIONS.map((option) => ({ label: option.labelKey ? t(option.labelKey) : (option.label ?? option.value), value: option.value })),
+                    ]}
+                  />
+                </div>
+                <div className="doc-filter-field">
+                  <TdSelect
+                    className="doc-type-select doc-filter-field__control"
                     value={parseStatus}
-                    onChange={(event) => setParseStatus(event.target.value)}
-                  >
-                    <option value="">{t("knowledgeBase.allParseStatuses")}</option>
-                    {DOCUMENT_PARSE_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey ?? option.value)}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="doc-filter-field relative w-[140px] flex-none">
-                  <span className="wk-visually-hidden sr-only">{t("knowledgeBase.sourceFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.07.07l2-2a5 5 0 00-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 00-7.07-.07l-2 2A5 5 0 0012 20l1.15-1.15" /></svg></span>
-                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${source ? "opacity-0" : ""}`}>{t("knowledgeBase.allSources")}</span>
-                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
-                  <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${source ? "" : "text-transparent"}`}
+                    onChange={(value) => setParseStatus(String(value ?? ""))}
+                    placeholder={t("knowledgeBase.parseStatusFilter")}
+                    clearable
+                    prefixIcon={<TIcon name="check-circle" size="16px" />}
+                    options={[
+                      { label: t("knowledgeBase.allParseStatuses"), value: "" },
+                      ...DOCUMENT_PARSE_STATUS_OPTIONS.map((option) => ({ label: t(option.labelKey ?? option.value), value: option.value })),
+                    ]}
+                  />
+                </div>
+                <div className="doc-filter-field">
+                  <TdSelect
+                    className="doc-type-select doc-filter-field__control"
                     value={source}
-                    onChange={(event) => setSource(event.target.value)}
-                  >
-                    <option value="">{t("knowledgeBase.allSources")}</option>
-                    {DOCUMENT_SOURCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey ?? option.value)}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                {/* Vue t-date-range-picker：白底 #dcdcdc 外框内含时钟前缀、两段灰 pill
-                    （起始时间/结束时间灰 placeholder）与日历后缀；原生 date input
-                    以透明文本接管 pill，点击任意处弹原生日历。 */}
-                <div className="doc-filter-field doc-filter-field--wide doc-date-range box-border flex h-8 w-[280px] flex-none items-center gap-[8px] rounded-[6px] border border-[#dcdcdc] bg-white px-[9px] focus-within:border-[#07c05f]">
-                  <span className="inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg></span>
-                  <span className="doc-date-pill">
-                    <span className={`pointer-events-none absolute left-[4px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.4)] ${updatedFrom ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeFrom")}</span>
-                    <Input
-                      type="date"
-                      className={`doc-date-input w-full min-w-0 cursor-pointer outline-none ${updatedFrom ? "" : "doc-date-input--empty"}`}
-                      value={updatedFrom}
-                      max={updatedTo || undefined}
-                      aria-label={t("knowledgeBase.updatedTimeFrom")}
-                      title={t("knowledgeBase.updatedTimeFrom")}
-                      onChange={(event) => setUpdatedFrom(event.target.value)}
-                    />
-                  </span>
-                  <span className="doc-date-range-sep shrink-0 text-[13px] text-[rgba(0,0,0,0.4)]" aria-hidden>-</span>
-                  <span className="doc-date-pill">
-                    <span className={`pointer-events-none absolute left-[4px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.4)] ${updatedTo ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeTo")}</span>
-                    <Input
-                      type="date"
-                      className={`doc-date-input w-full min-w-0 cursor-pointer outline-none ${updatedTo ? "" : "doc-date-input--empty"}`}
-                      value={updatedTo}
-                      min={updatedFrom || undefined}
-                      aria-label={t("knowledgeBase.updatedTimeTo")}
-                      title={t("knowledgeBase.updatedTimeTo")}
-                      onChange={(event) => setUpdatedTo(event.target.value)}
-                    />
-                  </span>
-                  <span className="inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg></span>
+                    onChange={(value) => setSource(String(value ?? ""))}
+                    placeholder={t("knowledgeBase.sourceFilter")}
+                    clearable
+                    prefixIcon={<TIcon name="link" size="16px" />}
+                    options={[
+                      { label: t("knowledgeBase.allSources"), value: "" },
+                      ...DOCUMENT_SOURCE_OPTIONS.map((option) => ({ label: t(option.labelKey ?? option.value), value: option.value })),
+                    ]}
+                  />
+                </div>
+                <div className="doc-filter-field doc-filter-field--wide">
+                  <DateRangePicker
+                    className="doc-date-range doc-filter-field__control"
+                    value={[updatedFrom || "", updatedTo || ""]}
+                    onChange={(value) => {
+                      setUpdatedFrom(Array.isArray(value) && typeof value[0] === "string" ? value[0] : "");
+                      setUpdatedTo(Array.isArray(value) && typeof value[1] === "string" ? value[1] : "");
+                    }}
+                    placeholder={[t("knowledgeBase.updatedTimeFrom"), t("knowledgeBase.updatedTimeTo")]}
+                    clearable
+                    allowInput
+                    prefixIcon={<TIcon name="time" size="16px" />}
+                    disableDate={{ after: new Date(new Date().setHours(23, 59, 59, 999)).toISOString() }}
+                  />
                 </div>
               </div>
-              <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
-                {/* Vue KnowledgeBase.vue L2661: standalone 批量管理 toggle in the
+              <div className="doc-filter-bar__trailing">
+                {/* Vue KnowledgeBase.vue L2659: standalone 批量管理 toggle in the
                     trailing filter bar — visible whenever there is content and the
                     viewer may download or mutate; entering/exiting clears nothing
                     on entry and clears the selection on exit. */}
                 {(canDownload || canContribute) && items.length ? (
-                  <Button
-                    type="button"
-                    variant="default"
+                  <TdButton
+                    variant="outline"
                     size="small"
+                    disabled={batchDownloading}
                     onClick={() => { setBatchMode((value) => !value); if (batchMode) setSelected(new Set()); }}
                   >
                     {t(batchMode ? "knowledgeBase.clearSelection" : "menu.batchManage")}
-                  </Button>
+                  </TdButton>
                 ) : null}
-                {/* Vue .doc-view-toggle：#f3f3f3 容器 + 激活态品牌绿（--td-brand-color
-                    = #07c05f，frontend theme.css），非激活图标 rgba(0,0,0,0.6)。 */}
-                <div className="doc-view-toggle inline-flex shrink-0 items-center rounded-[6px] bg-[#f3f3f3] p-[2px]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
-                  {/* Vue parity (KnowledgeBase.vue L2667-2676): toggle buttons
-                      expose aria-pressed only — no aria-label/title (tooltip
-                      copy lives in the t-tooltip hover popup). */}
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
+                <div className="doc-view-toggle" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
+                  <Tooltip content={t("knowledgeBase.viewModeGrid")} placement="top">
+                    <button type="button" className={'doc-view-toggle-btn' + (viewMode === "grid" ? ' active' : '')} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><TIcon name="view-module" size="16px" /></button>
+                  </Tooltip>
+                  <Tooltip content={t("knowledgeBase.viewModeList")} placement="top">
+                    <button type="button" className={'doc-view-toggle-btn' + (viewMode === "list" ? ' active' : '')} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><TIcon name="view-list" size="16px" /></button>
+                  </Tooltip>
                 </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
@@ -4007,127 +4551,128 @@ export function KnowledgeDocumentsPage({
                 NOT an inline block above the results. Left: 已选 N 项 +
                 全选已加载/取消选择 text buttons; right: 批量下载(primary) /
                 重建知识 / 批量打标签 / 移动到目录 / 批量删除. */}
-            {(canDownload || canContribute) && (batchMode || selected.size > 0) ? (
-              <div
-                className="doc-batch-bar-anchor"
-                role="region"
-                aria-label={t("knowledgeBase.selectedCount", { count: selected.size })}
-              >
-                <div className="doc-batch-bar-inner">
-                  <div className="doc-batch-bar-left">
-                    <span className="doc-batch-bar-count">
-                      {t("knowledgeBase.selectedCount", { count: selected.size })}
-                    </span>
-                    {/* Vue knowledgeBase.selectLoaded (zh-CN.ts:6750 全选已加载);
-                        the key is absent from the React catalog so the literal
-                        travels with the Vue authority comment (same precedent
-                        as the literal "Wiki" tab). */}
-                    <button type="button" className="doc-batch-bar-clear" onClick={toggleAllOnPage}>
-                      全选已加载
-                    </button>
-                    <button
-                      type="button"
-                      className="doc-batch-bar-clear"
-                      onClick={() => { setSelected(new Set()); setBatchMode(false); }}
-                    >
-                      {t("knowledgeBase.clearSelection")}
-                    </button>
-                  </div>
-                  <div className="doc-batch-bar-actions">
-                    {/* Vue DocumentBatchBar 每个按钮带 14px t-icon（download/refresh/
-                        discount/folder/delete），此处补齐（ix-kb-batch 残差）。 */}
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="primary"
-                      disabled={!selected.size || batchDownloading}
-                      onClick={() => void handleBatchDownload()}
-                    >
-                      <Icon size={14}><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /></Icon>
-                      {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
-                    </Button>
-                    {canContribute ? (
-                      <>
-                        <Button
-                          type="button"
+            <div
+              className="doc-batch-bar-anchor"
+              role="region"
+              aria-label={t("knowledgeBase.selectedCount", { count: selected.size })}
+              style={{ display: (canDownload || canContribute) && (batchMode || selected.size > 0) ? undefined : "none" }}
+            >
+              {(canDownload || canContribute) && (batchMode || selected.size > 0) ? (
+                <div className="doc-batch-bar">
+                  <div className="batch-bar-inner">
+                    <div className="batch-bar-left">
+                      <span className="batch-bar-count">
+                        {t("knowledgeBase.selectedCount", { count: selected.size })}
+                      </span>
+                      <TdButton variant="text" theme="default" size="small" className="batch-bar-clear" disabled={batchDownloading} onClick={toggleAllOnPage}>
+                        {/* Vue knowledgeBase.selectLoaded (zh-CN.ts:6750 全选已加载);
+                            the key is absent from the React catalog so the literal
+                            travels with the Vue authority comment (same precedent
+                            as the literal "Wiki" tab). */}
+                        全选已加载
+                      </TdButton>
+                      <TdButton variant="text" theme="default" size="small" className="batch-bar-clear" disabled={batchDownloading} onClick={() => { setSelected(new Set()); setBatchMode(false); }}>
+                        {t("knowledgeBase.clearSelection")}
+                      </TdButton>
+                    </div>
+                    <div className="batch-bar-actions">
+                      {canDownload ? (
+                        <TdButton
+                          theme="primary"
                           size="small"
-                          disabled={!selected.size}
-                          onClick={() => void reparseSelected()}
+                          loading={batchDownloading}
+                          disabled={selected.size === 0 || selected.size > 200 || batchDownloading}
+                          icon={<TIcon name="download" size="14px" />}
+                          onClick={() => void handleBatchDownload()}
                         >
-                          <Icon size={14}><path d="M21 12a9 9 0 11-2.64-6.36" /><path d="M21 3v6h-6" /></Icon>
-                          {t("knowledgeBase.rebuildDocument")}
-                        </Button>
-                        {/* Vue DocumentBatchBar 批量打标签 → BatchTagDialog (L2164-2167). */}
-                        <Button
-                          type="button"
-                          size="small"
-                          disabled={!selected.size}
-                          onClick={() => setTagDialog({ mode: "batch" })}
-                        >
-                          <Icon size={14}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><circle cx="7" cy="7" r="1.5" /></Icon>
-                          {tt("knowledgeBase.batchTag")}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="small"
-                          disabled={!selected.size}
-                          onClick={() => {
-                            setMoving(true);
-                            setMoveTarget(folderPath ?? "");
-                          }}
-                        >
-                          <Icon size={14}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></Icon>
-                          {t("knowledgeBase.moveToFolder.action")}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="small"
-                          variant="default"
-                          className="border-[var(--color-error,#e34d59)]! text-[var(--color-error,#e34d59)]!"
-                          disabled={!selected.size}
-                          onClick={() => setConfirmingDelete(true)}
-                        >
-                          <Icon size={14}><path d="M3 6h18" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></Icon>
-                          {t("knowledgeBase.batchDelete")}
-                        </Button>
-                      </>
-                    ) : null}
+                          {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
+                        </TdButton>
+                      ) : null}
+                      {canContribute ? (
+                        <>
+                          <Popconfirm
+                            theme="warning"
+                            content={t("knowledgeBase.confirmBatchReparseDocument", { count: selected.size })}
+                            confirmBtn={{ content: t("knowledgeBase.confirmBatchReparse"), theme: "warning" }}
+                            cancelBtn={{ content: t("common.cancel") }}
+                            placement="top"
+                            onConfirm={() => void reparseSelected()}
+                          >
+                            <TdButton theme="default" variant="outline" size="small" disabled={selected.size === 0 || batchDownloading} icon={<TIcon name="refresh" size="14px" />}>
+                              {t("knowledgeBase.rebuildDocument")}
+                            </TdButton>
+                          </Popconfirm>
+                          {/* Vue DocumentBatchBar 批量打标签 → BatchTagDialog (L2164-2167). */}
+                          <TdButton
+                            theme="default"
+                            variant="outline"
+                            size="small"
+                            disabled={selected.size === 0 || batchDownloading}
+                            icon={<TIcon name="discount" size="14px" />}
+                            onClick={() => setTagDialog({ mode: "batch" })}
+                          >
+                            {tt("knowledgeBase.batchTag")}
+                          </TdButton>
+                          <TdButton
+                            theme="default"
+                            variant="outline"
+                            size="small"
+                            disabled={selected.size === 0 || batchDownloading}
+                            icon={<TIcon name="folder" size="14px" />}
+                            onClick={() => {
+                              setMoving(true);
+                              setMoveTarget(folderPath ?? "");
+                            }}
+                          >
+                            {t("knowledgeBase.moveToFolder.action")}
+                          </TdButton>
+                          <Popconfirm
+                            theme="warning"
+                            content={t("knowledgeBase.confirmBatchDeleteDocument", { count: selected.size })}
+                            confirmBtn={{ content: t("knowledgeBase.confirmDelete"), theme: "danger" }}
+                            cancelBtn={{ content: t("common.cancel") }}
+                            placement="top"
+                            onConfirm={() => setConfirmingDelete(true)}
+                          >
+                            <TdButton theme="danger" variant="outline" size="small" disabled={selected.size === 0 || batchDownloading} icon={<TIcon name="delete" size="14px" />}>
+                              {t("knowledgeBase.batchDelete")}
+                            </TdButton>
+                          </Popconfirm>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
             {moving && canContribute ? (
               <div
-                className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
+                className="wk-list-actions wk-kd-109"
                 role="form"
                 aria-label={t("knowledgeBase.documents.moveDestination")}
               >
                 <label>
                   {t("knowledgeBase.documents.moveDestination")}{" "}
-                  <Select
+                  <TdSelect
                     value={moveTarget}
-                    onChange={(event) => setMoveTarget(event.target.value)} className="max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]"
-                  >
-                    <option value="">
-                      {t("knowledgeBase.documents.moveRoot")}
-                    </option>
-                    {folders
-                      .filter((folder) => folder.path)
-                      .map((folder) => (
-                        <option key={folder.path} value={folder.path}>
-                          {folder.name}
-                        </option>
-                      ))}
-                  </Select>
+                    onChange={(value) => setMoveTarget(String(value))}
+                    className="wk-kd-110"
+                    options={[
+                      { value: "", label: t("knowledgeBase.documents.moveRoot") },
+                      ...folders
+                        .filter((folder) => folder.path)
+                        .map((folder) => ({ value: folder.path, label: folder.name })),
+                    ]}
+                  />
                 </label>
-                <Button
+                <TdButton
                   type="button"
                   disabled={!selected.size}
                   onClick={() => void moveSelected()}
                 >
                   {t("knowledgeBase.documents.moveConfirm")}
-                </Button>
-                <Button
+                </TdButton>
+                <TdButton
                   type="button"
                   onClick={() => {
                     setMoving(false);
@@ -4135,7 +4680,7 @@ export function KnowledgeDocumentsPage({
                   }}
                 >
                   {t("knowledgeBase.documents.moveCancel")}
-                </Button>
+                </TdButton>
               </div>
             ) : null}
             {mutationError ? (
@@ -4148,159 +4693,150 @@ export function KnowledgeDocumentsPage({
             {state.status === "error" ? (
               <>
                 <Status tone="error">{state.message}</Status>
-                <Button
+                <TdButton
                   type="button"
                   onClick={() => setReloadToken((value) => value + 1)}
                 >
                   {t("knowledgeBase.documents.tryAgain")}
-                </Button>
+                </TdButton>
               </>
             ) : null}
-            {state.status === "success" && items.length === 0 ? (
-              <DocumentEmptyState
-                t={t}
-                variant={
-                  filtering ? "search" : folderPath !== undefined ? "folder" : "illustration"
-                }
-              />
-            ) : null}
-            {state.status === "success" && viewMode === "grid" && hasDocumentGridContent(items, folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))) ? (
-              <DocumentCardGrid
-                items={items}
-                folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
-                selected={selected}
-                batchMode={batchMode}
-                canContribute={canContribute}
-                canMutateKnowledge={canMutate}
-                canDownload={canDownload}
-                t={t}
-                traceAvailableById={traceAvailableById}
-                onProbeTrace={probeTraceAvailability}
-                moveFor={moveControllerFor}
-                loadTrace={loadHoverTrace}
-                onOpen={openDocumentDetail}
-                onOpenFolder={(path) => setFolderPath(path || undefined)}
-                onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
-                onTagEdit={(document) => setTagDialog({ mode: "single", document })}
-                onReparse={(document) => reparseOne(document)}
-                onCancelParse={(document) => void cancelOneParse(document.id)}
-                onDownload={(document) => void downloadDocument(document)}
-                onEdit={(document) => void openManualEdit(document)}
-                onViewTrace={(document) => openTrace(document)}
-                onMove={(document) => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
-                onBatchManage={() => setBatchMode(true)}
-                onDelete={setConfirmingDeleteDocument}
-              />
-            ) : null}
-            {state.status === "success" && items.length > 0 && viewMode === "list" ? (
-              <ul
-                ref={documentListRef}
-                className={`wk-list wk-document-list relative m-0 list-none p-0${marquee.visible ? " is-marquee-active cursor-crosshair" : ""}`}
-                onMouseDown={marquee.onMouseDown}
-              >
-                <li className="wk-document-list-header hidden grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] items-center border-b border-line-soft px-2 py-2 text-[12px] font-medium text-muted lg:px-4 lg:grid" role="row">
-                  <span role="columnheader" className="flex justify-center">{(canContribute || canDownload) ? <Checkbox type="checkbox" checked={allOnPageSelected} disabled={items.length === 0} onChange={toggleAllOnPage} aria-label={t("knowledgeBase.selectAll")} /> : null}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnName")}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnTag")}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnSource")}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnSize")}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnStatus")}</span>
-                  <span role="columnheader">{t("knowledgeBase.columnUpdatedAt")}</span>
-                  {canContribute ? <span role="columnheader" /> : null}
-                </li>
-                {/* Vue KnowledgeBase.vue L719-721: with the folder tree open it
-                    already lists the same folders, so the list skips duplicate
-                    sub-folder rows (tree closed keeps the navigable rows). */}
-                {!showFolderTree ? folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).map((folder) => (
-                  <li key={`folder-${folder.path}`} className="wk-document-list-folder flex cursor-pointer items-center border-b border-line-soft px-2 py-3 text-[13px] hover:bg-surface-wash lg:grid lg:grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] lg:px-4" role="row" title={folder.path} onClick={() => setFolderPath(folder.path)}>
-                    <span aria-hidden="true" />
-                    <span className="flex min-w-0 items-center gap-2 font-medium text-primary-deep"><FolderIcon size={16} /><span className="truncate">{folder.name}</span></span>
-                    <span />
-                    <span className="text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span><span /><span /><span /><span />
-                  </li>
-                )) : null}
-                {marquee.visible ? (
-                  <li
-                    className={`wk-document-marquee-box is-${marquee.mode} items-center! pointer-events-none absolute z-[4] rounded-[2px] border ${marquee.mode === "subtract" ? "border-[color-mix(in_srgb,var(--wk-danger,#d92d20)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-danger,#d92d20)_10%,transparent)]" : "border-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_12%,transparent)]"} flex justify-between gap-4 border-b border-line-soft py-[0.9rem]`}
-                    style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
-                    aria-hidden="true"
-                  />
-                ) : null}
-                {items.map((document) => {
-                  const status = documentStatus(document, t);
-                  const actions = documentRowActions(document.parse_status);
-                  return (
-                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] lg:px-4" onClick={() => openDocumentDetail(document)}>
-                      {(canContribute || canDownload) ? <Checkbox
-                          type="checkbox"
-                          aria-label={t("knowledgeBase.documents.select", {
-                            name: displayName(document),
-                          })}
-                          checked={selected.has(document.id)}
-                          onChange={(event) => toggleSelected(document.id, (event.nativeEvent as MouseEvent).shiftKey)}
-                        /> : null}
-                      {/* Vue .cell-name: 28px file-icon wrap + single-line
-                          .row-file-name (14px/600, ellipsis, primary text). */}
-                      <div className="flex min-w-0 items-center gap-[10px]">
-                        <span className="wk-row-file-icon shrink-0" aria-hidden="true"><FileIcon size={16} /></span>
-                        <div className="wk-list-item-copy grid gap-[0.2rem] min-w-0">
-                        <button
-                          type="button"
-                          className="wk-row-file-name min-w-0 truncate border-0 bg-transparent cursor-pointer p-0 text-left text-ink [font-family:inherit] text-[14px] font-semibold hover:underline"
-                          title={displayName(document)}
-                          onClick={(event) => { event.stopPropagation(); openDocumentDetail(document); }}
-                        >
-                          {displayName(document)}
-                        </button>
-                        {document.folder_path ? <button type="button" className="flex min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left font-mono text-[0.8rem] text-muted hover:underline" onClick={(event) => { event.stopPropagation(); setFolderPath(document.folder_path); }}><FolderIcon size={12} /><span className="truncate">{document.folder_path}</span></button> : null}
+            <div
+              ref={documentListRef}
+              className={
+                'doc-scroll-container' +
+                (!items.length && !folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).length && state.status === "success" ? ' is-empty' : '') +
+                (marquee.visible ? ' is-marquee-active' : '')
+              }
+              onMouseDown={marquee.onMouseDown}
+            >
+              {marquee.visible ? (
+                <div
+                  className={'doc-marquee-box is-' + marquee.mode}
+                  style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+                  aria-hidden="true"
+                />
+              ) : null}
+              {/* 文档骨架屏（Vue docListLoading && 空 && 无子目录） */}
+              {state.status === "loading" && items.length === 0 && !folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).length ? (
+                <div className="doc-card-list doc-card-list-animated">
+                  {Array.from({ length: 8 }, (_, n) => (
+                    <div key={`doc-skel-${n}`} className="knowledge-card knowledge-card-skeleton">
+                      <div className="card-content">
+                        <div className="card-content-nav">
+                          <TdSkeleton animation="gradient" rowCol={[{ width: '70%', height: '18px' }]} />
+                        </div>
+                        <TdSkeleton animation="gradient" rowCol={[{ width: '100%', height: '14px' }, { width: '60%', height: '14px' }]} />
                       </div>
+                      <div className="card-bottom">
+                        <TdSkeleton animation="gradient" rowCol={[[{ width: '80px', height: '14px' }, { width: '40px', height: '18px', type: 'rect' }]]} />
                       </div>
-                      <span className="hidden min-w-0 lg:block">{documentTags(document).length > 0 ? <button type="button" className="border-0 bg-transparent p-0" onClick={(event) => { event.stopPropagation(); if (canContribute) setTagDialog({ mode: "single", document }); }}><DocumentTagChips tags={documentTags(document)} /></button> : canContribute ? <button type="button" className="wk-row-tag-add border-0 bg-transparent p-0 text-[12px] text-muted" onClick={(event) => { event.stopPropagation(); setTagDialog({ mode: "single", document }); }}>+ {tt("knowledgeBase.tagLabel")}</button> : null}</span>
-                      <span className="hidden items-center gap-1 text-[12px] text-muted lg:flex"><Icon size={13}><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /><path d="M12 15V3" /><path d="M7 8l5-5 5 5" /></Icon>{documentSourceLabel(document, t)}</span>
-                      <span className="hidden font-mono text-[12px] text-muted lg:block">{documentFileSizeLabel(document.file_size)}</span>
-                      <Status tone={status.tone}>{status.label}</Status>
-                      <span className="hidden font-mono text-[12px] text-muted lg:block">{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
-                      {canContribute ? (
-                        <span className="wk-row-actions font-mono text-[0.8rem] text-muted">
-                          {/* Vue row tag cell: click opens TagEditDialog (L333). */}
-                          <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutate} t={t} actions={actions} traceAvailable={traceAvailableById[document.id]} onMenuOpen={() => probeTraceAvailability(document)} move={moveControllerFor(document)} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
-                        </span>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-            {state.status === "success" && pageTotal > pageSize ? (
-              <nav
-                className="wk-pagination"
-                aria-label={t("knowledgeBase.documents.title")}
-              >
-                <Button
-                  type="button"
-                  disabled={page <= 1}
-                  onClick={() => setPage((value) => value - 1)}
+                    </div>
+                  ))}
+                </div>
+              ) : state.status === "success" && viewMode === "grid" && hasDocumentGridContent(items, folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))) ? (
+                <DocumentCardGrid
+                  items={items}
+                  folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
+                  selected={selected}
+                  batchMode={batchMode}
+                  canContribute={canContribute}
+                  canMutateKnowledge={canMutate}
+                  canDownload={canDownload}
+                  t={t}
+                  tagListCount={tags.length}
+                  traceAvailableById={traceAvailableById}
+                  onProbeTrace={probeTraceAvailability}
+                  moveFor={moveControllerFor}
+                  loadTrace={loadHoverTrace}
+                  onOpen={openDocumentDetail}
+                  onOpenFolder={(path) => setFolderPath(path || undefined)}
+                  onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
+                  onTagEdit={(document) => setTagDialog({ mode: "single", document })}
+                  onReparse={(document) => reparseOne(document)}
+                  onCancelParse={(document) => void cancelOneParse(document.id)}
+                  onDownload={(document) => void downloadDocument(document)}
+                  onEdit={(document) => void openManualEdit(document)}
+                  onViewTrace={(document) => openTrace(document)}
+                  onMove={(document) => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
+                  onBatchManage={() => setBatchMode(true)}
+                  onDelete={setConfirmingDeleteDocument}
+                />
+              ) : state.status === "success" && items.length > 0 && viewMode === "list" ? (
+                <DocumentListRows
+                  items={items}
+                  folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
+                  showFolderTree={showFolderTree}
+                  selected={selected}
+                  canContribute={canContribute}
+                  canMutateKnowledge={canMutate}
+                  canDownload={canDownload}
+                  t={t}
+                  tt={tt}
+                  allOnPageSelected={allOnPageSelected}
+                  someOnPageSelected={selected.size > 0 && !allOnPageSelected}
+                  traceAvailableById={traceAvailableById}
+                  moveFor={moveControllerFor}
+                  onOpen={openDocumentDetail}
+                  onOpenFolder={(path) => setFolderPath(path || undefined)}
+                  onToggleRow={toggleSelected}
+                  onToggleAll={toggleAllOnPage}
+                  onProbeTrace={probeTraceAvailability}
+                  onTagEdit={(document) => setTagDialog({ mode: "single", document })}
+                  onReparse={(document) => reparseOne(document)}
+                  onCancelParse={(document) => void cancelOneParse(document.id)}
+                  onDownload={(document) => void downloadDocument(document)}
+                  onEdit={(document) => void openManualEdit(document)}
+                  onViewTrace={(document) => openTrace(document)}
+                  onMove={(document) => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }}
+                  onBatchManage={() => setBatchMode(true)}
+                  onDelete={setConfirmingDeleteDocument}
+                />
+              ) : state.status === "success" ? (
+                folderPath !== undefined || filtering ? (
+                  <div className="doc-empty-state">
+                    <p className="doc-empty-folder">
+                      {filtering ? t("knowledgeBase.folderTree.emptySearch") : t("knowledgeBase.folderTree.emptyFolder")}
+                    </p>
+                  </div>
+                ) : (
+                  <DocumentEmptyState t={t} variant="illustration" />
+                )
+              ) : null}
+              {state.status === "success" && pageTotal > pageSize ? (
+                <nav
+                  className="wk-pagination"
+                  aria-label={t("knowledgeBase.documents.title")}
                 >
-                  {t("knowledgeBase.documents.previous")}
-                </Button>
-                <span>
-                  {t("knowledgeBase.documents.page", {
-                    page,
-                    total: pageTotal,
-                  })}
-                </span>
-                <Button
-                  type="button"
-                  disabled={page * pageSize >= pageTotal}
-                  onClick={() => setPage((value) => value + 1)}
-                >
-                  {t("knowledgeBase.documents.next")}
-                </Button>
-              </nav>
-            ) : null}
-          </section>
+                  <TdButton
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((value) => value - 1)}
+                  >
+                    {t("knowledgeBase.documents.previous")}
+                  </TdButton>
+                  <span>
+                    {t("knowledgeBase.documents.page", {
+                      page,
+                      total: pageTotal,
+                    })}
+                  </span>
+                  <TdButton
+                    type="button"
+                    disabled={page * pageSize >= pageTotal}
+                    onClick={() => setPage((value) => value + 1)}
+                  >
+                    {t("knowledgeBase.documents.next")}
+                  </TdButton>
+                </nav>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
+      {/* Vue DocContent 抽屉宿主（关闭态 0 高度，但作为 knowledge-layout 的尾随
+          子项参与 gap:20px 布局——占位使 main 区高度与 Vue 一致）。 */}
+      <div className="doc_content" />
       <>
         <Dialog
           open={uploadDialogOpen}
@@ -4313,7 +4849,7 @@ export function KnowledgeDocumentsPage({
             <aside className="wk-upload-confirm-files-column">
               <div className="wk-upload-confirm-files-header">
                 <div className="wk-upload-confirm-files-header-row">
-                  <h2 className="m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-semibold leading-[1.35] text-[var(--wk-text,#101828)]">{dialogTitle}</h2>
+                  <h2 className="wk-kd-111">{dialogTitle}</h2>
                   {dialogMode === "file" ? (
                     <div className="wk-upload-confirm-files-header-actions">
               <span className="wk-files-count" aria-label={ct("uploadConfirm.parseConfig")} style={{ minWidth: "1.4rem", textAlign: "center", borderRadius: "999px", padding: "0 0.35rem", border: "1px solid var(--wk-border, #e4e7ec)", fontSize: "0.85rem" }}>
@@ -4354,11 +4890,11 @@ export function KnowledgeDocumentsPage({
                   setNewFolderName("");
                   setDestinationPickerDuplicate(false);
                 }}
-                className="wk-destination-crumb inline-flex max-w-full min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left text-[12px] leading-[18px] text-[var(--wk-muted,#667085)] transition-colors hover:text-[var(--wk-accent,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
+                className="wk-destination-crumb wk-kd-ring wk-kd-112"
               >
-                <span className="shrink-0">{ct("uploadConfirm.destinationLabel")}</span>
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[var(--wk-text,#101828)]">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
-                <span className="shrink-0 text-[var(--wk-muted,#98a2b3)]" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
+                <span className="wk-kd-15">{ct("uploadConfirm.destinationLabel")}</span>
+                <span className="wk-kd-113">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
+                <span className="wk-kd-114" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
               </button>
               {destinationPickerOpen ? (
                 <div
@@ -4422,11 +4958,11 @@ export function KnowledgeDocumentsPage({
               </div>
               <main className="wk-upload-confirm-config-panel">
           {dialogMode !== "reparse" ? (
-            <fieldset className="wk-upload-confirm-tags mb-3 block" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
+            <fieldset className="wk-upload-confirm-tags wk-kd-115" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
               <legend>{ct("uploadConfirm.tabTags")}</legend>
-              <p className="wk-muted text-muted" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
+              <p className="wk-muted wk-kd-16" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
               <label>
-                <span className="wk-visually-hidden sr-only">{ct("uploadConfirm.tagsPlaceholder")}</span>
+                <span className="wk-visually-hidden wk-kd-53">{ct("uploadConfirm.tagsPlaceholder")}</span>
                 <UploadMultiSelect
                   values={pendingTagIds}
                   options={tags.map((tag) => ({ value: tag.id, label: tag.name }))}
@@ -4435,7 +4971,7 @@ export function KnowledgeDocumentsPage({
                 />
               </label>
               {!uploading && tags.length === 0 ? (
-                <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsEmpty")}</p>
+                <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsEmpty")}</p>
               ) : null}
             </fieldset>
           ) : null}
@@ -4472,22 +5008,22 @@ export function KnowledgeDocumentsPage({
             </aside>
           </div>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-          <div className="wk-upload-confirm-footer wk-list-actions flex items-center justify-end gap-[0.5rem]">
-            <Button
+          <div className="wk-upload-confirm-footer wk-list-actions wk-kd-116">
+            <TdButton
               type="button"
               disabled={!canCloseUploadConfirmDialog(uploading)}
               onClick={closeUploadConfirmDialog}
             >
               {ct("uploadConfirm.cancel")}
-            </Button>
-            <Button
+            </TdButton>
+            <TdButton
               type="button"
               loading={uploading}
               disabled={!canConfirm && !uploading}
               onClick={() => void confirmUpload()}
             >
               {confirmButtonText}
-            </Button>
+            </TdButton>
           </div>
       </Dialog>
       </>
@@ -4500,18 +5036,18 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.importURLTitle")}
           onClose={() => setSourceUrlDialogOpen(false)}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.urlLabel")} {" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={sourceUrlValue}
                 placeholder={t("knowledgeBase.urlPlaceholder")}
-                onChange={(event) => setSourceUrlValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => setSourceUrlValue(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     if (appendStagedUrl(sourceUrlValue, "dialog")) {
                       setSourceUrlDialogOpen(false);
                       setSourceUrlValue("");
@@ -4520,9 +5056,9 @@ export function KnowledgeDocumentsPage({
                 }}
               />
             </label>
-            <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button
+            <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton
                 type="button"
                 onClick={() => {
                   if (appendStagedUrl(sourceUrlValue, "dialog")) {
@@ -4532,10 +5068,10 @@ export function KnowledgeDocumentsPage({
                 }}
               >
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setSourceUrlDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -4546,32 +5082,32 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.documents.createDocument")}
           onClose={() => setManualDialogOpen(false)}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.documents.manualTitle")}{" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={manualTitle}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")}{" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={6}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button type="button" onClick={stageManualCreate}>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton type="button" onClick={stageManualCreate}>
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setManualDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setManualDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -4582,35 +5118,35 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.editDocument")}
           onClose={() => { if (!manualEditSaving) setManualEditDocument(null); }}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             {manualEditLoading ? <Status>{t("common.loading")}</Status> : null}
             <label>
               {t("knowledgeBase.documents.manualTitle")} {" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={manualTitle}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")} {" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={8}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
                 {manualEditSaving ? t("common.loading") : t("knowledgeEditor.buttons.saveAndClose")}
-              </Button>
-              <Button type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
+              </TdButton>
+              <TdButton type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -4626,49 +5162,49 @@ export function KnowledgeDocumentsPage({
           minWidth={560}
           maxWidth={1400}
           storageKey="weknora-trace-drawer-width"
-          className="min-w-0 border-l border-line-soft"
+          className="wk-kd-118"
         >
           <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === "loading"}>
             {traceState.status === "loading" ? <Status>{t("common.loading")}</Status> : null}
             {traceState.status === "error" ? <Status tone="error">{traceState.message}</Status> : null}
             {traceState.status === "success" ? (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-end gap-2">
-                  <Button type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</Button>
-                  {traceState.parseStatus === "failed" ? <Button type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</Button> : null}
-                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+              <div className="wk-kd-119">
+                <div className="wk-kd-120">
+                  <TdButton type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</TdButton>
+                  {traceState.parseStatus === "failed" ? <TdButton type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</TdButton> : null}
+                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <TdButton type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</TdButton> : null}
                 </div>
                 {traceState.parseStatus === "failed" ? <Status tone="error">{traceState.lastError?.error_message || t("knowledgeBase.timeline.failed")}</Status> : null}
-                <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("knowledgeBase.timeline.title")}>
+                <ol className="wk-kd-121" aria-label={t("knowledgeBase.timeline.title")}>
                 {traceState.steps.map((step) => (
-                  <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]">
+                  <li key={step.stage} data-state={step.state} className="wk-kd-122">
                     <span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span>
-                    <span className={step.state === "failed" ? "text-danger" : step.state === "done" ? "text-success" : step.state === "running" ? "text-primary" : "text-muted"}>
+                    <span className={step.state === "failed" ? "wk-kd-137" : step.state === "done" ? "wk-kd-167" : step.state === "running" ? "wk-kd-168" : "wk-kd-16"}>
                       {t(`knowledgeBase.timeline.${step.state}`)}
                     </span>
                   </li>
                 ))}
                 </ol>
                 {traceState.nodes.length > 0 ? (
-                  <div className="overflow-x-auto rounded-[8px] border border-line-soft">
-                    <ol className="m-0 list-none divide-y divide-line-soft p-0" aria-label={t("knowledgeBase.timeline.title")}>
+                  <div className="wk-kd-123">
+                    <ol className="wk-kd-124" aria-label={t("knowledgeBase.timeline.title")}>
                       {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf(".")))).map((row) => {
                         const rawStatus = typeof row.node.status === "string" ? row.node.status.toLowerCase() : "pending";
                         const state = rawStatus.includes("fail") || rawStatus.includes("error") ? "failed" : rawStatus.includes("run") || rawStatus.includes("progress") || rawStatus.includes("active") ? "running" : rawStatus.includes("complete") || rawStatus.includes("done") || rawStatus.includes("success") || rawStatus.includes("finish") || rawStatus === "ok" || row.node.end_time ? "done" : "pending";
                         const label = row.node.name || row.node.stage || String(row.node.span_id || row.key);
-                        return <li key={row.key} data-state={state} className="flex min-w-[480px] items-center gap-2 px-3 py-2 text-[13px] hover:bg-surface-wash" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
-                          {row.hasChildren ? <button type="button" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border-0 bg-transparent text-muted hover:bg-hover-wash" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t("knowledgeBase.timeline.title")} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? "⌄" : "›"}</button> : <span className="inline-block h-6 w-6 shrink-0" aria-hidden="true" />}
-                          <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{label}</button>
-                          <span className={state === "failed" ? "text-danger" : state === "done" ? "text-success" : state === "running" ? "text-primary" : "text-muted"}>{t(`knowledgeBase.timeline.${state}`)}</span>
-                          <span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{typeof row.node.duration_ms === "number" ? `${row.node.duration_ms}ms` : "—"}</span>
+                        return <li key={row.key} data-state={state} className="wk-kd-125" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
+                          {row.hasChildren ? <button type="button" className="wk-kd-126" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t("knowledgeBase.timeline.title")} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? "⌄" : "›"}</button> : <span className="wk-kd-127" aria-hidden="true" />}
+                          <button type="button" className="wk-kd-128" onClick={() => setSelectedTraceNode(row)}>{label}</button>
+                          <span className={state === "failed" ? "wk-kd-137" : state === "done" ? "wk-kd-167" : state === "running" ? "wk-kd-168" : "wk-kd-16"}>{t(`knowledgeBase.timeline.${state}`)}</span>
+                          <span className="wk-kd-129">{typeof row.node.duration_ms === "number" ? `${row.node.duration_ms}ms` : "—"}</span>
                         </li>;
                       })}
                     </ol>
                   </div>
                 ) : null}
-                {selectedTraceNode ? <section className="rounded-[8px] border border-line-soft bg-surface-wash p-3" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
-                  <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px] text-ink">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</Button></div>
-                  <pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
+                {selectedTraceNode ? <section className="wk-kd-130" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
+                  <div className="wk-kd-131"><strong className="wk-kd-132">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><TdButton type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</TdButton></div>
+                  <pre className="wk-kd-133">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
                 </section> : null}
                 {traceState.parseStatus === "failed" && traceState.message ? <Status tone="error">{traceState.message}</Status> : null}
               </div>
@@ -4679,9 +5215,9 @@ export function KnowledgeDocumentsPage({
       {confirmingTraceCancel && traceDocument && canContribute ? (
         <Dialog open title={t("knowledgeBase.documents.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
           <p>{t("knowledgeBase.cancelParseConfirmBody", { title: displayName(traceDocument) })}</p>
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</Button>
-            <Button type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</Button>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -4696,13 +5232,13 @@ export function KnowledgeDocumentsPage({
               count: selected.size,
             })}
           </p>
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void deleteSelected()}>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void deleteSelected()}>
               {t("knowledgeBase.documents.delete")}
-            </Button>
-            <Button type="button" onClick={() => setConfirmingDelete(false)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDelete(false)}>
               {t("knowledgeBase.documents.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -4714,9 +5250,9 @@ export function KnowledgeDocumentsPage({
         >
           <p>{t("knowledgeBase.confirmDeleteDocument", { fileName: displayName(confirmingDeleteDocument) })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</Button>
-            <Button type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</Button>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -4728,13 +5264,13 @@ export function KnowledgeDocumentsPage({
         >
           <p>{t("knowledgeBase.confirmBatchReparseDocument", { count: pendingBatchReparse.length })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void confirmBatchReparse()}>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void confirmBatchReparse()}>
               {ct("uploadConfirm.confirmReparse")}
-            </Button>
-            <Button type="button" onClick={() => setPendingBatchReparse(null)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setPendingBatchReparse(null)}>
               {ct("uploadConfirm.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -4802,13 +5338,13 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.settings")}
           closeLabel={t("common.close")}
           onClose={() => setKbSettingsOpen(false)}
-          className="wk-kb-settings-dialog h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+          className="wk-kb-settings-dialog wk-kd-134"
         >
           {/* R484: the Vue settings footer 取消 (handleClose) discards the
               drafts and closes the drawer — onClose wires that close. */}
           <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} onClose={() => setKbSettingsOpen(false)} />
         </Dialog>
       ) : null}
-    </main>
+    </div>
   );
 }

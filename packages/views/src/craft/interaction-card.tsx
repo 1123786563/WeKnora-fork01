@@ -7,7 +7,7 @@
 // reject-only. A terminal card exposes no deciding controls at all — a late
 // approval can never revive a canceled request.
 import React from 'react';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import './craft.css';
 
 export type CraftDecisionDelivery = 'recorded' | 'delivery_pending' | 'delivered' | 'unknown';

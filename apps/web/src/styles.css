@@ -1,8 +1,12 @@
-/* Tailwind v4 composition (mirrors tailwindcss/index.css minus preflight —
-   see docs/plans/tailwind-shadcn-migration.md for the preflight decision). */
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+/* TDesign 同构迁移：与 Vue 端 frontend/src/main.ts:8 全量引入一致，unlayered 且最先加载 */
+@import "tdesign-react/dist/tdesign.css";
+/* TDesign 主题 token（Vue theme.css 平移）——必须不带 layer()：tdesign.css 是 unlayered
+   默认值，layered 引入（下方 design-tokens styles.css 走 layer(theme)）在级联中会输给
+   unlayered 声明；此处 unlayered 且在 tdesign.css 之后，与 Vue 端
+   tdesign.css → theme.css 顺序逐字一致。 */
+@import "../../../packages/design-tokens/src/tdesign-theme.css";
+
+/* 设计令牌（design-tokens 生成 stylesheet；layer(theme) 保持引入语义不变）。 */
 @import "../../../packages/design-tokens/src/styles.css" layer(theme);
 
 /* Vue datasource permissions: viewers retain inspection actions only. */
@@ -11,11 +15,6 @@
 .wk-data-source-root[data-can-manage="false"] .wk-data-source-actions > button:last-child {
   display: none;
 }
-/* 语义令牌与跨包扫描：packages/ui 令牌事实来源 + ui/views 源码类名扫描
-   （修复包内 utilities 从未生成的问题，见迁移计划"基线-既有问题"）。 */
-@import "../../../packages/ui/src/theme.css" layer(theme);
-@source "../../../packages/ui/src";
-@source "../../../packages/views/src";
 
 body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
   /* Vue App.vue body/html/#app 同款字体平滑（frontend/src/App.vue:301-302），
@@ -26,9 +25,40 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
      TDesign 挂在 body 上）；React 缺失时 body 落到 Times，未带显式字体
      utility 的文本（侧栏、弹层、按钮内文字）逐像素整行偏红。 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* Vue App.vue body/html/#app 同款全局字号/文字色（frontend/src/App.vue:299-305
+     font-size: 14px; color: var(--td-text-color-primary)）；R5 复验口径：图标
+     currentColor 与未带字号组件文本继承 body，缺这两条时 spike 图标区不坍缩。 */
+  font-size: 14px;
+  color: var(--td-text-color-primary); }
+/* Vue App.vue:291-297 body/html/#app 高度链平移（width/height 100%）。缺失时
+   React 壳链只能靠 100vh 撑高（.wk-shell-1 旧值），而 <html> 带 zoom（useFont
+   字号机制，px2-settings-general-fontradio）时 100vh 按未缩放视口求值再放大，
+   大字号下 .menu_bottom 被推出视口（Vue 720 / React 810 取证见 platform-u.css
+   .wk-shell-1 注）。height:100% 链按缩放后 ICB 求值，zoom 态与 Vue 一致
+   （pp2/chat 同证：px2-chat-sidebar-collapse 大字号态 React 壳 100vh 溢出
+   90px，Vue menu.vue:1187-1190 注释明言此坑）。 */
+html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; }
+/* Vue App.vue:310-316 #app 同款独立合成层：isolation/translateZ/backface。
+   zoom（字号档位）下文本光栅在「独立合成层」与「共享图层直接绘制」两条
+   路径 AA 不同（台账 #22 家族）——px2-chat-sidebar-collapse 大字号态实证：
+   DOM 几何/字符级 Range rect 千分位全同，残差 2192px 全部来自字形光栅
+   AA；补 translateZ(0) 后对齐 Vue 光栅路径。zoom=1 时两路径渲染一致，
+   已收敛页面不受影响。 */
+#root { isolation: isolate; transform: translateZ(0); backface-visibility: hidden; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
+/* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）
+   自消费者 utilities 回迁为修饰类规则，值 = 消费者编码的生效值
+   （mx-auto box-border max-w-[960px] px-5/px-[1.25rem] py-12 → 20px/48px）。
+   注意：只挂在原携带该组 utilities 的页面上（.wk-page 裸类消费者现今无
+   样式，保持不动）；宽版 1180px 页由各域 u.css 页规则承载。
+   PlatformShell 壳内由 platform-shell.td.css 的 .plat-shell__outlet .wk-page
+   覆盖为全宽滚动（max-width:none!important，层叠与先前壳层 utility 等价）。 */
+.wk-page--std { margin-inline: auto; box-sizing: border-box; max-width: 960px; padding: 48px 20px; }
+/* NotFoundPage（404）：壳内实际生效值（h-full w-full box-border overflow-y-auto
+   px-[1.25rem] py-12）——不挂 .wk-page，直接全宽滚动版式。 */
+.wk-notfound { height: 100%; width: 100%; box-sizing: border-box; overflow-y: auto; padding: 48px 20px; }
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
    .wk-list-item-copy/.wk-list-item-actions/.wk-list-actions ± span/select/.wk-form ± label/input/select/
    .wk-form-grid(±--two/--three)/.wk-form-label/.wk-toolbar ± label/select/input) moved to Tailwind
@@ -356,4 +386,114 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
 @keyframes wk-node-active-pulse {
   0% { transform: scale(1); opacity: 0.8; }
   100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ---- 语义设计 token 事实源（T15：原 packages/ui/src/theme.css @theme 块整体平移）----
+ * packages/ui 退役后，存量 CSS（settings-wrapper.css 的 rq/skill 族、settings.td.css、
+ * kb-u.css、editor-layout.ts、wk-legacy.css 等）仍引用 --color-* / --radius-* /
+ * --shadow-* token；此处以 :root 原值承接，计算样式与删除前逐字一致。
+ * --color-brand 等别名链到 --wk-*（design-tokens styles.css :root 提供，含暗色）。 */
+:root {
+  /* 字体 */
+  /* Vue useFont.ts is authoritative for the default and user-selected stack.
+     Keep the runtime preference hook so every shared shadcn primitive follows
+     the same font as the application shell. */
+  --font-sans: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  --font-mono: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /* 圆角（wk 控件 6px / 卡片 8px） */
+  --radius-control: 6px;
+  --radius-field: 3px;
+  --radius-card: 8px;
+  --radius-dialog: 10px;
+  --radius-large: 12px;
+  --radius-pill: 999px;
+
+  /*
+   * Vue/TDesign-compatible aliases. The generated design-token stylesheet is
+   * the runtime light/dark source for these values; keeping the aliases in
+   * @theme makes the same values available to Tailwind utilities and to
+   * arbitrary-value consumers such as var(--color-brand).
+   */
+  --color-brand: var(--wk-color-brand, #07c05f);
+  --color-brand-hover: var(--wk-color-brand-hover, #08dd6e);
+  --color-brand-active: var(--wk-color-brand-active, #06b04d);
+  --color-brand-light: var(--wk-color-brand-light, #e9f8ec);
+  --color-text: var(--wk-color-text, #000000e6);
+  --color-text-secondary: var(--wk-color-text-secondary, #00000099);
+  --color-text-placeholder: var(--wk-color-text-placeholder, #00000066);
+  --color-text-disabled: var(--wk-color-text-disabled, #00000042);
+  --color-page: var(--wk-color-page, #eeeeee);
+  --color-surface-hover: var(--wk-color-surface-hover, #f3f3f3);
+  --color-surface-active: var(--wk-color-surface-active, #e7e7e7);
+  --color-settings-panel: var(--wk-color-settings-panel, #f9f9f9);
+  --color-border: var(--wk-color-border, #dcdcdc);
+  --color-component: var(--wk-color-component, #e7e7e7);
+  --color-error: var(--wk-color-error, #e34d59);
+  --color-error-light: var(--wk-color-error-light, #fdecee);
+  --color-warning-vue: var(--wk-color-warning, #ed7b2f);
+  --color-success-vue: var(--wk-color-success, #00a870);
+
+  /* 表面 */
+  --color-canvas: #f7f9fc;        /* 应用底色 */
+  --color-surface: #ffffff;       /* 卡片/面板 */
+  --color-surface-alt: #f2f4f8;   /* 次级填充 #f3f3f3/#eef1f5/#f4f6fa */
+  --color-surface-muted: #f3f3f3; /* Vue td-bg-color-secondarycontainer */
+  --color-surface-wash: #eff4ff;  /* 蓝色浅底（选中/提示） */
+
+  /* 文本 */
+  --color-ink: #172033;           /* 主文本 */
+  --color-ink-strong: #101828;    /* 强标题 */
+  --color-muted: #66758b;         /* 次文本 */
+  --color-muted-strong: #506078;  /* 状态文本 */
+  --color-faint: #98a2b8;         /* 占位/三级 */
+
+  /* 线与描边 */
+  --color-line: #dce3ed;          /* 通用边框 */
+  --color-line-soft: #edf0f5;     /* 细分隔线 */
+  --color-line-strong: #b8c5d6;   /* 输入描边（蓝灰系） */
+  --color-line-input: #dcdcdc;    /* 输入描边（中性系，Vue 控件） */
+  --color-line-neutral: #e7e7e7;  /* 中性发丝线 */
+  --color-line-subtle: #e4e7ec;   /* 浅描边 */
+  --color-line-control: #cbd5e1;  /* 按钮描边（slate 系） */
+  --color-hover-wash: #f2f5fa;    /* 控件悬停浅底 */
+  --color-track-off: rgb(120 135 155 / 0.35); /* switch 未选中轨道 */
+  --color-track-on-disabled: #8ce0af; /* switch 选中态禁用轨道 */
+  --color-placeholder: #8a8a8a;   /* 输入占位文本 */
+  --color-disabled-bg: #eeeeee;   /* 输入禁用底色 */
+
+  /* 品牌（WeKnora 蓝系） */
+  --color-primary: #2e6de6;
+  --color-primary-strong: #0052d9;
+  --color-primary-deep: #1849a9;
+  --color-primary-soft: #245a9b;
+
+  /* 控件强调（Vue tdesign 绿） */
+  --color-accent: #07c05f;
+  --color-accent-strong: #0a8f4c;
+  --color-accent-hover: #08dd6e;
+  --color-accent-active: #06b04d;
+  --color-accent-deep: #00a870;
+  --color-accent-soft: rgba(7, 192, 95, 0.12);
+  --color-accent-wash: rgba(7, 192, 95, 0.08);
+
+  /* 语义状态 */
+  --color-success: #00a870;
+  --color-warning: #e37318;
+  --color-warning-strong: #b54708;
+  --color-danger: #b42318;
+  --color-success-text: #137333;  /* wk 族成功文本 */
+  --color-warning-text: #9a6700;  /* wk 族警告文本 */
+  --color-danger-strong: #d54941;
+  --color-info-line: #b3ccf5;
+  --color-success-line: #8ce0af;
+  --color-warning-line: #fedf89;
+  --color-warning-wash: #fffaeb;
+  --color-danger-line: #f1b8b3;
+  --color-danger-wash: #fdecea;
+
+  /* Shared primitive effects, matching Vue TDesign defaults. */
+  --color-overlay: rgb(23 32 51 / 45%);
+  --shadow-panel: 0 20px 60px rgb(23 32 51 / 20%);
+  --shadow-popover: 0 8px 24px rgb(15 23 42 / 12%);
 }

@@ -1,24 +1,31 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
-import pkg from './package.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
 
-// UI 版本 for the system info panel (frontend/vite.config.ts:14-30 parity).
-const FRONTEND_VERSION = pkg.version ?? 'unknown';
+// UI 版本 for the system info panel（frontend/vite.config.ts:14-30 parity）。
+// T12c：版本号与 Vue 端同源——直接读 frontend/package.json（apps/web 自己的
+// package.json version=0.0.0，与 Vue 端 0.8.0 不同源，system 分区前端版本行
+// 像素对比因此必差）；commit 短哈希长度也对齐 Vue 端 `--short`（auto）而非
+// 固定 8 位，两端在同一 HEAD 启动 dev server 时字符串完全一致。
+const FRONTEND_VERSION = (() => {
+  try {
+    const frontendPkg = JSON.parse(readFileSync(new URL('../../frontend/package.json', import.meta.url), 'utf8')) as { version?: string };
+    return frontendPkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 
 function resolveFrontendCommit(): string {
   const fromEnv = process.env.VITE_FRONTEND_COMMIT || process.env.GITHUB_SHA;
   if (fromEnv) {
-    try {
-      return execSync(`git rev-parse --short=8 ${fromEnv}`).toString().trim();
-    } catch {
-      return fromEnv.slice(0, 8);
-    }
+    // Vue frontend/vite.config.ts:22-25 parity: env-supplied hashes shorten to 7.
+    return fromEnv.slice(0, 7);
   }
   try {
-    return execSync('git rev-parse --short=8 HEAD').toString().trim();
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return 'unknown';
   }
@@ -39,7 +46,7 @@ const backendProxy = {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   server: { proxy: { '/api': backendProxy, '/files': backendProxy } },
   preview: { proxy: { '/api': backendProxy, '/files': backendProxy } },
   define: {
@@ -77,11 +84,6 @@ export default defineConfig({
       '@weknora/domain/craft/state': fileURLToPath(new URL('../../packages/domain/src/craft/state.ts', import.meta.url)),
       '@weknora/domain/craft/reconnect': fileURLToPath(new URL('../../packages/domain/src/craft/reconnect.ts', import.meta.url)),
       '@weknora/domain': fileURLToPath(new URL('../../packages/domain/src/query-key.ts', import.meta.url)),
-      '@weknora/ui/button': fileURLToPath(new URL('../../packages/ui/src/button.tsx', import.meta.url)),
-      '@weknora/ui/checkbox': fileURLToPath(new URL('../../packages/ui/src/checkbox.tsx', import.meta.url)),
-      '@weknora/ui/input': fileURLToPath(new URL('../../packages/ui/src/input.tsx', import.meta.url)),
-      '@weknora/ui/textarea': fileURLToPath(new URL('../../packages/ui/src/textarea.tsx', import.meta.url)),
-      '@weknora/ui': fileURLToPath(new URL('../../packages/ui/src/index.tsx', import.meta.url)),
       '@weknora/views/chat/page': fileURLToPath(new URL('../../packages/views/src/chat/page.tsx', import.meta.url)),
       '@weknora/views/chat/chat-copy': fileURLToPath(new URL('../../packages/views/src/chat/chat-copy.ts', import.meta.url)),
       '@weknora/views/chat/composer': fileURLToPath(new URL('../../packages/views/src/chat/composer.tsx', import.meta.url)),

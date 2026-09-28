@@ -15,6 +15,15 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
+// ErrPluginManagedService rejects generic MCP-management writes against a
+// plugin-materialized service row (PluginInstallationID != nil, 跨任务转交
+// T04-OCR1-F6): those rows are governed exclusively by the plugin install
+// APIs. A generic PUT could rewrite the verified endpoint/auth/enabled
+// baseline, and a generic DELETE would orphan the installation row and park
+// the (tenant_id, name) unique slot on a soft-deleted row, wedging re-install.
+var ErrPluginManagedService = errors.New(
+	"MCP service is plugin-managed and can only be modified through the plugin installation APIs")
+
 // mcpServiceService implements MCPServiceService interface
 type mcpServiceService struct {
 	mcpServiceRepo interfaces.MCPServiceRepository
@@ -136,6 +145,13 @@ func (s *mcpServiceService) UpdateMCPService(
 	// Builtin MCP services cannot be updated
 	if existing.IsBuiltin {
 		return fmt.Errorf("builtin MCP services cannot be updated")
+	}
+
+	// Plugin-materialized rows are governed by the plugin install APIs only
+	// (跨任务转交 T04-OCR1-F6): a generic PUT could rewrite the verified
+	// endpoint/auth/enabled baseline the admin actually accepted.
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
 	}
 
 	// Determine the final transport type after merge
@@ -340,6 +356,15 @@ func (s *mcpServiceService) DeleteMCPService(ctx context.Context, tenantID uint6
 		return fmt.Errorf("builtin MCP services cannot be deleted")
 	}
 
+	// Plugin-materialized rows are governed by the plugin install APIs only
+	// (跨任务转交 T04-OCR1-F6): a generic delete would orphan the
+	// installation row and park the (tenant_id, name) unique slot on a
+	// soft-deleted row, wedging re-install (the uninstall flow hard-cascades
+	// instead).
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
+	}
+
 	// Close client connection
 	s.mcpManager.CloseClient(id)
 
@@ -385,6 +410,14 @@ func (s *mcpServiceService) TestMCPService(
 	}
 	if service == nil {
 		return nil, fmt.Errorf("MCP service not found")
+	}
+
+	// B+A 裁决 #4：插件物化行与 GetMCPServiceTools（OCR R1 F07）同口径拒绝
+	// ——连通测试直连实时远端，Initialize/ListTools/ListResources 的结果
+	// 会把未接受能力与漂移后目录原样回显给 Admin+（已接受快照是唯一的
+	// 目录边界）。确定性 ErrPluginManagedService，由 handler 映射 409。
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
 	}
 
 	// Create temporary client for testing. For OAuth services, wire the
@@ -465,6 +498,15 @@ func (s *mcpServiceService) GetMCPServiceTools(
 		return nil, fmt.Errorf("MCP service not found")
 	}
 
+	// OCR R1 F07: plugin-materialized rows serve their directory through the
+	// plugin install APIs (accepted snapshot, filtered). The live ListTools
+	// call below would expose unaccepted capabilities and post-drift schemas
+	// to any Viewer — the very leak the write faces and the agent runtime
+	// (FilterToolsBySnapshot) close. Deterministic 409 via the handler.
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
+	}
+
 	// Get or create client
 	client, err := s.mcpManager.GetOrCreateClient(ctx, service)
 	if err != nil {
@@ -505,6 +547,13 @@ func (s *mcpServiceService) UpdateMCPCredentials(
 	}
 	if existing.IsBuiltin {
 		return nil, fmt.Errorf("builtin MCP services cannot have credentials modified")
+	}
+	// Plugin-materialized rows carry no service-level credentials by
+	// construction (materialization only sets AuthType/Scopes from the
+	// verified baseline); injecting one via the generic path would override
+	// the member-OAuth flow (跨任务转交 T04-OCR1-F6).
+	if existing.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
 	}
 
 	if existing.AuthConfig == nil {
@@ -551,6 +600,14 @@ func (s *mcpServiceService) ClearMCPCredential(
 	}
 	if existing.IsBuiltin {
 		return fmt.Errorf("builtin MCP services cannot have credentials modified")
+	}
+	// OCR R1 F06: same plugin guard as UpdateMCPCredentials — the credential
+	// write faces must reject plugin-materialized rows uniformly (the PUT
+	// already returns ErrPluginManagedService; today a plugin row's
+	// credentials are empty by construction, so this is a harmless no-op 204,
+	// but any future injection path would otherwise be an asymmetric bypass).
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
 	}
 	if existing.AuthConfig == nil {
 		return nil // nothing to clear
@@ -601,6 +658,13 @@ func (s *mcpServiceService) GetMCPServiceResources(
 	}
 	if service == nil {
 		return nil, fmt.Errorf("MCP service not found")
+	}
+
+	// B+A 裁决 #4：与 GetMCPServiceTools（OCR R1 F07）同款守卫——实时远端
+	// ListResources 绕过已接受快照边界，Viewer+ 即可达，未接受能力/漂移后
+	// 资源经此面泄露。确定性 ErrPluginManagedService，由 handler 映射 409。
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
 	}
 
 	// Get or create client

@@ -51,6 +51,7 @@ func TestAgentMCPProxyKeepsTargetEventsAndProtocolHistory(t *testing.T) {
 		0,
 		nil,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 	engine := newTestEngine(t, &mockChat{})
@@ -138,7 +139,7 @@ func TestAgentMCPStringArgumentsKeepValidationAndAudit(t *testing.T) {
 	_, err := agenttools.RegisterMCPTools(ctx, registry, []*types.MCPService{{
 		ID: "currency", TenantID: 7, Name: "Currency", Enabled: true,
 		URL: &httpServer.URL, TransportType: types.MCPTransportHTTPStreamable,
-	}}, manager, nil, 0, nil, nil)
+	}}, manager, nil, 0, nil, nil, nil)
 	require.NoError(t, err)
 	engine := newTestEngine(t, &mockChat{})
 	engine.toolRegistry = registry

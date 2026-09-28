@@ -1,8 +1,7 @@
-// CFT-S00-T004: the craft host shell composes the EXISTING @weknora/ui
-// primitives (Sheet already owns focus trap, Escape and focus restore —
-// packages/ui/src/interaction.test.tsx pins that contract). These tests pin
-// the craft composition layer:
-//   1. CraftDrawer (Sheet wrapper) closes on Escape and restores focus
+// CFT-S00-T004: the craft host shell composes the craft-local
+// tdesign-isomorphic primitives (td.tsx — the Drawer owns focus trap, Escape
+// and focus restore). These tests pin the craft composition layer:
+//   1. CraftDrawer (Drawer wrapper) closes on Escape and restores focus
 //   2. a disabled/readonly action never fires its command
 //   3. the shell guards against page-level horizontal overflow (the class
 //      contract; real 1440/390 viewport proof runs in the e2e/T034 lane)
@@ -29,7 +28,7 @@ Object.assign(globalThis, {
   ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
 });
 dom.window.HTMLElement.prototype.scrollTo = function (): void {};
-// The @weknora/ui entry imports theme.css; short-circuit CSS the same way
+// td.tsx / craft.css import css; node:test short-circuits .css the same way
 // packages/ui/src/index.test.tsx does (node module resolve hook).
 import * as nodeModule from 'node:module';
 const hooks = nodeModule as typeof nodeModule & {
@@ -76,8 +75,8 @@ test('CraftDrawer closes on Escape and restores the opener focus', async () => {
     </CraftDrawer>,
   );
   assert.match(document.body.textContent ?? '', /sources body/);
-  // Sheet's Escape is focus-scoped: the key only lands when the dialog
-  // panel itself holds focus (the mount effect focuses it; make it explicit).
+  // The td Drawer's Escape is focus-scoped: the key only lands when the dialog
+  // panel itself holds focus (the open effect focuses it; make it explicit).
   const panel = document.querySelector('[role="dialog"]');
   assert.ok(panel instanceof dom.window.HTMLElement, 'sheet panel rendered');
   panel.focus();

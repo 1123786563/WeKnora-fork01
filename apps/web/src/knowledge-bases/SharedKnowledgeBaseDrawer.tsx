@@ -1,19 +1,15 @@
 import type { ReactNode } from 'react';
-import { Badge, Button, Sheet } from '@weknora/ui';
+import { createPortal } from 'react-dom';
+import { Button, Tag } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { KbIcon } from './kb-list-icons.tsx';
-import './shared-kb-drawer.css';
-// KB 编辑器弹窗（App.tsx 新建/编辑知识库）的 Vue 几何对齐规则；此模块被
-// App.tsx 静态引用，CSS 随之在知识库列表页就绪（弹窗宿主在 App.tsx，
-// 规则落在允许维护的 knowledge-bases/ 目录内）。
-import './kb-editor-parity.css';
+// 样式由页面模块统一加载（kb-list.td.css §7 平移段 + kb-editor-parity.css 留守段）。
 
 // R438 A1 — shared knowledge base detail drawer, ported from Vue
 // KnowledgeBaseList.vue:709-776 (structure) + :1489-1525 (state & actions).
-// The drawer opens from the info-circle trigger on non-own shared KB cards
-// (KnowledgeBaseList.vue:305-315) and shows name / source type / source org
-// or agent (+ agent KB strategy) / shared at / my permission, with
-// 关闭 + 进入知识库 footer actions (goToSharedKbFromPanel, :1521-1525).
+// Task 11a：DOM 重写为 Vue unscoped 块 1:1（.shared-detail-drawer-overlay
+// 经 createPortal 挂 body，复刻 Vue <Teleport to="body">），样式走
+// kb-list.td.css §7 平移段（playbook §2.5/§2.6）。
 
 /** Vue SourceFromAgentInfo (frontend/src/api/organization/index.ts:106-111). */
 export interface SharedKbAgentInfo {
@@ -49,24 +45,32 @@ export function formatSharedAt(value: unknown): string {
 }
 
 /** Vue t-tag theme (KnowledgeBaseList.vue:759-761): admin→primary, editor→warning, else default. */
-export function permissionTone(permission: unknown): 'primary' | 'warning' | 'neutral' {
+export function permissionTheme(permission: unknown): 'primary' | 'warning' | 'default' {
   if (permission === 'admin') return 'primary';
   if (permission === 'editor') return 'warning';
-  return 'neutral';
+  return 'default';
 }
 
-const PERMISSION_TAG_CLASS: Record<'primary' | 'warning' | 'neutral', string> = {
-  primary: 'kb-shared-detail-permission h-[22px] rounded-[3px] border-0 bg-[rgba(7,192,95,0.08)] px-[7px] py-0 text-[#07c05f]',
-  warning: 'kb-shared-detail-permission h-[22px] rounded-[3px] border-0 bg-[rgba(237,123,47,0.08)] px-[7px] py-0 text-[#ed7b2f]',
-  neutral: 'kb-shared-detail-permission h-[22px] rounded-[3px] border-0 bg-[#f3f3f3] px-[7px] py-0 text-[rgba(0,0,0,0.66)]',
+/** 兼容旧名（颜色 tone 语义并入 t-tag theme；default→neutral）。 */
+export const permissionTone = (permission: unknown): 'primary' | 'warning' | 'neutral' => {
+  const theme = permissionTheme(permission);
+  return theme === 'default' ? 'neutral' : theme;
 };
 
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
-  // Vue .shared-detail-row (KnowledgeBaseList.vue:3021-3046): column layout,
-  // 12px secondary label over a 14px primary value.
+/* frontend/src/assets/img/organization-green.svg —— 共享来源空间徽标（20×20）。 */
+function OrgGreenIcon({ className }: { className: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs leading-[1.4] text-[#646e74]">{label}</span>
+    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z" stroke="#07C05F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  // Vue .shared-detail-row (KnowledgeBaseList.vue unscoped :3021-3027)。
+  return (
+    <div className="shared-detail-row">
+      <span className="shared-detail-label">{label}</span>
       {children}
     </div>
   );
@@ -91,63 +95,58 @@ export function SharedKnowledgeBaseDrawer({ open, shared, onClose, onGoToKb }: S
   const agent = shared?.source_from_agent;
   const orgName = typeof shared?.org_name === 'string' ? shared.org_name : '';
   const permission = typeof shared?.permission === 'string' && shared.permission ? shared.permission : 'viewer';
-
-  return (
-    <Sheet
-      open={open && shared !== null}
-      onClose={onClose}
-      title={t('knowledgeList.detail.title')}
-      width="360px"
-      // Vue header close (KnowledgeBaseList.vue:713-716): × icon button with
-      // aria-label $t('general.close') = 「关闭设置」; the footer text button
-      // below stays on common.close, exactly like the Vue template.
-      closeLabel={t('general.close')}
-      className="kb-shared-detail-drawer max-w-[90vw]"
-    >
-      <div className="kb-shared-detail-rows flex flex-col gap-5">
-        <DetailRow label={t('knowledgeBase.name')}>
-          <span className="break-words text-sm leading-[1.5] text-[#1d2129]">{name}</span>
-        </DetailRow>
-        <DetailRow label={t('knowledgeList.detail.sourceType')}>
-          <span className="break-words text-sm font-medium leading-[1.5] text-[#1d2129]">
-            {agent ? t('knowledgeList.detail.sourceTypeAgent') : t('knowledgeList.detail.sourceTypeKbShare')}
-          </span>
-        </DetailRow>
-        <DetailRow label={agent ? t('knowledgeList.detail.sourceFromAgent') : t('knowledgeList.detail.sourceOrg')}>
-          <span className="inline-flex items-center gap-1.5 text-sm leading-[1.5] text-[#1d2129] [&_svg]:shrink-0 [&_svg]:text-[#07c05f]">
-            {/* Vue organization-green.svg (KnowledgeBaseList.vue:738-744) */}
-            {!agent ? <KbIcon name="workspace" size={14} /> : null}
-            {agent ? (agent.agent_name ?? '') : orgName}
-          </span>
-        </DetailRow>
-        {agent ? (
-          <DetailRow label={t('knowledgeList.detail.agentKbStrategy')}>
-            <span className="break-words text-sm leading-[1.5] text-[#1d2129]">
-              {t(agentKbStrategyKey(agent?.kb_selection_mode ?? ''))}
+  // Vue Transition：仅打开瞬间挂载（sharedDetailPanelVisible && currentSharedKbForDetail）。
+  const visible = open && shared !== null;
+  if (!visible) return null;
+  return createPortal(
+    <div className="shared-detail-drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="shared-detail-drawer" role="dialog" aria-label={t('knowledgeList.detail.title')}>
+        <div className="shared-detail-drawer-header">
+          <h3 className="shared-detail-drawer-title">{t('knowledgeList.detail.title')}</h3>
+          <button type="button" className="shared-detail-drawer-close" aria-label={t('general.close')} onClick={onClose}>
+            <TIcon name="close" size="20px" />
+          </button>
+        </div>
+        <div className="shared-detail-drawer-body">
+          <DetailRow label={t('knowledgeBase.name')}>
+            <span className="shared-detail-value">{name}</span>
+          </DetailRow>
+          <DetailRow label={t('knowledgeList.detail.sourceType')}>
+            <span className="shared-detail-value shared-detail-source-type">
+              {agent ? t('knowledgeList.detail.sourceTypeAgent') : t('knowledgeList.detail.sourceTypeKbShare')}
             </span>
           </DetailRow>
-        ) : null}
-        <DetailRow label={t('knowledgeList.detail.sharedAt')}>
-          <span className="break-words text-sm leading-[1.5] text-[#1d2129]">{formatSharedAt(shared?.shared_at)}</span>
-        </DetailRow>
-        <DetailRow label={t('knowledgeList.detail.myPermission')}>
-          <Badge className={PERMISSION_TAG_CLASS[permissionTone(permission)]}>
-            {t(`organization.role.${permission}`)}
-          </Badge>
-        </DetailRow>
+          <DetailRow label={agent ? t('knowledgeList.detail.sourceFromAgent') : t('knowledgeList.detail.sourceOrg')}>
+            <span className="shared-detail-value shared-detail-org">
+              {agent ? null : <OrgGreenIcon className="shared-detail-org-icon" />}
+              {agent ? (agent.agent_name ?? '') : orgName}
+            </span>
+          </DetailRow>
+          {agent ? (
+            <DetailRow label={t('knowledgeList.detail.agentKbStrategy')}>
+              <span className="shared-detail-value">
+                {t(agentKbStrategyKey(agent.kb_selection_mode ?? ''))}
+              </span>
+            </DetailRow>
+          ) : null}
+          <DetailRow label={t('knowledgeList.detail.sharedAt')}>
+            <span className="shared-detail-value">{formatSharedAt(shared?.shared_at)}</span>
+          </DetailRow>
+          <DetailRow label={t('knowledgeList.detail.myPermission')}>
+            <Tag size="small" theme={permissionTheme(permission)}>
+              {t(`organization.role.${permission}`)}
+            </Tag>
+          </DetailRow>
+        </div>
+        <div className="shared-detail-drawer-footer">
+          <Button theme="default" variant="outline" onClick={onClose}>{t('common.close')}</Button>
+          <Button theme="primary" className="go-to-kb-btn" disabled={!kbId} onClick={() => { if (kbId) onGoToKb(kbId); }}>
+            <TIcon name="browse" />
+            {t('knowledgeList.detail.goToKb')}
+          </Button>
+        </div>
       </div>
-      <footer className="flex shrink-0 justify-end gap-3 border-t border-[#e3e7ee] bg-white px-6 py-4">
-        <Button type="button" onClick={onClose}>{t('common.close')}</Button>
-        <Button
-          type="button"
-          variant="primary"
-          disabled={!kbId}
-          onClick={() => { if (kbId) onGoToKb(kbId); }}
-        >
-          <KbIcon name="browse" size={16} />
-          {t('knowledgeList.detail.goToKb')}
-        </Button>
-      </footer>
-    </Sheet>
+    </div>,
+    document.body,
   );
 }

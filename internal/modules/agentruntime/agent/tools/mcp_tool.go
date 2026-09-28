@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -533,9 +535,144 @@ func loadMCPDirectory(
 	return definitions, instructions, nil
 }
 
+// loadPluginDirectory loads a plugin-materialized service's directory strictly
+// from the live server and filters it against the accepted snapshot BEFORE
+// persisting. Two invariants manual services do not have (issue #116 runtime
+// baseline): the drift verdict must reflect server reality — a persisted
+// directory is a cache, never a verification baseline, so the metadata.Get
+// fast path is bypassed; and the persisted directory must never contain
+// unaccepted tools, so filtering happens before metadata.Put. Drift failures
+// are logged at the detection point (service ID, tenant, installation ID) —
+// the Agent-facing error is folded by the catalog into a generic state
+// message, so this log is the administrator-visible audit trail.
+func loadPluginDirectory(
+	loadCtx context.Context,
+	service *types.MCPService,
+	mcpManager *mcp.MCPManager,
+	gate approval.MCPApproval,
+	oauthSess *MCPOAuthSession,
+	snap *PluginRuntimeSnapshot,
+	metadata *MCPMetadataIO,
+) ([]*types.MCPTool, string, error) {
+	if service.AuthConfig.IsOAuth() {
+		if _, ok := ToolExecFromContext(loadCtx); !ok {
+			return nil, "", fmt.Errorf("MCP directory is missing; authorize this service, then refresh Tools")
+		}
+	}
+	definitions, instructions, err := loadMCPServiceTools(loadCtx, service, mcpManager, gate, oauthSess)
+	if err != nil {
+		return nil, "", err
+	}
+	filtered, filterErr := FilterToolsBySnapshot(snap, definitions)
+	if filterErr != nil {
+		tenant, _ := types.TenantIDFromContext(loadCtx)
+		logger.GetLogger(loadCtx).Errorf(
+			"plugin snapshot drift on service %s (tenant %d, installation %s): %v",
+			service.ID, tenant, snap.InstallationID, filterErr,
+		)
+		return nil, "", filterErr
+	}
+	// OCR R1 F10: live server instructions are NOT part of the accepted
+	// snapshot baseline (PluginToolSnapshot has no such field) — a plugin
+	// developer can rewrite them AFTER the admin accepted the version,
+	// injecting arbitrary prompts into every member conversation. Same threat
+	// model as the description drift the filter above fail-closes on: plugin
+	// rows (snap != nil) must not pass live instructions through; manual
+	// services (snap == nil) keep them.
+	if snap != nil {
+		instructions = ""
+	}
+	// OCR 终局 F09: skip metadata.Put for plugin rows entirely — the persist
+	// channel (PersistMCPMetadata) now refuses PluginInstallationID rows by
+	// sentinel, so calling it here would only log a guaranteed-failure Warn on
+	// every directory load. The plugin-row metadata cache is retired: the
+	// directory and instructions authority for plugin rows is the accepted
+	// snapshot served by the plugin domain APIs, never this cache.
+	if snap == nil && metadata != nil && metadata.Put != nil {
+		tenant, _ := types.TenantIDFromContext(loadCtx)
+		if persistErr := metadata.Put(loadCtx, tenant, service.ID, filtered, instructions); persistErr != nil {
+			logger.GetLogger(loadCtx).Warnf(
+				"Failed to persist MCP directory for service %s: %v", service.Name, persistErr,
+			)
+		}
+	}
+	return filtered, instructions, nil
+}
+
+// ErrPluginDrift marks a plugin-materialized service whose LIVE tool
+// directory no longer matches the tenant's accepted snapshot: a tool inside
+// the snapshot changed its input schema or description. This is a hard
+// fail-closed verdict
+// — the accepted snapshot is the runtime verification baseline (spec ID52),
+// so drifted capability must surface for administrator review, never
+// silently pass through and never be quietly dropped.
+var ErrPluginDrift = errors.New("plugin capability drift detected; administrator review required")
+
+// PluginRuntimeSnapshot is the runtime view of one installation's accepted
+// tool snapshot: what the tenant reviewed and accepted at install/upgrade
+// time. Service-materialized plugin rows are filtered against exactly this.
+type PluginRuntimeSnapshot struct {
+	InstallationID string
+	Tools          []types.PluginToolSnapshot
+}
+
+// PluginSnapshotProvider resolves the accepted snapshot behind a service ID.
+// nil, nil = the service is NOT plugin-materialized (manual service —
+// legacy behavior, no filtering); a non-nil error = fail-closed (the caller
+// must abort the directory load, never fall back to unfiltered).
+type PluginSnapshotProvider func(ctx context.Context, tenantID uint64, serviceID string) (*PluginRuntimeSnapshot, error)
+
+// FilterToolsBySnapshot filters a live MCP directory against an accepted
+// plugin snapshot. Tools NOT in the snapshot are dropped (unaccepted
+// capability must stay invisible to the Agent); a snapshot tool whose live
+// schema digest or description disagrees with the accepted values is
+// ErrPluginDrift (a changed capability is a review event, not a silent drop
+// or pass-through — the description reaches the Agent-visible tool metadata
+// surface, so a post-install rewrite is a prompt-injection channel, not a
+// cosmetic change). Survivors keep the live order. Exported for drift
+// detection reuse (T17).
+func FilterToolsBySnapshot(snap *PluginRuntimeSnapshot, defs []*types.MCPTool) ([]*types.MCPTool, error) {
+	if snap == nil {
+		return defs, nil
+	}
+	accepted := make(map[string]types.PluginToolSnapshot, len(snap.Tools))
+	for _, tool := range snap.Tools {
+		accepted[tool.Name] = tool
+	}
+	kept := make([]*types.MCPTool, 0, len(defs))
+	for _, def := range defs {
+		if def == nil {
+			continue
+		}
+		tool, ok := accepted[def.Name]
+		if !ok {
+			// Outside the accepted snapshot: the tenant never accepted this
+			// capability, so the Agent must not discover it.
+			continue
+		}
+		// Digest via the platform contract (utils.ToolSchemaDigest — the same
+		// implementation plugins persists at accept time); importing the
+		// plugins module here would be a forbidden cross-module import.
+		if utils.ToolSchemaDigest(def.InputSchema) != tool.InputSchemaDigest {
+			return nil, fmt.Errorf("%w: tool %q schema changed", ErrPluginDrift, def.Name)
+		}
+		if def.Description != tool.Description {
+			return nil, fmt.Errorf("%w: tool %q description changed", ErrPluginDrift, def.Name)
+		}
+		kept = append(kept, def)
+	}
+	return kept, nil
+}
+
 // RegisterMCPTools installs a scoped directory and call proxy without connecting
 // to MCP servers or advertising their full schemas. The count is services, not
 // tools: discovery occurs on demand during tool execution.
+//
+// pluginGuard filters plugin-materialized services' live directories against
+// the tenant's accepted installation snapshot (issue #116 runtime baseline).
+// nil keeps behavior byte-identical to the pre-plugin era — manual MCP
+// services never pass a guard hit in production either (the provider returns
+// nil for rows without plugin_installation_id).
 func RegisterMCPTools(
 	ctx context.Context,
 	registry *ToolRegistry,
@@ -545,6 +682,7 @@ func RegisterMCPTools(
 	authWaitTimeoutSeconds int,
 	lookup MCPServiceLookup,
 	metadata *MCPMetadataIO,
+	pluginGuard PluginSnapshotProvider,
 ) (int, error) {
 	catalog := newMCPCatalog(
 		ctx,
@@ -553,11 +691,67 @@ func RegisterMCPTools(
 		func(loadCtx context.Context, service *types.MCPService, live bool) ([]*MCPTool, error) {
 			meta, _ := ToolExecFromContext(loadCtx)
 			oauthSess := oauthSessionFromToolExec(loadCtx, meta).withAuthWaitTimeout(authWaitTimeoutSeconds)
-			definitions, instructions, err := loadMCPDirectory(
-				loadCtx, service, mcpManager, gate, oauthSess, metadata, live,
-			)
-			if err != nil {
-				return nil, err
+			// Plugin runtime guard (issue #116): resolve the accepted snapshot
+			// BEFORE any directory load. Guard errors are fail-closed; manual
+			// services resolve to a nil snapshot and keep the legacy
+			// unfiltered behavior. Failures are logged at the detection point
+			// (service ID, tenant, installation ID) because the catalog folds
+			// the Agent-facing error into a generic state message — this log
+			// is the administrator-visible audit trail.
+			var snap *PluginRuntimeSnapshot
+			if pluginGuard != nil {
+				tenantID, _ := types.TenantIDFromContext(loadCtx)
+				var guardErr error
+				snap, guardErr = pluginGuard(loadCtx, tenantID, service.ID)
+				if guardErr != nil {
+					logger.GetLogger(loadCtx).Errorf(
+						"plugin snapshot guard failed for service %s (tenant %d): %v",
+						service.ID, tenantID, guardErr,
+					)
+					return nil, fmt.Errorf("plugin snapshot guard failed for %s: %w", service.Name, guardErr)
+				}
+				if snap == nil && service.PluginInstallationID != nil {
+					// Fail-closed for plugin-materialized services WITHOUT a
+					// resolvable snapshot (OCR round-1 R12 F20): the install
+					// window (the Enabled service row commits before its
+					// installation binding and per-tool policies) and
+					// compensation orphans both land here — treating them as
+					// manual would expose unaccepted live tools with default-
+					// enabled write tools. PluginInstallationID commits with
+					// the service row itself, so it reliably distinguishes
+					// plugin rows from manual NULL rows.
+					logger.GetLogger(loadCtx).Errorf(
+						"plugin-materialized service %s (tenant %d, installation %s) has no accepted installation snapshot",
+						service.ID, tenantID, *service.PluginInstallationID,
+					)
+					return nil, fmt.Errorf(
+						"plugin snapshot guard failed for %s: plugin-materialized service has no accepted installation snapshot",
+						service.Name)
+				}
+			}
+			var definitions []*types.MCPTool
+			var instructions string
+			if snap != nil {
+				// Plugin-materialized service: the accepted snapshot is the
+				// runtime verification baseline, so the directory is verified
+				// against the live server (never the persisted cache) and the
+				// persisted copy is written AFTER filtering (OCR handoff
+				// T01-OCR1-F6 / T01-OCR2-F9).
+				var loadErr error
+				definitions, instructions, loadErr = loadPluginDirectory(
+					loadCtx, service, mcpManager, gate, oauthSess, snap, metadata,
+				)
+				if loadErr != nil {
+					return nil, loadErr
+				}
+			} else {
+				var loadErr error
+				definitions, instructions, loadErr = loadMCPDirectory(
+					loadCtx, service, mcpManager, gate, oauthSess, metadata, live,
+				)
+				if loadErr != nil {
+					return nil, loadErr
+				}
 			}
 			tools := make([]*MCPTool, 0, len(definitions))
 			seen := make(map[string]bool)

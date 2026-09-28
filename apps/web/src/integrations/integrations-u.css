@@ -1,0 +1,307 @@
+/* integrations-u.css — S7 Tailwind utilities 平移（integrations 域：ApiPlaygroundDrawer / EmbedPreviewModal / IntegrationsRoutePage）
+ * 前缀 wk-apd-* / wk-epm-* / wk-irp-*；值 = utilities 编码的生效值。
+ * 导入顺序：须在 integrations.td.css 之前（冲突以 .td.css 为准）。 */
+
+
+.wk-apd-1 {
+  box-sizing: border-box;
+}
+
+.wk-apd-2 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-apd-3 {
+  overflow: auto;
+  height: 100vh;
+}
+
+.wk-apd-4 {
+  display: grid;
+  gap: 18px;
+}
+
+.wk-apd-5 {
+  display: grid;
+  gap: 12px;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--wk-border,#e5e7eb);
+  padding: 16px;
+}
+
+.wk-apd-6 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.wk-apd-7 {
+  font-size: 13px;
+}
+
+.wk-apd-8 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: transparent !important;
+  background-color: transparent;
+  padding-inline: 0.5rem !important;
+  padding-block: 0.3rem !important;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6) !important;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-apd-8:disabled {
+  cursor: not-allowed;
+  opacity: 0.55 !important;
+}
+
+.wk-apd-8:hover {
+  background-color: #f2f5fa;
+}
+
+.wk-apd-8:focus-visible {
+  background-color: #f2f5fa;
+}
+
+.wk-apd-8:enabled:hover {
+  border-style: solid !important;
+  border-color: #2e6de6 !important;
+}
+
+.wk-apd-9 {
+  margin: 0;
+}
+
+.wk-apd-10 {
+  margin-block: 0.25rem !important;
+  font-size: 13px;
+  color: #137333 !important;
+}
+
+.wk-apd-11 {
+  display: grid;
+  gap: 8px;
+}
+
+.wk-apd-12 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-apd-13 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-style: solid !important;
+  border-color: #cbd5e1 !important;
+  background-color: #ffffff;
+  padding-inline: 0.85rem !important;
+  padding-block: 0.45rem !important;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-apd-13:disabled {
+  cursor: not-allowed;
+  opacity: 0.55 !important;
+}
+
+.wk-apd-13:enabled:hover {
+  border-style: solid !important;
+  border-color: #2e6de6 !important;
+}
+
+.wk-apd-14 {
+  color: #16803c;
+}
+
+.wk-apd-15 {
+  color: #b42318;
+}
+
+.wk-apd-16 {
+  color: #a15c00;
+}
+
+.wk-apd-17 {
+  color: var(--wk-muted-foreground,#64748b);
+}
+
+
+.wk-epm-1 {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  justify-content: flex-end;
+  background-color: rgba(0,0,0,.5);
+}
+
+.wk-epm-2 {
+  box-sizing: border-box;
+  height: 100%;
+  width: min(720px,100vw);
+  overflow: auto;
+  background-color: #ffffff;
+  box-shadow: -8px 0 24px rgba(15,23,42,.14);
+}
+
+@media (max-width: 720px) {
+.wk-epm-2 {
+  width: 100vw;
+}
+}
+
+.wk-epm-3 {
+  position: relative;
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-inline: 24px;
+}
+
+.wk-epm-4 {
+  margin: 0;
+  padding-right: 40px;
+  font-size: 17px;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-epm-5 {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  height: 28px;
+  width: 28px;
+  cursor: pointer;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: #667085;
+}
+
+.wk-epm-5:hover {
+  background-color: #f3f4f6;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-epm-5:focus-visible {
+  background-color: #f3f4f6;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-epm-6 {
+  box-sizing: border-box;
+  display: flex;
+  height: calc(100% - 57px);
+  flex-direction: column;
+  gap: 14px;
+  padding-inline: 24px;
+  padding-bottom: 24px;
+  padding-top: 20px;
+}
+
+@media (max-width: 720px) {
+.wk-epm-6 {
+  padding-inline: 16px;
+}
+}
+
+.wk-epm-7 {
+  position: relative;
+  min-height: 480px;
+  flex: 1 1 0%;
+  overflow: hidden;
+  border-radius: 12px;
+  border-style: solid;
+  border-width: 1px;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
+  background-color: #f5f7fa;
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+.wk-epm-8 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  background-color: #eef1f5;
+  padding-inline: 14px;
+  padding-block: 10px;
+  font-size: 10px;
+  color: #98a2b3;
+}
+
+.wk-epm-9 {
+  color: #ff5f57;
+}
+
+.wk-epm-10 {
+  color: #febc2e;
+}
+
+.wk-epm-11 {
+  color: #28c840;
+}
+
+.wk-epm-12 {
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #98a2b3;
+}
+
+.wk-epm-13 {
+  position: absolute;
+  inset: 37px 0 0;
+  display: grid;
+  place-items: center;
+}
+
+.wk-epm-14 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-epm-15 {
+  visibility: hidden;
+}
+
+
+.wk-irp-1 {
+  margin-block: 0.25rem !important;
+  font-size: 13px;
+  color: #b42318 !important;
+}
+

@@ -7,7 +7,9 @@ import type { Root } from 'react-dom/client';
 import type { WeKnoraClient } from '@weknora/api-client';
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+// B4 起 integration-api section 注入平台 logo（../assets/img/im/*.{svg,png}）——
+// 资产扩展名与 css 同款短路（7edec47b3 integrations 域同款；node:test 直跑无 vite 资产管线）。
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => /\.(css|svg|png)$/.test(specifier) ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings' });
@@ -16,14 +18,40 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
-const { SettingsPage, settingsNavGroups } = await import('./SettingsPage.tsx');
+const { SettingsPage, settingsNavGroups, settingsSectionLabel } = await import('./SettingsPage.tsx');
 const { auditDateParts, auditOutcomeTone, auditTargetSummary } = await import('./SystemAuditLogPanel.tsx');
+
+// 跨任务转交 T08-OCR1-F1（同 T08-OCR2-F6 指认的缺口①）：侧边栏的
+// integration-plugins 分区 label 走 @weknora/i18n formatMessage 直查，主表
+// 无 integrations.tabs.plugins 词条时回显裸 key——全员可见缺陷。
+test('settings sidebar label never leaks a raw i18n key for the plugins integration tab', () => {
+  assert.equal(settingsSectionLabel('zh-CN', 'integration-plugins'), '插件');
+  assert.equal(settingsSectionLabel('en-US', 'integration-plugins'), 'Plugins');
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const label = settingsSectionLabel(locale, 'integration-plugins');
+    assert.ok(!label.includes('integrations.tabs.plugins'), `raw key leaked for ${locale}: ${label}`);
+    assert.ok(label.length > 0, `empty label for ${locale}`);
+  }
+});
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {
@@ -131,14 +159,19 @@ test('settings drawer is portalled to body like the Vue Teleport shell', async (
   assert.equal(drawer.parentElement, document.body, 'the drawer is a direct body child like Vue Teleport');
 });
 
-test('settings shell controls expose the shared visible-focus contract', async () => {
+test('settings shell controls follow the Vue drawer focus contract', async () => {
   const container = await mountPage(makeClient(), '?section=general');
+  // T12a：壳层平移为 Vue Settings.vue DOM（close-btn / nav-item），焦点环
+  // 由 html:not(.wk-kbd-nav) 抑制规则接管（settings-wrapper.css），导航项是
+  // div[role=button]（Vue 模板即 div），键盘 Enter/Space 可激活。
   const closeButton = container.querySelector('[data-testid="settings-close"]');
-  const navigationButton = container.querySelector('.wks-nav-item');
-  assert.ok(closeButton?.classList.contains('focus-visible:outline-2'), 'close control uses the shared focus token');
-  assert.ok(closeButton?.classList.contains('focus-visible:outline-accent/35'), 'close control uses the shared focus color');
-  assert.ok(navigationButton?.classList.contains('focus-visible:outline-2'), 'navigation controls use the shared focus token');
-  assert.ok(navigationButton?.classList.contains('focus-visible:outline-accent/35'), 'navigation controls use the shared focus color');
+  assert.equal(closeButton?.className, 'close-btn', 'close control uses the Vue close-btn class');
+  assert.ok(closeButton?.getAttribute('aria-label'), 'close control keeps its aria label');
+  const navigationItem = container.querySelector('.nav-item');
+  assert.ok(navigationItem, 'navigation items render with the Vue nav-item class');
+  assert.equal(navigationItem?.getAttribute('role'), 'button', 'nav items are role=button like the Vue clickable div');
+  const drawerRoot = document.body.querySelector('.wk-settings-drawer-root');
+  assert.ok(drawerRoot, 'the focus-ring suppression scope (wk-kbd-nav) still wraps the drawer');
 });
 
 test('settings navigation hides the Vue-unlisted retrieval deep-link section', () => {
@@ -184,13 +217,19 @@ test('tenant deletion accepts a space-padded confirmation name like the Vue dial
   assert.ok(openDelete, 'the owner danger-zone action renders');
   await act(async () => openDelete.click());
   await act(async () => {});
-  const input = container.querySelector<HTMLInputElement>('[role="dialog"] input');
+  // T12a：tdesign Dialog portal 到 body（Vue t-dialog 同构）。
+  const input = document.body.querySelector<HTMLInputElement>('.t-dialog input');
   assert.ok(input, 'the confirmation dialog input renders');
   await act(async () => {
     Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '  Parity 空间  ');
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
-  assert.equal(container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')?.disabled, false,
+  await act(async () => {});
+  // tdesign 确认按钮（台账 #7：disabled 渲染 t-is-disabled 类而非 disabled 属性）。
+  const confirm = Array.from(document.body.querySelectorAll<HTMLElement>('.t-dialog__confirm'))
+    .find((button) => (button.textContent ?? '').includes('确认删除'));
+  assert.ok(confirm, 'the destructive confirm button renders');
+  assert.equal(confirm.classList.contains('t-is-disabled'), false,
     'Vue enables deletion after trim() matches the tenant name');
 });
 
@@ -198,7 +237,7 @@ test('an unsupported settings section falls back to general and is absent from t
   const container = await mountPage(makeClient(), '?section=sandbox', 'owner', { 'settings.sandbox': { supported: false } });
   await act(async () => {});
   assert.ok(container.querySelector('[data-testid="general-preferences-panel"]'), 'unsupported deep links fall back to general');
-  assert.equal(Array.from(container.querySelectorAll('.wks-nav-label')).some((node) => node.textContent === '沙箱'), false,
+  assert.equal(Array.from(container.querySelectorAll('.nav-label')).some((node) => node.textContent === '沙箱'), false,
     'unsupported settings sections are not navigable');
   assert.equal(dom.window.location.search, '?section=general', 'the normalized section is reflected in the URL');
 });
@@ -227,7 +266,9 @@ test('userprofile section shows the Vue rows and localized change-password copy'
 test('loading state uses localized shared copy without leaking the API domain', async () => {
   const container = await mountPage(makeClient({ tenant: new Promise(() => {}) }), '?section=tenant');
   const text = container.textContent ?? '';
-  assert.ok(text.includes('加载中'), 'the localized loading copy renders');
+  // T12a：tenant 面板自持 Vue loading 态（TenantInfo.vue loading-inline =
+  // t('tenant.loadingInfo') 正在加载信息...）。
+  assert.ok(text.includes('正在加载信息'), 'the localized loading copy renders');
   assert.equal(text.includes('Loading from'), false, 'no English loading copy');
   assert.equal(text.includes('configuration'), false, 'no API domain leak');
 });
@@ -236,8 +277,8 @@ test('ignores a stale section error after navigating to another section', async 
   let rejectTenant!: (reason: Error) => void;
   const staleTenant = new Promise<never>((_, reject) => { rejectTenant = reject; });
   const container = await mountPage(makeClient({ tenant: staleTenant }), '?section=tenant');
-  const generalButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
-    .find((button) => button.textContent?.includes('常规设置'));
+  const generalButton = Array.from(container.querySelectorAll<HTMLElement>('.nav-item'))
+    .find((item) => item.textContent?.includes('常规设置'));
   assert.ok(generalButton, 'the general settings navigation item renders');
 
   await act(async () => generalButton?.click());
@@ -250,8 +291,8 @@ test('ignores a stale section error after navigating to another section', async 
 
 test('settings navigation clears focus after switching sections like the Vue drawer', async () => {
   const container = await mountPage(makeClient(), '?section=general');
-  const navigationButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
-    .find((button) => button.getAttribute('aria-current') !== 'page');
+  const navigationButton = Array.from(container.querySelectorAll<HTMLElement>('.nav-item'))
+    .find((item) => item.getAttribute('aria-current') !== 'page');
   assert.ok(navigationButton, 'a second settings section is available');
   await act(async () => navigationButton?.click());
   assert.notEqual(document.activeElement, navigationButton, 'section navigation should not retain focus on the old drawer control');
@@ -329,18 +370,27 @@ test('system-global section renders grouped editable settings instead of a gener
   assert.ok(text.includes('重置用户密码'), 'the reset-password high-risk row renders');
   assert.ok(text.includes('创建用户'), 'the create-user high-risk row renders');
   assert.ok(container.textContent?.includes('peer-admin@local.dev'), 'the peer admin tag renders (current user excluded)');
-  const registrationSelect = container.querySelector<HTMLSelectElement>('select');
+  // T12c：enum 控件已换 tdesign Select（GeneralPreferencesPanel.test 同款
+  // 交互：点开 trigger，在 body 弹层点目标选项）。
+  const registrationSelect = container.querySelector('.t-select__wrap');
   assert.ok(registrationSelect, 'enum settings use a select control');
-  registrationSelect.value = 'invite_only';
-  await act(async () => registrationSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true })));
+  const triggerInner = registrationSelect!.querySelector('.t-input') as HTMLElement;
+  await act(async () => { triggerInner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const option = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option')).find((el) => (el.textContent ?? '').trim() === '仅邀请（关闭公网注册）');
+  assert.ok(option, 'the invite_only option renders in the popup');
+  await act(async () => { option.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.ok(container.querySelector('[role="alertdialog"]'), 'high-risk enum changes require Vue-style confirmation');
   const cancelConfirm = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find((button) => button.textContent === '取消');
   assert.ok(cancelConfirm);
   await act(async () => cancelConfirm?.click());
   assert.equal(container.querySelector('[role="alertdialog"]'), null, 'cancelling rolls back the pending high-risk edit');
-  const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent?.includes('网络安全'));
+  // T12c：tdesign Tabs nav item（div.t-tabs__nav-item）+ tdesign Switch
+  // （button[role="switch"]，台账 #2 根标签差异豁免沿用）。
+  const securityTab = Array.from(container.querySelectorAll<HTMLElement>('.t-tabs__nav-item')).find((item) => item.textContent?.includes('网络安全'));
   assert.ok(securityTab, 'the security tab renders with the Vue label');
-  await act(async () => securityTab?.click());
+  await act(async () => { securityTab?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
   assert.ok(container.querySelector('[role="switch"]'), 'boolean settings use the shared switch control');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
 });
@@ -355,20 +405,24 @@ test('platform API keys section renders the Vue table and one-time token surface
     .find((button) => button.textContent === '创建平台 API Key');
   assert.ok(openCreate, 'the alert outline button opens the create drawer');
   await act(async () => openCreate?.click());
-  // The settings shell itself is role="dialog" — scope to the create drawer.
-  const drawer = container.querySelector('.pak-drawer[role="dialog"]');
+  // 批 3：创建抽屉换 SettingDrawer 同构（Vue api-key-create-drawer 家族，
+  // t-drawer body portal），抽屉家族类锚 .api-key-create-drawer。
+  const drawer = document.querySelector('.api-key-create-drawer');
   assert.ok(drawer, 'the Vue create drawer renders');
-  const name = drawer.querySelector<HTMLInputElement>('[aria-label="密钥名称"]');
-  assert.ok(name);
+  const name = drawer.querySelector<HTMLInputElement>('.api-key-dialog-row input');
+  assert.ok(name, 'the name input renders in the Vue dialog row');
   await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(name, 'new-key'); name.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
-  const capability = drawer.querySelector<HTMLInputElement>('.pak-cap-item input');
+  const capability = drawer.querySelector<HTMLInputElement>('.api-key-capability-item input');
   assert.ok(capability);
   await act(async () => capability?.click());
   const createButton = Array.from(drawer.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '创建平台 API Key');
   assert.ok(createButton);
   await act(async () => createButton?.click());
   await act(async () => {});
-  assert.ok(container.querySelector('[role="alert"]'), 'creation renders the one-time token surface');
+  // Vue 创建成功走 t-dialog（PlatformAPIKeys.vue:194-204）而非内联卡。
+  const tokenDialog = document.querySelector('.t-dialog');
+  assert.ok(tokenDialog, 'creation opens the Vue one-time token dialog');
+  assert.match(tokenDialog?.textContent ?? '', /wk-secret|复制密钥/);
 });
 
 // R484 G4 D7 (R482 report-B3.md D7): Vue Settings.vue renders ONLY the
@@ -424,9 +478,9 @@ test('a subsection query param preselects the model type tab', async () => {
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'bge-m3', type: 'Embedding', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=embedding');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('Embedding(1)'), 'the embedding tab is preselected');
 });
@@ -435,9 +489,9 @@ test('the Vue knowledgeqa settings entry preselects the chat model tab', async (
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'gpt-test', type: 'KnowledgeQA', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=knowledgeqa');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('对话(1)'), 'the chat tab is preselected');
 });
