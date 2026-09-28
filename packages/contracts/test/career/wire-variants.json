@@ -1,0 +1,55 @@
+{
+  "profile": {
+    "id": "profile-1",
+    "revision": 1,
+    "facts": [{
+      "id": "fact-1",
+      "value": "BSc",
+      "confirmed": true,
+      "provenance": { "kind": "resume", "reference": "artifact-1" },
+      "confirmation": { "confirmedBy": "user", "at": "2026-09-28T10:00:00Z" }
+    }]
+  },
+  "opportunity": {
+    "id": "opp-1",
+    "snapshot": {
+      "revision": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "observedAt": "2026-09-28T10:00:00Z",
+      "sourceUrl": "https://jobs.example/1",
+      "content": "JD",
+      "completeness": "complete"
+    }
+  },
+  "searchRequest": { "query": "backend engineer", "requestId": "search-1" },
+  "searchReceipt": { "requestId": "search-1", "revision": 1, "status": "completed", "opportunityIds": ["opp-1"] },
+  "evaluation": {
+    "status": "unknown",
+    "revision": 1,
+    "profileRevision": 1,
+    "opportunityRevision": 1,
+    "modelVersion": "career-eval-v1",
+    "evidence": [{ "claim": "graduation year", "result": "missing", "source": "confirmed_profile", "rationale": "No confirmed graduation date" }],
+    "explanation": "graduation date missing"
+  },
+  "application": {
+    "id": "app-1",
+    "revision": 1,
+    "opportunitySnapshot": { "opportunityId": "opp-1", "revision": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "stage": "preparing"
+  },
+  "materialVersion": {
+    "id": "material-1",
+    "version": 1,
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bodyDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "pdfDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "docxDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "publishedAt": "2026-09-28T10:00:00Z"
+  },
+  "submission": { "id": "submission-1", "channel": "company-site", "confirmedAt": "2026-09-28T10:00:00Z", "materialVersion": null, "versionUnknown": true },
+  "timelineEvent": { "id": "event-1", "revision": 1, "kind": "interview", "occurredAt": "2026-09-28T10:00:00Z" },
+  "reminder": { "id": "reminder-1", "revision": 1, "kind": "interview", "dueAt": "2026-09-29T10:00:00Z", "status": "active" },
+  "exportReceipt": { "requestId": "export-1", "status": "ready", "revision": 1, "artifactId": "artifact-1" },
+  "deleteReceipt": { "requestId": "delete-1", "status": "completed", "revision": 2 }
+}

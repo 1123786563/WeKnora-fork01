@@ -1,29 +1,79 @@
-import { ContractError, parseCareerEvaluation, parseCareerMaterialVersion, parseCareerOpportunity, parseCareerProfile } from '@weknora/contracts';
-import type { CareerApplication, CareerOpportunity, CareerMaterialVersion } from '@weknora/contracts';
-export interface CareerReceipt<T> { requestId: string; data: T }
-function receipt(value: unknown, requestId?: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ContractError('receipt', 'expected object');
-  const row = value as Record<string, unknown>;
-  if (typeof row.requestId !== 'string' || !row.requestId.trim()) throw new ContractError('receipt.requestId', 'expected request ID');
-  if (requestId !== undefined && row.requestId !== requestId) throw new ContractError('receipt.requestId', 'request ID mismatch');
-  if ('tenantId' in row || 'tenant_id' in row || 'ownerId' in row || 'owner_id' in row || 'actorId' in row) throw new ContractError('receipt', 'tenant/owner/actor are not client authority');
-  return row;
+import {
+  ContractError, parseCareerApplication, parseCareerDeleteReceipt, parseCareerEnvelope, parseCareerEvaluation,
+  parseCareerExportReceipt, parseCareerMaterialVersion, parseCareerOpportunity, parseCareerProfile,
+  parseCareerReminder, parseCareerSearchReceipt, parseCareerSubmission, parseCareerTimelineEvent,
+} from '@weknora/contracts';
+import type {
+  CareerApplication, CareerDeleteReceipt, CareerEnvelope, CareerEvaluation, CareerExportReceipt,
+  CareerMaterialVersion, CareerOpportunity, CareerProfile, CareerReminder, CareerSearchReceipt,
+  CareerSubmission, CareerTimelineEvent, CareerWorkspace, CareerReceipt,
+} from '@weknora/contracts';
+
+export function decodeCareerEnvelope<T>(value: unknown, parseData: (data: unknown) => T, requestId?: string, requireReceipt = false): { success: true; data: T; requestId?: string } {
+  return parseCareerEnvelope(value, parseData, requestId, requireReceipt);
 }
-export function decodeCareerProfile(value: unknown, requestId?: string) { return parseCareerProfile(receipt(value, requestId).data); }
-export function decodeCareerOpportunityList(value: unknown): CareerOpportunity[] {
-  if (!Array.isArray(value)) throw new ContractError('opportunities', 'expected array');
-  return value.map(parseCareerOpportunity);
+function array<T>(value: unknown, parse: (item: unknown) => T, path: string): T[] {
+  if (!Array.isArray(value)) throw new ContractError(path, 'expected array');
+  return value.map(parse);
 }
-export function decodeCareerEvaluation(value: unknown) { return parseCareerEvaluation(value); }
+function obj(value: unknown, path: string): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new ContractError(path, 'expected object');
+  return value as Record<string, unknown>;
+}
+function exact(row: Record<string, unknown>, fields: readonly string[], path: string): void {
+  for (const key of Object.keys(row)) if (!fields.includes(key)) throw new ContractError(`${path}.${key}`, 'unknown field');
+}
+function revision(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new ContractError(path, 'expected positive safe revision');
+  return value;
+}
+export function decodeCareerProfile(value: unknown, requestId?: string, requireReceipt = false): CareerProfile {
+  return decodeCareerEnvelope(value, parseCareerProfile, requestId, requireReceipt).data;
+}
+export function decodeCareerOpportunityList(value: unknown): CareerOpportunity[] { return array(value, parseCareerOpportunity, 'opportunities'); }
+export function decodeCareerEvaluation(value: unknown): CareerEvaluation { return parseCareerEvaluation(value); }
+export function decodeCareerApplication(value: unknown): CareerApplication { return parseCareerApplication(value); }
 export function decodeCareerMaterialVersion(value: unknown): CareerMaterialVersion { return parseCareerMaterialVersion(value); }
-export function decodeCareerApplication(value: unknown): CareerApplication {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ContractError('application', 'expected object');
-  const row = value as Record<string, unknown>;
-  if (Object.keys(row).some(key => ['tenantId', 'tenant_id', 'ownerId', 'owner_id', 'actorId'].includes(key))) throw new ContractError('application', 'tenant/owner/actor are not client authority');
-  if (!['preparing', 'ready_to_submit', 'submitted', 'assessment', 'interview', 'offer', 'closed'].includes(String(row.stage))) throw new ContractError('application.stage', 'unknown stage');
-  if (!Number.isSafeInteger(row.revision) || Number(row.revision) < 1) throw new ContractError('application.revision', 'invalid revision');
-  const ref = row.opportunitySnapshot as Record<string, unknown> | undefined;
-  if (!ref || typeof ref !== 'object' || typeof ref.opportunityId !== 'string' || !Number.isSafeInteger(ref.revision) || typeof ref.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(ref.digest)) throw new ContractError('application.opportunitySnapshot', 'invalid immutable snapshot reference');
-  if (Object.keys(row).some(key => !['id', 'revision', 'opportunitySnapshot', 'stage'].includes(key))) throw new ContractError('application', 'unknown field');
-  return row as unknown as CareerApplication;
+export function decodeCareerSearchReceipt(value: unknown, requestId: string): CareerSearchReceipt {
+  const receipt = parseCareerSearchReceipt(value);
+  if (receipt.requestId !== requestId) throw new ContractError('searchReceipt.requestId', 'request ID mismatch');
+  return receipt;
+}
+export function decodeCareerSubmission(value: unknown): CareerSubmission { return parseCareerSubmission(value); }
+export function decodeCareerTimeline(value: unknown): CareerTimelineEvent[] { return array(value, parseCareerTimelineEvent, 'timeline'); }
+export function decodeCareerReminders(value: unknown): CareerReminder[] { return array(value, parseCareerReminder, 'reminders'); }
+export function decodeCareerExportReceipt(value: unknown, requestId: string): CareerExportReceipt {
+  const receipt = parseCareerExportReceipt(value);
+  if (receipt.requestId !== requestId) throw new ContractError('exportReceipt.requestId', 'request ID mismatch');
+  return receipt;
+}
+export function decodeCareerDeleteReceipt(value: unknown, requestId: string): CareerDeleteReceipt {
+  const receipt = parseCareerDeleteReceipt(value);
+  if (receipt.requestId !== requestId) throw new ContractError('deleteReceipt.requestId', 'request ID mismatch');
+  return receipt;
+}
+export function decodeCareerWorkspace(value: unknown): CareerWorkspace {
+  const row = obj(value, 'workspace'); exact(row, ['profile', 'opportunities', 'applications'], 'workspace');
+  return {
+    ...(row.profile === undefined ? {} : { profile: parseCareerProfile(row.profile) }),
+    opportunities: array(row.opportunities, parseCareerOpportunity, 'workspace.opportunities'),
+    applications: array(row.applications, parseCareerApplication, 'workspace.applications'),
+  };
+}
+export function decodeCareerEnvelopeValue<T>(value: unknown, parseValue: (v: unknown) => T): CareerEnvelope<T> {
+  const row = obj(value, 'careerEnvelope'); exact(row, ['revision', 'value'], 'careerEnvelope');
+  return { revision: revision(row.revision, 'careerEnvelope.revision'), value: parseValue(row.value) };
+}
+export function decodeCareerReceipt(value: unknown, requestId: string): CareerReceipt<CareerWorkspace> {
+  const row = obj(value, 'careerReceipt');
+  if (row.requestId !== requestId) throw new ContractError('careerReceipt.requestId', 'request ID mismatch');
+  if (row.kind === 'unknown' || row.kind === 'forbidden') {
+    exact(row, ['kind', 'requestId'], 'careerReceipt');
+    return { kind: row.kind, requestId };
+  }
+  if (row.kind === 'applied' || row.kind === 'conflict') {
+    exact(row, ['kind', 'requestId', 'envelope'], 'careerReceipt');
+    return { kind: row.kind, requestId, envelope: decodeCareerEnvelopeValue(row.envelope, decodeCareerWorkspace) };
+  }
+  throw new ContractError('careerReceipt.kind', 'unknown receipt kind');
 }

@@ -1,12 +1,5 @@
-export class ContractError extends Error {
-  readonly path: string;
-
-  constructor(path: string, message: string) {
-    super(`${path}: ${message}`);
-    this.name = 'ContractError';
-    this.path = path;
-  }
-}
+import { ContractError } from './contract-error.ts';
+export { ContractError } from './contract-error.ts';
 
 export interface ApiErrorPayload {
   code: string;
@@ -137,8 +130,8 @@ export type SteerDeleteResponse =
 
 export type { ChatResponseType, ChatStreamEvent } from './chat/events.ts';
 export { responseType } from './chat/events.ts';
-export type { CareerProfile, CareerProfileFact, CareerOpportunity, CareerJobSnapshot, CareerApplication, CareerJobSnapshotRef, CareerApplicationStage, CareerMaterialVersion, CareerEvaluation, CareerEligibility, CareerSearchRequest, CareerPrivacyExport, CareerDeleteReceipt } from './career/index.ts';
-export { parseCareerProfile, parseCareerOpportunity, parseCareerEvaluation, parseCareerMaterialVersion } from './career/index.ts';
+export type * from './career/index.ts';
+export { parseCareerProfile, parseCareerOpportunity, parseCareerSearchRequest, parseCareerSearchReceipt, parseCareerEvaluation, parseCareerApplication, parseCareerMaterialVersion, parseCareerSubmission, parseCareerTimelineEvent, parseCareerReminder, parseCareerExportReceipt, parseCareerDeleteReceipt, parseCareerEnvelope } from './career/index.ts';
 
 export type KnowledgeProcessingStatus =
   | 'pending'

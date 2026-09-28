@@ -1,31 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCareerDesk } from '../src/index.ts';
+import type { CareerCommand, CareerIntentStore, CareerRemote, CareerScope, CareerWorkspace } from '@weknora/contracts';
 
-test('Career Desk persists the same request ID before writes and reconciles unknown outcomes', async () => {
-  const intents: any[] = [];
-  let calls = 0;
-  const desk = createCareerDesk({
-    api: { act: async (intent: any) => { calls++; if (calls === 1) throw new Error('unknown'); return { requestId: intent.requestId, revision: 2, data: 'ok' }; }, list: async () => [] },
-    intentStore: { save: async (intent: any) => { if (!intents.some(item => item.requestId === intent.requestId)) intents.push(intent); }, loadPending: async () => intents, remove: async () => undefined },
-    initialScope: 'tenant-a',
-  });
-  await assert.rejects(desk.act({ type: 'confirmProfile', expectedRevision: 1 }));
-  const requestId = intents[0].requestId;
-  await desk.reconcilePending();
-  assert.equal(intents[1]?.requestId ?? intents[0].requestId, requestId);
-});
+const scope: CareerScope = { deploymentOrigin: 'https://desk.example', tenantId: 'tenant-1', actorId: 'actor-1' };
 
-test('Career Desk requires explicit conflict rebase and drops late replies after scope change', async () => {
-  let finish!: (value: any) => void;
-  const desk = createCareerDesk({
-    api: { act: () => new Promise(resolve => { finish = resolve; }), list: async () => [] },
-    intentStore: { save: async () => undefined, loadPending: async () => [], remove: async () => undefined },
-    initialScope: 'tenant-a',
-  });
-  const action = desk.act({ type: 'updateProfile', expectedRevision: 1 });
-  await new Promise(resolve => setImmediate(resolve));
-  await desk.changeScope('tenant-b');
-  finish({ requestId: 'r', revision: 2, data: 'private' });
-  await assert.rejects(action, /scope/i);
+test('unknown write recovery first looks up the same durable request ID', async () => {
+  const order: string[] = [];
+  let stored: any[] = [];
+  let requestCount = 0;
+  const remote: CareerRemote<CareerWorkspace, CareerCommand> = {
+    open: async () => ({ revision: 1, value: { opportunities: [], applications: [] } }),
+    list: async () => ({ revision: 1, value: [] }),
+    act: async (_scope, intent) => { order.push(`act:${intent.requestId}`); requestCount++; if (requestCount === 1) throw new Error('network outcome unknown'); return { kind: 'applied', requestId: intent.requestId, envelope: { revision: 2, value: { opportunities: [], applications: [] } } }; },
+    lookup: async (_scope, requestId) => { order.push(`lookup:${requestId}`); return { kind: 'unknown', requestId }; },
+    observe: () => () => undefined,
+  };
+  const store: CareerIntentStore<CareerCommand> = { save: async (_scope, intent) => { stored = [intent]; }, list: async () => stored, remove: async (_scope, id) => { stored = stored.filter(item => item.requestId !== id); } };
+  const desk = createCareerDesk({ remote, intentStore: store, initialScope: scope, createRequestId: () => 'request-1' });
+  await desk.open();
+  assert.equal((await desk.act({ type: 'updateProfile', expectedRevision: 1, payload: { facts: [] } })).kind, 'unknown');
+  assert.equal((await desk.reconcilePending())[0].kind, 'applied');
+  assert.deepEqual(order, ['act:request-1', 'lookup:request-1', 'act:request-1']);
+  assert.equal(stored.length, 0);
 });
