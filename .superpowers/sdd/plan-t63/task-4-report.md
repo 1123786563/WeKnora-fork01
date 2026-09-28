@@ -40,4 +40,5 @@
 
 ## Commit
 
-- Pending at report creation; implementation commit SHA will be added after commit.
+- Initial implementation commit: `750e2777148669c70ad4d0b8e85940ab13b5fbc4`.
+- This report is committed in a follow-up documentation commit; the final branch HEAD is recorded by the orchestrator.
