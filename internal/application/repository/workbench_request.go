@@ -113,6 +113,46 @@ func (r *WorkbenchRequestRepository) UpdatePending(ctx context.Context, request 
 	return nil
 }
 
+// RejectPendingWithoutRun atomically rejects a pending admission only if its
+// AgentRun has not committed. It takes the same session write lock as
+// AgentRunStore.Admit before checking the run table, so a concurrent admission
+// either wins and is preserved for replay or observes the rejected request's
+// retirement denial before it can create a Run.
+func (r *WorkbenchRequestRepository) RejectPendingWithoutRun(ctx context.Context, request WorkbenchRequest, reason string) (bool, error) {
+	if r == nil || r.db == nil || request.TenantID == 0 || request.ActorID == "" || request.SessionID == "" || request.RequestID == "" || request.RequestHash == "" {
+		return false, errors.New("invalid workbench request")
+	}
+	rejected := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		lock := tx.Table("sessions").
+			Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL", request.TenantID, request.SessionID, request.ActorID).
+			UpdateColumn("active_agent_run_id", gorm.Expr("active_agent_run_id"))
+		if lock.Error != nil {
+			return lock.Error
+		}
+		if lock.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		var existing agentRunRow
+		err := tx.Where("tenant_id = ? AND owner_id = ? AND request_id = ?", request.TenantID, request.ActorID, request.RequestID).Take(&existing).Error
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		result := tx.Model(&workbenchRequestRow{}).
+			Where("tenant_id = ? AND actor_id = ? AND request_id = ? AND request_hash = ? AND state = 'pending'", request.TenantID, request.ActorID, request.RequestID, request.RequestHash).
+			Updates(map[string]any{"state": "rejected", "reason": reason, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+		if result.Error != nil {
+			return result.Error
+		}
+		rejected = result.RowsAffected == 1
+		return nil
+	})
+	return rejected, err
+}
+
 // UpdateFromState performs the state transition used by the dispatch outbox.
 // A dispatching row is intentionally recoverable: if the process disappears
 // after the durable transition, the run worker can discover the queued run

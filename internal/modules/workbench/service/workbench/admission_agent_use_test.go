@@ -6,6 +6,7 @@ package workbench
 
 import (
 	"context"
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,6 +22,17 @@ type retirementRaceBudget struct {
 	entered        chan struct{}
 	continueEnsure chan struct{}
 	releases       atomic.Int32
+}
+
+type releaseTrackingBudget struct{ releases atomic.Int32 }
+
+func (*releaseTrackingBudget) Ensure(context.Context, uint64, string, string, int64, time.Time) (string, error) {
+	return "", nil
+}
+
+func (b *releaseTrackingBudget) ReleaseUnstarted(context.Context, string) error {
+	b.releases.Add(1)
+	return nil
 }
 
 func (b *retirementRaceBudget) Ensure(context.Context, uint64, string, string, int64, time.Time) (string, error) {
@@ -111,7 +123,8 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 	t.Run("pending retry after retirement", func(t *testing.T) {
 		db := openAdmissionConcurrencyDB(t)
 		seedAdmissionVariant(t, db, "retired")
-		coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), nil, nil)
+		budget := &releaseTrackingBudget{}
+		coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
 		adoptions := repository.NewAgentAdoptionRepository(db)
 		coordinator.SetAgentUseGate(func(ctx context.Context, tenant uint64, agentID string) error {
 			retired, gateErr := adoptions.RetiredVariantAgentExists(ctx, tenant, agentID)
@@ -126,12 +139,72 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 		ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
 		in := StartInput{SessionID: "s1", AgentID: "agent-retired", TargetID: "platform", RequestID: "retire-pending", Text: "hello", BudgetUpper: 1}
 		req := repository.WorkbenchRequest{TenantID: 1, ActorID: "u1", RequestID: in.RequestID, RequestHash: requestHash(in), SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, Text: in.Text, BudgetUpper: in.BudgetUpper}
-		require.NoError(t, repository.NewWorkbenchRequestRepository(db).CreatePending(ctx, req))
+		requests := repository.NewWorkbenchRequestRepository(db)
+		require.NoError(t, requests.CreatePending(ctx, req))
+		req.ReservationRef = "reservation/pending-retry"
+		req.RunID = "pending-retry-run"
+		require.NoError(t, requests.UpdatePending(ctx, req, "pending", req.ReservationRef, req.RunID, ""))
 		_, err := coordinator.Start(ctx, in)
 		require.ErrorIs(t, err, ErrAgentUseDenied)
-		stored, err := repository.NewWorkbenchRequestRepository(db).Get(ctx, 1, "u1", in.RequestID)
+		stored, err := requests.Get(ctx, 1, "u1", in.RequestID)
 		require.NoError(t, err)
-		require.Equal(t, "pending", stored.State, "the early fail-closed gate leaves existing pending intent for explicit recovery")
+		require.Equal(t, "rejected", stored.State)
+		require.Equal(t, req.ReservationRef, stored.ReservationRef)
+		require.EqualValues(t, 1, budget.releases.Load())
+
+		_, err = coordinator.Start(ctx, in)
+		require.ErrorIs(t, err, ErrRequestRejected, "subsequent retries observe a stable rejected intent")
+		require.EqualValues(t, 1, budget.releases.Load(), "a rejected intent must not release the reservation again")
+		var runs int64
+		require.NoError(t, db.Table("agent_runs").Where("request_id = ?", in.RequestID).Count(&runs).Error)
+		require.Zero(t, runs)
+		var slot *string
+		require.NoError(t, db.Table("sessions").Where("id = ?", in.SessionID).Select("active_agent_run_id").Scan(&slot).Error)
+		require.Nil(t, slot)
+	})
+
+	t.Run("pending intent with committed run preserves replay", func(t *testing.T) {
+		db := openAdmissionConcurrencyDB(t)
+		seedAdmissionVariant(t, db, "published")
+		budget := &releaseTrackingBudget{}
+		adoptions := repository.NewAgentAdoptionRepository(db)
+		coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
+		coordinator.SetAgentUseGate(func(ctx context.Context, tenant uint64, agentID string) error {
+			retired, gateErr := adoptions.RetiredVariantAgentExists(ctx, tenant, agentID)
+			if gateErr != nil {
+				return gateErr
+			}
+			if retired {
+				return ErrAgentUseDenied
+			}
+			return nil
+		})
+		ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+		in := StartInput{SessionID: "s1", AgentID: "agent-retired", TargetID: "platform", RequestID: "retire-pending-committed", Text: "hello", BudgetUpper: 1}
+		request := repository.WorkbenchRequest{TenantID: 1, ActorID: "u1", RequestID: in.RequestID, RequestHash: requestHash(in), SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, Text: in.Text, BudgetUpper: in.BudgetUpper}
+		requests := repository.NewWorkbenchRequestRepository(db)
+		require.NoError(t, requests.CreatePending(ctx, request))
+		request.RunID = "committed-pending-run"
+		request.ReservationRef = "reservation/committed-pending"
+		require.NoError(t, requests.UpdatePending(ctx, request, "pending", request.ReservationRef, request.RunID, ""))
+		committed, err := repository.NewAgentRunStore(db).Admit(ctx, agentruntime.Admission{
+			Key: agentruntime.RunKey{TenantID: 1, RunID: request.RunID}, SessionID: in.SessionID, AgentID: in.AgentID,
+			UserID: "u1", RequestID: in.RequestID, AssistantMessageID: "committed-pending-assistant", Driver: "platform",
+			TargetID: "platform", BudgetRef: request.ReservationRef, RequestHash: request.RequestHash,
+			Snapshot: json.RawMessage(`{"agent_id":"agent-retired"}`), UserMessage: json.RawMessage(`{"role":"user","content":"hello"}`),
+			AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`), Deadline: time.Now().Add(time.Hour),
+		})
+		require.NoError(t, err)
+		_, err = adoptions.UpdateVariantState(ctx, 1, "retired-variant", []string{"published"}, "retired", nil)
+		require.NoError(t, err)
+
+		replayed, err := coordinator.Start(ctx, in)
+		require.NoError(t, err)
+		require.Equal(t, committed.Key, replayed.Key)
+		require.EqualValues(t, 0, budget.releases.Load(), "a committed run retains its reservation")
+		stored, err := requests.Get(ctx, 1, "u1", in.RequestID)
+		require.NoError(t, err)
+		require.Equal(t, "admitted", stored.State)
 	})
 }
 

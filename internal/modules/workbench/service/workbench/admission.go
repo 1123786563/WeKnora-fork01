@@ -334,7 +334,7 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 			return a.resumeExisting(ctx, existing, in)
 		}
 		if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-			return agentruntime.Run{}, err
+			return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}
@@ -342,7 +342,7 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		return agentruntime.Run{}, lookupErr
 	}
 	if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-		return agentruntime.Run{}, err
+		return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
 	}
 	if err := a.requests.CreatePending(ctx, req); err != nil {
 		existing, getErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
@@ -359,7 +359,7 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 			return a.resumeExisting(ctx, existing, in)
 		}
 		if gateErr := a.checkAgentUse(ctx, tenant, in.AgentID); gateErr != nil {
-			return agentruntime.Run{}, gateErr
+			return a.settleDeniedPending(ctx, tenant, actor, in, hash, gateErr)
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}
@@ -371,6 +371,49 @@ func (a *AdmissionCoordinator) checkAgentUse(ctx context.Context, tenant uint64,
 		return nil
 	}
 	return a.agentUseGate(ctx, tenant, agentID)
+}
+
+// settleDeniedPending handles a gate refusal after a request may have become
+// durable concurrently with the initial lookup. Committed Runs replay; an
+// unadmitted pending intent is rejected and its stored reservation is released
+// only by the caller that wins the pending-to-rejected transition.
+func (a *AdmissionCoordinator) settleDeniedPending(ctx context.Context, tenant uint64, actor string, in StartInput, hash string, denial error) (agentruntime.Run, error) {
+	req, err := a.requests.Get(ctx, tenant, actor, in.RequestID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return agentruntime.Run{}, denial
+	}
+	if err != nil {
+		return agentruntime.Run{}, fmt.Errorf("%w: unable to reconcile pending request: %v", denial, err)
+	}
+	if req.RequestHash != hash {
+		return agentruntime.Run{}, agentruntime.ErrConflict
+	}
+	if req.State != "pending" {
+		return a.resumeExisting(ctx, req, in)
+	}
+	transitioned, err := a.requests.RejectPendingWithoutRun(ctx, req, denial.Error())
+	if err != nil {
+		return agentruntime.Run{}, fmt.Errorf("%w: unable to reject pending request: %v", denial, err)
+	}
+	if transitioned {
+		if req.ReservationRef != "" {
+			if err := a.budget.ReleaseUnstarted(ctx, req.ReservationRef); err != nil {
+				return agentruntime.Run{}, fmt.Errorf("%w: unable to release unstarted reservation: %v", denial, err)
+			}
+		}
+		return agentruntime.Run{}, denial
+	}
+	// A competing admission may have committed a Run while this retry waited
+	// for the session lock. Re-read its intent: resume the winner, or observe a
+	// terminal rejection without releasing the reservation twice.
+	current, err := a.requests.Get(ctx, tenant, actor, in.RequestID)
+	if err != nil {
+		return agentruntime.Run{}, fmt.Errorf("%w: unable to reload pending request: %v", denial, err)
+	}
+	if current.RequestHash != hash {
+		return agentruntime.Run{}, agentruntime.ErrConflict
+	}
+	return a.resumeExisting(ctx, current, in)
 }
 
 func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repository.WorkbenchRequest, in StartInput) (agentruntime.Run, error) {
