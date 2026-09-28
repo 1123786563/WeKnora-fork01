@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DeliveryRecoveryError } from '@weknora/mobile-core';
+import { DeliveryRecoveryError, type DeliveryReceiptView } from '@weknora/mobile-core';
 import { applyDeliveryRecoveryEvidence, deliveryIntegrationConfig, runDeliveryRecoveryEvidence, type DeliveryIntegrationEvidence } from './delivery-integration-smoke.ts';
 
 test('config is skipped without env and rejected on private hosts', () => {
@@ -52,7 +52,12 @@ test('recovery skips delivered records and recovers a later pushed or unknown re
         },
         async recover(input) {
           calls.push(input);
-          return { state: 'delivered' };
+          return makeReceipt(input.runId, input.deliveryId, 'delivered', {
+            commitSha: `recovered-${state}`,
+            prUrl: `https://example.com/recovered-${state}`,
+            approver: `recovered-${state}-owner`,
+            remoteLogin: `recovered-${state}-user`,
+          });
         },
       });
 
@@ -64,14 +69,18 @@ test('recovery skips delivered records and recovers a later pushed or unknown re
       assert.deepEqual(result.firstDelivery, { runId: 'run-delivered', delivery: { id: 'delivery-done', state: 'delivered', commitSha: 'commit-done', prUrl: 'https://example.com/done', approver: 'done-owner', remoteLogin: 'done-user' } });
       assert.equal(result.evidenceDelivery?.runId, `run-${state}`);
       assert.equal(result.evidenceDelivery?.delivery.commitSha, `commit-${state}`);
+      assert.equal(result.recoveryReceipt?.deliveryId, `delivery-${state}`);
+      assert.equal(result.recoveryReceipt?.runId, `run-${state}`);
 
       const finalEvidence = applyDeliveryRecoveryEvidence(emptyEvidence(), result);
-      assert.equal(finalEvidence.deliveryState, state);
-      assert.equal(finalEvidence.commitSha, `commit-${state}`);
-      assert.equal(finalEvidence.prUrl, `https://example.com/${state}`);
-      assert.equal(finalEvidence.approver, `${state}-owner`);
-      assert.equal(finalEvidence.remoteLogin, `${state}-user`);
+      assert.equal(finalEvidence.deliveryState, 'delivered');
+      assert.equal(finalEvidence.commitSha, `recovered-${state}`);
+      assert.equal(finalEvidence.prUrl, `https://example.com/recovered-${state}`);
+      assert.equal(finalEvidence.approver, `recovered-${state}-owner`);
+      assert.equal(finalEvidence.remoteLogin, `recovered-${state}-user`);
       assert.equal(finalEvidence.recoveryRunId, `run-${state}`);
+      assert.equal(finalEvidence.deliveryRunId, `run-${state}`);
+      assert.equal(finalEvidence.deliveryId, `delivery-${state}`);
     });
   }
 });
@@ -87,7 +96,7 @@ test('all ineligible records are not-needed and never call recovery', async () =
     },
     async recover() {
       recoveryCalls += 1;
-      return { state: 'delivered' };
+      return makeReceipt('unused-run', 'unused-delivery', 'delivered');
     },
   });
 
@@ -171,11 +180,46 @@ test('a read failure after a state conflict reports its run without stale recove
 
   const finalEvidence = applyDeliveryRecoveryEvidence(emptyEvidence(), result);
   assert.equal(finalEvidence.deliveryState, 'pushed');
+  assert.equal(finalEvidence.deliveryRunId, 'run-conflict');
+  assert.equal(finalEvidence.deliveryId, 'delivery-conflict');
+  assert.equal(finalEvidence.deliveryRunId, 'run-conflict');
+  assert.equal(finalEvidence.deliveryId, 'delivery-conflict');
   assert.equal(finalEvidence.commitSha, 'commit-conflict');
   assert.equal(finalEvidence.recoveryRunId, undefined);
   assert.equal(finalEvidence.recoveryDeliveryId, undefined);
   assert.equal(finalEvidence.failureRunId, 'run-read-failed');
   assert.equal(finalEvidence.failure, 'delivery read unavailable');
+});
+
+test('a recovery result with different identity is failed and is not emitted as a receipt', async () => {
+  const result = await runDeliveryRecoveryEvidence({
+    runIds: ['run-attempted'],
+    async readDelivery() {
+      return { id: 'delivery-attempted', state: 'pushed', runId: 'run-attempted' };
+    },
+    async recover() {
+      return {
+        deliveryId: 'delivery-other',
+        runId: 'run-other',
+        taskId: 'task-1',
+        state: 'delivered',
+        repo: 'org/repo',
+        branch: 'agent/task',
+        baselineSha: 'baseline',
+        attention: false,
+        updatedAt: '2026-09-28T00:00:00.000Z',
+      };
+    },
+  });
+
+  assert.equal(result.recovery, 'failed');
+  assert.equal(result.recoveryReceipt, undefined);
+  assert.equal(result.recoveryRunId, 'run-attempted');
+  assert.equal(result.recoveryDeliveryId, 'delivery-attempted');
+  assert.match(result.failure ?? '', /receipt identity did not match/);
+  const finalEvidence = applyDeliveryRecoveryEvidence(emptyEvidence(), result);
+  assert.equal(finalEvidence.deliveryId, 'delivery-attempted');
+  assert.equal(finalEvidence.deliveryRunId, 'run-attempted');
 });
 
 function emptyEvidence(): DeliveryIntegrationEvidence {
@@ -186,5 +230,25 @@ function emptyEvidence(): DeliveryIntegrationEvidence {
     deliveryRead: 'failed',
     recovery: 'skipped',
     commandTimestamp: '2026-09-28T00:00:00.000Z',
+  };
+}
+
+function makeReceipt(
+  runId: string,
+  deliveryId: string,
+  state: DeliveryReceiptView['state'],
+  extra: Partial<DeliveryReceiptView> = {},
+): DeliveryReceiptView {
+  return {
+    deliveryId,
+    runId,
+    taskId: 'task-1',
+    state,
+    repo: 'org/repo',
+    branch: 'agent/task',
+    baselineSha: 'baseline',
+    attention: false,
+    updatedAt: '2026-09-28T00:00:00.000Z',
+    ...extra,
   };
 }

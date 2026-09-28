@@ -4,7 +4,7 @@ import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createDeliveryRecovery, DeliveryRecoveryError, createInMemoryCredentialStore, createMobileRuntime, createTaskOffice } from '@weknora/mobile-core';
+import { createDeliveryRecovery, DeliveryRecoveryError, createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type DeliveryReceiptView } from '@weknora/mobile-core';
 import { disallowedDeploymentHost } from './runtime-integration-smoke.ts';
 
 export type DeliveryIntegrationConfig =
@@ -22,6 +22,8 @@ export interface DeliveryIntegrationEvidence {
   recoveryRunId?: string;
   recoveryDeliveryId?: string;
   failureRunId?: string;
+  deliveryRunId?: string;
+  deliveryId?: string;
   commitSha?: string;
   prUrl?: string;
   approver?: string;
@@ -47,6 +49,7 @@ export interface DeliveryRecoveryEvidenceResult<T extends RecoveryCandidate> {
   failureRunId?: string;
   firstDelivery?: { runId: string; delivery: T };
   evidenceDelivery?: { runId: string; delivery: T };
+  recoveryReceipt?: DeliveryReceiptView;
   failure?: string;
 }
 
@@ -54,7 +57,7 @@ export interface DeliveryRecoveryEvidenceResult<T extends RecoveryCandidate> {
 export async function runDeliveryRecoveryEvidence<T extends RecoveryCandidate>(ports: {
   runIds: string[];
   readDelivery(runId: string): Promise<T | null>;
-  recover(input: { runId: string; deliveryId: string }): Promise<{ state: string }>;
+  recover(input: { runId: string; deliveryId: string }): Promise<DeliveryReceiptView>;
 }): Promise<DeliveryRecoveryEvidenceResult<T>> {
   const result: DeliveryRecoveryEvidenceResult<T> = { recovery: 'not-needed' };
   let lastReadState: string | undefined;
@@ -86,8 +89,15 @@ export async function runDeliveryRecoveryEvidence<T extends RecoveryCandidate>(p
     attemptedState = delivery.state;
     try {
       const recovered = await ports.recover({ runId, deliveryId: delivery.id });
+      if (recovered.runId !== runId || recovered.deliveryId !== delivery.id) {
+        result.recovery = 'failed';
+        result.recoveryState = delivery.state;
+        result.failure = 'recovery receipt identity did not match the attempted run and delivery';
+        return result;
+      }
       result.recovery = 'recovered';
       result.recoveryState = recovered.state;
+      result.recoveryReceipt = recovered;
       return result;
     } catch (error) {
       if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
@@ -110,14 +120,17 @@ export function applyDeliveryRecoveryEvidence<T extends RecoveryCandidate>(
   result: DeliveryRecoveryEvidenceResult<T>,
 ): DeliveryIntegrationEvidence {
   const next = { ...evidence };
-  const receipt = result.evidenceDelivery ?? result.firstDelivery;
-  if (receipt !== undefined) {
+  const source = result.evidenceDelivery ?? result.firstDelivery;
+  const delivery = result.recoveryReceipt ?? source?.delivery;
+  if (delivery !== undefined) {
     next.deliveryRead = 'read';
-    next.deliveryState = receipt.delivery.state;
-    next.commitSha = receipt.delivery.commitSha;
-    next.prUrl = receipt.delivery.prUrl;
-    next.approver = receipt.delivery.approver;
-    next.remoteLogin = receipt.delivery.remoteLogin;
+    next.deliveryState = delivery.state;
+    next.commitSha = delivery.commitSha;
+    next.prUrl = delivery.prUrl;
+    next.approver = delivery.approver;
+    next.remoteLogin = delivery.remoteLogin;
+    next.deliveryRunId = result.recoveryReceipt?.runId ?? source?.runId;
+    next.deliveryId = result.recoveryReceipt?.deliveryId ?? source?.delivery.id;
   } else {
     next.deliveryRead = result.failure ? 'failed' : 'absent';
   }
