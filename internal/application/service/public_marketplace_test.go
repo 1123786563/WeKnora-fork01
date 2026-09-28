@@ -36,6 +36,7 @@ func differentDigest(digest string) string {
 // test seeding (including the agent_versions row CreateSubmission verifies).
 func seedTenantRelease(t *testing.T, db *gorm.DB) (listingID, releaseID, digest string) {
 	t.Helper()
+	require.NoError(t, db.Exec(`INSERT OR IGNORE INTO tenants (id, name, business) VALUES (1, 'publisher', 'test')`).Error)
 	require.NoError(t, db.Exec(
 		`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES ('version-a', 1, 'agent-a', 1, '{}', 'sha', 'publisher-admin')`,
 	).Error)
@@ -232,4 +233,32 @@ func TestPublicMarketplaceServiceGetListingMatchesCatalogVisibility(t *testing.T
 	detail, err = svc.GetPublicListing(ctx, "no-such-listing")
 	require.Nil(t, detail)
 	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+}
+
+func TestPublicMarketplaceServiceCustodyHidesRevokedPublisher(t *testing.T) {
+	svc, db := newPublicMarketplaceServiceForTest(t)
+	listingID, _, _ := seedTenantRelease(t, db)
+	ctx := context.Background()
+	_, _, err := svc.VerifyPublisher(ctx, "sysadmin", 1, "")
+	require.NoError(t, err)
+	submission, err := svc.SubmitPublicRelease(ctx, 1, "publisher-admin", listingID, "")
+	require.NoError(t, err)
+	result, err := svc.ReviewPublicSubmission(ctx, "platform-reviewer", submission.ID, submission.BundleDigest, types.AgentReleaseReviewDecision{Decision: "approved"})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
+	introduced, _, err := svc.AdoptPublicListing(ctx, 2, "adopter-admin", result.Release.ListingID, "")
+	require.NoError(t, err)
+	require.NoError(t, svc.RevokePublisher(ctx, "sysadmin", 1))
+	catalog, err := svc.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Empty(t, catalog)
+	detail, err := svc.GetPublicListing(ctx, result.Release.ListingID)
+	require.Nil(t, detail)
+	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+	_, _, err = svc.AdoptPublicListing(ctx, 2, "adopter-admin", result.Release.ListingID, result.Release.ID)
+	require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	var preserved types.TenantIntroducedReleaseEntity
+	require.NoError(t, db.First(&preserved, "tenant_id = ? AND public_release_id = ?", 2, result.Release.ID).Error)
+	require.Equal(t, introduced.Introduction.ID, preserved.ID)
+	require.Equal(t, result.Release.Bundle, preserved.Bundle)
 }

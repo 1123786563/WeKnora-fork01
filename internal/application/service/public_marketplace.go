@@ -270,7 +270,11 @@ func (s *PublicMarketplaceService) GetPublicListing(ctx context.Context, listing
 	// 首个 submission 落库到平台批准之间 current_release_id 为 NULL，listing
 	// 行虽已存在，detail 不得提前暴露 display_name/summary/publisher_tenant_id。
 	// repo 层不加此过滤——ReviewPublicSubmission 首个批准时必须读到 NULL 指针行。
-	if listing.State != PublicListingStateListed || listing.CurrentReleaseID == nil {
+	discoverable, err := s.repo.IsPublicListingDiscoverable(ctx, listing.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !discoverable || listing.State != PublicListingStateListed || listing.CurrentReleaseID == nil {
 		return nil, repository.ErrPublicMarketplaceNotFound
 	}
 	entry := interfaces.PublicCatalogEntryView{
@@ -308,6 +312,13 @@ func (s *PublicMarketplaceService) AdoptPublicListing(ctx context.Context, tenan
 		return interfaces.PublicAdoptionResult{}, false, err
 	}
 	if listing == nil || listing.State != PublicListingStateListed {
+		return interfaces.PublicAdoptionResult{}, false, ErrPublicMarketplaceNotFound
+	}
+	discoverable, err := s.repo.IsPublicListingDiscoverable(ctx, listing.ID)
+	if err != nil {
+		return interfaces.PublicAdoptionResult{}, false, err
+	}
+	if !discoverable {
 		return interfaces.PublicAdoptionResult{}, false, ErrPublicMarketplaceNotFound
 	}
 	resolvedReleaseID := releaseID

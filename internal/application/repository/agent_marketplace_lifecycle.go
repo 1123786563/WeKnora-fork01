@@ -113,25 +113,31 @@ func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context,
 		values["unlisted_at"] = now
 	}
 	values["updated_at"] = now
-	updated := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).
-		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, expectedFrom).
-		Updates(values)
-	if updated.Error != nil {
-		return nil, updated.Error
-	}
-	if updated.RowsAffected != 1 {
-		var current types.AgentMarketplaceListingEntity
-		err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAgentMarketplaceNotFound
-		}
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: state is %q, expected %q", ErrAgentMarketplaceListingTransition, current.State, expectedFrom)
-	}
 	var result types.AgentMarketplaceListingEntity
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&result).Error; err != nil {
+	err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+		updated := tx.Model(&types.AgentMarketplaceListingEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, expectedFrom).
+			Updates(values)
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			var current types.AgentMarketplaceListingEntity
+			err := tx.Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&current).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentMarketplaceNotFound
+			}
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: state is %q, expected %q", ErrAgentMarketplaceListingTransition, current.State, expectedFrom)
+		}
+		return tx.Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&result).Error
+	})
+	if errors.Is(err, ErrTenantNotFound) {
+		return nil, ErrAgentMarketplaceNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &result, nil
