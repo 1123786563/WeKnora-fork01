@@ -356,6 +356,75 @@ test('a late submission read cannot restore private timeline after exports becom
  assert.equal(container.querySelector('[aria-label="确认投递表单"]'), null, 'late private data cannot reopen the pane')
 })
 
+test('refresh restarts a pending profile revision read so confirmation can recover', async () => {
+ let resolveFirst!: (value: { revision: number }) => void
+ let resolveSecond!: (value: { revision: number }) => void
+ let openCalls = 0
+ const firstOpen = new Promise<{ revision: number }>((resolve) => { resolveFirst = resolve })
+ const secondOpen = new Promise<{ revision: number }>((resolve) => { resolveSecond = resolve })
+ const sent: unknown[] = []
+ const career: CareerStub = {
+  open: () => ++openCalls === 1 ? firstOpen : secondOpen,
+  applicationSubmissions: async () => ({ submissions: [] }),
+  materialExports: async () => ({ materialId: 'mat-1', exports: [exportReceipt()] }),
+  recordSubmission: async (input: unknown) => { sent.push(input); return record() },
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'mat-1' }))
+ await act(async () => { await settle(); await settle() })
+ assert.equal(openCalls, 1)
+ assert.match(container.textContent ?? '', /正在读取当前档案修订/)
+
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle(); await settle() })
+ assert.equal(openCalls, 2, 'refresh starts a new revision read')
+ resolveFirst({ revision: 3 })
+ await act(async () => { await settle() })
+ assert.match(container.textContent ?? '', /正在读取当前档案修订/, 'the superseded read cannot settle the refreshed loading state')
+
+ resolveSecond({ revision: 4 })
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.textContent ?? '', /当前档案修订 4/)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); choose(container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!, 'exp-1'); await settle() })
+ assert.equal((byLabel(container, 'button', '确认投递') as HTMLButtonElement).disabled, false)
+ await act(async () => { click(byLabel(container, 'button', '确认投递')); await settle(); await settle() })
+ assert.equal(sent.length, 1)
+ assert.equal((sent[0] as { expectedRevision: number }).expectedRevision, 4)
+})
+
+test('a late version review cannot restore private material state after forbidden exports', async () => {
+ let resolveVersion!: (value: MaterialVersionView) => void
+ let exportReads = 0
+ const pendingVersion = new Promise<MaterialVersionView>((resolve) => { resolveVersion = resolve })
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: async () => ({ submissions: [record()] }),
+  materialExports: async () => {
+   exportReads += 1
+   if (exportReads === 2) throw Object.assign(new Error('forbidden'), { code: 'forbidden' })
+   return { materialId: 'mat-1', exports: [exportReceipt()] }
+  },
+  materialVersion: () => pendingVersion,
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'mat-1' }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="回看版本 V3"]')!); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null)
+
+ resolveVersion(versionView())
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null, 'late material content stays cleared')
+
+ await act(async () => { root!.render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-2', materialId: 'mat-1' })) })
+ await act(async () => { await settle(); await settle() })
+ assert.ok(container.querySelector('[aria-label="投递记录时间线"]'), 'the reused pane has loaded the next application')
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null, 'a cleared private version does not reappear when the pane is reused')
+ assert.doesNotMatch(container.textContent ?? '', /某大学|版本回看暂时无法读取/)
+})
+
 test('a refresh that removes the selected export clears the choice and blocks submission', async () => {
  let exportReads = 0
  const submissions: unknown[] = []

@@ -131,7 +131,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
    setRevision(undefined); setRevisionState('error')
   }
  }, [client, scopeController])
- useEffect(() => { void readRevision() }, [readRevision])
+ useEffect(() => { void readRevision() }, [readRevision, reload])
 
  useEffect(() => {
   let active = true
@@ -242,14 +242,15 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  }
  const reviewVersion = useCallback(async (binding: NonNullable<SubmissionReceipt['boundVersion']>): Promise<void> => {
   const requestScope = scopeController.current()
+  const readGeneration = privateReadGeneration.current
   setVersionDetail(undefined); setVersionMessage('')
   try {
    const next = await client.career.materialVersion(binding.materialId, binding.version, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    if (next.version !== binding.version) throw new ReceiptMismatchError('版本回看与投递绑定的版本不匹配')
    setVersionDetail(next)
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除投递确认内容。'); return }
    setVersionMessage(parsed.code === 'not_found' ? '绑定的材料版本不存在（可能不属于当前空间）。' : `版本回看暂时无法读取：${parsed.message}`)
