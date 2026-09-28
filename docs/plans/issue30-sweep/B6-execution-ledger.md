@@ -93,3 +93,9 @@ graph LR
 2. **Ruling:** serialize #63/#64 tasks that touch shared Marketplace types, migration tracks, service guard seams, route/container wiring and admission seams; parallelize #55 with isolated ownership and parallelize disjoint #63/#64 tasks only after stable reviewed interfaces. Cost if wrong: serialization costs time; premature parallel edits can produce incompatible lifecycle/security checks or duplicate migrations.
 3. **Ruling:** move #64 migration IDs to sqlite 000125/versioned 000204; #63 keeps 000124/000203. Cost if wrong: migration IDs can be renumbered before merge; persisted environments must never see duplicate versions.
 4. **Ruling:** treat #51 TOCTOU as verified repaired by `1c6779c7c` and the recorded mutation test, while preserving separate historical review/OCR caveats. Cost if wrong: #71 could accept a broken Action Plan exclusion invariant; its dedicated proof and final B6 review must recheck the behavior.
+
+### T55 Task6 review-fix round 2
+
+- Round 1 checkpoint `da2ce4911ae90c9af1686b1ee6736e88ee377ad5` fixed A→B route leakage, actual rendered-button behavior evidence, and bounded terminal scan scope; independent review then identified a remaining MEDIUM: A→B→A re-entry reuses the same taskId/runId, allowing an earlier A async completion to mutate the later A visit.
+- Narrow repair plan: `plans/plan-t55-task6-review-fix-round2.md`; SDD brief `.superpowers/sdd/plan-t55-task6-review-fix-round2/task-1-brief.md`.
+- Task6 remains unverified until this generation-fence repair is implemented, independently reviewed and validated. T55 Task8 remains blocked.
