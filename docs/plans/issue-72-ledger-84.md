@@ -146,3 +146,14 @@
 - 支付宝错币种不可造（渠道契约无币种字段）：以文档披露，不以微信证据替代。
 - 渠道验证为本地 RSA stub（用户裁决 R-4 已披露边界），非沙箱证据。
 - Task 6 无真实栈时 SKIP 记 blocked-env，权威侧断言由 Task 7 真栈轮补齐。
+
+## OCR attempt identity repair checkpoint — 2026-09-28
+
+A narrow post-audit SDD repair was completed in `codex/issue-72-lago-84` at BASE `c3279f232f6ea38ae5d59960a43f8864f0103fdf`, using plan `docs/plans/issue-72-plan-84-ocr-attempt-id-fix.md`. The repair preserves the first successful transaction ID on each payment attempt. A later distinct success remains one over-payment audit fact and cannot replace the idempotency identity used by delayed settlement.
+
+- TDD sequence: `txn_first → txn_second → txn_first replay → txn_second replay` verifies immutable winner, one fulfillment, and only `txn_second` in one over-payment audit. A separate unique transaction collision verifies attempt/order/outbox rollback.
+- PostgreSQL tagged race test uses a two-arrival pre-claim barrier and observes exactly one conditional claim update with `RowsAffected=1`, one with `RowsAffected=0`; it checks one immutable winner, one fulfillment and one loser audit.
+- Delayed settlement service test retries the paid outbox event twice and verifies both settlement commands use the first transaction and stable command key; one grant results.
+- Verification commands and outputs: see `.superpowers/sdd/issue-72-plan-84-ocr-attempt-id-fix/task-1-report.md`. Targeted repo regressions, full `repository/commercial` package, delayed-settlement test, tagged PostgreSQL race and `git diff --check` all passed. The PostgreSQL test ran against an isolated local PostgreSQL 17 container; it was stopped after the run.
+- Independent task review R1 `/tmp/issue72-84-attempt-identity-task-review-r1.md`: Spec PASS, Code Quality PASS with one low test-harness timeout/race-diagnostic finding. Fix round 1 addressed it; scoped R2 review `/tmp/issue72-84-attempt-identity-task-review-r2.md` confirms Q1 addressed and both Spec Compliance and Code Quality PASS. Frozen checkpoint hashes and full diff are under `.superpowers/sdd/issue-72-plan-84-ocr-attempt-id-fix/task-1-checkpoint-r1/` (diff SHA-256 `5dcaa14992976873a6fbbb6156e95f29960c1d3b43a241765a68df374fa7624b`).
+- This is a verified code checkpoint for the narrow transaction identity defect. It does not close Issue #84 as a whole: inherited issue-level OCR and acceptance disclosures remain separately tracked; no push or GitHub Issue mutation occurred.

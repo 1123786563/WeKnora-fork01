@@ -15,8 +15,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 )
 
 // ---- #82 Task 7: the purchase fulfiller orchestration (D2'/D4/D6'/D7) ----
@@ -123,6 +123,86 @@ func primeFakePurchaseWithFees(t *testing.T, fake *commercialplatform.FakeAdapte
 	fake.SetPurchaseInvoiceFees(ext, []domain.InvoiceLineSnapshot{{
 		Kind: "subscription_fee", Name: planCode + " Plan", AmountFen: amountFen,
 	}})
+}
+
+type recordingCommercialPlatform struct {
+	*commercialplatform.FakeAdapter
+	commands        []domain.Command
+	failFirstSettle bool
+}
+
+func (p *recordingCommercialPlatform) SubmitCommand(ctx context.Context, cmd domain.Command) (domain.CommandReceipt, error) {
+	p.commands = append(p.commands, cmd)
+	if cmd.Kind == domain.CommandKindSettlePurchasePayment && p.failFirstSettle {
+		p.failFirstSettle = false
+		return domain.CommandReceipt{}, domain.ErrPlatformUnreachable
+	}
+	return p.FakeAdapter.SubmitCommand(ctx, cmd)
+}
+
+func TestPurchaseFulfillmentUsesFirstSuccessfulTransactionAfterLaterOverpayment(t *testing.T) {
+	_, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(69)
+	const orderID = "ord-69"
+	const winner = "txn-ord-69"
+	seedPaidPurchase(t, store, db, tenant, orderID, "weknora-pro", "pub-pro-69", 9900)
+	second := domain.PaymentFact{
+		TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + orderID,
+		Provider: "alipay", Merchant: "weknora", Transaction: "txn-later-69",
+		Amount: domain.CNYFen(9900), Currency: domain.CurrencyCNY, State: "succeeded",
+	}
+	if err := store.ConfirmPayment(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-pro-69", 9900)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake, failFirstSettle: true}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := fulfillEvents(t, db)
+	if len(events) != 1 {
+		t.Fatalf("fulfill events=%d", len(events))
+	}
+	for pass := 0; pass < 2; pass++ {
+		if err := purchaser.Fulfill(context.Background(), events[0]); err != nil {
+			t.Fatalf("pass %d: %v", pass+1, err)
+		}
+		if pass == 0 {
+			if state := orderState(t, db, orderID); state != domain.OrderStatePaid {
+				t.Fatalf("first pass state=%s", state)
+			}
+			var ev repocommercial.OutboxEvent
+			if err := db.Where("event_key = ?", events[0].EventKey).First(&ev).Error; err != nil {
+				t.Fatal(err)
+			}
+			if ev.State != repocommercial.OutboxStatePending {
+				t.Fatalf("first pass event=%s", ev.State)
+			}
+		}
+	}
+	var settlements []domain.Command
+	for _, cmd := range platform.commands {
+		if cmd.Kind == domain.CommandKindSettlePurchasePayment {
+			settlements = append(settlements, cmd)
+		}
+	}
+	if len(settlements) != 2 {
+		t.Fatalf("settle commands=%d", len(settlements))
+	}
+	wantKey := domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), winner)
+	for _, cmd := range settlements {
+		payload, ok := cmd.Payload.(domain.SettlePurchasePaymentPayload)
+		if !ok || payload.ChannelTransaction != winner || cmd.Key != wantKey {
+			t.Fatalf("settle used later payment: %+v", cmd)
+		}
+	}
+	if state := orderState(t, db, orderID); state != domain.OrderStateFulfilled {
+		t.Fatalf("final state=%s", state)
+	}
+	if n := len(fake.Wallets()); n != 1 {
+		t.Fatalf("wallet grants=%d", n)
+	}
 }
 
 func TestPurchaseFulfillSettlesGrantsAndFulfills(t *testing.T) {
@@ -340,7 +420,7 @@ func TestPurchaseFulfillBudgetExceededTurnsAttention(t *testing.T) {
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "pub-pro-b1", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			PlanCode:                       "pub-pro-b1", AmountFen: 9900, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -444,7 +524,7 @@ func TestPaidAwaitingActivationSynthesized(t *testing.T) {
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "pub-pro-7", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			PlanCode:                       "pub-pro-7", AmountFen: 9900, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -484,7 +564,7 @@ func TestPurchaseFulfillBudgetTransientSnapshotErrorKeepsPending(t *testing.T) {
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "pub-pro-b31", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			PlanCode:                       "pub-pro-b31", AmountFen: 9900, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -521,7 +601,7 @@ func TestPurchaseFulfillDefinitiveSnapshotErrorLandsAttentionWithoutAborting(t *
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "pub-pro-b32", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			PlanCode:                       "pub-pro-b32", AmountFen: 9900, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -555,7 +635,7 @@ func TestPurchaseFulfillObservationTransientErrorKeepsPending(t *testing.T) {
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "pub-pro-b33", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			PlanCode:                       "pub-pro-b33", AmountFen: 9900, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)

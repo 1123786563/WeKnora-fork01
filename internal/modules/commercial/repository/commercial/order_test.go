@@ -199,6 +199,80 @@ func TestPaymentConfirmReplayAfterResponseLossKeepsSingleEvent(t *testing.T) {
 	}
 }
 
+func TestPaymentSecondSuccessfulTransactionOnSameAttemptPreservesOriginal(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	first := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	first.Transaction = "txn_first"
+	second := first
+	second.Transaction = "txn_second"
+	for _, fact := range []domain.PaymentFact{first, second, first, second} {
+		if err := s.ConfirmPayment(ctx, fact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attempt := getAttempt(t, db, "a1")
+	if attempt.ProviderTransactionID == nil || *attempt.ProviderTransactionID != first.Transaction {
+		t.Fatalf("winner changed: %+v", attempt)
+	}
+	order, err := s.GetOrder(ctx, "o1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.State != domain.OrderStatePaid || order.Version != 2 {
+		t.Fatalf("order: %+v", order)
+	}
+	if n := countOutbox(t, db, OutboxKindFulfill); n != 1 {
+		t.Fatalf("fulfill=%d", n)
+	}
+	if n := countOutbox(t, db, OutboxKindOverPaid); n != 1 {
+		t.Fatalf("overpaid=%d", n)
+	}
+	var audits []OutboxEvent
+	if err := db.Where("kind = ?", OutboxKindOverPaid).Find(&audits).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(audits) != 1 || !strings.Contains(audits[0].PayloadJSON, second.Transaction) || strings.Contains(audits[0].PayloadJSON, first.Transaction) {
+		t.Fatalf("wrong audit: %+v", audits)
+	}
+}
+
+func TestPaymentTransactionUniqueConflictDoesNotMutateAttemptOrOrder(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	mustCreateOrder(t, s, "o2", "q2")
+	first := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	second := mustRegisterAttempt(t, s, "a2", "o2", "wechat", "wxm", "m2")
+	first.Transaction = "txn_shared"
+	second.Transaction = first.Transaction
+	if err := s.ConfirmPayment(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ConfirmPayment(ctx, second); err == nil {
+		t.Fatal("expected unique transaction conflict")
+	}
+	attempt := getAttempt(t, db, "a2")
+	if attempt.State != PaymentAttemptStatePending || attempt.ProviderTransactionID != nil {
+		t.Fatalf("attempt mutated: %+v", attempt)
+	}
+	order, err := s.GetOrder(ctx, "o2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.State != domain.OrderStatePending || order.Version != 1 {
+		t.Fatalf("order mutated: %+v", order)
+	}
+	var n int64
+	if err := db.Model(&OutboxEvent{}).Where("event_key = ? OR event_key LIKE ?", OutboxKindFulfill+":o2", OutboxKindOverPaid+":o2:%").Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("order B events=%d", n)
+	}
+}
+
 func TestPaymentConcurrentChannelsYieldSingleFulfillmentPlusAudit(t *testing.T) {
 	s, db := testOrderStore(t)
 	mustCreateOrder(t, s, "o1", "q1")

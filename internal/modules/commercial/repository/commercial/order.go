@@ -734,18 +734,30 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			return err
 		}
 
-		// Save the payment fact; a replay of the same provider transaction is
-		// detected instead of being written a second time.
+		// The first successful collection claims the attempt's transaction
+		// identity. Later distinct collections are retained by the over-payment
+		// path below without replacing that identity.
 		sameTxn := attempt.State == PaymentAttemptStateSucceeded &&
 			attempt.ProviderTransactionID != nil && *attempt.ProviderTransactionID == fact.Transaction
 		if !sameTxn {
 			txn := fact.Transaction
-			if err := tx.Model(&PaymentAttemptRow{}).Where("id = ?", attempt.ID).
+			claim := tx.Model(&PaymentAttemptRow{}).
+				Where("id = ? AND state = ? AND provider_transaction_id IS NULL", attempt.ID, PaymentAttemptStatePending).
 				Updates(map[string]interface{}{
 					"state":                   PaymentAttemptStateSucceeded,
 					"provider_transaction_id": txn,
-				}).Error; err != nil {
-				return err
+				})
+			if claim.Error != nil {
+				return claim.Error
+			}
+			if claim.RowsAffected == 0 {
+				// A concurrent confirmation may have won since the initial read.
+				// Classify against the durable winner, never the stale snapshot.
+				if err := tx.Where("id = ?", attempt.ID).First(&attempt).Error; err != nil {
+					return err
+				}
+				sameTxn = attempt.State == PaymentAttemptStateSucceeded &&
+					attempt.ProviderTransactionID != nil && *attempt.ProviderTransactionID == fact.Transaction
 			}
 		}
 
