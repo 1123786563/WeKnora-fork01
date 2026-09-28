@@ -19,9 +19,9 @@ External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60
 
 | Task | Status | Worktree / branch | Base | Commit / checkpoint | Review | Validation |
 |---|---|---|---|---|---|---|
-| T1 Release Evaluation persistence | running | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | pending | pending | pending |
-| T2 Publisher Custody and atomic source/adoption gate | running | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | pending | pending | pending |
-| T3 privacy Adoption/Upgrade Metrics | ready | not created | 93706830b (existing source schema; no Task1 dependency) | pending | pending | pending |
+| T1 Release Evaluation persistence | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | 0dba37e17 | FAIL R1; fix plan active | focused validator PASS at 0dba37e17 |
+| T2 Publisher Custody and atomic source/adoption gate | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | 5688cfffd (R1 pending) | FAIL R1; fix plan active | focused validator PASS at 5688cfffd |
+| T3 privacy Adoption/Upgrade Metrics | ready | /Users/wuyongjun/.codex/worktrees/issue30-t65-metrics/WeKnora-fork01, detached at dispatch | 30a711f4e27c4ad1208dbfcdc03971ad62b30ce8 | pending | pending | baseline running |
 | T4 catalog, Evaluation endpoint and end-to-end HTTP proof | pending | not created | depends on verified/integrated T1–T3 | pending | pending | pending |
 
 ## Ownership and scheduling
@@ -35,6 +35,18 @@ External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60
 ## Known Spec gap / blocker
 
 Approved Spec §12 requires adopter-level error-category metrics. Research in evidence/t65-preflight/ found no immutable Run→local Version→Variant→Adoption→Release attribution, while raw Run/Task data and error text are content-bearing. The plan deliberately returns not_collected, not fabricated zero or inferred categories. T1–T4 may complete their bounded delivery, but #65 and #30 remain incomplete until a separately designed, reviewed provenance/event source exists or an approved Spec decision changes scope. This known limitation is not a verification pass.
+
+## Task2 review and rulings
+
+- Task2 source commit `5688cfffd70edb0d268c0d85445a4efa5bb4dac0` passed focused independent backend validation. Independent reviewer returned Spec and Quality FAIL: Medium T2-R1-2 (duplicated eligibility query) and Low T2-R1-3 (existing Adoption/provenance preservation assertions incomplete); both are accepted and routed to `plans/plan-t65-task2-review-fix-r1.md`.
+- **Ruling T2-R1-1:** the reviewer’s possible public Listing unlist race is not reachable through a supported writer in the current code. The only state transition API is tenant-scoped `AgentMarketplaceRepository.TransitionListingState`; public marketplace repository writes its Listing current Release pointer during approval, not its state. The only public state mutation found is a test-only direct DB seed in `service/public_marketplace_test.go`. Supported source Listing unlisting already acquires the publisher tenant guard, and deterministic validator tests passed. No new public unlisting API is added. Cost if wrong: any overlooked or future public Listing state writer that bypasses the publisher guard could race Introduction; the repair plan records the required guard for a future writer.
+- Scoped Task2 repair owns only `internal/application/repository/public_marketplace.go` and `public_marketplace_test.go`. It shares no paths with active T1/T3 streams.
+
+## Task1 review and repair
+
+- Task1 implementation includes commits `ee6b0634c` and enum-conformance correction `0dba37e17`. Independent backend validation passed focused repository and service validation tests, SQLite migration/down-up tests, and diff check at exact HEAD `0dba37e17940acc4c02c4e2f5eede48c7b1bfde1`.
+- Independent Spec/Quality review returned Changes Required: Medium T1-R1-1 (invalid-result test's nonexistent Release FK masks result validation), Medium T1-R1-2 (missing second-Release pointer-advance pinning scenario), Low T1-R1-3 (fresh migration test omits the new table’s column assertions). All findings are accepted in `plans/plan-t65-task1-review-fix-r1.md`; repair owns only repository tests and SQLite schema tests.
+- Reviewer raised an ⚠️ question whether immutable semantics require DB-level UPDATE/DELETE triggers. **Ruling T1-R1-4:** preserve immutability at the application contract, matching the existing immutable Public Release pattern: Evaluation repositories expose insert/list only, with no update/delete surface. The approved Spec requires immutable Evaluation meaning but does not prescribe privileged-SQL triggers. Cost if wrong: an out-of-band privileged database writer could mutate/delete stored evidence; preventing that would require dialect-specific trigger migrations beyond the current repository pattern.
 
 ## Integration record
 
