@@ -667,6 +667,49 @@ class EvidenceHelpersTest(unittest.TestCase):
             transcript = (out / "concurrent-output.txt").read_text()
             self.assertIn("event posts:", transcript)
 
+    def test_consume_failures_preserve_progressive_resource_codes(self):
+        cases = (
+            ("plan_create", {"metric_code": "weknora-86-metric-fixedtag"}),
+            ("subscription_create", {"metric_code": "weknora-86-metric-fixedtag",
+                                     "plan_code": "weknora-86-plan-fixedtag"}),
+            ("event_post", {"metric_code": "weknora-86-metric-fixedtag",
+                            "plan_code": "weknora-86-plan-fixedtag",
+                            "subscription_code": "weknora-86-sub-fixedtag"}),
+        )
+        for failed_stage, expected_codes in cases:
+            with self.subTest(failed_stage=failed_stage), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / "run"
+                responses = {
+                    "metric_create": (201, {"billable_metric": {"lago_id": "LOCALESS_METRIC_ID"}}),
+                    "plan_create": (201, {"plan": {"lago_id": "LOCALESS_PLAN_ID"}}),
+                    "subscription_create": (201, {"subscription": {"status": "active"}}),
+                    "event_post": (201, {}),
+                }
+                def fake_request(method, path, payload=None):
+                    stage = {"billable_metrics": "metric_create", "/plans": "plan_create",
+                             "/subscriptions": "subscription_create", "/events": "event_post"}
+                    current = next(name for suffix, name in stage.items() if path.endswith(suffix))
+                    if current == failed_stage:
+                        return 503, {"detail": "PROVIDER_BODY_SENTINEL", "key": "PROVIDER_SECRET_SENTINEL"}
+                    return responses[current]
+                with mock.patch.dict(os.environ, {"LAGO_API_KEY": "PROVIDER_SECRET_SENTINEL"}), \
+                     mock.patch.object(consume, "uuid") as uuid_mock, \
+                     mock.patch.object(consume, "request", side_effect=fake_request), \
+                     mock.patch.object(consume, "balance_snapshot", return_value={"wallet": 100}), \
+                     mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                    uuid_mock.uuid4.return_value.hex = "fixedtag00000000"
+                    uuid_mock.uuid4.return_value.__str__ = lambda self: "fixed-event-id"
+                    result = consume.main()
+                self.assertNotEqual(result, 0)
+                facts_text = (out / "consume-cny.json").read_text()
+                facts = json.loads(facts_text)
+                self.assertEqual(facts["verdict"], "FAIL")
+                self.assertEqual(facts["failed_stage"], failed_stage)
+                self.assertEqual(facts["resource_codes"], expected_codes)
+                for marker in ("LOCALESS_METRIC_ID", "LOCALESS_PLAN_ID",
+                               "PROVIDER_BODY_SENTINEL", "PROVIDER_SECRET_SENTINEL"):
+                    self.assertNotIn(marker, facts_text)
+
     def test_all_three_readers_follow_lago_page_metadata(self):
         pages = {
             1: {"wallets": [{"lago_id": "w1", "name": "w1", "status": "active", "balance_cents": 1}],
