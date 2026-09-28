@@ -70,6 +70,15 @@ graph LR
 - #63 Task 2 `a4ab413a3e40f3f2bee4309cebc9d6c33f7f8ac1`: independent Review FAIL with one HIGH concurrency flaw. Do not integrate or unblock T64 Task2/#65 until repair and review pass.
 - #64 Task 1 `6db98f0f1544dd4978e1657f98f5f692694365f1`: independent Spec/Quality PASS, low coverage gap only (SQLite column existence, no null/default/type, PostgreSQL execution or down test).
 
+### Review-fix wave checkpoints
+
+- T55 review-fix round 1 plan: `plans/plan-t55-task2-review-fix.md`, ruling `T55-review-fix-ruling.md`. Task2/Task3/Task7 had disjoint file ownership and separate worktrees.
+- T55 review-fix round 2 plan: `plans/plan-t55-review-fix-round2.md`. Task2 commit `cecd8d5a9d2b9d5515049290604857ea1a007b40` and Task5 lease-fencing commit `45c8531ffe73c507aacbd9da67a272e1fb778255` each received independent Spec/Quality PASS. Task2 repair report is `.superpowers/sdd/plan-t55-review-fix-round2/task-1-report.md`; Task5 report is `.superpowers/sdd/plan-t55-review-fix-round2/task-2-report.md`.
+- Task3 env whitelist repair `a2f7675a213589b8b1694b26063cc63dda155076` independently PASS; report `.superpowers/sdd/plan-t55-review-fix/task-2-report.md`.
+- Task7 opt-in provider repair `d4e6d6d2d` independently PASS; no live GitHub credential/write opt-in available, so its actual provider leg remains blocked-env. Report `.superpowers/sdd/plan-t55-review-fix/task-3-report.md` in the Task7 worktree.
+- T55 Task6 mobile UI/composition is running on an isolated worktree based on verified T55 Task5 fix `45c8531ffe73c507aacbd9da67a272e1fb778255`; T8 depends on its exported `activeDeliveryRecovery` checkpoint.
+- T63 Task2 HIGH finding repair plan: `plans/plan-t63-task2-race-fix.md`. Architecture ruling: both repository writers must begin their transaction with the same tenant/id/state-guarded parent no-op UPDATE; SQLite's first write obtains writer reservation while PostgreSQL row updates serialize. Deterministic tests must use file-backed SQLite, separate connections and channel/callback barriers; no sleeps. Repair is active in `codex/issue30-t63` at `a4ab413a3e40f3f2bee4309cebc9d6c33f7f8ac1`.
+
 ### Parallel execution checkpoints
 
 - T55 independent streams use isolated worktrees: Task3 original and repair branches; Task4/T5 separately based on reviewed predecessor commits; Task7 original and repair branch; Task2 HTTP fixture remains in primary T55 worktree. No active streams share code files.
