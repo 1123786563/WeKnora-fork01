@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -91,6 +92,24 @@ func seedPaidPurchase(t *testing.T, store *repocommercial.OrderStore, db *gorm.D
 		TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + orderID, Provider: "alipay", Merchant: "weknora",
 		Transaction: "txn-" + orderID, Amount: domain.CNYFen(amountFen), Currency: domain.CurrencyCNY, State: "succeeded",
 	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedLegacyPaidTopUp(t *testing.T, db *gorm.DB, tenant uint64, orderID string, amountFen int64) {
+	t.Helper()
+	store := repocommercial.NewOrderStore(db)
+	ctx := context.Background()
+	if err := store.CreateOrder(ctx, repocommercial.OrderRow{ID: orderID, TenantID: tenant, QuoteID: "q-" + orderID, Kind: domain.OrderKindPurchase, AmountFen: amountFen, Currency: domain.CurrencyCNY}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithContext(ctx).Model(&repocommercial.OrderRow{}).Where("id = ?", orderID).Update("quote_id", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{ID: "att-" + orderID, TenantID: tenant, OrderID: orderID, Provider: "alipay", Merchant: "weknora", MerchantOrderID: "mo-" + orderID, AmountFen: amountFen, Currency: domain.CurrencyCNY}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + orderID, Provider: "alipay", Merchant: "weknora", Transaction: "txn-" + orderID, Amount: domain.CNYFen(amountFen), Currency: domain.CurrencyCNY, State: "succeeded"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -202,6 +221,339 @@ func TestPurchaseFulfillmentUsesFirstSuccessfulTransactionAfterLaterOverpayment(
 	}
 	if n := len(fake.Wallets()); n != 1 {
 		t.Fatalf("wallet grants=%d", n)
+	}
+}
+
+func TestPurchaseFulfillmentUsesOrderWinningAttemptAcrossAttempts(t *testing.T) {
+	_, _, fake, db, store := setupPurchaseFulfillment(t)
+	ctx := context.Background()
+	const tenant uint64 = 86
+	const orderID = "ord-delayed-winner"
+	const amount = int64(9900)
+	if err := db.Create(&repocommercial.QuoteRow{ID: "q-" + orderID, TenantID: tenant, SubscriptionVersion: 1,
+		SnapshotJSON: mustJSON(t, map[string]any{"plan_key": "pro", "plan_version": int64(1), "price_fen": amount, "credits_micro": int64(9900000), "currency": domain.CurrencyCNY, "line_items": []map[string]any{{"kind": "subscription_fee"}}}),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PublicationRow{CommandKey: "publish-delayed", PlanKey: "pro", Version: 1, PlanCode: "pub-delayed", ReceiptJSON: "{}", PublishedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateOrder(ctx, repocommercial.OrderRow{ID: orderID, TenantID: tenant, QuoteID: "q-" + orderID, Kind: domain.OrderKindPurchase, AmountFen: amount, Currency: domain.CurrencyCNY}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"z-winner", "a-later"} {
+		if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{ID: id, TenantID: tenant, OrderID: orderID, Provider: "alipay", Merchant: "weknora", MerchantOrderID: "mo-" + id, AmountFen: amount, Currency: domain.CurrencyCNY}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	confirm := func(id, txn string) error {
+		return store.ConfirmPayment(ctx, domain.PaymentFact{TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + id, Provider: "alipay", Merchant: "weknora", Transaction: txn, Amount: domain.CNYFen(amount), Currency: domain.CurrencyCNY, State: "succeeded"})
+	}
+	if err := confirm("z-winner", "txn-A"); err != nil {
+		t.Fatal(err)
+	}
+	events := fulfillEvents(t, db)
+	if len(events) != 1 {
+		t.Fatalf("fulfill events=%d", len(events))
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(events[0].PayloadJSON), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["attempt_id"] != "z-winner" || envelope["transaction"] != "txn-A" {
+		t.Fatalf("winner payload=%v", envelope)
+	}
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-delayed", amount)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake, failFirstSettle: true}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := purchaser.Fulfill(ctx, events[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := confirm("a-later", "txn-B"); err != nil {
+		t.Fatal(err)
+	}
+	if err := purchaser.Fulfill(ctx, events[0]); err != nil {
+		t.Fatal(err)
+	}
+	var settles []domain.Command
+	for _, cmd := range platform.commands {
+		if cmd.Kind == domain.CommandKindSettlePurchasePayment {
+			settles = append(settles, cmd)
+		}
+	}
+	if len(settles) != 2 {
+		t.Fatalf("settle commands=%d", len(settles))
+	}
+	wantKey := domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-A")
+	for _, cmd := range settles {
+		p, ok := cmd.Payload.(domain.SettlePurchasePaymentPayload)
+		if !ok || p.ChannelTransaction != "txn-A" || cmd.Key != wantKey {
+			t.Fatalf("settle=%+v", cmd)
+		}
+	}
+	if state := orderState(t, db, orderID); state != domain.OrderStateFulfilled {
+		t.Fatalf("state=%s", state)
+	}
+	if len(fake.Wallets()) != 1 {
+		t.Fatalf("wallet grants=%d", len(fake.Wallets()))
+	}
+}
+
+func TestPurchaseFulfillmentFailsClosedOnContradictoryWinnerAttempt(t *testing.T) {
+	_, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant uint64 = 87
+	seedPaidPurchase(t, store, db, tenant, "ord-bad-winner", "weknora-pro", "pub-bad-winner", 9900)
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-bad-winner", 9900)
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-bad-winner").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &p); err != nil {
+		t.Fatal(err)
+	}
+	p["transaction"] = "txn-contradiction"
+	ev.PayloadJSON = mustJSON(t, p)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := purchaser.Fulfill(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range platform.commands {
+		if cmd.Kind == domain.CommandKindSettlePurchasePayment || cmd.Kind == domain.CommandKindGrantIncludedCredits {
+			t.Fatalf("unexpected command: %+v", cmd)
+		}
+	}
+	recs := fulfillmentRecords(t, db, "ord-bad-winner")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("attention records=%+v", recs)
+	}
+}
+
+func TestPurchaseFulfillmentTransientAttemptReadKeepsEventPending(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant uint64 = 88
+	seedPaidPurchase(t, store, db, tenant, "ord-attempt-read", "weknora-pro", "pub-attempt-read", 9900)
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-attempt-read", 9900)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.purchaser = purchaser
+	gateway := svc.gateway.(*stubGateway)
+	var fail atomic.Bool
+	fail.Store(true)
+	callback := "test/transient_attempt_read"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if fail.Load() && tx.Statement != nil && strings.Contains(tx.Statement.Table, "commercial_payment_attempts") {
+			tx.AddError(fmt.Errorf("temporary attempt store failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-attempt-read").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStatePending {
+		t.Fatalf("state=%s", ev.State)
+	}
+	if len(platform.commands) != 0 || len(fake.Wallets()) != 0 || gateway.appliedCount() != 0 {
+		t.Fatalf("first pass issued side effects: commands=%+v wallets=%d gateway=%d", platform.commands, len(fake.Wallets()), gateway.appliedCount())
+	}
+	if got := orderState(t, db, "ord-attempt-read"); got != domain.OrderStatePaid {
+		t.Fatalf("first pass order state=%s", got)
+	}
+	if recs := fulfillmentRecords(t, db, "ord-attempt-read"); len(recs) != 0 {
+		t.Fatalf("first pass records=%+v", recs)
+	}
+	if err := db.Callback().Query().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
+	fail.Store(false)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := orderState(t, db, "ord-attempt-read"); got != domain.OrderStateFulfilled {
+		t.Fatalf("state=%s", got)
+	}
+}
+
+func TestFulfillmentRecoverMissingTenantQuoteDoesNotRouteAsTopUp(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const orderID = "ord-missing-quote"
+	seedPaidPurchase(t, store, db, 96, orderID, "plan-missing-quote", "pub-missing-quote", 9900)
+	if err := db.Where("id = ?", "q-"+orderID).Delete(&repocommercial.QuoteRow{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedLegacyPaidTopUp(t, db, 97, "ord-valid-topup-after-missing-quote", 400)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.purchaser = purchaser
+	gateway := svc.gateway.(*stubGateway)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var badEvent repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&badEvent).Error; err != nil {
+		t.Fatal(err)
+	}
+	if badEvent.State != repocommercial.OutboxStateDead {
+		t.Fatalf("missing quote event state=%s", badEvent.State)
+	}
+	if got := orderState(t, db, orderID); got != domain.OrderStatePaid {
+		t.Fatalf("invalid purchase order state=%s", got)
+	}
+	if recs := fulfillmentRecords(t, db, orderID); len(recs) != 0 {
+		t.Fatalf("invalid quote records=%+v", recs)
+	}
+	if len(platform.commands) != 0 || len(fake.Wallets()) != 0 {
+		t.Fatalf("invalid purchase outbound commands=%+v wallets=%d", platform.commands, len(fake.Wallets()))
+	}
+	if gateway.appliedCount() != 1 {
+		t.Fatalf("gateway applies=%d; only following top-up may apply", gateway.appliedCount())
+	}
+	if got := orderState(t, db, "ord-valid-topup-after-missing-quote"); got != domain.OrderStateFulfilled {
+		t.Fatalf("later top-up state=%s", got)
+	}
+	if recs := fulfillmentRecords(t, db, "ord-valid-topup-after-missing-quote"); len(recs) != 1 || recs[0].State != domain.FulfillmentStateApplied {
+		t.Fatalf("later top-up records=%+v", recs)
+	}
+}
+
+func TestPurchaseFulfillmentOverBudgetMissingWinnerIdentityAttendsBeforeSnapshot(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(98)
+	const orderID = "ord-overbudget-no-winner"
+	seedPaidPurchase(t, store, db, tenant, orderID, "plan-overbudget-no-winner", "pub-overbudget-no-winner", 9900)
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-overbudget-no-winner", 9900)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.purchaser = purchaser
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	delete(payload, "attempt_id")
+	delete(payload, "provider")
+	delete(payload, "merchant")
+	delete(payload, "transaction")
+	if err := db.Model(&ev).Updates(map[string]any{"payload_json": mustJSON(t, payload), "attempt_count": 100}).Error; err != nil {
+		t.Fatal(err)
+	}
+	fake.FailPurchaseSnapshotsWith(fmt.Errorf("%w: authority unreachable", domain.ErrPlatformUnreachable))
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var got repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.State != repocommercial.OutboxStatePending {
+		t.Fatalf("event state=%s", got.State)
+	}
+	recs := fulfillmentRecords(t, db, orderID)
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("expected attention despite snapshot outage: %+v", recs)
+	}
+	if len(platform.commands) != 0 || len(fake.Wallets()) != 0 {
+		t.Fatalf("unexpected outbound side effects: commands=%+v wallets=%d", platform.commands, len(fake.Wallets()))
+	}
+}
+
+func TestFulfillmentRecoverQuarantinesMalformedPurchaseEventsAndContinues(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	for i, id := range []string{"ord-envelope-other", "ord-envelope-tenant", "ord-envelope-json"} {
+		seedPaidPurchase(t, store, db, uint64(90+i), id, id, "pub-"+id, 9900)
+	}
+	seedLegacyPaidTopUp(t, db, 95, "ord-valid-topup-after-quarantine", 400)
+	platform := &recordingCommercialPlatform{FakeAdapter: fake}
+	purchaser, err := NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.purchaser = purchaser
+	gateway := svc.gateway.(*stubGateway)
+	// Redirect one event to another existing order, contradict a tenant in
+	// another, and corrupt the final serialized envelope.
+	var ev repocommercial.OutboxEvent
+	key := "fulfill:ord-envelope-other"
+	if err := db.Where("event_key = ?", key).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &p); err != nil {
+		t.Fatal(err)
+	}
+	p["order_id"] = "ord-envelope-tenant"
+	ev.PayloadJSON = mustJSON(t, p)
+	if err := db.Model(&ev).Update("payload_json", ev.PayloadJSON).Error; err != nil {
+		t.Fatal(err)
+	}
+	key = "fulfill:ord-envelope-tenant"
+	ev = repocommercial.OutboxEvent{}
+	if err := db.Where("event_key = ?", key).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &p); err != nil {
+		t.Fatal(err)
+	}
+	p["tenant_id"] = float64(999)
+	if err := db.Model(&ev).Update("payload_json", mustJSON(t, p)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&repocommercial.OutboxEvent{}).Where("event_key = ?", "fulfill:ord-envelope-json").Update("payload_json", "{").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(platform.commands) != 0 || len(fake.Wallets()) != 0 {
+		t.Fatalf("invalid envelopes caused purchase commands=%+v wallets=%d", platform.commands, len(fake.Wallets()))
+	}
+	if gateway.appliedCount() != 1 {
+		t.Fatalf("gateway applies=%d; only later top-up may apply", gateway.appliedCount())
+	}
+	for _, id := range []string{"ord-envelope-other", "ord-envelope-tenant", "ord-envelope-json"} {
+		var got repocommercial.OutboxEvent
+		if err := db.Where("event_key = ?", "fulfill:"+id).First(&got).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got.State != repocommercial.OutboxStateDead {
+			t.Fatalf("%s state=%s", id, got.State)
+		}
+		if state := orderState(t, db, id); state != domain.OrderStatePaid {
+			t.Fatalf("invalid order %s state=%s", id, state)
+		}
+		if recs := fulfillmentRecords(t, db, id); len(recs) != 0 {
+			t.Fatalf("invalid order %s records=%+v", id, recs)
+		}
+	}
+	if got := orderState(t, db, "ord-valid-topup-after-quarantine"); got != domain.OrderStateFulfilled {
+		t.Fatalf("later valid event state=%s", got)
+	}
+	if recs := fulfillmentRecords(t, db, "ord-valid-topup-after-quarantine"); len(recs) != 1 || recs[0].State != domain.FulfillmentStateApplied {
+		t.Fatalf("later top-up records=%+v", recs)
 	}
 }
 

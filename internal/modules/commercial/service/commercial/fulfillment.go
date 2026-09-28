@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,10 +100,15 @@ func OrderCustomerID(tenantID uint64) string {
 // ConfirmPayment. The order row remains the source of truth: the worker
 // re-reads tenant and state from storage instead of trusting the payload.
 type fulfillEventPayload struct {
-	OrderID   string `json:"order_id"`
-	TenantID  uint64 `json:"tenant_id"`
-	AmountFen int64  `json:"amount_fen"`
-	Currency  string `json:"currency"`
+	OrderID     string `json:"order_id"`
+	QuoteID     string `json:"quote_id,omitempty"`
+	TenantID    uint64 `json:"tenant_id"`
+	AttemptID   string `json:"attempt_id,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Merchant    string `json:"merchant,omitempty"`
+	Transaction string `json:"transaction,omitempty"`
+	AmountFen   int64  `json:"amount_fen"`
+	Currency    string `json:"currency"`
 }
 
 // FulfillmentService drains the C01 fulfillment outbox into external
@@ -274,13 +280,27 @@ func (s *FulfillmentService) leasePendingEvents(ctx context.Context, now time.Ti
 
 func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial.OutboxEvent, now time.Time) error {
 	var payload fulfillEventPayload
-	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+	orderID, ok := strings.CutPrefix(ev.EventKey, repocommercial.OutboxKindFulfill+":")
+	if ev.Kind != repocommercial.OutboxKindFulfill || !ok || orderID == "" || strings.Contains(orderID, ":") ||
+		ev.EventKey != repocommercial.OutboxKindFulfill+":"+orderID {
+		return s.quarantineFulfillEvent(ctx, ev, "invalid_event_key")
 	}
-	row, err := s.orders.GetOrder(ctx, payload.OrderID)
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
+		return s.quarantineFulfillEvent(ctx, ev, "malformed_payload")
+	}
+	row, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
+		if errors.Is(err, repocommercial.ErrOrderNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
+			return s.quarantineFulfillEvent(ctx, ev, "order_missing")
+		}
 		return err
 	}
+	if payload.OrderID != orderID || payload.TenantID != row.TenantID || payload.AmountFen != row.AmountFen ||
+		payload.Currency != row.Currency || (payload.QuoteID != "" && payload.QuoteID != row.QuoteID) || ev.TenantID != row.TenantID {
+		return s.quarantineFulfillEvent(ctx, ev, "order_envelope_mismatch")
+	}
+	payload.OrderID = orderID
+	payload.QuoteID = row.QuoteID
 	order := row.Domain()
 	// The order row — not the calling user — carries the tenant; an orderer
 	// who left the space after paying cannot block fulfillment.
@@ -291,6 +311,24 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		// Not payable (still pending): leave the event for a later pass.
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
+	// The outbox transaction identity is authoritative for every paid
+	// purchase route. Validate it before quote reads or purchaser wiring can
+	// defer deterministic disposition.
+	if row.Kind == domain.OrderKindPurchase {
+		_, winnerErr := winningPaymentTransaction(ctx, s.db, order, payload)
+		if errors.Is(winnerErr, errInvalidWinningAttempt) || errors.Is(winnerErr, gorm.ErrRecordNotFound) {
+			if row.QuoteID == "" {
+				return s.quarantineFulfillEvent(ctx, ev, "invalid_winning_payment")
+			}
+			if err := persistPurchaseActivationState(ctx, s.db, s.now(), order.ID, order.TenantID, domain.FulfillmentStateAttention); err != nil {
+				return err
+			}
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		if winnerErr != nil {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+	}
 	// (#82 D5) SUBSCRIPTION purchase orders route to the PurchaseFulfiller
 	// — the dual-track settle/observe/grant orchestration. The order kind
 	// alone cannot tell them apart (every wallet top-up is also a purchase
@@ -299,20 +337,29 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 	// carries exactly one subscription_fee line item. A nil purchaser
 	// (blocked-env wiring) never blocks the shared drain: the event stays
 	// pending for a later pass with a configured fulfiller.
-	if row.Kind == domain.OrderKindPurchase && s.isSubscriptionPurchase(ctx, row) {
-		if s.purchaser == nil {
+	if row.Kind == domain.OrderKindPurchase {
+		subscription, invalid, qerr := s.subscriptionPurchase(ctx, row)
+		if qerr != nil {
 			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 		}
-		if err := s.purchaser.Fulfill(ctx, ev); err != nil {
-			return err
+		if invalid {
+			return s.quarantineFulfillEvent(ctx, ev, "invalid_purchase_quote")
 		}
-		// Completion is observed on the order row (Fulfill is idempotent and
-		// returns nil both for "still activating" and for completion).
-		if row2, rerr := s.orders.GetOrder(ctx, order.ID); rerr == nil &&
-			row2.Domain().State == domain.OrderStateFulfilled {
-			return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+		if subscription {
+			if s.purchaser == nil {
+				return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+			}
+			if err := s.purchaser.Fulfill(ctx, ev); err != nil {
+				return err
+			}
+			// Completion is observed on the order row (Fulfill is idempotent and
+			// returns nil both for "still activating" and for completion).
+			if row2, rerr := s.orders.GetOrder(ctx, order.ID); rerr == nil &&
+				row2.Domain().State == domain.OrderStateFulfilled {
+				return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+			}
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 		}
-		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
 	var lines []FulfillmentLine
 	if row.Kind == domain.OrderKindUpgrade {
@@ -394,8 +441,16 @@ func (s *FulfillmentService) disposeOverPayment(ctx context.Context, ev repocomm
 // item. Orders without a readable quote (the legacy top-up seeds and the
 // pre-#81 pipeline) are not subscription purchases.
 func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) bool {
+	b, _, _ := s.subscriptionPurchase(ctx, row)
+	return b
+}
+
+func (s *FulfillmentService) subscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) (bool, bool, error) {
+	if row.QuoteID == "" {
+		return false, false, nil
+	}
 	var q repocommercial.QuoteRow
-	if err := s.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", row.QuoteID, row.TenantID).First(&q).Error; err != nil {
 		// (r2:341) A paid order misrouting into the top-up settlement (book
 		// rate credits instead of the settle/activation chain) is the most
 		// expensive silent failure this dispatcher has: a NotFound is the
@@ -404,7 +459,12 @@ func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row rep
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote read failed for order %s: %v", row.ID, err)
 		}
-		return false
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// A non-empty QuoteID is a durable purchase reference. Missing or
+			// wrong-tenant rows cannot authorize a top-up fallback.
+			return false, true, nil
+		}
+		return false, false, err
 	}
 	var snap struct {
 		LineItems []struct {
@@ -413,14 +473,22 @@ func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row rep
 	}
 	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
 		logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote snapshot unparsable for order %s: %v", row.ID, err)
-		return false
+		return false, true, nil
 	}
 	for _, line := range snap.LineItems {
 		if line.Kind == "subscription_fee" {
-			return true
+			return true, false, nil
 		}
 	}
-	return false
+	if len(snap.LineItems) == 0 {
+		return false, true, nil
+	}
+	return false, false, nil
+}
+
+func (s *FulfillmentService) quarantineFulfillEvent(ctx context.Context, ev repocommercial.OutboxEvent, reason string) error {
+	logger.Warnf(ctx, "[CommercialFulfillment] quarantining event %s: %s", ev.EventKey, reason)
+	return s.completeEvent(ctx, ev, repocommercial.OutboxStateDead)
 }
 
 // ensureRecord claims the unique FulfillmentRecord for one order line,

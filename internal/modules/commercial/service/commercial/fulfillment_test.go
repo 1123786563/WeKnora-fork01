@@ -3,7 +3,10 @@ package commercial
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +26,7 @@ type stubGateway struct {
 	mu        sync.Mutex
 	saved     map[string]domain.BenefitReceipt // benefits the "remote" persisted
 	applies   int                              // grants that actually stored a benefit
+	finds     int                              // reconciliation lookups
 	applyErr  error                            // returned AFTER saving (dropped response)
 	findable  bool                             // FindBenefit reports saved benefits
 	revokeErr error                            // returned by RevokeBenefit (revocation failure)
@@ -48,6 +52,7 @@ func (g *stubGateway) ApplyBenefit(_ context.Context, req domain.BenefitRequest)
 func (g *stubGateway) FindBenefit(_ context.Context, key string) (domain.BenefitReceipt, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.finds++
 	if g.findable {
 		if r, ok := g.saved[key]; ok {
 			return r, nil
@@ -55,6 +60,8 @@ func (g *stubGateway) FindBenefit(_ context.Context, key string) (domain.Benefit
 	}
 	return domain.BenefitReceipt{}, domain.ErrBenefitNotFound
 }
+
+func (g *stubGateway) findCount() int { g.mu.Lock(); defer g.mu.Unlock(); return g.finds }
 
 func (g *stubGateway) appliedCount() int {
 	g.mu.Lock()
@@ -110,7 +117,7 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 		s.SetMaxOpenConns(1) // serialize SQLite writers; claims still race logically
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
-		&repocommercial.OutboxEvent{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
+		&repocommercial.OutboxEvent{}, &repocommercial.PaymentAnomalyRow{}, &repocommercial.QuoteRow{}); err != nil {
 		t.Fatal(err)
 	}
 	store := repocommercial.NewOrderStore(db)
@@ -124,13 +131,20 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 // seedPaidOrder drives the real C01 path: pending order, registered attempt,
 // confirmed payment — leaving a paid order plus exactly one fulfill outbox
 // event, the state a crashed worker would leave behind.
-func seedPaidOrder(t *testing.T, store *repocommercial.OrderStore, orderID string, tenant uint64, amountFen int64) {
+func seedPaidOrder(t *testing.T, store *repocommercial.OrderStore, orderID string, tenant uint64, amountFen int64, dbOpt ...*gorm.DB) {
 	t.Helper()
 	ctx := context.Background()
 	if err := store.CreateOrder(ctx, repocommercial.OrderRow{
 		ID: orderID, TenantID: tenant, QuoteID: "q-" + orderID, AmountFen: amountFen, Currency: "CNY",
 	}); err != nil {
 		t.Fatal(err)
+	}
+	// These fixtures explicitly represent the supported legacy top-up quote
+	// semantics while retaining a real registered payment winner.
+	if len(dbOpt) > 0 && dbOpt[0] != nil {
+		if err := dbOpt[0].WithContext(ctx).Model(&repocommercial.OrderRow{}).Where("id = ?", orderID).Update("quote_id", "").Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
 		ID: "att-" + orderID, TenantID: tenant, OrderID: orderID, Provider: "alipay", Merchant: "weknora",
@@ -162,6 +176,296 @@ func fulfillmentRecords(t *testing.T, db *gorm.DB, orderID string) []Fulfillment
 		t.Fatal(err)
 	}
 	return recs
+}
+
+func TestFulfillmentTopUpRejectsContradictoryWinningAttempt(t *testing.T) {
+	gw := &stubGateway{}
+	svc, db, store := setupFulfillment(t, gw)
+	seedPaidOrder(t, store, "ord-topup-mismatch", 7, 2500, db)
+	seedPaidOrder(t, store, "ord-topup-following", 7, 400)
+	if err := db.Create(&repocommercial.QuoteRow{ID: "q-ord-topup-following", TenantID: 7, SnapshotJSON: `{"line_items":[{"kind":"top_up"}]}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-mismatch").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["transaction"] = "txn-losing-attempt"
+	if err := db.Model(&ev).Update("payload_json", mustJSON(t, payload)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var rejected repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-mismatch").First(&rejected).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rejected.State != repocommercial.OutboxStateDead || orderState(t, db, "ord-topup-mismatch") != domain.OrderStatePaid || len(fulfillmentRecords(t, db, "ord-topup-mismatch")) != 0 {
+		t.Fatalf("mismatch was not quarantined: event=%+v records=%+v", rejected, fulfillmentRecords(t, db, "ord-topup-mismatch"))
+	}
+	if gw.findCount() != 1 || gw.appliedCount() != 1 {
+		t.Fatalf("only following valid event should call gateway once: finds=%d applies=%d", gw.findCount(), gw.appliedCount())
+	}
+	if got := orderState(t, db, "ord-topup-following"); got != domain.OrderStateFulfilled {
+		t.Fatalf("following order state=%s", got)
+	}
+}
+
+func TestFulfillmentTopUpMissingWinningAttemptIsQuarantined(t *testing.T) {
+	gw := &stubGateway{}
+	svc, db, store := setupFulfillment(t, gw)
+	seedPaidOrder(t, store, "ord-topup-no-attempt", 7, 2500, db)
+	if err := db.Where("id = ?", "att-ord-topup-no-attempt").Delete(&repocommercial.PaymentAttemptRow{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertTopUpQuarantinedWithoutGateway(t, db, gw, "ord-topup-no-attempt")
+}
+
+func TestFulfillmentTopUpTransientWinningAttemptReadRetries(t *testing.T) {
+	gw := &stubGateway{}
+	svc, db, store := setupFulfillment(t, gw)
+	seedPaidOrder(t, store, "ord-topup-retry", 7, 2500, db)
+	beforeAttempt := attemptForTest(t, db, "att-ord-topup-retry")
+	var beforeEvent repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-retry").First(&beforeEvent).Error; err != nil {
+		t.Fatal(err)
+	}
+	var fail atomic.Bool
+	fail.Store(true)
+	var reads atomic.Int32
+	callback := "test/transient_topup_winner_read"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_payment_attempts" && fail.CompareAndSwap(true, false) {
+			reads.Add(1)
+			tx.AddError(fmt.Errorf("temporary attempt query failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	events := fulfillEvents(t, db)
+	if len(events) != 1 || events[0].State != repocommercial.OutboxStatePending {
+		t.Fatalf("event not pending: %+v", events)
+	}
+	if len(fulfillmentRecords(t, db, "ord-topup-retry")) != 0 || gw.findCount() != 0 || gw.appliedCount() != 0 {
+		t.Fatalf("side effects after transient read: records=%+v finds=%d applies=%d", fulfillmentRecords(t, db, "ord-topup-retry"), gw.findCount(), gw.appliedCount())
+	}
+	if reads.Load() != 1 {
+		t.Fatalf("attempt query faults=%d, want exactly one", reads.Load())
+	}
+	assertTopUpWinnerUnchanged(t, db, beforeAttempt, beforeEvent.PayloadJSON)
+	if err := db.Callback().Query().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := orderState(t, db, "ord-topup-retry"); got != domain.OrderStateFulfilled {
+		t.Fatalf("retry order state=%s", got)
+	}
+	assertTopUpWinnerUnchanged(t, db, beforeAttempt, beforeEvent.PayloadJSON)
+	if gw.appliedCount() != 1 {
+		t.Fatalf("replayed event benefits=%d, want one", gw.appliedCount())
+	}
+}
+
+func attemptForTest(t *testing.T, db *gorm.DB, id string) repocommercial.PaymentAttemptRow {
+	t.Helper()
+	var row repocommercial.PaymentAttemptRow
+	if err := db.Where("id = ?", id).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func assertTopUpWinnerUnchanged(t *testing.T, db *gorm.DB, want repocommercial.PaymentAttemptRow, payload string) {
+	t.Helper()
+	if got := attemptForTest(t, db, want.ID); !reflect.DeepEqual(got, want) {
+		t.Fatalf("attempt changed: got=%+v want=%+v", got, want)
+	}
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-retry").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.PayloadJSON != payload {
+		t.Fatalf("outbox payload changed: got=%s want=%s", ev.PayloadJSON, payload)
+	}
+}
+
+func contradictFulfillTransaction(t *testing.T, db *gorm.DB, eventKey, txn string) {
+	t.Helper()
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", eventKey).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["transaction"] = txn
+	if err := db.Model(&ev).Update("payload_json", mustJSON(t, payload)).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFulfillmentSubscriptionRejectsContradictoryWinnerBeforeNilPurchaser(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const orderID = "ord-sub-nil-purchaser-mismatch"
+	seedPaidPurchase(t, store, db, 101, orderID, "plan-nil-purchaser", "pub-nil-purchaser", 9900)
+	contradictFulfillTransaction(t, db, "fulfill:"+orderID, "txn-loser")
+	svc.purchaser = nil
+	gateway := svc.gateway.(*stubGateway)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertSubscriptionAttentionPending(t, db, orderID)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertSubscriptionAttentionPending(t, db, orderID)
+	if gateway.findCount() != 0 || gateway.appliedCount() != 0 || len(fake.Wallets()) != 0 {
+		t.Fatalf("outbound effects: find=%d apply=%d wallets=%d", gateway.findCount(), gateway.appliedCount(), len(fake.Wallets()))
+	}
+}
+
+func TestFulfillmentSubscriptionRejectsContradictoryWinnerWhenQuoteReadFails(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const orderID = "ord-sub-quote-read-mismatch"
+	seedPaidPurchase(t, store, db, 102, orderID, "plan-quote-read", "pub-quote-read", 9900)
+	contradictFulfillTransaction(t, db, "fulfill:"+orderID, "txn-loser")
+	svc.purchaser = nil
+	var quoteReads atomic.Int32
+	callback := "test/quote_read_must_not_precede_winner"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_quotes" {
+			quoteReads.Add(1)
+			tx.AddError(fmt.Errorf("injected quote-store outage"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gateway := svc.gateway.(*stubGateway)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Callback().Query().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
+	assertSubscriptionAttentionPending(t, db, orderID)
+	if quoteReads.Load() != 0 {
+		t.Fatalf("quote reads=%d; winner should be validated first", quoteReads.Load())
+	}
+	if gateway.findCount() != 0 || gateway.appliedCount() != 0 || len(fake.Wallets()) != 0 {
+		t.Fatalf("outbound effects: find=%d apply=%d wallets=%d", gateway.findCount(), gateway.appliedCount(), len(fake.Wallets()))
+	}
+}
+
+func TestFulfillmentSubscriptionAttentionWriteFailureDoesNotAcknowledge(t *testing.T) {
+	_, svc, fake, db, store := setupPurchaseFulfillment(t)
+	const orderID = "ord-sub-attention-write-failure"
+	seedPaidPurchase(t, store, db, 103, orderID, "plan-attention-write", "pub-attention-write", 9900)
+	contradictFulfillTransaction(t, db, "fulfill:"+orderID, "txn-loser")
+	svc.purchaser = nil
+	fixedNow := time.Now()
+	svc.now = func() time.Time { return fixedNow }
+	callback := "test/attention_record_insert_error"
+	var fail atomic.Bool
+	fail.Store(true)
+	if err := db.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == (FulfillmentRecord{}).TableName() && fail.CompareAndSwap(true, false) {
+			tx.AddError(fmt.Errorf("injected attention insert failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err == nil {
+		t.Fatal("expected attention insert failure to propagate")
+	}
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStatePending || ev.LeaseToken == "" || !ev.LeaseUntil.After(fixedNow) {
+		t.Fatalf("failed write was acknowledged/released: %+v", ev)
+	}
+	if recs := fulfillmentRecords(t, db, orderID); len(recs) != 0 {
+		t.Fatalf("unexpected attention record after failed insert: %+v", recs)
+	}
+	if err := db.Callback().Create().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
+	fixedNow = ev.LeaseUntil.Add(time.Second)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var replay repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&replay).Error; err != nil {
+		t.Fatal(err)
+	}
+	if replay.State != repocommercial.OutboxStatePending || replay.LeaseUntil.After(fixedNow) {
+		t.Fatalf("replayed event not released pending: %+v", replay)
+	}
+	if recs := fulfillmentRecords(t, db, orderID); len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("attention records=%+v", recs)
+	}
+	if len(fake.Wallets()) != 0 || svc.gateway.(*stubGateway).appliedCount() != 0 {
+		t.Fatalf("outbound effects: wallets=%d gateway=%d", len(fake.Wallets()), svc.gateway.(*stubGateway).appliedCount())
+	}
+}
+
+func assertSubscriptionAttentionPending(t *testing.T, db *gorm.DB, orderID string) {
+	t.Helper()
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:"+orderID).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStatePending {
+		t.Fatalf("event state=%s", ev.State)
+	}
+	if got := orderState(t, db, orderID); got != domain.OrderStatePaid {
+		t.Fatalf("order state=%s", got)
+	}
+	recs := fulfillmentRecords(t, db, orderID)
+	wantKey := domain.FulfillmentKey(orderID, benefitKindPurchaseActivation)
+	if len(recs) != 1 || recs[0].Key != wantKey || recs[0].Kind != benefitKindPurchaseActivation || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("attention record=%+v", recs)
+	}
+}
+
+func assertTopUpQuarantinedWithoutGateway(t *testing.T, db *gorm.DB, gw *stubGateway, orderID string) {
+	t.Helper()
+	events := fulfillEvents(t, db)
+	var found bool
+	for _, ev := range events {
+		if ev.EventKey == "fulfill:"+orderID {
+			found = true
+			if ev.State != repocommercial.OutboxStateDead {
+				t.Fatalf("event state=%s", ev.State)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("fulfill event missing for %s", orderID)
+	}
+	if got := orderState(t, db, orderID); got != domain.OrderStatePaid {
+		t.Fatalf("order state=%s", got)
+	}
+	if recs := fulfillmentRecords(t, db, orderID); len(recs) != 0 {
+		t.Fatalf("fulfillment records=%+v", recs)
+	}
+	if gw.findCount() != 0 || gw.appliedCount() != 0 {
+		t.Fatalf("gateway calls: finds=%d applies=%d", gw.findCount(), gw.appliedCount())
+	}
 }
 
 func fulfillEvents(t *testing.T, db *gorm.DB) []repocommercial.OutboxEvent {
@@ -299,7 +603,7 @@ func TestFulfillmentUpgradeSwitchesPlanAndGrantsDelta(t *testing.T) {
 func TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce(t *testing.T) {
 	gw := &stubGateway{applyErr: domain.ErrGatewayIndeterminate}
 	svc, db, store := setupFulfillment(t, gw)
-	seedPaidOrder(t, store, "ord_drop", 7, 2500)
+	seedPaidOrder(t, store, "ord_drop", 7, 2500, db)
 	ctx := context.Background()
 
 	// Pass 1: apply saved remotely, response lost — nothing is provable.
@@ -366,7 +670,7 @@ func TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce(t *testing.T) {
 func TestFulfillmentWorkerConcurrentClaimsApplyExactlyOnce(t *testing.T) {
 	gw := &stubGateway{}
 	svc, db, store := setupFulfillment(t, gw)
-	seedPaidOrder(t, store, "ord_race", 8, 1200)
+	seedPaidOrder(t, store, "ord_race", 8, 1200, db)
 	ctx := context.Background()
 
 	const workers = 8
@@ -412,7 +716,7 @@ func TestFulfillmentWorkerConcurrentClaimsApplyExactlyOnce(t *testing.T) {
 func TestFulfillmentWorkerPaidNotFulfilledStaysRecoverable(t *testing.T) {
 	gw := &stubGateway{applyErr: domain.ErrGatewayBusinessRefusal}
 	svc, db, store := setupFulfillment(t, gw)
-	seedPaidOrder(t, store, "ord_ref", 9, 800)
+	seedPaidOrder(t, store, "ord_ref", 9, 800, db)
 	ctx := context.Background()
 
 	// Pass 1: definitive business refusal is a failure, never a success.
@@ -488,7 +792,7 @@ func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
 	svc, db, store := setupFulfillment(t, gw)
 	ctx := context.Background()
 	const orderID = "ord-over-1"
-	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedPaidOrder(t, store, orderID, 7, 9900, db)
 	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
 
 	if err := svc.Recover(ctx); err != nil {
@@ -529,7 +833,7 @@ func TestOverPaymentDrainReplayYieldsSingleAnomaly(t *testing.T) {
 	svc, db, store := setupFulfillment(t, gw)
 	ctx := context.Background()
 	const orderID = "ord-over-2"
-	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedPaidOrder(t, store, orderID, 7, 9900, db)
 	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
 	if err := svc.Recover(ctx); err != nil {
 		t.Fatal(err)
@@ -559,7 +863,7 @@ func TestOverPaymentDisposeFailureDoesNotBlockFulfillDrain(t *testing.T) {
 	svc, db, store := setupFulfillment(t, gw)
 	ctx := context.Background()
 	const orderID = "ord-over-3"
-	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedPaidOrder(t, store, orderID, 7, 9900, db)
 	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
 	// The queue now holds BOTH a fulfill event and an over_payment event.
 	if got := len(fulfillEvents(t, db)); got != 1 {

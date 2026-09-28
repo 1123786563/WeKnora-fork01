@@ -4,6 +4,7 @@ package commercial
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -35,10 +36,20 @@ func testOrderPGStore(t *testing.T) (*OrderStore, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := adminPool.Close(); err != nil {
+			t.Errorf("close admin pool: %v", err)
+		}
+	})
 	schema := fmt.Sprintf("saas_order_%d", time.Now().UnixNano())
 	if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := admin.Exec("DROP SCHEMA " + schema + " CASCADE").Error; err != nil {
+			t.Errorf("drop schema: %v", err)
+		}
+	})
 	query := parsed.Query()
 	query.Set("search_path", schema)
 	parsed.RawQuery = query.Encode()
@@ -50,18 +61,12 @@ func testOrderPGStore(t *testing.T) (*OrderStore, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool.SetMaxOpenConns(10)
 	t.Cleanup(func() {
 		if err := pool.Close(); err != nil {
 			t.Errorf("close schema pool: %v", err)
 		}
-		if err := admin.Exec("DROP SCHEMA " + schema + " CASCADE").Error; err != nil {
-			t.Errorf("drop schema: %v", err)
-		}
-		if err := adminPool.Close(); err != nil {
-			t.Errorf("close admin pool: %v", err)
-		}
 	})
+	pool.SetMaxOpenConns(10)
 	if err := db.AutoMigrate(&OrderRow{}, &PaymentAttemptRow{}, &OutboxEvent{}); err != nil {
 		t.Fatal(err)
 	}
@@ -187,5 +192,88 @@ func TestPaymentConcurrentDistinctTransactionsOnSameAttemptKeepsOneWinner(t *tes
 	}
 	if attempts != 1 {
 		t.Fatalf("attempt rows=%d", attempts)
+	}
+}
+
+func TestPaymentConcurrentDistinctAttemptsStoreOnlyOrderCASWinner(t *testing.T) {
+	s, db := testOrderPGStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o-cas-winner", "q-cas-winner")
+	facts := []domain.PaymentFact{}
+	for _, id := range []string{"z-winner", "a-later"} {
+		merchantOrder := "mo-" + id
+		if err := s.RegisterAttempt(ctx, PaymentAttemptRow{ID: id, TenantID: 7, OrderID: "o-cas-winner", Provider: "wechat", Merchant: "wxm", MerchantOrderID: merchantOrder, AmountFen: 1000, Currency: domain.CurrencyCNY}); err != nil {
+			t.Fatal(err)
+		}
+		facts = append(facts, domain.PaymentFact{TenantID: 7, OrderID: "o-cas-winner", AttemptID: merchantOrder, Provider: "wechat", Merchant: "wxm", Transaction: "txn-" + id, Amount: 1000, Currency: domain.CurrencyCNY, State: "succeeded"})
+	}
+	release := make(chan struct{})
+	var mu sync.Mutex
+	arrivals := 0
+	if err := db.Callback().Update().Before("gorm:update").Register("test/order_cas_barrier", func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Table != "commercial_orders" {
+			return
+		}
+		mu.Lock()
+		arrivals++
+		if arrivals == 2 {
+			close(release)
+		}
+		mu.Unlock()
+		select {
+		case <-release:
+		case <-time.After(5 * time.Second):
+			tx.AddError(fmt.Errorf("order CAS barrier timed out"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for _, fact := range facts {
+		f := fact
+		go func() { errs <- s.ConfirmPayment(ctx, f) }()
+	}
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatalf("confirm: %v", err)
+			}
+		case <-timer.C:
+			t.Fatal("confirmation timed out")
+		}
+	}
+	if err := db.Callback().Update().Remove("test/order_cas_barrier"); err != nil {
+		t.Fatal(err)
+	}
+	var order OrderRow
+	if err := db.Where("id = ?", "o-cas-winner").First(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	var fulfill, audit []OutboxEvent
+	if err := db.Where("kind = ?", OutboxKindFulfill).Find(&fulfill).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("kind = ?", OutboxKindOverPaid).Find(&audit).Error; err != nil {
+		t.Fatal(err)
+	}
+	if order.State != domain.OrderStatePaid || len(fulfill) != 1 || len(audit) != 1 {
+		t.Fatalf("order=%+v fulfill=%d audit=%d", order, len(fulfill), len(audit))
+	}
+	var winner paymentEventPayload
+	if err := json.Unmarshal([]byte(fulfill[0].PayloadJSON), &winner); err != nil {
+		t.Fatal(err)
+	}
+	var attempt PaymentAttemptRow
+	if err := db.Where("id = ?", winner.AttemptID).First(&attempt).Error; err != nil {
+		t.Fatal(err)
+	}
+	if attempt.State != PaymentAttemptStateSucceeded || attempt.ProviderTransactionID == nil || *attempt.ProviderTransactionID != winner.Transaction {
+		t.Fatalf("payload winner=%+v attempt=%+v", winner, attempt)
+	}
+	if !strings.Contains(audit[0].PayloadJSON, "txn-") || strings.Contains(audit[0].PayloadJSON, winner.Transaction) {
+		t.Fatalf("audit=%+v winner=%+v", audit[0], winner)
 	}
 }
