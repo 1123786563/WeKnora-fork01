@@ -4,7 +4,7 @@
 
 **Goal:** Preserve listing authorization/error boundaries and ensure release revocation and a governance use that writes adoption/variant/publication/accepted-proposal state have a deterministic commit order.
 
-**Architecture:** Services validate explicit release membership before security adjudication. The service-level security gate remains for fast feedback. Repository write operations acquire a tenant-scoped database serialization guard, query release/dependency revocation state in the same transaction, and perform the decisive write before releasing that guard. Revocation append+audit transactions acquire the same tenant guard. PostgreSQL uses a tenant row `FOR UPDATE`; SQLite uses a no-op tenant-row `UPDATE` as its first write statement. Never hold the guard across remote/service calls. Publication checks again at its final published-state CAS; upgrade acceptance checks within the proposal transition transaction.
+**Architecture:** Services validate explicit release membership before security adjudication. The service-level security gate remains for fast feedback. Repository write operations acquire a tenant-scoped database serialization guard, query release/dependency revocation state in the same transaction, and perform the decisive write before releasing that guard. Revocation append+audit transactions acquire the same tenant guard. PostgreSQL uses a tenant row `FOR UPDATE`; SQLite uses a no-op tenant-row `UPDATE` as its first write statement. Never hold the guard across remote/service calls. Publication checks again at its final published-state CAS; upgrade acceptance checks within the proposal transition transaction. Existing tests whose fixtures previously relied on implicit tenant-less rows must now seed the tenant prerequisite explicitly.
 
 **Tech Stack:** Go, GORM transactions, SQLite concurrency tests, existing PostgreSQL-capable GORM path.
 
@@ -46,9 +46,13 @@ graph LR
 - `internal/application/service/agent_adoption.go`
 - `internal/application/service/agent_upgrade.go`
 - `internal/application/service/agent_security_guard_test.go`
+- `internal/application/service/agent_adoption_test.go` and `internal/application/service/agent_upgrade_test.go` (minimal shared test-fixture updates only: seed the real tenant row now required by the production guard)
 - `internal/application/repository/agent_adoption.go` and repository tests
+- `internal/application/repository/agent_marketplace_lifecycle_test.go` (file-backed independent-connection adoption/end/create serialization tests)
 - `internal/application/repository/agent_upgrade.go` and repository tests
 - `internal/application/repository/agent_security.go` and repository tests
+- `internal/application/service/agent_adoption_test.go` (tenant prerequisite in shared Release fixture)
+- `internal/application/service/agent_upgrade_test.go` (tenant prerequisite in shared Release fixture)
 - A new shared repository helper file only if needed for the tenant transaction guard.
 
 **Consumes:** existing `ReleaseAdmission` interface and verdict/error definitions from `internal/application/repository/agent_security.go`; existing repository methods `AdoptListing`, `CreateVariant`, `UpdateVariantState`, `TransitionProposal`; existing `TenantEntity` table and `NewAuditLogRepository(tx)`.
@@ -83,4 +87,3 @@ graph LR
 **Acceptance mapping:** #64 Task 6 service gate coverage → guarded repository writes; security revocation semantics → shared tenant serialization point and exact dependency tuple; authorization/error boundary → release membership checks before adjudication; audit atomicity → shared guard with same-transaction ledger+audit.
 
 **Failure handling:** Do not replace the shared DB guard with per-process synchronization. If a production dialect cannot supply a safe guard, fail closed and record the unsupported path; continue completing the SQLite/PostgreSQL paths and report exact limitation. Keep prior T64 service-only commit in history; repair is additive and independently reviewed.
-
