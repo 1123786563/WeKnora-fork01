@@ -259,6 +259,8 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	// Capture the exact history rows and their links before applying the exits.
 	var seededVariant types.AgentAdoptionVariantEntity
 	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, variantID).Take(&seededVariant).Error)
+	var seededAdoption types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, adoptionID).Take(&seededAdoption).Error)
 	var seededReleases []types.AgentReleaseEntity
 	require.NoError(t, db.Where("tenant_id = ? AND id IN ?", 1, []string{v1, v2}).Find(&seededReleases).Error)
 	require.Len(t, seededReleases, 2)
@@ -320,8 +322,15 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	var variantAfter types.AgentAdoptionVariantEntity
 	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, seededVariant.ID).Take(&variantAfter).Error)
 	require.Equal(t, adoptionID, variantAfter.AdoptionID)
+	require.Equal(t, seededVariant.ReleaseID, variantAfter.ReleaseID)
+	require.Contains(t, []string{v1, v2}, variantAfter.ReleaseID)
 	require.Equal(t, localAgentID, variantAfter.LocalAgentID)
 	require.Equal(t, seededVariant.LocalAgentVersionID, variantAfter.LocalAgentVersionID)
+	var adoptionAfter types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, adoptionID).Take(&adoptionAfter).Error)
+	require.Equal(t, seededAdoption.ListingID, adoptionAfter.ListingID)
+	require.Equal(t, seededAdoption.AcceptedReleaseID, adoptionAfter.AcceptedReleaseID)
+	require.Equal(t, "ended", adoptionAfter.State)
 	var versionAfter types.AgentVersionEntity
 	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, seededVariant.LocalAgentVersionID).Take(&versionAfter).Error)
 	require.Equal(t, localAgentID, versionAfter.AgentID)
@@ -330,6 +339,17 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, release.ID).Take(&releaseAfter).Error)
 		require.Equal(t, listingID, releaseAfter.ListingID)
 		require.Equal(t, release.SubmissionID, releaseAfter.SubmissionID)
+		var submissionAfter types.AgentReleaseSubmissionEntity
+		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, releaseAfter.SubmissionID).Take(&submissionAfter).Error)
+		require.Equal(t, releaseAfter.AgentVersionID, submissionAfter.AgentVersionID)
+		var sourceVersion types.AgentVersionEntity
+		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, releaseAfter.AgentVersionID).Take(&sourceVersion).Error)
+		require.Equal(t, releaseAfter.SourceAgentID, sourceVersion.AgentID)
+		var manifest struct {
+			LicenseID string `json:"license_id"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(releaseAfter.ManifestJSON), &manifest))
+		require.Equal(t, seededLicense.ID, manifest.LicenseID)
 	}
 	for _, submission := range seededSubmissions {
 		var submissionAfter types.AgentReleaseSubmissionEntity
