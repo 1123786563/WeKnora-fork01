@@ -37,7 +37,7 @@ All implementation nodes start `pending`; an Issue’s historical implementation
 
 | Task | Status | Checkpoint / evidence | Review / ruling |
 |---|---|---|---|
-| 0 Baseline ledger / DAG | running | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full issue snapshots copied to execution workspace | pending |
+| 0 Baseline ledger / DAG | verified | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full issue snapshots and current DAG committed at `a443dbae230496ceca6b23044d8df79b7a3c031d`; `git diff --check` clean | plan self-review complete; issue-140 reviewer confirmation pending |
 | 1 Career wire contract/API client | pending | — | — |
 | 2 Career module/auth/schema | pending | — | — |
 | 3 Profile/source/opportunity/evaluation | pending | — | — |
