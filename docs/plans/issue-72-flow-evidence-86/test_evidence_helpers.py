@@ -565,6 +565,73 @@ class EvidenceHelpersTest(unittest.TestCase):
         self.assertEqual(facts["verdict"], "FAIL")
         self.assertFalse(facts["checks"][0]["passed"])
 
+    def test_concurrent_early_setup_failure_preserves_run_codes(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            calls = []
+            def fake_call(method, path, payload=None):
+                calls.append((method, path, payload))
+                if path.endswith("/billable_metrics"):
+                    return 201, {"billable_metric": {"lago_id": "provider-metric-id"}}
+                if path.endswith("/plans"):
+                    return 500, {"detail": "PROVIDER_BODY_SENTINEL", "key": "PROVIDER_SECRET_SENTINEL"}
+                self.fail("unexpected provider request: %s" % path)
+            prior_stdout = sys.stdout
+            with mock.patch.object(cc, "call", side_effect=fake_call), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                result = cc.main()
+            self.assertNotEqual(result, 0)
+            self.assertIs(sys.stdout, prior_stdout)
+            self.assertEqual([path.rsplit("/", 1)[-1] for _, path, _ in calls],
+                             ["billable_metrics", "plans"])
+            facts = json.loads((out / "facts.json").read_text())
+            self.assertEqual(facts["verdict"], "FAIL")
+            self.assertEqual(facts["failed_stage"], "create_plan")
+            observations = facts["observations"]
+            candidates = observations["generated_candidates"]
+            self.assertEqual(set(candidates), {"tag", "metric_code", "plan_code", "subscription_code"})
+            tag = candidates["tag"]
+            self.assertEqual(candidates["metric_code"], "weknora-86-metric-" + tag)
+            self.assertEqual(candidates["plan_code"], "weknora-86-plan-" + tag)
+            self.assertEqual(candidates["subscription_code"], "weknora-86-sub-" + tag)
+            self.assertEqual(observations["created_resources"], {"metric_code": candidates["metric_code"]})
+            serialized = json.dumps(facts)
+            self.assertNotIn("provider-metric-id", serialized)
+            self.assertNotIn("PROVIDER_BODY_SENTINEL", serialized)
+            self.assertNotIn("PROVIDER_SECRET_SENTINEL", serialized)
+
+    def test_concurrent_subscription_setup_failure_preserves_confirmed_codes(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            calls = []
+            responses = [
+                (201, {"billable_metric": {"lago_id": "provider-metric-id"}}),
+                (201, {"plan": {"lago_id": "provider-plan-id"}}),
+                (503, {"detail": "PROVIDER_BODY_SENTINEL"}),
+            ]
+            def fake_call(method, path, payload=None):
+                calls.append(path)
+                return responses.pop(0)
+            with mock.patch.object(cc, "call", side_effect=fake_call), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                result = cc.main()
+            self.assertNotEqual(result, 0)
+            self.assertEqual([path.rsplit("/", 1)[-1] for path in calls],
+                             ["billable_metrics", "plans", "subscriptions"])
+            facts = json.loads((out / "facts.json").read_text())
+            self.assertEqual(facts["verdict"], "FAIL")
+            self.assertEqual(facts["failed_stage"], "create_subscription")
+            observations = facts["observations"]
+            candidates = observations["generated_candidates"]
+            self.assertEqual(observations["created_resources"], {
+                "metric_code": candidates["metric_code"],
+                "plan_code": candidates["plan_code"],
+            })
+            self.assertNotIn("subscription_code", observations["created_resources"])
+            serialized = json.dumps(facts)
+            for marker in ("provider-metric-id", "provider-plan-id", "PROVIDER_BODY_SENTINEL"):
+                self.assertNotIn(marker, serialized)
+
     def test_runner_event_post_failure_writes_redacted_failed_facts(self):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / "run"
@@ -588,6 +655,12 @@ class EvidenceHelpersTest(unittest.TestCase):
             facts = json.loads((out / "facts.json").read_text())
             self.assertEqual(facts["verdict"], "FAIL")
             self.assertEqual(facts["failed_stage"], "post_events")
+            candidates = facts["observations"]["generated_candidates"]
+            self.assertEqual(facts["observations"]["created_resources"], {
+                "metric_code": candidates["metric_code"],
+                "plan_code": candidates["plan_code"],
+                "subscription_code": candidates["subscription_code"],
+            })
             self.assertIn("before", facts["observations"])
             self.assertNotIn("unit-test-only", json.dumps(facts))
             self.assertTrue((out / "concurrent-output.txt").exists())

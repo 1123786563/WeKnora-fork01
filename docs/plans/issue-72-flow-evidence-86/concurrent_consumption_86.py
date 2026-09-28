@@ -375,6 +375,13 @@ def run_probe(output_dir, state):
     metric_code = "weknora-86-metric-" + tag
     plan_code = "weknora-86-plan-" + tag
     sub_ext = "weknora-86-sub-" + tag
+    state["observations"]["generated_candidates"] = {
+        "tag": tag,
+        "metric_code": metric_code,
+        "plan_code": plan_code,
+        "subscription_code": sub_ext,
+    }
+    state["observations"]["created_resources"] = {}
 
     state["stage"] = "create_metric"
     status, body = call("POST", "/api/v1/billable_metrics", payload={
@@ -383,6 +390,8 @@ def run_probe(output_dir, state):
                             "aggregation_type": "sum_agg",
                             "field_name": "units"}})
     metric_id = require_created(status, body, "billable_metric", "create billable metric")
+    state["observations"]["created_resources"]["metric_code"] = metric_code
+    state["stage"] = "create_plan"
     status, body = call("POST", "/api/v1/plans", payload={
         "plan": {"code": plan_code, "name": "WeKnora 86 concurrent " + tag,
                  "interval": "weekly", "pay_in_advance": False,
@@ -392,11 +401,14 @@ def run_probe(output_dir, state):
                               "pay_in_advance": True, "invoiceable": True,
                               "properties": {"amount": "1.00"}}]}})
     require_created(status, body, "plan", "create plan")
+    state["observations"]["created_resources"]["plan_code"] = plan_code
+    state["stage"] = "create_subscription"
     status, body = call("POST", "/api/v1/subscriptions", payload={
         "subscription": {"external_id": sub_ext,
                          "external_customer_id": CUSTOMER,
                          "plan_code": plan_code}})
     require_created(status, body, "subscription", "create subscription")
+    state["observations"]["created_resources"]["subscription_code"] = sub_ext
     print("trigger ready (concurrent leg): sub=" + sub_ext)
 
     state["stage"] = "read_before"
