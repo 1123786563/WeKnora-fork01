@@ -20,6 +20,9 @@ var (
 func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID string, expectedFrom, nextState string, updates map[string]any) (*types.AgentAdoptionEntity, error) {
 	var result types.AgentAdoptionEntity
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockAdoptionState(tx, tenantID, adoptionID, expectedFrom); err != nil {
+			return err
+		}
 		var current types.AgentAdoptionEntity
 		err := tx.Where("tenant_id = ? AND id = ?", tenantID, adoptionID).First(&current).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -66,6 +69,33 @@ func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint
 		return nil, err
 	}
 	return &result, nil
+}
+
+// lockAdoptionState uses a guarded no-op UPDATE as the shared serialization
+// point for creating Variants and ending an Adoption. PostgreSQL locks the
+// matching row until commit; SQLite takes its write lock before the caller
+// checks/inserts Variants. Both callers must use this guard inside their
+// transaction before proceeding.
+func lockAdoptionState(tx *gorm.DB, tenantID uint64, adoptionID, expectedState string) error {
+	guard := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, expectedState).
+		UpdateColumn("updated_at", gorm.Expr("updated_at"))
+	if guard.Error != nil {
+		return guard.Error
+	}
+	if guard.RowsAffected == 1 {
+		return nil
+	}
+
+	var current types.AgentAdoptionEntity
+	err := tx.Where("tenant_id = ? AND id = ?", tenantID, adoptionID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrAgentAdoptionNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: adoption %s is %q, expected %q", ErrAgentAdoptionTransition, adoptionID, current.State, expectedState)
 }
 
 func (r *agentAdoptionRepository) RetiredVariantAgentExists(ctx context.Context, tenantID uint64, localAgentID string) (bool, error) {

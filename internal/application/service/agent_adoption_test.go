@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -51,6 +53,18 @@ func newAgentAdoptionServiceForTest(t *testing.T) (*AgentAdoptionService, *gorm.
 	agents := &fakeAdoptionAgentSource{db: db}
 	svc := NewAgentAdoptionService(repository.NewAgentAdoptionRepository(db), agents, fakeAdoptionVersions{})
 	return svc, db, agents
+}
+
+type gatedCreateVariantRepository struct {
+	repository.AgentAdoptionRepository
+	reached chan struct{}
+	resume  <-chan struct{}
+}
+
+func (r *gatedCreateVariantRepository) CreateVariant(ctx context.Context, variant *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
+	close(r.reached)
+	<-r.resume
+	return r.AgentAdoptionRepository.CreateVariant(ctx, variant)
 }
 
 // seedAdoptionServiceRelease publishes a real Release whose Manifest
@@ -175,6 +189,53 @@ func TestAgentAdoptionServiceVariantsMappingTestPublish(t *testing.T) {
 	// Testing an untested-again path: publish from mapped (not tested) refuses.
 	_, err = svc.PublishVariant(ctx, 1, "admin", "missing-variant")
 	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
+}
+
+func TestCreateVariantRechecksAdoptionAfterServicePrecheck(t *testing.T) {
+	svc, db, _ := newAgentAdoptionServiceForTest(t)
+	listingID, releaseID := seedAdoptionServiceRelease(t, db)
+	ctx := context.Background()
+	adoption, _, err := svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID})
+	require.NoError(t, err)
+
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	baseRepo := svc.repo
+	gate := &gatedCreateVariantRepository{AgentAdoptionRepository: baseRepo, reached: make(chan struct{}), resume: resume}
+	svc.repo = gate
+	type result struct {
+		view interfaces.AdoptionVariantView
+		err  error
+	}
+	created := make(chan result, 1)
+	go func() {
+		view, err := svc.CreateVariant(ctx, 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "racing", ReleaseID: releaseID})
+		created <- result{view: view, err: err}
+	}()
+
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not reach its repository insert")
+	}
+	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+
+	select {
+	case got := <-created:
+		require.ErrorIs(t, got.err, ErrAgentAdoptionStateConflict)
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not return after the repository gate opened")
+	}
+
+	variants, err := baseRepo.ListVariantsByAdoption(ctx, 1, adoption.ID)
+	require.NoError(t, err)
+	require.Empty(t, variants, "a stale active-state pre-check must not create a Variant after Adoption ends")
+	ended, err := baseRepo.GetAdoption(ctx, 1, adoption.ID)
+	require.NoError(t, err)
+	require.Equal(t, "ended", ended.State)
 }
 
 func TestAgentAdoptionServiceRejectsUnknownAndDuplicateCapabilities(t *testing.T) {
