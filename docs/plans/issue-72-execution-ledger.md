@@ -510,3 +510,9 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - R-6 and R-3 rulings, R16 Task 0, #86 acceptance, #87 readiness, and release gates remain unchanged. Documentation checkpoint only; no terminal operations, tests, services, or Issue mutations.
 
 - Task 1 exact delivery range: BASE `2ef29a67a06c42e8a55a844879670dc7bf309821` through archive commit `a00dc07a7e36539ad5f78574c18637bec39d5425`; the follow-up plan-and-Ledger correction commit records the plan as part of the delivery and extends the final Task 1 range from `2ef29a67a06c42e8a55a844879670dc7bf309821` through follow-up plan-and-Ledger commit `541746941cfbdd20e7ace592f3aae9cdb55595fb`. Exact complete Task 1 range: `2ef29a67a06c42e8a55a844879670dc7bf309821..541746941cfbdd20e7ace592f3aae9cdb55595fb`. No existing commit was amended or rewritten.
+
+## Child issue comments refresh archive — 2026-09-30
+
+- Archived the authenticated paginated child comment capture in [`issue-72-child-comments-refresh-2026-09-30.md`](issue-72-child-comments-refresh-2026-09-30.md). Capture time: `2026-09-29T18:57:20Z`; coverage: 33/33 JSON arrays for #73–#105, 8 total comments on #73–#80, none on #81–#105. Sorted filename/content-hash manifest SHA-256: `1010e2d6490d406e71e86fbc95f85ad62cbb29aea2498beeccb49e52eb64ee21`.
+- Reconciled #74's Sep 20 blocked-env comment as historical against later activation evidence and R-1; remote #74 remains OPEN. Reconciled #75's Sep 20 wallet-limit/options comment as superseded by approved R-2 / ADR-0012 option B; remote #75 remains CLOSED.
+- No comment establishes new containment or an unrecorded dependency; references/handoffs remain references. DAG readiness and #82/#86/#87 acceptance gates are unchanged. No remote Issue state was modified.
