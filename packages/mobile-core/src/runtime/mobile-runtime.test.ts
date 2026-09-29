@@ -671,6 +671,42 @@ test('authorizedRequest does not refresh or replay a POST after a 401', async ()
   assert.equal(refreshes, 0);
 });
 
+test('authorizedRequest returns scope changed instead of a stale write 401 after sign-out', async () => {
+  const response = deferred<void>();
+  const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+  const runtime = createMobileRuntime({
+    ...ports(fakeStore(), () => remote()),
+    authorizedTransport: () => async () => { await response.promise; throw unauthorized; },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const pending = runtime.authorizedRequest({ method: 'POST', path: '/api/v1/tasks', body: { title: 'task' } });
+  await Promise.resolve();
+  await runtime.signOut();
+  response.resolve();
+
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+});
+
+test('authorizedRequest does not retry PUT, PATCH, or DELETE and normalizes read methods', async () => {
+  let sends = 0;
+  let refreshes = 0;
+  const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+  const runtime = createMobileRuntime({
+    ...ports(fakeStore(), () => remote({ refresh: async () => { refreshes += 1; return { access_token: 'access-2', refresh_token: 'refresh-2' }; } })),
+    authorizedTransport: () => async () => { sends += 1; throw unauthorized; },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  for (const method of ['PUT', 'PATCH', 'DELETE']) {
+    await assert.rejects(runtime.authorizedRequest({ method, path: '/api/v1/tasks/1' }), (error) => error === unauthorized);
+  }
+  await assert.rejects(runtime.authorizedRequest({ method: 'get', path: '/api/v1/tasks' }), (error) => error === unauthorized);
+
+  assert.equal(sends, 5, 'three writes send once and lowercase GET retries once');
+  assert.equal(refreshes, 1, 'lowercase GET refreshes exactly once');
+});
+
 test('an expired Task Office session with failed refresh rejects the protected request and exposes no data', async () => {
   const store = fakeStore();
   let sends = 0;

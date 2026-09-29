@@ -196,6 +196,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       return response;
     } catch (error) {
       if (!unauthorizedStatus(error)) throw error;
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
       if (!retryUnauthorized) throw error;
       const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
       if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
