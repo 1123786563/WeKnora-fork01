@@ -84,6 +84,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const [error, setError] = useState<TypedError>()
  const loadedForScope = useRef<string | undefined>(undefined)
  const selectionGeneration = useRef(0)
+ const selectedRuleIdRef = useRef<string | undefined>(undefined)
 
  const clearForScopeChange = useCallback((message: string): void => {
   selectionGeneration.current += 1
@@ -120,6 +121,8 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    const storage = typeof window === 'undefined' ? undefined : window.localStorage
    const storedRuleId = readStoredRuleId(storage, ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId))
    const selected = allRules.find((rule) => rule.ruleId === storedRuleId) ?? (allRules.length === 1 ? allRules[0] : undefined)
+   selectionGeneration.current += 1
+   selectedRuleIdRef.current = selected?.ruleId
    setSelectedRuleId(selected?.ruleId)
    if (selected) {
     try { storage?.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), selected.ruleId) } catch { /* private mode */ }
@@ -133,8 +136,8 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
      const parsed = errorDetails(cause)
      if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除持续找岗状态。'); return }
      if (parsed.code === 'not_found') {
-      try { storage?.removeItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId)) } catch { /* private mode */ }
-      setNotice('这条规则在服务端已不可见，已清除本地引用。可重新创建一条规则。')
+      setStoredRuleUnreadable(parsed)
+      setNotice('规则列表与详情暂不一致；为避免重复创建，请重新读取规则列表后再保存。')
      } else {
       setStoredRuleUnreadable(parsed)
       setNotice(`读取已保存规则未成功：${parsed.text}。此时保存会新建一条规则；请先重新读取成功后再保存，避免出现双重规则。`)
@@ -188,9 +191,10 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
 
  const refreshRuns = useCallback(async (ruleId: string): Promise<void> => {
   const requestScope = scopeController.current()
+  const generation = selectionGeneration.current
   try {
    const stored = await client.career.getRule(ruleId, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || selectionGeneration.current !== generation || selectedRuleIdRef.current !== ruleId) return
    setRuleView(stored)
   } catch { /* run history is best-effort after a write; the receipt above stays authoritative */ }
  }, [client, scopeController])
@@ -199,6 +203,8 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   setReceipt(next); setPhase('idle'); setError(undefined); setNotice(''); setAttempt(undefined)
   const activeScope = scopeController.current().scope
   try { window.localStorage.removeItem(attemptKey(activeScope.userId, activeScope.tenantId)) } catch { /* private mode */ }
+  selectionGeneration.current += 1
+  selectedRuleIdRef.current = next.ruleId
   setSelectedRuleId(next.ruleId)
   try { window.localStorage.setItem(ruleIdKey(activeScope.userId, activeScope.tenantId), next.ruleId) } catch { /* private mode */ }
   // A saved rule (especially an enabled one) changes what the next charged
@@ -217,7 +223,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   try {
    const result = await client.career.setRule(next, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配，已放弃本次结果。请重新保存。' }); setPhase('idle'); setAttempt(undefined); return }
+   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；原请求结果仍未知，已保留恢复编号并锁定新保存。' }); setPhase('unknown'); setNotice(''); setAttempt(next); return }
    acceptReceipt(result)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -274,7 +280,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   try {
    const stored = await client.career.ruleReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；已放弃本次结果，请使用新的请求编号重新保存。' }); setPhase('idle'); setAttempt(undefined); setNotice(''); return }
+   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；原请求结果仍未知，已保留恢复编号并锁定新保存。' }); setPhase('unknown'); setAttempt(attempt); setNotice(''); return }
    acceptReceipt(stored)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -309,6 +315,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    {rules.length > 1 ? <Card bordered><label htmlFor="career-rule-select">选择要查看或修改的规则</label><select id="career-rule-select" value={selectedRuleId ?? ''} onChange={(event) => {
     const ruleId = event.currentTarget.value
     const generation = ++selectionGeneration.current
+    selectedRuleIdRef.current = ruleId || undefined
     setSelectedRuleId(ruleId || undefined); setRuleView(undefined); setReceipt(undefined); setStoredRuleUnreadable(undefined)
     setDetailLoading(Boolean(ruleId))
     const requestScope = scopeController.current()

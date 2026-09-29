@@ -335,7 +335,7 @@ test('a mismatched rule receipt ends recovery as a definite error', async () => 
  await saveRule(container, '上海 前端 实习', '1440', 'disabled')
  await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle(); await settle() })
  assert.match(container.textContent ?? '', /请求编号与本次保存不匹配/)
- assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询回执')), false)
+ assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询回执')), true)
 })
 
 test('revision conflict surfaces the current revision and retries the same request refreshed', async () => {
@@ -363,7 +363,7 @@ test('revision conflict surfaces the current revision and retries the same reque
  assert.ok(container.querySelector('[aria-label="规则状态"]'))
 })
 
-test('a stored rule that is no longer visible is reported and the stale reference cleared', async () => {
+test('a stored rule that is no longer visible remains blocked until list reconciliation', async () => {
  window.localStorage.setItem('weknora:career:rule-id:u-1:t-1', 'rule-gone')
  const reads: string[] = []
  const { container } = await mountRules({
@@ -371,9 +371,9 @@ test('a stored rule that is no longer visible is reported and the stale referenc
   getRule: async (ruleId: string) => { reads.push(ruleId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
  })
  assert.deepEqual(reads, ['rule-gone'])
- assert.match(container.textContent ?? '', /这条规则在服务端已不可见/)
- assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), null)
- assert.ok(container.querySelector('[aria-label="找岗条件"]'))
+ assert.match(container.textContent ?? '', /规则列表与详情暂不一致/)
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), 'rule-gone')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
 })
 
 test('a transient stored-rule read failure is surfaced and saving stays blocked until the reference resolves', async () => {
@@ -477,4 +477,51 @@ test('an exhausted window shows the blocked-trigger overage state while enabling
  assert.equal(writes[0]?.status, 'enabled')
  assert.ok(container.querySelector('[aria-label="下次运行计划"]'))
  assert.ok(estimateReads.length >= 2, `estimate refreshed after the write (reads: ${estimateReads.length})`)
+})
+
+test('listed rule detail not_found keeps creation locked', async () => {
+ const writes: RuleWrite[] = []
+ window.localStorage.setItem('weknora:career:rule-id:u-1:t-1', 'rule-1')
+ const items = ['rule-1', 'rule-2'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: items, nextCursor: null }), getRule: async () => { throw Object.assign(new Error('gone'), { code: 'not_found' }) }, setRule: async (input: RuleWrite) => { writes.push(input); return { ...createdDisabled, requestId: input.requestId } } })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(writes.length, 0)
+})
+
+test('mismatched write request ID preserves durable unknown attempt across submit and remount', async () => {
+ let originalId = ''
+ const { container } = await mountRules({ open: async () => view(5), setRule: async (input: RuleWrite) => { originalId = input.requestId; return { ...createdDisabled, requestId: 'different-id' } } })
+ await saveRule(container, '保留第一次尝试', '60', 'disabled')
+ const raw = window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1')
+ assert.ok(raw)
+ assert.equal(JSON.parse(raw!).requestId, originalId)
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(container.querySelectorAll('button').length > 0, true)
+ await act(async () => { await root?.unmount() })
+ root = undefined; host?.remove(); host = undefined
+ const writes: RuleWrite[] = []
+ const receiptIds: string[] = []
+ const remounted = await mountRules({ open: async () => view(5), ruleReceipt: async (id: string) => { receiptIds.push(id); throw Object.assign(new Error('missing'), { code: 'not_found' }) }, setRule: async (input: RuleWrite) => { writes.push(input); throw Object.assign(new Error('offline'), { code: 'TEMPORARY' }) } })
+ assert.deepEqual(receiptIds, [originalId])
+ assert.equal(writes[0]?.requestId, originalId)
+ assert.equal(remounted.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(JSON.parse(window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1') ?? 'null').requestId, originalId)
+})
+
+test('late post-save detail refresh cannot replace a manually selected rule', async () => {
+ const items = ['rule-A', 'rule-B'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ let refreshA!: (value: ReturnType<typeof ruleView>) => void
+ let aCalls = 0
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: items, nextCursor: null }), getRule: async (ruleId: string) => {
+  if (ruleId === 'rule-A' && ++aCalls === 2) return new Promise((resolve) => { refreshA = resolve })
+  return ruleView({ ruleId, query: `detail ${ruleId}` })
+ }, setRule: async (input: RuleWrite) => ({ ...createdDisabled, ruleId: 'rule-A', requestId: input.requestId }) })
+ const select = container.querySelector<HTMLSelectElement>('#career-rule-select')!
+ await act(async () => { select.value = 'rule-A'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await settle() })
+ await saveRule(container, 'updated A', '60', 'disabled')
+ await act(async () => { select.value = 'rule-B'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, 'detail rule-B')
+ await act(async () => { refreshA(ruleView({ ruleId: 'rule-A', query: 'stale refresh A' })); await settle() })
+ assert.equal(container.querySelector<HTMLSelectElement>('#career-rule-select')?.value, 'rule-B')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, 'detail rule-B')
 })
