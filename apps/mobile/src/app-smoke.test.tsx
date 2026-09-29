@@ -1734,12 +1734,110 @@ test('the task detail route ignores recovery completion after the active recover
 });
 
 test('the task detail route hides prior delivery and recovery error immediately after the run changes', async () => {
-  const { deliveryForRoute, recoveryErrorForRoute } = await import('./app/tasks/detail.tsx');
+  const { deliveryForRoute, recoveryErrorForRoute, taskDetailRouteIdentity } = await import('./app/tasks/detail.tsx');
   const oldDelivery: import('@weknora/mobile-core').DeliveryReceiptView = {
     deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
     branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
   };
-  const oldRecoveryIssue = { taskId: 'task-1', runId: 'run-1', message: 'prior recovery failure' };
-  assert.equal(deliveryForRoute(oldDelivery, 'task-1', 'run-2'), undefined, 'prior run delivery is hidden synchronously');
-  assert.equal(recoveryErrorForRoute(oldRecoveryIssue, 'task-1', 'run-2'), undefined, 'prior run recovery error is hidden synchronously');
+  const lease = {} as import('@weknora/mobile-core').ScopeLease;
+  const oldIdentity = taskDetailRouteIdentity({ surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'user-a', activeTenantId: 'tenant-1' } }, lease, 'task-1', 'run-1')!;
+  const nextIdentity = taskDetailRouteIdentity({ surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'user-a', activeTenantId: 'tenant-1' } }, lease, 'task-1', 'run-2')!;
+  const oldRecoveryIssue = { identity: oldIdentity, message: 'prior recovery failure' };
+  assert.equal(deliveryForRoute({ identity: oldIdentity, view: oldDelivery }, nextIdentity), undefined, 'prior run delivery is hidden synchronously');
+  assert.equal(recoveryErrorForRoute(oldRecoveryIssue, nextIdentity), undefined, 'prior run recovery error is hidden synchronously');
+});
+
+test('the mounted task detail route invalidates delivery state and stale actions on sign-out, tenant switch and same-origin reauth', async () => {
+  const { TaskDetailRouteLifecycle } = await import('./app/tasks/detail.tsx');
+  type Snapshot = import('@weknora/mobile-core').RuntimeSnapshot;
+  type Lease = import('@weknora/mobile-core').ScopeLease;
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let snapshot: Snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-a', activeTenantId: 'tenant-1' },
+  };
+  let lease: Lease | undefined = {} as Lease;
+  const cachedRecovery: import('@weknora/mobile-core').DeliveryRecovery = {
+    recover: async () => { throw new Error('recovery failed for test'); },
+  };
+  let activeRecovery: import('@weknora/mobile-core').DeliveryRecovery | undefined = cachedRecovery;
+  const reactRuntime = require('react') as {
+    useSyncExternalStore: (subscribe: (notify: () => void) => () => void, getSnapshot: () => unknown) => unknown;
+    useEffect: (effect: () => void | (() => void), dependencies?: readonly unknown[]) => void;
+  };
+  const originalUseSyncExternalStore = reactRuntime.useSyncExternalStore;
+  let storeNotifications = 0;
+  reactRuntime.useSyncExternalStore = (subscribe, getSnapshot) => {
+    reactRuntime.useEffect(() => subscribe(() => { storeNotifications += 1; }), []);
+    return getSnapshot();
+  };
+  const runtimeListeners = new Set<(next: Snapshot) => void>();
+  const routeRuntime = {
+    snapshot: () => snapshot,
+    subscribe: (listener: (next: Snapshot) => void) => { runtimeListeners.add(listener); return () => { runtimeListeners.delete(listener); }; },
+    scopeLease: () => lease,
+  };
+  const props = {
+    taskId: 'task-1', runId: 'run-1',
+    runtime: routeRuntime,
+    recoveryProvider: () => activeRecovery,
+    deliveryReader: () => ({ read: async () => receipt }),
+    taskOfficeProvider: () => undefined,
+  };
+  hooks().__reset();
+  render(TaskDetailRouteLifecycle, props);
+  hooks().__mount();
+  assert.ok(runtimeListeners.size > 0, 'the mounted route subscribes to runtime scope changes');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const mounted = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(mounted.props.delivery, receipt, 'the authorized initial scope displays its delivery receipt');
+  const staleAction = mounted.props.onRecoverDelivery as (input: { runId: string; deliveryId: string }) => Promise<unknown>;
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }));
+  const errored = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.match(String(errored.props.recoveryError), /恢复请求失败/, 'the active scope recovery error is visible');
+
+  snapshot = { surface: 'deployment-login', reason: 'authentication-required' };
+  lease = undefined;
+  activeRecovery = undefined;
+  const notificationsBeforeSignOut = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeSignOut, 'sign-out publishes through the mounted external-store subscription');
+  const signedOut = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(signedOut.props.delivery, undefined, 'sign-out hides prior receipt synchronously');
+  assert.equal(signedOut.props.recoveryError, undefined, 'sign-out hides prior scope error synchronously');
+  assert.equal(signedOut.props.onRecoverDelivery, undefined, 'sign-out removes the recovery action');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+
+  snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-a', activeTenantId: 'tenant-2' },
+  };
+  lease = {} as Lease;
+  activeRecovery = cachedRecovery;
+  const notificationsBeforeTenantSwitch = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeTenantSwitch, 'tenant change publishes through the mounted external-store subscription');
+  const switchedTenant = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(switchedTenant.props.delivery, undefined, 'tenant switch does not reveal the previous tenant receipt');
+  assert.equal(switchedTenant.props.recoveryError, undefined, 'tenant switch does not reveal the previous tenant error');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+
+  snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-b', activeTenantId: 'tenant-1' },
+  };
+  lease = {} as Lease;
+  activeRecovery = cachedRecovery;
+  const notificationsBeforeReauth = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeReauth, 'same-origin/tenant reauthentication publishes a new scope lease');
+  const reauthenticated = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(reauthenticated.props.delivery, undefined, 'same origin/tenant with a new user and lease starts without prior receipt state');
+  assert.equal(reauthenticated.props.recoveryError, undefined, 'same origin/tenant reauthentication starts without prior error state');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  hooks().__unmount();
+  reactRuntime.useSyncExternalStore = originalUseSyncExternalStore;
 });
