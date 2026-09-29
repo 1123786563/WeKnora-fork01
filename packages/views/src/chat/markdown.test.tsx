@@ -149,6 +149,19 @@ test('message rendering threads the invalid-image label into the shared renderer
   assert.match(html, /<p>Invalid image link<\/p>/);
 });
 
+test('localized chat copy controls invalid-image fallback in message faces', async () => {
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('../../../../apps/web/node_modules/react-dom/server.js');
+  const { BotMessageFace } = await import('./message-face.tsx');
+  const copy = resolveChatCopy('en');
+  const markup = renderToStaticMarkup(React.createElement(BotMessageFace, {
+    copy, message: { id: 'm1', role: 'assistant', content: '', is_completed: true } as never,
+    sessionId: null, content: '![bad](javascript:alert(1))',
+  }));
+  assert.match(markup, /<p>Invalid image link<\/p>/);
+  assert.doesNotMatch(markup, /无效的图片链接/);
+});
+
 test('message artifacts retain only public metadata for protected download actions', () => {
   const artifacts = messageArtifactItems({
     artifacts: [{ index: 0, file_name: 'report.csv', file_type: 'text/csv', file_size: 4, source_path: '/private/report.csv' }],

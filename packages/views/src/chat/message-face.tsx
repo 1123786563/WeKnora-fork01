@@ -400,7 +400,7 @@ export function AgentStreamAnswerFace(props: {
 }) {
   const row = props.message as Record<string, unknown>;
   const showRequestInfo = Boolean(row.request_id || props.message.id);
-  const html = renderChatMarkdown(props.content, {});
+  const html = renderChatMarkdown(props.content, { invalidImageLabel: props.copy.invalidImageLink });
   return (
     <div className="agent-stream-display is-rag-mode">
       <div className="streaming-steps-container">

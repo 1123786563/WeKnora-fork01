@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { assistantTimelineItems, isBookmarkActionAvailable, isFeedbackAvailable, writeClipboardText } from './message-list.tsx';
+import { assistantTimelineItems, isBookmarkActionAvailable, isFeedbackAvailable, MessageList, writeClipboardText } from './message-list.tsx';
 import type { ChatMessage } from '@weknora/contracts';
+import React from 'react';
+const { renderToStaticMarkup } = await import('../../../../apps/web/node_modules/react-dom/server.js');
 
 // Rendering assertions for MessageList (separators, timestamps, copy button,
 // typing indicator, scroll-to-bottom) live in the web chat integration suite;
@@ -69,4 +71,21 @@ test('reasoning-only assistant data renders no timeline at all like the Vue main
     agent_steps: [{ iteration: 0, reasoning_content: 'plan the search', thought: 'more reasoning' }],
   } as unknown as ChatMessage;
   assert.deepEqual(assistantTimelineItems(message), []);
+});
+
+test('underfilled history still exposes an accessible load-older action', () => {
+  const markup = renderToStaticMarkup(React.createElement(MessageList, {
+    messages: [], hasMore: true, loadingOlder: false, onLoadOlder() {},
+  }));
+  assert.match(markup, /<button[^>]*aria-label="Load more"/);
+});
+
+test('load-older action reflects loading state and is unavailable without more history', () => {
+  const loading = renderToStaticMarkup(React.createElement(MessageList, {
+    messages: [], hasMore: true, loadingOlder: true, onLoadOlder() {},
+  }));
+  assert.match(loading, /Loading/);
+  assert.match(loading, /disabled=""/);
+  const exhausted = renderToStaticMarkup(React.createElement(MessageList, { messages: [], hasMore: false, onLoadOlder() {} }));
+  assert.doesNotMatch(exhausted, /Load more/);
 });
