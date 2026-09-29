@@ -180,13 +180,14 @@ type CareerExportSubmission struct {
 
 // CareerExportPreparation is one preparation draft receipt record.
 type CareerExportPreparation struct {
-	PreparationID string    `json:"preparationId"`
-	ApplicationID string    `json:"applicationId"`
-	RequestID     string    `json:"requestId"`
-	Focus         string    `json:"focus"`
-	Status        string    `json:"status"`
-	FailureCode   string    `json:"failureCode,omitempty"`
-	CreatedAt     time.Time `json:"createdAt"`
+	PreparationID string             `json:"preparationId"`
+	ApplicationID string             `json:"applicationId"`
+	RequestID     string             `json:"requestId"`
+	Focus         string             `json:"focus"`
+	Status        string             `json:"status"`
+	FailureCode   string             `json:"failureCode,omitempty"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	Receipt       PreparationReceipt `json:"receipt"`
 }
 
 // CareerExportSearchRule is one periodic search rule.
@@ -515,10 +516,14 @@ func buildCareerExportArchive(tx *gorm.DB, s Scope) (CareerExportArchive, error)
 		return archive, err
 	}
 	for _, prep := range preparations {
+		var preparationReceipt PreparationReceipt
+		if err := decodePreparationReceipt(prep.ReceiptBody, &preparationReceipt); err != nil {
+			return archive, err
+		}
 		archive.Preparations = append(archive.Preparations, CareerExportPreparation{
 			PreparationID: prep.ID, ApplicationID: prep.ApplicationID, RequestID: prep.RequestID,
 			Focus: prep.Focus, Status: prep.Status, FailureCode: prep.FailureCode,
-			CreatedAt: prep.CreatedAt,
+			CreatedAt: prep.CreatedAt, Receipt: preparationReceipt,
 		})
 	}
 
@@ -616,6 +621,7 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 	if err = o.requireSpace(ctx, s); err != nil {
 		return CareerDeletionBoundaryView{}, err
 	}
+	var countErr error
 	sectionCount := func(table, extra string, args ...any) int {
 		var total int64
 		query := o.db.WithContext(ctx).Table(table).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID)
@@ -623,6 +629,9 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 			query = query.Where(extra, args...)
 		}
 		if err := query.Count(&total).Error; err != nil {
+			if countErr == nil {
+				countErr = fmt.Errorf("count career deletion boundary %s: %w", table, err)
+			}
 			return 0
 		}
 		return int(total)
@@ -652,6 +661,9 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 		},
 		External:  careerDeletionExternalBoundary(),
 		Retention: careerDeletionRetention(),
+	}
+	if countErr != nil {
+		return CareerDeletionBoundaryView{}, countErr
 	}
 	return view, nil
 }
@@ -752,6 +764,11 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 	}
 	fingerprint, err := careerDeletionFingerprint(input.RequestID, input.ExpectedRevision)
 	if err != nil {
+		return CareerDeletionReceipt{}, err
+	}
+	// Close admission before creating or resuming the deletion state machine.
+	// An unresolved claim remains durable and retryable under its original ID.
+	if err = o.beginLifecycleDeletion(ctx, s, input.RequestID, fingerprint); err != nil {
 		return CareerDeletionReceipt{}, err
 	}
 
@@ -1072,9 +1089,16 @@ func (o *Office) runDeletionSteps(ctx context.Context, s Scope, requestID string
 func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
 	var rows []materialExportRecord
 	if err := o.db.WithContext(ctx).
-		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
 		Find(&rows).Error; err != nil {
 		return err
+	}
+	if len(rows) > 0 && o.exportStorage == nil {
+		for _, row := range rows {
+			if row.PDFObjectKey != "" || row.DOCXObjectKey != "" {
+				return ErrExportStorageUnavailable
+			}
+		}
 	}
 	if o.exportStorage != nil {
 		for _, row := range rows {
@@ -1089,7 +1113,7 @@ func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
 		}
 	}
 	return o.db.WithContext(ctx).Model(&materialExportRecord{}).
-		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
 		Updates(map[string]any{"status": ExportStatusRevoked, "revoked_at": time.Now().UTC(), "updated_at": time.Now().UTC()}).Error
 }
 
@@ -1098,13 +1122,16 @@ func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
 // Each source's ref is blanked right after a successful release so a retry
 // after a mid-step failure never releases the same resource twice.
 func (o *Office) deletionPurgeCareerData(ctx context.Context, s Scope) error {
+	var sources []sourceRevision
+	if err := o.db.WithContext(ctx).
+		Where("tenant_id=? AND user_id=? AND resource_ref<>''", s.TenantID, s.UserID).
+		Find(&sources).Error; err != nil {
+		return err
+	}
+	if len(sources) > 0 && o.sourceUploadReleaser == nil {
+		return errors.New("career source upload releaser is not configured")
+	}
 	if o.sourceUploadReleaser != nil {
-		var sources []sourceRevision
-		if err := o.db.WithContext(ctx).
-			Where("tenant_id=? AND user_id=? AND resource_ref<>''", s.TenantID, s.UserID).
-			Find(&sources).Error; err != nil {
-			return err
-		}
 		for _, src := range sources {
 			if err := o.sourceUploadReleaser.Release(ctx, src.ResourceRef, src.ID); err != nil {
 				return fmt.Errorf("release career source %s: %w", src.ID, err)

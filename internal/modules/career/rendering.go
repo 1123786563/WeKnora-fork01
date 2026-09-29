@@ -207,6 +207,21 @@ func (o *Office) cleanupOrphanExportObjects(ctx context.Context, keys ...string)
 	}
 }
 
+func (o *Office) deleteExportObjects(ctx context.Context, keys ...string) error {
+	if o.exportStorage == nil {
+		return ErrExportStorageUnavailable
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if err := o.exportStorage.DeleteExport(ctx, key); err != nil {
+			return fmt.Errorf("compensate career export object %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
 // SetExportSigningKey binds the HMAC secret for download grants. Grants fail
 // closed while no key is configured.
 func (o *Office) SetExportSigningKey(key []byte) { o.exportSigningKey = key }
@@ -1107,6 +1122,11 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	if replay, found, lookupErr := o.replayExportReceipt(ctx, s, input.RequestID, fingerprint, MaterialKindPublished); lookupErr != nil {
 		return ExportReceipt{}, lookupErr
 	} else if found {
+		// A process may have committed this receipt and crashed before dropping
+		// its operation claim. The durable receipt proves the effect is terminal.
+		if releaseErr := o.resolveLifecycleClaim(context.Background(), s, "material_publish", input.RequestID); releaseErr != nil {
+			return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
 		return replay, nil
 	}
 	if o.exportStorage == nil {
@@ -1118,7 +1138,9 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	}
 	contentDigest := materialContentDigest(view.Body)
 
-	exportID := uuid.NewString()
+	// Stable per-scope request identity makes a retry find/overwrite the same
+	// objects after a crash between storage and locator persistence.
+	exportID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(fmt.Sprintf("career-export:%d:%s:%s:%s", s.TenantID, s.UserID, input.RequestID, fingerprint))).String()
 	pdfBytes, renderErr := renderMaterialPDF(view.Body)
 	if renderErr != nil {
 		return ExportReceipt{}, fmt.Errorf("render career material pdf: %w", renderErr)
@@ -1127,16 +1149,24 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	if renderErr != nil {
 		return ExportReceipt{}, fmt.Errorf("render career material docx: %w", renderErr)
 	}
+	if err = o.admitLifecycleClaim(ctx, s, "material_publish", input.RequestID, fingerprint); err != nil {
+		return ExportReceipt{}, err
+	}
+	finishClaim := func() error {
+		return o.resolveLifecycleClaim(context.Background(), s, "material_publish", input.RequestID)
+	}
 	pdfKey, err := o.exportStorage.SaveExport(ctx, s.TenantID, "career_export_"+exportID+pdfExportExtension, pdfBytes)
 	if err != nil {
-		return ExportReceipt{}, fmt.Errorf("store career material pdf: %w", err)
+		// Storage errors may be an unknown outcome; retain the claim so the
+		// original request can reconcile or compensate before deletion.
+		return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 	}
 	docxKey, err := o.exportStorage.SaveExport(ctx, s.TenantID, "career_export_"+exportID+docxExportExtension, docxBytes)
 	if err != nil {
-		// The PDF object is already durable; without a compensating delete it
-		// would outlive every row that could ever reference it.
-		o.cleanupOrphanExportObjects(ctx, pdfKey)
-		return ExportReceipt{}, fmt.Errorf("store career material docx: %w", err)
+		// The adapter may have stored the object despite returning an error.
+		// Keep the claim and replay the stable request-derived object names;
+		// only a complete locator receipt or proven compensation may release it.
+		return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 	}
 	pdfVerifyErr := o.verifyExportFormat(ExportFormatPDF, pdfBytes, view.Body)
 	docxVerifyErr := o.verifyExportFormat(ExportFormatDOCX, docxBytes, view.Body)
@@ -1177,12 +1207,14 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	}
 
 	persisted := false
+	storedExisting := false
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var stored materialReceiptRecord
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).
 			First(&stored).Error
 		if e == nil {
+			storedExisting = true
 			if stored.Fingerprint != fingerprint {
 				return ErrIdempotencyConflict
 			}
@@ -1229,11 +1261,35 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 		persisted = true
 		return nil
 	})
-	if !persisted {
-		// Conflict, replay, or DB failure: no durable row references the
-		// freshly written objects anymore, so they are compensated away
-		// instead of leaking resume content onto disk.
-		o.cleanupOrphanExportObjects(ctx, pdfKey, docxKey)
+	if persisted && err == nil {
+		if releaseErr := finishClaim(); releaseErr != nil {
+			return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
+		return receipt, nil
+	}
+	if storedExisting && err == nil {
+		if releaseErr := finishClaim(); releaseErr != nil {
+			return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
+		return receipt, nil
+	}
+	if err != nil {
+		if replay, found, lookupErr := o.replayExportReceipt(ctx, s, input.RequestID, fingerprint, MaterialKindPublished); lookupErr == nil && found {
+			if releaseErr := finishClaim(); releaseErr != nil {
+				return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+			}
+			return replay, nil
+		} else if lookupErr != nil {
+			return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
+	}
+	// No terminal receipt exists. Remove deterministic objects; only a proven
+	// compensation permits dropping the durable claim.
+	if cleanupErr := o.deleteExportObjects(ctx, pdfKey, docxKey); cleanupErr != nil {
+		return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+	}
+	if releaseErr := finishClaim(); releaseErr != nil {
+		return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 	}
 	if err != nil {
 		if errors.Is(err, ErrIdempotencyConflict) || errors.Is(err, ErrInvalidRequest) ||

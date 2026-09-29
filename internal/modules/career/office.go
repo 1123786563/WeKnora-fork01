@@ -65,6 +65,31 @@ type space struct {
 	OwnerUserID string `gorm:"uniqueIndex;size:512"`
 	CreatedAt   time.Time
 }
+
+// Lifecycle rows are durable across independently constructed Offices.
+// Claims intentionally have no time-based expiry; unknown effects must be
+// reconciled by the original request ID before deletion can proceed.
+type lifecycleGate struct {
+	TenantID            uint64 `gorm:"primaryKey"`
+	UserID              string `gorm:"primaryKey;size:512"`
+	Phase               string `gorm:"size:16;not null"`
+	DeletionRequestID   string `gorm:"size:128"`
+	DeletionFingerprint string `gorm:"size:64;not null;default:''"`
+}
+
+func (lifecycleGate) TableName() string { return "career_lifecycle_gates" }
+
+type lifecycleClaim struct {
+	TenantID    uint64    `gorm:"primaryKey"`
+	UserID      string    `gorm:"primaryKey;size:512"`
+	Operation   string    `gorm:"primaryKey;size:32"`
+	RequestID   string    `gorm:"primaryKey;size:128"`
+	Fingerprint string    `gorm:"size:64;not null;default:''"`
+	CreatedAt   time.Time `gorm:"not null"`
+}
+
+func (lifecycleClaim) TableName() string { return "career_lifecycle_claims" }
+
 type fact struct {
 	ID           uint   `gorm:"primaryKey"`
 	TenantID     uint64 `gorm:"uniqueIndex:career_fact_scope_key"`
@@ -300,7 +325,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}, &usageReservationRecord{}, &reconciliationRecord{}}
+	models := []any{&profile{}, &space{}, &lifecycleGate{}, &lifecycleClaim{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}, &usageReservationRecord{}, &reconciliationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -356,6 +381,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 	requiredColumns := map[string][]string{
 		"career_profiles":                 {"tenant_id", "user_id", "revision"},
 		"career_spaces":                   {"tenant_id", "owner_user_id", "created_at"},
+		"career_lifecycle_gates":          {"tenant_id", "user_id", "phase", "deletion_request_id", "deletion_fingerprint"},
+		"career_lifecycle_claims":         {"tenant_id", "user_id", "operation", "request_id", "fingerprint", "created_at"},
 		"career_facts":                    {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
 		"career_fact_versions":            {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
 		"career_proposals":                {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
