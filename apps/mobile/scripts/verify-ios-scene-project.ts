@@ -42,8 +42,9 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
   const configIds = [...(configListBlock ?? '').matchAll(/([A-F0-9]+)(?=\s*(?:\/\*[^*]*\*\/\s*)?[,])/g)].map((match) => match[1]);
   const configSections = project.match(/\/\* Begin XCBuildConfiguration section \*\/([\s\S]*?)\/\* End XCBuildConfiguration section \*\//)?.[1] ?? '';
   const deploymentValues = configIds.map((id) => {
-    const block = pbxBlock(configSections, id);
-    return block?.match(/IPHONEOS_DEPLOYMENT_TARGET\s*=\s*([^;]+);/)?.[1].trim();
+    const block = pbxBlock(stripPbxBlockComments(configSections), id);
+    const buildSettings = block ? pbxDictionary(block, 'buildSettings') : undefined;
+    return buildSettings?.match(/(?:^|\n)\s*IPHONEOS_DEPLOYMENT_TARGET\s*=\s*([^;]+);/)?.[1].trim();
   });
   if (configIds.length === 0 || deploymentValues.some((value) => value !== '16.4')) {
     issues.push('All app target deployment settings must be 16.4');
@@ -63,6 +64,22 @@ function pbxBlock(section: string, id: string): string | undefined {
   for (let index = open + 1; index < section.length; index++) {
     if (section[index] === '{') depth++;
     if (section[index] === '}' && --depth === 0) return section.slice(open + 1, index);
+  }
+  return undefined;
+}
+
+function stripPbxBlockComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+function pbxDictionary(source: string, key: string): string | undefined {
+  const declaration = new RegExp(`(?:^|[,{\\n])\\s*${key}\\s*=\\s*\\{`).exec(source);
+  if (!declaration) return undefined;
+  const open = source.indexOf('{', declaration.index + declaration[0].length - 1);
+  let depth = 1;
+  for (let index = open + 1; index < source.length; index++) {
+    if (source[index] === '{') depth++;
+    if (source[index] === '}' && --depth === 0) return source.slice(open + 1, index);
   }
   return undefined;
 }

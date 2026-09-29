@@ -53,3 +53,10 @@
 - Ruling: strip block comments and read actual per-configuration buildSettings; add an absent-key-with-comment fixture. Cost if too strict: generated PBX syntax changes require a corresponding parser/fixture update.
 - Brief: `.superpowers/sdd/plan-t31-ios27/fix-task-1-r3-brief.md`; implementation scope only checker/test/report/ledger.
 - Status: pending → running.
+
+## Review repair round 3 implementation
+- Added Staging negative fixture with no actual deployment key and only `/* IPHONEOS_DEPLOYMENT_TARGET = 16.4; */`; RED reproduced against the previous verifier (contract incorrectly returned no issues).
+- Verifier now strips PBX block comments before resolving each referenced XCBuildConfiguration and extracts `IPHONEOS_DEPLOYMENT_TARGET` only from that configuration's actual `buildSettings` dictionary. Test fixtures now model the generated PBX nesting.
+- Verification: focused iOS project contract tests 5/5 pass; full mobile tests 296 total, 282 pass, 14 credential/environment-gated skips, 0 fail; mobile typecheck passes; generated SDK57 `ios` project contract passes; `git diff --check` passes.
+- Source patch SHA-256: `138797e6d8104b18d851aab461e02641aa812af0e775c4c29f1072d9844d5251` (before report/ledger documentation edits).
+- Status: implementation verified; local commit pending.

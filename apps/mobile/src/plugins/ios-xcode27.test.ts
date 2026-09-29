@@ -27,9 +27,9 @@ A1 /* WeKnora */ = {
 B1 = { buildConfigurations = ( C1 /* Debug */, C2 /* Release */, C3 /* Staging */, ); };
 /* End XCConfigurationList section */
 /* Begin XCBuildConfiguration section */
-C1 /* Debug */ = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; };
-C2 /* Release */ = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; };
-C3 /* Staging */ = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; };
+C1 /* Debug */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; }; };
+C2 /* Release */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; }; };
+C3 /* Staging */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; }; };
 /* unrelated Pods setting */ IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 /* End XCBuildConfiguration section */`);
   writeFileSync(join(root, 'Podfile.properties.json'), JSON.stringify({ 'ios.deploymentTarget': '16.4' }));
@@ -71,7 +71,7 @@ test('generated SDK57 contract checks unannotated app configs and callback-speci
     const project = join(root, 'WeKnora.xcodeproj', 'project.pbxproj');
     let source = readFileSync(project, 'utf8');
     source = source.replace('C1 /* Debug */, C2 /* Release */, C3 /* Staging */,', 'C1 /* Debug */, C2 /* Release */, C3,');
-    source = source.replace('C3 /* Staging */ = { IPHONEOS_DEPLOYMENT_TARGET = 16.4;', 'C3 /* Staging */ = { IPHONEOS_DEPLOYMENT_TARGET = 16.0;');
+    source = source.replace('C3 /* Staging */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.4;', 'C3 /* Staging */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.0;');
     writeFileSync(project, source);
     assert.match(verifyIosSceneProject(root).join('\n'), /All app target deployment settings/);
 
@@ -85,6 +85,20 @@ test('generated SDK57 contract checks unannotated app configs and callback-speci
     const delegate = readFileSync(appDelegate, 'utf8').replace('RCTLinkingManager.application(application, continue:', 'OtherLinker.application(application, continue:');
     writeFileSync(appDelegate, delegate);
     assert.match(verifyIosSceneProject(root).join('\n'), /universal-link callback/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 project contract rejects deployment setting found only in a PBX comment', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const project = join(root, 'WeKnora.xcodeproj', 'project.pbxproj');
+    const source = readFileSync(project, 'utf8');
+    writeFileSync(project, source.replace(
+      'C3 /* Staging */ = { buildSettings = { IPHONEOS_DEPLOYMENT_TARGET = 16.4; }; };',
+      'C3 /* Staging */ = { buildSettings = { /* IPHONEOS_DEPLOYMENT_TARGET = 16.4; */ }; };',
+    ));
+    assert.match(verifyIosSceneProject(root).join('\n'), /All app target deployment settings/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
