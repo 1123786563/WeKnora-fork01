@@ -220,6 +220,80 @@ func TestAdoptListingRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
 	require.Zero(t, count)
 }
 
+func TestAdoptListingSerializesWithConcurrentUnlist(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	market := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+
+	insertReached, allowInsert := make(chan struct{}), make(chan struct{})
+	unlistAttempted := make(chan struct{})
+	var insertOnce, unlistOnce, allowInsertOnce sync.Once
+	defer allowInsertOnce.Do(func() { close(allowInsert) })
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:block_adoption_insert", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "adopt" {
+			insertOnce.Do(func() { close(insertReached) })
+			<-allowInsert
+		}
+	}))
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:signal_unlist_attempt", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_marketplace_listings" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "unlist" {
+			unlistOnce.Do(func() { close(unlistAttempted) })
+		}
+	}))
+
+	type adoptResult struct {
+		row     *types.AgentAdoptionEntity
+		created bool
+		err     error
+	}
+	adopted := make(chan adoptResult, 1)
+	adoptCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "adopt")
+	go func() {
+		row, created, err := repo.AdoptListing(adoptCtx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: "l1", AcceptedReleaseID: "r1", State: "active"})
+		adopted <- adoptResult{row: row, created: created, err: err}
+	}()
+	select {
+	case <-insertReached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AdoptListing did not reach its insert inside the eligibility transaction")
+	}
+	unlisted := make(chan error, 1)
+	unlistCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "unlist")
+	go func() {
+		_, err := market.TransitionListingState(unlistCtx, 1, "l1", "listed", "unlisted", map[string]any{"unlisted_by": "admin"})
+		unlisted <- err
+	}()
+	select {
+	case <-unlistAttempted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Unlist did not reach its lifecycle write while Adopt was gated")
+	}
+	allowInsertOnce.Do(func() { close(allowInsert) })
+	select {
+	case result := <-adopted:
+		require.NoError(t, result.err)
+		require.True(t, result.created)
+		require.NotNil(t, result.row)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AdoptListing did not finish after releasing the insert gate")
+	}
+	select {
+	case err := <-unlisted:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Unlist did not finish after Adopt committed")
+	}
+	var listing types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "l1").First(&listing).Error)
+	require.Equal(t, "unlisted", listing.State)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, "l1").Count(&count).Error)
+	require.EqualValues(t, 1, count, "Adopt linearized before Unlist; no adoption may be inserted after the transition")
+}
+
 func TestCreateVariantRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
 	db := openLifecycleMigrationDB(t)
 	repo := NewAgentAdoptionRepository(db)

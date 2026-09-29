@@ -67,7 +67,14 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 // reconciles the accepted pointer, so both callers get an idempotent result
 // instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	return adoptListingTx(r.db.WithContext(ctx), adoption)
+	var result *types.AgentAdoptionEntity
+	var created bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, created, err = adoptListingTx(tx, adoption)
+		return err
+	})
+	return result, created, err
 }
 
 // adoptListingTx is the transaction-bound adopt upsert, shared with the

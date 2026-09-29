@@ -142,26 +142,55 @@ func (r *agentUpgradeRepository) ListProposals(ctx context.Context, tenantID uin
 // UpdateVariantState. Paired stamps: naming an actor (resolved_by) also
 // stamps updated_at.
 func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantID uint64, proposalID string, expectedFrom []string, nextState string, updates map[string]any) (*types.AgentUpgradeProposalEntity, error) {
-	set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
-	for key, value := range updates {
-		set[key] = value
-	}
-	result := r.db.WithContext(ctx).Model(&types.AgentUpgradeProposalEntity{}).
-		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(proposalID), expectedFrom).
-		Updates(set)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected != 1 {
-		var current types.AgentUpgradeProposalEntity
-		err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(proposalID)).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAgentUpgradeProposalNotFound
+	var updated *types.AgentUpgradeProposalEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		id := strings.TrimSpace(proposalID)
+		if nextState == "accepted" {
+			var proposal types.AgentUpgradeProposalEntity
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&proposal).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrAgentUpgradeProposalNotFound
+				}
+				return err
+			}
+			var adoption types.AgentAdoptionEntity
+			if err := tx.Where("tenant_id = ? AND id = ? AND listing_id = ?", tenantID, proposal.AdoptionID, proposal.ListingID).First(&adoption).Error; err != nil {
+				return ErrAgentUpgradeProposalTransition
+			}
+			if err := requireListedListing(tx, tenantID, proposal.ListingID); err != nil {
+				return ErrAgentUpgradeProposalTransition
+			}
+			if err := requireActiveRelease(tx, tenantID, proposal.ToReleaseID, proposal.ListingID); err != nil {
+				return ErrAgentUpgradeProposalTransition
+			}
 		}
-		if err != nil {
-			return nil, err
+		set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
+		for key, value := range updates {
+			set[key] = value
 		}
-		return nil, ErrAgentUpgradeProposalTransition
-	}
-	return r.GetProposal(ctx, tenantID, proposalID)
+		result := tx.Model(&types.AgentUpgradeProposalEntity{}).
+			Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, id, expectedFrom).
+			Updates(set)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			var current types.AgentUpgradeProposalEntity
+			err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&current).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentUpgradeProposalNotFound
+			}
+			if err != nil {
+				return err
+			}
+			return ErrAgentUpgradeProposalTransition
+		}
+		var row types.AgentUpgradeProposalEntity
+		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&row).Error; err != nil {
+			return err
+		}
+		updated = &row
+		return nil
+	})
+	return updated, err
 }

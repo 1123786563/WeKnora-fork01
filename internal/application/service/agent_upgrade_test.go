@@ -44,6 +44,18 @@ type gatedUpgradeCreateVariantRepository struct {
 	resume  <-chan struct{}
 }
 
+type gatedUpgradeTransitionRepository struct {
+	repository.AgentUpgradeRepository
+	reached chan struct{}
+	resume  <-chan struct{}
+}
+
+func (r *gatedUpgradeTransitionRepository) TransitionProposal(ctx context.Context, tenantID uint64, proposalID string, expectedFrom []string, nextState string, updates map[string]any) (*types.AgentUpgradeProposalEntity, error) {
+	close(r.reached)
+	<-r.resume
+	return r.AgentUpgradeRepository.TransitionProposal(ctx, tenantID, proposalID, expectedFrom, nextState, updates)
+}
+
 func (r *gatedUpgradeCreateVariantRepository) CreateVariant(ctx context.Context, variant *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
 	close(r.reached)
 	<-r.resume
@@ -318,6 +330,52 @@ func TestAcceptUpgradeProposalRejectsConcurrentUnlist(t *testing.T) {
 	variants, err := baseRepo.ListVariantsByAdoption(context.Background(), 1, adoption.ID)
 	require.NoError(t, err)
 	require.Empty(t, variants, "acceptance must not create a Variant after its Listing is unlisted")
+}
+
+func TestAcceptUpgradeProposalRechecksLifecycleAfterVariantCreation(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
+	_, _ = publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+
+	baseRepo := svc.repo
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	gate := &gatedUpgradeTransitionRepository{AgentUpgradeRepository: baseRepo, reached: make(chan struct{}), resume: resume}
+	svc.repo = gate
+	accepted := make(chan error, 1)
+	go func() {
+		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "orphan after unlist"})
+		accepted <- err
+	}()
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not reach TransitionProposal after creating its Variant")
+	}
+	_, err = repository.NewAgentMarketplaceRepository(db).TransitionListingState(context.Background(), 1, listingID, "listed", "unlisted", map[string]any{"unlisted_by": "admin"})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+	select {
+	case err := <-accepted:
+		require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+		require.ErrorIs(t, err, repository.ErrAgentUpgradeProposalTransition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not return after its transition guard resumed")
+	}
+	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, proposal)
+	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
+	require.Empty(t, proposal.AcceptedVariantID)
+	variants, err := baseRepo.ListVariantsByAdoption(context.Background(), 1, adoption.ID)
+	require.NoError(t, err)
+	require.Len(t, variants, 1, "the rejected acceptance may leave the explicitly allowed orphan draft")
+	require.Equal(t, AgentVariantStateDraft, variants[0].State)
 }
 
 func TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades(t *testing.T) {

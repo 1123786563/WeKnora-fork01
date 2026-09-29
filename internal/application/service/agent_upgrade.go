@@ -169,6 +169,9 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 	updated, err := s.repo.TransitionProposal(ctx, tenantID, row.ID, []string{AgentUpgradeProposalStateOpen}, AgentUpgradeProposalStateAccepted,
 		map[string]any{"accepted_variant_id": variant.ID, "resolved_by": actorID})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentUpgradeProposalTransition) {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w: source listing or release is no longer eligible", ErrAgentUpgradeStateConflict, err)
+		}
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, err
 	}
 	proposal, err := decodeUpgradeProposal(updated)
