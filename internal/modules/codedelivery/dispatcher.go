@@ -273,6 +273,12 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 // PR for the task head → delivered; otherwise the task branch ref → pushed.
 // It never re-sends anything.
 func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string) (appconnectorsvc.DispatchOutcome, error) {
+	return d.QueryProviderConfirmed(ctx, snap, providerKey, false)
+}
+
+var _ appconnectorsvc.AttestedUnknownResolver = (*DeliveryDispatcher)(nil)
+
+func (d *DeliveryDispatcher) QueryProviderConfirmed(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string, ownerConfirmed bool) (appconnectorsvc.DispatchOutcome, error) {
 	material, err := ParseDeliveryMaterial(snap.Args)
 	if err != nil {
 		return appconnectorsvc.DispatchOutcome{}, err
@@ -298,7 +304,11 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 		return appconnectorsvc.DispatchOutcome{}, ierr
 	}
 	head := material.Repo.Owner + ":" + material.Branch
-	if receipt, rerr := client.PullRequestForHead(ctx, head, info.DefaultBranch); rerr == nil && receipt != nil {
+	receipt, rerr := client.PullRequestForHead(ctx, head, info.DefaultBranch)
+	if rerr != nil {
+		return appconnectorsvc.DispatchOutcome{}, rerr
+	}
+	if receipt != nil {
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
 			PRNumber: receipt.Number, PRURL: receipt.URL,
 		}); err != nil {
@@ -311,10 +321,13 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
 	}
 	if sha, exists, berr := client.BranchHead(ctx, material.Branch); berr == nil && exists {
-		if row.State == string(DeliveryDispatched) {
+		if row.State == string(DeliveryDispatched) && !ownerConfirmed {
 			// A live or abandoned claimant may still have an in-flight POST. A
 			// read-only miss cannot release its durable claim for another create.
-			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: PR absence cannot release dispatched claim %s", appconnectorsvc.ErrDispatchUnknown, head)
+			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %s", ErrDeliveryConfirmationRequired, head)
+		}
+		if !ownerConfirmed && row.State == string(DeliveryUnknown) {
+			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %s", ErrDeliveryConfirmationRequired, head)
 		}
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err

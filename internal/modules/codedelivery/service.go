@@ -293,14 +293,16 @@ func (s *CodeDeliveryService) GetDelivery(ctx context.Context, tenantID uint64, 
 
 // DispatchInput addresses one delivery. CallerID must be the run owner.
 type DispatchInput struct {
-	TenantID   uint64
-	CallerID   string
-	RunID      string
-	DeliveryID string
+	TenantID            uint64
+	CallerID            string
+	RunID               string
+	DeliveryID          string
+	ConfirmNoMatchingPR bool
 }
 
 // ErrDeliveryState guards the delivery state machine at the service seam.
 var ErrDeliveryState = errors.New("code_delivery_state_conflict")
+var ErrDeliveryConfirmationRequired = errors.New("code_delivery_owner_confirmation_required")
 
 // ErrDeliveryDispatchRejected: the approved dispatch was refused BEFORE any
 // remote call left the process (A03 settled the action failed via
@@ -426,8 +428,8 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if action.State == appconnector.ActionUnknown && row.State == string(DeliveryUnknown) {
-		if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+	if action.State == appconnector.ActionUnknown {
+		if err := s.deps.Actions.ResolveUnknownConfirmed(ctx, row.ActionID, in.ConfirmNoMatchingPR); err != nil {
 			return DeliveryView{}, err
 		}
 	} else if action.State == appconnector.ActionSucceeded {

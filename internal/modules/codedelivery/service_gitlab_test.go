@@ -269,7 +269,12 @@ func TestGitLabUnknownOutcomeResolvesFromRemoteFacts(t *testing.T) {
 	require.Equal(t, "unknown", view.ActionState)
 
 	f.gitlab.liftBlackout()
-	view, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	view, err = f.svc.ResolveDeliveryUnknown(ctx, in)
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryPushed), view.State, "远端事实：分支已收敛、MR 缺席 → 部分完成")
 

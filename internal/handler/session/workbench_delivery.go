@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -173,8 +175,23 @@ func (h *WorkbenchDeliveryHandler) ResolveDeliveryUnknown(c *gin.Context) {
 	if !ok {
 		return
 	}
+	var body struct {
+		ConfirmNoMatchingPR bool `json:"confirm_no_matching_pr"`
+	}
+	if c.Request.Body != nil {
+		dec := json.NewDecoder(c.Request.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid resolve body"})
+			return
+		}
+		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid resolve body"})
+			return
+		}
+	}
 	view, err := h.service.ResolveDeliveryUnknown(c.Request.Context(), codedelivery.DispatchInput{
-		TenantID: tenantID, CallerID: userID, RunID: run.Key.RunID, DeliveryID: c.Param("delivery_id"),
+		TenantID: tenantID, CallerID: userID, RunID: run.Key.RunID, DeliveryID: c.Param("delivery_id"), ConfirmNoMatchingPR: body.ConfirmNoMatchingPR,
 	})
 	if err != nil {
 		writeDeliveryError(c, err)
@@ -214,6 +231,8 @@ func writeDeliveryError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_protected_branch", "error": "the target branch is protected or is the default branch"})
 	case errors.Is(err, codedelivery.ErrDeliveryState):
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_state_conflict", "error": "delivery state does not allow this operation"})
+	case errors.Is(err, codedelivery.ErrDeliveryConfirmationRequired):
+		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_owner_confirmation_required", "error": "inspect the remote repository and confirm no matching pull request exists"})
 	case errors.Is(err, deliveryrepo.ErrDeliveryNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "code_delivery_not_found", "error": "delivery not found"})
 	case errors.Is(err, codedelivery.ErrInvalidMaterial),

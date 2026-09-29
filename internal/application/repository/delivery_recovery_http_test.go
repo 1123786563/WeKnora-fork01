@@ -448,7 +448,7 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	require.Equal(t, "unknown", view.State, "an unobservable PR transport failure settles unknown, never a replay")
 	beforeResolve := env.github.snapshotWrites()
 
-	w := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
+	w := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", `{"confirm_no_matching_pr":true}`)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var resolved struct {
 		Data struct {
@@ -668,7 +668,7 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(read.Body.Bytes(), &readView))
 	require.Equal(t, "unknown", readView.Data.Delivery.State)
-	resolved := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
+	resolved := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", `{"confirm_no_matching_pr":true}`)
 	require.Equal(t, http.StatusOK, resolved.Code)
 	var resolvedView struct {
 		Data struct {

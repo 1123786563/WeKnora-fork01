@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
@@ -216,9 +217,17 @@ func TestUnknownOutcomeResolvesFromRemoteFacts(t *testing.T) {
 	require.Equal(t, "unknown", view.ActionState)
 
 	f.github.liftBlackout()
-	view, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	view, err = f.svc.ResolveDeliveryUnknown(ctx, in)
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryPushed), view.State, "远端事实：分支已推、PR 缺席 → 部分完成")
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State, "A03 action and delivery must settle consistently")
 
 	view, err = f.svc.DispatchDelivery(ctx, dispatchInput(view)) // PR-only 恢复
 	require.NoError(t, err)
