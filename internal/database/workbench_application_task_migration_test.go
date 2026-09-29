@@ -51,7 +51,7 @@ func TestApplicationTaskMigrationCreatesAndRemovesProjectionSchema(t *testing.T)
 		require.Contains(t, index.SQL, "CREATE UNIQUE INDEX")
 	}
 
-	versioned, err := os.ReadFile(filepath.Join(repoRoot, "migrations", "versioned", "000196_workbench_application_tasks.up.sql"))
+	versioned, err := os.ReadFile(filepath.Join(repoRoot, "migrations", "versioned", "000208_workbench_application_tasks.up.sql"))
 	require.NoError(t, err)
 	versionedSQL := string(versioned)
 	require.Contains(t, versionedSQL, "uq_workbench_application_tasks_request")
