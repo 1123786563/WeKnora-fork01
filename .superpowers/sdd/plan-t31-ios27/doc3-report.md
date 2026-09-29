@@ -23,3 +23,7 @@ Base: `057b46e0759e74f41f64e0aa1babd75900800206`
 - `git diff --check`: passed.
 
 No application code was changed. The local simulator evidence establishes startup and visible layout at capture time only; it does not establish long-duration stability, interactive login, staging/OIDC behavior, actual Deployment capability negotiation, or Android device acceptance. Those checks remain pending.
+
+## Commit
+
+Status-document changes and this report were first committed as `c31c721bc` (`docs: reconcile T31 iOS 27 acceptance status`).
