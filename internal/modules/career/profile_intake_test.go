@@ -109,6 +109,24 @@ func TestModelInputOmitsIdentityFactsAndRedactsIdentityNumbers(t *testing.T) {
 	require.Contains(t, input.String(), "[REDACTED]")
 }
 
+func TestModelInputIncludesOnlyConfirmedInternshipCompany(t *testing.T) {
+	o, ctx := testOffice(t)
+	_, err := o.Confirm(ctx, "internship.company", "Confirmed Internship Co", "internship-confirm", 0, Source{Kind: "manual"})
+	require.NoError(t, err)
+	_, err = o.Propose(ctx, "internship.company", "Proposed Internship Co", "internship-propose", 1, Source{Kind: "resume_extraction"})
+	require.NoError(t, err)
+	_, err = o.Confirm(ctx, "unapproved.private_note", "Do not send to model", "private-note-confirm", 2, Source{Kind: "manual"})
+	require.NoError(t, err)
+
+	input, err := o.BuildModelInput(ctx, "qualification_evaluation")
+	require.NoError(t, err)
+	encoded := input.String()
+	require.Contains(t, encoded, `"key":"internship.company","value":"Confirmed Internship Co"`)
+	require.NotContains(t, encoded, "Proposed Internship Co")
+	require.NotContains(t, encoded, "unapproved.private_note")
+	require.NotContains(t, encoded, "Do not send to model")
+}
+
 func TestModelInputExcludesNestedDocumentFieldsAndSeparatedNumbers(t *testing.T) {
 	o, ctx := testOffice(t)
 	facts := []struct{ key, value string }{
