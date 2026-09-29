@@ -15,17 +15,18 @@ const view$ = (connection: TaskDetailView['connection'], seqs: number[] = [1]): 
 function handleFake(views: TaskDetailView[], options: { actError?: TaskOfficeError } = {}): TaskHandle & { resyncCount(): number; push(view: TaskDetailView): void; clear(): void; acts: TaskIntent[] } {
   let index = 0;
   let resyncs = 0;
+  let current: TaskDetailView | undefined;
   let listener: ((view: TaskDetailView | undefined) => void) | undefined;
   const acts: TaskIntent[] = [];
   return {
-    push(view: TaskDetailView) { listener?.(view); },
-    clear() { listener?.(undefined); },
+    push(view: TaskDetailView) { current = view; listener?.(view); },
+    clear() { current = undefined; listener?.(undefined); },
     resyncCount: () => resyncs,
     acts,
-    async hydrate() { return views[index++] ?? views[views.length - 1]!; },
-    view: () => views[Math.max(index - 1, 0)],
+    async hydrate() { current = views[index++] ?? views[views.length - 1]!; return current; },
+    view: () => current,
     updates(next) { listener = next; return () => { listener = undefined; }; },
-    async resync() { resyncs += 1; return views[Math.min(index, views.length - 1)]!; },
+    async resync() { resyncs += 1; current = views[Math.min(index, views.length - 1)]!; return current; },
     async act(intent) {
       acts.push(intent);
       if (options.actError !== undefined) throw options.actError;
@@ -34,6 +35,12 @@ function handleFake(views: TaskDetailView[], options: { actError?: TaskOfficeErr
     async flushQueuedIntents() {},
     close() {},
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
 }
 
 test('the controller publishes the hydrated view, streams updates and refresh resyncs the handle', async () => {
@@ -56,6 +63,59 @@ test('scope loss immediately clears the mounted controller view and exposes re-e
   await controller.whenSettled();
   assert.equal(controller.state().view?.title, '报告');
   fake.clear();
+  assert.equal(controller.state().view, undefined);
+  assert.equal(controller.state().error, TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED);
+  controller.dispose();
+});
+
+test('a hydrate continuation cannot republish its resolved view after scope clearing', async () => {
+  const pending = deferred<TaskDetailView>();
+  let current: TaskDetailView | undefined;
+  let listener: ((view: TaskDetailView | undefined) => void) | undefined;
+  const handle: TaskHandle = {
+    hydrate: () => pending.promise.then((view) => { current = view; return view; }),
+    view: () => current,
+    updates(next) { listener = next; return () => { listener = undefined; }; },
+    async resync() { throw new Error('unexpected refresh'); },
+    async act() { throw new Error('unexpected act'); },
+    async flushQueuedIntents() {},
+    close() {},
+  };
+  const controller = createTaskDetailController(handle);
+  const oldView = view$('live');
+  current = oldView;
+  pending.resolve(oldView); // promise is resolved, but its controller continuation has not run yet
+  current = undefined;
+  listener?.(undefined);
+  await controller.whenSettled();
+  assert.equal(controller.state().view, undefined);
+  assert.equal(controller.state().error, TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED);
+  controller.dispose();
+});
+
+test('a refresh continuation cannot republish its resolved view after scope clearing', async () => {
+  const refreshGate = deferred<TaskDetailView>();
+  let current: TaskDetailView | undefined;
+  let listener: ((view: TaskDetailView | undefined) => void) | undefined;
+  const initial = view$('live');
+  const handle: TaskHandle = {
+    async hydrate() { current = initial; return initial; },
+    view: () => current,
+    updates(next) { listener = next; return () => { listener = undefined; }; },
+    resync: () => refreshGate.promise.then((view) => { current = view; return view; }),
+    async act() { throw new Error('unexpected act'); },
+    async flushQueuedIntents() {},
+    close() {},
+  };
+  const controller = createTaskDetailController(handle);
+  await controller.whenSettled();
+  const refresh = controller.refresh();
+  const replacementView = view$('live', [1, 2]);
+  refreshGate.resolve(replacementView);
+  current = replacementView; // underlying operation resolved, controller continuation is queued
+  listener?.(undefined);
+  current = undefined;
+  await refresh;
   assert.equal(controller.state().view, undefined);
   assert.equal(controller.state().error, TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED);
   controller.dispose();
