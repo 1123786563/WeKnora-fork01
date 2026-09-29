@@ -32,7 +32,7 @@
 
 | ID | Source | Depends on | Owner role | Validator | Owned files | Interface / acceptance | Status |
 |---|---|---|---|---|---|---|---|
-| FR1 | T31-F1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `.superpowers/sdd/plan-t31-ios27/fix-task-4-report.md` | Resolve supported bundled loader forms; malformed loads and unresolved dependencies fail closed; exact multi-arch headers are skipped without hiding path-prefix dependencies; valid fixtures and retained app pass | round 2 fixed both Medium findings; review found Low FR1-R2-1 dylib false reject; round 3 running in `t31-fr1-framework-closure` |
+| FR1 | T31-F1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `.superpowers/sdd/plan-t31-ios27/fix-task-4-report.md` | Resolve supported bundled loader forms; malformed loads and unresolved dependencies fail closed; exact multi-arch headers are skipped without hiding path-prefix dependencies; valid fixtures and retained app pass | rounds 1–3 implemented and scoped-reviewed PASS in `t31-fr1-framework-closure`; ready for ordered integration |
 | DOC1 | T31-F2 | none | mechanical_worker | reviewer | `docs/plans/issue30-sweep/plans/plan-t31-ios27.md`, `.superpowers/sdd/plan-t31-ios27/doc1-report.md` | Restore a durable complete execution plan at cited path, with original task coverage and the approved 16.4 amendment; check every citation resolves | running in `t31-doc1-plan-record`, branch `codex/t31-doc1-plan-record`, owner role mechanical_worker |
 | DOC2 | T31-F3 | none | mechanical_worker | reviewer | `docs/testing/mobile-runtime-login-device-acceptance.md`, `.superpowers/sdd/plan-t31-ios27/doc2-report.md` | Update current iOS simulator status/evidence links to post-repair Release startup and safe-area proof; keep external auth/OIDC and Android checks pending | running in `t31-doc2-acceptance-record`, branch `codex/t31-doc2-acceptance-record`, owner role mechanical_worker |
 
@@ -70,6 +70,8 @@ Tasks have disjoint source/document ownership and no produced-code dependencies.
 - Brief `.superpowers/sdd/plan-t31-ios27/fr1-r2-brief.md`. File scope stays checker/test/FR1 report. Round 2 running; integrate FR1 before DOC1 and DOC2 once scoped review passes.
 - Round 2 commits `677f5e792` / `4dfe529c7`; scoped report `.superpowers/sdd/plan-t31-ios27/fr1-r2-review.md` marks prior findings resolved and code quality pass with Low FR1-R2-1. The substring fallback rejects `@rpath/Foo.framework.dylib`, a non-framework library.
 - Round 3 brief `.superpowers/sdd/plan-t31-ios27/fr1-r3-brief.md` switches to complete `.framework` path-component recognition and pins the dylib positive case. Same files/owner/worktree; status running. FR1 remains unintegrated until round-3 review passes.
+- Round-3 implementation/report commits `362b474e8` / `d9482bb7c`; review `.superpowers/sdd/plan-t31-ios27/fr1-r3-review.md` gives Spec PASS / Quality PASS with no open findings. It confirms both Medium false passes and Low false rejection are resolved, and tests contain a dependency row after each architecture header.
+- FR1 status: implementation and all scoped repairs verified; integrate the FR1 commits into the serial execution worktree before DOC1 and DOC2, then obtain the final T31 integrated review.
 
 ## Task DOC1: Restore the cited current T31 execution plan
 
