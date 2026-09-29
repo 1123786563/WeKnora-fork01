@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Tag } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -85,6 +85,8 @@ export interface SharedKnowledgeBaseDrawerProps {
 }
 
 export function SharedKnowledgeBaseDrawer({ open, shared, onClose, onGoToKb }: SharedKnowledgeBaseDrawerProps) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const kb = shared?.knowledge_base ?? null;
@@ -97,10 +99,32 @@ export function SharedKnowledgeBaseDrawer({ open, shared, onClose, onGoToKb }: S
   const permission = typeof shared?.permission === 'string' && shared.permission ? shared.permission : 'viewer';
   // Vue Transition：仅打开瞬间挂载（sharedDetailPanelVisible && currentSharedKbForDetail）。
   const visible = open && shared !== null;
+  useEffect(() => {
+    if (!visible) return;
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const drawer = drawerRef.current;
+    const focusables = () => drawer ? Array.from(drawer.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((el) => !el.hasAttribute('hidden')) : [];
+    focusables()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) { event.preventDefault(); drawer?.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !drawer?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !drawer?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [visible, onClose]);
   if (!visible) return null;
   return createPortal(
     <div className="shared-detail-drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="shared-detail-drawer" role="dialog" aria-label={t('knowledgeList.detail.title')}>
+      <div ref={drawerRef} className="shared-detail-drawer" role="dialog" aria-modal="true" aria-label={t('knowledgeList.detail.title')} tabIndex={-1}>
         <div className="shared-detail-drawer-header">
           <h3 className="shared-detail-drawer-title">{t('knowledgeList.detail.title')}</h3>
           <button type="button" className="shared-detail-drawer-close" aria-label={t('general.close')} onClick={onClose}>
