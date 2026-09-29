@@ -104,6 +104,8 @@ export { deliveryViewOf } from './delivery/delivery-view.ts';
 export type { DeliveryReceiptView, DeliveryRemoteRecord, DeliveryState } from './delivery/delivery-view.ts';
 export { createDeliveryReader, DeliveryReaderError } from './delivery/delivery-reader.ts';
 export type { DeliveryReader, DeliveryReaderErrorCode, DeliveryRemote } from './delivery/delivery-reader.ts';
+export { createDeliveryRecovery, DeliveryRecoveryError } from './delivery/delivery-recovery.ts';
+export type { DeliveryRecovery, DeliveryRecoveryErrorCode, DeliveryRecoveryRemote } from './delivery/delivery-recovery.ts';
 export { createScenarioDeliveryRemote } from './delivery/in-memory-delivery-remote.ts';
 
 export { createDictation, DICTATION_MAX_AUDIO_BYTES, DICTATION_MAX_DURATION_MS } from './voice/dictation.ts';
