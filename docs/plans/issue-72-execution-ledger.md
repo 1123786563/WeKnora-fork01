@@ -513,6 +513,6 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 
 ## Child issue comments refresh archive — 2026-09-30
 
-- Archived the authenticated paginated child comment capture in [`issue-72-child-comments-refresh-2026-09-30.md`](issue-72-child-comments-refresh-2026-09-30.md). Capture time: `2026-09-29T18:57:20Z`; coverage: 33/33 JSON arrays for #73–#105, 8 total comments on #73–#80, none on #81–#105. Sorted filename/content-hash manifest SHA-256: `1010e2d6490d406e71e86fbc95f85ad62cbb29aea2498beeccb49e52eb64ee21`.
+- Archived the authenticated paginated child comment capture in [`issue-72-child-comments-refresh-2026-09-30.md`](issue-72-child-comments-refresh-2026-09-30.md). Capture time: `2026-09-29T18:57:20Z`; coverage: 33/33 JSON arrays for #73–#105, 8 total comments on #73–#80, none on #81–#105. The manifest orders by ascending numeric issue number, #73–#105; lines are `<filename> SHA256(file bytes)`, joined by `\n` with no trailing newline. SHA-256: `1010e2d6490d406e71e86fbc95f85ad62cbb29aea2498beeccb49e52eb64ee21`.
 - Reconciled #74's Sep 20 blocked-env comment as historical against later activation evidence and R-1; remote #74 remains OPEN. Reconciled #75's Sep 20 wallet-limit/options comment as superseded by approved R-2 / ADR-0012 option B; remote #75 remains CLOSED.
 - No comment establishes new containment or an unrecorded dependency; references/handoffs remain references. DAG readiness and #82/#86/#87 acceptance gates are unchanged. No remote Issue state was modified.

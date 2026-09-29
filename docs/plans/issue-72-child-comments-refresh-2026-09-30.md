@@ -4,7 +4,7 @@
 
 Authenticated GitHub REST API responses were captured at `2026-09-29T18:57:20Z` for repository `1123786563/WeKnora-fork01`. The capture contains one paginated comments response per current direct child, #73–#105. The 33 `.json` files in `/tmp/issue72-refresh-20260930/comments-current/` each parse as a JSON array; together they contain eight comment objects on #73–#80 and empty arrays for #81–#105. The unrelated `96.stderr` capture is not a JSON response and is excluded.
 
-The sorted filename/content-hash manifest uses lines of `filename SHA256(file bytes)`, joined by `\n` with no trailing newline. Its SHA-256 is `1010e2d6490d406e71e86fbc95f85ad62cbb29aea2498beeccb49e52eb64ee21`.
+The manifest orders files by ascending numeric issue number, #73–#105. Each line is `<filename> SHA256(file bytes)`; lines are joined with `\n` and there is no trailing newline. Its SHA-256 is `1010e2d6490d406e71e86fbc95f85ad62cbb29aea2498beeccb49e52eb64ee21`.
 
 ## Non-empty comments
 
