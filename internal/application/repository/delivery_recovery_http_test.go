@@ -428,8 +428,8 @@ func TestT25PartialPushPRFailureRecoversExactlyOnceOverHTTP(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"state":"delivered"`)
 }
 
-// AC1 e2e（unknown half）：传输不可观测 → unknown；resolve 只读远端事实
-// 收敛为 pushed（分支在、PR 缺席），再走 PR-only 恢复到 delivered。
+// AC1 e2e（unknown half）：GitHub 已创建 PR 但响应丢失 → unknown；resolve
+// 只读远端分支和 PR 事实，直接收敛为 delivered，不再重放任何写操作。
 func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	env := newRecoveryEnv(t)
 	env.github.mu.Lock()
