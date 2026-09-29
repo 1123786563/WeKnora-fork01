@@ -60,3 +60,12 @@
 **Acceptance:** An unrelated pre-existing succeeded PaymentIntent can never be selected for the synthetic webhook. The same pre-settle candidate succeeds selection after settle. Missing linkage fails closed. Production code is unchanged. The task records but does not claim to resolve the live T9 environment gate or AC4 sandbox residual.
 
 **Failure handling:** If tagged compilation or package tests reveal an unrelated baseline failure, capture exact output and compare against BASE without editing unrelated code. If repository behavior shows settle may replace PI identities, stop and report evidence; do not weaken to arbitrary succeeded selection.
+
+## Review-driven clarification (Task 1 fix round 1)
+
+The first independent task review found that accepting any succeeded ID from a multi-candidate set does not prove identity with production settlement. Update Task 1 as follows before the scoped repair:
+
+- Capture candidate ID, `created`, and invoice ID from the same pre-settle response. Resolve the expected PI by the production `latestIntent` rule: the unique greatest positive `created` timestamp. If candidate creation time is absent/invalid or the greatest timestamp is tied, fail closed before submitting the settle command. Production already rejects invalid creation time and tied latest candidates.
+- After settle, select only a succeeded, invoice-linked row whose ID equals that exact expected PI ID. Do not select an arbitrary candidate or a merely unique succeeded row.
+- Extend the pure tagged regression with two candidates returned in reverse creation order (only the newest expected ID is accepted), an older-candidate-only success (fail), and a tied latest timestamp (fail before settlement selection). This proves the target corresponds to the server's established latest-candidate rule.
+- Correct the execution ledger's erroneous `4ac0c0af...` checkpoint to the actual implementation commit `7e7975a7262dcea43f0fbef42df54438b39af836`; retain plan commit `9d3df6f961142a6c5e0734d9eea4a283b34859d7` and review-record commit `fac64ec95f3a7af2343069ef016060cda4dc5337` as records, not implementation checkpoints.
