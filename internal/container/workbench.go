@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 
@@ -87,10 +88,10 @@ func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
 	knowledgeBases := repository.NewKnowledgeBaseRepository(db)
 	return researchSourceAuthorizerFunc(func(ctx context.Context, tenantID uint64, id string) error {
 		_, err := knowledgeBases.GetKnowledgeBaseByIDAndTenant(ctx, id, tenantID)
-		if err != nil {
+		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
 			return session.ErrResearchSourceOutOfScope
 		}
-		return nil
+		return err
 	})
 }
 
