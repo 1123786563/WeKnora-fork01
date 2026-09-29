@@ -660,16 +660,17 @@ test('OCR3-029 D6: a malformed 200 body is a definite contract violation — it 
   assert.equal(career.pendingMaterialWrite(), null, 'no intent is persisted — the user is not trapped in a recovery loop');
 });
 
-test('OCR2-037 E2: a bare AUTH_REQUIRED on the first write never persists a recovery intent (frozen: definite local failure)', async () => {
+test('OCR2-037 E2: RUNTIME_UNAUTHORIZED on the first write never persists a recovery intent', async () => {
   await freshLogin();
   await career.loadCareer();
-  // 本地登出后 scoped() 在发送前抛裸 Error('AUTH_REQUIRED')（无 code 无 status）——
-  // ambiguousOutcome 会把它误判为歧义；冻结口径要求它绝不落 intent。
+  // 本地登出后 MobileRuntime 在 transport 前抛 Error('RUNTIME_UNAUTHORIZED')。
   await runtime.auth.logout();
+  const callCount = stub.state.calls.length;
   const failed = await career.publishMaterial('mat-1', 2).catch(error => error);
   assert.equal(failed.message, 'SCOPE_CHANGED');
-  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
-  assert.equal(career.pendingMaterialPublish(), null, 'AUTH_REQUIRED is a definite local failure — no export intent may be persisted');
+  assert.match(`${failed.cause?.message ?? ''}`, /RUNTIME_UNAUTHORIZED/);
+  assert.equal(stub.state.calls.length, callCount, 'missing credentials fail before transport');
+  assert.equal(career.pendingMaterialPublish(), null, 'no export intent may be persisted');
   assert.equal(career.pendingApplication(), null);
   assert.equal(career.pendingSubmission(), null);
 });

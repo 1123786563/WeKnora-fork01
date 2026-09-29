@@ -467,14 +467,16 @@ test('OCR3-032 F3: an ambiguous upload keeps its request id — the safe resend 
   assert.equal(career.pendingUpload(), null, 'a successful resend clears the intent');
 });
 
-test('OCR2-037: a bare AUTH_REQUIRED on the first search never persists a recovery intent', async () => {
+test('OCR2-037: RUNTIME_UNAUTHORIZED on the first search never persists a recovery intent', async () => {
   await freshLogin({
     'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } }),
   });
   await career.loadCareer();
   await runtime.auth.logout();
+  const callCount = stub.state.calls.length;
   const failed = await career.searchOnce('Go 工程师').catch(error => error);
   assert.equal(failed.message, 'SCOPE_CHANGED');
-  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
-  assert.equal(career.pendingSearch(), null, 'AUTH_REQUIRED is a definite local failure — no search intent may be persisted');
+  assert.match(`${failed.cause?.message ?? ''}`, /RUNTIME_UNAUTHORIZED/);
+  assert.equal(stub.state.calls.length, callCount, 'missing credentials fail before transport');
+  assert.equal(career.pendingSearch(), null, 'no search intent may be persisted');
 });

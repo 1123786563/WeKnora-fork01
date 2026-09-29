@@ -784,12 +784,14 @@ test('F1: a definite retry refusal and a scope-changed failure do not raise the 
   assert.equal(deletionRecoveryUnresolvedAfter('reconcile', new Error('request:fail timeout'), false), false);
 });
 
-test('OCR2-037: a bare AUTH_REQUIRED on the first deletion never persists a recovery intent', async () => {
+test('OCR2-037: RUNTIME_UNAUTHORIZED on the first deletion never persists a recovery intent', async () => {
   await freshLogin();
   await career.loadCareer();
   await runtime.auth.logout();
+  const callCount = stub.state.calls.length;
   const failed = await career.deleteWholeSpace().catch(error => error);
   assert.equal(failed.message, 'SCOPE_CHANGED');
-  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
-  assert.equal(career.pendingSpaceDeletion(), null, 'AUTH_REQUIRED is a definite local failure — no deletion intent may be persisted');
+  assert.match(`${failed.cause?.message ?? ''}`, /RUNTIME_UNAUTHORIZED/);
+  assert.equal(stub.state.calls.length, callCount, 'missing credentials fail before transport');
+  assert.equal(career.pendingSpaceDeletion(), null, 'no deletion intent may be persisted');
 });
