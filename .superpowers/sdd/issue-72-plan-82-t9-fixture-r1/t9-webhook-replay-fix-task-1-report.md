@@ -41,3 +41,10 @@ Focused build-tag-free selector had no tests to run because the helper lives in 
 - Fix round SHA-256: Go `ce94bfcdbc8c89346e206db8484368fc575756915c58fdc3d67803d4cc1c851d`; prep script `6057ec4067a3602f5eb86d6483a723ba05dc704a4890e4efbaadc4b435417c7d`.
 - Verification: tagged focused selectors (payment invoice membership, webhook gate/canonicalization, immediate failed-row handling) PASS; full package `-count=1` PASS (`72.213s`); integration-tag compile-only PASS; `bash -n` PASS; `git diff --check` PASS.
 - No live services started and no live replay claimed. Live T9/AC3 and AC4 remain OPEN. Previous implementation/report commits remain intact; this fix round is committed separately.
+
+## SQL JSON result-shape correction
+
+- Changed the inbound-webhook query to return one `COALESCE(json_agg(json_build_object(... ) ORDER BY created_at,id)::text,'[]')` cell. The parser therefore receives the expected JSON array for zero, one, or many rows while all filters remain bound through psql variables and SQL arrives via stdin.
+- Added helper coverage for the empty-array and populated JSON-array output contract, plus an assertion that the SQL uses JSON aggregation and an empty-array fallback.
+- Verification: focused tagged selectors PASS; full `commercialplatform` package `-count=1` PASS (`72.586s`); integration-tag compile-only PASS; prep `bash -n` PASS; `git diff --check` PASS.
+- SQL-fix Go source SHA-256: `b6279d0ecdc57178a816f89ea018718153cc6b78ce971abe748a4ad4fd73add8`. No live services started; no live replay claimed.

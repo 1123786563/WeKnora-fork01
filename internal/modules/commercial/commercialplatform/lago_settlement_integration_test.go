@@ -57,6 +57,19 @@ func integrationEnv(names ...string) map[string]string {
 }
 
 func TestInboundWebhookReplayGateAndCanonicalCollection(t *testing.T) {
+	// psql runs with -t -A, so the query must return one JSON array cell,
+	// including [] when no rows match, rather than delimiter-separated columns.
+	if !strings.Contains(inboundWebhookSQL, "json_agg(json_build_object") || !strings.Contains(inboundWebhookSQL, "'[]'") {
+		t.Fatalf("inbound webhook SQL must return a JSON array: %s", inboundWebhookSQL)
+	}
+	emptyRows, err := parseInboundWebhookRows([]byte("[]\n"))
+	if err != nil || len(emptyRows) != 0 {
+		t.Fatalf("empty SQL result: %#v %v", emptyRows, err)
+	}
+	rowsFromSQL, err := parseInboundWebhookRows([]byte("[{\"id\":\"base\",\"status\":\"succeeded\"}]\n"))
+	if err != nil || len(rowsFromSQL) != 1 || rowsFromSQL[0].ID != "base" {
+		t.Fatalf("JSON SQL result: %#v %v", rowsFromSQL, err)
+	}
 	rows, err := parseInboundWebhookRows([]byte(`[ {"id":"base","status":"succeeded"} ]`))
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +193,7 @@ func requireReplayWebhook(rows []inboundWebhookRow, baselineID string) (inboundW
 	return replay, nil
 }
 
-const inboundWebhookSQL = `SELECT id::text, status::text FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND payload->>'id' = :'event_id' ORDER BY created_at, id;`
+const inboundWebhookSQL = `SELECT COALESCE(json_agg(json_build_object('id', id::text, 'status', status::text) ORDER BY created_at, id)::text, '[]') FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND payload->>'id' = :'event_id';`
 
 func readInboundWebhookRows(ctx context.Context, dbContainer, dbUser, dbName, orgID, providerCode, eventID string) ([]inboundWebhookRow, error) {
 	args := []string{"exec", "-i", dbContainer, "psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-U", dbUser, "-d", dbName,
