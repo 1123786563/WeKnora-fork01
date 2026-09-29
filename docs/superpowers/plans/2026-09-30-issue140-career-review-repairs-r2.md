@@ -210,6 +210,26 @@
 
 **Acceptance:** Users who opt back in update the shared Career push preference; permission is never represented as delivery, and ambiguous preference writes remain recoverable.
 
+## Task 16: Keep push authorization and saved-edit facts bound to their original scope/outcome
+
+**Dependency:** Follow-up to independent Mini Program review findings M1–M4 on commits `fd1d1b63612835d61ccc92eb7802c25bd719cdcc` and `413c526016d4f80c46bb0e8944ffea00ca7549b6`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/rules-usage-reminders.tsx`, its focused tests, `apps/miniprogram/src/career/progress-preparation.tsx`, its focused tests, and only existing shared decoder/helper files if the standard `decodeAs` or scoped recovery API must be imported.
+
+**Consumes / produces:** Capture the authenticated scope before opening the native subscription prompt, bind the authorization marker and preference-write intent to that captured scope, and recheck it after native and network awaits before any storage or server effect. Explicit opt-out must invalidate accepted-but-unsynced authorization; resubscribe requires a fresh native result. Malformed 200 receipts must be classified as a contract violation via the existing decoder wrapper, with no infinite same-request retry loop. A successful `editMaterial` remains committed even if either later local draft cleanup or detail readback fails; report cleanup/readback as post-commit follow-up state, never as write failure.
+
+**Steps:**
+
+- [ ] Add behavior tests for account A→B while native prompt is pending (no B marker/write), accepted authorization→missing revision→opt-out→resubscribe (fresh prompt required), malformed success receipt (contract violation is not retryable unknown), and local draft removal failure after successful edit (committed state remains visible).
+- [ ] Run RED against current implementation and save exact reproductions.
+- [ ] Bind all pending push state and request IDs to the captured scope; revalidate after every await; clear unsynced authorization on confirmed opt-out; use `decodeAs` for write and receipt payloads. Split the `editMaterial` failure catch from all post-commit cleanup/readback effects and report each independently.
+- [ ] Run focused rule/reminder and preparation tests, Mini Program typecheck where executable, and `git diff --check`; report unrelated account-page type errors separately.
+- [ ] Commit only the owned Mini Program files and report exact scope-switch, consent, malformed-receipt, and post-commit-cleanup evidence.
+
+**Acceptance:** Authorization cannot cross account scope or survive explicit opt-out as an implicit new consent; malformed receipts stop safely; once an edit receipt is committed, cleanup/readback failure cannot label the edit unsubmitted.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
