@@ -25,6 +25,7 @@ type tosFileService struct {
 	pathPrefix     string
 	bucketName     string
 	tempBucketName string
+	putBytesHook   fileBytesPutHook
 }
 
 const tosScheme = "tos://"
@@ -227,6 +228,12 @@ func (s *tosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 			fmt.Sprintf("%d", tenantID),
 			uuid.New().String()+ext,
 		)
+	}
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, targetBucket, objectName, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to TOS: %w", err)
+		}
+		return fmt.Sprintf("tos://%s/%s", targetBucket, objectName), nil
 	}
 
 	_, err = s.client.PutObjectV2(ctx, &tos.PutObjectV2Input{

@@ -22,12 +22,13 @@ import (
 )
 
 type obsFileService struct {
-	client      *s3.Client
-	bucketName  string
-	endpoint    string
-	region      string
-	pathPrefix  string
-	proxyDomain string
+	client       *s3.Client
+	bucketName   string
+	endpoint     string
+	region       string
+	pathPrefix   string
+	proxyDomain  string
+	putBytesHook fileBytesPutHook
 }
 
 // obsUsePathStyle reports whether the OBS client should keep path-style
@@ -328,6 +329,16 @@ func (s *obsFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 	}
 	if !temp && isCareerStableName(safeName) {
 		objectKey = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, s.bucketName, objectKey, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to OBS: %w", err)
+		}
+		prefix := s.getPrifix()
+		if s.proxyDomain != "" {
+			return fmt.Sprintf("%s%s", prefix, objectKey), nil
+		}
+		return fmt.Sprintf("%s%s/%s", prefix, s.bucketName, objectKey), nil
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{

@@ -1,10 +1,13 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 )
+
+type fileBytesPutHook func(context.Context, string, string, []byte) error
 
 // isCareerStableName identifies caller-selected names whose identity must
 // survive a retry after the provider accepted a write but lost its response.

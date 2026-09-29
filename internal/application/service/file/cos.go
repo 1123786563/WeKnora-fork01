@@ -28,6 +28,7 @@ type cosFileService struct {
 	tempBucketURL string
 	bucketName    string
 	region        string
+	putBytesHook  fileBytesPutHook
 }
 
 const cosScheme = "cos://"
@@ -224,6 +225,12 @@ func (s *cosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 	// 如果请求写入临时桶且临时桶已配置
 	if temp && s.tempClient != nil {
 		objectName := fmt.Sprintf("exports/%d/%s%s", tenantID, uuid.New().String(), ext)
+		if s.putBytesHook != nil {
+			if err := s.putBytesHook(ctx, s.tempBucketURL, objectName, data); err != nil {
+				return "", fmt.Errorf("failed to upload bytes to COS temp bucket: %w", err)
+			}
+			return fmt.Sprintf("%s%s", s.tempBucketURL, objectName), nil
+		}
 		_, err := s.tempClient.Object.Put(ctx, objectName, reader, nil)
 		if err != nil {
 			return "", fmt.Errorf("failed to upload bytes to COS temp bucket: %w", err)
@@ -236,6 +243,12 @@ func (s *cosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 	objectName := fmt.Sprintf("%s/%d/exports/%s%s", s.cosPathPrefix, tenantID, uuid.New().String(), ext)
 	if !temp && isCareerStableName(safeName) {
 		objectName = careerExportObjectKey(s.cosPathPrefix, tenantID, safeName)
+	}
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, s.bucketName, objectName, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to COS: %w", err)
+		}
+		return fmt.Sprintf("cos://%s/%s/%s", s.bucketName, s.region, objectName), nil
 	}
 	_, err = s.client.Object.Put(ctx, objectName, reader, nil)
 	if err != nil {
