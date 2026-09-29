@@ -25,6 +25,20 @@ const typedCode = (error: unknown): string | undefined => { const code = (error 
  * 判定失败与否与 intent 持久化始终由 service 层的 ambiguous 判据决定，本函数不参与。 */
 const looksOffline = (error: unknown): boolean => /request:fail|network|timeout|请求超时|网络/i.test(`${(error as { cause?: { errMsg?: string } })?.cause?.errMsg ?? ''} ${(error as Error)?.message ?? ''}`);
 
+export async function finishCommittedPreparationEdit(deps: {
+  clearDraft(): void;
+  readBack(): Promise<MaterialBody>;
+  onCommitted(): void;
+  onCleanupFailure(error: unknown): void;
+  onReadbackFailure(error: unknown): void;
+  onReadback(body: MaterialBody, cleanupFailed: boolean): void;
+}): Promise<void> {
+  deps.onCommitted();
+  let cleanupFailed = false;
+  try { deps.clearDraft(); } catch (error) { cleanupFailed = true; deps.onCleanupFailure(error); }
+  try { deps.onReadback(await deps.readBack(), cleanupFailed); } catch (error) { deps.onReadbackFailure(error); }
+}
+
 export default function ProgressPreparationPage() {
   const session = useSession();
   const desk = useData(`career:${session.userId}:${session.tenantId}`, () => career.loadCareer());
@@ -145,23 +159,21 @@ export default function ProgressPreparationPage() {
     }
     try {
       await career.editMaterial({ materialId, body });
-      clearPreparationDraft(editTarget!.applicationId, editTarget!.focus);
-      setDraftNotice(''); setReviseErrCode(undefined);
-      setGenNotice('准备草稿修订已提交（仍是可审阅草稿，发布需另行确认材料版本）。');
-      // 与 Web 同语义：回执只是回声，修订的持久事实从材料域回读。
-      try {
-        setRevisedBody((await career.material(materialId)).body);
-        setDraftNotice('');
-      } catch {
-        setRevisedBody(undefined);
-        setDraftNotice('修订已提交，但材料回读失败；提交回执已确认保存成功，可稍后重新读取材料正文。');
-      }
-      void listBusy.run(loadPreparations);
     } catch (error) {
       setReviseErrCode(typedCode(error));
       if (looksOffline(error)) setDraftNotice('网络不可用：已保留本地草稿（可继续编辑，未提交）。申请进展没有任何改动；联网后请再点「保存修订」显式同步，不会自动提交。');
       throw error;
     }
+    setReviseErrCode(undefined);
+    await finishCommittedPreparationEdit({
+      clearDraft: () => clearPreparationDraft(editTarget!.applicationId, editTarget!.focus),
+      readBack: async () => (await career.material(materialId)).body,
+      onCommitted: () => { setDraftNotice(''); setGenNotice('准备草稿修订已提交（仍是可审阅草稿，发布需另行确认材料版本）。'); },
+      onCleanupFailure: () => setDraftNotice('修订已提交，但本地草稿清理失败；服务器回执已确认保存成功，保存的本地草稿仍可用于核对或清理。'),
+      onReadbackFailure: () => { setRevisedBody(undefined); setDraftNotice('修订已提交，但材料回读失败；提交回执已确认保存成功，可稍后重新读取材料正文。'); },
+      onReadback: (body, cleanupFailed) => { setRevisedBody(body); if (!cleanupFailed) setDraftNotice(''); },
+    });
+    void listBusy.run(loadPreparations);
   };
 
   return <Screen title='申请进展与准备'>

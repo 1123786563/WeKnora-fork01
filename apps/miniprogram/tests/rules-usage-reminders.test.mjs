@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { readFile } from 'node:fs/promises';
 
 // T30 小程序 持续规则、额度与提醒的可观察行为：真实 transport + AuthCoordinator 装配
 // （T24/T26/T28/T32 同款），假后端按 method+pathname 路由。三份冻结合同：
@@ -15,7 +14,10 @@ import { readFile } from 'node:fs/promises';
 const stubURL = pathToFileURL(new URL('./helpers/taro-stub.mjs', import.meta.url).pathname).href;
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === '@tarojs/taro') return { url: stubURL, shortCircuit: true };
+    if (specifier === '@tarojs/taro') return { url: `data:text/javascript,${encodeURIComponent(`import Taro from '${stubURL}';export const useDidHide=()=>{};export const useDidShow=()=>{};export default Taro;`)}`, shortCircuit: true };
+    if (specifier === '../components/ui.tsx') return { url: 'data:text/javascript,export%20const%20Screen%3D%22Screen%22%3Bexport%20const%20Card%3D%22Card%22%3Bexport%20const%20Action%3D%22Action%22%3Bexport%20const%20Field%3D%22Field%22%3Bexport%20const%20Notice%3D%22Notice%22%3Bexport%20const%20Badge%3D%22Badge%22%3Bexport%20const%20DataBoundary%3D%22DataBoundary%22%3Bexport%20const%20useData%3D()%3D%3E()%3D%3E()%3D%3Eundefined%3Bexport%20const%20useAction%3D()%3D%3E(%7Bbusy%3Afalse,run%3Afn%3D%3Efn()%7D)%3Bexport%20const%20useSession%3D()%3D%3E(%7BuserId%3A%22u1%22,tenantId%3A%221%22%7D)', shortCircuit: true };
+    if (specifier === '@tarojs/components') return { url: 'data:text/javascript,export%20const%20View%3D%22View%22%3Bexport%20const%20Text%3D%22Text%22%3Bexport%20const%20Button%3D%22Button%22%3Bexport%20const%20Input%3D%22Input%22%3Bexport%20const%20Textarea%3D%22Textarea%22%3Bexport%20const%20Image%3D%22Image%22%3Bexport%20const%20ScrollView%3D%22ScrollView%22', shortCircuit: true };
+    if (/\.(png|scss|css)$/.test(specifier)) return { url: 'data:text/javascript,export%20default%20%22%22', shortCircuit: true };
     return nextResolve(specifier, context);
   },
 });
@@ -24,6 +26,7 @@ const { stub } = await import('./helpers/taro-stub.mjs');
 const runtime = await import('../src/services/runtime.ts');
 const career = await import('../src/services/career.ts');
 const platform = await import('../src/adapters/career-platform.ts');
+const rulesPage = await import('../src/career/rules-usage-reminders.tsx');
 const { clearPrivateCache } = await import('../src/platform/storage.ts');
 
 const T = '2026-09-25T08:00:00Z';
@@ -315,21 +318,71 @@ test('C1: requesting the subscription passes only the template ids — zero job 
 });
 
 test('C7: accepted native authorization persists subscribed preference at the captured profile revision', async () => {
-  const source = await readFile(new URL('../src/career/rules-usage-reminders.tsx', import.meta.url), 'utf8');
-  const flow = source.slice(source.indexOf('const alreadyAuthorized = pushAuthorizationPending()'), source.indexOf('})}>订阅提醒', source.indexOf('const alreadyAuthorized = pushAuthorizationPending()')));
-  assert.match(flow, /outcome\?\.status === 'accepted'[\s\S]*?pushPreferenceStore\.write\(pushAuthorizationKey\(\), true\)/);
-  assert.match(flow, /Number\.isSafeInteger\(revision\)[\s\S]*?服务器订阅偏好未确认/);
-  assert.match(flow, /persistPushPreference\(revision\)/);
-  assert.match(flow, /catch \(error\)[\s\S]*?outcome_unknown[\s\S]*?不会再次请求微信授权/);
+  const stamp = { origin: 'https://api.example.test', userId: 'u1', tenantId: '1', generation: 3 };
+  const markers = new Set(); const writes = []; let prompts = 0;
+  const result = await rulesPage.runPushSubscribeFlow({ stamp, isCurrent: () => true, hasPendingWrite: () => false, hasInvalidReceipt: () => false,
+    marker: s => markers.has(s.userId), setMarker: s => markers.add(s.userId), clearMarker: s => markers.delete(s.userId),
+    requestAuthorization: async () => { prompts++; return { status: 'accepted', templateIds: ['TMPL-1'], delivered: false }; }, revision: () => 9,
+    persist: async revision => writes.push(revision),
+  });
+  assert.equal(result.status, 'saved'); assert.equal(prompts, 1); assert.deepEqual(writes, [9]); assert.equal(markers.size, 0);
 });
 
 test('C8: rejected or unavailable native authorization returns before any preference write', async () => {
-  const source = await readFile(new URL('../src/career/rules-usage-reminders.tsx', import.meta.url), 'utf8');
-  const flow = source.slice(source.indexOf('const alreadyAuthorized = pushAuthorizationPending()'), source.indexOf('})}>订阅提醒', source.indexOf('const alreadyAuthorized = pushAuthorizationPending()')));
-  assert.match(flow, /outcome && outcome\.status !== 'accepted'\) \{ void inboxBusy\.run\(loadInbox\); return; \}/);
-  const pendingRecovery = source.slice(source.indexOf('{pendingPush &&'), source.indexOf('</>}', source.indexOf('{pendingPush &&')));
-  assert.match(pendingRecovery, /retryPushPreference\(\)/);
-  assert.match(pendingRecovery, /不会再次请求微信授权/);
+  for (const status of ['rejected', 'unavailable']) {
+    let writes = 0; let markers = 0;
+    const result = await rulesPage.runPushSubscribeFlow({ stamp: { origin: 'x', userId: 'u', tenantId: 't', generation: 1 },
+      isCurrent: () => true, hasPendingWrite: () => false, hasInvalidReceipt: () => false, marker: () => false, setMarker: () => markers++, clearMarker: () => {},
+      requestAuthorization: async () => ({ status, templateIds: [], delivered: false }), revision: () => 3, persist: async () => writes++,
+    });
+    assert.equal(result.status, status); assert.equal(writes, 0); assert.equal(markers, 0);
+  }
+});
+
+test('M1: account A authorization resolving after switch to B creates no B marker or write', async () => {
+  let current = true; let resolvePrompt; const writes = []; const markers = new Set();
+  const flow = rulesPage.runPushSubscribeFlow({
+    stamp: { origin: 'https://api.example.test', userId: 'u1', tenantId: '1', generation: 1 },
+    isCurrent: () => current, hasPendingWrite: () => false, hasInvalidReceipt: () => false, marker: () => false,
+    setMarker: stamp => markers.add(`${stamp.userId}:${stamp.tenantId}`), clearMarker: stamp => markers.delete(`${stamp.userId}:${stamp.tenantId}`),
+    requestAuthorization: () => new Promise(resolve => { resolvePrompt = resolve; }), revision: () => 3, persist: async revision => writes.push(revision),
+  });
+  current = false;
+  resolvePrompt({ status: 'accepted', templateIds: ['TMPL-1'], delivered: false });
+  assert.equal((await flow).status, 'scope_changed');
+  assert.deepEqual(writes, []);
+  assert.deepEqual([...markers], []);
+});
+
+test('M2: opt-out clears accepted-but-unsynced authorization so resubscribe prompts again', async () => {
+  const stamp = { origin: 'https://api.example.test', userId: 'u1', tenantId: '1', generation: 2 };
+  const markers = new Set(); let prompts = 0; let writes = 0;
+  const clear = captured => markers.delete(`${captured.userId}:${captured.tenantId}`);
+  const deps = { stamp, isCurrent: () => true, hasPendingWrite: () => false, hasInvalidReceipt: () => false,
+    marker: captured => markers.has(`${captured.userId}:${captured.tenantId}`), setMarker: captured => markers.add(`${captured.userId}:${captured.tenantId}`), clearMarker: clear,
+    requestAuthorization: async () => { prompts++; return { status: 'accepted', templateIds: ['TMPL-1'], delivered: false }; }, revision: () => undefined, persist: async () => { writes++; },
+  };
+  assert.equal((await rulesPage.runPushSubscribeFlow(deps)).status, 'missing_revision');
+  assert.equal(markers.has('u1:1'), true);
+  assert.equal(rulesPage.clearPushAuthorizationAfterOptOut(stamp, () => true, clear), true);
+  deps.revision = () => 4;
+  const flow = await rulesPage.runPushSubscribeFlow(deps);
+  assert.equal(flow.status, 'saved'); assert.equal(prompts, 2); assert.equal(writes, 1); assert.equal(markers.size, 0);
+});
+
+test('M3: malformed successful preference receipt is definite and does not persist an unknown intent', async () => {
+  await freshLogin({
+    'POST /api/v1/career/act': call => stub.succeed(call, { data: { kind: 'confirmed', requestId: call.options.data.requestId } }),
+  });
+  await assert.rejects(rulesPage.persistPushPreference(3), error => error.code === 'contract_violation');
+  assert.equal(stub.state.storage.keys().some(key => key.includes('push-subscription')), false);
+  assert.equal(stub.state.storage.keys().some(key => key.includes('push-receipt-invalid')), true);
+  let prompts = 0;
+  const blocked = await rulesPage.runPushSubscribeFlow({ stamp: runtime.auth.scope.capture(), isCurrent: () => true, hasPendingWrite: () => false,
+    hasInvalidReceipt: () => true, marker: () => true, setMarker() {}, clearMarker() {}, requestAuthorization: async () => { prompts++; return { status: 'accepted', templateIds: [], delivered: false }; },
+    revision: () => 3, persist: async () => { throw new Error('must not write before checking the current profile fact'); },
+  });
+  assert.equal(blocked.status, 'invalid_receipt'); assert.equal(prompts, 0);
 });
 
 test('C2: a rejected subscription keeps the in-station todos readable — no fake delivery', async () => {
