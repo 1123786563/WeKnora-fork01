@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -19,6 +21,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+type lifecycleTestContextKey struct{}
 
 // openLifecycleMigrationDB applies the REAL sqlite migration stream so the
 // lifecycle columns are the production schema, not an AutoMigrate sketch.
@@ -68,6 +72,86 @@ func TestEndAdoptionRequiresAllVariantsRetiredAndIsTransactional(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
 	_, err = repo.EndAdoption(ctx, 2, "ad1", "active", "ended", nil)
 	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
+}
+
+func TestCreateVariantAndEndAdoptionSerializeOnAdoptionRow(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	ctx := context.Background()
+	repo := NewAgentAdoptionRepository(db)
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+
+	insertReached, allowInsert := make(chan struct{}), make(chan struct{})
+	var insertOnce, endAttemptOnce, endCompletedOnce sync.Once
+	var allowInsertOnce sync.Once
+	defer allowInsertOnce.Do(func() { close(allowInsert) })
+	endAttempted, endGuardCompleted := make(chan struct{}), make(chan struct{})
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:block_variant_insert", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoption_variants" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "create" {
+			insertOnce.Do(func() { close(insertReached) })
+			<-allowInsert
+		}
+	}))
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:signal_end_lock_attempt", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "end" {
+			endAttemptOnce.Do(func() { close(endAttempted) })
+		}
+	}))
+	require.NoError(t, db.Callback().Update().After("gorm:update").Register("test:signal_end_guard_complete", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "end" {
+			endCompletedOnce.Do(func() { close(endGuardCompleted) })
+		}
+	}))
+
+	createResult := make(chan error, 1)
+	createCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "create")
+	go func() {
+		_, err := repo.CreateVariant(createCtx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: "ad1", ReleaseID: "r1", Name: "racing", State: "draft"})
+		createResult <- err
+	}()
+	select {
+	case <-insertReached: // CreateVariant already acquired its Adoption guard.
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not reach the insert while holding the Adoption guard")
+	}
+
+	endResult := make(chan error, 1)
+	endCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "end")
+	go func() {
+		_, err := repo.EndAdoption(endCtx, 1, "ad1", "active", "ended", map[string]any{"ended_by": "admin"})
+		endResult <- err
+	}()
+	select {
+	case <-endAttempted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("EndAdoption did not attempt its Adoption guard")
+	}
+	select {
+	case <-endGuardCompleted:
+		t.Fatal("EndAdoption passed the shared row guard while Variant insertion held it")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	allowInsertOnce.Do(func() { close(allowInsert) })
+	select {
+	case err := <-createResult:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not finish after releasing its insert")
+	}
+	select {
+	case err := <-endResult:
+		require.ErrorIs(t, err, ErrAgentAdoptionEndPrecondition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("EndAdoption did not finish after Variant creation committed")
+	}
+
+	var adoption types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "ad1").First(&adoption).Error)
+	require.Equal(t, "active", adoption.State)
+	var variants int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ? AND state <> ?", 1, "ad1", "retired").Count(&variants).Error)
+	require.EqualValues(t, 1, variants)
 }
 
 func TestTransitionListingStateIsCAS(t *testing.T) {

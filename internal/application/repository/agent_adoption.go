@@ -154,7 +154,12 @@ func (r *agentAdoptionRepository) CreateVariant(ctx context.Context, variant *ty
 	}
 	created.CreatedAt = time.Now().UTC()
 	created.UpdatedAt = created.CreatedAt
-	if err := r.db.WithContext(ctx).Create(&created).Error; err != nil {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
+			return err
+		}
+		return tx.Create(&created).Error
+	}); err != nil {
 		return nil, err
 	}
 	return &created, nil
