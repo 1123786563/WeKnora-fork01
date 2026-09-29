@@ -1,0 +1,115 @@
+diff --git a/apps/mobile/src/delivery-integration-smoke.test.ts b/apps/mobile/src/delivery-integration-smoke.test.ts
+index 74e7b6aef..f26ddbfcc 100644
+--- a/apps/mobile/src/delivery-integration-smoke.test.ts
++++ b/apps/mobile/src/delivery-integration-smoke.test.ts
+@@ -1,6 +1,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { deliveryIntegrationConfig } from './delivery-integration-smoke.ts';
++import { deliveryIntegrationConfig, deliveryRecoveryEvidenceOf } from './delivery-integration-smoke.ts';
++import { DeliveryRecoveryError } from '@weknora/mobile-core';
+ 
+ test('config is skipped without env and rejected on private hosts', () => {
+   assert.deepEqual(deliveryIntegrationConfig({}), { enabled: false, disposition: 'skip', reason: 'missing WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD' });
+@@ -24,3 +25,24 @@ test('config accepts a public https origin and evidence helpers are exported', a
+   assert.equal(typeof smoke.emitDeliveryIntegrationEvidence, 'function');
+   assert.equal(typeof smoke.runDeliveryIntegration, 'function');
+ });
++
++test('the recover flag is opt-in and defaults to off', () => {
++  const base = {
++    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://weknora.example.com',
++    WEKNORA_MOBILE_TEST_EMAIL: 'a@b.c',
++    WEKNORA_MOBILE_TEST_PASSWORD: 'pw',
++  };
++  const off = deliveryIntegrationConfig(base);
++  assert.equal(off.enabled === true && off.recover === false, true);
++  const on = deliveryIntegrationConfig({ ...base, WEKNORA_MOBILE_TEST_DELIVERY_RECOVER: '1' });
++  assert.equal(on.enabled === true && on.recover === true, true);
++  assert.equal(deliveryIntegrationConfig({}).enabled, false);
++});
++
++
++test('recovery results are recorded without hiding conflicts or failures', () => {
++  assert.deepEqual(deliveryRecoveryEvidenceOf({ state: 'delivered' }), { recovery: 'recovered', recoveryState: 'delivered' });
++  assert.deepEqual(deliveryRecoveryEvidenceOf(undefined, new DeliveryRecoveryError('DELIVERY_STATE_CONFLICT', 'state moved')), { recovery: 'not-needed' });
++  assert.deepEqual(deliveryRecoveryEvidenceOf(undefined, new DeliveryRecoveryError('DELIVERY_INVALID_INPUT', 'missing record')), { recovery: 'not-needed' });
++  assert.deepEqual(deliveryRecoveryEvidenceOf(undefined, new Error('deployment unavailable')), { recovery: 'failed', failure: 'recovery: deployment unavailable' });
++});
+diff --git a/apps/mobile/src/delivery-integration-smoke.ts b/apps/mobile/src/delivery-integration-smoke.ts
+index 54a22fe7a..f247a223b 100644
+--- a/apps/mobile/src/delivery-integration-smoke.ts
++++ b/apps/mobile/src/delivery-integration-smoke.ts
+@@ -4,11 +4,11 @@ import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
+ import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
+ import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
+ import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
+-import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice } from '@weknora/mobile-core';
++import { createDeliveryRecovery, createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, DeliveryRecoveryError } from '@weknora/mobile-core';
+ import { disallowedDeploymentHost } from './runtime-integration-smoke.ts';
+ 
+ export type DeliveryIntegrationConfig =
+-  | { enabled: true; deploymentOrigin: string; email: string; password: string }
++  | { enabled: true; deploymentOrigin: string; email: string; password: string; recover: boolean }
+   | { enabled: false; disposition: 'skip' | 'invalid'; reason: string };
+ 
+ export interface DeliveryIntegrationEvidence {
+@@ -16,6 +16,8 @@ export interface DeliveryIntegrationEvidence {
+   login: 'ok' | 'failed';
+   executionListed: 'listed' | 'no-tasks' | 'failed';
+   deliveryRead: 'read' | 'absent' | 'failed';
++  recovery: 'skipped' | 'not-needed' | 'recovered' | 'failed';
++  recoveryState?: string;
+   deliveryState?: string;
+   commitSha?: string;
+   prUrl?: string;
+@@ -43,7 +45,17 @@ export function deliveryIntegrationConfig(env: Record<string, string | undefined
+   if (disallowedDeploymentHost(parsed.hostname, 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL')) {
+     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL host is disallowed (private/loopback/reserved)' };
+   }
+-  return { enabled: true, deploymentOrigin, email, password };
++  return { enabled: true, deploymentOrigin, email, password, recover: env.WEKNORA_MOBILE_TEST_DELIVERY_RECOVER === '1' };
++}
++
++/** 将恢复调用结果映射为可审计证据；不重试，也不把未完成错误伪装为成功。 */
++export function deliveryRecoveryEvidenceOf(result: { state: string } | undefined, error?: unknown): Pick<DeliveryIntegrationEvidence, 'recovery' | 'recoveryState' | 'failure'> {
++  if (error === undefined && result !== undefined) return { recovery: 'recovered', recoveryState: result.state };
++  if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
++    return { recovery: 'not-needed' };
++  }
++  const detail = error instanceof Error ? error.message : String(error);
++  return { recovery: 'failed', failure: `recovery: ${detail}` };
+ }
+ 
+ /** 真实 transport + Runtime 授权通道 + 交付读面。只读：不发起 prepare/dispatch
+@@ -51,7 +63,7 @@ export function deliveryIntegrationConfig(env: Record<string, string | undefined
+  * 的 runMaterialIntegration 同构。 */
+ export async function runDeliveryIntegration(config: Extract<DeliveryIntegrationConfig, { enabled: true }>): Promise<DeliveryIntegrationEvidence> {
+   const evidence: DeliveryIntegrationEvidence = {
+-    deploymentOrigin: config.deploymentOrigin, login: 'failed', executionListed: 'failed', deliveryRead: 'failed',
++    deploymentOrigin: config.deploymentOrigin, login: 'failed', executionListed: 'failed', deliveryRead: 'failed', recovery: 'skipped',
+     commandTimestamp: new Date().toISOString(),
+   };
+   const fetcher: FetchLike = (input, init) => fetch(input, init as RequestInit);
+@@ -90,6 +102,21 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
+         evidence.prUrl = record.prUrl;
+         evidence.approver = record.approver;
+         evidence.remoteLogin = record.remoteLogin;
++        if (config.recover) {
++          const recovery = createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() });
++          try {
++            const recovered = await recovery.recover({ runId: item.runId, deliveryId: record.id });
++            Object.assign(evidence, deliveryRecoveryEvidenceOf(recovered));
++          } catch (error) {
++            if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
++              Object.assign(evidence, deliveryRecoveryEvidenceOf(undefined, error));
++            } else {
++              const recoveryEvidence = deliveryRecoveryEvidenceOf(undefined, error);
++              evidence.recovery = recoveryEvidence.recovery;
++              evidence.failure = evidence.failure ? `${evidence.failure}; ${recoveryEvidence.failure}` : recoveryEvidence.failure;
++            }
++          }
++        }
+         return evidence;
+       }
+     }
