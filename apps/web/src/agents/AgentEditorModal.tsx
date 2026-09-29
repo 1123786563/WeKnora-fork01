@@ -89,6 +89,7 @@ import { usePreferredLocale } from '../locale.ts';
 import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
 import { AgentVersionActions } from '../agent-marketplace/AgentVersionActions.tsx';
 import './agents-u.css';
+import './agents.td.css';
 
 export interface AgentEditorModalProps {
   open: boolean;
