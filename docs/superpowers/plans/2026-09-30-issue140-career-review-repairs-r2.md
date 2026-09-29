@@ -69,26 +69,45 @@
 
 **Acceptance:** Export-before-delete preserves every preparation fact promised by the boundary; unavailable counts are reported as unavailable/error, never as absence.
 
-## Task 3: Enforce current rule state before scheduled search and recover rules after browser storage loss
+## Task 3a: Revalidate scheduled rules and expose the scoped rule-list contract
 
-**Dependency:** None conceptually; coordinate backend API listing and trigger-state interface before implementation. Does not overlap Task 1/2 files except if service design requires it; if `search_rule.go` is shared with another task, serialize.
+**Dependency:** None. The HTTP contract below is frozen before parallel Web work.
 
-**Role:** `implementer`; validator `backend_validator` plus focused frontend validation; reviewer `reviewer`.
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/search_rule.go`, `internal/modules/career/handler.go`, `internal/modules/career/handler_test.go`, `internal/router/routes_career.go` if route registration is explicit, `packages/api-client/src/career.ts` and contract tests, `apps/web/src/career/RulePage.tsx` and tests.
+**Files:** `internal/modules/career/search_rule.go`, `handler.go`, focused handler/service tests, and `internal/router/routes_career.go` only if explicit route registration is required.
 
-**Consumes / produces:** Existing `SetSearchRule`, `TriggerDueRules`, `GetRule`, and rule receipt contracts. Add one authenticated space-scoped list contract (`GET /api/v1/career/rules` returning validated `RuleView[]`) or an equally precise existing-office query; retain multiple-rule policy if supported. Scheduled dispatch must claim/revalidate rule identity, enabled status, revision and query immediately before quota admission/search. Web must discover an existing rule remotely even with empty localStorage and persist an unknown set-rule attempt by user/tenant scope.
+**Consumes / produces:** Add `Office.ListRules(ctx context.Context) ([]RuleSummary, error)` and authenticated `GET /api/v1/career/rules` returning `{ "rules": RuleSummary[] }`. Each summary has `ruleId`, `query`, `intervalMinutes`, `status`, `revision`, `nextDueAt`, `estimate`, `createdAt`, and `updatedAt`; empty scope returns `{ "rules": [] }`; sort `updated_at DESC, id ASC`. Do not load per-rule run/todo history to build summaries. Keep the existing multiple-rule policy. Before quota admission and starting an external search, re-read the candidate and require the same rule ID, enabled status, revision, and query as the due-row snapshot; a committed pause/edit prevents a new search. A search already started before pause may finish under existing reconciliation behavior.
 
 **Steps:**
 
-- [ ] Add tests for pause/edit after due-row scan but before quota/search; assert no charged search uses stale query. Add fresh-browser test that discovers and pauses the existing enabled rule. Add reload-after-unknown-create test proving same request ID receipt recovery and no duplicate rule.
-- [ ] Run these tests RED and record the existing failure.
-- [ ] Implement a server-side claim/revalidation seam and scoped list contract, with exact not-found/forbidden behavior. Update the generated/public API client decoder/contract test.
-- [ ] Update `RulePage` to load from the server, persist unresolved attempts by captured scope, and block a new create until the old receipt resolves. Clear only the outgoing scope’s private UI state on scope change.
-- [ ] Run `go test -count=1 ./internal/modules/career -run 'Rule|TriggerDue'`, API client targeted tests, RulePage targeted test and `git diff --check`; expected: stale rule never calls search, existing rule remains manageable after storage loss, unknown write recovers under same ID.
-- [ ] Commit only owned paths and report the chosen list/claim signatures.
+- [ ] Add failing service tests where a pause/edit commits after due-row collection but before quota/search; assert no new charged search begins. Add list contract tests for scope isolation, empty response shape, sort order, exact summary fields, and authentication.
+- [ ] Run RED tests and capture the stale-dispatch failure.
+- [ ] Implement the pre-charge revalidation and list signature/handler; register the route and add contract tests without changing quota or multi-rule policy.
+- [ ] Run `go test -count=1 ./internal/modules/career -run 'Rule|TriggerDue'` plus the route/handler contract test and `git diff --check`; report which checks started external I/O.
+- [ ] Commit only owned backend files and report exact behavior.
 
-**Acceptance:** A committed pause/edit takes effect before any later scheduled search; browser storage loss cannot strand or duplicate a rule; tenant/user isolation and quota semantics remain unchanged.
+**Acceptance:** A committed pause/edit prevents any later scheduled search from starting; the scoped list returns bounded summaries with the frozen response contract.
+
+## Task 3b: Recover Web search rules after browser storage loss
+
+**Dependency:** Interface-only dependency on frozen Task 3a contract; implementation may run in parallel with Task 3a from the same BASE. Integrate and verify after both task reviews.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/api-client/src/career.ts` and focused contract tests; `apps/web/src/career/RulePage.tsx` and focused tests.
+
+**Consumes / produces:** Strictly decode `GET /api/v1/career/rules` as `{ rules: RuleSummary[] }` with the Task 3a fields. Resolve localStorage's rule ID only if present in the scoped server list; auto-select the sole rule, require explicit selection for multiple rules, and block create on list failure. Capture user/tenant scope and persist unresolved set-rule `{requestId, ruleId?, query, intervalMinutes, status, expectedRevision}` before sending; after remount reconcile the same receipt or replay the exact request before enabling another create. Keep outgoing scope state isolated on switch.
+
+**Steps:**
+
+- [ ] Add failing tests for empty localStorage with an existing rule, multiple-rule selection, malformed/failed list decode, and reload after unknown create proving same request ID/revision and no duplicate create.
+- [ ] Run RED tests and record existing duplicate/create-on-storage-loss behavior.
+- [ ] Implement strict list decoding and server-first rule discovery/selection plus scope-keyed unknown-write persistence and receipt recovery.
+- [ ] Run API client contract tests, RulePage tests, Web typecheck and `git diff --check`; record executable test results.
+- [ ] Commit only the API client and RulePage files.
+
+**Acceptance:** Storage loss cannot hide an existing server rule or create a duplicate while an earlier write is unresolved; all rule access remains user/tenant scoped.
 
 ## Task 4: Bind submitted progress to an actual submission record
 
