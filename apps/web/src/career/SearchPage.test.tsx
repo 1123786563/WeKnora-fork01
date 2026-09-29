@@ -102,7 +102,7 @@ test('runs one search per instruction and renders truthful coverage with per-row
   const searches: SearchCall[] = []
   const { container } = await mountSearch({
     open: async () => view(7),
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   })
   await submitQuery(container, '上海 前端 实习')
   assert.equal(searches.length, 1)
@@ -150,7 +150,7 @@ test('recovers an unknown outcome through the original request ID without duplic
     searchOnce: async (input: SearchCall) => {
       searches.push(input)
       if (first) { first = false; throw Object.assign(new Error('gateway timeout'), { code: 'outcome_unknown', requestId: input.requestId }) }
-      return { ...completedReceipt, requestId: input.requestId }
+      return { ...completedReceipt, requestId: input.requestId, query: input.query }
     },
     searchReceipt: async (requestId: string) => { receiptReads.push(requestId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
   })
@@ -186,7 +186,7 @@ test('reload reconciles a persisted unknown search by receipt before permitting 
   const reloaded = await mountSearch({
     open: async () => view(9),
     searchReceipt: async (requestId: string) => { receiptReads.push(requestId); return { ...completedReceipt, requestId, query: original.query } },
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   }, scopeController)
   assert.deepEqual(receiptReads, [original.requestId])
   assert.deepEqual(searches, [original])
@@ -212,7 +212,7 @@ test('reload keeps a not-found search unknown and blocks a second request ID', a
   const reloaded = await mountSearch({
     open: async () => view(9),
     searchReceipt: async (requestId: string) => { receiptReads.push(requestId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   }, scopeController)
   assert.deepEqual(receiptReads, [original.requestId])
   assert.match(reloaded.container.textContent ?? '', /暂未找到回执/)
@@ -235,11 +235,77 @@ test('a mismatched receipt stays safely unknown and preserves the original reque
  assert.ok(byLabelOrNull(container, 'button', '用原请求编号重试'))
 })
 
+test('a direct response with the original ID but a different query stays unknown and locked', async () => {
+ const searches: SearchCall[] = []
+ const { container } = await mountSearch({
+  open: async () => view(2),
+  searchOnce: async (input: SearchCall) => {
+   searches.push(input)
+   return { ...completedReceipt, requestId: input.requestId, query: 'different query' }
+  },
+ })
+
+ await submitQuery(container, '上海 前端 实习')
+
+ const resultExists = container.querySelector('[aria-label="找岗结果"]') !== null
+ const status = container.querySelector('[role="status"]')?.textContent ?? ''
+ const hasReceiptButton = byLabelOrNull(container, 'button', '查询回执') !== undefined
+ const pending = JSON.parse(window.localStorage.getItem('weknora:career:pending-search:u-1:t-1') ?? 'null')
+ const submit = submitControl(container)
+ const submitLocked = submit.classList.contains('t-is-disabled') || (submit as HTMLButtonElement).disabled === true
+ const searchCount = searches.length
+ await act(async () => { root?.unmount(); await settle() })
+ root = undefined
+ host?.remove(); host = undefined
+ window.localStorage.clear()
+ document.body.replaceChildren()
+
+ assert.equal(resultExists, false)
+ assert.match(status, /找岗结果暂时未知/)
+ assert.equal(hasReceiptButton, true)
+ assert.deepEqual(pending, searches[0])
+ assert.equal(submitLocked, true)
+ assert.equal(searchCount, 1)
+})
+
+test('a mismatched direct response remounts against the original query and request ID', async () => {
+ const searches: SearchCall[] = []
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })
+ const first = await mountSearch({
+  open: async () => view(2),
+  searchOnce: async (input: SearchCall) => {
+   searches.push(input)
+   return { ...completedReceipt, requestId: input.requestId, query: 'different query' }
+  },
+ }, scopeController)
+ await submitQuery(first.container, '原始已提交指令')
+ const original = searches[0]!
+ await act(async () => { root?.unmount(); await settle() })
+ root = undefined
+ host?.remove(); host = undefined
+ document.body.replaceChildren()
+
+ const receiptReads: string[] = []
+ const reloaded = await mountSearch({
+  open: async () => view(3),
+  searchReceipt: async (requestId: string) => {
+   receiptReads.push(requestId)
+   return { ...completedReceipt, requestId, query: original.query }
+  },
+  searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
+ }, scopeController)
+
+ assert.deepEqual(receiptReads, [original.requestId])
+ assert.deepEqual(searches, [original])
+ assert.ok(reloaded.container.querySelector('[aria-label="找岗结果"]'))
+ assert.match(reloaded.container.textContent ?? '', /「原始已提交指令」/)
+})
+
 test('a terminal search is never duplicated; a fresh attempt gets a fresh request ID', async () => {
   const searches: SearchCall[] = []
   const { container } = await mountSearch({
     open: async () => view(1),
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   })
   await submitQuery(container, 'first query')
   const savedButton = submitControl(container)
@@ -265,7 +331,7 @@ test('revision conflict surfaces the current revision and retries the same reque
     searchOnce: async (input: SearchCall) => {
       searches.push(input)
       if (first) { first = false; throw Object.assign(new Error('revision conflict'), { code: 'revision_conflict', currentRevision: 6 }) }
-      return { ...completedReceipt, requestId: input.requestId }
+      return { ...completedReceipt, requestId: input.requestId, query: input.query }
     },
   })
   await submitQuery(container, '上海 前端 实习')
@@ -288,7 +354,7 @@ test('quota refusal stays typed and recoverable with the same request ID', async
     searchOnce: async (input: SearchCall) => {
       searches.push(input)
       if (first) { first = false; throw Object.assign(new Error('quota refused'), { code: 'search_quota_refused' }) }
-      return { ...completedReceipt, requestId: input.requestId }
+      return { ...completedReceipt, requestId: input.requestId, query: input.query }
     },
   })
   await submitQuery(container, '找岗')
@@ -308,7 +374,7 @@ test('cross-scope denial clears the page and a scope switch clears cached search
 
   const live = await mountSearch({
     open: async () => view(4),
-    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId, query: input.query }),
     search: async () => completedReceipt,
   })
   await submitQuery(live.container, '上海 前端 实习')
@@ -345,7 +411,7 @@ test('importing a result row opens the existing fixed evidence page without auto
   const imports: Array<{ requestId: string; url: string }> = []
   const { container } = await mountSearch({
     open: async () => view(2),
-    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId, query: input.query }),
     importUrl: async (input: { requestId: string; url: string }) => { imports.push(input); return { ...importReceipt, requestId: input.requestId } },
   })
   await submitQuery(container, '上海 前端 实习')
@@ -361,7 +427,7 @@ test('a mismatched URL import receipt is rejected visibly and cannot create an e
   const imports: Array<{ requestId: string; url: string }> = []
   const { container } = await mountSearch({
     open: async () => view(2),
-    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId, query: input.query }),
     importUrl: async (input: { requestId: string; url: string }) => {
       imports.push(input)
       return { ...importReceipt, requestId: 'alien-request' }
@@ -400,7 +466,7 @@ test('an unreadable estimate closes the charged path: the reason is shown and no
   const { container } = await mountSearch({
     open: async () => view(3),
     usageEstimate: async () => { throw Object.assign(new Error('career usage admission unavailable'), { code: 'admission_unavailable' }) },
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   })
   const panel = container.querySelector('[aria-label="额度预估"]')!
   assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /额度预估暂不可用/)
@@ -418,7 +484,7 @@ test('an exhausted window blocks the next charged run while the page keeps its r
   const { container } = await mountSearch({
     open: async () => view(3),
     usageEstimate: async () => ({ ...admittingEstimate(), reservedUnits: 0, settledUnits: 50, remainingUnits: 0, wouldAdmit: false }),
-    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId, query: input.query } },
   })
   const panel = container.querySelector('[aria-label="额度预估"]')!
   assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /本期额度已耗尽/)
@@ -443,7 +509,7 @@ test('a terminal receipt and a quota refusal both refresh the live estimate; rep
     searchOnce: async (input: SearchCall) => {
       searches.push(input)
       if (first) { first = false; throw Object.assign(new Error('quota refused'), { code: 'search_quota_refused' }) }
-      return { ...completedReceipt, requestId: input.requestId }
+      return { ...completedReceipt, requestId: input.requestId, query: input.query }
     },
   })
   await submitQuery(container, '上海 前端 实习')
@@ -465,7 +531,7 @@ test('an uncertain result-row import keeps one request ID per row and retries un
   let failOnce = true
   const { container } = await mountSearch({
     open: async () => view(2),
-    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId, query: input.query }),
     importUrl: async (input: { requestId: string; url: string }) => {
       imports.push(input)
       if (failOnce) { failOnce = false; throw new TypeError('fetch dropped') }
@@ -495,7 +561,7 @@ test('a definite quota refusal still lets the user start a fresh search instead 
     searchOnce: async (input: SearchCall) => {
       searches.push(input)
       if (refused) { refused = false; throw Object.assign(new Error('quota refused'), { code: 'search_quota_refused' }) }
-      return { ...completedReceipt, requestId: input.requestId }
+      return { ...completedReceipt, requestId: input.requestId, query: input.query }
     },
   })
   await submitQuery(container, '找岗')
