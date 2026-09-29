@@ -64,8 +64,11 @@ export function ambiguousOutcome(error: unknown): boolean {
 export function definiteLocalFailure(error: unknown): boolean {
   const message = (error as Error)?.message ?? '';
   const code = (error as { code?: unknown })?.code;
-  if (/SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${message} ${code ?? ''}`)) return true;
-  return error instanceof Error && message === 'RUNTIME_UNAUTHORIZED' && code === undefined && (error as { status?: unknown }).status === undefined;
+  const status = (error as { status?: unknown })?.status;
+  return error instanceof Error
+    && ['SCOPE_CHANGED', 'AUTH_REQUIRED', 'RUNTIME_UNAUTHORIZED'].includes(message)
+    && code === undefined
+    && status === undefined;
 }
 
 export function readStoredIntent<T>(store: ControlledCareerStore, key: string): StoredIntent<T> | null {

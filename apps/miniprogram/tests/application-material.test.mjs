@@ -554,11 +554,11 @@ test('OCR2-001 D5: an unknown publish outcome is reconciled through the export l
   assert.equal(career.pendingMaterialPublish(), null, 'a matched reconciliation clears the intent');
 });
 
-test('a 5xx response mentioning RUNTIME_UNAUTHORIZED remains an ambiguous publish outcome', async () => {
+test('a 5xx response mentioning local auth and scope sentinels remains an ambiguous publish outcome', async () => {
   await freshLogin({
     'POST /api/v1/career/materials/mat-1/exports': call => stub.succeed(call, {
       statusCode: 503,
-      data: { error: { code: 'upstream_error', message: 'gateway reported RUNTIME_UNAUTHORIZED from a downstream service' } },
+      data: { error: { code: 'upstream_error', message: 'gateway reported RUNTIME_UNAUTHORIZED and AUTH_REQUIRED after SCOPE_CHANGED downstream' } },
     }),
   });
   await career.loadCareer();

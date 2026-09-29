@@ -32,3 +32,13 @@
 - Focused Node 22 command `~/.nvm/versions/node/v22.22.3/bin/node --experimental-transform-types --test --test-name-pattern='RUNTIME_UNAUTHORIZED|mentions RUNTIME_UNAUTHORIZED' tests/application-material.test.mjs tests/career-discovery.test.mjs tests/export-deletion.test.mjs` — 4 passed, 0 failed.
 - Related full files: `~/.nvm/versions/node/v22.22.3/bin/node --experimental-transform-types --test tests/application-material.test.mjs tests/career-discovery.test.mjs tests/export-deletion.test.mjs` — exited 0.
 - `git diff --check` — passed.
+
+## Follow-up: All Local Sentinel Matching
+
+- Finding: message substring checks for `AUTH_REQUIRED` and `SCOPE_CHANGED` could also mistake a 5xx server message for a local sentinel.
+- Fix: `SCOPE_CHANGED`, `AUTH_REQUIRED`, and `RUNTIME_UNAUTHORIZED` now require an exact native `Error` message with no `code` and no HTTP `status`. Scope stamp fencing remains unchanged.
+- Expanded the 503 publish regression message to include all three sentinel strings; the assertion still requires `outcome_unknown` and a persisted intent.
+- Focused Node 22 command `~/.nvm/versions/node/v22.22.3/bin/node --experimental-transform-types --test --test-name-pattern='RUNTIME_UNAUTHORIZED|local auth and scope sentinels' tests/application-material.test.mjs tests/career-discovery.test.mjs tests/export-deletion.test.mjs` — 4 passed, 0 failed.
+- Full `application-material.test.mjs` — 38 passed; full `career-discovery.test.mjs` — 26 passed.
+- Full `export-deletion.test.mjs` exposed the existing N9 scope-captured deletion test failure (30-second timeout ending in `outcome_unknown` at `tests/export-deletion.test.mjs:328`). This is outside the assigned auth-classification files and concerns the concurrent deletion recovery change; no changes made to that behavior. The auth-focused deletion test passed in the focused run.
+- `git diff --check` — passed.
