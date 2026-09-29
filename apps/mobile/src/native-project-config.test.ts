@@ -15,7 +15,7 @@ const appJson = JSON.parse(
   };
 };
 
-test('configures Expo SDK 57 scene lifecycle support and iOS 16.4 minimum', () => {
+test('Expo app config requests SDK 57 scene generation and iOS 16.4 minimum (config contract)', () => {
   const expoVersion = packageJson.dependencies.expo;
   assert.ok(expoVersion, 'Expo must be a direct mobile dependency');
   const sdkVersion = expoVersion.match(/(\d+)\.(\d+)\.(\d+)/);

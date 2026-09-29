@@ -14,5 +14,11 @@
 - Interface: clean prebuild produces the ignored SDK57 `apps/mobile/ios` tree; contract helper consumes that directory before CocoaPods.
 - Commit strategy: local commit only; no push.
 - Status: ready → running; R1 and R3 implementation combined because script/test boundary overlaps.
+
+## Task R1+R3 implementation checkpoint
+- Implementation: clean Expo prebuild and generated project contract verifier added; retired SDK55 transform tests replaced by generated-output fixtures.
+- Focused tests: 6/6 pass; full mobile tests: 293 total, 279 pass, 14 env/credential-gated skips; typecheck passes; `git diff --check` passes.
+- Native validation limitation: attempted stale sentinel + `pnpm --filter @weknora/mobile exec expo prebuild -p ios --clean --no-install`; Expo config resolution stopped before generation because `expo-build-properties` could not resolve. Resolver stack uses Expo 55 config packages. Created sentinel/tree was removed afterward. No generated output or Pods/build run.
+- Status: implementation complete; clean SDK57 output validation pending environment dependency repair; independent task review pending.
 - Ruling: copied the read-only review into the integration workspace and corrected ADR pointer to `docs/adr/0005-weknora-native-mobile-client.md`; added `apps/mobile/scripts/verify-ios-scene-project.ts` as explicit owned helper to keep validation reusable/testable. Cost if wrong: small task-scope expansion, bounded to the exact generated native project contract requested by R3.
 - Updated brief correction committed `3bf8d0082`; implementation agent resumed with frontend_implementer role.
