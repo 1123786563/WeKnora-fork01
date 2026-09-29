@@ -23,3 +23,12 @@
 
 - The existing API presents definite local failures to callers as `SCOPE_CHANGED`; original authentication failure remains available through `cause` as requested. This preserves the established Career service contract.
 - No browser/device run was applicable to this service-level regression.
+
+## Follow-up Review Fix
+
+- Finding: substring matching could classify a server/network message containing `RUNTIME_UNAUTHORIZED` as a definite local failure, losing recovery for a possibly completed write.
+- Fix: the runtime error is now definite only when it is an `Error` with the exact message `RUNTIME_UNAUTHORIZED` and has neither a code nor HTTP status. Existing `SCOPE_CHANGED` and `AUTH_REQUIRED` handling is unchanged.
+- Added a material publish regression test using a 503 `upstream_error` whose message contains the token; it must yield `outcome_unknown` and retain the intent.
+- Focused Node 22 command `~/.nvm/versions/node/v22.22.3/bin/node --experimental-transform-types --test --test-name-pattern='RUNTIME_UNAUTHORIZED|mentions RUNTIME_UNAUTHORIZED' tests/application-material.test.mjs tests/career-discovery.test.mjs tests/export-deletion.test.mjs` — 4 passed, 0 failed.
+- Related full files: `~/.nvm/versions/node/v22.22.3/bin/node --experimental-transform-types --test tests/application-material.test.mjs tests/career-discovery.test.mjs tests/export-deletion.test.mjs` — exited 0.
+- `git diff --check` — passed.

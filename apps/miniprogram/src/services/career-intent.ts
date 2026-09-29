@@ -59,8 +59,14 @@ export function ambiguousOutcome(error: unknown): boolean {
   const status = (error as { status?: unknown })?.status;
   return typeof status !== 'number' || status >= 500;
 }
-/** 空间切换/AUTH_REQUIRED 是确定失败：旧作用域的响应不能为新作用域留恢复意图。 */
-export function definiteLocalFailure(error: unknown): boolean { return /SCOPE_CHANGED|AUTH_REQUIRED|RUNTIME_UNAUTHORIZED/i.test(`${(error as Error)?.message ?? ''} ${(error as { code?: unknown })?.code ?? ''}`); }
+/** 空间切换/AUTH_REQUIRED 是确定失败：旧作用域的响应不能为新作用域留恢复意图。
+ *  MobileRuntime 的无凭据拒绝只按精确的本地 Error 识别；相似服务器文案仍属歧义。 */
+export function definiteLocalFailure(error: unknown): boolean {
+  const message = (error as Error)?.message ?? '';
+  const code = (error as { code?: unknown })?.code;
+  if (/SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${message} ${code ?? ''}`)) return true;
+  return error instanceof Error && message === 'RUNTIME_UNAUTHORIZED' && code === undefined && (error as { status?: unknown }).status === undefined;
+}
 
 export function readStoredIntent<T>(store: ControlledCareerStore, key: string): StoredIntent<T> | null {
   const value = store.read(key);
