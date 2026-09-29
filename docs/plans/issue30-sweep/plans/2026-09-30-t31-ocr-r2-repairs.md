@@ -64,3 +64,7 @@ The tasks have disjoint ownership and run in separate worktrees from task BASE `
 ### Task R2-1 review repair round 1
 
 The independent review `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-review.md` found that the test pinned Provider → SafeAreaView → Stack but not the actual rendered root. This is a valid Medium plan-compliance gap because the acceptance explicitly requires RootLayout's root to be SafeAreaProvider. The task report also omitted its implementation commit SHA. Reuse the same frontend implementer for round 1; owned scope stays the smoke test and task report. Brief: `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-r1-brief.md`. Implementation checkpoint `ad68a23a83631e336400ae8167ee4bf2307fa225`; review repair pending.
+
+### Task R2-2 review repair round 1
+
+R2-2 scoped review `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-review.md` passed Spec Compliance and found no blocker; one valid Low coverage item remains because only the JSON non-object properties root was tested, while the checker also supports plist input and the plan requires both formats. Add an XML plist array fixture asserting the stable coded failure and absence of traceback. Reuse the same mechanical implementer. Brief `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-r1-brief.md`; base checkpoint `a13263252533db91abf2baab2f00360e4c893543`; pending.
