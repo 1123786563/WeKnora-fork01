@@ -60,3 +60,7 @@ The OCR cancellation notice names a combined `_layout.tsx`/`app-smoke.test.tsx` 
 ## Integration and completion
 
 The tasks have disjoint ownership and run in separate worktrees from task BASE `1df6f5cb2cdfd4253941abc5b113e778248cd189` (planning/evidence commit atop source-review HEAD `860b84016c8c6c94edd8c8adcd1ca672132efd17`). Integrate in task ID order only after each scoped review passes. Run the existing targeted/full mobile verification appropriate to both slices, then re-run OCR for the complete supported T31 code/test range with the test include rule and inspect its session manifest. Independently review DOC3 and T31 records because OCR rejects Markdown and binary evidence. The final integrated T31 review and OCR scope must include the resulting repair commits. Do not release #32 until valid C/H/M findings are resolved and the documented OCR coverage limitation is adjudicated.
+
+### Task R2-1 review repair round 1
+
+The independent review `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-review.md` found that the test pinned Provider → SafeAreaView → Stack but not the actual rendered root. This is a valid Medium plan-compliance gap because the acceptance explicitly requires RootLayout's root to be SafeAreaProvider. The task report also omitted its implementation commit SHA. Reuse the same frontend implementer for round 1; owned scope stays the smoke test and task report. Brief: `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-r1-brief.md`. Implementation checkpoint `ad68a23a83631e336400ae8167ee4bf2307fa225`; review repair pending.
