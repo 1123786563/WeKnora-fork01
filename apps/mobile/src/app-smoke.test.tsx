@@ -89,6 +89,7 @@ test('root router stack is wrapped in provider and top/bottom safe-area containe
   const stack = nodes.find(({ type }) => (type as { name?: string })?.name === 'Stack');
 
   assert.ok(provider, 'SafeAreaProvider wraps routed content');
+  assert.equal(root && (root as { type?: unknown }).type, provider.type, 'SafeAreaProvider must be the RootLayout root');
   assert.ok(safeView, 'SafeAreaView contains routed content');
   assert.equal(
     (provider.props.children as { type?: unknown } | undefined)?.type,
