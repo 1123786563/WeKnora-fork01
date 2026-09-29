@@ -14,9 +14,22 @@ Repository: `1123786563/WeKnora-fork01`. This is a read-only evidence synthesis 
 
 ## Traversal result
 
-The full traversal fetched `gh api repos/1123786563/WeKnora-fork01/issues/72`, paginated comments, timeline, and native `sub_issues`; for each discovered child N it fetched `gh api .../issues/N`, paginated `.../issues/N/sub_issues`, and paginated `.../issues/N/timeline`. The root's native child list contained 33 unique Issues, #73–#105. Each child's native child endpoint returned an empty array: 34 deduplicated nodes total, 33 containment edges (`72 -> N`), and no grandchildren. The audit reports no missing child, duplicate, failed endpoint, or unresolved pagination after retries.
+The full traversal used these exact command templates from the saved audit:
 
-At the full traversal time the root #72 was open. Among its children, 7 were closed (#73 and #75–#80) and 26 were open (#74 and #81–#105). Thus the combined count is 7 closed and 27 open including #72. The 2026-09-30 00:00 checks were root/#74/child-count spot checks only; they do not establish that every Issue's current status was refetched at that later time. The historical inventory's earlier status snapshot is preserved as history and is not rewritten to imply a GitHub transition.
+```sh
+gh api repos/1123786563/WeKnora-fork01/issues/72
+gh api --paginate 'repos/1123786563/WeKnora-fork01/issues/72/comments?per_page=100'
+gh api --paginate 'repos/1123786563/WeKnora-fork01/issues/72/timeline?per_page=100'
+gh api --paginate 'repos/1123786563/WeKnora-fork01/issues/72/sub_issues?per_page=100'
+# for every discovered N:
+gh api repos/1123786563/WeKnora-fork01/issues/N
+gh api --paginate 'repos/1123786563/WeKnora-fork01/issues/N/sub_issues?per_page=100'
+gh api --paginate 'repos/1123786563/WeKnora-fork01/issues/N/timeline?per_page=100'
+```
+
+The root's native child list contained 33 unique Issues, #73–#105. Each child's native child endpoint returned an empty array: 34 deduplicated nodes total, 33 containment edges (`72 -> N`), and no grandchildren. The audit reports no missing child, duplicate, failed endpoint, or unresolved pagination after retries.
+
+At the full traversal time the root #72 was open. Among its children, 7 were closed (#73 and #75–#80) and 26 were open (#74 and #81–#105). Thus the combined count is 7 closed and 27 open including #72. The 2026-09-30 00:00 checks were root/#74/child-count spot checks only; they do not establish that every Issue's current status was refetched at that later time. At that later #74 spot check, remote Issue #74 was OPEN, while the local inventory retains `done` based on T02 evidence `run_id 3dc51207`, 21/21 assertions, and promoted gating/activation/retries records ([inventory](issue-72-issues-inventory.md) §2 and §7). This is a governance lag: remote closure is a separate action; GitHub was not changed. The historical inventory's earlier status snapshot is preserved as history and is not rewritten to imply a GitHub transition.
 
 ## Containment, references, and dependencies
 
@@ -36,6 +49,6 @@ R-3 is also settled as the approved #81 deviation: pre-payment validation uses a
 
 The current inventory and DAG paths exist and were read; the full-traversal source report's statement that they were absent describes its separate checked-out workspace and is not a current-worktree fact. The 00:00 checks are represented only as reported in the Task 17 source record; raw command output was not supplied separately. The full traversal report is a saved audit summary; raw API JSON is referenced there under `/tmp/issue72-audit/` and is not copied into this repository. These limits do not alter the reported 33-child traversal result but bound independent reproduction from this worktree.
 
-The #82 audit could not freshly confirm #74/#81 remote state because those API calls reset; their completion remains local DAG/ledger evidence. The #86 audit records its worktree was already dirty and did not modify it. At the audit checkpoint, `.worktrees-issue72/lago-int` was dirty under its owner; this task did not inspect or modify its working files. No shared resource ownership was inferred or changed.
+The #82 audit could not freshly confirm #74/#81 remote state because those API calls reset; their completion remains local DAG/ledger evidence. Its separate worktree observation reports the T9 fixture branch clean and unintegrated, with integration checkpoint `8329b85d4dfff301d03f94406dfc829d87cb5b26` clean. Separately, the #86 checkpoint audit reports `.worktrees-issue72/lago-int` was already dirty at that audit's start and that the audit modified no files. This refresh did not inspect or modify owner-controlled files. No shared resource ownership was inferred or changed.
 
 The local DAG structural recount found 33 unique Mermaid nodes (#73–#105), 81 edges (75 business and 6 scheduling), and zero duplicate edges; no graph edges were changed. The existing DAG records its historical Kahn validation at 33 nodes/81 edges with no cycle and zero topological violations; the Task 17 recount confirms graph cardinality, while the timeline candidate loop above is not imported into the dependency graph. Validated document paths are the inventory, DAG, and execution Ledger named above; the 2026-09-29 historical traversal note that could not find them is retained as a source-workspace discrepancy, not treated as evidence of current absence.

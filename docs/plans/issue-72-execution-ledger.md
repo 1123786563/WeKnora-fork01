@@ -416,3 +416,10 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - #87 R16 plan review PASS at integration HEAD `8329b85d4dfff301d03f94406dfc829d87cb5b26`, reviewed plan SHA-256 `7f28e040637048a2e6944935d61aa23d738a49e864db56e6b6c86998a20ce968`. It is plan-only; #87 implementation remains gated by #86 and Lago Task 0 live contract evidence. No downstream readiness/acceptance is promoted.
 - Current safe follow-up: pursue only evidence work with confirmed prerequisites and isolated resources; do not integrate the #82 fixture branch or start #87 implementation before the stated gates. No services, tests, remote writes, or shared resource actions were performed.
 - Verification: `git diff --check` passed; changed paths were limited to this Ledger, the live refresh report, inventory, DAG, and Task 17 plan.
+
+
+## Task 17 review-fix checkpoint — 2026-09-30
+
+- Addressed the independent Task 17 review findings: the live refresh now distinguishes remote #74 OPEN at the later spot check from local inventory `done` backed by T02 run `3dc51207` (21/21 assertions and promoted gating/activation/retries records); the DAG/report separate #82's clean unintegrated fixture and clean integration checkpoint `8329b85d4dfff301d03f94406dfc829d87cb5b26` from #86's report that `lago-int` was already dirty at audit start; and the report preserves the exact root and child traversal command templates from `/tmp/issue72-live-issue-tree-audit.md`. GitHub was not changed.
+- Fix checkpoint: this documentation commit (recorded by Git after commit). `git diff --check` and allowed-path/gate checks are recorded in `.superpowers/sdd/issue-72-task17-review-fixes-2026-09-30-plan/task-1-report.md`. #82/#86/#87 statuses and dependency graph edges are unchanged.
+- Independent review remains pending. The Task 17 completion checkbox/status in `issue-72-parallel-refresh-2026-09-29-plan.md` has not been changed; the controller updates it only after review passes.
