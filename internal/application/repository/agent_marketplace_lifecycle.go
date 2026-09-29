@@ -136,6 +136,12 @@ func (r *agentMarketplaceRepository) DeprecateRelease(ctx context.Context, tenan
 func copyLifecycleUpdates(updates map[string]any) map[string]any {
 	values := make(map[string]any, len(updates)+3)
 	for key, value := range updates {
+		// These columns define the row's identity or creation history. Never
+		// let a transition payload move a row outside the tenant-scoped CAS.
+		switch key {
+		case "id", "tenant_id", "created_at":
+			continue
+		}
 		values[key] = value
 	}
 	return values
