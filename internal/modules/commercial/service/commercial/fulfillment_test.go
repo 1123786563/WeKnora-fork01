@@ -280,6 +280,87 @@ func TestFulfillmentTopUpMissingWinningAttemptIsRetained(t *testing.T) {
 	}
 }
 
+func TestFulfillmentTopUpFulfilledOpenExceptionRequiresWinnerAndReceipt(t *testing.T) {
+	gw := &stubGateway{}
+	svc, db, store := setupFulfillment(t, gw)
+	seedPaidOrder(t, store, "ord-topup-fulfilled-exception", 7, 2500, db)
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-fulfilled-exception").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	contradictFulfillTransaction(t, db, ev.EventKey, "txn-invalid-winner")
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&repocommercial.OrderRow{}).Where("id = ?", "ord-topup-fulfilled-exception").Update("state", domain.OrderStateFulfilled).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	assertPendingOpen := func(stage string) {
+		t.Helper()
+		if err := db.Where("event_key = ?", ev.EventKey).First(&ev).Error; err != nil {
+			t.Fatal(err)
+		}
+		var exception FulfillmentExceptionRow
+		if err := db.Where("event_key = ?", ev.EventKey).First(&exception).Error; err != nil {
+			t.Fatal(err)
+		}
+		if ev.State != repocommercial.OutboxStatePending || exception.State != "open" {
+			t.Fatalf("%s acknowledged unresolved event: event=%+v exception=%+v", stage, ev, exception)
+		}
+	}
+
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertPendingOpen("invalid winner")
+	if gw.appliedCount() != 0 {
+		t.Fatalf("invalid winner applied benefits=%d", gw.appliedCount())
+	}
+
+	contradictFulfillTransaction(t, db, ev.EventKey, "txn-ord-topup-fulfilled-exception")
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertPendingOpen("missing receipt")
+	if gw.appliedCount() != 0 {
+		t.Fatalf("recovery applied benefits=%d", gw.appliedCount())
+	}
+
+	key := domain.FulfillmentKey("ord-topup-fulfilled-exception", "credits")
+	gw.mu.Lock()
+	if gw.saved == nil {
+		gw.saved = map[string]domain.BenefitReceipt{}
+	}
+	gw.saved[key] = domain.BenefitReceipt{}
+	gw.mu.Unlock()
+	gw.setFindable(true)
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertPendingOpen("empty receipt")
+
+	gw.mu.Lock()
+	gw.saved[key] = domain.BenefitReceipt{ExternalID: "existing-topup-receipt"}
+	gw.mu.Unlock()
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("event_key = ?", ev.EventKey).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	var exception FulfillmentExceptionRow
+	if err := db.Where("event_key = ?", ev.EventKey).First(&exception).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStateSent || exception.State != "resolved" || exception.ResolvedAt == nil {
+		t.Fatalf("verified recovery did not complete atomically: event=%+v exception=%+v", ev, exception)
+	}
+	if gw.appliedCount() != 0 {
+		t.Fatalf("recovery duplicated ApplyBenefit calls=%d", gw.appliedCount())
+	}
+}
+
 func TestFulfillmentTopUpExceptionStorageFailureDoesNotAcknowledge(t *testing.T) {
 	gw := &stubGateway{}
 	svc, db, store := setupFulfillment(t, gw)

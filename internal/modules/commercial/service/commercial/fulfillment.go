@@ -322,7 +322,34 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 	// The order row — not the calling user — carries the tenant; an orderer
 	// who left the space after paying cannot block fulfillment.
 	if order.State == domain.OrderStateFulfilled {
-		return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+		var exception FulfillmentExceptionRow
+		err := s.db.WithContext(ctx).Where("event_key = ? AND state = ?", ev.EventKey, "open").First(&exception).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+		}
+		if err != nil {
+			return err
+		}
+		if row.Kind != domain.OrderKindPurchase {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		if _, winnerErr := winningPaymentTransaction(ctx, s.db, order, payload); winnerErr != nil {
+			if errors.Is(winnerErr, context.Canceled) || errors.Is(winnerErr, context.DeadlineExceeded) {
+				return winnerErr
+			}
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		receipt, err := s.gateway.FindBenefit(ctx, domain.FulfillmentKey(order.ID, "credits"))
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		if strings.TrimSpace(receipt.ExternalID) == "" {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		return s.completeFulfilledEvent(ctx, ev, order.ID)
 	}
 	if order.State != domain.OrderStatePaid {
 		// Not payable (still pending): leave the event for a later pass.
