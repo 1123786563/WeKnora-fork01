@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeUnauthenticatedRead, probeUnauthenticatedWrite, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
+import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeServerWriteAuthBoundary, runServerAuthorizationGate, probeUnauthenticatedRead, probeUnauthenticatedWrite, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
 import { createTaskOffice, TaskOfficeError, type TaskOffice } from '@weknora/mobile-core';
 
 test('Task Office live integration remains opt-in and requires all credentials', () => {
@@ -28,6 +28,7 @@ test('Task Office evidence reports unauthenticated rejection and never serialize
     unauthenticatedRead: 'rejected',
     unauthenticatedWrite: 'rejected',
     serverAuthBoundary: 'unreachable',
+    serverWriteAuthBoundary: 'not-attempted',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -115,6 +116,55 @@ test('server auth boundary rejects only explicit 401/403, and treats redirects a
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('server archive probe posts to a unique sentinel with no credentials and manual redirects', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const request = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('{}', { status: 403 });
+  }) as typeof fetch;
+  assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', request), 'rejected');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.url, /^https:\/\/weknora\.example\.org\/api\/v1\/workbench\/tasks\/unauthenticated-smoke-[^/]+\/archive$/);
+  assert.equal(calls[0]!.init?.method, 'POST');
+  assert.equal(calls[0]!.init?.redirect, 'manual');
+  assert.equal(Object.keys(calls[0]!.init?.headers ?? {}).some((key) => key.toLowerCase() === 'authorization'), false);
+  for (const status of [200, 302, 404, 500]) {
+    assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', (async () => new Response('{}', { status })) as typeof fetch), 'failed-open');
+  }
+  assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', (async () => { throw new TypeError('offline'); }) as typeof fetch), 'unreachable');
+});
+
+test('server authorization sequencing stops before sign-in and writes for failed-open or unreachable probes', async () => {
+  for (const failed of ['failed-open', 'unreachable'] as const) {
+    const events: string[] = [];
+    const result = await runServerAuthorizationGate(
+      async () => { events.push('server-read'); return failed; },
+      async () => { events.push('server-write'); return 'rejected'; },
+      async () => { events.push('sign-in'); events.push('archive-write'); },
+    );
+    assert.deepEqual(events, ['server-read']);
+    assert.equal(result.read, failed);
+    assert.equal(result.write, 'not-attempted');
+  }
+  for (const failed of ['failed-open', 'unreachable'] as const) {
+    const events: string[] = [];
+    const result = await runServerAuthorizationGate(
+      async () => { events.push('server-read'); return 'rejected'; },
+      async () => { events.push('server-write'); return failed; },
+      async () => { events.push('sign-in'); events.push('archive-write'); },
+    );
+    assert.deepEqual(events, ['server-read', 'server-write']);
+    assert.equal(result.write, failed);
+  }
+  const passedEvents: string[] = [];
+  await runServerAuthorizationGate(
+    async () => { passedEvents.push('server-read'); return 'rejected'; },
+    async () => { passedEvents.push('server-write'); return 'rejected'; },
+    async () => { passedEvents.push('sign-in'); passedEvents.push('archive-write'); },
+  );
+  assert.deepEqual(passedEvents, ['server-read', 'server-write', 'sign-in', 'archive-write']);
 });
 
 test('archive smoke restores in finally when archived listing fails, and exposes restore failure', async () => {

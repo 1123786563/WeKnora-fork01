@@ -16,9 +16,9 @@ export interface TaskOfficeIntegrationEvidence {
   unauthenticatedRead: 'rejected' | 'failed-open';
   /** 客户端 lease gate 拒绝未登录写入（archive 在 signIn 前同样无 scope lease）。 */
   unauthenticatedWrite: 'rejected' | 'failed-open';
-  /** OCR ocr2-043：无凭证直连服务端 executions 端点的真实鉴权边界
-   * （401/403 → rejected；其余 2xx/4xx → failed-open；不可达 → unreachable）。 */
+  /** 无凭证直连服务端 executions 端点的读鉴权边界（401/403 才算拒绝）。 */
   serverAuthBoundary: 'rejected' | 'failed-open' | 'unreachable';
+  serverWriteAuthBoundary: 'rejected' | 'failed-open' | 'unreachable' | 'not-attempted';
   home: 'loaded' | 'failed';
   sections: { needsMe: number; running: number; recentlyCompleted: number; unreadNotifications: number } | 'unavailable';
   listSearch: 'matched' | 'no-match' | 'failed';
@@ -65,6 +65,34 @@ export async function probeServerAuthBoundary(deploymentOrigin: string): Promise
   } catch {
     return 'unreachable';
   }
+}
+
+/** Credential-free archive route probe. A unique sentinel prevents touching a real task;
+ * authorization must reject before its nonexistent ID can produce a resource response. */
+export async function probeServerWriteAuthBoundary(
+  deploymentOrigin: string,
+  request: typeof fetch = fetch,
+): Promise<'rejected' | 'failed-open' | 'unreachable'> {
+  const sentinel = `unauthenticated-smoke-${globalThis.crypto.randomUUID()}`;
+  try {
+    const response = await request(new URL(`/api/v1/workbench/tasks/${encodeURIComponent(sentinel)}/archive`, deploymentOrigin).toString(), {
+      method: 'POST', redirect: 'manual', headers: { accept: 'application/json' },
+    });
+    return response.status === 401 || response.status === 403 ? 'rejected' : 'failed-open';
+  } catch { return 'unreachable'; }
+}
+
+/** Runs server probes in order and reaches the continuation only after both reject. */
+export async function runServerAuthorizationGate<T>(
+  read: () => Promise<'rejected' | 'failed-open' | 'unreachable'>,
+  write: () => Promise<'rejected' | 'failed-open' | 'unreachable'>,
+  proceed: () => Promise<T>,
+): Promise<{ read: 'rejected' | 'failed-open' | 'unreachable'; write: 'rejected' | 'failed-open' | 'unreachable' | 'not-attempted'; value?: T }> {
+  const readResult = await read();
+  if (readResult !== 'rejected') return { read: readResult, write: 'not-attempted' };
+  const writeResult = await write();
+  if (writeResult !== 'rejected') return { read: readResult, write: writeResult };
+  return { read: readResult, write: writeResult, value: await proceed() };
 }
 
 /** Archive at most one live task, and always attempt to restore it after a successful archive. */
@@ -146,6 +174,7 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     unauthenticatedRead: 'failed-open',
     unauthenticatedWrite: 'failed-open',
     serverAuthBoundary: 'unreachable',
+    serverWriteAuthBoundary: 'not-attempted',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -166,9 +195,15 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
   });
-  // OCR ocr2-043：先直连服务端证明真实鉴权边界（此前仅客户端 gate，探针
-  // 从未触达服务端，'rejected' 恒真，无法发现服务端鉴权回归）。
-  evidence.serverAuthBoundary = await probeServerAuthBoundary(config.deploymentOrigin);
+  // 先直连服务端读写路由验证鉴权；任一失败都在客户端探针、登录和写入前终止。
+  const serverGate = await runServerAuthorizationGate(
+    () => probeServerAuthBoundary(config.deploymentOrigin),
+    () => probeServerWriteAuthBoundary(config.deploymentOrigin),
+    async () => true,
+  );
+  evidence.serverAuthBoundary = serverGate.read;
+  evidence.serverWriteAuthBoundary = serverGate.write;
+  if (serverGate.value !== true) { runtime.dispose(); return evidence; }
   // 客户端 gate 探针：signIn 前的 Task Office 编排层必须先于传输层拒绝。
   const unauthenticatedOffice: TaskOffice = createTaskOffice({
     backend: createTaskOfficeRemote({
