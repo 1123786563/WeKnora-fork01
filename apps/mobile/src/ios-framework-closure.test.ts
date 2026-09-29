@@ -59,6 +59,63 @@ test('production checker rejects a missing direct app executable dependency', ()
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
+test('production checker rejects unresolved loader-relative framework dependencies', () => {
+  for (const load of [
+    '@loader_path/Frameworks/Missing.framework/Missing',
+    '@executable_path/Frameworks/Missing.framework/Missing',
+  ]) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.notEqual(result.status, 0, `${load} unexpectedly passed: ${result.output}`);
+      assert.match(result.output, /WeKnora\.app requires Missing\.framework/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
+});
+
+test('production checker resolves loader-relative dependencies to embedded executables', () => {
+  for (const load of [
+    '@loader_path/Frameworks/Alpha.framework/Alpha',
+    '@executable_path/Frameworks/Alpha.framework/Alpha',
+  ]) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.equal(result.status, 0, result.output);
+      assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
+});
+
+test('production checker resolves framework-owner loader-relative sibling dependency', () => {
+  const f = fixture({ Alpha: '@loader_path/../Beta.framework/Beta' });
+  try {
+    const result = run(f);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker fails closed on unsupported non-system framework path tokens', () => {
+  for (const load of ['@unknown_path/Foo.framework/Foo', '/private/other/Foo.framework/Foo']) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.notEqual(result.status, 0);
+      assert.match(result.output, /UNSUPPORTED_FRAMEWORK_LOAD_PATH: WeKnora\.app/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
+});
+
+test('production checker ignores system framework paths', () => {
+  const f = fixture({ app: '/System/Library/Frameworks/Foundation.framework/Foundation' });
+  try {
+    const result = run(f);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
 test('production checker rejects missing framework executable despite framework directory presence', () => {
   const f = fixture({ app: '@rpath/Alpha.framework/Alpha' });
   try {

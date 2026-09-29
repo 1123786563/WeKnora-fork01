@@ -45,7 +45,9 @@ def inspect(binary: pathlib.Path) -> list[str]:
         fail(f"FRAMEWORK_INSPECTION_FAILED: otool not found while inspecting {binary}")
     if result.returncode:
         fail(f"FRAMEWORK_INSPECTION_FAILED: {binary}: {result.stderr.strip() or result.returncode}")
-    return result.stdout.splitlines()[1:]
+    # Universal binaries may print one header per architecture; only dependency
+    # rows begin with a load path, not the inspected binary's own pathname.
+    return [line for line in result.stdout.splitlines()[1:] if not line.strip().startswith(str(binary))]
 
 
 def main(app_path: str, properties_path: str) -> None:
@@ -70,18 +72,34 @@ def main(app_path: str, properties_path: str) -> None:
         available[framework.name] = executable_for(framework, framework)
     if mode == "source-expo-modules" and (framework_root / "ExpoModulesWorklets.framework").exists():
         fail("FRAMEWORK_MODE_MISMATCH: source Expo mode contains ExpoModulesWorklets.framework")
-    binaries = [(app.name, app_binary)] + [(framework.name, binary) for framework, binary in
-                                           ((f, available[f.name]) for f in frameworks)]
+    binaries = [(app.name, app_binary)] + [(framework.name, available[framework.name]) for framework in frameworks]
     missing: set[tuple[str, str]] = set()
     for owner, binary in binaries:
         for line in inspect(binary):
-            match = re.match(r"\s+@rpath/([^/]+\.framework)/([^\s]+)", line)
-            if not match:
+            load = line.strip().split(" ", 1)[0]
+            if load.startswith("/System/Library/Frameworks/"):
                 continue
-            framework_name, requested_path = match.groups()
+            token_match = re.match(r"(?P<token>@(?:rpath|loader_path|executable_path))/(?P<remainder>[^\s]+)$", load)
+            match = re.search(r"(?:^|/)(?P<framework>[^/]+\.framework)/(?P<requested>[^\s]+)$", token_match.group("remainder")) if token_match else None
+            if not token_match or not match:
+                if ".framework/" in load:
+                    fail(f"UNSUPPORTED_FRAMEWORK_LOAD_PATH: {owner}: {load}")
+                continue
+            token = token_match.group("token")
+            remainder = token_match.group("remainder")
+            framework_name = match.group("framework")
             target = available.get(framework_name)
-            requested = ((app / "Frameworks" / framework_name / requested_path).resolve()
-                         if target is not None else None)
+            if token == "@rpath":
+                base = app / "Frameworks"
+            elif token == "@loader_path":
+                base = binary.parent
+            else:
+                base = app_binary.parent
+            requested = (base / remainder).resolve()
+            try:
+                requested.relative_to(app)
+            except ValueError:
+                fail(f"FRAMEWORK_LOAD_OUTSIDE_APP: {owner}: {load}")
             if target is None or not target.is_file() or requested != target or not requested.is_file():
                 missing.add((owner, framework_name))
     if missing:
