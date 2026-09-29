@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="${1:-$(pwd)}"
 MOBILE="$ROOT/apps/mobile"
 IOS="$MOBILE/ios"
-EVIDENCE_DIR="$ROOT/docs/plans/issue30-sweep/ios-evidence/t39"
+EVIDENCE_DIR="${IOS_BUILD_EVIDENCE_DIR:-$ROOT/docs/plans/issue30-sweep/ios-evidence/t39}"
 mkdir -p "$EVIDENCE_DIR"
 cd "$MOBILE"
 
@@ -62,4 +62,46 @@ xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator \
 
 APP="$IOS/build/Build/Products/Release-iphonesimulator/WeKnora.app"
 test -d "$APP" || { echo "expected Release app missing: $APP" >&2; exit 1; }
+# 5) Verify every non-system @rpath framework load from an embedded framework resolves
+#    inside this app. Use otool on the actual built binaries; do not repair packaging by copying Pods.
+FRAMEWORKS="$APP/Frameworks"
+test -d "$FRAMEWORKS" || { echo "expected embedded Frameworks directory missing: $FRAMEWORKS" >&2; exit 1; }
+if grep -q '"ios.buildReactNativeFromSource": "true"' "$IOS/Podfile.properties.json" \
+  && [ -d "$FRAMEWORKS/ExpoModulesWorklets.framework" ]; then
+  echo "FRAMEWORK_MODE_MISMATCH: source-built React Native must not embed precompiled ExpoModulesWorklets.framework" >&2
+  exit 1
+fi
+FRAMEWORKS_DIR="$FRAMEWORKS" python3 - <<'PY'
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+root = pathlib.Path(os.environ['FRAMEWORKS_DIR'])
+available = {path.name for path in root.glob('*.framework') if path.is_dir()}
+missing = set()
+for framework in sorted(root.glob('*.framework')):
+    for binary in framework.rglob('*'):
+        if not binary.is_file() or not os.access(binary, os.X_OK):
+            continue
+        try:
+            output = subprocess.run(['otool', '-L', str(binary)], check=True, capture_output=True, text=True).stdout
+        except (subprocess.CalledProcessError, FileNotFoundError) as error:
+            print(f'FRAMEWORK_INSPECTION_FAILED: {binary}: {error}', file=sys.stderr)
+            sys.exit(1)
+        for line in output.splitlines()[1:]:
+            match = re.match(r'\s+@rpath/([^/]+\.framework)/', line)
+            if match and match.group(1) not in available:
+                missing.add((framework.name, match.group(1)))
+if missing:
+    for owner, dependency in sorted(missing):
+        print(f'MISSING_FRAMEWORK_DEPENDENCY: {owner} requires {dependency}', file=sys.stderr)
+    sys.exit(1)
+if pathlib.Path(os.environ['FRAMEWORKS_DIR'], 'ExpoModulesWorklets.framework').is_dir():
+    print('FRAMEWORK_MODE=precompiled-expo-modules')
+else:
+    print('FRAMEWORK_MODE=source-expo-modules')
+print('FRAMEWORK_CLOSURE_OK')
+PY
 echo "RELEASE_APP=$APP"

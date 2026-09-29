@@ -35,6 +35,9 @@ test('the release build script is a reproducible prebuild -> pods -> Release pip
   const xcodebuildCmdAt = script.search(/^xcodebuild -workspace /m);
   assert.ok(podCmdAt >= 0 && guardCmdAt > podCmdAt && xcodebuildCmdAt > guardCmdAt, 'B5 复验 important 发现：原生依赖漂移守卫必须夹在 pod install 与 xcodebuild 之间——旧 Podfile.lock 缺 expo-audio/expo-network 时裸 xcodebuild 静默产出缺模块的包');
   assert.match(script, /watchman watch-project/, 'B5 复验 minor 发现：watchman 预热缓解主仓库 .worktrees 初始 crawl 挤压构建预算');
+  assert.match(script, /FRAMEWORK_CLOSURE_OK/, 'Release must verify embedded framework load-command closure');
+  assert.match(script, /MISSING_FRAMEWORK_DEPENDENCY/, 'missing framework must be named before success');
+  assert.match(script, /check=True/, 'otool inspection errors must fail closed');
 });
 
 test('the acceptance probe script installs before probing and records the no-credential paths', () => {

@@ -30,6 +30,10 @@ test('Expo app config requests SDK 57 scene generation and iOS 16.4 minimum (con
       Array.isArray(plugin) && plugin[0] === 'expo-build-properties',
   );
   assert.ok(buildPropertiesPlugin, 'expo-build-properties plugin must be configured');
-  assert.deepEqual(buildPropertiesPlugin[1].ios, { enableSceneSupport: true });
+  assert.deepEqual(buildPropertiesPlugin[1].ios, {
+    enableSceneSupport: true,
+    buildReactNativeFromSource: true,
+    usePrecompiledModules: false,
+  });
   assert.equal(appJson.expo.ios?.deploymentTarget, '16.4');
 });
