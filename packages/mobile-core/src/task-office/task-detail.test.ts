@@ -5,7 +5,7 @@ import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
-import type { OfflineTaskSnapshot, TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
+import type { OfflineTaskSnapshot, TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskDetailView, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -159,6 +159,56 @@ test('a revoked scope lease rejects hydration with foreign data never rendered',
   gate.resolve(detail$({ title: 'foreign' }));
   await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
   assert.equal(handle.view(), undefined);
+});
+
+test('lease replacement while projection load is pending rejects and clears the handle', async () => {
+  const first = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: first.lease };
+  const gate = deferred<undefined>();
+  const base = createInMemoryTaskProjectionStore();
+  const store: TaskProjectionStore = { load: () => gate.promise, save: (projection) => base.save(projection) };
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$({ title: 'tenant one' }) }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const pending = handle.hydrate();
+  await settle();
+  leaseRef.lease = leased().lease;
+  gate.resolve(undefined);
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(handle.view(), undefined);
+});
+
+test('lease replacement while projection save is pending rejects and clears the handle', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const gate = deferred<void>();
+  const base = createInMemoryTaskProjectionStore();
+  const store: TaskProjectionStore = { load: (runId) => base.load(runId), save: async (projection) => { await gate.promise; await base.save(projection); } };
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$({ title: 'tenant one' }) }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const pending = handle.hydrate();
+  await settle();
+  leaseRef.lease = leased().lease;
+  gate.resolve();
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(handle.view(), undefined);
+});
+
+test('a hydrated handle drops stream events after its opening lease is replaced', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => { emit = onEvent; signal.addEventListener('abort', () => resolve()); }),
+  };
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store: createInMemoryTaskProjectionStore() });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const views: TaskDetailView[] = [];
+  handle.updates((view) => views.push(view));
+  leaseRef.lease = leased().lease;
+  emit!(event$(3));
+  await settle();
+  assert.equal(handle.view(), undefined);
+  assert.deepEqual(views, []);
 });
 
 test('live events append serially, duplicates are idempotent and observable', async () => {
@@ -585,11 +635,10 @@ test('events arriving after lease revocation are dropped, not merged (R1-F44)', 
   });
   const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
   await handle.hydrate();
-  const before = handle.view()!;
   revocable.revoke();
   emit!(event$(3));
   await settle();
-  assert.equal(handle.view()?.cursor, before.cursor); // 撤销后事件未合并
+  assert.equal(handle.view(), undefined); // 撤销后事件未合并，且缓存视图 fail closed
   handle.close();
 });
 
@@ -975,7 +1024,7 @@ test('a flush racing a dead scope lease is rejected, never silently recorded (§
   revocable.revoke();
   release!(); // 迟到 ack
   await assert.rejects(() => flushing, /TASK_OFFICE_SCOPE_CHANGED/);
-  assert.equal(handle.view()?.interventions?.length, 1, '只保留 parked 回执，迟到的 ack 不得追加 accepted 回执');
+  assert.equal(handle.view(), undefined, 'scope loss invalidates the cached view, including parked receipts');
   handle.close('done');
 });
 

@@ -178,6 +178,19 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     }
     return openingLease;
   };
+  const leaseMatchesOpening = (): boolean => Boolean(openingLease && ports.lease() === openingLease && leaseActive(openingLease));
+  const invalidateForLeaseLoss = (): void => {
+    current = undefined;
+    detail = undefined;
+    events = [];
+    abortStream();
+  };
+  const ensureOpeningLease = (): void => {
+    if (!leaseMatchesOpening()) {
+      invalidateForLeaseLoss();
+      throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    }
+  };
   const wrap = async <T>(action: () => Promise<T>): Promise<T> => {
     try {
       return await action();
@@ -216,6 +229,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     };
   };
   const notify = (connection: TaskConnectionState): void => {
+    if (!leaseMatchesOpening()) { invalidateForLeaseLoss(); return; }
     if (closed || detail === undefined) return;
     current = buildView(connection);
     for (const listener of [...listeners]) {
@@ -230,9 +244,8 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   // 对齐模块注释「scope lease 撤销后的一切结果按 TASK_OFFICE_SCOPE_CHANGED 拒绝」的流内语义。
   const streamGuard = (): boolean => {
     if (closed) return false;
-    const lease = ports.lease();
-    if (!lease || !leaseActive(lease)) {
-      abortStream();
+    if (!leaseMatchesOpening()) {
+      invalidateForLeaseLoss();
       return false;
     }
     return true;
@@ -307,11 +320,12 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       // T10（#40）离线降级：detail 通道失败而本 scope 有带快照的持久投影——渲染离线快照，
       // 明确标记 interrupted/offline、不自动重连；联网后显式 resync() 恢复权威同步。
       if (error instanceof TaskOfficeError && error.code !== 'TASK_OFFICE_BACKEND') throw error;
-      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 撤权不得伪装成离线
+      ensureOpeningLease(); // scope 更换/撤权不得伪装成离线
       const persisted = await ports.store.load(input.runId).catch(() => undefined);
       // store.load 挂起点期间被并发 hydrate/resync 取代则丢弃陈旧降级（R1-F43 对齐）：
       // 否则旧 catch 落地会覆盖新权威状态、错标 offline、回退游标，close 的 flushPersisted 还会把磁盘投影回退。
-      if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      if (epoch !== streamEpoch) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      ensureOpeningLease();
       if (persisted === undefined || persisted.snapshot === undefined) throw error;
       detail = { ...persisted.snapshot, events: [] };
       events = persisted.events.slice(-TASK_DETAIL_HISTORY_LIMIT);
@@ -320,12 +334,15 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       interruption = { reason: 'offline', message: '当前离线：以下为最近一次同步的加密缓存内容' };
       autoResyncs = AUTO_RESYNC_LIMIT; // 离线不自动重试；显式 resync()（联网后）重置
       notify('interrupted');
+      ensureOpeningLease();
       return current!;
     }
-    if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    if (epoch !== streamEpoch) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    ensureOpeningLease();
     detail = fetched;
     const persisted = await ports.store.load(input.runId).catch(() => undefined);
     if (epoch !== streamEpoch) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    ensureOpeningLease();
     events = mergeEventHistory(persisted?.events ?? [], fetched.events, fetched.watermark).slice(-TASK_DETAIL_HISTORY_LIMIT);
     committedCursor = fetched.watermark;
     duplicateSeqs = [];
@@ -336,6 +353,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     } catch (cause) {
       interruption = { reason: 'persist-failed', message: cause instanceof Error ? cause.message : String(cause) };
     }
+    ensureOpeningLease();
     if (epoch !== streamEpoch) {
       // persist 挂起点期间被取代：不再 startStream/notify；从未发布过视图时如实拒绝。
       if (current === undefined) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
@@ -434,6 +452,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     if (terminal || event.seq - persistedCursor >= PERSIST_MIN_STRIDE) {
       try {
         await persist(event.seq, nextEvents);
+        if (stepEpoch !== streamEpoch || !streamGuard()) return;
         persistedCursor = event.seq;
       } catch (cause) {
         await interrupt('persist-failed', cause instanceof Error ? cause.message : String(cause));
@@ -484,7 +503,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   return {
     // async 包装：close 后的调用必须以 rejected Promise 形式拒绝（assert.rejects 契约），而不是同步抛错。
     hydrate: async () => { requireOpen(); return hydrate(); },
-    view: () => current,
+    view: () => { if (!leaseMatchesOpening()) { invalidateForLeaseLoss(); return undefined; } return current; },
     updates(listener) {
       if (closed) return () => undefined;
       listeners.add(listener);

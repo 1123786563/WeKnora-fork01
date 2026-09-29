@@ -53,10 +53,10 @@ test('ExpoTaskOffice_NativeBoundary_ReportsCapabilityAdaptersExplicitly', () => 
   });
   assert.deepEqual(result.fileSelection, { status: 'unavailable', reason: 'native adapter is not installed' });
   assert.deepEqual(result.notifications, { status: 'unavailable', reason: 'native adapter is not installed' });
-  assert.equal(result.navigation.status, 'available');
-  assert.equal(result.fileDownload.status, 'available');
-  assert.equal(result.systemShare.status, 'available');
-  assert.equal(result.secureStorage.status, 'available');
+  assert.equal(result.navigation.status, 'installed-untested');
+  assert.equal(result.fileDownload.status, 'installed-untested');
+  assert.equal(result.systemShare.status, 'installed-untested');
+  assert.equal(result.secureStorage.status, 'installed-untested');
 });
 
 test('ExpoTaskOffice_NativeBoundary_UsesReactNativeTDesignTokensAndInteractions', async () => {

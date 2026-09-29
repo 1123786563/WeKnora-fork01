@@ -72,8 +72,8 @@ export function TaskEntryScreen({ loading, tasks, error, capabilities, onRefresh
           <Text style={{ color: colors.ink, fontSize: typography.label.fontSize, fontWeight: typography.label.fontWeight }}>设备能力</Text>
           {(Object.keys(CAPABILITY_LABELS) as Array<keyof NativeTaskCapabilities>).map((key) => {
             const capability = capabilities[key];
-            return <Text key={key} style={{ color: capability.status === 'available' ? colors.ink : colors.muted, fontSize: typography['body-sm'].fontSize }}>
-              {CAPABILITY_LABELS[key]}：{capability.status === 'available' ? '可用' : `不可用（${capability.reason}）`}
+            return <Text key={key} style={{ color: colors.muted, fontSize: typography['body-sm'].fontSize }}>
+              {CAPABILITY_LABELS[key]}：{capability.status === 'installed-untested' ? '已安装，未验证' : `不可用（${capability.reason}）`}
             </Text>;
           })}
         </View>

@@ -42,14 +42,14 @@ export function createAuthorizedTaskEntry(ports: AuthorizedTaskEntryPorts): {
   };
 }
 
-export type NativeCapability = { status: 'available' } | { status: 'unavailable'; reason: string };
+export type NativeCapability = { status: 'installed-untested' } | { status: 'unavailable'; reason: string };
 export type NativeTaskCapabilities = Record<'navigation' | 'fileSelection' | 'fileDownload' | 'systemShare' | 'notifications' | 'secureStorage', NativeCapability>;
 export type NativeTaskCapabilityPresence = Record<keyof NativeTaskCapabilities, boolean>;
 
 export function probeNativeTaskCapabilities(presence: NativeTaskCapabilityPresence): NativeTaskCapabilities {
   return Object.fromEntries(Object.entries(presence).map(([name, available]) => [
     name,
-    available ? { status: 'available' } : { status: 'unavailable', reason: 'native adapter is not installed' },
+    available ? { status: 'installed-untested' } : { status: 'unavailable', reason: 'native adapter is not installed' },
   ])) as NativeTaskCapabilities;
 }
 
