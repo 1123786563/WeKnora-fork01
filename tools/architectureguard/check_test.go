@@ -411,6 +411,44 @@ import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approva
 	}
 }
 
+func TestRunImportExceptionWorkbenchQueueAgentruntimeRootIsExact(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/workbench/service/workbench/command_queue_next.go": `package workbench
+
+import (
+	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+)
+`,
+		"internal/modules/workbench/service/workbench/neighbor.go": `package workbench
+
+import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "workbench"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import",
+		`command_queue_next.go 导入了模块 agentruntime 的内部包 `+
+			`"github.com/Tencent/WeKnora/internal/modules/agentruntime"`) {
+		t.Fatalf("command_queue_next.go 的精确 AgentRuntime 根包导入不应报告 forbidden-import:\n%s",
+			joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import",
+		`command_queue_next.go 导入了模块 agentruntime 的内部包 `+
+			`"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"`) {
+		t.Fatalf("command_queue_next.go 的 AgentRuntime 子包导入必须照常报告 forbidden-import:\n%s",
+			joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "neighbor.go") {
+		t.Fatalf("未列入豁免的相邻文件导入必须照常报告 forbidden-import:\n%s",
+			joinChecks(rep.Diagnostics))
+	}
+}
+
 func TestRunAllowsSelfModuleImport(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
