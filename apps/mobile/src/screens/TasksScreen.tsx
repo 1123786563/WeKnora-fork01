@@ -6,6 +6,7 @@ export interface TasksScreenProps {
   taskOffice: TaskOffice;
   onOpenTask?: (card: TaskCard) => void;
   onOpenLegacy?: () => void;
+  onOpenTaskOffice?: () => void;
 }
 
 const STATUS_FILTERS: Array<{ id: '' | TaskStatusFilter; label: string }> = [
@@ -21,7 +22,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Tasks 一级入口：搜索/筛选/归档与翻页；cursor 与查询身份归 Task Office，本屏只持有渲染态。 */
-export function TasksScreen({ taskOffice, onOpenTask, onOpenLegacy }: TasksScreenProps) {
+export function TasksScreen({ taskOffice, onOpenTask, onOpenLegacy, onOpenTaskOffice }: TasksScreenProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | TaskStatusFilter>('');
   const [archived, setArchived] = useState(false);
@@ -65,6 +66,7 @@ export function TasksScreen({ taskOffice, onOpenTask, onOpenLegacy }: TasksScree
   return (
     <View>
       <Text>Tasks</Text>
+      {onOpenTaskOffice !== undefined && <Button title="Task Office" onPress={onOpenTaskOffice} />}
       <TextInput value={search} onChangeText={setSearch} placeholder="Search tasks" />
       {STATUS_FILTERS.map((filter) => (
         <Button key={filter.id} title={filter.label} onPress={() => { setStatus(filter.id); }} />
