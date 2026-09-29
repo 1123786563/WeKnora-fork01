@@ -308,6 +308,28 @@ test('edit deep-link inputs select the requested section and highlight', async (
   assert.equal($('[data-editor-section="tools"]', toolsRoot)?.getAttribute('data-highlighted-field'), 'allowed_tools');
 });
 
+test('section rail uses keyboard-operable buttons and exposes the selected section', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const basic = $('[data-section-key="basic"]', root) as HTMLButtonElement;
+  const prompts = $('[data-section-key="prompts"]', root) as HTMLButtonElement;
+  assert.equal(basic.tagName, 'BUTTON');
+  assert.equal(basic.getAttribute('aria-current'), 'page');
+  assert.equal(prompts.getAttribute('aria-current'), null);
+  prompts.focus();
+  assert.equal(document.activeElement, prompts);
+  await act(async () => { prompts.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  assert.equal($('[data-editor-section="prompts"]', root), null, 'keydown alone should not synthesize browser button click');
+  await act(async () => { prompts.click(); });
+  assert.equal(prompts.getAttribute('aria-current'), 'page');
+  assert.equal(basic.getAttribute('aria-current'), null);
+  assert.ok($('[data-editor-section="prompts"]', root));
+  await act(async () => { basic.focus(); basic.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true })); });
+  // Native button keyboard activation is supplied by browsers; this DOM harness
+  // asserts focusability and semantic button activation through click above.
+  assert.equal(document.activeElement, basic);
+});
+
 test('read-only edit hides the save mutation control', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT, readOnly: true });
