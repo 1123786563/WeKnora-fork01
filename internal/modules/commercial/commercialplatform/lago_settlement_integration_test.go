@@ -155,6 +155,13 @@ func paymentIntentCandidates(rows []any) ([]paymentIntentCandidate, map[string]s
 	return eligible, observed
 }
 
+func requireUniquePaymentIntentCandidate(candidates []paymentIntentCandidate) (paymentIntentCandidate, error) {
+	if len(candidates) != 1 {
+		return paymentIntentCandidate{}, fmt.Errorf("expected exactly one pre-settle invoice-linked unsettled PaymentIntent, found %d: %+v", len(candidates), candidates)
+	}
+	return candidates[0], nil
+}
+
 func succeededPaymentIntent(expectedID string, preSettleIDs map[string]struct{}, rows []any) (map[string]any, error) {
 	candidates := make([]paymentIntentCandidate, 0, len(rows))
 	intents := make(map[string]map[string]any)
@@ -193,28 +200,96 @@ func sortedPaymentIntentIDs(ids map[string]struct{}) []string {
 	return out
 }
 
-func TestPaymentIntentSelectionUsesPreSettleCandidate(t *testing.T) {
+func TestPaymentIntentCandidatesCaptureAllIDsAndFilterEligibility(t *testing.T) {
+	rows := []any{
+		map[string]any{"id": "pi_method", "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "in_1"}},
+		map[string]any{"id": "pi_action", "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_2"}},
+		map[string]any{"id": "pi_confirmation", "status": "requires_confirmation", "metadata": map[string]any{"lago_invoice_id": "in_3"}},
+		map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+		map[string]any{"id": "pi_unlinked", "status": "requires_action"},
+		map[string]any{"id": "pi_other_status", "status": "processing", "metadata": map[string]any{"lago_invoice_id": "in_4"}},
+		map[string]any{"status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_missing_id"}},
+	}
+	eligible, observed := paymentIntentCandidates(rows)
+	if len(eligible) != 3 {
+		t.Fatalf("eligible candidates = %+v, want exactly the three unsettled invoice-linked candidates", eligible)
+	}
+	wantEligible := map[string]string{"pi_method": "requires_payment_method", "pi_action": "requires_action", "pi_confirmation": "requires_confirmation"}
+	for _, candidate := range eligible {
+		if wantEligible[candidate.id] != candidate.status || candidate.invoiceID == "" {
+			t.Errorf("unexpected eligible candidate: %+v", candidate)
+		}
+	}
+	for _, id := range []string{"pi_method", "pi_action", "pi_confirmation", "pi_old", "pi_unlinked", "pi_other_status"} {
+		if _, ok := observed[id]; !ok {
+			t.Errorf("pre-settle ID %q not captured; observed=%v", id, sortedPaymentIntentIDs(observed))
+		}
+	}
+	if _, ok := observed[""]; ok {
+		t.Fatal("empty PaymentIntent ID was captured")
+	}
+}
+
+func TestPaymentIntentCandidatesExposeAmbiguity(t *testing.T) {
+	rows := []any{
+		map[string]any{"id": "pi_a", "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_a"}},
+		map[string]any{"id": "pi_b", "status": "requires_confirmation", "metadata": map[string]any{"lago_invoice_id": "in_b"}},
+	}
+	eligible, _ := paymentIntentCandidates(rows)
+	if len(eligible) != 2 {
+		t.Fatalf("ambiguous candidates = %+v, want both candidates exposed", eligible)
+	}
+	if _, err := requireUniquePaymentIntentCandidate(eligible); err == nil || !strings.Contains(err.Error(), "found 2") {
+		t.Fatalf("ambiguous candidate error = %v, want count diagnostic", err)
+	}
+	if _, err := requireUniquePaymentIntentCandidate(nil); err == nil || !strings.Contains(err.Error(), "found 0") {
+		t.Fatalf("missing candidate error = %v, want count diagnostic", err)
+	}
+}
+
+func TestSucceededPaymentIntentEnforcesPreSettleIdentity(t *testing.T) {
 	tests := []struct {
-		name     string
-		expected string
-		rows     []paymentIntentCandidate
-		wantID   string
-		wantErr  bool
+		name      string
+		expected  string
+		preSettle []string
+		rows      []any
+		wantID    string
+		wantErr   string
 	}{
-		{name: "expected captured id", expected: "pi_expected", rows: []paymentIntentCandidate{{id: "pi_expected", status: "succeeded", invoiceID: "in_1"}}, wantID: "pi_expected"},
-		{name: "older succeeded id is not expected", expected: "pi_expected", rows: []paymentIntentCandidate{{id: "pi_old", status: "succeeded", invoiceID: "in_old"}, {id: "pi_expected", status: "succeeded", invoiceID: "in_1"}}, wantID: "pi_expected"},
-		{name: "new invoice-linked id is not expected", expected: "pi_expected", rows: []paymentIntentCandidate{{id: "pi_new", status: "succeeded", invoiceID: "in_new"}}, wantErr: true},
-		{name: "new unlinked id is ignored", expected: "pi_expected", rows: []paymentIntentCandidate{{id: "pi_new", status: "succeeded"}}, wantErr: true},
-		{name: "no expected success fails closed", expected: "pi_expected", rows: []paymentIntentCandidate{{id: "pi_expected", status: "requires_action", invoiceID: "in_1"}}, wantErr: true},
+		{name: "expected plus older captured success", expected: "pi_expected", preSettle: []string{"pi_expected", "pi_old"}, rows: []any{
+			map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+		}, wantID: "pi_expected"},
+		{name: "new linked success rejected", expected: "pi_expected", preSettle: []string{"pi_expected"}, rows: []any{
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+			map[string]any{"id": "pi_new", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_new"}},
+		}, wantErr: "pi_new"},
+		{name: "new unlinked success ignored", expected: "pi_expected", preSettle: []string{"pi_expected"}, rows: []any{
+			map[string]any{"id": "pi_new", "status": "succeeded"},
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+		}, wantID: "pi_expected"},
+		{name: "absent expected reports expected and observed", expected: "pi_expected", preSettle: []string{"pi_expected", "pi_old"}, rows: []any{
+			map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+		}, wantErr: "expected succeeded invoice-linked PaymentIntent \"pi_expected\" not found; observed succeeded invoice-linked IDs=[pi_old]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := selectExpectedPaymentIntent(tt.expected, tt.rows)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("selection error = %v, wantErr %v", err, tt.wantErr)
+			preSettle := make(map[string]struct{}, len(tt.preSettle))
+			for _, id := range tt.preSettle {
+				preSettle[id] = struct{}{}
 			}
-			if err == nil && got.id != tt.wantID {
-				t.Fatalf("selected PaymentIntent %q, want %q", got.id, tt.wantID)
+			got, err := succeededPaymentIntent(tt.expected, preSettle, tt.rows)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want error containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("selection error = %v", err)
+			}
+			if got == nil || got["id"] != tt.wantID {
+				t.Fatalf("selected intent ID = %v, want %q", got["id"], tt.wantID)
 			}
 		})
 	}
@@ -369,13 +444,13 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			if status == 200 {
 				rows, _ := body["data"].([]any)
 				eligible, observed := paymentIntentCandidates(rows)
-				if len(eligible) > 1 {
-					t.Fatalf("ambiguous pre-settle invoice-linked PaymentIntents: %+v", eligible)
-				}
-				if len(eligible) == 1 {
+				candidate, candidateErr := requireUniquePaymentIntentCandidate(eligible)
+				if candidateErr == nil {
 					found = true
-					expectedID = eligible[0].id
+					expectedID = candidate.id
 					preSettleIDs = observed
+				} else if time.Now().After(waitDeadline) {
+					t.Fatalf("pre-settle PaymentIntent identity unresolved: %v", candidateErr)
 				}
 			}
 			if found || time.Now().After(waitDeadline) {
