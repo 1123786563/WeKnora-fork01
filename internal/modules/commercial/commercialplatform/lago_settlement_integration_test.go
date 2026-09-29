@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"testing"
@@ -53,6 +54,299 @@ func integrationEnv(names ...string) map[string]string {
 		}
 	}
 	return out
+}
+
+func TestInboundWebhookReplayGateAndCanonicalCollection(t *testing.T) {
+	rows, err := parseInboundWebhookRows([]byte(`[ {"id":"base","status":"succeeded"} ]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := requireBaselineWebhook(rows)
+	if err != nil || base != "base" {
+		t.Fatalf("baseline: %q %v", base, err)
+	}
+	rows, err = parseInboundWebhookRows([]byte(`[{"id":"base","status":"succeeded"},{"id":"new","status":"pending"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRow, err := requireReplayWebhook(rows, "base")
+	if err != nil || newRow.Status != "pending" {
+		t.Fatalf("replay: %+v %v", newRow, err)
+	}
+	if _, err := requireReplayWebhook([]inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: "failed"}}, "base"); err == nil {
+		t.Fatal("failed replay accepted")
+	}
+	input := []any{map[string]any{"lago_id": "b"}, map[string]any{"lago_id": "a"}}
+	got, err := canonicalCollection(input, true)
+	if err != nil || string(got) != `[{"lago_id":"a"},{"lago_id":"b"}]` {
+		t.Fatalf("canonical: %s %v", got, err)
+	}
+	if _, err := canonicalCollection(input, false); err == nil {
+		t.Fatal("incomplete collection accepted")
+	}
+	for _, status := range []string{"processing", "succeeded"} {
+		rows := []inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: status}}
+		row, err := requireReplayWebhook(rows, "base")
+		if err != nil || row.Status != status {
+			t.Fatalf("status %s: %+v %v", status, row, err)
+		}
+	}
+	if _, err := requireReplayWebhook(nil, "base"); err == nil {
+		t.Fatal("missing rows accepted")
+	}
+	if _, err := requireReplayWebhook([]inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "x", Status: "pending"}, {ID: "y", Status: "pending"}}, "base"); err == nil {
+		t.Fatal("duplicate replay rows accepted")
+	}
+	if _, err := parseInboundWebhookRows([]byte(`[{}]`)); err == nil {
+		t.Fatal("malformed status row accepted")
+	}
+}
+
+type inboundWebhookRow struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+func parseInboundWebhookRows(blob []byte) ([]inboundWebhookRow, error) {
+	var rows []inboundWebhookRow
+	if err := json.Unmarshal(blob, &rows); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.ID == "" || row.Status == "" {
+			return nil, fmt.Errorf("inbound webhook row missing id/status")
+		}
+	}
+	return rows, nil
+}
+
+func requireBaselineWebhook(rows []inboundWebhookRow) (string, error) {
+	if len(rows) != 1 {
+		return "", fmt.Errorf("expected one baseline inbound webhook row, got %d", len(rows))
+	}
+	if rows[0].Status != "succeeded" {
+		return "", fmt.Errorf("baseline webhook %s status is %q", rows[0].ID, rows[0].Status)
+	}
+	return rows[0].ID, nil
+}
+
+func requireReplayWebhook(rows []inboundWebhookRow, baselineID string) (inboundWebhookRow, error) {
+	if len(rows) != 2 {
+		return inboundWebhookRow{}, fmt.Errorf("expected baseline plus one replay row, got %d", len(rows))
+	}
+	var replay inboundWebhookRow
+	for _, row := range rows {
+		if row.ID != baselineID {
+			if replay.ID != "" {
+				return inboundWebhookRow{}, fmt.Errorf("multiple replay rows")
+			}
+			replay = row
+		}
+	}
+	if replay.ID == "" {
+		return inboundWebhookRow{}, fmt.Errorf("new replay row missing")
+	}
+	if replay.Status == "failed" {
+		return replay, fmt.Errorf("replay webhook %s failed", replay.ID)
+	}
+	return replay, nil
+}
+
+const inboundWebhookSQL = `SELECT id::text, status::text FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND payload->>'id' = :'event_id' ORDER BY created_at, id;`
+
+func readInboundWebhookRows(ctx context.Context, dbContainer, dbUser, dbName, orgID, providerCode, eventID string) ([]inboundWebhookRow, error) {
+	args := []string{"exec", "-i", dbContainer, "psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-U", dbUser, "-d", dbName,
+		"-v", "organization_id=" + orgID, "-v", "provider_code=" + providerCode, "-v", "event_id=" + eventID, "-c", inboundWebhookSQL}
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("read inbound webhook rows: docker/psql failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return parseInboundWebhookRows(stdout.Bytes())
+}
+
+func waitForReplayWebhook(ctx context.Context, read func(context.Context) ([]inboundWebhookRow, error), baselineID string) error {
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		rows, err := read(ctx)
+		if err != nil {
+			return err
+		}
+		row, gateErr := requireReplayWebhook(rows, baselineID)
+		if gateErr == nil && row.Status == "succeeded" {
+			return nil
+		}
+		if gateErr != nil && len(rows) > 2 {
+			return gateErr
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for replay webhook: %w", ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func normalizeObject(v any) ([]byte, error) { return json.Marshal(v) }
+
+func canonicalCollection(rows []any, complete bool) ([]byte, error) {
+	if !complete {
+		return nil, fmt.Errorf("collection pagination incomplete")
+	}
+	for _, row := range rows {
+		m, ok := row.(map[string]any)
+		if !ok || m["lago_id"] == nil {
+			return nil, fmt.Errorf("collection row missing lago_id")
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return fmt.Sprint(rows[i].(map[string]any)["lago_id"]) < fmt.Sprint(rows[j].(map[string]any)["lago_id"])
+	})
+	return json.Marshal(rows)
+}
+
+type t9ObjectSnapshot struct {
+	Subscription json.RawMessage `json:"subscription"`
+	Invoice      json.RawMessage `json:"invoice"`
+	Payments     json.RawMessage `json:"payments"`
+	Wallets      json.RawMessage `json:"wallets"`
+}
+
+func canonicalAPIObject(body []byte, root string) (map[string]any, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	obj, ok := envelope[root].(map[string]any)
+	if !ok || obj["lago_id"] == nil {
+		return nil, fmt.Errorf("%s object missing lago_id", root)
+	}
+	return obj, nil
+}
+
+func apiCollection(ctx context.Context, a *LagoAdapter, path, root string) ([]any, error) {
+	all := []any{}
+	for page := 1; page <= 10000; page++ {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		status, body, err := a.do(ctx, http.MethodGet, fmt.Sprintf("%s%spage=%d&per_page=100", path, sep, page), nil)
+		if err != nil || status != http.StatusOK {
+			return nil, fmt.Errorf("%s page %d HTTP %d: %v", root, page, status, err)
+		}
+		var envelope struct {
+			Meta struct {
+				TotalCount *int `json:"total_count"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(body, &envelope); err != nil || envelope.Meta.TotalCount == nil {
+			return nil, fmt.Errorf("%s page %d missing pagination total_count", root, page)
+		}
+		var rows map[string][]any
+		if err := json.Unmarshal(body, &rows); err != nil {
+			return nil, err
+		}
+		batch, ok := rows[root]
+		if !ok {
+			return nil, fmt.Errorf("%s response missing collection", root)
+		}
+		all = append(all, batch...)
+		if len(all) == *envelope.Meta.TotalCount {
+			return all, nil
+		}
+		if len(all) > *envelope.Meta.TotalCount || len(batch) == 0 {
+			return nil, fmt.Errorf("%s pagination count inconsistent: received %d of %d", root, len(all), *envelope.Meta.TotalCount)
+		}
+	}
+	return nil, fmt.Errorf("%s pagination exceeded safety bound", root)
+}
+
+func t9LagoSnapshot(ctx context.Context, a *LagoAdapter, extPurchase, extCustomer, invoiceID string) ([]byte, error) {
+	status, body, err := a.do(ctx, http.MethodGet, "/api/v1/subscriptions/"+url.PathEscape(extPurchase), nil)
+	if err != nil || status != http.StatusOK {
+		return nil, fmt.Errorf("subscription read HTTP %d: %v", status, err)
+	}
+	sub, err := canonicalAPIObject(body, "subscription")
+	if err != nil {
+		return nil, err
+	}
+	if sub["status"] != "active" {
+		return nil, fmt.Errorf("purchase subscription not active")
+	}
+	status, body, err = a.do(ctx, http.MethodGet, "/api/v1/invoices/"+url.PathEscape(invoiceID), nil)
+	if err != nil || status != http.StatusOK {
+		return nil, fmt.Errorf("invoice read HTTP %d: %v", status, err)
+	}
+	inv, err := canonicalAPIObject(body, "invoice")
+	if err != nil {
+		return nil, err
+	}
+	if inv["lago_id"] != invoiceID || inv["status"] != "finalized" || inv["payment_status"] != "succeeded" {
+		return nil, fmt.Errorf("target invoice is not exact finalized+succeeded invoice")
+	}
+	payments, err := apiCollection(ctx, a, "/api/v1/payments?external_customer_id="+url.QueryEscape(extCustomer), "payments")
+	if err != nil {
+		return nil, err
+	}
+	filteredPayments := []any{}
+	succeededPayments := 0
+	for _, item := range payments {
+		row, ok := item.(map[string]any)
+		if !ok || row["lago_id"] == nil {
+			return nil, fmt.Errorf("payment missing lago_id")
+		}
+		if row["invoice_id"] == invoiceID {
+			filteredPayments = append(filteredPayments, row)
+		}
+	}
+	if len(filteredPayments) == 0 {
+		return nil, fmt.Errorf("target invoice has no payment records")
+	}
+	for _, item := range filteredPayments {
+		if item.(map[string]any)["status"] == "succeeded" {
+			succeededPayments++
+		}
+	}
+	if succeededPayments != 1 {
+		return nil, fmt.Errorf("target invoice must have exactly one succeeded payment, got %d", succeededPayments)
+	}
+	paymentJSON, err := canonicalCollection(filteredPayments, true)
+	if err != nil {
+		return nil, err
+	}
+	wallets, err := apiCollection(ctx, a, "/api/v1/wallets?external_customer_id="+url.QueryEscape(extCustomer), "wallets")
+	if err != nil {
+		return nil, err
+	}
+	if len(wallets) == 0 {
+		return nil, fmt.Errorf("customer wallets missing")
+	}
+	for _, item := range wallets {
+		wallet, ok := item.(map[string]any)
+		if !ok || wallet["lago_id"] == nil {
+			return nil, fmt.Errorf("wallet missing lago_id")
+		}
+		txPath := "/api/v1/wallets/" + url.PathEscape(fmt.Sprint(wallet["lago_id"])) + "/wallet_transactions"
+		txs, err := apiCollection(ctx, a, txPath, "wallet_transactions")
+		if err != nil {
+			return nil, err
+		}
+		txJSON, err := canonicalCollection(txs, true)
+		if err != nil {
+			return nil, err
+		}
+		wallet["wallet_transactions"] = json.RawMessage(txJSON)
+	}
+	walletJSON, err := canonicalCollection(wallets, true)
+	if err != nil {
+		return nil, err
+	}
+	subJSON, _ := normalizeObject(sub)
+	invJSON, _ := normalizeObject(inv)
+	return json.Marshal(t9ObjectSnapshot{Subscription: subJSON, Invoice: invJSON, Payments: paymentJSON, Wallets: walletJSON})
 }
 
 // stripeForm issues one form-encoded Stripe API call with the credential
@@ -338,11 +632,13 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		"LAGO_INTEGRATION_STRIPE_KEY", "LAGO_INTEGRATION_STRIPE_SETTLE_PM",
 		"LAGO_INTEGRATION_WEBHOOK_SECRET", "LAGO_INTEGRATION_ORG_ID",
 		"LAGO_INTEGRATION_GATE_PM",
+		"LAGO_INTEGRATION_DB_CONTAINER", "LAGO_INTEGRATION_DB_USER", "LAGO_INTEGRATION_DB_NAME",
 	)
 	for _, name := range []string{
 		"LAGO_INTEGRATION_BASE_URL", "LAGO_INTEGRATION_API_KEY",
 		"LAGO_INTEGRATION_STRIPE_KEY", "LAGO_INTEGRATION_STRIPE_SETTLE_PM",
 		"LAGO_INTEGRATION_WEBHOOK_SECRET", "LAGO_INTEGRATION_ORG_ID",
+		"LAGO_INTEGRATION_DB_CONTAINER", "LAGO_INTEGRATION_DB_USER", "LAGO_INTEGRATION_DB_NAME",
 	} {
 		if env[name] == "" {
 			t.Skip("lago integration env not configured")
@@ -525,7 +821,20 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 					snap.Purchase.InvoicePaymentStatus != "succeeded" {
 					t.Fatalf("D6' re-check failed: %+v", snap.Purchase)
 				}
-				beforeReplay := purchaseSnapshotJSON(t, a, tenant)
+				invoiceID := fmt.Sprint(intent["metadata"].(map[string]any)["lago_invoice_id"])
+				beforeReplay, snapshotErr := t9LagoSnapshot(ctx, a, extPurchase, extCustomer, invoiceID)
+				if snapshotErr != nil {
+					t.Fatalf("capture complete pre-replay Lago snapshot: %v", snapshotErr)
+				}
+				authorityBeforeReplay := purchaseSnapshotJSON(t, a, tenant)
+				webhookRows, readErr := readInboundWebhookRows(ctx, env["LAGO_INTEGRATION_DB_CONTAINER"], env["LAGO_INTEGRATION_DB_USER"], env["LAGO_INTEGRATION_DB_NAME"], orgID, providerCode, event["id"].(string))
+				if readErr != nil {
+					t.Fatalf("read baseline inbound webhook: %v", readErr)
+				}
+				baselineWebhookID, gateErr := requireBaselineWebhook(webhookRows)
+				if gateErr != nil {
+					t.Fatalf("baseline inbound webhook gate: %v", gateErr)
+				}
 				paymentsBeforeReplay := countLagoSucceededPayments(t, a, extCustomer)
 				if paymentsBeforeReplay != 1 {
 					t.Fatalf("setup: exactly one succeeded Lago payment expected before webhook replay, got %d", paymentsBeforeReplay)
@@ -533,9 +842,23 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 				if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
 					t.Fatalf("duplicate webhook delivery answered HTTP %d", code)
 				}
-				afterReplay := purchaseSnapshotJSON(t, a, tenant)
-				if afterReplay != beforeReplay {
+				replayCtx, replayCancel := context.WithTimeout(ctx, 90*time.Second)
+				gateErr = waitForReplayWebhook(replayCtx, func(readCtx context.Context) ([]inboundWebhookRow, error) {
+					return readInboundWebhookRows(readCtx, env["LAGO_INTEGRATION_DB_CONTAINER"], env["LAGO_INTEGRATION_DB_USER"], env["LAGO_INTEGRATION_DB_NAME"], orgID, providerCode, event["id"].(string))
+				}, baselineWebhookID)
+				replayCancel()
+				if gateErr != nil {
+					t.Fatalf("duplicate inbound webhook did not complete: %v", gateErr)
+				}
+				afterReplay, snapshotErr := t9LagoSnapshot(ctx, a, extPurchase, extCustomer, invoiceID)
+				if snapshotErr != nil {
+					t.Fatalf("capture complete post-replay Lago snapshot: %v", snapshotErr)
+				}
+				if !bytes.Equal(afterReplay, beforeReplay) {
 					t.Fatalf("duplicate webhook changed the authority state:\nbefore %s\nafter  %s", beforeReplay, afterReplay)
+				}
+				if authorityAfterReplay := purchaseSnapshotJSON(t, a, tenant); authorityAfterReplay != authorityBeforeReplay {
+					t.Fatalf("duplicate webhook changed authority state:\nbefore %s\nafter %s", authorityBeforeReplay, authorityAfterReplay)
 				}
 				paymentsAfterReplay := countLagoSucceededPayments(t, a, extCustomer)
 				if paymentsAfterReplay != 1 {

@@ -254,3 +254,10 @@
 1. T9 集成测试的共享栈形状修复（按 gated create 的 invoice 锚定过滤 PI）+ 专属栈 lab.env 重建——下轮或集成会话。
 2. AC4 沙箱残余 `ac4-sandbox-credentials-unavailable`（不变，R-4 已披露边界）。
 3. #84/#92 已移交项不变（废弃 pending 单回收、cancel 命令、续期收款路由）；D16 不修项不变。
+
+## T9 webhook replay review repair — 2026-09-30
+
+- Fixed the async false-pass window by reading the pinned Lago `inbound_webhooks` row through the local DB container, scoped by organization, source, provider code, and exact Stripe event ID. The test verifies one succeeded baseline row and waits under a bounded context for exactly one additional row to become succeeded before post-state reads.
+- Added canonical API snapshots of the exact active purchase subscription and finalized+succeeded invoice from `PaymentIntent.metadata.lago_invoice_id`, all invoice-filtered payments (exactly one succeeded), all customer wallets, and every wallet’s transactions. Paginated collections require `meta.total_count` consistency and are sorted by Lago ID before JSON byte comparison. Existing authority snapshot/payment count assertions remain additional checks.
+- Test remains env-gated. No live services were started; T9 replay/AC3 and AC4 remain unverified. Source contract pin: Lago API `591ae9005110346f1c6034ec72ea9046625668cf`.
+- Verification and commit evidence: `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/t9-webhook-replay-fix-task-1-report.md`.

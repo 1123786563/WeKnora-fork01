@@ -372,3 +372,5 @@ This overlay is the current execution-state source; sections 1–7 are historica
 - Task 1 implemented in test harness only: synthetic webhook is bound to unique pre-settle invoice-linked unsettled PI identity; historical or newly appeared PI cannot be selected. Production code unchanged.
 - RED reproduced: assertion selected `pi_old` over expected `pi_expected`, and accepted a newly appearing linked ID. GREEN: focused tagged regression, package suite, tagged compile-only, and `git diff --check` passed.
 - Live T9 and real Alipay AC4 remain open and unverified; this task did not access external services.
+
+> **T9 replay repair overlay (2026-09-30):** The webhook replay assertion now waits for the exact new pinned Lago inbound-webhook row to reach `succeeded`, then compares canonical complete subscription, invoice, invoice payments, customer wallets, and all wallet transactions. Offline verification does not constitute live T9/AC3 or AC4 evidence; see #82 ledger/report.

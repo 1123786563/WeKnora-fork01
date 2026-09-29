@@ -369,3 +369,9 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - RED: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1` failed assertions for selecting old `pi_old` rather than `pi_expected` and accepting a new linked ID.
 - GREEN: same focused command passed; `go test ./internal/modules/commercial/commercialplatform` passed; `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'` passed with no tests run; `gofmt` and `git diff --check` passed.
 - Residual status: live T9 environment-backed run remains open; AC4 real Alipay sandbox evidence remains unavailable. Task 1 does not claim either acceptance.
+
+## T9 webhook replay findings repair — 2026-09-30
+
+- Exact event completion is now gated on pinned `inbound_webhooks` rows filtered by organization, `source='stripe'`, provider `code`, and payload event ID; one successful baseline row plus one new successful replay row is required before post-state reads.
+- The comparison now covers normalized exact subscription and invoice, all exact-invoice payments, all customer wallets, and every wallet’s transactions. Every collection is paged and checked against `meta.total_count`, then sorted by stable Lago ID. Authority snapshot and exactly-one-succeeded-payment checks remain.
+- Offline tests only; no live services started. T9/AC3 and AC4 remain open. Detailed commands, source hashes, and commit are in the SDD report.

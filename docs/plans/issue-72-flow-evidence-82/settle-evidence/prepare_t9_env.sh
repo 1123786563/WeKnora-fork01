@@ -34,12 +34,21 @@ env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//;
 _t9_base="$(env_value LAGO_API_URL)" || true
 _t9_orgcred="$(env_value LAGO_ORG_API_KEY)" || true
 _t9_org="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')" || true
+_t9_db_container="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" ps -q db | tr -d '[:space:]')" || true
+_t9_db_user="$(env_value POSTGRES_USER)" || true
+_t9_db_name="$(env_value POSTGRES_DB)" || true
 [ -n "$_t9_base" ] || { echo "LAGO_API_URL missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_orgcred" ] || { echo "LAGO_ORG_API_KEY missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_org" ] || { echo "organization id unavailable (db container not ready?)" >&2; return 1 2>/dev/null || exit 1; }
+[ -n "$_t9_db_container" ] || { echo "db container id unavailable" >&2; return 1 2>/dev/null || exit 1; }
+[ -n "$_t9_db_user" ] || _t9_db_user="lago"
+[ -n "$_t9_db_name" ] || _t9_db_name="lago"
 
 export LAGO_INTEGRATION_BASE_URL="$_t9_base"
 export LAGO_INTEGRATION_ORG_ID="$_t9_org"
+export LAGO_INTEGRATION_DB_CONTAINER="$_t9_db_container"
+export LAGO_INTEGRATION_DB_USER="$_t9_db_user"
+export LAGO_INTEGRATION_DB_NAME="$_t9_db_name"
 # (name contract) the tagged Go tests read LAGO_INTEGRATION_API_KEY; the org
 # credential is exported under that name from the CHECKED variable above —
 # the value comes only from lab.env, never a literal (the indirect name is
