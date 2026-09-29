@@ -60,27 +60,39 @@ device evidence file.
 }
 ```
 
-## Current Task 7 status (2026-09-29): iOS 27 scene build in progress
+## Current Task 7 status (2026-09-29): native build passed; JS startup unresolved
 
-The Expo SDK 57 generated iOS project contract now passes in the isolated
-prebuild at `/tmp/weknora-issue31-final-prebuild-_x7w61dy/ios`: its
-`UIApplicationSceneManifest` names `EXExpoAppSceneDelegate`, its AppDelegate
+The Expo SDK 57 generated iOS project contract passes in the isolated prebuild
+at `/tmp/weknora-issue31-final-prebuild-_x7w61dy/ios`: its
+`UIApplicationSceneManifest` names `EXExpoAppSceneDelegate`, AppDelegate
 conforms to `ExpoReactNativeFactoryProvider` without creating a React Native
-window in `didFinishLaunchingWithOptions`, and generated Xcode/Pod deployment
-targets are all 16.4. CocoaPods installation completed for that project.
+window in `didFinishLaunchingWithOptions`, generated Xcode/Pod deployment
+targets are all 16.4, and `pod install` completed. The iOS 27 simulator build
+also completed successfully with `** BUILD SUCCEEDED **` in
+`/tmp/issue31-xcodebuild.log`.
 
-The iOS 27 simulator build is running with the booted iPhone 18 Pro simulator
-(`0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`). Its command log is
-`/tmp/issue31-xcodebuild.log`; install, launch, screenshot and launch-log
-inspection will be recorded after the build completes. JavaScript exports are
-build evidence only: iOS output is under `/tmp/issue31-ios-export` and Android
-output is under `/tmp/issue31-android-export`.
+The installed debug app process launches on the booted iPhone 18 Pro simulator
+(`0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`), but it has not rendered Deployment
+Login. The first screenshot is preserved as
+`docs/testing/evidence/mobile-runtime-login/2026-09-29/ios27-no-script-url-redbox.png`.
+It shows React Native's red screen: “No script URL provided” and a null
+`unsanitizedScriptURLString`. The simulator log
+`/tmp/issue31-simulator-app.log` confirms the same error. Root cause found so
+far: the disposable build directory initially copied Expo config and plugins
+but omitted the app `src` tree, so the built application had no embedded JS
+bundle. Starting Metro from the actual SDK57 source project at
+`apps/mobile` (`pnpm exec expo start --localhost --port 8081 --clear`) returned
+`packager-status:running`, but the already-installed app continued reporting a
+null bundle URL. A correct full-source runtime bundle/build and screenshot
+remain required; this task is **not accepted as a visible startup fix yet**.
 
-The simulator gate does not exercise a real staging login. No staging
-Deployment or short-lived mobile credentials are configured, and no Android
-device acceptance has been performed. Therefore password/OIDC/capability
-flows on staging and Android installation remain Pending. Task 6 also found no
-local HTTPS fixture or protected staging credentials; see
+JavaScript exports are build evidence only: iOS output is under
+`/tmp/issue31-ios-export` and Android output is under
+`/tmp/issue31-android-export`. The simulator gate also does not exercise a real
+staging login. No staging Deployment or short-lived mobile credentials are
+configured, and no Android device acceptance has been performed. Password,
+OIDC and capability flows on staging and Android installation remain Pending.
+Task 6 also found no local HTTPS fixture or protected staging credentials; see
 `.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for the
 safe opt-in HTTP harness and its limitation. No credentials were inspected or
 added to source, logs, screenshots or evidence.
