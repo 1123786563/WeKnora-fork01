@@ -90,6 +90,33 @@ test('hydrate renders the three layers result-first and keeps the timeline factu
   handle.close();
 });
 
+test('MobileTaskOffice_PublicSeam_RejectsCrossTenantAndRestoresSameTask', async () => {
+  const firstScope = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: firstScope.lease };
+  const { backend, office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
+
+  const first = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const original = await first.hydrate();
+  assert.equal(original.taskId, 'task-1');
+  first.close();
+
+  const restored = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const restoredView = await restored.hydrate();
+  assert.equal(restoredView.taskId, original.taskId, 'restoring reopens the same authorized Task');
+  assert.deepEqual(backend.detailCalls, ['run-1', 'run-1']);
+  restored.close();
+
+  const openedInFirstTenant = office.open({ taskId: 'task-1', runId: 'run-1' });
+  firstScope.revocable.revoke();
+  leaseRef.lease = new RuntimeScopeLease({ deploymentOrigin: 'https://weknora.example.test', userId: 'user-1', tenantId: 'tenant-2' }).asScopeLease();
+  await assert.rejects(
+    openedInFirstTenant.hydrate(),
+    (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED',
+    'a handle created in tenant-1 must not adopt tenant-2 authorization later',
+  );
+  assert.deepEqual(backend.detailCalls, ['run-1', 'run-1'], 'cross-tenant continuation must be denied before network read');
+});
+
 test('a terminal or archived task drains without opening a stream', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;

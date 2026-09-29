@@ -118,6 +118,9 @@ const CHAIN_DEPTH_LIMIT = 1000;
 // input.taskId 契约（B2-F26）：仅用于调用方关联；持久化写入服务端权威的 detail.taskId
 // （persist 内 detail!.taskId），故本函数不读取 input.taskId，这是有意为之。
 export function createTaskDetail(input: { taskId: string; runId: string }, ports: TaskDetailPorts): TaskHandle {
+  // A handle belongs to the exact Runtime scope that created it. Resolving a newer lease
+  // later would let an old Task route silently adopt a different tenant's authorization.
+  const openingLease = ports.lease();
   let closed = false;
   let current: TaskDetailView | undefined;
   let detail: TaskBackendDetail | undefined;
@@ -170,9 +173,10 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     if (closed) throw new TaskOfficeError('TASK_OFFICE_DETAIL_CLOSED');
   };
   const requireLease = (): ScopeLease => {
-    const lease = ports.lease();
-    if (!lease || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
-    return lease;
+    if (!openingLease || ports.lease() !== openingLease || !leaseActive(openingLease)) {
+      throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    }
+    return openingLease;
   };
   const wrap = async <T>(action: () => Promise<T>): Promise<T> => {
     try {
