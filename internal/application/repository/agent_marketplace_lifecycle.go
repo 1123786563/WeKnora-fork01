@@ -11,10 +11,13 @@ import (
 )
 
 var (
-	ErrAgentAdoptionEndPrecondition      = errors.New("agent adoption cannot end while variants remain active")
-	ErrAgentAdoptionTransition           = errors.New("agent adoption state transition failed")
-	ErrAgentMarketplaceListingTransition = errors.New("agent marketplace listing state transition failed")
-	ErrAgentReleaseDeprecateConflict     = errors.New("agent release deprecation conflict")
+	ErrAgentAdoptionEndPrecondition       = errors.New("agent adoption cannot end while variants remain active")
+	ErrAgentAdoptionTransition            = errors.New("agent adoption state transition failed")
+	ErrAgentMarketplaceListingTransition  = errors.New("agent marketplace listing state transition failed")
+	ErrAgentReleaseDeprecateConflict      = errors.New("agent release deprecation conflict")
+	ErrAgentMarketplaceListingUnavailable = errors.New("agent marketplace listing is unavailable for new use")
+	ErrAgentMarketplaceReleaseDeprecated  = errors.New("agent marketplace release is deprecated")
+	ErrAgentReleaseSuccessorInvalid       = errors.New("agent release successor is invalid")
 )
 
 func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID string, expectedFrom, nextState string, updates map[string]any) (*types.AgentAdoptionEntity, error) {
@@ -106,61 +109,161 @@ func (r *agentAdoptionRepository) RetiredVariantAgentExists(ctx context.Context,
 }
 
 func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context, tenantID uint64, listingID, expectedFrom, nextState string, updates map[string]any) (*types.AgentMarketplaceListingEntity, error) {
-	now := time.Now().UTC()
-	values := copyLifecycleUpdates(updates)
-	values["state"] = nextState
-	values["updated_at"] = now
-	if nextState == "unlisted" && values["unlisted_at"] == nil {
-		values["unlisted_at"] = now
-	}
-
-	write := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).
-		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, expectedFrom).Updates(values)
-	if write.Error != nil {
-		return nil, write.Error
-	}
-	if write.RowsAffected != 1 {
-		var current types.AgentMarketplaceListingEntity
-		err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAgentMarketplaceNotFound
-		}
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: listing %s is %q, expected %q", ErrAgentMarketplaceListingTransition, listingID, current.State, expectedFrom)
-	}
 	var row types.AgentMarketplaceListingEntity
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&row).Error; err != nil {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockListingState(tx, tenantID, listingID, expectedFrom); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		values := copyLifecycleUpdates(updates)
+		values["state"] = nextState
+		values["updated_at"] = now
+		if nextState == "unlisted" && values["unlisted_at"] == nil {
+			values["unlisted_at"] = now
+		}
+		write := tx.Model(&types.AgentMarketplaceListingEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, expectedFrom).Updates(values)
+		if write.Error != nil {
+			return write.Error
+		}
+		if write.RowsAffected != 1 {
+			return ErrAgentMarketplaceListingTransition
+		}
+		return tx.Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&row).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &row, nil
 }
 
 func (r *agentMarketplaceRepository) DeprecateRelease(ctx context.Context, tenantID uint64, releaseID, deprecatedBy, successorReleaseID string) (*types.AgentReleaseEntity, error) {
-	now := time.Now().UTC()
-	write := r.db.WithContext(ctx).Model(&types.AgentReleaseEntity{}).
-		Where("tenant_id = ? AND id = ? AND deprecated_at IS NULL", tenantID, releaseID).
-		Updates(map[string]any{"deprecated_at": now, "deprecated_by": deprecatedBy, "successor_release_id": successorReleaseID})
-	if write.Error != nil {
-		return nil, write.Error
-	}
-	if write.RowsAffected != 1 {
-		var current types.AgentReleaseEntity
-		err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAgentMarketplaceNotFound
-		}
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: release %s is already deprecated", ErrAgentReleaseDeprecateConflict, releaseID)
-	}
 	var row types.AgentReleaseEntity
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&row).Error; err != nil {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		ids := []string{releaseID, successorReleaseID}
+		if ids[0] > ids[1] {
+			ids[0], ids[1] = ids[1], ids[0]
+		}
+		locked := make(map[string]*types.AgentReleaseEntity, 2)
+		for _, id := range ids {
+			release, err := lockReleaseRow(tx, tenantID, id)
+			if err != nil {
+				return err
+			}
+			locked[id] = release
+		}
+		source, successor := locked[releaseID], locked[successorReleaseID]
+		if source.DeprecatedAt != nil {
+			return fmt.Errorf("%w: release %s is already deprecated", ErrAgentReleaseDeprecateConflict, releaseID)
+		}
+		if successor.DeprecatedAt != nil {
+			return fmt.Errorf("%w: successor release %s was deprecated concurrently", ErrAgentReleaseDeprecateConflict, successorReleaseID)
+		}
+		if successor.ListingID != source.ListingID || successor.ID == source.ID {
+			return ErrAgentReleaseSuccessorInvalid
+		}
+		now := time.Now().UTC()
+		write := tx.Model(&types.AgentReleaseEntity{}).
+			Where("tenant_id = ? AND id = ? AND deprecated_at IS NULL", tenantID, releaseID).
+			Updates(map[string]any{"deprecated_at": now, "deprecated_by": deprecatedBy, "successor_release_id": successorReleaseID})
+		if write.Error != nil {
+			return write.Error
+		}
+		if write.RowsAffected != 1 {
+			return ErrAgentReleaseDeprecateConflict
+		}
+		return tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&row).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &row, nil
+}
+
+// lockListingState performs a guarded no-op write before checking lifecycle
+// eligibility. It serializes new marketplace use with UnlistListing on both
+// PostgreSQL and SQLite; the tenant and ID predicates are always retained.
+func lockListingState(tx *gorm.DB, tenantID uint64, listingID, expectedState string) error {
+	guard := tx.Model(&types.AgentMarketplaceListingEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, expectedState).
+		UpdateColumn("id", gorm.Expr("id"))
+	if guard.Error != nil {
+		return guard.Error
+	}
+	if guard.RowsAffected == 1 {
+		return nil
+	}
+	var current types.AgentMarketplaceListingEntity
+	err := tx.Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Public listings introduced into a tenant are virtual rows backed by
+		// the introduction ledger and cannot be unlisted by the tenant.
+		introduced, ierr := introducedListing(tx, tenantID, listingID)
+		if ierr != nil {
+			return ierr
+		}
+		if introduced != nil && introduced.State == expectedState {
+			return nil
+		}
+		if introduced != nil {
+			return fmt.Errorf("%w: listing %s is %q, expected %q", ErrAgentMarketplaceListingTransition, listingID, introduced.State, expectedState)
+		}
+		return ErrAgentMarketplaceNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: listing %s is %q, expected %q", ErrAgentMarketplaceListingTransition, listingID, current.State, expectedState)
+}
+
+func requireListedListing(tx *gorm.DB, tenantID uint64, listingID string) error {
+	err := lockListingState(tx, tenantID, listingID, "listed")
+	if errors.Is(err, ErrAgentMarketplaceListingTransition) {
+		return ErrAgentMarketplaceListingUnavailable
+	}
+	return err
+}
+
+// lockReleaseRow locks an existing release row with a no-op update, then
+// returns its committed lifecycle state. Introduced releases have no mutable
+// local Release row and are represented by an immutable tenant ledger entry.
+func lockReleaseRow(tx *gorm.DB, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
+	guard := tx.Model(&types.AgentReleaseEntity{}).
+		Where("tenant_id = ? AND id = ?", tenantID, releaseID).
+		UpdateColumn("id", gorm.Expr("id"))
+	if guard.Error != nil {
+		return nil, guard.Error
+	}
+	var row types.AgentReleaseEntity
+	err := tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		introduced, ierr := introducedRelease(tx, tenantID, releaseID)
+		if ierr != nil {
+			return nil, ierr
+		}
+		if introduced == nil {
+			return nil, ErrAgentMarketplaceNotFound
+		}
+		return introduced, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func requireActiveRelease(tx *gorm.DB, tenantID uint64, releaseID, listingID string) error {
+	release, err := lockReleaseRow(tx, tenantID, releaseID)
+	if err != nil {
+		return err
+	}
+	if release.ListingID != listingID {
+		return ErrAgentMarketplaceNotFound
+	}
+	if release.DeprecatedAt != nil {
+		return ErrAgentMarketplaceReleaseDeprecated
+	}
+	return nil
 }
 
 func copyLifecycleUpdates(updates map[string]any) map[string]any {

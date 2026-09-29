@@ -79,6 +79,7 @@ func TestCreateVariantAndEndAdoptionSerializeOnAdoptionRow(t *testing.T) {
 	ctx := context.Background()
 	repo := NewAgentAdoptionRepository(db)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
 
 	insertReached, allowInsert := make(chan struct{}), make(chan struct{})
@@ -192,6 +193,106 @@ func TestDeprecateReleaseIsCASAndPointsAtSuccessor(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentReleaseDeprecateConflict)
 	_, err = repo.DeprecateRelease(ctx, 2, "r1", "admin", "r2")
 	require.ErrorIs(t, err, ErrAgentMarketplaceNotFound)
+}
+
+func seedAtomicLifecycleRelease(t *testing.T, db *gorm.DB, id, listingID string, number int) {
+	t.Helper()
+	versionID, submissionID := "av-"+id, "s-"+id
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: versionID, TenantID: 1, AgentID: "a", VersionNumber: number, Snapshot: "{}", SourceSHA256: "sha"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: submissionID, TenantID: 1, ListingID: listingID, AgentVersionID: versionID, SourceAgentID: "a", AuthorID: "admin", SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), Status: "approved"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: listingID, SubmissionID: submissionID, AgentVersionID: versionID, SourceAgentID: "a", ReleaseNumber: number, SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+}
+
+func TestAdoptListingRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	listing, err := repo.GetMarketplaceListing(ctx, 1, "l1")
+	require.NoError(t, err) // service eligibility precheck has passed
+	require.Equal(t, "listed", listing.State)
+	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "l1").Update("state", "unlisted").Error)
+	_, _, err = repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: "l1", AcceptedReleaseID: "r1", State: "active"})
+	require.ErrorIs(t, err, ErrAgentMarketplaceListingUnavailable)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, "l1").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestCreateVariantRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+	// A service read has already accepted this release; deprecation wins before
+	// the repository write starts.
+	var checked types.AgentReleaseEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "r1").First(&checked).Error)
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, "r1").Updates(map[string]any{"deprecated_at": time.Now().UTC(), "successor_release_id": "r2"}).Error)
+	_, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: "ad1", ReleaseID: "r1", Name: "late", State: "draft"})
+	require.ErrorIs(t, err, ErrAgentMarketplaceReleaseDeprecated)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, "ad1").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestFindOrCreateProposalRechecksLifecycleEligibility(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentUpgradeRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	seedAtomicLifecycleRelease(t, db, "r2", "l1", 2)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+	// Reconcile's listing/release snapshot has passed; deprecation wins before
+	// the repository materialization begins.
+	var checked types.AgentReleaseEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "r2").First(&checked).Error)
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, "r2").Update("deprecated_at", time.Now().UTC()).Error)
+	_, _, err := repo.FindOrCreateProposal(ctx, &types.AgentUpgradeProposalEntity{
+		TenantID: 1, AdoptionID: "ad1", ListingID: "l1", FromReleaseID: "r1", ToReleaseID: "r2", State: "open",
+	})
+	require.ErrorIs(t, err, ErrAgentMarketplaceReleaseDeprecated)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentUpgradeProposalEntity{}).Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", 1, "ad1", "r2").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestConcurrentReciprocalDeprecationsCannotPersistSuccessorCycle(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	for i, id := range []string{"r1", "r2"} {
+		seedAtomicLifecycleRelease(t, db, id, "l1", i+1)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, pair := range [][2]string{{"r1", "r2"}, {"r2", "r1"}} {
+		pair := pair
+		go func() {
+			<-start
+			_, err := repo.DeprecateRelease(ctx, 1, pair[0], "admin", pair[1])
+			results <- err
+		}()
+	}
+	close(start)
+	first, second := <-results, <-results
+	successes := 0
+	for _, err := range []error{first, second} {
+		if err == nil {
+			successes++
+		} else {
+			require.ErrorIs(t, err, ErrAgentReleaseDeprecateConflict)
+		}
+	}
+	require.Equal(t, 1, successes)
+	var cycle int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_releases a JOIN agent_releases b ON b.tenant_id=a.tenant_id AND b.id=a.successor_release_id WHERE a.tenant_id=? AND a.deprecated_at IS NOT NULL AND b.deprecated_at IS NOT NULL AND b.successor_release_id=a.id`, 1).Scan(&cycle).Error)
+	require.Zero(t, cycle)
 }
 
 func TestRetiredVariantAgentExists(t *testing.T) {

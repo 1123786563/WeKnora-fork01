@@ -98,7 +98,11 @@ func (s *AgentMarketplaceLifecycleService) DeprecateRelease(ctx context.Context,
 	if successor == nil || successor.ListingID != release.ListingID || successor.DeprecatedAt != nil {
 		return nil, fmt.Errorf("%w: successor release must exist, be active, and belong to the same listing", ErrAgentMarketplaceLifecycleInvalidInput)
 	}
-	return s.listings.DeprecateRelease(ctx, tenantID, releaseID, actorID, successorReleaseID)
+	row, err := s.listings.DeprecateRelease(ctx, tenantID, releaseID, actorID, successorReleaseID)
+	if errors.Is(err, repository.ErrAgentReleaseSuccessorInvalid) {
+		return nil, fmt.Errorf("%w: successor release must remain active and belong to the same listing", ErrAgentMarketplaceLifecycleInvalidInput)
+	}
+	return row, err
 }
 
 func (s *AgentMarketplaceLifecycleService) adoptionViewOf(ctx context.Context, tenantID uint64, row *types.AgentAdoptionEntity) (interfaces.AdoptionView, error) {
