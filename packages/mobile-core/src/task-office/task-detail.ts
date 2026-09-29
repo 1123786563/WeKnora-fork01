@@ -1,6 +1,8 @@
 import { leaseActive } from '../runtime/scope-lease.ts';
 import { TaskOfficeError } from './task-office-errors.ts'; // R1-F21：不再从 task-office.ts 值导入（解运行时环）
 import { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf } from './task-timeline.ts';
+import { resolveUnknownStop } from './task-intent.ts';
+import type { InterventionReceipt, StopPhase, TaskIntent } from './task-intent.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import type { TaskLifecycleState, TaskTimelineEntry } from './task-timeline.ts';
 import type { AttentionState } from './task-office-errors.ts';
@@ -8,7 +10,7 @@ import type { AttentionState } from './task-office-errors.ts';
 export const TASK_DETAIL_HISTORY_LIMIT = 200;
 
 export type TaskConnectionState = 'syncing' | 'live' | 'interrupted' | 'drained';
-export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed' | 'stream-unavailable';
+export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed' | 'stream-unavailable' | 'offline';
 
 export interface TaskBackendEvent {
   runId: string;
@@ -38,12 +40,18 @@ export interface TaskDetailBackendPort {
   stream(input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }): Promise<void>;
 }
 
+/** T10（#40）离线降级渲染所需的权威快照：detail 去 events 形态（title/attention/execution 等）。
+ *  旧格式投影无 snapshot = 离线降级不可用（fail closed），联网路径不受影响。 */
+export type OfflineTaskSnapshot = Omit<TaskBackendDetail, 'events'>;
+
 export interface PersistedTaskProjection {
   taskId: string;
   runId: string;
   cursor: number;
   events: TaskBackendEvent[];
   savedAt: string;
+  /** T10（#40）：detail 通道失败时构建离线视图的快照；缺省（旧格式）不降级。 */
+  snapshot?: OfflineTaskSnapshot;
 }
 
 export interface TaskProjectionStore {
@@ -67,6 +75,17 @@ export interface TaskDetailView {
   interruption?: { reason: TaskInterruptionReason; message?: string };
   timeline: TaskTimelineEntry[];
   duplicateSeqs: number[];
+  stop?: { phase: StopPhase; since: string; note?: string };
+  queuedNext?: Array<{ intentId: string; text: string; queuedAt: string }>;
+  interventions?: InterventionReceipt[];
+}
+
+export type TaskCommandAction = 'steer' | 'queue_next' | 'cancel';
+
+/** T07 命令 seam：实现方（api-client remote）以结构化 `code` 错误表达确定性冲突
+ * （TASK_COMMAND_CONFLICT）与投递结果未知（TASK_COMMAND_UNKNOWN）。 */
+export interface TaskCommandPort {
+  command(input: { runId: string; action: TaskCommandAction; text?: string; expectedRevision: number; intentId?: string }): Promise<{ runId: string; action: TaskCommandAction; nextRunId?: string }>;
 }
 
 export interface TaskHandle {
@@ -74,6 +93,10 @@ export interface TaskHandle {
   view(): TaskDetailView | undefined;
   updates(listener: (view: TaskDetailView) => void): () => void;
   resync(): Promise<TaskDetailView>;
+  /** T07：受控干预（steer / queue-next / stop）；返回诚实回执，绝不编造服务端准入。 */
+  act(intent: TaskIntent): Promise<InterventionReceipt>;
+  /** T07：把 parked 的 queue-next 逐条发往服务端（观察到终态后调用/由 hydrate 自动触发）。 */
+  flushQueuedIntents(): Promise<void>;
   close(reason?: string): void;
 }
 
@@ -81,6 +104,8 @@ export interface TaskDetailPorts {
   backend: TaskDetailBackendPort;
   store: TaskProjectionStore;
   lease(): ScopeLease | undefined;
+  /** T07 干预通道；缺失时 act() fail closed（TASK_OFFICE_COMMAND_UNAVAILABLE）。 */
+  commands?: TaskCommandPort;
 }
 
 const AUTO_RESYNC_LIMIT = 2;
@@ -107,6 +132,39 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   let persistedCursor = 0; // 最近一次成功落盘的游标（stride 合并的基准）
   let autoResyncs = 0;
   const listeners = new Set<(view: TaskDetailView) => void>();
+  // —— T07（#37）干预状态：三态停止、unknown 门、parked queue-next、诚实回执 ——
+  let stopState: TaskDetailView['stop'];
+  let unknownGate: { revision: number } | undefined;
+  let revisionFloor = 0; // 202 后服务端 CAS 证明的 revision+1（steer/cancel 各 +1）
+  const queuedNext: Array<{ intentId: string; text: string; queuedAt: string }> = [];
+  const interventions: InterventionReceipt[] = [];
+  let flushInFlight: Promise<void> | undefined; // hydrate 自动 flush 与显式 flush 合流，绝不重复派发同一 parked 意图
+  const commandRevision = (): number => Math.max(detail?.execution.revision ?? 0, revisionFloor);
+  const currentRunStatus = (): string => (detail === undefined ? '' : terminalRunStatusOf(detail.execution.runStatus, events));
+  const nextIntentId = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT', { cause: new Error('no id generator on this platform') });
+  };
+  const trimInterventions = (): void => { if (interventions.length > 20) interventions.splice(0, interventions.length - 20); };
+  const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure));
+  const wrapCommand = async <T>(action: () => Promise<T>): Promise<T> => {
+    try {
+      return await action();
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === 'TASK_COMMAND_CONFLICT' || code === 'TASK_COMMAND_UNKNOWN') throw error; // 跨包契约码透传（#38 先例）
+      if (error instanceof TaskOfficeError) throw error;
+      throw new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
+    }
+  };
+  const stopProjection = (runStatus: string): TaskDetailView['stop'] => {
+    if (stopState === undefined) return undefined;
+    if (stopState.phase === 'unknown') return stopState;
+    if (isTerminalRunStatus(runStatus)) {
+      return { ...stopState, phase: 'confirmed', ...(runStatus === 'canceled' ? {} : { note: `run ended as ${runStatus} before the stop landed` }) };
+    }
+    return stopState;
+  };
 
   const requireOpen = (): void => {
     if (closed) throw new TaskOfficeError('TASK_OFFICE_DETAIL_CLOSED');
@@ -128,6 +186,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     const base = detail!;
     const runStatus = terminalRunStatusOf(base.execution.runStatus, events);
     const terminal = isTerminalRunStatus(runStatus);
+    const stop = stopProjection(runStatus);
     return {
       taskId: base.taskId,
       runId: base.runId,
@@ -147,6 +206,9 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       ...(interruption === undefined ? {} : { interruption }),
       timeline: projectTimeline(events),
       duplicateSeqs: [...duplicateSeqs],
+      ...(stop === undefined ? {} : { stop }),
+      ...(queuedNext.length === 0 ? {} : { queuedNext: [...queuedNext] }),
+      ...(interventions.length === 0 ? {} : { interventions: [...interventions] }),
     };
   };
   const notify = (connection: TaskConnectionState): void => {
@@ -176,8 +238,14 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     controller?.abort();
     controller = undefined;
   };
+  // 新增可选字段自动随行进离线快照（R1-F6）：手工逐字段拷贝会把未来字段静默排除。
+  // 与 task-detail.test.ts 的既有同款解构惯例一致。
+  const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
+    const { events: _events, ...snapshot } = source;
+    return snapshot;
+  };
   const persist = async (cursor: number, history: TaskBackendEvent[]): Promise<void> => {
-    await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString() });
+    await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString(), snapshot: snapshotOf(detail!) });
   };
   /** best-effort 强制 flush（终态/中断/close 前）：只补落未落盘的跨度，失败不抛——失败可见性由 interruption 表达。 */
   const flushPersisted = async (): Promise<void> => {
@@ -189,6 +257,38 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       /* best-effort：内存投影仍正确，重启后由 hydrate 兜底 */
     }
   };
+  const pumpQueuedNext = async (lease: ScopeLease): Promise<void> => {
+    while (queuedNext.length > 0 && unknownGate === undefined) {
+      if (!isTerminalRunStatus(currentRunStatus())) return;
+      const next = queuedNext[0]!;
+      const dispatch = { runId: input.runId, action: 'queue_next' as const, text: next.text, expectedRevision: commandRevision(), intentId: next.intentId };
+      try {
+        const ack = await wrapCommand(() => ports.commands!.command(dispatch));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 迟到结果拒绝（§5.3，与 act() 同一竞态同一处理）
+        queuedNext.shift();
+        interventions.push({ intent: { kind: 'queue-next', text: next.text, intentId: next.intentId }, outcome: 'accepted', boundRunId: input.runId, revision: dispatch.expectedRevision, ...(ack.nextRunId === undefined ? {} : { nextRunId: ack.nextRunId }), at: new Date().toISOString() });
+      } catch (error) {
+        if (error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED') throw error; // scope 死亡：不 shift、不记回执，flush 整体如实拒绝
+        // one-shot：一次失败的 flush 不重试、不静默丢弃——以回执如实呈现后移除。
+        queuedNext.shift();
+        const code = (error as { code?: unknown } | null)?.code;
+        interventions.push({ intent: { kind: 'queue-next', text: next.text, intentId: next.intentId }, outcome: code === 'TASK_COMMAND_CONFLICT' ? 'conflict' : 'unknown', boundRunId: input.runId, revision: dispatch.expectedRevision, note: messageOf(error), at: new Date().toISOString() });
+        if (code !== 'TASK_COMMAND_CONFLICT') unknownGate = { revision: dispatch.expectedRevision };
+      }
+      trimInterventions();
+    }
+    if (current !== undefined) notify(current.connection);
+  };
+  /** hydrate 终态分支与显式调用共用同一在途 flush：并发调用合流，同一 parked 意图只派发一次。 */
+  const flushQueuedIntents = async (): Promise<void> => {
+    requireOpen();
+    const lease = requireLease(); // §5.3：scope 已死亡的 flush fail closed（hydrate 自身已先过同一门禁）
+    if (ports.commands === undefined) throw new TaskOfficeError('TASK_OFFICE_COMMAND_UNAVAILABLE');
+    if (flushInFlight !== undefined) return flushInFlight;
+    const run = pumpQueuedNext(lease);
+    flushInFlight = run.finally(() => { flushInFlight = undefined; });
+    await flushInFlight;
+  };
   const hydrate = async (): Promise<TaskDetailView> => {
     requireOpen();
     const lease = requireLease();
@@ -196,7 +296,28 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     abortStream();
     const epoch = streamEpoch;
     if (detail !== undefined) notify('syncing');
-    const fetched = await wrap(() => ports.backend.detail(input.runId));
+    let fetched: TaskBackendDetail;
+    try {
+      fetched = await wrap(() => ports.backend.detail(input.runId));
+    } catch (error) {
+      // T10（#40）离线降级：detail 通道失败而本 scope 有带快照的持久投影——渲染离线快照，
+      // 明确标记 interrupted/offline、不自动重连；联网后显式 resync() 恢复权威同步。
+      if (error instanceof TaskOfficeError && error.code !== 'TASK_OFFICE_BACKEND') throw error;
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 撤权不得伪装成离线
+      const persisted = await ports.store.load(input.runId).catch(() => undefined);
+      // store.load 挂起点期间被并发 hydrate/resync 取代则丢弃陈旧降级（R1-F43 对齐）：
+      // 否则旧 catch 落地会覆盖新权威状态、错标 offline、回退游标，close 的 flushPersisted 还会把磁盘投影回退。
+      if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      if (persisted === undefined || persisted.snapshot === undefined) throw error;
+      detail = { ...persisted.snapshot, events: [] };
+      events = persisted.events.slice(-TASK_DETAIL_HISTORY_LIMIT);
+      committedCursor = persisted.cursor;
+      duplicateSeqs = [];
+      interruption = { reason: 'offline', message: '当前离线：以下为最近一次同步的加密缓存内容' };
+      autoResyncs = AUTO_RESYNC_LIMIT; // 离线不自动重试；显式 resync()（联网后）重置
+      notify('interrupted');
+      return current!;
+    }
     if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     detail = fetched;
     const persisted = await ports.store.load(input.runId).catch(() => undefined);
@@ -216,8 +337,20 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       if (current === undefined) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       return current;
     }
+    if (unknownGate !== undefined) {
+      // R1-F2：核对改用合并口径（与 :353 终态判断及全模块其余终态判断一致；快照未刷新前
+      // 流内终态事件也参与核对——模块注释 R1-F27 语义）。
+      const resolved = resolveUnknownStop(terminalRunStatusOf(fetched.execution.runStatus, events));
+      if (resolved === 'confirmed') {
+        stopState = { phase: 'confirmed', since: stopState?.since ?? new Date().toISOString(), note: 'reconciled: canceled' };
+      } else {
+        stopState = undefined; // 取消未落地：门解除，用户可重试。
+      }
+      unknownGate = undefined;
+    }
     if (isTerminalRunStatus(terminalRunStatusOf(fetched.execution.runStatus, events))) {
       notify('drained');
+      void flushQueuedIntents().catch(() => undefined); // 终态观察即放行 parked queue-next（一次性，失败不重试）
       return current!;
     }
     if (interruption !== undefined) {
@@ -320,6 +453,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       await flushPersisted(); // 终态必已落盘（幂等：processEvent 已 flush 时跳过）
       interruption = undefined;
       notify('drained');
+      void flushQueuedIntents().catch(() => undefined); // R1-F1：自然完成与 hydrate 终态同款放行（一次性，失败不重试）
       return;
     }
     await interrupt('stream-ended-nonterminal', 'the event stream ended before a terminal status');
@@ -357,6 +491,74 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       autoResyncs = 0; // 显式重同步解除有界自动重连的上限
       abortStream();
       return hydrate();
+    },
+    async act(intent: TaskIntent): Promise<InterventionReceipt> {
+      requireOpen();
+      const lease = requireLease(); // 捕获在途 lease：命令飞行期间撤销 → 迟到结果按 SCOPE_CHANGED 拒绝（§5.3）
+      const commands = ports.commands;
+      if (commands === undefined) throw new TaskOfficeError('TASK_OFFICE_COMMAND_UNAVAILABLE');
+      if (detail === undefined) throw new TaskOfficeError('TASK_OFFICE_NO_SNAPSHOT');
+      if (unknownGate !== undefined) throw new TaskOfficeError('TASK_OFFICE_COMMAND_UNKNOWN');
+      const text = intent.kind === 'stop' ? '' : intent.text.trim();
+      if ((intent.kind === 'steer' || intent.kind === 'queue-next') && text === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      const revision = commandRevision();
+      const at = new Date().toISOString();
+      if (intent.kind === 'queue-next' && !isTerminalRunStatus(currentRunStatus())) {
+        // 单写者规则：活动 Run 占据写通道，queue_next 由模块本地 parked，观察到终态后再发出。
+        const parked = { intentId: intent.intentId ?? nextIntentId(), text, queuedAt: at };
+        queuedNext.push(parked);
+        const receipt: InterventionReceipt = { intent, outcome: 'parked', boundRunId: input.runId, revision, at };
+        interventions.push(receipt); trimInterventions();
+        notify(current?.connection === undefined ? 'syncing' : current.connection);
+        return receipt;
+      }
+      const intentId = intent.kind === 'queue-next' ? intent.intentId ?? nextIntentId() : undefined;
+      const dispatch = intent.kind === 'stop'
+        ? { runId: input.runId, action: 'cancel' as const, expectedRevision: revision }
+        : intent.kind === 'steer'
+          ? { runId: input.runId, action: 'steer' as const, text, expectedRevision: revision }
+          : { runId: input.runId, action: 'queue_next' as const, text, expectedRevision: revision, ...(intentId === undefined ? {} : { intentId }) };
+      try {
+        const ack = await wrapCommand(() => commands.command(dispatch));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 迟到结果拒绝（§5.3）
+        if (dispatch.action === 'steer' || dispatch.action === 'cancel') revisionFloor = revision + 1; // 服务端 CAS 证明
+        if (dispatch.action === 'cancel') stopState = { phase: 'requested', since: at };
+        if (dispatch.action === 'queue_next') {
+          const index = queuedNext.findIndex((q) => q.intentId === intentId);
+          if (index >= 0) queuedNext.splice(index, 1);
+        }
+        const receipt: InterventionReceipt = {
+          intent, outcome: 'accepted', boundRunId: ack.runId === '' ? input.runId : ack.runId, revision,
+          ...(ack.nextRunId === undefined ? {} : { nextRunId: ack.nextRunId }), at,
+        };
+        interventions.push(receipt); trimInterventions();
+        void hydrate().catch(() => undefined); // 重观察（一次；失败由流/下次 hydrate 兜底）
+        return receipt;
+      } catch (error) {
+        if (error instanceof TaskOfficeError) throw error;
+        const code = (error as { code?: unknown } | null)?.code;
+        if (code === 'TASK_COMMAND_CONFLICT') {
+          const receipt: InterventionReceipt = { intent, outcome: 'conflict', boundRunId: input.runId, revision, note: messageOf(error), at };
+          interventions.push(receipt); trimInterventions();
+          notify(current?.connection === undefined ? 'syncing' : current.connection); // 冲突回执立即可见
+          void hydrate().catch(() => undefined);
+          return receipt;
+        }
+        // 结果未知（传输失败/5xx/502 command_recovery_unknown）：进入 unknown 门（AC2）。
+        if (intent.kind === 'stop') stopState = { phase: 'unknown', since: at, note: messageOf(error) };
+        unknownGate = { revision };
+        const receipt: InterventionReceipt = { intent, outcome: 'unknown', boundRunId: input.runId, revision, note: messageOf(error), at };
+        interventions.push(receipt); trimInterventions();
+        notify(current?.connection === undefined ? 'syncing' : current.connection); // 停止卡/回执立即可见
+        // R1-F3：置门后自行安排核对，门不得滞留到仅剩显式 resync——与 accepted :533 / conflict :542
+        // 的 fire-and-forget hydrate 同款；一次核对失败由流/下次 hydrate/显式 resync 兜底，
+        // 门在核对完成前照常阻塞（AC2 不放松）。
+        void hydrate().catch(() => undefined);
+        return receipt;
+      }
+    },
+    flushQueuedIntents(): Promise<void> {
+      return flushQueuedIntents();
     },
     close(reason?: string) {
       closed = true;

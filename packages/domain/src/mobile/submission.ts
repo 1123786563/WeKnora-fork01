@@ -99,6 +99,12 @@ function sameScope(a: SubmissionScope, b: SubmissionScope): boolean {
   return a.origin === b.origin && a.tenantID === b.tenantID && a.userID === b.userID;
 }
 
+/** 确定性 4xx 判定：api-client ApiError 的 { status } 跨包形态（鸭子类型探测，非类型依赖）。 */
+const isDeterministicRefusal = (cause: unknown): boolean => {
+  const status = (cause as { status?: unknown } | null | undefined)?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
+};
+
 export function createSubmissionCoordinator(store: SubmissionStore, transport: SubmissionTransport) {
   return {
     /**
@@ -136,9 +142,20 @@ export function createSubmissionCoordinator(store: SubmissionStore, transport: S
         const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'bound', run_id: ack.run_id, updated_at: new Date().toISOString() };
         store.save(entry);
         return { entry, dispatched: true };
-      } catch {
-        // ACK 丢失/网络失败：保持同一 request_id 进入对账态；绝不换 ID、绝不静默重试
-        const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+      } catch (cause) {
+        // 重发失败也要能明确落终态（B3-F44）：确定性 4xx（预算不足/参数拒绝）
+        // 永远不会再成功——直接落 rejected，不再形成「重入即重发」循环。
+        if (isDeterministicRefusal(cause)) {
+          const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'rejected', updated_at: new Date().toISOString() };
+          store.save(entry);
+          return { entry, dispatched: true };
+        }
+        // ACK 丢失/网络失败：保持同一 request_id 进入对账态；复查服务端是否
+        // 已处理（响应丢失的 4xx 会在 lookup 反映 rejected）——绝不换 ID、绝不静默重试。
+        const lookup = await transport.lookup(input.request_id).catch(() => undefined);
+        const entry: SubmissionEntry = lookup?.state === 'rejected'
+          ? { request_id: input.request_id, input_digest: digest, scope, phase: 'rejected', updated_at: new Date().toISOString() }
+          : { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
         store.save(entry);
         return { entry, dispatched: true };
       }
@@ -161,6 +178,70 @@ export function createSubmissionCoordinator(store: SubmissionStore, transport: S
       }
       store.save(next);
       return next;
+    },
+
+    /**
+     * 同一意图的受控重入（显式驱动，区别于「unknown 不自动重发」的自动语义）：
+     * - 无持久 entry：等同 submit（新意图）；
+     * - 有 entry 且 scope/摘要不一致：SubmissionConflictError（零网络）；
+     * - bound：直接返回原 run（零网络）；
+     * - awaiting_*：先 lookup 对账原请求；仅当服务端明确 unknown（无持久记录，
+     *   即该 request_id 从未 CreatePending 成功、无 Task/预算预占）才以同一
+     *   request_id 重发——绝不换 ID 重建任务。
+     */
+    async resume(input: MobileStartInput, scope: SubmissionScope): Promise<SubmitOutcome> {
+      const digest = inputDigest(input);
+      const existing = store.load(input.request_id);
+      if (!existing) return this.submit(input, scope);
+      if (!sameScope(existing.scope, scope)) {
+        throw new SubmissionConflictError(input.request_id, existing.input_digest, `${digest} (scope mismatch)`);
+      }
+      if (existing.input_digest !== digest) {
+        throw new SubmissionConflictError(input.request_id, existing.input_digest, digest);
+      }
+      if (existing.phase === 'bound' && existing.run_id) {
+        return { entry: existing, dispatched: false };
+      }
+      if (existing.phase === 'rejected') {
+        // rejected 是终态：受控重试=新意图+新 request_id（retryEntry 注释），
+        // 同 ID 重入只读回终态，零网络、绝不重发。
+        return { entry: existing, dispatched: false };
+      }
+      const lookup = await transport.lookup(input.request_id);
+      if (lookup.state !== 'unknown') {
+        // 直接用刚拿到的 lookup 结果落态（B3-F62）——不再经 reconcile() 二次 lookup。
+        const next: SubmissionEntry = lookup.state === 'admitted' && lookup.run_id
+          ? { ...existing, phase: 'bound', run_id: lookup.run_id, updated_at: new Date().toISOString() }
+          : lookup.state === 'rejected'
+            ? { ...existing, phase: 'rejected', updated_at: new Date().toISOString() }
+            : { ...existing, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+        store.save(next);
+        return { entry: next, dispatched: false };
+      }
+      try {
+        const ack = await transport.start(input);
+        if (ack.request_id !== input.request_id) {
+          const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+          store.save(entry);
+          return { entry, dispatched: true };
+        }
+        const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'bound', run_id: ack.run_id, updated_at: new Date().toISOString() };
+        store.save(entry);
+        return { entry, dispatched: true };
+      } catch (cause) {
+        // 与 submit 的失败裁决同型（B3-F44）：确定性 4xx → rejected 终态。
+        if (isDeterministicRefusal(cause)) {
+          const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'rejected', updated_at: new Date().toISOString() };
+          store.save(entry);
+          return { entry, dispatched: true };
+        }
+        const followUp = await transport.lookup(input.request_id).catch(() => undefined);
+        const entry: SubmissionEntry = followUp?.state === 'rejected'
+          ? { request_id: input.request_id, input_digest: digest, scope, phase: 'rejected', updated_at: new Date().toISOString() }
+          : { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+        store.save(entry);
+        return { entry, dispatched: true };
+      }
     },
 
     /** 受控重试：仅 rejected 允许；新意图=新 request_id（由调用方生成并经用户确认）。 */

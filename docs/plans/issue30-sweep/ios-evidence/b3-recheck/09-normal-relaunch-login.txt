@@ -1,0 +1,4 @@
+"AXLabel":"Continue with single sign-on"
+"AXLabel":"Sign in to WeKnora"
+"AXLabel":"Sign in"
+"AXLabel":"WeKnora"

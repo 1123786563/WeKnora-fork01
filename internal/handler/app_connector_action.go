@@ -161,6 +161,15 @@ func (h *AppActionHandler) PrepareAction(c *gin.Context) {
 		appFail(c, http.StatusNotFound, "CONNECTION_NOT_FOUND", "connection not found")
 		return
 	}
+	// T12 (#42): a personal connection is its owner's identity — no member,
+	// however privileged, may drive actions through it (CONTEXT.md 代码平台
+	// 连接：个人连接只能由其所有者使用). Same predicate shape as
+	// BeginOCAuthorization.
+	if conn.Kind == appconnector.ConnectionKindPersonal && conn.OwnerID != userID {
+		appFail(c, http.StatusForbidden, "NOT_CONNECTION_OWNER",
+			"a personal connection may only be used by its owner")
+		return
+	}
 	if h.actions == nil {
 		appFail(c, http.StatusNotImplemented, "ACTION_PIPELINE_NOT_CONFIGURED",
 			"the A03 action approval pipeline is not wired in this environment; refusing to fabricate an approval")
@@ -200,7 +209,7 @@ type appActionApproveInput struct {
 // for older (edited) content is refused, never migrated. Fails closed
 // (501) while the A03 service is not wired.
 func (h *AppActionHandler) ApproveAction(c *gin.Context) {
-	tenantID, _, userID, ok := appTenantScope(c)
+	tenantID, role, userID, ok := appTenantScope(c)
 	if !ok {
 		return
 	}
@@ -211,6 +220,20 @@ func (h *AppActionHandler) ApproveAction(c *gin.Context) {
 	}
 	row, ok := h.appActionByID(c, tenantID, c.Param("id"))
 	if !ok {
+		return
+	}
+	// T12 (#42): approval authority for an action follows the actor, the
+	// personal connection's owner, or a tenant owner/admin (authorized
+	// actor). Sharing a task never delegates approval of its owner's side
+	// effects (CONTEXT.md 任务协作者：不会授予批准其外部副作用的权限).
+	var conn appconnectorrepo.ConnectionRow
+	connFound := h.db.WithContext(c.Request.Context()).
+		Where("tenant_id = ? AND id = ?", tenantID, row.ConnectionID).
+		First(&conn).Error == nil
+	personalOwner := connFound && conn.Kind == appconnector.ConnectionKindPersonal && conn.OwnerID == userID
+	if row.ActorID != userID && !personalOwner && !appconnector.CanDriveActionWrites(role) {
+		appFail(c, http.StatusForbidden, "ACTION_APPROVAL_FORBIDDEN",
+			"approving this action requires its initiator, the personal connection owner, or tenant owner/admin")
 		return
 	}
 	if row.Fence != *input.ExpectedVersion {
@@ -274,6 +297,15 @@ func (h *AppActionHandler) ExecuteAction(c *gin.Context) {
 	}
 	if !appActionStates[row.State] {
 		appFail(c, http.StatusConflict, "ACTION_STATE_CONFLICT", "action state is outside the lifecycle vocabulary")
+		return
+	}
+	// T22 (#52)：risk 超出通用词汇表（如 deliver）的动作由其所属专用管线
+	// （代码交付端点）派发；经本通用端点执行只会在 OC dispatcher 的
+	// ErrDispatchNotStarted 处白白消耗一次批准并落账 failed。此处 fail
+	// closed 拒绝——不消费批准、不派发。
+	if !appActionRisks[row.Risk] {
+		appFail(c, http.StatusConflict, "ACTION_WRONG_PIPELINE",
+			"this action belongs to its owning pipeline; dispatch it through that pipeline's endpoint")
 		return
 	}
 	if h.actions == nil {

@@ -88,8 +88,31 @@ func RegisterAppConnectorRoutes(
 		{
 			actions.POST("/prepare", actionHandler.PrepareAction)
 			actions.GET("/:id", actionHandler.GetAction)
-			actions.POST("/:id/approve", actionHandler.ApproveAction)
 			actions.POST("/:id/execute", actionHandler.ExecuteAction)
 		}
+		// T12 (#42, ruling via escalation): approval authority is owned by
+		// the ApproveAction predicate alone (initiator, the personal
+		// connection's owner, or tenant owner/admin via
+		// CanDriveActionWrites), so a task collaborator can approve their
+		// OWN action while nobody else's side effects. The endpoint stays
+		// inside the authenticated /api/v1 group (middleware.Auth) and the
+		// API-key authorizer still default-denies machine principals; every
+		// other shape fails closed with 403 ACTION_APPROVAL_FORBIDDEN.
+		r.POST("/apps/actions/:id/approve", actionHandler.ApproveAction)
 	}
+}
+
+// RegisterAppConnectionGrantRoutes exposes the space-connection grant
+// surface (T23 #53). The management predicate (CanManageConnections) lives
+// in the handler's grantScope, mirroring the ApproveAction precedent: no
+// extra group gate, the authenticated /api/v1 group plus the in-handler
+// role check. Nil handler skips registration (same nil-guard convention as
+// RegisterWorkbenchDeliveryRoutes).
+func RegisterAppConnectionGrantRoutes(r *gin.RouterGroup, h *handler.AppConnectionGrantHandler) {
+	if h == nil {
+		return
+	}
+	r.POST("/apps/connections/:id/grants", h.Grant)
+	r.GET("/apps/connections/:id/grants", h.List)
+	r.DELETE("/apps/connections/:id/grants/:grantee_id", h.Revoke)
 }

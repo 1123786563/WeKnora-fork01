@@ -1,18 +1,25 @@
 import { ApiError } from '@weknora/api-client';
 
 /** 流式读取授权 SSE 响应。非 2xx 以真 ApiError 拒绝（Runtime 401 重试与远端 409 映射都依赖该形态）。 */
-export type SseFetchLike = (input: string, init?: { method?: string; headers?: Record<string, string>; signal?: AbortSignal }) => Promise<Response>;
+export type SseFetchLike = (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<Response>;
 
 export async function streamAuthorizedSse(
   origin: string,
-  input: { method: string; path: string; headers?: Record<string, string>; signal?: AbortSignal },
+  input: { method: string; path: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal },
   accessToken: string,
   onChunk: (chunk: string) => void,
   fetchLike: SseFetchLike,
 ): Promise<void> {
+  const hasBody = input.body !== undefined;
   const response = await fetchLike(origin + input.path, {
     method: input.method,
-    headers: { ...(input.headers ?? {}), authorization: `Bearer ${accessToken}`, accept: 'text/event-stream' },
+    headers: {
+      ...(input.headers ?? {}),
+      authorization: `Bearer ${accessToken}`,
+      accept: 'text/event-stream',
+      ...(hasBody ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(hasBody ? { body: typeof input.body === 'string' ? input.body : JSON.stringify(input.body) } : {}),
     ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   if (!response.ok || !response.body) {

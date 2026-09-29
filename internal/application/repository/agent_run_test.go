@@ -343,6 +343,18 @@ func TestAgentRunReopenAndMigrations(t *testing.T) {
 	dir, version, suffix := "sqlite", "000014", "agent_runs"
 	if db.Name() == "postgres" {
 		dir, version, suffix = "versioned", "000093", "agent_runs"
+		// A single-step 000093 down presupposes that later migrations have already
+		// been rolled back: the down chain drops 000094+ (and with them the FKs on
+		// execution_dispatches/execution_observations that reference agent_runs)
+		// before it reaches 000093, so the bare `DROP TABLE agent_runs` is safe
+		// there. This test replays 000093 down/up inside a schema that still holds
+		// every 000094+ object, and PostgreSQL enforces the dependency (SQLSTATE
+		// 2BP01) where SQLite does not — so drop those dependents first to restore
+		// the migration's precondition. 000162 native_* tables are independent and
+		// stay.
+		require.NoError(t, db.Exec(
+			`DROP TABLE IF EXISTS execution_dispatches, execution_source_cursors, execution_observations`,
+		).Error)
 	}
 	for _, direction := range []string{"down", "up"} {
 		script, e := os.ReadFile(filepath.Join(root, "migrations", dir, version+"_"+suffix+"."+direction+".sql"))

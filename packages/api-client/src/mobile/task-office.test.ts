@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ClientRequest } from '../client.ts';
 import { createTaskOfficeRemote } from './task-office.ts';
+import { ApiError } from '../errors.ts';
 
 const overviewData = {
   counts: { active_runs: 1, pending_interactions: 2, unread_notifications: 3 },
@@ -179,4 +180,150 @@ test('a malformed SSE frame fails the stream as a transport error, not a bare Sy
     remote.stream({ runId: 'r1', cursor: 5, signal: new AbortController().signal, onEvent: () => {}, onControl: () => {} }),
     /TASK_STREAM_MALFORMED_FRAME/,
   );
+});
+
+test('task office remote creates the goal session, starts the durable run and reconciles by request id', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const request = async (input: ClientRequest) => {
+    requests.push({ method: input.method, path: input.path, body: input.body });
+    if (input.method === 'POST' && input.path === '/api/v1/sessions') {
+      return { success: true, data: { id: 'session-77', title: '整理本周反馈并生成周报', is_pinned: false } };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/workbench/executions') {
+      return { success: true, data: { run_id: 'run-77', request_id: (input.body as { request_id: string }).request_id, status: 'queued' } };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/workbench/executions/requests/req-77') {
+      return { success: true, data: { state: 'admitted', run_id: 'run-77' } };
+    }
+    throw new Error(`unexpected ${input.method} ${input.path}`);
+  };
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request });
+
+  const session = await remote.createSession({ title: '整理本周反馈并生成周报' });
+  assert.equal(session.sessionId, 'session-77');
+
+  const ack = await remote.start({ request_id: 'req-77', session_id: 'session-77', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '整理本周反馈并生成周报', budget_upper: 200 });
+  assert.deepEqual(ack, { run_id: 'run-77', request_id: 'req-77', status: 'queued' });
+
+  const lookup = await remote.lookup('req-77');
+  assert.deepEqual(lookup, { state: 'admitted', run_id: 'run-77' });
+
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/sessions', body: { title: '整理本周反馈并生成周报' } },
+    { method: 'POST', path: '/api/v1/workbench/executions', body: { request_id: 'req-77', session_id: 'session-77', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '整理本周反馈并生成周报', budget_upper: 200 } },
+    { method: 'GET', path: '/api/v1/workbench/executions/requests/req-77', body: undefined },
+  ]);
+});
+
+test('task office remote start validates the frozen seven fields before any request', async () => {
+  let calls = 0;
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => { calls += 1; return {}; } });
+  await assert.rejects(
+    remote.start({ request_id: '', session_id: 's', agent_id: 'a', target_id: 'platform', workspace_ref: '', text: 't', budget_upper: 1 }),
+    /request_id/,
+  );
+  await assert.rejects(
+    remote.start({ request_id: 'r', session_id: 's', agent_id: 'a', target_id: 'platform', workspace_ref: '', text: 't', budget_upper: -1 }),
+    /budget_upper/,
+  );
+  assert.equal(calls, 0, 'validation must reject before any HTTP traffic');
+});
+
+test('task office remote maps the inbox wire into module DTO rows', async () => {
+  const requests: ClientRequest[] = [];
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async (input) => {
+      requests.push(input);
+      return {
+        success: true,
+        data: [
+          { id: 'i-1', decision_id: '', kind: 'tool_approval', action: '', args_hash: 'sha256:aa', expected_revision: 4, run_id: 'run-1', created_at: '2026-09-24T00:00:00Z' },
+        ],
+      };
+    },
+  });
+  const items = await remote.inbox();
+  assert.deepEqual(items, [{ interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval', argsHash: 'sha256:aa', expectedRevision: 4, createdAt: '2026-09-24T00:00:00Z' }]);
+  assert.equal(requests[0].path, '/api/v1/workbench/interactions?limit=50');
+});
+
+test('task office remote decide maps the ack and classifies honest outcomes', async () => {
+  const requests: ClientRequest[] = [];
+  const ack = { id: 'i-1', decision_id: 'd-1', kind: 'tool_approval', action: 'approve', args_hash: 'sha256:aa', expected_revision: 5, run_id: 'run-1' };
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async (input) => {
+      requests.push(input);
+      if (requests.length === 1) return { success: true, data: ack };
+      throw new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' });
+    },
+  });
+  const item = { interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval' as const, argsHash: 'sha256:aa', expectedRevision: 4, createdAt: '' };
+  const record = await remote.decide({ item, decisionId: 'd-1', action: 'approve' });
+  assert.deepEqual(record, { interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval', decisionId: 'd-1', action: 'approve', argsHash: 'sha256:aa', expectedRevision: 5 });
+  assert.deepEqual(requests[0].body, { id: 'i-1', decision_id: 'd-1', kind: 'tool_approval', action: 'approve', args_hash: 'sha256:aa', expected_revision: 4 });
+
+  const coded = async (error: ApiError): Promise<string | undefined> => {
+    const failing = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => { throw error; } });
+    try {
+      await failing.decide({ item, decisionId: 'd-1', action: 'approve' });
+      return undefined;
+    } catch (caught) {
+      return (caught as { code?: string }).code;
+    }
+  };
+  assert.equal(await coded(new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' })), 'INTERACTION_SUPERSEDED');
+  // B3-F43：400 是确定性客户端错误（action/kind 不匹配等），原始 ApiError 透传——
+  // 不得冒充「已被处理」终态后丢失原因、阻断重试与提示。
+  assert.equal(await coded(new ApiError({ status: 400, code: 'HTTP_400', message: 'interaction_action_mismatch' })), 'HTTP_400', '400 透传原始 wire code，不再翻译为 superseded');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'command_recovery_unknown', message: 'command_recovery_unknown: remote interaction' })), 'INTERACTION_DELIVERY_UNKNOWN');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'HTTP_502', message: 'upstream broke' })), 'HTTP_502', '非 command_recovery_unknown 的 502 不得伪装成 delivery-unknown（原样上抛，wire code 透传）');
+  assert.equal(await coded(new ApiError({ status: 410, code: 'HTTP_410', message: 'interaction_expired' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 404, code: 'HTTP_404', message: 'not found' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 403, code: 'HTTP_403', message: 'revoked' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 500, code: 'HTTP_500', message: 'boom' })), 'HTTP_500', '未知错误原样上抛（由上层折叠为后端错误）');
+});
+
+test('task office remote command: 202 ack maps to runId/nextRunId; 409 and transport failures map to contract codes', async () => {
+  const seen: ClientRequest[] = [];
+  const request = async (input: ClientRequest): Promise<unknown> => {
+    seen.push(input);
+    const action = typeof input.body === 'object' && input.body !== null && (input.body as { action?: string }).action === 'queue_next' ? 'queue_next' : 'cancel';
+    return { success: true, data: { run_id: 'run-1', action, next_run_id: 'run-2' } };
+  };
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example', request });
+  const ack = await remote.command({ runId: 'run-1', action: 'queue_next', text: 'next', expectedRevision: 5, intentId: 'qid-1' });
+  assert.equal(ack.nextRunId, 'run-2');
+  assert.equal(seen[0]?.path, '/api/v1/workbench/executions/run-1/commands');
+  assert.deepEqual(seen[0]?.body, { action: 'queue_next', text: 'next', expected_revision: 5, external_pending_id: 'qid-1' });
+
+  const conflictRemote = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' }); } });
+  await assert.rejects(
+    () => conflictRemote.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 }),
+    (error: unknown) => (error as { code?: string }).code === 'TASK_COMMAND_CONFLICT',
+  );
+
+  const transportRemote = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw new Error('network down'); } });
+  await assert.rejects(
+    () => transportRemote.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 }),
+    (error: unknown) => (error as { code?: string }).code === 'TASK_COMMAND_UNKNOWN',
+  );
+});
+
+test('task office remote command folds every ApiError into the two contract codes', async () => {
+  // 与 decide 不同：command 的翻译是封闭二分——409/404 确定性冲突，其余（含 502
+  // command_recovery_unknown 与 5xx）投递结果未知，一律折叠为 TASK_COMMAND_UNKNOWN。
+  const coded = async (error: ApiError): Promise<string | undefined> => {
+    const failing = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw error; } });
+    try {
+      await failing.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 });
+      return undefined;
+    } catch (caught) {
+      return (caught as { code?: string }).code;
+    }
+  };
+  assert.equal(await coded(new ApiError({ status: 404, code: 'HTTP_404', message: 'not found' })), 'TASK_COMMAND_CONFLICT');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'command_recovery_unknown', message: 'command_recovery_unknown: remote command' })), 'TASK_COMMAND_UNKNOWN');
+  assert.equal(await coded(new ApiError({ status: 500, code: 'HTTP_500', message: 'boom' })), 'TASK_COMMAND_UNKNOWN');
 });

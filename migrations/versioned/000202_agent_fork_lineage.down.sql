@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS agent_licenses;
+ALTER TABLE agent_releases DROP COLUMN lineage_license_id;
+ALTER TABLE agent_releases DROP COLUMN fork_notes;
+ALTER TABLE agent_releases DROP COLUMN fork_source_release_id;
+ALTER TABLE agent_releases DROP COLUMN fork_source_listing_id;
+ALTER TABLE agent_releases DROP COLUMN is_fork;
+ALTER TABLE agent_release_submissions DROP COLUMN lineage_license_id;
+ALTER TABLE agent_release_submissions DROP COLUMN fork_notes;
+ALTER TABLE agent_release_submissions DROP COLUMN fork_source_release_id;
+ALTER TABLE agent_release_submissions DROP COLUMN fork_source_listing_id;
+ALTER TABLE agent_release_submissions DROP COLUMN is_fork;

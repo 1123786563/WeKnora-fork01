@@ -10,6 +10,13 @@ const DRAFT_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const DRAFT_RESERVED_IDS: ReadonlySet<string> = new Set(['index']);
 const RETENTION_DAYS = 30;
 
+/** ScopedStore 的两个领域仓储（spec §9.2 按领域仓储分组）：drafts 与 event projections。
+ *  行键命名空间段沿用 R1-F10 设计——合法 id 的 base64url 编码不含 '.'，与 'd'/'p' 段
+ *  及索引键（'ix'/'pix'）天然分离，id 无法劫持另一命名空间的行或索引。 */
+type StoreNamespace = 'drafts' | 'projections';
+const ROW_SEGMENT: Record<StoreNamespace, string> = { drafts: 'd', projections: 'p' };
+const INDEX_SEGMENT: Record<StoreNamespace, string> = { drafts: 'ix', projections: 'pix' };
+
 export type VaultRevokeReason = 'tenant-switch' | 'deployment-change' | 'sign-out' | 'dispose';
 
 export interface DraftEntry { id: string; body: string; updatedAt: string }
@@ -21,7 +28,7 @@ export interface ScopedDraftRepository {
   remove(id: string): Promise<void>;
 }
 
-export interface ScopedStore { drafts: ScopedDraftRepository }
+export interface ScopedStore { drafts: ScopedDraftRepository; projections: ScopedDraftRepository }
 
 export interface VaultPolicy { categories: ReadonlyArray<{ category: string; retentionDays: number }> }
 
@@ -50,8 +57,8 @@ export async function scopeKeyOf(scope: LeaseScope): Promise<string> {
 
 /**
  * Scoped Vault（Spec §9）：唯一拥有 deployment/user/tenant scope 下的加密缓存与撤销。
- * ScopedStore 只暴露 drafts 仓储；每次访问重新校验 lease 有效性，任何没有有效
- * Scope Lease 的访问失败（VAULT_LEASE）。
+ * ScopedStore 暴露 drafts 与 projections 两个领域仓储；每次访问重新校验 lease 有效性，
+ * 任何没有有效 Scope Lease 的访问失败（VAULT_LEASE）。
  */
 export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
   const sessions = new Map<string, ScopeSession>();
@@ -99,8 +106,8 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
       sessionFlights.delete(scopeKey);
     }
   };
-  const indexKey = (scopeKey: string): string => `${scopeKey}.ix`;
-  const rowKey = (scopeKey: string, id: string): string => `${scopeKey}.d.${draftKeySegment(id)}`;
+  const indexKeyOf = (scopeKey: string, namespace: StoreNamespace): string => `${scopeKey}.${INDEX_SEGMENT[namespace]}`;
+  const rowKeyOf = (scopeKey: string, namespace: StoreNamespace, id: string): string => `${scopeKey}.${ROW_SEGMENT[namespace]}.${draftKeySegment(id)}`;
   const assertDraftId = (id: string): void => {
     if (!DRAFT_ID_PATTERN.test(id) || DRAFT_RESERVED_IDS.has(id)) throw new Error('VAULT_ID');
   };
@@ -113,8 +120,8 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     scopeTails.set(scopeKey, next.catch(() => undefined));
     return next;
   };
-  const readIndex = async (scopeKey: string): Promise<string[]> => {
-    const raw = await ports.storage.read(indexKey(scopeKey));
+  const readIndex = async (scopeKey: string, namespace: StoreNamespace): Promise<string[]> => {
+    const raw = await ports.storage.read(indexKeyOf(scopeKey, namespace));
     if (raw === null) return [];
     let value: unknown;
     try {
@@ -126,7 +133,8 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     if (!Array.isArray(value) || !value.every((id) => typeof id === 'string')) throw new Error('VAULT_INDEX');
     return value;
   };
-  const writeIndex = (scopeKey: string, ids: string[]): Promise<void> => ports.storage.write(indexKey(scopeKey), JSON.stringify(ids));
+  const writeIndex = (scopeKey: string, namespace: StoreNamespace, ids: string[]): Promise<void> =>
+    ports.storage.write(indexKeyOf(scopeKey, namespace), JSON.stringify(ids));
   const now = (): string => ports.now?.() ?? new Date().toISOString();
   const sealRow = async (key: Uint8Array, entry: DraftEntry): Promise<string> => {
     const sealed = await ports.cipher.seal(key, text.encode(JSON.stringify(entry)));
@@ -164,25 +172,25 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
       const scope = requireScope(scopeLease);
       const scopeKey = await scopeKeyOf(scope);
       const session = await requireSession(scopeKey);
-      const drafts: ScopedDraftRepository = {
+      const makeRepository = (namespace: StoreNamespace): ScopedDraftRepository => ({
         async put(input) {
           assertAccessible(scopeLease, session);
           assertDraftId(input.id);
           await enqueue(scopeKey, async () => {
-            const ids = await readIndex(scopeKey);
+            const ids = await readIndex(scopeKey, namespace);
             const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: now() };
-            await ports.storage.write(rowKey(scopeKey, input.id), await sealRow(session.key, entry));
+            await ports.storage.write(rowKeyOf(scopeKey, namespace, input.id), await sealRow(session.key, entry));
             let known = knownRowIds.get(scopeKey);
             if (!known) { known = new Set(); knownRowIds.set(scopeKey, known); }
-            known.add(input.id);
-            if (!ids.includes(input.id)) await writeIndex(scopeKey, [...ids, input.id]);
+            known.add(rowKeyOf(scopeKey, namespace, input.id));
+            if (!ids.includes(input.id)) await writeIndex(scopeKey, namespace, [...ids, input.id]);
           });
         },
         async get(id) {
           assertAccessible(scopeLease, session);
           assertDraftId(id);
           return enqueue(scopeKey, async () => {
-            const raw = await ports.storage.read(rowKey(scopeKey, id));
+            const raw = await ports.storage.read(rowKeyOf(scopeKey, namespace, id));
             if (raw === null) return undefined;
             return openRow(session.key, raw, id);
           });
@@ -190,10 +198,10 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         async list() {
           assertAccessible(scopeLease, session);
           return enqueue(scopeKey, async () => {
-            const ids = await readIndex(scopeKey);
+            const ids = await readIndex(scopeKey, namespace);
             // 并行读行（R1-F16b）：索引顺序保持，缺行跳过；单行损坏仍按整体 reject。
             const rows = await Promise.all(ids.map(async (id) => {
-              const raw = await ports.storage.read(rowKey(scopeKey, id));
+              const raw = await ports.storage.read(rowKeyOf(scopeKey, namespace, id));
               return raw === null ? undefined : openRow(session.key, raw, id);
             }));
             const entries = rows.filter((row): row is DraftEntry => row !== undefined);
@@ -201,10 +209,10 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
             const retentionCutoff = Date.parse(now()) - RETENTION_DAYS * 24 * 3600 * 1000;
             const retained: string[] = [];
             for (const entry of entries) {
-              if (Date.parse(entry.updatedAt) < retentionCutoff) await ports.storage.delete(rowKey(scopeKey, entry.id));
+              if (Date.parse(entry.updatedAt) < retentionCutoff) await ports.storage.delete(rowKeyOf(scopeKey, namespace, entry.id));
               else retained.push(entry.id);
             }
-            if (retained.length !== entries.length) await writeIndex(scopeKey, retained);
+            if (retained.length !== entries.length) await writeIndex(scopeKey, namespace, retained);
             return entries.filter((entry) => Date.parse(entry.updatedAt) >= retentionCutoff);
           });
         },
@@ -212,12 +220,12 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
           assertAccessible(scopeLease, session);
           assertDraftId(id);
           await enqueue(scopeKey, async () => {
-            await ports.storage.delete(rowKey(scopeKey, id));
-            await writeIndex(scopeKey, (await readIndex(scopeKey)).filter((existing) => existing !== id));
+            await ports.storage.delete(rowKeyOf(scopeKey, namespace, id));
+            await writeIndex(scopeKey, namespace, (await readIndex(scopeKey, namespace)).filter((existing) => existing !== id));
           });
         },
-      };
-      return { drafts };
+      });
+      return { drafts: makeRepository('drafts'), projections: makeRepository('projections') };
     },
     async rotate(scopeLease) {
       if (!leaseActive(scopeLease)) throw new Error('VAULT_LEASE');
@@ -227,23 +235,26 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         const oldKey = session && !session.destroyed ? session.key : await ports.keyStore.readWrappedKey(scopeKey);
         if (!oldKey) return;
         // 两阶段原子 rotate：任一行解密失败时在任何写入之前中止，健康行保持旧 key 可读。
-        const decrypted: Array<{ id: string; entry: DraftEntry }> = [];
-        for (const id of await readIndex(scopeKey)) {
-          const raw = await ports.storage.read(rowKey(scopeKey, id));
-          if (raw === null) continue;
-          decrypted.push({ id, entry: await openRow(oldKey, raw, id) });
+        type SealedRow = { namespace: StoreNamespace; id: string; entry: DraftEntry };
+        const decrypted: SealedRow[] = [];
+        for (const namespace of ['drafts', 'projections'] as const) {
+          for (const id of await readIndex(scopeKey, namespace)) {
+            const raw = await ports.storage.read(rowKeyOf(scopeKey, namespace, id));
+            if (raw === null) continue;
+            decrypted.push({ namespace, id, entry: await openRow(oldKey, raw, id) });
+          }
         }
         const newKey = randomBytes(KEY_LENGTH);
-        const rewritten: Array<{ id: string; entry: DraftEntry }> = [];
+        const rewritten: SealedRow[] = [];
         try {
-          for (const { id, entry } of decrypted) {
-            await ports.storage.write(rowKey(scopeKey, id), await sealRow(newKey, entry));
-            rewritten.push({ id, entry });
+          for (const row of decrypted) {
+            await ports.storage.write(rowKeyOf(scopeKey, row.namespace, row.id), await sealRow(newKey, row.entry));
+            rewritten.push(row);
           }
         } catch (cause) {
           // best-effort 回滚至旧 key；回滚再失败则该 scope fail-closed（session 置 destroyed），不留半状态。
           try {
-            for (const { id, entry } of rewritten) await ports.storage.write(rowKey(scopeKey, id), await sealRow(oldKey, entry));
+            for (const row of rewritten) await ports.storage.write(rowKeyOf(scopeKey, row.namespace, row.id), await sealRow(oldKey, row.entry));
           } catch {
             if (session && !session.destroyed) session.destroyed = true;
             sessions.delete(scopeKey);
@@ -263,17 +274,23 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
       await enqueue(scopeKey, async () => {
         // 先把 wrapped key 覆写成全新随机值：即使后续删行/删 key 部分失败，旧密文也不可再解。
         await ports.keyStore.writeWrappedKey(scopeKey, randomBytes(KEY_LENGTH));
-        // 损坏索引不得中止撤销（Review Focus #1）：吞 VAULT_INDEX，尽力删行与索引键。
-        const indexed = await readIndex(scopeKey).catch(() => [] as string[]);
-        const ids = [...new Set([...indexed, ...(knownRowIds.get(scopeKey) ?? [])])];
-        await Promise.all(ids.map((id) => ports.storage.delete(rowKey(scopeKey, id))));
+        // 损坏索引不得中止撤销（Review Focus #1）：吞 VAULT_INDEX，尽力删行与索引键（两命名空间）。
+        const indexedRows = async (namespace: StoreNamespace): Promise<string[]> =>
+          (await readIndex(scopeKey, namespace).catch(() => [] as string[])).map((id) => rowKeyOf(scopeKey, namespace, id));
+        const rows = [...new Set([
+          ...await indexedRows('drafts'),
+          ...await indexedRows('projections'),
+          ...(knownRowIds.get(scopeKey) ?? []),
+        ])];
+        await Promise.all(rows.map((row) => ports.storage.delete(row)));
         knownRowIds.delete(scopeKey);
-        await ports.storage.delete(indexKey(scopeKey));
+        await ports.storage.delete(indexKeyOf(scopeKey, 'drafts'));
+        await ports.storage.delete(indexKeyOf(scopeKey, 'projections'));
         await ports.keyStore.deleteWrappedKey(scopeKey);
       });
     },
     inspectPolicy() {
-      return { categories: [{ category: 'drafts', retentionDays: RETENTION_DAYS }] };
+      return { categories: [{ category: 'drafts', retentionDays: RETENTION_DAYS }, { category: 'projections', retentionDays: RETENTION_DAYS }] };
     },
   };
 }

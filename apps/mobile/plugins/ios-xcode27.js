@@ -26,7 +26,9 @@
 // bodies; if the template drifts on a future Expo upgrade, the plugin fails
 // loudly instead of silently generating a broken project.
 
-const { withAppDelegate, withInfoPlist, withXcodeProject, withPodfile, withPodfileProperties } = require('expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+const { withAppDelegate, withDangerousMod, withInfoPlist, withXcodeProject, withPodfile, withPodfileProperties } = require('expo/config-plugins');
 
 const DEPLOYMENT_TARGET = '16.0';
 
@@ -95,6 +97,39 @@ const SCENE_LAUNCH_BODY = `  public override func application(
       withModuleName: "main",
       in: window,
       launchOptions: Self.savedLaunchOptions)
+
+    // B4 recheck F1: in Release the JS bundle takes seconds to execute and the
+    // root view sat blank white until it finished. The factory root view is an
+    // RCTSurfaceHostingProxyRootView (RN 0.83's RCTRootView-compatible surface
+    // host, RCTRootViewFactory.mm:177-186); its 'loadingView' property maps to
+    // the surface hosting view's activity indicator, which is shown full-screen
+    // while the surface is not yet running and removed once it runs
+    // (RCTSurfaceHostingView.mm:145-153).
+    if let rootView = window.rootViewController?.view as? RCTSurfaceHostingProxyRootView {
+      rootView.loadingView = Self.makeSplashLoadingView(size: window.bounds.size)
+    }
+  }
+
+  /// Splash shown while the JS bundle loads: white background with a centered
+  /// wordmark, matching the launch storyboard's white background
+  /// (SplashScreen.storyboard's container has empty subviews, so there is no
+  /// richer content to replicate).
+  private static func makeSplashLoadingView(size: CGSize) -> UIView {
+    let container = UIView(frame: CGRect(origin: .zero, size: size))
+    container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    container.backgroundColor = .white
+
+    let wordmark = UILabel()
+    wordmark.text = "WeKnora"
+    wordmark.font = .systemFont(ofSize: 30, weight: .semibold)
+    wordmark.textColor = UIColor(red: 0.20, green: 0.45, blue: 0.85, alpha: 1.0)
+    wordmark.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(wordmark)
+    NSLayoutConstraint.activate([
+      wordmark.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+      wordmark.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+    ])
+    return container
   }
 `;
 
@@ -167,6 +202,38 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 `;
 
+// B4 recheck F1: the Expo-generated SplashScreen.storyboard has an EMPTY
+// container (<subviews/>) while its centering constraints already reference a
+// missing `EXPO-SplashScreen` item — so the cold-start launch snapshot is a
+// plain white screen for the whole bridge/Hermes startup (B4 measured 8-10s).
+// Injecting a centered "WeKnora" wordmark label with that exact id revives the
+// dangling constraints: the launch snapshot (the only thing on screen while
+// startReactNative blocks the main thread) shows brand content instead of
+// white. The RCTSurfaceHostingProxyRootView loadingView wired in
+// SCENE_LAUNCH_BODY covers the window after the first app frame as a second
+// layer.
+const SPLASH_STORYBOARD_CONTAINER_ANCHOR = `<subviews/>`;
+const SPLASH_STORYBOARD_CONTAINER_REPLACEMENT = `<subviews>
+                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="WeKnora" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="EXPO-SplashScreen">
+                            <fontDescription key="fontDescription" type="boldSystem" pointSize="30"/>
+                            <color key="textColor" red="0.20" green="0.45" blue="0.85" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            <nil key="highlightedColor"/>
+                        </label>
+                    </subviews>`;
+
+/** Inject the splash wordmark into the generated SplashScreen.storyboard. Idempotent. */
+function applySplashStoryboard(contents) {
+  if (contents.includes('id="EXPO-SplashScreen"')) {
+    return contents;
+  }
+  if (!contents.includes(SPLASH_STORYBOARD_CONTAINER_ANCHOR)) {
+    throw new Error(
+      'ios-xcode27 plugin: the generated SplashScreen.storyboard no longer matches the Expo SDK 55 template; update the plugin anchors.',
+    );
+  }
+  return contents.replace(SPLASH_STORYBOARD_CONTAINER_ANCHOR, SPLASH_STORYBOARD_CONTAINER_REPLACEMENT);
+}
+
 /** Rewrite the template AppDelegate.swift into the scene-based variant. Idempotent. */
 function applySceneLifecycle(contents) {
   if (contents.includes('configurationForConnecting connectingSceneSession')) {
@@ -232,6 +299,37 @@ function applyPodfileClamp(contents) {
   return contents.replace(TEMPLATE_POST_INSTALL, `${TEMPLATE_POST_INSTALL}${PODFILE_CLAMP}`);
 }
 
+// B4 recheck F2: Release builds emitted ~4.8k warnings, all of them from
+// third-party pod sources (SDWebImage/libdav1d/libwebp/libavif, Expo modules,
+// prebuilt RN umbrella headers); the app target itself compiled with 0 warnings
+// (full attribution in docs/plans/issue30-sweep/ios-evidence/b4-recheck-fix.md).
+// Silence pod warnings so future real regressions stay visible.
+const TEMPLATE_PREPARE_REACT_NATIVE = `prepare_react_native_project!
+`;
+
+const PODFILE_INHIBIT_WARNINGS = `# weknora_ios_inhibit_warnings
+inhibit_all_warnings!
+`;
+
+/** Inject the pod-wide warning inhibit before the target definitions. Idempotent by a unique
+ *  anchor comment (same rule as R1-F7). `inhibit_all_warnings!` is a top-level CocoaPods DSL
+ *  call: it must stay outside the target block, so the anchor is the template's
+ *  `prepare_react_native_project!` line. */
+function applyPodfileWarningsInhibit(contents) {
+  if (contents.includes('# weknora_ios_inhibit_warnings')) {
+    return contents;
+  }
+  if (!contents.includes(TEMPLATE_PREPARE_REACT_NATIVE)) {
+    throw new Error(
+      'ios-xcode27 plugin: the generated Podfile no longer matches the Expo SDK 55 template; update the plugin anchors.',
+    );
+  }
+  return contents.replace(
+    TEMPLATE_PREPARE_REACT_NATIVE,
+    `${TEMPLATE_PREPARE_REACT_NATIVE}\n${PODFILE_INHIBIT_WARNINGS}`,
+  );
+}
+
 /** Raise every iOS deployment target below DEPLOYMENT_TARGET in the pbxproj. 引号包裹的目标值先 strip（R1-F8）。 */
 function raiseDeploymentTargets(project) {
   const configurations = project.pbxXCBuildConfigurationSection();
@@ -278,9 +376,23 @@ module.exports = function withIosXcode27(config) {
     return mod;
   });
   config = withPodfile(config, (mod) => {
+    mod.modResults.contents = applyPodfileWarningsInhibit(mod.modResults.contents);
     mod.modResults.contents = applyPodfileClamp(mod.modResults.contents);
     return mod;
   });
+  config = withDangerousMod(config, [
+    'ios',
+    (mod) => {
+      const storyboardPath = path.join(
+        mod.modRequest.platformProjectRoot,
+        mod.modRequest.projectName,
+        'SplashScreen.storyboard',
+      );
+      const contents = fs.readFileSync(storyboardPath, 'utf8');
+      fs.writeFileSync(storyboardPath, applySplashStoryboard(contents));
+      return mod;
+    },
+  ]);
   config = withXcodeProject(config, (mod) => {
     raiseDeploymentTargets(mod.modResults);
     return mod;
@@ -292,5 +404,7 @@ module.exports.DEPLOYMENT_TARGET = DEPLOYMENT_TARGET;
 module.exports.SCENE_MANIFEST = SCENE_MANIFEST;
 module.exports.applySceneLifecycle = applySceneLifecycle;
 module.exports.applyPodfileClamp = applyPodfileClamp;
+module.exports.applyPodfileWarningsInhibit = applyPodfileWarningsInhibit;
+module.exports.applySplashStoryboard = applySplashStoryboard;
 module.exports.raiseDeploymentTargets = raiseDeploymentTargets;
 module.exports.resolveNewArchEnabled = resolveNewArchEnabled;

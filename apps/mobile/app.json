@@ -16,12 +16,20 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.weknora.mobile"
+      "package": "com.weknora.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "VIBRATE",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
+      ["expo-audio", { "microphonePermission": "WeKnora uses the microphone for voice dictation and live voice sessions." }],
       "./plugins/ios-xcode27"
     ]
   }

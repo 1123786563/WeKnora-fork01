@@ -125,7 +125,7 @@ test('tampered ciphertext and wrong keys fail closed through the cipher seam', a
 
 test('inspectPolicy exposes the cacheable category and its retention window', () => {
   const { vault: scoped } = vault();
-  assert.deepEqual(scoped.inspectPolicy(), { categories: [{ category: 'drafts', retentionDays: 30 }] });
+  assert.deepEqual(scoped.inspectPolicy(), { categories: [{ category: 'drafts', retentionDays: 30 }, { category: 'projections', retentionDays: 30 }] });
 });
 
 test('a failing encryption adapter rejects the write and leaves no row behind', async () => {
@@ -298,4 +298,63 @@ test('list prunes rows older than the retention window (R1-F14)', async () => {
   const listed = await store.drafts.list();
   assert.deepEqual(listed.map((e) => e.id), ['fresh']);
   assert.equal(await storage.read(`${scopeKey}.d.${segment('stale')}`), null); // 已被清理
+});
+
+// ── T10（#40）：projections 仓储（event projection 加密缓存类别）──
+
+test('projections round-trip rows and stay isolated from drafts by namespace', async () => {
+  const { vault: scoped } = vault();
+  const store = await scoped.open(lease(SCOPE_A));
+  await store.projections.put({ id: 'run.42', body: '{"taskId":"task-42"}' });
+  assert.equal((await store.projections.get('run.42'))?.body, '{"taskId":"task-42"}');
+  assert.deepEqual((await store.projections.list()).map((entry) => entry.id), ['run.42']);
+  assert.equal(await store.drafts.get('run.42'), undefined, 'the same id in another namespace must not alias');
+  await store.projections.remove('run.42');
+  assert.equal(await store.projections.get('run.42'), undefined);
+  assert.deepEqual((await store.projections.list()), []);
+});
+
+test('projections are scope-isolated exactly like drafts', async () => {
+  const { vault: scoped } = vault();
+  const storeA = await scoped.open(lease(SCOPE_A));
+  await storeA.projections.put({ id: 'run.42', body: 'tenant-one-projection' });
+  const storeOtherDeployment = await scoped.open(lease(SCOPE_B));
+  const storeOtherTenant = await scoped.open(lease({ ...SCOPE_A, tenantId: '9' }));
+  const storeOtherUser = await scoped.open(lease({ ...SCOPE_A, userId: 'user-2' }));
+  assert.equal(await storeOtherDeployment.projections.get('run.42'), undefined);
+  assert.equal(await storeOtherTenant.projections.get('run.42'), undefined);
+  assert.equal(await storeOtherUser.projections.get('run.42'), undefined);
+  assert.equal((await storeA.projections.get('run.42'))?.body, 'tenant-one-projection');
+});
+
+test('projection rows are ciphertext on disk and revoked with the scope', async () => {
+  const { vault: scoped, keyStore, storage } = vault();
+  const store = await scoped.open(lease(SCOPE_A));
+  await store.drafts.put({ id: 'draft-1', body: 'keep' });
+  await store.projections.put({ id: 'run.42', body: 'projection-canary' });
+  for (const [key, value] of storage.entries()) {
+    if (key.includes('.p.')) {
+      assert.doesNotMatch(value, /projection-canary/);
+      assert.match(value, /^[A-Za-z0-9+/]+={0,2}$/, 'the projection row must be base64 ciphertext');
+    }
+  }
+  await scoped.revoke(lease(SCOPE_A), 'sign-out');
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  for (const rowKey of storage.entries().keys()) assert.equal(rowKey.startsWith(scopeKey), false, `row ${rowKey} must be erased`);
+  assert.equal(keyStore.entries().size, 0, 'the wrapped key must be erased');
+  const reopened = await scoped.open(lease(SCOPE_A));
+  assert.equal(await reopened.projections.get('run.42'), undefined);
+  assert.equal(await reopened.drafts.get('draft-1'), undefined);
+});
+
+test('rotate re-keys projection rows together with drafts', async () => {
+  const { vault: scoped, keyStore } = vault();
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  const store = await scoped.open(lease(SCOPE_A));
+  await store.projections.put({ id: 'run.42', body: 'projection-body' });
+  const oldKey = keyStore.entries().get(scopeKey)!;
+  await scoped.rotate(lease(SCOPE_A));
+  const after = await (await scoped.open(lease(SCOPE_A))).projections.get('run.42');
+  assert.equal(after?.body, 'projection-body');
+  assert.notDeepEqual([...keyStore.entries().get(scopeKey)!], [...oldKey]);
 });

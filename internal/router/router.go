@@ -56,56 +56,64 @@ type RouterParams struct {
 	AuditLogService            interfaces.AuditLogService
 	ChunkHandler               *handler.ChunkHandler
 	SessionHandler             *session.Handler
-	WorkbenchHandler           *session.WorkbenchReadHandler    `optional:"true"`
-	WorkbenchListHandler       *session.WorkbenchListHandler    `optional:"true"`
-	WorkbenchStartHandler      *session.WorkbenchStartHandler   `optional:"true"`
-	WorkbenchCommandHandler    *session.WorkbenchCommandHandler `optional:"true"`
+	WorkbenchHandler           *session.WorkbenchReadHandler       `optional:"true"`
+	WorkbenchListHandler       *session.WorkbenchListHandler       `optional:"true"`
+	WorkbenchLegacyListHandler *session.WorkbenchLegacyListHandler `optional:"true"`
+	WorkbenchStartHandler      *session.WorkbenchStartHandler      `optional:"true"`
+	WorkbenchCommandHandler    *session.WorkbenchCommandHandler    `optional:"true"`
+	WorkbenchDeliveryHandler   *session.WorkbenchDeliveryHandler   `optional:"true"`
+	WorkbenchResearchHandler   *session.WorkbenchResearchHandler   `optional:"true"`
 	// NativeArchiveHandler is absent until an approved archive store and scope
 	// resolver are assembled.  The router then fails closed (no archive route)
 	// rather than mounting a reader without an authority boundary.
-	NativeArchiveHandler         *session.NativeArchiveHandler         `optional:"true"`
-	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler     `optional:"true"`
-	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler     `optional:"true"`
-	WorkbenchTaskStateHandler    *session.WorkbenchTaskStateHandler    `optional:"true"`
-	WorkbenchInboxHandler        *session.WorkbenchInboxHandler        `optional:"true"`
-	ExecutionTargetHandler       *handler.ExecutionTargetHandler       `optional:"true"`
-	ExecutionRegistrationHandler *handler.ExecutionRegistrationHandler `optional:"true"`
-	MobileVoiceHandler           *handler.MobileVoiceHandler           `optional:"true"`
-	MobileDeviceHandler          *handler.MobileDeviceHandler          `optional:"true"`
-	MessageHandler               *handler.MessageHandler
-	FeedbackHandler              *handler.FeedbackHandler
-	AnalyticsHandler             *handler.AnalyticsHandler
-	UsageHandler                 *handler.UsageHandler
-	MessageSuggestionHandler     *handler.MessageSuggestionHandler
-	ModelHandler                 *handler.ModelHandler
-	ModelCredentialsHandler      *handler.ModelCredentialsHandler
-	SandboxConfigHandler         *handler.SandboxConfigHandler
-	SandboxSkillHandler          *handler.SandboxSkillHandler
-	MeEnvVarHandler              *handler.MeEnvVarHandler
-	EvaluationHandler            *handler.EvaluationHandler
-	AuthHandler                  *handler.AuthHandler
-	InitializationHandler        *handler.InitializationHandler
-	SystemHandler                *handler.SystemHandler
-	MCPServiceHandler            *handler.MCPServiceHandler
-	MCPCredentialsHandler        *handler.MCPCredentialsHandler
-	MCPOAuthHandler              *handler.MCPOAuthHandler
-	WebSearchHandler             *handler.WebSearchHandler
-	WebSearchProviderHandler     *handler.WebSearchProviderHandler
-	WebSearchCredentialsHandler  *handler.WebSearchProviderCredentialsHandler
-	VectorStoreHandler           *handler.VectorStoreHandler
-	StorageBackendHandler        *handler.StorageBackendHandler
-	StorageBackendResolver       interfaces.StorageBackendResolver
-	ResourceCatalog              interfaces.ResourceCatalog
-	FAQHandler                   *handler.FAQHandler
-	TagHandler                   *handler.TagHandler
-	CustomAgentHandler           *handler.CustomAgentHandler
-	AgentVersionHandler          *handler.AgentVersionHandler
-	AgentMarketplaceHandler      *handler.AgentMarketplaceHandler
-	PersonaHandler               *handler.PersonaHandler
-	ExpertHandler                *handler.ExpertHandler
-	SubagentHandler              *handler.SubagentHandler
-	UserFavoriteHandler          *handler.UserResourceFavoriteHandler
-	SkillHandler                 *handler.SkillHandler
+	NativeArchiveHandler           *session.NativeArchiveHandler           `optional:"true"`
+	WorkbenchArtifactHandler       *session.WorkbenchArtifactHandler       `optional:"true"`
+	WorkbenchOverviewHandler       *session.WorkbenchOverviewHandler       `optional:"true"`
+	WorkbenchTaskStateHandler      *session.WorkbenchTaskStateHandler      `optional:"true"`
+	WorkbenchTaskGrantsHandler     *session.WorkbenchTaskGrantsHandler     `optional:"true"`
+	WorkbenchTaskComplianceHandler *session.WorkbenchTaskComplianceHandler `optional:"true"`
+	WorkbenchInboxHandler          *session.WorkbenchInboxHandler          `optional:"true"`
+	ExecutionTargetHandler         *handler.ExecutionTargetHandler         `optional:"true"`
+	ExecutionRegistrationHandler   *handler.ExecutionRegistrationHandler   `optional:"true"`
+	MobileVoiceHandler             *handler.MobileVoiceHandler             `optional:"true"`
+	MobileDeviceHandler            *handler.MobileDeviceHandler            `optional:"true"`
+	MessageHandler                 *handler.MessageHandler
+	FeedbackHandler                *handler.FeedbackHandler
+	AnalyticsHandler               *handler.AnalyticsHandler
+	UsageHandler                   *handler.UsageHandler
+	MessageSuggestionHandler       *handler.MessageSuggestionHandler
+	ModelHandler                   *handler.ModelHandler
+	ModelCredentialsHandler        *handler.ModelCredentialsHandler
+	SandboxConfigHandler           *handler.SandboxConfigHandler
+	SandboxSkillHandler            *handler.SandboxSkillHandler
+	MeEnvVarHandler                *handler.MeEnvVarHandler
+	EvaluationHandler              *handler.EvaluationHandler
+	AuthHandler                    *handler.AuthHandler
+	InitializationHandler          *handler.InitializationHandler
+	SystemHandler                  *handler.SystemHandler
+	MCPServiceHandler              *handler.MCPServiceHandler
+	MCPCredentialsHandler          *handler.MCPCredentialsHandler
+	MCPOAuthHandler                *handler.MCPOAuthHandler
+	WebSearchHandler               *handler.WebSearchHandler
+	WebSearchProviderHandler       *handler.WebSearchProviderHandler
+	WebSearchCredentialsHandler    *handler.WebSearchProviderCredentialsHandler
+	VectorStoreHandler             *handler.VectorStoreHandler
+	StorageBackendHandler          *handler.StorageBackendHandler
+	StorageBackendResolver         interfaces.StorageBackendResolver
+	ResourceCatalog                interfaces.ResourceCatalog
+	FAQHandler                     *handler.FAQHandler
+	TagHandler                     *handler.TagHandler
+	CustomAgentHandler             *handler.CustomAgentHandler
+	AgentVersionHandler            *handler.AgentVersionHandler
+	AgentMarketplaceHandler        *handler.AgentMarketplaceHandler
+	AgentAdoptionHandler           *handler.AgentAdoptionHandler
+	AgentUpgradeHandler            *handler.AgentUpgradeHandler
+	PublicMarketplaceHandler       *handler.PublicMarketplaceHandler
+	PersonaHandler                 *handler.PersonaHandler
+	ExpertHandler                  *handler.ExpertHandler
+	SubagentHandler                *handler.SubagentHandler
+	UserFavoriteHandler            *handler.UserResourceFavoriteHandler
+	SkillHandler                   *handler.SkillHandler
 	// SkillMarketHandler serves the M4 SkillHub market routes (search /
 	// rankings / install, skillset index / install).
 	SkillMarketHandler *handler.SkillMarketHandler
@@ -135,6 +143,23 @@ type RouterParams struct {
 	AppConnectionHandler   *handler.AppConnectionHandler
 	AppSyncHandler         *handler.AppSyncHandler
 	AppActionHandler       *handler.AppActionHandler
+	// T23 (#53): per-actor grants on SPACE connections (nil handler skips
+	// registration — same nil-guard convention as the Notion publish one).
+	AppConnectionGrantHandler *handler.AppConnectionGrantHandler
+	// T18 (#48): the Notion publish closed loop (plan formation through
+	// receipt) — its own handler so the frozen action lifecycle handlers
+	// stay untouched.
+	AppNotionPublishHandler *handler.AppNotionPublishHandler
+	// T19 (#49): the Feishu publish closed loop — the structural twin of
+	// the notion publish handler over the same provider-neutral service.
+	AppFeishuPublishHandler *handler.AppFeishuPublishHandler
+	// T20 (#50): the Confluence publish closed loop — same wiring shape as
+	// the Notion publish handler, its own dedicated handler.
+	AppConfluencePublishHandler *handler.AppConfluencePublishHandler
+	// T21 (#51): the multi-action Action Plan surface (form / approve
+	// with exclusions / ordered execute / per-item projection) — its own
+	// handler over the same publish seam authority.
+	AppActionPlanHandler *handler.AppActionPlanHandler
 }
 
 // NewRouter 创建新的路由
@@ -373,8 +398,13 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
 		RegisterWorkbenchTaskStateRoutes(v1, params.WorkbenchTaskStateHandler, rbacGuards)
+		RegisterWorkbenchTaskGrantRoutes(v1, params.WorkbenchTaskGrantsHandler, rbacGuards)
+		RegisterWorkbenchTaskComplianceRoutes(v1, params.WorkbenchTaskComplianceHandler, rbacGuards)
+		RegisterWorkbenchLegacyTaskRoutes(v1, params.WorkbenchLegacyListHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
+		RegisterWorkbenchDeliveryRoutes(v1, params.WorkbenchDeliveryHandler, rbacGuards)
+		RegisterWorkbenchResearchRoutes(v1, params.WorkbenchResearchHandler, rbacGuards)
 		RegisterMobileVoiceRoutes(v1, params.MobileVoiceHandler, rbacGuards)
 		RegisterMobileDeviceRoutes(v1, params.MobileDeviceHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
@@ -399,6 +429,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterCustomAgentRoutes(v1, params.CustomAgentHandler, rbacGuards)
 		RegisterAgentVersionRoutes(v1, params.AgentVersionHandler, rbacGuards)
 		RegisterAgentMarketplaceRoutes(v1, params.AgentMarketplaceHandler, rbacGuards)
+		RegisterAgentAdoptionRoutes(v1, params.AgentAdoptionHandler, rbacGuards)
+		RegisterAgentUpgradeRoutes(v1, params.AgentUpgradeHandler, rbacGuards)
+		RegisterPublicMarketplaceRoutes(v1, params.PublicMarketplaceHandler, rbacGuards)
 		RegisterPersonaRoutes(v1, params.PersonaHandler, rbacGuards)
 		RegisterExpertRoutes(v1, params.ExpertHandler, rbacGuards)
 		RegisterSubagentRoutes(v1, params.SubagentHandler, rbacGuards)
@@ -420,6 +453,11 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.AppConnectionHandler,
 			params.AppSyncHandler,
 			params.AppActionHandler)
+		RegisterAppConnectionGrantRoutes(v1, params.AppConnectionGrantHandler)
+		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
+		RegisterAppFeishuPublishRoutes(v1, params.AppFeishuPublishHandler)
+		RegisterAppConfluencePublishRoutes(v1, params.AppConfluencePublishHandler)
+		RegisterAppActionPlanRoutes(v1, params.AppActionPlanHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

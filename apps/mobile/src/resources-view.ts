@@ -27,7 +27,8 @@ export function createResourceShelfController(handle: ResourceShelfHandle): Reso
   };
   const load = (): Promise<void> => {
     const run = ++generation;
-    publish({ ...state, loading: true });
+    // 刷新同时清除上一次的 error（B3-F18）：重试期间不再显示旧错误。
+    publish({ ...state, loading: true, error: undefined });
     const attempt = (async (): Promise<void> => {
       try {
         const page = await handle.browse();

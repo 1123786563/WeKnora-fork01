@@ -5,6 +5,7 @@ import type { TaskCard, TaskListPage, TaskOffice, TaskStatusFilter } from '@wekn
 export interface TasksScreenProps {
   taskOffice: TaskOffice;
   onOpenTask?: (card: TaskCard) => void;
+  onOpenLegacy?: () => void;
 }
 
 const STATUS_FILTERS: Array<{ id: '' | TaskStatusFilter; label: string }> = [
@@ -20,7 +21,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Tasks 一级入口：搜索/筛选/归档与翻页；cursor 与查询身份归 Task Office，本屏只持有渲染态。 */
-export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
+export function TasksScreen({ taskOffice, onOpenTask, onOpenLegacy }: TasksScreenProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | TaskStatusFilter>('');
   const [archived, setArchived] = useState(false);
@@ -82,6 +83,7 @@ export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
         </View>
       ))}
       {hasMore && <Button title="Load more" onPress={loadMore} />}
+      {onOpenLegacy !== undefined && <Button title="Legacy tasks" onPress={onOpenLegacy} />}
     </View>
   );
 }

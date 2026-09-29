@@ -643,9 +643,10 @@ export type {
   ExecutionDTO,
   ExecutionEvent,
   ExecutionSnapshot,
+  QueueNextDecision,
   RunStatus,
 } from './mobile/execution.ts';
-export { parseExecution, parseExecutionEvent, parseExecutionSnapshot, evaluateCommand } from './mobile/execution.ts';
+export { parseExecution, parseExecutionEvent, parseExecutionSnapshot, evaluateCommand, evaluateQueueNext } from './mobile/execution.ts';
 
 export type {
   InteractionAction,
@@ -658,6 +659,12 @@ export {
   parseInteraction,
   parseInteractionDecision,
 } from './mobile/interactions.ts';
+export { parseInteractionWithRun } from './mobile/interaction-inbox.ts';
+export type { InboxInteractionRecord } from './mobile/interaction-inbox.ts';
+export { parseTaskBudgetFacts, parseTaskBudgetExtension } from './mobile/task-budget.ts';
+export type { TaskBudgetWireFacts, TaskBudgetWireExtension } from './mobile/task-budget.ts';
+export { parseCodeDeliveryRecord } from './mobile/code-delivery.ts';
+export type { CodeDeliveryRecord, CodeDeliveryState } from './mobile/code-delivery.ts';
 
 export type {
   ArtifactSummary,
@@ -724,3 +731,11 @@ export type { AgentVersion } from './agents/versions.ts';
 export { parseAgentVersion, parseAgentVersionListResponse } from './agents/versions.ts';
 export type { ReleaseSubmission, ReleaseReview, AgentRelease, TenantReleaseListing, ReleaseReviewResult } from './marketplace/tenant-releases.ts';
 export { parseReleaseSubmissionResponse, parseReleaseReviewResponse, parseReleaseSubmissionListResponse, parseTenantReleaseListResponse } from './marketplace/tenant-releases.ts';
+export type { AgentAdoption, AgentAdoptionVariant, AvailableAgent } from './marketplace/agent-adoption.ts';
+export { parseAdoptionResponse, parseAdoptionListResponse, parseVariantResponse, parseAvailableAgentListResponse } from './marketplace/agent-adoption.ts';
+export { parseAnswerEvidence } from './mobile/knowledge-evidence.ts';
+export type { AnswerEvidenceStateWire, AnswerEvidenceWire, EvidenceCitationWire, EvidenceConclusionWire, EvidenceKindWire, EvidenceReasoningStateWire, EvidenceReasoningWire } from './mobile/knowledge-evidence.ts';
+export type { VerifiedPublisher, PublicCatalogListing, PublicCatalogRelease, PublicReleaseSubmission, PublicReleaseReview, PublicIntroduction, PublicAdoption, AdoptPublicListingResult } from './marketplace/public-marketplace.ts';
+export { parseVerifiedPublisherResponse, parseVerifiedPublisherListResponse, parsePublicCatalogListResponse, parsePublicListingResponse, parsePublicSubmissionResponse, parsePublicSubmissionListResponse, parsePublicReviewResponse, parseAdoptPublicListingResponse } from './marketplace/public-marketplace.ts';
+export { parseResearchListResponse, parseAnnotationListResponse } from './mobile/research.ts';
+export type { AnnotationWire, ResearchDelegationWire, ResearchListWire, ResearchStatusWire, AnnotationListWire } from './mobile/research.ts';

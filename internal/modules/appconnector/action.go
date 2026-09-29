@@ -19,6 +19,13 @@ const (
 	RiskWrite  = "write"
 	RiskSend   = "send"
 	RiskDelete = "delete"
+
+	// RiskDeliver 是代码交付（T22 #52）的专用风险类：它不属于
+	// read/write/send/delete 通用类，NeedsExplicitApproval 的 default 分支
+	// 使它永远需要逐次人工审批——任何范围预授权（包括 write 预授权）都不
+	// 覆盖它；交付前审阅 Diff/提交是每次交付的前置条件（CONTEXT.md
+	// 代码交付审批）。
+	RiskDeliver = "deliver"
 )
 
 // Action lifecycle states. Prepare parks a new action in awaiting_approval

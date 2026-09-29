@@ -57,3 +57,9 @@ test('projectTimeline classifies known kinds, preserves unknown types and keeps 
   assert.equal(timelineKindLabel('conclusion'), 'Agent 结论');
   assert.equal(timelineKindLabel('activity'), '活动');
 });
+
+test('cancellation_requested is a run_status entry with an explicit summary (T07 #37)', () => {
+  const entry = projectTimeline([source(1, 'cancellation_requested')])[0]!;
+  assert.equal(entry.kind, 'run_status');
+  assert.equal(entry.summary, '已请求停止');
+});

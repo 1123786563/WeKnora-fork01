@@ -2,6 +2,8 @@ import {
   ContractError,
   parseInteraction,
   parseInteractionDecision,
+  parseInteractionWithRun,
+  type InboxInteractionRecord,
   type InteractionRecord,
 } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
@@ -52,24 +54,34 @@ function parseItems(value: unknown, runID?: string): InteractionRecord[] {
 
 export function createInteractionsApi(request: Request) {
   return {
-    /** GET /workbench/executions/:run_id/interactions —— 当前交互列表（pending 项 decision_id 为空串）。 */
+    /** GET /api/v1/workbench/executions/:run_id/interactions —— 当前交互列表（pending 项 decision_id 为空串）。 */
     async list(runID: string): Promise<InteractionRecord[]> {
-      const data = unwrap(await request({ method: 'GET', path: `/workbench/executions/${pathId(runID, 'runID')}/interactions` }));
+      const data = unwrap(await request({ method: 'GET', path: `/api/v1/workbench/executions/${pathId(runID, 'runID')}/interactions` }));
       return parseItems(data);
     },
     /**
-     * POST /workbench/executions/interactions/:id/decisions。
+     * POST /api/v1/workbench/executions/interactions/:id/decisions。
      * 请求前本地冻结决定并校验 kind×action 矩阵；服务端 CAS 落地。
      * ACK 仅表示决定已记录，不代表外部操作成功——调用方须按返回值或重读更新交互。
      */
-    async decide(input: InteractionDecisionInput): Promise<InteractionRecord> {
+    async decide(input: InteractionDecisionInput): Promise<InboxInteractionRecord> {
       const body = parseInteractionDecision(input);
       const data = unwrap(await request({
         method: 'POST',
-        path: `/workbench/executions/interactions/${pathId(input.id, 'id')}/decisions`,
+        path: `/api/v1/workbench/executions/interactions/${pathId(input.id, 'id')}/decisions`,
         body,
       }));
-      return parseInteraction(data);
+      return parseInteractionWithRun(data);
+    },
+    /** GET /api/v1/workbench/interactions —— Attention Inbox：本人跨 run 待处理交互（T08）。 */
+    async inbox(limit?: number): Promise<InboxInteractionRecord[]> {
+      const value = typeof limit === 'number' ? limit : 50;
+      if (!Number.isSafeInteger(value) || value < 1 || value > 200) {
+        throw new Error('limit must be a safe integer between 1 and 200');
+      }
+      const data = unwrap(await request({ method: 'GET', path: `/api/v1/workbench/interactions?limit=${value}` }));
+      if (!Array.isArray(data)) throw new ContractError('items', 'expected an array');
+      return data.map((item) => parseInteractionWithRun(item));
     },
   };
 }

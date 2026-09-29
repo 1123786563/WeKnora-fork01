@@ -80,6 +80,8 @@ type qaRequestContext struct {
 	reqAgentEnabled bool
 	reqAgentID      string
 
+	reasoningMode string // T15: "rules" | "model" | ""
+
 	// skipSSE is set for server-started follow-up runs (steer backlog after
 	// the previous turn exits). Events still land in StreamManager so the
 	// client can attach via continue-stream; nothing is written to gin.
@@ -112,6 +114,7 @@ func (rc *qaRequestContext) buildQARequest() *types.QARequest {
 		ImageDescription:    imageDescription,
 		UserMessageID:       rc.userMessageID,
 		WebSearchEnabled:    rc.webSearchEnabled,
+		ReasoningMode:       rc.reasoningMode,
 		Attachments:         rc.attachments,
 	}
 	if rc.steerSink != nil {
@@ -146,6 +149,13 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 	if request.Query == "" {
 		logger.Error(ctx, "Query content is empty")
 		return nil, nil, errors.NewBadRequestError("Query content cannot be empty")
+	}
+
+	// T15: reasoning_mode is a closed enum; unknown values must fail as 400
+	// before any session/service call, not silently degrade to normal QA.
+	if request.ReasoningMode != "" && request.ReasoningMode != "rules" && request.ReasoningMode != "model" {
+		logger.Error(ctx, "Invalid reasoning mode", request.ReasoningMode)
+		return nil, nil, errors.NewBadRequestError(`reasoning_mode must be "rules" or "model"`)
 	}
 
 	// Resolve the storage-reference representation up front: once the SSE stream
@@ -413,6 +423,7 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 		suggestionAttribution: request.SuggestionAttribution,
 		reqAgentEnabled:       request.AgentEnabled,
 		reqAgentID:            request.AgentID,
+		reasoningMode:         request.ReasoningMode,
 		resourceRewriter:      resourceRewriter,
 	}
 

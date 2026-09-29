@@ -45,6 +45,9 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 		workbench.GET("/:run_id", h.GetWorkbenchExecution)
 		workbench.GET("/:run_id/snapshot", h.GetWorkbenchSnapshot)
 		workbench.GET("/:run_id/events", h.StreamWorkbenchEvents)
+		// T16: read-only terminal log paging — no input lane exists here; the
+		// interactive PTY stays on the web sandbox surface only.
+		workbench.GET("/:run_id/terminal-log", h.GetWorkbenchTerminalLog)
 		// source-events is the Paseo bridge's authenticated write callback
 		// (remote nodes reporting events back), not a read: mounting it in
 		// the gated group would let WEKNORA_WORKBENCH_READ_ENABLED=false
@@ -169,6 +172,10 @@ func RegisterWorkbenchCommandRoutes(r *gin.RouterGroup, h *session.WorkbenchComm
 	workbench.GET("/:run_id/interactions", h.ListInteractions)
 	workbench.POST("/interactions/:id/decisions", h.DecideInteraction)
 	workbench.POST("/:run_id/commands", h.Command)
+	// T08 Attention Inbox: the owner's open interactions across runs. Same
+	// Viewer/API-key boundary; the handler applies the tenant+owner predicate.
+	inbox := g.apiKeyGroup(r.Group("/workbench/interactions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	inbox.GET("", h.ListInboxInteractions)
 }
 
 // RegisterMobileVoiceRoutes exposes the W30 mobile voice surface: the
@@ -218,4 +225,89 @@ func RegisterWorkbenchTaskStateRoutes(r *gin.RouterGroup, h *session.WorkbenchTa
 	tasks := g.apiKeyGroup(r.Group("/workbench/tasks", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
 	tasks.POST("/:task_id/archive", h.Archive)
 	tasks.DELETE("/:task_id/archive", h.Restore)
+}
+
+// RegisterWorkbenchTaskGrantRoutes exposes the per-task collaboration grants
+// (T12). Same Viewer/API-key boundary as the other workbench lanes; the
+// owner-only predicate lives in the service (a non-owner caller gets a 403,
+// a cross-tenant probe a uniform 404). Wildcard names: the POST tree already
+// binds :task_id via /workbench/tasks/:task_id/archive, and the DELETE tree
+// likewise, so every route here reuses :task_id (gin requires identical
+// wildcard names per verb tree).
+func RegisterWorkbenchTaskGrantRoutes(r *gin.RouterGroup, h *session.WorkbenchTaskGrantsHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	tasks := g.apiKeyGroup(r.Group("/workbench/tasks", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	tasks.POST("/:task_id/grants", h.Grant)
+	tasks.GET("/:task_id/grants", h.List)
+	tasks.DELETE("/:task_id/grants/:grantee_id", h.Revoke)
+}
+
+// RegisterWorkbenchLegacyTaskRoutes exposes the T14 legacy task projection:
+// sessions that never had a Run, projected as facts-only legacy rows under
+// the same Viewer/API-key boundary and W34 read gate as the run list.
+func RegisterWorkbenchLegacyTaskRoutes(r *gin.RouterGroup, h *session.WorkbenchLegacyListHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	legacy := g.apiKeyGroup(r.Group("/workbench/legacy-tasks", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	legacy.GET("", h.ListLegacyTasks)
+}
+
+// RegisterWorkbenchTaskComplianceRoutes exposes the T13 compliance lanes:
+// tenant task policy, metadata-by-default, reasoned+time-limited+audited
+// content windows, and the retention purge. The lane is Admin+ at the route;
+// the handler repeats the predicate so an unguarded mount still fails closed.
+// The permanent-deletion endpoint reuses the :task_id wildcard the
+// archive/grants trees already bind.
+func RegisterWorkbenchTaskComplianceRoutes(r *gin.RouterGroup, h *session.WorkbenchTaskComplianceHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	compliance := g.apiKeyGroup(r.Group("/workbench/compliance", g.Admin()), apiKeyChat(apiKeyFullAccess()))
+	compliance.GET("/task-policy", h.GetTaskPolicy)
+	compliance.PUT("/task-policy", h.SetTaskPolicy)
+	compliance.GET("/tasks/:task_id", h.TaskMetadata)
+	compliance.POST("/tasks/:task_id/access", h.RequestContentAccess)
+	compliance.GET("/tasks/:task_id/content", h.ReadTaskContent)
+	purge := g.apiKeyGroup(r.Group("/workbench/tasks", g.Admin()), apiKeyChat(apiKeyFullAccess()))
+	purge.DELETE("/:task_id", h.PurgeTask)
+}
+
+// RegisterWorkbenchDeliveryRoutes exposes the developer code-delivery
+// surface (T22 #52): baseline materialization, delivery prepare/dispatch and
+// the traceability read. Writes are owner-only (handler predicate); the read
+// reuses the granted-read face. Same Viewer/API-key boundary as the other
+// workbench lanes.
+func RegisterWorkbenchDeliveryRoutes(r *gin.RouterGroup, h *session.WorkbenchDeliveryHandler, g *rbacGuards) {
+	if g == nil || h == nil {
+		return
+	}
+	reads := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	reads.GET("/:run_id/delivery", h.GetDelivery)
+	writes := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	writes.POST("/:run_id/baseline", h.MaterializeBaseline)
+	writes.POST("/:run_id/delivery", h.PrepareDelivery)
+	writes.POST("/:run_id/delivery/:delivery_id/dispatch", h.DispatchDelivery)
+	writes.POST("/:run_id/delivery/:delivery_id/resolve", h.ResolveDeliveryUnknown)
+}
+
+// RegisterWorkbenchResearchRoutes exposes the T17 (#47) read-only research
+// delegation surface and the version-pinned annotation surface. Delegation
+// writes are owner-only; the annotation write re-gates on the resolved task
+// role (owner or collaborator, TaskRoleCanRun); both reads reuse the strict
+// owner + task-grant fallback predicate. Same Viewer/API-key boundary as the
+// other workbench lanes.
+func RegisterWorkbenchResearchRoutes(r *gin.RouterGroup, h *session.WorkbenchResearchHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	reads := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	reads.GET("/:run_id/research", h.ListResearch)
+	reads.GET("/:run_id/annotations", h.ListAnnotations)
+	writes := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	writes.POST("/:run_id/research", h.DelegateResearch)
+	writes.POST("/:run_id/research/:delegation_id/summary", h.CompleteResearch)
+	writes.POST("/:run_id/annotations", h.AnnotateMaterial)
 }

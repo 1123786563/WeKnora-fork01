@@ -4,7 +4,8 @@ import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
-import type { TaskBackendDetail, TaskBackendEvent, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
+import { createTaskDetail } from './task-detail.ts';
+import type { OfflineTaskSnapshot, TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -686,4 +687,429 @@ test('persist failure stays observable when the store keeps failing (R1-F23 语�
   assert.equal(view.interruption?.reason, 'persist-failed');
   assert.equal(view.connection, 'interrupted'); // 不静默
   handle.close();
+});
+
+// —— T07（#37）：TaskHandle.act 干预合同（三态停止 / unknown 门 / parked queue-next） ——
+// helper 与任务简报原文的差异点（按本文件既有惯例对齐）：
+// 1) 工厂不自动 hydrate：用例显式 await（简报括注要求，保证断言时序确定）；
+// 2) stream stub 用永不 resolve 的流（活动 Run 的真实 SSE 语义）：立即 resolve 的空流会让
+//    每个非终态 hydrate 触发 stream-ended → 有界自动重连级联，与用例的 resync 时序竞争；
+// 3) lease 复用本文件既有 leased() 的 RuntimeScopeLease（leaseActive 只认该实例），
+//    用例经返回的 revocable 撤销（简报的 revokeLease() helper 本文件不存在）；
+// 4) 简报用例 2 未复位 script.error——重试要得到 accepted 必须切回成功脚本（对齐冲突用例
+//    的 script 切换惯例）；空数组字段断言补 `?? 0`（buildView 对空集省略字段的既有惯例）。
+interface RecordedCommand { runId: string; action: 'steer' | 'queue_next' | 'cancel'; text?: string; expectedRevision: number; intentId?: string }
+interface CommandScript { result?: { runId: string; action: RecordedCommand['action']; nextRunId?: string }; error?: unknown }
+
+function scriptedCommandPort(initial: CommandScript = {}) {
+  const calls: RecordedCommand[] = [];
+  const script: CommandScript = { ...initial };
+  return {
+    calls,
+    script,
+    port: {
+      async command(input: RecordedCommand): Promise<{ runId: string; action: RecordedCommand['action']; nextRunId?: string }> {
+        calls.push(input);
+        if (script.error !== undefined) throw script.error;
+        return script.result ?? { runId: input.runId, action: input.action };
+      },
+    },
+  };
+}
+
+const codedError = (code: string): Error => Object.assign(new Error(code), { code });
+
+function interventionDetail(execution: { runStatus: string; revision: number; watermark?: number }): TaskBackendDetail {
+  return {
+    taskId: 's1', runId: 'run-1', title: 't', attention: 'none',
+    execution: { runStatus: execution.runStatus, executionStatus: execution.runStatus, settlementStatus: 'pending', revision: execution.revision, seq: 0 },
+    watermark: execution.watermark ?? 0, incomplete: false, events: [],
+  };
+}
+
+function newHandleForIntervention(execution: { runStatus: string; revision: number }, commands?: TaskCommandPort) {
+  const { revocable, lease } = leased();
+  const detailBackend = {
+    detailResult: interventionDetail(execution),
+    async detail(): Promise<TaskBackendDetail> { return this.detailResult; },
+    stream(): Promise<void> { return new Promise<void>(() => undefined); }, // 活动 Run 的流保持打开，直至 resync/close abort
+  };
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    { backend: detailBackend, store: createInMemoryTaskProjectionStore(), lease: () => lease, ...(commands === undefined ? {} : { commands }) },
+  );
+  return { handle, detailBackend, revocable };
+}
+
+test('act(stop) presents requested, then confirmed when the projection observes canceled', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 4 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.revision, 4, 'the command must carry the observed revision');
+  assert.equal(commands.calls[0]?.action, 'cancel');
+  assert.equal(commands.calls[0]?.expectedRevision, 4);
+  assert.equal(handle.view()?.stop?.phase, 'requested');
+  // 快照观察到 canceled → confirmed（AC1）。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 5 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('act(stop) with an unknown delivery outcome gates further writes until a resync reconciles', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // AC2：unknown 未核对前，同句柄后续写意图一律拒绝。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await assert.rejects(() => handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  // 核对：仍 running ⇒ 取消未落地 ⇒ 门解除、停止卡清除。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop, undefined);
+  commands.script.error = undefined; // 简报原文缺此行：重试要走通必须切回成功脚本（见上方差异点 4）
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(stop) unknown reconciles to confirmed when the run was actually canceled', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  await handle.act({ kind: 'stop' });
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('the unknown gate reconciles on the merged caliber: an in-stream cancel lands confirmed (R1-F2)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  let detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => detailResult,
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  // 取消先经流落地并持久化（终态 → processEvent 立即落盘）——真实时序：服务端已取消、
+  // 事件先送达，随后取消命令的回执丢失。R1-F3 的置门自动核对会同步 abort 流，
+  // 因此流内事件只能在 act() 之前到达（之后流已被 aborted，emit 不再可达）。
+  scripted.emit(event$(1, 'run.canceled')); // seq 必须 = committedCursor + 1（差异记录 6）
+  await settle();
+  assert.equal(handle.view()?.runStatus, 'canceled', '合并口径下视图已推进取消（R1-F27 语义）');
+  // 快照滞后：服务端事件水位已含取消事件（watermark 1 ≥ seq 1，mergeEventHistory 才会保留），
+  // 但 runStatus 投影字段滞后仍报 running——核对必须按合并口径判 confirmed（R1-F27 语义）。
+  detailResult = interventionDetail({ runStatus: 'running', revision: 2, watermark: 1 });
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await handle.resync();
+  assert.equal(handle.view()?.runStatus, 'canceled', '持久化事件主导合并口径');
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '已落地取消必须核对为 confirmed——不得因快照滞后被误判未落地');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: a landed cancel settles confirmed without resync (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 }); // 服务端其实已落地取消
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await settle(); // 置门后安排的核对（无外部操作、无 resync）
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '门不得滞留：置门后自动核对，取消其实已落地');
+  assert.equal(handle.view()?.runStatus, 'canceled');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: not landed releases the gate for a retry (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // 核对窗口内写意图仍被阻止（AC2 不放松）。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await settle(); // 置门后安排的核对：快照仍 running ⇒ 未落地 ⇒ 门解除
+  assert.equal(handle.view()?.stop, undefined, '未落地则门解除、停止卡清除——滞留窗口收敛为一次核对');
+  commands.script.error = undefined;
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted', '门解除后写意图恢复');
+  handle.close('done');
+});
+
+test('a 409 conflict is a receipt, not the unknown gate', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_CONFLICT') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 1 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'conflict');
+  assert.equal(handle.view()?.stop, undefined, 'a conflict leaves no stop card');
+  // 冲突不进门：后续意图仍可发出。
+  commands.script.error = undefined;
+  const next = await handle.act({ kind: 'steer', text: 'go' });
+  assert.equal(next.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(queue-next) on an active run parks locally and flushes on terminal observation', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 7 }, commands.port);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked', 'never claim a server queue that does not exist');
+  assert.equal(commands.calls.length, 0);
+  assert.deepEqual(handle.view()?.queuedNext?.map((q) => q.text), ['next instruction']);
+  // 观察到终态 → flush 发出 queue_next，服务端准入下一 Run。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 7 });
+  await handle.resync();
+  await handle.flushQueuedIntents();
+  assert.equal(commands.calls.length, 1, 'hydrate 内的自动 flush 与显式 flush 合流，绝不重复派发');
+  assert.equal(commands.calls[0]?.action, 'queue_next');
+  assert.equal(commands.calls[0]?.intentId !== undefined, true, 'parked intents fire with a stable idempotency id');
+  const receipt = handle.view()?.interventions?.at(-1);
+  assert.equal(receipt?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0, '空队列按字段省略呈现（buildView 空集省略惯例）');
+  handle.close('done');
+});
+
+test('act(queue-next) on a terminal run dispatches immediately', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { handle } = newHandleForIntervention({ runStatus: 'canceled', revision: 6 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'queue-next', text: 'restart now' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.nextRunId, 'run-2');
+  handle.close('done');
+});
+
+test('act before hydrate and a missing commands port fail closed', async () => {
+  const noPort = newHandleForIntervention({ runStatus: 'running', revision: 1 });
+  await assert.rejects(() => noPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNAVAILABLE/);
+  const withPort = newHandleForIntervention({ runStatus: 'running', revision: 1 }, scriptedCommandPort().port);
+  await assert.rejects(() => withPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_NO_SNAPSHOT/);
+  noPort.handle.close('done'); withPort.handle.close('done');
+});
+
+test('a command landing while the lease died is rejected, never silently recorded', async () => {
+  // Scope Lease 失效后丢弃迟到结果（module-seams §5.3）：lease 在命令在途时撤销 → SCOPE_CHANGED。
+  let release: (() => void) | undefined;
+  type CancelAck = { runId: string; action: 'cancel' };
+  const slowPort = { command: (): Promise<CancelAck> => new Promise((resolve) => { release = () => resolve({ runId: 'run-1', action: 'cancel' }); }) };
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 9 }, slowPort);
+  await handle.hydrate();
+  const pending = handle.act({ kind: 'stop' });
+  revocable.revoke();
+  release!();
+  await assert.rejects(() => pending, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view()?.interventions?.length ?? 0, 0, 'a late result must not be recorded as an intervention');
+  handle.close('done');
+});
+
+test('a flush racing a dead scope lease is rejected, never silently recorded (§5.3)', async () => {
+  // 与 act() 同一竞态同一处理：flush 的 queue_next 在 lease 死亡后，迟到 ack 绝不记 accepted 回执。
+  let release: (() => void) | undefined;
+  const calls: RecordedCommand[] = [];
+  const gatedPort: TaskCommandPort = {
+    command: (input) => {
+      calls.push(input);
+      return new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: 'queue_next' }); });
+    },
+  };
+  const { handle, detailBackend, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 5 }, gatedPort);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 5 });
+  await handle.resync(); // 终态观察：hydrate 自动放行 flush，命令在 gatedPort 处挂起（在途）
+  assert.equal(calls.length, 1, '自动 flush 已派发且尚未返回');
+  const flushing = handle.flushQueuedIntents(); // 合流到同一在途 flush
+  revocable.revoke();
+  release!(); // 迟到 ack
+  await assert.rejects(() => flushing, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view()?.interventions?.length, 1, '只保留 parked 回执，迟到的 ack 不得追加 accepted 回执');
+  handle.close('done');
+});
+
+test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'canceled', revision: 3 }, commands.port);
+  await handle.hydrate(); // 终态：drained（自动 flush 在 revoke 前已无队列空转）
+  revocable.revoke();
+  await assert.rejects(() => handle.flushQueuedIntents(), /TASK_OFFICE_SCOPE_CHANGED/);
+  handle.close('done');
+});
+
+test('a naturally ended stream releases parked queue-next without an explicit flush (R1-F1)', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => interventionDetail({ runStatus: 'running', revision: 7 }),
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  assert.equal(commands.calls.length, 0);
+  // 自然完成主路径：流内终态事件先到（seq 必须 = committedCursor + 1，见差异记录 6），
+  // 随后服务端正常结束流——期间无 hydrate/resync 参与，放行只能来自 streamEnded 终态分支。
+  scripted.emit(event$(1, 'run.completed'));
+  scripted.end();
+  await settle();
+  assert.equal(handle.view()?.connection, 'drained', 'streamEnded 终态分支已执行（前置：确认走的是自然完成路径）');
+  assert.equal(handle.view()?.runStatus, 'succeeded');
+  assert.equal(commands.calls.length, 1, '自然完成必须兑现「已排队（等待当前 Run 结束后发出）」承诺——parked 项自动放行');
+  assert.equal(handle.view()?.interventions?.at(-1)?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0);
+  handle.close('done');
+});
+
+// ── T10（#40）：detail 通道失败时的离线降级（加密投影渲染）──
+
+const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
+  const { events: _events, ...snapshot } = source;
+  return snapshot;
+};
+
+test('offline degradation renders the persisted snapshot when the detail channel fails, and resync recovers', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  // 预置带快照的投影（模拟此前在线会话经 persist 落盘的形态）
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let reachable = false;
+  const { office } = officeWithDetail(
+    leaseRef,
+    { detail: async () => { if (!reachable) throw new Error('network unreachable'); return detail$(); }, stream: () => createScriptedTaskStream() },
+    store,
+  );
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const view = await handle.hydrate();
+  assert.equal(view.connection, 'interrupted');
+  assert.equal(view.interruption?.reason, 'offline');
+  assert.equal(view.taskId, 'task-1');
+  assert.equal(view.title, '季度竞品报告', 'the offline card comes from the snapshot, not the network');
+  assert.equal(view.runStatus, 'running');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2], 'the offline timeline comes from the persisted projection');
+  assert.equal(view.cursor, 2);
+  // 联网后显式 resync 恢复权威同步，offline 标记被清除
+  reachable = true;
+  const recovered = await handle.resync();
+  assert.notEqual(recovered.interruption?.reason, 'offline');
+  assert.notEqual(recovered.connection, 'interrupted');
+  handle.close();
+});
+
+test('detail failure without a snapshotted projection stays an honest error', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({ taskId: 'task-1', runId: 'run-1', cursor: 0, events: [], savedAt: '2026-09-24T00:00:00Z' }); // 旧格式：无 snapshot
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_BACKEND');
+  handle.close();
+});
+
+test('a revoked lease never degrades to the offline projection', async () => {
+  const leasedScope = leased();
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leasedScope.lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2, events: [event$(1), event$(2)],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  leasedScope.revocable.revoke(); // 撤权发生在 detail 失败之前：不得用旧 scope 投影降级
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  handle.close();
+});
+
+test('persist carries the offline snapshot so a later offline hydrate can degrade', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  handle.close();
+  const persisted = store.snapshot().find((row) => row.runId === 'run-1');
+  assert.ok(persisted, 'hydrate persists the projection');
+  assert.equal(persisted!.snapshot?.title, '季度竞品报告', 'the persisted row carries the offline snapshot');
+  assert.equal(persisted!.snapshot?.attention, 'required');
+  assert.equal(persisted!.snapshot?.watermark, 2);
+  assert.ok(persisted!.snapshot !== undefined);
+  assert.equal('events' in persisted!.snapshot, false, 'the snapshot must not duplicate the event log');
+});
+
+test('a stale offline degradation never overwrites a newer authoritative state (R1-F43 对齐)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let detailCalls = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      detailCalls += 1;
+      if (detailCalls === 1) { await settle(8); throw new Error('network unreachable'); } // A：慢且失败（迟到拒绝）
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'text.delta')] }); // B：后发先回
+    },
+    stream: () => createScriptedTaskStream(),
+  }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();              // A 先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                       // B 后发先回：watermark 4 已提交并开流
+  await stale.catch(() => undefined);          // A 的 detail 失败迟到落地：降级分支必须被 epoch 守卫拒绝
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '陈旧离线降级不得回退 committedCursor');
+  assert.notEqual(view.interruption?.reason, 'offline', 'B 已成功同步，不得被迟到降级错标 offline');
+  assert.equal(view.connection, 'live');
+  handle.close();
+  await settle(); // close 的 best-effort flush 异步落盘
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'close flush 不得把磁盘投影回退到旧游标');
 });
