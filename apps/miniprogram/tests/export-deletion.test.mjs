@@ -327,7 +327,7 @@ test('N9: a deletion response stores its recoverable intent under the scope capt
   runtime.client.request = async function(options) {
     const result = await originalRequest.call(runtime.client, options);
     if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
-    runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
     }
     return result;
   };
@@ -360,16 +360,88 @@ test('N9: a completed deletion retry removes the original sending-scope key afte
   const { intentKeyFor } = await import('../src/services/career-intent.ts');
   const originalScope = runtime.auth.scope.capture();
   const originalKey = intentKeyFor('spaceDeletion', originalScope);
+  const otherScope = { ...originalScope, userId: 'u2', tenantId: '2' };
+  const currentScopeKey = intentKeyFor('spaceDeletion', otherScope);
+  const otherIntent = { requestId: 'other-scope-request', input: {}, expectedRevision: 7 };
+  stub.state.storage.set(currentScopeKey, otherIntent);
   const requestId = career.pendingSpaceDeletion()?.requestId;
-  const deletionPostsBeforeRetry = stub.state.calls.filter(c => c.kind === 'request' && (c.options.method ?? 'GET') === 'POST' && new URL(c.options.url).pathname === '/api/v1/career/deletions').length;
-  const retry = career.retryPendingSpaceDeletion();
-  const deletion = await waitForCareerRequest('POST', '/api/v1/career/deletions', deletionPostsBeforeRetry + 1);
-  runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
-  stub.succeed(deletion, { data: deletedReceipt({ requestId }) });
-  await retry;
+  assert.ok(requestId, 'the partial receipt established the original request id');
+  const originalRequest = runtime.client.request;
+  let switchedAfterResponse = false;
+  runtime.client.request = async function(options) {
+    const result = await originalRequest.call(runtime.client, options);
+    if (options.path === '/api/v1/career/deletions' && options.method === 'POST' && !switchedAfterResponse) {
+      switchedAfterResponse = true;
+      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+    }
+    return result;
+  };
+  const deletionPostsBeforeRetry = careerCall('/deletions').filter(c => (c.options.method ?? 'GET') === 'POST').length;
+  let done;
+  try {
+    const retry = career.retryPendingSpaceDeletion();
+    const deletion = await waitForCareerRequest('POST', '/api/v1/career/deletions', deletionPostsBeforeRetry + 1);
+    stub.succeed(deletion, { data: deletedReceipt({ requestId }) });
+    done = await retry;
+  } finally { runtime.client.request = originalRequest; }
 
+  assert.equal(done.status, 'deleted', 'the completed receipt reaches the retry caller');
+  assert.equal(done.requestId, requestId, 'the retry uses the captured request id');
+  assert.equal(switchedAfterResponse, true, 'scope changes after the HTTP response and before the service continuation');
+  const deletionPostCount = careerCall('/deletions').filter(c => (c.options.method ?? 'GET') === 'POST').length;
+  assert.equal(deletionPostCount - deletionPostsBeforeRetry, 1, 'completion uses exactly one retry POST');
   assert.equal(stub.state.storage.get(originalKey), undefined, 'the completed retry removes the intent from the sending scope');
-  assert.equal(career.pendingSpaceDeletion(), null, 'the new scope remains clear');
+  assert.deepEqual(stub.state.storage.get(currentScopeKey), otherIntent, 'the other scope intent is not removed or replaced');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, otherIntent.requestId, 'the new scope continues to see only its own intent');
+  stub.state.storage.delete(currentScopeKey);
+  runtime.auth.scope.switchTo(originalScope);
+});
+
+test('N9: an ambiguous deletion retry after a scope switch preserves both scopes’ intents', async () => {
+  let posts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => {
+      posts++;
+      if (posts === 1) stub.succeed(call, { data: partialReceipt() });
+      else { /* failed by the test after the scope transition */ }
+    },
+  });
+  await career.loadCareer();
+  await career.deleteWholeSpace();
+  const { intentKeyFor } = await import('../src/services/career-intent.ts');
+  const originalScope = runtime.auth.scope.capture();
+  const originalKey = intentKeyFor('spaceDeletion', originalScope);
+  const originalIntent = stub.state.storage.get(originalKey);
+  const otherScope = { ...originalScope, userId: 'u2', tenantId: '2' };
+  const otherKey = intentKeyFor('spaceDeletion', otherScope);
+  assert.notEqual(otherKey, originalKey, 'the second test scope has an isolated key');
+  const otherIntent = { requestId: 'other-scope-request', input: {}, expectedRevision: 7 };
+  stub.state.storage.set(otherKey, otherIntent);
+  const originalRequest = runtime.client.request;
+  runtime.client.request = async function(options) {
+    try {
+      return await originalRequest.call(runtime.client, options);
+    } catch (error) {
+      if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
+        runtime.auth.scope.switchTo(otherScope);
+      }
+      throw error;
+    }
+  };
+  const deletionPostsBeforeRetry = careerCall('/deletions').filter(c => (c.options.method ?? 'GET') === 'POST').length;
+  let failure;
+  try {
+    const retry = career.retryPendingSpaceDeletion().catch(error => { failure = error; });
+    const deletion = await waitForCareerRequest('POST', '/api/v1/career/deletions', deletionPostsBeforeRetry + 1);
+    stub.fail(deletion, 'request:fail timeout');
+    await retry;
+  } finally { runtime.client.request = originalRequest; }
+
+  assert.match(failure?.message ?? '', /SCOPE_CHANGED/, 'the stale retry reports a scope change');
+  assert.deepEqual(stub.state.storage.get(originalKey), originalIntent, 'ambiguous completion retains the sending scope intent');
+  assert.deepEqual(stub.state.storage.get(otherKey), otherIntent, 'the other scope intent is untouched');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, otherIntent.requestId, 'the new scope continues to see only its own intent');
+  runtime.auth.scope.switchTo(originalScope);
 });
 
 test('C1: an unknown export outcome is reconciled through the original request id', async () => {
