@@ -78,4 +78,4 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-brief.md`; closes low 
 - Full suite: `pnpm --filter @weknora/mobile test` — 311 total, 297 pass, 14 opt-in skips, 0 fail.
 - `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
 - No native build was run; existing runtime evidence and binary hash remain unchanged.
-- Repair commit: pending local commit.
+- Round-3 repair commit: `1818cd5a59fcbd1bc960e0b5c9ea9b78bbea02fc`.
