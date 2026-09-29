@@ -267,13 +267,19 @@ type recoveryHTTPResponse struct {
 }
 
 func newRecoveryEnv(t *testing.T) *recoveryEnv {
+	return newRecoveryEnvWithHTTPClient(t, http.DefaultClient, false)
+}
+
+func newRecoveryEnvWithHTTPClient(t *testing.T, httpClient *http.Client, managedCredential bool) *recoveryEnv {
 	t.Helper()
 	db := openTaskGrantDB(t)
 	runs := repository.NewAgentRunStore(db)
 	_, err := runs.Admit(context.Background(), taskGrantAdmission())
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&appconnectorrepo.InstallationRow{ID: "inst-gh", TenantID: 1, AppID: "github", AppVersion: "1", State: appconnector.InstallationActive, Version: 1}).Error)
-	require.NoError(t, db.Create(&appconnectorrepo.ConnectionRow{TenantID: 1, ID: "conn-gh", InstallationID: "inst-gh", Kind: appconnector.ConnectionKindPersonal, OwnerID: "u1", CredentialRef: "mcp:conn-gh:github", State: appconnector.ConnectionActive, AuthVersion: 1}).Error)
+	if !managedCredential {
+		require.NoError(t, db.Create(&appconnectorrepo.ConnectionRow{TenantID: 1, ID: "conn-gh", InstallationID: "inst-gh", Kind: appconnector.ConnectionKindPersonal, OwnerID: "u1", CredentialRef: "mcp:conn-gh:github", State: appconnector.ConnectionActive, AuthVersion: 1}).Error)
+	}
 
 	github := newRecoveryGitHubStub(t)
 	wsRoot := t.TempDir()
@@ -282,18 +288,44 @@ func newRecoveryEnv(t *testing.T) *recoveryEnv {
 
 	actionStore := appconnectorrepo.NewActionStore(db)
 	store := deliveryrepo.NewDeliveryStore(db)
-	connections := &t25CredentialSource{db: db, members: map[string]bool{"u1": true}}
-	guard := appconnectorsvc.NewSubjectGuard(connections)
-	factory := codedelivery.NewGitHubClientFactory(http.DefaultClient, github.srv.URL)
+	var connections codedelivery.ConnectionReader
+	var credentialSource appconnectorsvc.ConnectionCredentialSource
+	var creds appconnectorsvc.CredentialResolver
+	if managedCredential {
+		require.NoError(t, db.Exec(`INSERT INTO mcp_services (id, tenant_id, name, transport_type) VALUES (?, ?, ?, ?)`,
+			"github", 1, "github", types.MCPTransportHTTPStreamable).Error)
+		bindingStore := repository.NewMCPOAuthBindingStore(db)
+		require.NoError(t, bindingStore.IssueBindingState(context.Background(), appconnector.OAuthBinding{
+			State: "recovery-fixture-oauth-state", InstallationID: "inst-gh", ActorID: "u1", TenantID: 1,
+			ExpiresAt: time.Now().Add(time.Minute),
+		}, "github"))
+		conn, err := bindingStore.CompleteBinding(context.Background(), 1, "recovery-fixture-oauth-state", "u1", &types.MCPOAuthToken{
+			AccessToken: t25ProbeToken, TokenType: "Bearer",
+		})
+		require.NoError(t, err)
+		// The existing HTTP flow references conn-gh, so preserve that fixture id
+		// while keeping the production credential reference and token row.
+		require.NoError(t, db.Model(&appconnectorrepo.ConnectionRow{}).Where("tenant_id = ? AND id = ?", 1, conn.ID).Update("id", "conn-gh").Error)
+		connections = bindingStore
+		credentialSource = bindingStore
+		creds = appconnectorsvc.NewCredentialResolver(bindingStore)
+	} else {
+		fake := &t25CredentialSource{db: db, members: map[string]bool{"u1": true}}
+		connections = fake
+		credentialSource = fake
+		creds = fake
+	}
+	guard := appconnectorsvc.NewSubjectGuard(credentialSource)
+	factory := codedelivery.NewGitHubClientFactory(httpClient, github.srv.URL)
 	dispatcher := codedelivery.NewDeliveryDispatcher(codedelivery.DispatcherDeps{
-		Connections: connections, Creds: connections, Guard: guard,
+		Connections: connections, Creds: creds, Guard: guard,
 		GitHub: factory, Workspace: workspace, Store: store,
 		ActionRows: actionStore, Runs: runs,
 	})
 	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	svc := codedelivery.NewCodeDeliveryService(codedelivery.CodeDeliveryDeps{
 		Store: store, Actions: actions, ActionRows: actionStore,
-		Connections: connections, Creds: connections,
+		Connections: connections, Creds: creds,
 		GitHub: factory, Providers: appconnectorrepo.NewInstallationStore(db),
 		Workspace: workspace, Runs: runs, Dispatcher: dispatcher,
 	})

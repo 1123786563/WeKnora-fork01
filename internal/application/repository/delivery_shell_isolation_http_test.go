@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	appservice "github.com/Tencent/WeKnora/internal/application/service"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
@@ -82,12 +83,21 @@ func (c *shellBoundaryClient) ListDir(context.Context, sandbox.RemoteSandboxHand
 func TestManagedDeliveryCredentialNeverEntersGeneralShell(t *testing.T) {
 	// Observe requests emitted by the real Delivery factory/dispatcher. The
 	// GitHub stub still validates the fake credential on every wire request.
-	originalClient := http.DefaultClient
 	auth := &authorizationRecorder{RoundTripper: http.DefaultTransport}
-	http.DefaultClient = &http.Client{Transport: auth}
-	t.Cleanup(func() { http.DefaultClient = originalClient })
-
-	delivery := newRecoveryEnv(t)
+	delivery := newRecoveryEnvWithHTTPClient(t, &http.Client{Transport: auth}, true)
+	store := repository.NewMCPOAuthBindingStore(delivery.db)
+	var storedToken types.MCPOAuthToken
+	require.NoError(t, delivery.db.Where("tenant_id = ? AND principal_id = ? AND service_id = ?", 1, "u1", "github").First(&storedToken).Error)
+	actualToken := storedToken.AccessToken
+	require.Equal(t, managedDeliveryProbe, actualToken)
+	conn, err := store.FindConnectionByID(context.Background(), "conn-gh")
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), conn.TenantID)
+	require.Equal(t, "u1", conn.OwnerID)
+	require.Equal(t, repository.CredentialRefPrefix+"github", conn.CredentialRef)
+	resolved, err := appconnectorsvc.NewCredentialResolver(store).Resolve(context.Background(), "conn-gh", conn.AuthVersion)
+	require.NoError(t, err)
+	require.Equal(t, actualToken, string(resolved))
 	// Store a distinct operator-provided Shell variable in the real tenant
 	// configuration repository. This value must survive effective config and
 	// provider create unchanged.
@@ -120,21 +130,21 @@ func TestManagedDeliveryCredentialNeverEntersGeneralShell(t *testing.T) {
 	bound, ok := manager.(*sandbox.SessionBoundManager)
 	require.True(t, ok)
 
-	shellCtx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
-	result, err := bound.ExecShellCommandWithOptions(shellCtx, "shell-session-1", "printf shell-command-ok", sandbox.ShellExecOptions{WorkDir: "/workspace"})
-	require.NoError(t, err)
-	require.Equal(t, "shell-command-ok", result.Stdout)
-
-	// Exercise production Delivery credential resolution and outbound adapter
-	// wiring using the real HTTP handler path and a fake token.
+	// Dispatch the persisted managed credential while the same tenant's Shell
+	// configuration and execution path are active in this test.
 	deliveryID := delivery.seedApprovedDelivery(t)
 	status, state := delivery.dispatchState(t, deliveryID)
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, "delivered", state.State)
 	require.NotEmpty(t, auth.snapshot())
 	for _, value := range auth.snapshot() {
-		require.Equal(t, "Bearer "+managedDeliveryProbe, value)
+		require.Equal(t, "Bearer "+actualToken, value)
 	}
+
+	shellCtx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
+	result, err := bound.ExecShellCommandWithOptions(shellCtx, "shell-session-1", "printf shell-command-ok", sandbox.ShellExecOptions{WorkDir: "/workspace"})
+	require.NoError(t, err)
+	require.Equal(t, "shell-command-ok", result.Stdout)
 
 	// Inspect persisted/effective config, provider create and exec requests,
 	// and command output as complete serialized observations.
@@ -148,7 +158,7 @@ func TestManagedDeliveryCredentialNeverEntersGeneralShell(t *testing.T) {
 		"output":           result.Stdout,
 	})
 	require.NoError(t, err)
-	require.NotContains(t, string(observation), managedDeliveryProbe)
+	require.NotContains(t, string(observation), actualToken)
 	require.Contains(t, string(observation), operatorShellProbe)
 	require.Len(t, client.creates, 1)
 	require.Equal(t, operatorShellProbe, client.creates[0].EnvVars["OPERATOR_SHELL_VALUE"])
