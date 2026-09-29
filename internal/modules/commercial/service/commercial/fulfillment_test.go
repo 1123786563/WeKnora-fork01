@@ -24,14 +24,15 @@ import (
 // provider is proven separately by the httptest evidence in
 // internal/infrastructure/openmeter/commercial_test.go.
 type stubGateway struct {
-	mu        sync.Mutex
-	saved     map[string]domain.BenefitReceipt // benefits the "remote" persisted
-	applies   int                              // grants that actually stored a benefit
-	finds     int                              // reconciliation lookups
-	applyErr  error                            // returned AFTER saving (dropped response)
-	findable  bool                             // FindBenefit reports saved benefits
-	revokeErr error                            // returned by RevokeBenefit (revocation failure)
-	revokes   int                              // precise-credits revocation attempts (incl. failures)
+	mu               sync.Mutex
+	saved            map[string]domain.BenefitReceipt // benefits the "remote" persisted
+	applies          int                              // grants that actually stored a benefit
+	finds            int                              // reconciliation lookups
+	requiredCustomer string                           // optional FindBenefit customer assertion
+	applyErr         error                            // returned AFTER saving (dropped response)
+	findable         bool                             // FindBenefit reports saved benefits
+	revokeErr        error                            // returned by RevokeBenefit (revocation failure)
+	revokes          int                              // precise-credits revocation attempts (incl. failures)
 }
 
 func (g *stubGateway) ApplyBenefit(_ context.Context, req domain.BenefitRequest) (domain.BenefitReceipt, error) {
@@ -50,10 +51,13 @@ func (g *stubGateway) ApplyBenefit(_ context.Context, req domain.BenefitRequest)
 	return r, g.applyErr
 }
 
-func (g *stubGateway) FindBenefit(_ context.Context, key string) (domain.BenefitReceipt, error) {
+func (g *stubGateway) FindBenefit(ctx context.Context, key string) (domain.BenefitReceipt, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.finds++
+	if g.requiredCustomer != "" && domain.BenefitCustomerFrom(ctx) != g.requiredCustomer {
+		return domain.BenefitReceipt{}, fmt.Errorf("FindBenefit customer=%q, want %q", domain.BenefitCustomerFrom(ctx), g.requiredCustomer)
+	}
 	if g.findable {
 		if r, ok := g.saved[key]; ok {
 			return r, nil
@@ -342,6 +346,7 @@ func TestFulfillmentTopUpFulfilledOpenExceptionRequiresWinnerAndReceipt(t *testi
 
 	gw.mu.Lock()
 	gw.saved[key] = domain.BenefitReceipt{ExternalID: "existing-topup-receipt"}
+	gw.requiredCustomer = OrderCustomerID(7)
 	gw.mu.Unlock()
 	if err := svc.Recover(context.Background()); err != nil {
 		t.Fatal(err)
