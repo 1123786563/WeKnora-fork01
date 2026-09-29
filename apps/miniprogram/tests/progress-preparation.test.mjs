@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 // T28 小程序 申请进展时间线与按需准备的可观察行为：真实 transport + AuthCoordinator
 // 装配（T24/T26/T32 同款），假后端按 method+pathname 路由。进展合同（T17）：append-only、
@@ -257,6 +258,22 @@ test('B4: revising a preparation draft goes through the material domain and stay
   assert.equal(receipt.status, 'draft', 'the revision stays a reviewable draft');
   const body = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/materials')[0].options.data;
   assert.deepEqual(Object.keys(body).sort(), ['body', 'expectedRevision', 'materialId', 'requestId']);
+});
+
+test('B4a: preflight material read failure keeps the local draft and says no edit was submitted', async () => {
+  const source = await readFile(new URL('../src/career/progress-preparation.tsx', import.meta.url), 'utf8');
+  const preflight = source.slice(source.indexOf("setReviseErrCode('claim-preservation-preflight-failed')"), source.indexOf('try {\n      await career.editMaterial'));
+  assert.match(preflight, /setDraftNotice\(`无法读取现有材料来保全引用主张；修订尚未提交/);
+  assert.match(source.slice(source.indexOf('savePreparationDraft(draftFromSections())'), source.indexOf("setReviseErrCode('claim-preservation-preflight-failed')")), /await career\.material\(materialId\)/);
+  assert.match(preflight, /throw error/, 'the failed preflight remains an explicit handled failure');
+});
+
+test('B4b: a committed edit remains successful when the follow-up material read fails', async () => {
+  const source = await readFile(new URL('../src/career/progress-preparation.tsx', import.meta.url), 'utf8');
+  const committed = source.slice(source.indexOf('await career.editMaterial({ materialId, body })'), source.indexOf('} catch (error) {', source.indexOf('await career.editMaterial({ materialId, body })')));
+  assert.match(committed, /setGenNotice\('准备草稿修订已提交/);
+  assert.match(committed, /catch \{[\s\S]*?修订已提交，但材料回读失败/);
+  assert.doesNotMatch(committed, /throw error/, 'post-commit read failure is contained and cannot enter write failure handling');
 });
 
 test('B5: an unknown preparation outcome is reconciled through the preparations receipt (seam: 未知对账)', async () => {

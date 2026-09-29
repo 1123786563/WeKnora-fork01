@@ -135,7 +135,13 @@ export default function ProgressPreparationPage() {
     // 主张保全（R1-F1）：服务端材料编辑是整体替换草稿正文——任何 claims 为空的小节，
     // 提交前先从材料域当前正文按同名小节取回主张，绝不把 claims 为空的正文整体提交。
     if (body.sections.some(section => (section.claims ?? []).length === 0)) {
-      body = { sections: recoverEmptyClaims(body.sections, (await career.material(materialId)).body.sections) };
+      try {
+        body = { sections: recoverEmptyClaims(body.sections, (await career.material(materialId)).body.sections) };
+      } catch (error) {
+        setReviseErrCode('claim-preservation-preflight-failed');
+        setDraftNotice(`无法读取现有材料来保全引用主张；修订尚未提交。本地草稿已保留，请稍后重试。${looksOffline(error) ? '当前网络不可用。' : ''}`);
+        throw error;
+      }
     }
     try {
       await career.editMaterial({ materialId, body });
@@ -143,7 +149,13 @@ export default function ProgressPreparationPage() {
       setDraftNotice(''); setReviseErrCode(undefined);
       setGenNotice('准备草稿修订已提交（仍是可审阅草稿，发布需另行确认材料版本）。');
       // 与 Web 同语义：回执只是回声，修订的持久事实从材料域回读。
-      setRevisedBody((await career.material(materialId)).body);
+      try {
+        setRevisedBody((await career.material(materialId)).body);
+        setDraftNotice('');
+      } catch {
+        setRevisedBody(undefined);
+        setDraftNotice('修订已提交，但材料回读失败；提交回执已确认保存成功，可稍后重新读取材料正文。');
+      }
       void listBusy.run(loadPreparations);
     } catch (error) {
       setReviseErrCode(typedCode(error));
@@ -314,7 +326,7 @@ export default function ProgressPreparationPage() {
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='保存准备草稿修订' customStyle={tdesignButtonStyle} loading={reviseBusy.busy} disabled={pendingMaterial !== null} onTap={() => void reviseBusy.run(saveRevision)}>保存修订（显式提交）</t-button>
       </View></View>
-      {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请用页首「用原请求编号重试材料修订」恢复（幂等可重放），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
+      {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'claim-preservation-preflight-failed' ? '' : reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请用页首「用原请求编号重试材料修订」恢复（幂等可重放），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
       <Action secondary loading={readBackBusy.busy} onClick={() => void readBackBusy.run(async () => {
         const materialId = editing?.materialId ?? draftEditing?.materialId;
         if (!materialId) throw new Error('该准备尚未物化为材料草稿');
