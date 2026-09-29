@@ -3,6 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { AppendProgressInput, CorrectProgressInput, ProgressEventView, ProgressEventType, ProgressReceipt, ProgressView } from '../../../../packages/api-client/src/career.ts'
 import './progress.css'
+import { SubmissionPage } from './SubmissionPage.tsx'
 import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
 // ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
 // protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
@@ -19,7 +20,7 @@ type WriteAttempt = { requestId: string; input: AppendProgressInput | CorrectPro
 // the UI never invents a stage, an event type, or a provenance kind.
 const stageLabels: Record<ProgressView['stage'], string> = { preparing: '准备中', pending_submission: '待投递', submitted: '已投递', assessment: '测评或笔试', interview: '面试', offer: 'Offer', closed: '已结束' }
 const eventTypeLabels: Record<ProgressEventType, string> = { pending_submission: '待投递', submitted: '已投递', assessment: '测评或笔试', interview: '面试', offer: 'Offer', resubmitted: '重新投递', rejected: '未通过', withdrawn: '已撤回', retracted: '招聘方撤回' }
-const eventTypeOptions = Object.keys(eventTypeLabels) as ProgressEventType[]
+const eventTypeOptions = (Object.keys(eventTypeLabels) as ProgressEventType[]).filter((type) => type !== 'submitted' && type !== 'resubmitted')
 const sourceKindLabels: Record<string, string> = { manual: '用户录入', user: '用户录入', system_import: '系统导入' }
 
 
@@ -57,6 +58,7 @@ export function ProgressPage({ client, scopeController, applicationId }: { clien
  const [writePhase, setWritePhase] = useState<WritePhase>('idle')
  const [message, setMessage] = useState('')
  const [correcting, setCorrecting] = useState<string>()
+ const [submissionOpen, setSubmissionOpen] = useState(false)
  const [correctionType, setCorrectionType] = useState('')
  const [correctionNote, setCorrectionNote] = useState('')
  const writeInFlight = useRef(false)
@@ -177,7 +179,8 @@ export function ProgressPage({ client, scopeController, applicationId }: { clien
   {readState === 'forbidden' || readState === 'scope-changed' ? <p className="wk-progress__message wk-progress__message--error" role="alert">{readMessage}</p> : <>
    {readState === 'loading' ? <p className="wk-progress__state" role="status" aria-busy="true">正在读取申请进展…</p> : readState === 'error' ? <p className="wk-progress__message wk-progress__message--error" role="alert">{readMessage}</p> : view ? <>
     <p className="wk-progress__stage" aria-label="当前阶段投影">当前阶段：<strong>{stageLabels[view.stage]}</strong>（确定性投影 · 事件修订 {view.revision}）</p>
-    <div className="wk-progress__actions"><button type="button" onClick={refresh}>刷新</button></div>
+    <div className="wk-progress__actions"><button type="button" onClick={refresh}>刷新</button><button type="button" onClick={() => setSubmissionOpen((open) => !open)}>{submissionOpen ? '收起投递确认与回看' : '投递确认与回看'}</button></div>
+    {submissionOpen ? <SubmissionPage client={client} scopeController={scopeController} applicationId={applicationId} /> : null}
     <fieldset className="wk-progress__compose"><legend>记录新的进展事件</legend>
      <label className="wk-progress__label" htmlFor="wk-progress-type">事件类型</label>
      <select id="wk-progress-type" aria-label="事件类型" value={eventType} disabled={composeBlocked} onChange={(event) => setEventType(event.target.value)}>
