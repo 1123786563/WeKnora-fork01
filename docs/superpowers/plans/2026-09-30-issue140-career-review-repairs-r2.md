@@ -230,6 +230,26 @@
 
 **Acceptance:** Authorization cannot cross account scope or survive explicit opt-out as an implicit new consent; malformed receipts stop safely; once an edit receipt is committed, cleanup/readback failure cannot label the edit unsubmitted.
 
+## Task 19: Keep malformed push receipts behind the profile-reconciliation boundary
+
+**Dependency:** Task 16 commit `7112cf0c7df60a42ef76d958f8c9778bcdebd4cf`; review findings T16-1 and T16-2 in `/tmp/issue140-r2-task16-review.md`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/rules-usage-reminders.tsx` and its focused tests; only the existing career platform decoder adapter if required for a verified profile read.
+
+**Consumes / produces:** Reuse the scope-bound `push-receipt-invalid` guard and existing verified profile refresh. Enforce the guard inside every preference persistence entry point, including the sync action, until the user refreshes and inspects the server preference. Invalidate accepted-but-unsynced authorization before starting opt-out network work; a malformed 200 remains an uncertain server fact but cannot preserve authorization that would skip a fresh native prompt. Preserve request IDs and scope checks across awaits.
+
+**Steps:**
+
+- [ ] Add tests for malformed subscribed receipt followed by the visible sync action; assert no second POST until a verified profile refresh clears the guard.
+- [ ] Add an opt-out action test where the server may have committed but its 200 receipt is malformed; assert the old accepted marker is already invalidated and a later subscribe requires a fresh native prompt.
+- [ ] Run both tests RED against Task 16, then enforce the invalid-receipt lock in the shared persistence seam and invalidate authorization at opt-out intent time while retaining uncertainty messaging.
+- [ ] Run focused reminder tests, Mini Program typecheck where executable, and `git diff --check`; separate existing account-page type errors from task diagnostics.
+- [ ] Commit only owned Mini Program files and report the exact recovery timeline and tests.
+
+**Acceptance:** No subscribed write can be retried through a secondary UI entry while the receipt is invalid; profile reconciliation is required. An opt-out attempt cannot leave stale consent that suppresses the next native authorization prompt, including malformed-success outcomes.
+
 ## Task 17: Preserve rule edits across active runs and serialize dispatch safely with deletion
 
 **Dependency:** Task 11 implementation and Task 13 lifecycle gate contract. Use Task 13's transaction-scoped lifecycle-admission seam; do not integrate before Task 13's appended gate migration and API are verified.
