@@ -67,7 +67,8 @@ const evaluationReceipt = { kind: 'evaluation_created', requestId: 'eval-1', eva
 const evaluation = { ...evaluationReceipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opportunity-1', observationId: 'observation-1', snapshotId: 'snapshot-1', rawText: '仅限2027届 TypeScript', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'graduation_year', criterion: 'graduation year', outcome: 'ineligible', reasonCode: 'graduation_year_mismatch', jobEvidence, profileEvidence: factEvidence }] }, soft: { matches: [{ kind: 'skill', value: 'TypeScript', jobEvidence: { ...jobEvidence, quotedText: 'TypeScript', spanStart: 14, spanEnd: 24 }, profileEvidence: skillFactEvidence }] }, facts: [factEvidence, skillFactEvidence] }
 
 test('evaluation contract accepts all hard statuses and retains fixed refs and provenance', () => {
- assert.equal(decodeEvaluationReceipt(evaluation).status, 'ineligible')
+ assert.equal(decodeEvaluationReceipt({ kind: evaluation.kind, requestId: evaluation.requestId, evaluationId: evaluation.evaluationId, opportunityId: evaluation.opportunityId, snapshotId: evaluation.snapshotId, profileRevision: evaluation.profileRevision, status: evaluation.status }).status, 'ineligible')
+ assert.throws(() => decodeEvaluationReceipt(evaluation), /invalid career evaluation receipt/, 'write receipts stay at the lightweight Go receipt boundary')
  const decoded = decodeEvaluation(evaluation)
  assert.equal(decoded.hard.overall, 'ineligible')
  assert.equal(decoded.snapshot.snapshotId, 'snapshot-1')
@@ -79,7 +80,7 @@ test('evaluation contract accepts all hard statuses and retains fixed refs and p
 
 test('evaluation decoders reject missing provenance, unknown enums, probability fields and wrong receipt discriminator', () => {
  assert.throws(() => decodeEvaluationReceipt({ ...evaluation, kind: 'confirmed' }))
- assert.throws(() => decodeEvaluationReceipt({ ...evaluation, status: 'maybe' }))
+ assert.throws(() => decodeEvaluationReceipt({ kind: evaluation.kind, requestId: evaluation.requestId, evaluationId: evaluation.evaluationId, opportunityId: evaluation.opportunityId, snapshotId: evaluation.snapshotId, profileRevision: evaluation.profileRevision, status: 'maybe' }))
  assert.throws(() => decodeEvaluation({ ...evaluation, overallScore: 0.99 }))
  assert.throws(() => decodeEvaluation({ ...evaluation, facts: [{ ...factEvidence, factRevision: undefined }] }))
  assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], jobEvidence: { ...jobEvidence, spanEnd: 3 } }] } }))

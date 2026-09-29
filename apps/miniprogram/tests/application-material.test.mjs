@@ -26,7 +26,7 @@ const T = '2026-09-25T08:00:00Z';
 const encoder = new TextEncoder();
 const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: 1, name: 'Space' }, memberships: [] } });
 const open3 = call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } });
-const evaluation = (over = {}) => ({ kind: 'evaluation_created', requestId: 'srv-ev', evaluationId: 'ev-1', opportunityId: 'opp-1', snapshotId: 'snap-1', profileRevision: 3, status: 'eligible', ...over });
+const evaluation = (over = {}) => ({ kind: 'evaluation_created', requestId: 'srv-ev', evaluationId: 'ev-1', opportunityId: 'opp-1', snapshotId: 'snap-1', profileRevision: 3, status: 'eligible', createdAt: T, rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opp-1', observationId: 'obs-1', snapshotId: 'snap-1', rawText: '学历本科', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: T }, hard: { overall: 'eligible', rules: [{ ruleId: 'degree', criterion: '学历', outcome: 'eligible', reasonCode: 'match', jobEvidence: { snapshotId: 'snap-1', observationId: 'obs-1', acquiredAt: T, rawSha256: 'a'.repeat(64), spanStart: 0, spanEnd: 12, quotedText: '学历本科' }, profileEvidence: { factKey: '学历', value: '本科', revision: 3, factRevision: 3, source: { kind: 'manual' }, confirmation: { userId: 'u1', confirmedAt: T }, confirmedAt: T } }] }, soft: { matches: [] }, facts: [{ factKey: '学历', value: '本科', revision: 3, factRevision: 3, source: { kind: 'manual' }, confirmation: { userId: 'u1', confirmedAt: T }, confirmedAt: T }], ...over });
 const application = (over = {}) => ({
   applicationId: 'app-1', requestId: 'srv-app', linkState: 'ready', taskId: 'task-1', qualified: true,
   pinnedEvidence: { opportunityId: 'opp-1', snapshotId: 'snap-1', evaluationId: 'ev-1', profileRevision: 3, evaluationStatus: 'eligible', batchIdentity: '2026秋招a批' }, ...over,
@@ -94,7 +94,8 @@ test('F0: sha256Hex matches public test vectors before any digest checks trust i
 
 test('A1: evaluation posts the frozen contract and returns the same receipt the web sees', async () => {
   await freshLogin({
-    'POST /api/v1/career/evaluations': call => stub.succeed(call, { data: evaluation() }),
+    'POST /api/v1/career/evaluations': call => stub.succeed(call, { data: { kind: 'evaluation_created', requestId: 'srv-ev', evaluationId: 'ev-1', opportunityId: 'opp-1', snapshotId: 'snap-1', profileRevision: 3, status: 'eligible' } }),
+    'GET /api/v1/career/evaluations/ev-1': call => stub.succeed(call, { data: evaluation() }),
   });
   await career.loadCareer();
   const receipt = await career.evaluateOpportunity('opp-1', 'snap-1');
@@ -104,6 +105,7 @@ test('A1: evaluation posts the frozen contract and returns the same receipt the 
   const body = careerCall('/evaluations')[0].options.data;
   assert.deepEqual(Object.keys(body).sort(), ['opportunityId', 'requestId', 'snapshotId'], 'body must match the frozen evaluation contract (DisallowUnknownFields)');
   assert.equal(careerCall('/evaluations')[0].options.header.Authorization ?? careerCall('/evaluations')[0].options.header.authorization, 'Bearer t1', 'identity flows through the authenticated client');
+  assert.equal(careerCall('/evaluations/ev-1').length, 1, 'the lightweight write receipt is followed by a full evidence read');
 });
 
 test('A2: application creation posts the frozen CreateApplicationInput against the same backend as web', async () => {

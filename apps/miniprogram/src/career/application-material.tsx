@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, Empty, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import type { ApplicationReceipt, MaterialExportReceipt, MaterialView, SubmissionChannel, SubmissionReceipt } from '../../../../packages/api-client/src/career.ts';
-import type { EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import type { Evaluation } from '../../../../packages/career-core/src/contracts.ts';
 import type { ExportOpenRecord } from '../adapters/career-platform.ts';
 import { formatTime } from '../core/format.ts';
 import { errorMessage } from '../core/errors.ts';
@@ -36,7 +36,7 @@ export default function ApplicationMaterialPage() {
   const params = Taro.getCurrentInstance().router?.params as Record<string, string | undefined> | undefined;
   const [opportunityId, setOpportunityId] = useState(params?.opportunityId ?? '');
   const [snapshotId, setSnapshotId] = useState(params?.snapshotId ?? '');
-  const [evaluation, setEvaluation] = useState<EvaluationReceipt>();
+  const [evaluation, setEvaluation] = useState<Evaluation>();
   const [batchIdentity, setBatchIdentity] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [application, setApplication] = useState<ApplicationReceipt>();

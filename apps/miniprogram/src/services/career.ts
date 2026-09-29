@@ -2,8 +2,8 @@ import { client, auth } from './runtime.ts';
 import { record, text } from './views.ts';
 import { CareerDesk } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerRemote } from '../../../../packages/career-core/src/desk.ts';
-import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence, EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
-import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt, decodeEvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence, EvaluationReceipt, Evaluation } from '../../../../packages/career-core/src/contracts.ts';
+import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt, decodeEvaluationReceipt, decodeEvaluation } from '../../../../packages/career-core/src/contracts.ts';
 import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList, decodeCareerExportReceipt, decodeCareerDeletionBoundary, decodeCareerDeletionReceipt, decodeProgressReceipt, decodeProgressView, decodePreparationReceipt, decodePreparationList } from '../../../../packages/api-client/src/career.ts';
 import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody, CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt, ProgressReceipt, ProgressView, ProgressEventType, PreparationReceipt, PreparationList, PreparationFocus } from '../../../../packages/api-client/src/career.ts';
 import type { NativeFileSource } from '@weknora/api-client';
@@ -232,14 +232,23 @@ export async function opportunityEvidence(opportunityId: string, snapshotId: str
 // 空间切换的旧响应绝不当成新事实落地。投递确认只记录用户声明，零自动提交零外发。 ----
 
 /** 评估当前档案对固定岗位快照的资格（申请创建前的一步；三值结论如实返回）。 */
-export async function evaluateOpportunity(opportunityId: string, snapshotId: string): Promise<EvaluationReceipt> {
+export async function evaluateOpportunity(opportunityId: string, snapshotId: string): Promise<Evaluation> {
   if (!opportunityId.trim() || !snapshotId.trim()) throw new Error('缺少岗位快照信息');
   const input = { opportunityId: opportunityId.trim(), snapshotId: snapshotId.trim() };
-  return writeRecoverable<EvaluationReceipt>('evaluation', '资格评估', input, async id => decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...input } })));
+  return writeRecoverable<Evaluation>('evaluation', '资格评估', input, async id => {
+    const receipt = decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...input } }));
+    return decodeAs(decodeEvaluation, await client.request({ method: 'GET', path: `/api/v1/career/evaluations/${encodeURIComponent(receipt.evaluationId)}` }));
+  });
 }
 export function pendingEvaluation(): StoredIntent<{ opportunityId: string; snapshotId: string }> | null { return readIntent(intentKey('evaluation')); }
-export async function reconcilePendingEvaluation(): Promise<EvaluationReceipt> { return reconcileIntent('evaluation', '资格评估', async id => decodeEvaluationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/evaluations/receipt?requestId=${encodeURIComponent(id)}` }))); }
-export async function retryPendingEvaluation(): Promise<EvaluationReceipt> { const pending = pendingEvaluation(); if (!pending) throw new Error('没有待恢复的资格评估'); return retryIntent('evaluation', '资格评估', async id => decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...pending.input } }))); }
+export async function reconcilePendingEvaluation(): Promise<Evaluation> { return reconcileIntent('evaluation', '资格评估', async id => {
+  const receipt = decodeEvaluationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/evaluations/receipt?requestId=${encodeURIComponent(id)}` }));
+  return decodeEvaluation(await client.request({ method: 'GET', path: `/api/v1/career/evaluations/${encodeURIComponent(receipt.evaluationId)}` }));
+}); }
+export async function retryPendingEvaluation(): Promise<Evaluation> { const pending = pendingEvaluation(); if (!pending) throw new Error('没有待恢复的资格评估'); return retryIntent('evaluation', '资格评估', async id => {
+  const receipt = decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...pending.input } }));
+  return decodeAs(decodeEvaluation, await client.request({ method: 'GET', path: `/api/v1/career/evaluations/${encodeURIComponent(receipt.evaluationId)}` }));
+}); }
 
 export interface ApplicationIntentInput { opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean }
 export type { StoredIntent } from './career-intent.ts';
