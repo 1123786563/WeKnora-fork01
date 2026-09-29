@@ -24,14 +24,8 @@ func readRepoFile(t *testing.T, rel string) string {
 
 func TestTaskComplianceWiringRegistered(t *testing.T) {
 	containerSrc := readRepoFile(t, "container.go")
-	for _, want := range []string{
-		"must(container.Provide(NewTaskComplianceStore))",
-		"must(container.Provide(NewTaskComplianceService))",
-		"must(container.Provide(NewWorkbenchTaskComplianceHandler))",
-	} {
-		require.True(t, strings.Contains(containerSrc, want),
-			"container.go must register %q — without it the optional handler stays nil and the compliance routes silently disappear", want)
-	}
+	require.True(t, strings.Contains(containerSrc, "must(provideWorkbenchTaskHandlers(container))"),
+		"BuildContainer must register the production workbench task handler graph")
 	// T13 (#43) Task 5: the legal-hold gate must be Invoke-wired at the
 	// session deletion entrances, or the refusal never fires in production.
 	require.True(t, strings.Contains(containerSrc, "must(container.Invoke(wireTaskDeletionGuard))"),
@@ -41,8 +35,11 @@ func TestTaskComplianceWiringRegistered(t *testing.T) {
 		"func NewTaskComplianceStore(",
 		"func NewTaskComplianceService(",
 		"func NewWorkbenchTaskComplianceHandler(",
+		"NewTaskComplianceStore,",
+		"NewTaskComplianceService,",
+		"NewWorkbenchTaskComplianceHandler,",
 	} {
 		require.True(t, strings.Contains(workbenchSrc, want),
-			"internal/container/workbench.go must define provider %q", want)
+			"production workbench provider graph must contain %q", want)
 	}
 }

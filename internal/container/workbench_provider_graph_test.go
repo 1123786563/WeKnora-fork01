@@ -42,14 +42,9 @@ func TestWorkbenchProviderGraph(t *testing.T) {
 	provide(repository.NewAgentRunStore)
 	provide(repository.NewSessionRepository)
 	provide(repository.NewTenantMemberRepository)
-	provide(repository.NewTaskGrantStore)
-	provide(NewWorkbenchTaskGrantsHandler)
-	provide(NewResearchSourceAuthorizer)
-	provide(NewWorkbenchResearchHandler)
-	provide(NewWorkbenchLegacyListHandler)
-	provide(NewTaskComplianceStore)
-	provide(NewTaskComplianceService)
-	provide(NewWorkbenchTaskComplianceHandler)
+	if err := provideWorkbenchTaskHandlers(c); err != nil {
+		t.Fatalf("register production workbench task handlers: %v", err)
+	}
 
 	if err := c.Invoke(func(p workbenchProviderGraphParams) {
 		if p.Grants == nil || p.Research == nil || p.LegacyList == nil || p.Compliance == nil {

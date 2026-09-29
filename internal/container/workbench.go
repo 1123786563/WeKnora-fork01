@@ -15,6 +15,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"go.uber.org/dig"
 )
 
 // NewWorkbenchReadHandler wires the ownership facade to the same durable run
@@ -176,4 +177,28 @@ func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.Mobile
 // authenticated context.
 func NewWorkbenchTaskStateHandler(states *repository.WorkbenchTaskStateStore) *session.WorkbenchTaskStateHandler {
 	return session.NewWorkbenchTaskStateHandler(states)
+}
+
+// provideWorkbenchTaskHandlers registers the collaboration, research, legacy,
+// and compliance handler graph used by both production assembly and its graph test.
+func provideWorkbenchTaskHandlers(container *dig.Container) error {
+	providers := []interface{}{
+		NewResearchSourceAuthorizer,
+		NewWorkbenchResearchHandler,
+		NewWorkbenchLegacyListHandler,
+		repository.NewTaskGrantStore,
+		NewWorkbenchTaskGrantsHandler,
+		repository.NewTaskResearchStore,
+		repository.NewTaskAnnotationStore,
+		repository.NewWorkbenchLegacyListStore,
+		NewTaskComplianceStore,
+		NewTaskComplianceService,
+		NewWorkbenchTaskComplianceHandler,
+	}
+	for _, provider := range providers {
+		if err := container.Provide(provider); err != nil {
+			return err
+		}
+	}
+	return nil
 }
