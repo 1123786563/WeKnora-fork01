@@ -100,7 +100,7 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 
 // Parse the plist value forms emitted by the generated Xcode project without a runtime dependency.
 function parsePlist(xml: string): unknown {
-  const tokens = (xml.match(/<\/?(?:dict|array|string|integer|real|date|data|true|false|key)\s*\/?\s*>|[^<]+/g) ?? [])
+  const tokens = (xml.match(/<[^>]*>|[^<]+/g) ?? [])
     .filter((token) => token.startsWith('<') || token.trim().length > 0);
   let index = 0;
   const parseValue = (): unknown => {
