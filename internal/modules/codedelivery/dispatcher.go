@@ -86,34 +86,47 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
 	if err != nil {
 		return err
 	}
-	if row.State != string(DeliveryPushed) {
+	if row.State != string(DeliveryDispatched) {
 		return fmt.Errorf("%w: recovery from %s (resolve unknown first)", ErrDeliveryState, row.State)
 	}
 	snap, err := d.snapshotOfDelivery(ctx, row)
 	if err != nil {
-		return err
+		return &RecoveryNotStartedError{Err: err}
 	}
 	material, err := ParseDeliveryMaterial(snap.Args)
 	if err != nil {
-		return err
+		return &RecoveryNotStartedError{Err: err}
 	}
 	if err := d.deps.Guard.Check(ctx,
 		appconnector.OCSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
 		snap.ConnectionID, snap.AuthVersion,
 	); err != nil {
-		return err
+		return &RecoveryNotStartedError{Err: err}
 	}
 	token, err := d.tokenFor(ctx, snap)
 	if err != nil {
-		return err
+		return &RecoveryNotStartedError{Err: err}
 	}
 	client, err := d.clientForTarget(snap.Target, token, material.Repo)
 	if err != nil {
-		return err
+		return &RecoveryNotStartedError{Err: err}
 	}
 	_, err = d.deliver(ctx, snap, material, row, client, true)
 	return err
 }
+
+// PRWriteRejectedError means the provider explicitly rejected POST /pulls;
+// retry is safe because the provider reported that no PR was created.
+type PRWriteRejectedError struct{ Err error }
+
+func (e *PRWriteRejectedError) Error() string { return e.Err.Error() }
+func (e *PRWriteRejectedError) Unwrap() error { return e.Err }
+
+// RecoveryNotStartedError guarantees recovery failed before POST /pulls.
+type RecoveryNotStartedError struct{ Err error }
+
+func (e *RecoveryNotStartedError) Error() string { return e.Err.Error() }
+func (e *RecoveryNotStartedError) Unwrap() error { return e.Err }
 
 // deliver runs the delivery chain. partialRecovery=true skips the push half
 // entirely — it already happened under the SAME approval.
@@ -208,6 +221,9 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 	if base == "" {
 		repoInfo, err := client.Repository(ctx)
 		if err != nil {
+			if partialRecovery {
+				return appconnectorsvc.DispatchOutcome{}, &RecoveryNotStartedError{Err: err}
+			}
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		base = repoInfo.DefaultBranch
@@ -215,21 +231,27 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 	receipt, prerr := client.DraftPullRequest(ctx, PullRequestInput{
 		Title: material.PRTitle, Head: material.Repo.Owner + ":" + material.Branch, Base: base,
 	})
-	var login string
-	if prerr == nil {
-		login, prerr = client.CurrentLogin(ctx)
-	}
 	if prerr != nil {
 		var apiErr *GitHubAPIError
 		if errors.As(prerr, &apiErr) {
 			// 确定性 PR 失败：若已推（pushed）保持部分完成可恢复；否则 failed。
 			current, gerr := d.deps.Store.GetDelivery(ctx, snap.TenantID, row.ID)
-			if gerr == nil && current.State == string(DeliveryPushed) {
+			if gerr == nil && (current.State == string(DeliveryPushed) || current.State == string(DeliveryDispatched)) {
+				if partialRecovery && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != 408 && apiErr.Status != 429 {
+					return appconnectorsvc.DispatchOutcome{}, &PRWriteRejectedError{Err: apiErr}
+				}
+				if partialRecovery {
+					return appconnectorsvc.DispatchOutcome{}, prerr
+				}
 				return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: partialReceipt(current.CommitSHA)}, nil
 			}
 			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: pr: %v", appconnectorsvc.ErrDispatchNotStarted, apiErr)
 		}
 		return appconnectorsvc.DispatchOutcome{}, prerr // 传输不可观测 → 上层落 unknown
+	}
+	login, prerr := client.CurrentLogin(ctx)
+	if prerr != nil {
+		return appconnectorsvc.DispatchOutcome{}, prerr
 	}
 	if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
 		PRNumber: receipt.Number, PRURL: receipt.URL, RemoteLogin: login,

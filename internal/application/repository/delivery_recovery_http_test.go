@@ -63,6 +63,8 @@ type recoveryGitHubStub struct {
 	calls           map[string]int
 	failPRCreations int  // >0: every PR creation answers 422 (definite failure)
 	failPRTransport bool // persist a PR, then abort before its response reaches the client
+	prEntered       chan struct{}
+	prRelease       chan struct{}
 }
 
 func newRecoveryGitHubStub(t *testing.T) *recoveryGitHubStub {
@@ -186,6 +188,10 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusOK, out)
 	case r.Method == http.MethodPost && path == "/repos/octocat/hello/pulls":
 		s.count("POST /pulls")
+		if s.prEntered != nil {
+			s.prEntered <- struct{}{}
+			<-s.prRelease
+		}
 		s.mu.Lock()
 		failCreations := s.failPRCreations
 		failTransport := s.failPRTransport
@@ -453,6 +459,101 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	require.Equal(t, "delivered", resolved.Data.Delivery.State, "remote facts include the PR committed before its response was lost")
 	require.NotZero(t, resolved.Data.Delivery.PRNumber)
 	require.Equal(t, beforeResolve, env.github.snapshotWrites(), "resolution must reconcile remote facts without issuing any provider writes")
+}
+
+func TestT25ConcurrentPushedRecoveryClaimsOnceOverHTTP(t *testing.T) {
+	env := newRecoveryEnv(t)
+	env.github.mu.Lock()
+	env.github.failPRCreations = 1
+	env.github.mu.Unlock()
+	id := env.seedApprovedDelivery(t)
+	code, v := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "pushed", v.State)
+	env.github.prEntered, env.github.prRelease = make(chan struct{}, 1), make(chan struct{})
+	first := make(chan *httptest.ResponseRecorder, 1)
+	go func() { first <- requestRecovery(env, id) }()
+	<-env.github.prEntered
+	second := requestRecovery(env, id)
+	require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
+	close(env.github.prRelease)
+	require.Equal(t, http.StatusOK, (<-first).Code)
+	require.Equal(t, 2, env.github.snapshotCalls()["POST /pulls"], "one original rejected create plus exactly one claimed recovery")
+}
+
+func TestT25AmbiguousPushedRecoveryResolvesGETOnlyOverHTTP(t *testing.T) {
+	env := newRecoveryEnv(t)
+	env.github.mu.Lock()
+	env.github.failPRCreations = 1
+	env.github.mu.Unlock()
+	id := env.seedApprovedDelivery(t)
+	code, view := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "pushed", view.State)
+	env.github.mu.Lock()
+	env.github.failPRTransport = true
+	env.github.mu.Unlock()
+	code, _ = env.dispatchState(t, id)
+	require.Equal(t, http.StatusBadGateway, code)
+	require.Equal(t, "unknown", deliveryState(t, env, id))
+	writes := env.github.snapshotWrites()
+	posts := writes["POST /pulls"]
+	w := doResolveRecovery(env, id)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, posts, env.github.snapshotWrites()["POST /pulls"], "resolve must query remote facts without repeating PR create")
+	require.Equal(t, "delivered", deliveryState(t, env, id))
+}
+
+func deliveryState(t *testing.T, env *recoveryEnv, id string) string {
+	t.Helper()
+	row, err := deliveryrepo.NewDeliveryStore(env.db).GetDelivery(context.Background(), 1, id)
+	require.NoError(t, err)
+	return row.State
+}
+
+func requestRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", nil)
+	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
+	w := httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req.WithContext(ctx))
+	return w
+}
+
+func TestT25DeliveryRunOwnerMismatchDoesNotReachProvider(t *testing.T) {
+	for _, field := range []string{"run_id", "owner_id"} {
+		t.Run(field, func(t *testing.T) {
+			env := newRecoveryEnv(t)
+			id := env.seedApprovedDelivery(t)
+			code, view := env.dispatchState(t, id)
+			require.Equal(t, http.StatusOK, code)
+			env.github.mu.Lock()
+			env.github.calls = map[string]int{}
+			env.github.mu.Unlock()
+			if field == "run_id" {
+				require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("run_id", "r-other").Error)
+			} else {
+				require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("owner_id", "u-other").Error)
+			}
+			w := requestRecovery(env, id)
+			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			w = doResolveRecovery(env, id)
+			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			require.Empty(t, env.github.snapshotWrites())
+			_ = view
+		})
+	}
+}
+
+func doResolveRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", nil)
+	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
+	w := httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req.WithContext(ctx))
+	return w
 }
 
 // AC2/凭据隔离 e2e（spec :140 "does not ... expose remote credentials to

@@ -109,6 +109,27 @@ func TestPartialPushPRFailureRecoversWithoutRepush(t *testing.T) {
 	require.Equal(t, before["POST /pulls"]+1, after["POST /pulls"], "recovery retries ONLY the PR creation")
 }
 
+func TestDispatchAndResolveRejectMismatchedPersistedRunAndOwner(t *testing.T) {
+	for _, field := range []string{"run_id", "owner_id"} {
+		t.Run(field, func(t *testing.T) {
+			f := seededFixture(t)
+			view := firstDelivery(t, f)
+			before := snapshotCalls(f)
+			column, value := "run_id", "run-other"
+			if field == "owner_id" {
+				column, value = "owner_id", "u-other"
+			}
+			require.NoError(t, f.svc.deps.Store.DB().Table("code_deliveries").Where("id = ?", view.ID).Update(column, value).Error)
+			in := dispatchInput(view)
+			_, err := f.svc.DispatchDelivery(context.Background(), in)
+			require.ErrorIs(t, err, ErrNotDeliveryOwner)
+			_, err = f.svc.ResolveDeliveryUnknown(context.Background(), in)
+			require.ErrorIs(t, err, ErrNotDeliveryOwner)
+			require.Equal(t, before, snapshotCalls(f), "mismatched identities must be rejected before any provider operation")
+		})
+	}
+}
+
 func snapshotCalls(f *deliveryFixture) map[string]int {
 	out := map[string]int{}
 	for k, v := range f.github.Calls() {

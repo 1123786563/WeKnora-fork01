@@ -1,0 +1,337 @@
+diff --git a/internal/application/repository/delivery_recovery_http_test.go b/internal/application/repository/delivery_recovery_http_test.go
+index 5f5611c5a..f80cb1528 100644
+--- a/internal/application/repository/delivery_recovery_http_test.go
++++ b/internal/application/repository/delivery_recovery_http_test.go
+@@ -63,6 +63,8 @@ type recoveryGitHubStub struct {
+ 	calls           map[string]int
+ 	failPRCreations int  // >0: every PR creation answers 422 (definite failure)
+ 	failPRTransport bool // persist a PR, then abort before its response reaches the client
++	prEntered       chan struct{}
++	prRelease       chan struct{}
+ }
+ 
+ func newRecoveryGitHubStub(t *testing.T) *recoveryGitHubStub {
+@@ -186,6 +188,10 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
+ 		s.writeJSON(w, http.StatusOK, out)
+ 	case r.Method == http.MethodPost && path == "/repos/octocat/hello/pulls":
+ 		s.count("POST /pulls")
++		if s.prEntered != nil {
++			s.prEntered <- struct{}{}
++			<-s.prRelease
++		}
+ 		s.mu.Lock()
+ 		failCreations := s.failPRCreations
+ 		failTransport := s.failPRTransport
+@@ -455,6 +461,101 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
+ 	require.Equal(t, beforeResolve, env.github.snapshotWrites(), "resolution must reconcile remote facts without issuing any provider writes")
+ }
+ 
++func TestT25ConcurrentPushedRecoveryClaimsOnceOverHTTP(t *testing.T) {
++	env := newRecoveryEnv(t)
++	env.github.mu.Lock()
++	env.github.failPRCreations = 1
++	env.github.mu.Unlock()
++	id := env.seedApprovedDelivery(t)
++	code, v := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	require.Equal(t, "pushed", v.State)
++	env.github.prEntered, env.github.prRelease = make(chan struct{}, 1), make(chan struct{})
++	first := make(chan *httptest.ResponseRecorder, 1)
++	go func() { first <- requestRecovery(env, id) }()
++	<-env.github.prEntered
++	second := requestRecovery(env, id)
++	require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
++	close(env.github.prRelease)
++	require.Equal(t, http.StatusOK, (<-first).Code)
++	require.Equal(t, 2, env.github.snapshotCalls()["POST /pulls"], "one original rejected create plus exactly one claimed recovery")
++}
++
++func TestT25AmbiguousPushedRecoveryResolvesGETOnlyOverHTTP(t *testing.T) {
++	env := newRecoveryEnv(t)
++	env.github.mu.Lock()
++	env.github.failPRCreations = 1
++	env.github.mu.Unlock()
++	id := env.seedApprovedDelivery(t)
++	code, view := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	require.Equal(t, "pushed", view.State)
++	env.github.mu.Lock()
++	env.github.failPRTransport = true
++	env.github.mu.Unlock()
++	code, _ = env.dispatchState(t, id)
++	require.Equal(t, http.StatusBadGateway, code)
++	require.Equal(t, "unknown", deliveryState(t, env, id))
++	writes := env.github.snapshotWrites()
++	posts := writes["POST /pulls"]
++	w := doResolveRecovery(env, id)
++	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++	require.Equal(t, posts, env.github.snapshotWrites()["POST /pulls"], "resolve must query remote facts without repeating PR create")
++	require.Equal(t, "delivered", deliveryState(t, env, id))
++}
++
++func deliveryState(t *testing.T, env *recoveryEnv, id string) string {
++	t.Helper()
++	row, err := deliveryrepo.NewDeliveryStore(env.db).GetDelivery(context.Background(), 1, id)
++	require.NoError(t, err)
++	return row.State
++}
++
++func requestRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
++	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", nil)
++	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
++	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
++	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
++	w := httptest.NewRecorder()
++	env.engine.ServeHTTP(w, req.WithContext(ctx))
++	return w
++}
++
++func TestT25DeliveryRunOwnerMismatchDoesNotReachProvider(t *testing.T) {
++	for _, field := range []string{"run_id", "owner_id"} {
++		t.Run(field, func(t *testing.T) {
++			env := newRecoveryEnv(t)
++			id := env.seedApprovedDelivery(t)
++			code, view := env.dispatchState(t, id)
++			require.Equal(t, http.StatusOK, code)
++			env.github.mu.Lock()
++			env.github.calls = map[string]int{}
++			env.github.mu.Unlock()
++			if field == "run_id" {
++				require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("run_id", "r-other").Error)
++			} else {
++				require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("owner_id", "u-other").Error)
++			}
++			w := requestRecovery(env, id)
++			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
++			w = doResolveRecovery(env, id)
++			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
++			require.Empty(t, env.github.snapshotWrites())
++			_ = view
++		})
++	}
++}
++
++func doResolveRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
++	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", nil)
++	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
++	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
++	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
++	w := httptest.NewRecorder()
++	env.engine.ServeHTTP(w, req.WithContext(ctx))
++	return w
++}
++
+ // AC2/凭据隔离 e2e（spec :140 "does not ... expose remote credentials to
+ // Shell"）：在此 delivery path 中探针 token 只用于 GitHub Authorization；
+ // 它不出现在 HTTP response、共享工作区、交付台账、连接/Action 行、环境或日志。
+diff --git a/internal/modules/codedelivery/dispatcher.go b/internal/modules/codedelivery/dispatcher.go
+index 396cac54b..4e180f7b1 100644
+--- a/internal/modules/codedelivery/dispatcher.go
++++ b/internal/modules/codedelivery/dispatcher.go
+@@ -86,35 +86,48 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
+ 	if err != nil {
+ 		return err
+ 	}
+-	if row.State != string(DeliveryPushed) {
++	if row.State != string(DeliveryDispatched) {
+ 		return fmt.Errorf("%w: recovery from %s (resolve unknown first)", ErrDeliveryState, row.State)
+ 	}
+ 	snap, err := d.snapshotOfDelivery(ctx, row)
+ 	if err != nil {
+-		return err
++		return &RecoveryNotStartedError{Err: err}
+ 	}
+ 	material, err := ParseDeliveryMaterial(snap.Args)
+ 	if err != nil {
+-		return err
++		return &RecoveryNotStartedError{Err: err}
+ 	}
+ 	if err := d.deps.Guard.Check(ctx,
+ 		appconnector.OCSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
+ 		snap.ConnectionID, snap.AuthVersion,
+ 	); err != nil {
+-		return err
++		return &RecoveryNotStartedError{Err: err}
+ 	}
+ 	token, err := d.tokenFor(ctx, snap)
+ 	if err != nil {
+-		return err
++		return &RecoveryNotStartedError{Err: err}
+ 	}
+ 	client, err := d.clientForTarget(snap.Target, token, material.Repo)
+ 	if err != nil {
+-		return err
++		return &RecoveryNotStartedError{Err: err}
+ 	}
+ 	_, err = d.deliver(ctx, snap, material, row, client, true)
+ 	return err
+ }
+ 
++// PRWriteRejectedError means the provider explicitly rejected POST /pulls;
++// retry is safe because the provider reported that no PR was created.
++type PRWriteRejectedError struct{ Err error }
++
++func (e *PRWriteRejectedError) Error() string { return e.Err.Error() }
++func (e *PRWriteRejectedError) Unwrap() error { return e.Err }
++
++// RecoveryNotStartedError guarantees recovery failed before POST /pulls.
++type RecoveryNotStartedError struct{ Err error }
++
++func (e *RecoveryNotStartedError) Error() string { return e.Err.Error() }
++func (e *RecoveryNotStartedError) Unwrap() error { return e.Err }
++
+ // deliver runs the delivery chain. partialRecovery=true skips the push half
+ // entirely — it already happened under the SAME approval.
+ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.ActionSnapshot, material DeliveryMaterial, row deliveryrepo.DeliveryRow, client GitHubClient, partialRecovery bool) (appconnectorsvc.DispatchOutcome, error) {
+@@ -208,6 +221,9 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
+ 	if base == "" {
+ 		repoInfo, err := client.Repository(ctx)
+ 		if err != nil {
++			if partialRecovery {
++				return appconnectorsvc.DispatchOutcome{}, &RecoveryNotStartedError{Err: err}
++			}
+ 			return appconnectorsvc.DispatchOutcome{}, err
+ 		}
+ 		base = repoInfo.DefaultBranch
+@@ -215,22 +231,28 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
+ 	receipt, prerr := client.DraftPullRequest(ctx, PullRequestInput{
+ 		Title: material.PRTitle, Head: material.Repo.Owner + ":" + material.Branch, Base: base,
+ 	})
+-	var login string
+-	if prerr == nil {
+-		login, prerr = client.CurrentLogin(ctx)
+-	}
+ 	if prerr != nil {
+ 		var apiErr *GitHubAPIError
+ 		if errors.As(prerr, &apiErr) {
+ 			// 确定性 PR 失败：若已推（pushed）保持部分完成可恢复；否则 failed。
+ 			current, gerr := d.deps.Store.GetDelivery(ctx, snap.TenantID, row.ID)
+-			if gerr == nil && current.State == string(DeliveryPushed) {
++			if gerr == nil && (current.State == string(DeliveryPushed) || current.State == string(DeliveryDispatched)) {
++				if partialRecovery && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != 408 && apiErr.Status != 429 {
++					return appconnectorsvc.DispatchOutcome{}, &PRWriteRejectedError{Err: apiErr}
++				}
++				if partialRecovery {
++					return appconnectorsvc.DispatchOutcome{}, prerr
++				}
+ 				return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: partialReceipt(current.CommitSHA)}, nil
+ 			}
+ 			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: pr: %v", appconnectorsvc.ErrDispatchNotStarted, apiErr)
+ 		}
+ 		return appconnectorsvc.DispatchOutcome{}, prerr // 传输不可观测 → 上层落 unknown
+ 	}
++	login, prerr := client.CurrentLogin(ctx)
++	if prerr != nil {
++		return appconnectorsvc.DispatchOutcome{}, prerr
++	}
+ 	if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
+ 		PRNumber: receipt.Number, PRURL: receipt.URL, RemoteLogin: login,
+ 	}); err != nil {
+diff --git a/internal/modules/codedelivery/service.go b/internal/modules/codedelivery/service.go
+index cf1386a75..dd8c0736c 100644
+--- a/internal/modules/codedelivery/service.go
++++ b/internal/modules/codedelivery/service.go
+@@ -320,6 +320,9 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
+ 	if err != nil {
+ 		return DeliveryView{}, err
+ 	}
++	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
++		return DeliveryView{}, ErrNotDeliveryOwner
++	}
+ 	switch DeliveryState(row.State) {
+ 	case DeliveryPrepared:
+ 		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+@@ -360,11 +363,24 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
+ 			return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryDispatchRejected, failure)
+ 		}
+ 	case DeliveryPushed:
+-		// pushed → PR-only 恢复（同一批准的未完成半程；A02 复验在恢复端内部）。
++		// CAS claim is the cross-process recovery linearization point.
++		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
++			[]string{string(DeliveryPushed)}, string(DeliveryDispatched), ""); err != nil {
++			return DeliveryView{}, err
++		}
++		// dispatched → PR-only recovery; the dispatcher never repeats push steps.
+ 		if s.deps.Dispatcher == nil {
++			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), "")
+ 			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+ 		}
+ 		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
++			var rejected *PRWriteRejectedError
++			var notStarted *RecoveryNotStartedError
++			if errors.As(err, &rejected) || errors.As(err, &notStarted) {
++				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), err.Error())
++			} else {
++				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryUnknown), err.Error())
++			}
+ 			return DeliveryView{}, err
+ 		}
+ 	default:
+@@ -382,9 +398,34 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
+ 	if err != nil {
+ 		return DeliveryView{}, err
+ 	}
+-	if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
++	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
++		return DeliveryView{}, ErrNotDeliveryOwner
++	}
++	if row.State != string(DeliveryUnknown) {
++		return DeliveryView{}, fmt.Errorf("%w: resolve from %s", ErrDeliveryState, row.State)
++	}
++	action, err := s.deps.ActionRows.FindAction(ctx, row.ActionID)
++	if err != nil {
+ 		return DeliveryView{}, err
+ 	}
++	if action.State == appconnector.ActionUnknown {
++		if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
++			return DeliveryView{}, err
++		}
++	} else if action.State == appconnector.ActionSucceeded {
++		if s.deps.Dispatcher == nil {
++			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
++		}
++		snap, err := s.deps.Dispatcher.snapshotOfDelivery(ctx, row)
++		if err != nil {
++			return DeliveryView{}, err
++		}
++		if _, err = s.deps.Dispatcher.QueryProvider(ctx, snap, ""); err != nil {
++			return DeliveryView{}, err
++		}
++	} else {
++		return DeliveryView{}, fmt.Errorf("%w: action state %s", ErrDeliveryState, action.State)
++	}
+ 	return s.viewAfter(ctx, in, row.ID)
+ }
+ 
+diff --git a/internal/modules/codedelivery/service_dispatch_test.go b/internal/modules/codedelivery/service_dispatch_test.go
+index 9313a9fa3..dfe90ba39 100644
+--- a/internal/modules/codedelivery/service_dispatch_test.go
++++ b/internal/modules/codedelivery/service_dispatch_test.go
+@@ -109,6 +109,27 @@ func TestPartialPushPRFailureRecoversWithoutRepush(t *testing.T) {
+ 	require.Equal(t, before["POST /pulls"]+1, after["POST /pulls"], "recovery retries ONLY the PR creation")
+ }
+ 
++func TestDispatchAndResolveRejectMismatchedPersistedRunAndOwner(t *testing.T) {
++	for _, field := range []string{"run_id", "owner_id"} {
++		t.Run(field, func(t *testing.T) {
++			f := seededFixture(t)
++			view := firstDelivery(t, f)
++			before := snapshotCalls(f)
++			column, value := "run_id", "run-other"
++			if field == "owner_id" {
++				column, value = "owner_id", "u-other"
++			}
++			require.NoError(t, f.svc.deps.Store.DB().Table("code_deliveries").Where("id = ?", view.ID).Update(column, value).Error)
++			in := dispatchInput(view)
++			_, err := f.svc.DispatchDelivery(context.Background(), in)
++			require.ErrorIs(t, err, ErrNotDeliveryOwner)
++			_, err = f.svc.ResolveDeliveryUnknown(context.Background(), in)
++			require.ErrorIs(t, err, ErrNotDeliveryOwner)
++			require.Equal(t, before, snapshotCalls(f), "mismatched identities must be rejected before any provider operation")
++		})
++	}
++}
++
+ func snapshotCalls(f *deliveryFixture) map[string]int {
+ 	out := map[string]int{}
+ 	for k, v := range f.github.Calls() {

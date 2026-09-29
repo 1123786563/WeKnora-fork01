@@ -320,6 +320,9 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 	if err != nil {
 		return DeliveryView{}, err
 	}
+	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
 	switch DeliveryState(row.State) {
 	case DeliveryPrepared:
 		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
@@ -360,11 +363,24 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 			return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryDispatchRejected, failure)
 		}
 	case DeliveryPushed:
-		// pushed → PR-only 恢复（同一批准的未完成半程；A02 复验在恢复端内部）。
+		// CAS claim is the cross-process recovery linearization point.
+		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+			[]string{string(DeliveryPushed)}, string(DeliveryDispatched), ""); err != nil {
+			return DeliveryView{}, err
+		}
+		// dispatched → PR-only recovery; the dispatcher never repeats push steps.
 		if s.deps.Dispatcher == nil {
+			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), "")
 			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
 		}
 		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
+			var rejected *PRWriteRejectedError
+			var notStarted *RecoveryNotStartedError
+			if errors.As(err, &rejected) || errors.As(err, &notStarted) {
+				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), err.Error())
+			} else {
+				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryUnknown), err.Error())
+			}
 			return DeliveryView{}, err
 		}
 	default:
@@ -382,8 +398,33 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
+	if row.State != string(DeliveryUnknown) {
+		return DeliveryView{}, fmt.Errorf("%w: resolve from %s", ErrDeliveryState, row.State)
+	}
+	action, err := s.deps.ActionRows.FindAction(ctx, row.ActionID)
+	if err != nil {
 		return DeliveryView{}, err
+	}
+	if action.State == appconnector.ActionUnknown {
+		if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+			return DeliveryView{}, err
+		}
+	} else if action.State == appconnector.ActionSucceeded {
+		if s.deps.Dispatcher == nil {
+			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+		}
+		snap, err := s.deps.Dispatcher.snapshotOfDelivery(ctx, row)
+		if err != nil {
+			return DeliveryView{}, err
+		}
+		if _, err = s.deps.Dispatcher.QueryProvider(ctx, snap, ""); err != nil {
+			return DeliveryView{}, err
+		}
+	} else {
+		return DeliveryView{}, fmt.Errorf("%w: action state %s", ErrDeliveryState, action.State)
 	}
 	return s.viewAfter(ctx, in, row.ID)
 }
