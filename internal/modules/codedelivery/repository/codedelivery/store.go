@@ -101,6 +101,37 @@ func (s *DeliveryStore) TransitionState(ctx context.Context, tenantID uint64, id
 	return nil
 }
 
+// TransitionStateWithReceipts atomically records remote facts and settles the
+// state under the same source-state CAS. A rejected CAS writes neither.
+func (s *DeliveryStore) TransitionStateWithReceipts(ctx context.Context, tenantID uint64, id string, from []string, to, failure string, update ReceiptUpdate) error {
+	if len(from) == 0 {
+		return ErrDeliveryStateConflict
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		patch := map[string]any{"state": to, "failure": failure}
+		if update.CommitSHA != "" {
+			patch["commit_sha"] = update.CommitSHA
+		}
+		if update.PRNumber != 0 {
+			patch["pr_number"] = update.PRNumber
+		}
+		if update.PRURL != "" {
+			patch["pr_url"] = update.PRURL
+		}
+		if update.RemoteLogin != "" {
+			patch["remote_login"] = update.RemoteLogin
+		}
+		res := tx.Model(&DeliveryRow{}).Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, id, from).Updates(patch)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrDeliveryStateConflict
+		}
+		return nil
+	})
+}
+
 // RecordReceipts writes remote receipts; only non-zero fields update.
 func (s *DeliveryStore) RecordReceipts(ctx context.Context, tenantID uint64, id string, update ReceiptUpdate) error {
 	patch := map[string]any{}

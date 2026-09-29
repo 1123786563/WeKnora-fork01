@@ -440,7 +440,7 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
 		if err != nil {
 			return DeliveryView{}, err
 		}
-		if _, err = s.deps.Dispatcher.QueryProvider(ctx, snap, ""); err != nil {
+		if _, err = s.deps.Dispatcher.QueryProviderConfirmed(ctx, snap, "", in.ConfirmNoMatchingPR); err != nil {
 			return DeliveryView{}, err
 		}
 	} else {

@@ -309,13 +309,8 @@ func (d *DeliveryDispatcher) QueryProviderConfirmed(ctx context.Context, snap ap
 		return appconnectorsvc.DispatchOutcome{}, rerr
 	}
 	if receipt != nil {
-		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
-			PRNumber: receipt.Number, PRURL: receipt.URL,
-		}); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
-		}
-		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
-			[]string{string(DeliveryUnknown), string(DeliveryDispatched)}, string(DeliveryDelivered), ""); err != nil {
+		if err := d.deps.Store.TransitionStateWithReceipts(ctx, snap.TenantID, row.ID,
+			[]string{string(DeliveryUnknown), string(DeliveryDispatched)}, string(DeliveryDelivered), "", deliveryrepo.ReceiptUpdate{PRNumber: receipt.Number, PRURL: receipt.URL}); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
@@ -329,11 +324,12 @@ func (d *DeliveryDispatcher) QueryProviderConfirmed(ctx context.Context, snap ap
 		if !ownerConfirmed && row.State == string(DeliveryUnknown) {
 			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %s", ErrDeliveryConfirmationRequired, head)
 		}
-		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+		from := []string{string(DeliveryUnknown)}
+		if ownerConfirmed {
+			from = append(from, string(DeliveryDispatched))
 		}
-		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
-			[]string{string(DeliveryUnknown)}, string(DeliveryPushed), ""); err != nil {
+		if err := d.deps.Store.TransitionStateWithReceipts(ctx, snap.TenantID, row.ID,
+			from, string(DeliveryPushed), "", deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: branch pushed, draft PR absent"}, nil

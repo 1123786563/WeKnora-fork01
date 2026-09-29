@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -179,7 +180,17 @@ func (h *WorkbenchDeliveryHandler) ResolveDeliveryUnknown(c *gin.Context) {
 		ConfirmNoMatchingPR bool `json:"confirm_no_matching_pr"`
 	}
 	if c.Request.Body != nil {
-		dec := json.NewDecoder(c.Request.Body)
+		raw, readErr := io.ReadAll(c.Request.Body)
+		if readErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid resolve body"})
+			return
+		}
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) > 0 && trimmed[0] != '{' {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid resolve body"})
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid resolve body"})

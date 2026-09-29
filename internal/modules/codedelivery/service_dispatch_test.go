@@ -235,6 +235,49 @@ func TestUnknownOutcomeResolvesFromRemoteFacts(t *testing.T) {
 	require.Empty(t, f.github.Violations())
 }
 
+func TestDispatchedSucceededActionNeedsAndAcceptsConfirmation(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.failNextPRCreation()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), view.State)
+	require.NoError(t, f.svc.deps.Store.TransitionState(ctx, 7, view.ID, []string{string(DeliveryPushed)}, string(DeliveryDispatched), "simulated interrupted settlement"))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryDispatched), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	require.NotEmpty(t, resolved.CommitSHA)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+}
+
+func TestDispatchedUnknownActionSettlesBothRecordsWithConfirmation(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryUnknown), view.State)
+	f.github.liftBlackout()
+	require.NoError(t, f.svc.deps.Store.TransitionState(ctx, 7, view.ID, []string{string(DeliveryUnknown)}, string(DeliveryDispatched), "simulated delayed action settlement"))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	in.ConfirmNoMatchingPR = true
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+}
+
 // A02 拒绝（成员资格撤销）：动作不消费、零远端调用。
 func TestDispatchFailsClosedWhenConnectionUnusable(t *testing.T) {
 	f := seededFixture(t)
