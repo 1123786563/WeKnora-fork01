@@ -24,6 +24,7 @@ export function taskDetailRouteIdentity(snapshot: RuntimeSnapshot, lease: ScopeL
 function sameTaskDetailRouteIdentity(left: TaskDetailRouteIdentity | undefined, right: TaskDetailRouteIdentity | undefined): boolean {
   return left === right || (left !== undefined && right !== undefined && left.deploymentOrigin === right.deploymentOrigin && left.userId === right.userId && left.tenantId === right.tenantId && left.lease === right.lease && left.taskId === right.taskId && left.runId === right.runId);
 }
+const SCOPE_CHANGED_COPY = '登录状态或活动空间已变化，请重新进入任务详情后重试';
 
 /** Recovery action is bound to the run and authorized module captured by its render. */
 export function createDeliveryRecoveryAction(options: {
@@ -36,6 +37,7 @@ export function createDeliveryRecoveryAction(options: {
   setDelivery(view: DeliveryReceiptView): void;
   clearError(): void;
   setError(message: string): void;
+  setCurrentScopeError?(): void;
 }): (input: { runId: string; deliveryId: string }) => Promise<DeliveryReceiptView> {
   return async (input) => {
     if (!options.isCurrentRun() || input.runId !== options.runId) {
@@ -44,8 +46,8 @@ export function createDeliveryRecoveryAction(options: {
     }
     options.clearError();
     if (options.currentRecovery() !== options.capturedRecovery || !sameTaskDetailRouteIdentity(options.currentIdentity?.(), options.capturedIdentity)) {
-      const message = '授权或活动空间已变化，请重新进入任务详情后重试';
-      options.setError(message);
+      if (options.setCurrentScopeError !== undefined) options.setCurrentScopeError();
+      else options.setError(SCOPE_CHANGED_COPY);
       throw new Error('delivery recovery authorization changed');
     }
     try {
@@ -55,7 +57,8 @@ export function createDeliveryRecoveryAction(options: {
     } catch (error: unknown) {
       if (!options.isCurrentRun()) throw error;
       if (options.currentRecovery() !== options.capturedRecovery || !sameTaskDetailRouteIdentity(options.currentIdentity?.(), options.capturedIdentity)) {
-        options.setError('授权或活动空间已变化，请重新进入任务详情后重试');
+        if (options.setCurrentScopeError !== undefined) options.setCurrentScopeError();
+        else options.setError(SCOPE_CHANGED_COPY);
       } else {
         options.setError(error instanceof DeliveryRecoveryError ? (DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')) : '恢复请求失败，请稍后重试');
       }
@@ -146,6 +149,10 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
     setDelivery: (view) => { if (routeIdentity !== undefined) setDelivery({ identity: routeIdentity, view }); },
     clearError: () => setRecoveryIssue(undefined),
     setError: (message) => { if (routeIdentity !== undefined) setRecoveryIssue({ identity: routeIdentity, message }); },
+    setCurrentScopeError: () => {
+      const identity = taskDetailRouteIdentity(runtime.snapshot(), runtime.scopeLease(), taskId, runId);
+      setState({ identity, value: { loading: false, error: SCOPE_CHANGED_COPY } });
+    },
   });
   const visibleState = sameTaskDetailRouteIdentity(state.identity, routeIdentity) ? state.value : { loading: true };
   return <TaskDetailScreen view={visibleState.view} loading={visibleState.loading} error={visibleState.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={deliveryForRoute(delivery, routeIdentity)} recoveryError={recoveryErrorForRoute(recoveryIssue, routeIdentity)} onRecoverDelivery={onRecoverDelivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
