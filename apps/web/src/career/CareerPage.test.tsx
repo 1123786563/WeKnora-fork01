@@ -36,6 +36,10 @@ const button = (container: HTMLElement, label: string): HTMLElement => {
  const found = [...container.querySelectorAll('.t-button')].find((item) => item.textContent?.trim() === label)
  assert.ok(found, `button ${label} exists`); return found as HTMLElement
 }
+const nativeButton = (container: HTMLElement, label: string): HTMLButtonElement => {
+ const found = [...container.querySelectorAll('button')].find((item) => item.textContent?.trim() === label)
+ assert.ok(found, `button ${label} exists`); return found as HTMLButtonElement
+}
 
  test('all mutation controls stay blocked until an unknown result is reconciled, then retry reuses the same action id', async () => {
   const sent: CareerAction[] = []; let tries = 0
@@ -123,11 +127,12 @@ test('manual project, internship and skill entries submit exact keys and values 
   { label: '实习经历', key: 'internship.company', value: 'Example Co' },
   { label: '技能', key: 'skill.name', value: 'Go' },
  ]
- const selector = container.querySelector('[role="combobox"]') as HTMLElement
- assert.ok(selector, `field selector rendered: ${container.innerHTML.slice(-1800)}`)
+ assert.match(container.textContent ?? '', /已确认档案/, `loaded profile visible: ${container.textContent}`)
+ const selector = container.querySelector('.t-select input') as HTMLElement
+ assert.ok(selector, 'manual field selector is rendered')
  for (const [index, item] of cases.entries()) {
   await act(async () => { selector.click(); await new Promise((resolve) => setImmediate(resolve)) })
-  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((candidate) => candidate.textContent?.trim() === item.label)
+  const option = [...document.querySelectorAll<HTMLElement>('.t-select-option')].find((candidate) => candidate.textContent?.trim() === item.label)
   assert.ok(option, `${item.label} is selectable without a resume`)
   await act(async () => { option!.click(); await new Promise((resolve) => setImmediate(resolve)) })
   const valueInput = container.querySelector('input[placeholder="填写待确认内容"]') as HTMLInputElement
@@ -137,8 +142,40 @@ test('manual project, internship and skill entries submit exact keys and values 
   assert.equal(sent[index]?.action, 'confirm')
   assert.equal(sent[index]?.key, item.key)
   assert.equal(sent[index]?.value, item.value)
+  assert.deepEqual(sent[index]?.source, { kind: 'user', label: '本人确认' })
   assert.match(container.textContent ?? '', new RegExp(item.value))
  }
+})
+
+test('confirmed deletion keeps parent profile and source list cleared when reload rejects', async () => {
+ let opens = 0
+ const documentSource = { id: 'source-private', revision: 2, fileName: 'private-resume.pdf', mimeType: 'application/pdf', size: 12, digest: 'private-digest', status: 'ready' as const, createdAt: 'now' }
+ const container = await mount({
+  open: async () => { opens += 1; if (opens > 3) throw Object.assign(new Error('reload offline'), { code: 'NETWORK_ERROR' }); return profile },
+  list: async () => profile, changes: async () => ({ revision: 1, changes: [] }),
+  sources: async () => [documentSource], reminders: async () => ({ reminders: [] }),
+  act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  careerDeletionBoundary: async () => ({
+   inSpace: [{ section: 'profile', description: '档案事实', count: 1 }],
+   external: [{ item: 'external_platform_submissions', description: '不可撤回', revocable: false }],
+   retention: [{ holder: 'career_data_deletions', reason: '删除审计', status: 'retained' }],
+  }),
+  deleteCareer: async (input: Record<string, unknown>) => ({ kind: 'career_deleted', requestId: input.requestId, status: 'deleted', steps: ['revoke_material_exports','purge_career_data','remove_workbench_tasks','finalize'].map((name) => ({ name, status: 'done' })), retention: [{ holder: 'career_data_deletions', reason: '删除审计', status: 'retained' }], revision: 2, startedAt: 'now', completedAt: 'now' }),
+ } as never)
+ assert.match(container.textContent ?? '', /本科/)
+ assert.match(container.textContent ?? '', /private-resume\.pdf/)
+ await act(async () => { nativeButton(container, '查看删除边界').click(); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
+ const checkbox = container.querySelector<HTMLInputElement>('.wk-lifecycle__ack input[type="checkbox"]')!
+ const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(checkbox), 'checked')?.set
+ setter?.call(checkbox, true)
+ await act(async () => { checkbox.dispatchEvent(new dom.window.Event('click', { bubbles: true })) })
+ await act(async () => { nativeButton(container, '发起完整删除').click(); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.ok(opens > 3, 'the post-deletion profile reload was attempted and rejected')
+ assert.doesNotMatch(container.textContent ?? '', /本科|2027|private-resume\.pdf/)
+ assert.match(container.textContent ?? '', /已完全删除/)
+ assert.match(container.textContent ?? '', /删除审计/)
+ assert.equal(container.querySelector('[aria-label="简历来源版本"]'), null)
+ assert.equal(container.querySelector<HTMLInputElement>('#career-resume-file')?.disabled, false)
 })
 
 test('failed resume upload preserves confirmed facts and offers a fresh attempt', async () => {
