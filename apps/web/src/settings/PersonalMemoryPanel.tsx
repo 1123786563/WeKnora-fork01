@@ -46,14 +46,14 @@ const DEFAULT_DRAFT: MemoryDraft = {
 // Vue loadConfig 的字段回退（cfg.x || default / !== false）。
 function readDraft(value: unknown): MemoryDraft {
   const row = value !== null && typeof value === 'object' && !Array.isArray(value) ? value as MemoryRow : {};
-  const num = (key: string, fallback: number): number => (typeof row[key] === 'number' && row[key] !== 0 ? row[key] as number : fallback);
+  const num = (key: string, fallback: number, allowZero = false): number => (typeof row[key] === 'number' && Number.isFinite(row[key]) && (allowZero || row[key] !== 0) ? row[key] as number : fallback);
   return {
     enabled: row.enabled === true,
     write_mode: row.write_mode === 'auto' ? 'auto' : 'explicit_only',
     extract_model_id: typeof row.extract_model_id === 'string' && row.extract_model_id ? row.extract_model_id : '',
     max_items: num('max_items', 200),
     extract_delay_seconds: num('extract_delay_seconds', 90),
-    extract_min_interval_seconds: num('extract_min_interval_seconds', 300),
+    extract_min_interval_seconds: num('extract_min_interval_seconds', 300, true),
     extract_instructions: typeof row.extract_instructions === 'string' && row.extract_instructions ? row.extract_instructions : '',
     interest_threshold: num('interest_threshold', 3),
     retrieval_conditioning: row.retrieval_conditioning !== false,
@@ -68,9 +68,16 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
   const [models, setModels] = useState<ModelSelectorModel[]>([]);
   const saveTimerRef = useRef<number | null>(null);
   const draftRef = useRef(draft);
+  const draftGenerationRef = useRef(0);
+  const savingRef = useRef(false);
   draftRef.current = draft;
 
-  useEffect(() => { setDraft(readDraft(initialConfig)); }, [initialConfig]);
+  useEffect(() => {
+    const next = readDraft(initialConfig);
+    draftGenerationRef.current = 0;
+    draftRef.current = next;
+    setDraft(next);
+  }, [initialConfig]);
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
@@ -93,7 +100,50 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
   }, [client]);
 
   function update(patch: Partial<MemoryDraft>) {
-    setDraft((current) => ({ ...current, ...patch }));
+    draftGenerationRef.current += 1;
+    setDraft((current) => {
+      const next = { ...current, ...patch };
+      draftRef.current = next;
+      return next;
+    });
+  }
+
+  function saveLatest() {
+    if (savingRef.current || !canEdit) return;
+    savingRef.current = true;
+    const generation = draftGenerationRef.current;
+    const next = draftRef.current;
+    void (async () => {
+      let succeeded = false;
+      try {
+        await client.settings.memory.workspace.update(memoryWorkspacePatch(
+          next.enabled, next.write_mode, next.max_items, next.vector_recall, next.retrieval_conditioning,
+          {
+            extractModelId: next.extract_model_id,
+            extractDelaySeconds: next.extract_delay_seconds,
+            extractMinIntervalSeconds: next.extract_min_interval_seconds,
+            extractInstructions: next.extract_instructions,
+            interestThreshold: next.interest_threshold,
+            embeddingModelId: next.embedding_model_id,
+          },
+        ) as never);
+        succeeded = true;
+      } catch (reason) {
+        if (generation === draftGenerationRef.current) {
+          const message = reason instanceof Error ? reason.message : '';
+          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveFailed', { message }));
+        }
+      } finally {
+        savingRef.current = false;
+        if (generation !== draftGenerationRef.current) {
+          if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+          saveLatest();
+        } else if (succeeded) {
+          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveSuccess'), 'success');
+        }
+      }
+    })();
   }
 
   // Vue saveConfig（debouncedSave 500ms，isInitializing/canEdit 抑制）。
@@ -102,26 +152,7 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null;
-      void (async () => {
-        const next = draftRef.current;
-        try {
-          await client.settings.memory.workspace.update(memoryWorkspacePatch(
-            next.enabled, next.write_mode, next.max_items, next.vector_recall, next.retrieval_conditioning,
-            {
-              extractModelId: next.extract_model_id,
-              extractDelaySeconds: next.extract_delay_seconds,
-              extractMinIntervalSeconds: next.extract_min_interval_seconds,
-              extractInstructions: next.extract_instructions,
-              interestThreshold: next.interest_threshold,
-              embeddingModelId: next.embedding_model_id,
-            },
-          ) as never);
-          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveSuccess'), 'success');
-        } catch (reason) {
-          const message = reason instanceof Error ? reason.message : '';
-          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveFailed', { message }));
-        }
-      })();
+      saveLatest();
     }, 500);
   }
 
