@@ -17,7 +17,7 @@ The ticket implementation already exists on BASE `db234c5`; its confirmed iOS 27
 ## Ownership and intended interface
 
 - Role: frontend_implementer. Validator: frontend_validator. Independent reviewer: reviewer.
-- Owned files: `apps/mobile/package.json`, `apps/mobile/app.json`, `pnpm-lock.yaml`, new `apps/mobile/src/native-project-config.test.ts`, `apps/mobile/src/android-release-config.test.ts` (only its Expo dependency version assertions), `apps/mobile/src/release-deps.test.ts` (only audio/network SDK-major assertions), and `docs/testing/mobile-runtime-login-device-acceptance.md`.
+- Owned files: `apps/mobile/package.json`, `apps/mobile/app.json`, `pnpm-lock.yaml`, new `apps/mobile/src/native-project-config.test.ts`, `apps/mobile/src/android-release-config.test.ts` (only its Expo dependency version assertions), `apps/mobile/src/release-deps.test.ts` (only audio/network SDK-major assertions), and `apps/mobile/src/app-smoke.test.tsx` only if needed for its hand-written React stub to support the selected React 19.2.3 JSX runtime; preserve all existing assertions, and `docs/testing/mobile-runtime-login-device-acceptance.md`.
 - Expected config: Expo SDK `~57.0.23` or compatible newer SDK57 patch; `expo-build-properties` version compatible with scene support; plugin has `ios.enableSceneSupport=true`; top-level `expo.ios.deploymentTarget="16.4"`.
 - Preserve WeKnora Mobile Runtime, auth/capability gates, routes, custom scheme, Android behavior, workspace boundaries. No handwritten SceneDelegate or committed generated iOS output.
 

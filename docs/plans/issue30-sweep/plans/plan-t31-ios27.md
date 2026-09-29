@@ -40,6 +40,7 @@
 | `apps/mobile/src/native-project-config.test.ts` | Public config invariants for SDK floor, scene opt-in, and iOS minimum. |
 | `apps/mobile/src/android-release-config.test.ts` | Keep the release dependency contract aligned to the SDK57 versions selected by Expo. |
 | `apps/mobile/src/release-deps.test.ts` | Update the direct Expo 55 major-version assertions affected by the SDK upgrade. |
+| `apps/mobile/src/app-smoke.test.tsx` | Keep its React module stub compatible with SDK57 React 19.2.3 JSX runtime, preserving existing behavior assertions. |
 | `docs/testing/mobile-runtime-login-device-acceptance.md` | Add the iOS 27 simulator build/install/start evidence and remaining real staging-device cases. |
 
 Generated `apps/mobile/ios/` output is verification-only and must not be committed.
