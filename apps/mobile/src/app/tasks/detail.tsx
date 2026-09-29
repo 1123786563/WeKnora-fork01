@@ -1,18 +1,72 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { DeliveryRecoveryError, TaskOfficeError, type DeliveryReceiptView } from '@weknora/mobile-core';
+import { DeliveryRecoveryError, TaskOfficeError, type DeliveryReceiptView, type DeliveryRecovery } from '@weknora/mobile-core';
 import { activeDeliveryReader, activeDeliveryRecovery, activeTaskOffice } from '../../composition.ts';
 import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailController, type TaskDetailViewState } from '../../task-detail-view.ts';
 import { DELIVERY_RECOVERY_COPY, TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
+
+/** Recovery action is bound to the run and authorized module captured by its render. */
+export function createDeliveryRecoveryAction(options: {
+  runId: string;
+  capturedRecovery: DeliveryRecovery;
+  currentRecovery(): DeliveryRecovery | undefined;
+  isCurrentRun(): boolean;
+  setDelivery(view: DeliveryReceiptView): void;
+  clearError(): void;
+  setError(message: string): void;
+}): (input: { runId: string; deliveryId: string }) => Promise<DeliveryReceiptView> {
+  return async (input) => {
+    if (!options.isCurrentRun() || input.runId !== options.runId) {
+      options.setError('任务已切换，请重新进入详情后重试');
+      throw new Error('task detail run changed');
+    }
+    options.clearError();
+    if (options.currentRecovery() !== options.capturedRecovery) {
+      const message = '授权或活动空间已变化，请重新进入任务详情后重试';
+      options.setError(message);
+      throw new Error('delivery recovery authorization changed');
+    }
+    try {
+      const view = await options.capturedRecovery.recover(input);
+      if (options.isCurrentRun() && options.currentRecovery() === options.capturedRecovery) options.setDelivery(view);
+      return view;
+    } catch (error: unknown) {
+      if (!options.isCurrentRun()) throw error;
+      if (options.currentRecovery() !== options.capturedRecovery) {
+        options.setError('授权或活动空间已变化，请重新进入任务详情后重试');
+      } else {
+        options.setError(error instanceof DeliveryRecoveryError ? (DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')) : '恢复请求失败，请稍后重试');
+      }
+      throw error;
+    }
+  };
+}
+
+export function deliveryForRoute(delivery: DeliveryReceiptView | undefined, taskId: string, runId: string): DeliveryReceiptView | undefined {
+  return delivery?.taskId === taskId && delivery.runId === runId ? delivery : undefined;
+}
+
+export function recoveryErrorForRoute(issue: { taskId: string; runId: string; message: string } | undefined, taskId: string, runId: string): string | undefined {
+  return issue?.taskId === taskId && issue.runId === runId ? issue.message : undefined;
+}
 
 /** /tasks/detail 挂载生命周期宿主：handle 在 effect 内创建、卸载即 dispose——与 /resources 同一模式。 */
 export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpenBudget, onOpenVoiceRoom }: { taskId: string; runId: string; onOpenMaterials?: () => void; onOpenBudget?: () => void; onOpenVoiceRoom?: () => void }) {
   const [state, setState] = useState<TaskDetailViewState>({ loading: true });
   const [delivery, setDelivery] = useState<DeliveryReceiptView | undefined>(undefined);
-  const [recoveryError, setRecoveryError] = useState<string | undefined>(undefined);
+  const [recoveryIssue, setRecoveryIssue] = useState<{ taskId: string; runId: string; message: string } | undefined>(undefined);
+  const currentIdentityRef = useRef({ taskId, runId });
+  if (currentIdentityRef.current.taskId !== taskId || currentIdentityRef.current.runId !== runId) {
+    currentIdentityRef.current = { taskId, runId };
+  }
+  const routeIdentity = currentIdentityRef.current;
   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
   // 交付回执读一次（不阻塞详情渲染；失败静默——交付区块缺失是合法空态）。
   // 刷新路径 onRefresh 不拉交付：回执不因刷新而变，重进页面即重读。
+  useEffect(() => {
+    setDelivery(undefined);
+    setRecoveryIssue(undefined);
+  }, [taskId, runId]);
   useEffect(() => {
     const reader = activeDeliveryReader();
     if (reader === undefined) return;
@@ -48,16 +102,15 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
       controllerRef.current = undefined;
     };
   }, [taskId, runId]);
-  const onRecoverDelivery = activeDeliveryRecovery() === undefined ? undefined : (input: { runId: string; deliveryId: string }) => {
-    setRecoveryError(undefined);
-    const recovery = activeDeliveryRecovery();
-    if (recovery === undefined) return Promise.reject(new Error('unauthorized'));
-    return recovery.recover(input).then((view) => { setDelivery(view); return view; }, (error: unknown) => {
-      setRecoveryError(error instanceof DeliveryRecoveryError ? (DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')) : '恢复请求失败，请稍后重试');
-      throw error;
-    });
-  };
-  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={delivery} recoveryError={recoveryError} onRecoverDelivery={onRecoverDelivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
+  const activeRecovery = activeDeliveryRecovery();
+  const onRecoverDelivery = activeRecovery === undefined ? undefined : createDeliveryRecoveryAction({
+    runId, capturedRecovery: activeRecovery, currentRecovery: activeDeliveryRecovery,
+    isCurrentRun: () => currentIdentityRef.current === routeIdentity,
+    setDelivery,
+    clearError: () => setRecoveryIssue(undefined),
+    setError: (message) => setRecoveryIssue({ taskId, runId, message }),
+  });
+  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={deliveryForRoute(delivery, taskId, runId)} recoveryError={recoveryErrorForRoute(recoveryIssue, taskId, runId)} onRecoverDelivery={onRecoverDelivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
 }
 
 /** Expo Router 文件路由：/tasks/detail?taskId=..&runId=..。只消费 Task Office Interface。 */
