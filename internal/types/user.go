@@ -179,6 +179,9 @@ type OIDCConfigResponse struct {
 	Success             bool   `json:"success"`
 	Enabled             bool   `json:"enabled"`
 	ProviderDisplayName string `json:"provider_display_name,omitempty"`
+	// SSOOnly tells the frontend that OIDC is the sole auth entry so the
+	// credential form should be hidden entirely (config sso_only && enable).
+	SSOOnly bool `json:"sso_only"`
 }
 
 type OIDCCallbackResponse struct {

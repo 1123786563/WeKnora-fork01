@@ -4,7 +4,7 @@ export interface LoginInput { email: string; password: string }
 export interface RegisterInput { username: string; email: string; password: string }
 export interface RegistrationResult { user: Record<string, unknown>; tenant?: Record<string, unknown> | null }
 export interface RegistrationConfig { registrationMode: string; complexPasswordEnabled: boolean }
-export interface OIDCConfig { enabled: boolean; providerDisplayName?: string }
+export interface OIDCConfig { enabled: boolean; providerDisplayName?: string; ssoOnly?: boolean }
 export interface OIDCURL { authorizationUrl: string; state: string }
 export interface AcceptInvitationByTokenResult {
   membership: { tenantId: number };
@@ -120,6 +120,9 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
       return {
         enabled: requiredBoolean(root.enabled, 'OIDC enabled'),
         providerDisplayName: root.provider_display_name === undefined ? undefined : requiredString(root.provider_display_name, 'OIDC provider display name'),
+        // sso_only 是可选透传字段：后端未配置时键整个省略（映射为 falsy 会破坏
+        // 调用方对旧响应形状的 deepEqual 契约），配置了则透传布尔值。
+        ...(root.sso_only === undefined ? {} : { ssoOnly: root.sso_only === true }),
       };
     },
     async oidcUrl(redirectURI: string, frontendRedirectURI?: string, codeChallenge?: string): Promise<OIDCURL> {

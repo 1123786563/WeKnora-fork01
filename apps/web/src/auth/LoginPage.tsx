@@ -82,6 +82,9 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);
   const [oidcEnabled, setOIDCEnabled] = useState(false);
   const [oidcProvider, setOIDCProvider] = useState('');
+  // sso_only（Casdoor SSO）：后端 /auth/oidc/config 的 ssoOnly 标记——为 true 时
+  // 账密/注册表单整体隐藏，页面只剩 hero 与 SSO 入口卡片。
+  const [ssoOnly, setSsoOnly] = useState(false);
   const [oidcLoading, setOIDCLoading] = useState(false);
   const [invite, setInvite] = useState<InvitationLookup | null>(null);
   const [inviteError, setInviteError] = useState('');
@@ -130,6 +133,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       setRegistrationLoaded(true);
       if (oidc.status === 'fulfilled') {
         setOIDCEnabled(oidc.value.enabled);
+        setSsoOnly(oidc.value.ssoOnly === true);
         if (oidc.value.providerDisplayName) setOIDCProvider(oidc.value.providerDisplayName);
       }
     });
@@ -411,7 +415,22 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
 
     <div className="form-section">
       <div className="form-panel">
-        {!isRegister ? <div className="form-card">
+        {/* sso_only 模式：账密/注册表单全部隐藏，SSO 按钮从登录 Form 内移出，
+            成为这张卡片里的唯一入口（startOIDC 同一实现，行为不变）。 */}
+        {ssoOnly ? <div className="form-card" data-testid="sso-only-card">
+          <div className="form-header">
+            <h2 className="form-title">{t('auth.login')}</h2>
+            <p className="form-welcome">{t('auth.subtitle')}</p>
+          </div>
+
+          <div className="form-content">
+            <Button type="button" theme="primary" size="large" block loading={oidcLoading} className="oidc-button" onClick={() => void startOIDC()}>
+              {oidcLoading ? t('auth.redirectingToOIDC') : oidcProvider ? t('auth.oidcLoginWithProvider', { provider: oidcProvider }) : t('auth.oidcLogin')}
+            </Button>
+          </div>
+        </div> : null}
+
+        {!isRegister && !ssoOnly ? <div className="form-card">
           {/* invite_only 模式下共享链接停在登录卡，同样需要邀请上下文（Login.vue:180-194）。 */}
           {inviteBanner('inviteRegister.bannerHintLogin')}
           {inviteError ? <div className="invite-banner invite-banner--error">{inviteError}</div> : null}
@@ -472,7 +491,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           </div>
         </div> : null}
 
-        {isRegister && (registrationEnabled || invite) ? <div className="form-card">
+        {isRegister && !ssoOnly && (registrationEnabled || invite) ? <div className="form-card">
           {inviteBanner('inviteRegister.bannerHint')}
           {inviteError ? <div className="invite-banner invite-banner--error">{inviteError}</div> : null}
           <div className="form-header">

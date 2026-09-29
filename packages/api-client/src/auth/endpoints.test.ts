@@ -118,3 +118,18 @@ test('includes the mobile PKCE verifier in the server-side exchange body', async
     body: { code: 'provider-code', state: 'mobile-state', code_verifier: 'verifier-value' },
   });
 });
+
+// sso_only (Casdoor SSO): the backend /auth/oidc/config flag telling the web
+// login page to hide the credential form. It must stay optional — absent on
+// deployments without sso_only — so it is omitted, not defaulted to false.
+test('oidcConfig surfaces sso_only as ssoOnly', async () => {
+  const calls: Array<{ method: string; path: string }> = [];
+  const auth = createAuthApi(async (request) => {
+    calls.push(request);
+    return { success: true, enabled: true, sso_only: true, provider_display_name: 'Casdoor' };
+  });
+  const cfg = await auth.oidcConfig();
+  assert.equal(cfg.enabled, true);
+  assert.equal(cfg.ssoOnly, true);
+  assert.deepEqual(calls[0], { method: 'GET', path: '/api/v1/auth/oidc/config' });
+});

@@ -499,7 +499,7 @@ func (h *AuthHandler) OIDCStart(c *gin.Context) {
 
 // GetOIDCConfig godoc
 // @Summary      获取OIDC登录配置
-// @Description  返回OIDC是否启用以及provider展示名称，供前端决定是否展示OIDC登录入口
+// @Description  返回OIDC是否启用、provider展示名称以及是否sso_only（仅SSO入口，前端据此隐藏账密表单）
 // @Tags         认证
 // @Accept       json
 // @Produce      json
@@ -508,16 +508,19 @@ func (h *AuthHandler) OIDCStart(c *gin.Context) {
 func (h *AuthHandler) GetOIDCConfig(c *gin.Context) {
 	providerDisplayName := ""
 	enabled := false
+	ssoOnly := false
 
 	if h.configInfo != nil && h.configInfo.OIDCAuth != nil {
 		enabled = h.configInfo.OIDCAuth.Enable
 		providerDisplayName = strings.TrimSpace(h.configInfo.OIDCAuth.ProviderDisplayName)
+		ssoOnly = h.configInfo.OIDCAuth.SSOOnly && h.configInfo.OIDCAuth.Enable
 	}
 
 	c.JSON(http.StatusOK, &types.OIDCConfigResponse{
 		Success:             true,
 		Enabled:             enabled,
 		ProviderDisplayName: providerDisplayName,
+		SSOOnly:             ssoOnly,
 	})
 }
 

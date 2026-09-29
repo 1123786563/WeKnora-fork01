@@ -137,6 +137,23 @@ test('OIDC failure without a backend message falls back to the Vue auth.oidcLogi
   assert.match(document.querySelector('[data-testid="auth-toast"]')?.textContent ?? '', /OIDC 登录失败/);
 });
 
+// sso_only (Casdoor SSO)：/auth/oidc/config 返回 ssoOnly=true 时登录页隐藏
+// 账密/注册表单，页面只剩 hero 与 SSO 入口卡片，且 SSO 按钮仍然接线。
+test('sso_only hides the password form and keeps the SSO entry', async () => {
+  const client = fakeClient();
+  (client.auth as Record<string, unknown>).oidcConfig = async () => ({ enabled: true, ssoOnly: true });
+  (client.auth as Record<string, unknown>).oidcUrl = async () => { throw new Error('OIDC unavailable'); };
+  await mountLogin(client);
+  assert.equal(document.querySelectorAll('input[autocomplete="email"]').length, 0, 'sso_only hides the email input');
+  assert.equal(document.querySelectorAll('input[autocomplete="current-password"]').length, 0, 'sso_only hides the password input');
+  assert.equal(document.querySelector('form.t-form'), null, 'sso_only renders no credential form');
+  assert.equal([...document.querySelectorAll('button')].some((node) => (node.textContent ?? '').includes('创建账户')), false, 'sso_only hides the register CTA');
+  const oidc = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('OIDC')) as HTMLButtonElement;
+  assert.ok(oidc, 'expected the SSO entry button');
+  await act(async () => { oidc.click(); await settle(10); });
+  assert.match(document.querySelector('[data-testid="auth-toast"]')?.textContent ?? '', /OIDC unavailable/);
+});
+
 // R445 A4: Vue Login.vue:522-528 — selecting a language persists it and toasts
 // language.languageSaved through MessagePlugin.success.
 test('selecting a language toasts the Vue language.languageSaved confirmation', async () => {
