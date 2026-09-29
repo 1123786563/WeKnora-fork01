@@ -65,7 +65,7 @@ function InboxTodoRow({ item, applicationRef }: { item: ReminderView; applicatio
 // stops the pushes while the todos stay readable here. Writes carry a
 // request ID and the pinned profile revision; an unknown outcome recovers
 // through the receipt of the original request ID, never a new one.
-export function InboxPage({ client, scopeController }: { client: WeKnoraClient; scopeController: ScopeController }): ReactNode {
+export function InboxPage({ client, scopeController, deletionGeneration = 0 }: { client: WeKnoraClient; scopeController: ScopeController; deletionGeneration?: number }): ReactNode {
  const scope = scopeController.current()
  const [todos, setTodos] = useState<ReminderView[]>()
  const [applicationRefs, setApplicationRefs] = useState<Record<string, ApplicationRef | 'failed'>>()
@@ -80,6 +80,7 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
  const [message, setMessage] = useState('')
  const [notice, setNotice] = useState('')
  const writeInFlight = useRef(false)
+ const deletionEpoch = useRef(deletionGeneration)
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setTodos(undefined); setApplicationRefs(undefined); setReadState(nextState); setReadMessage(notice)
@@ -91,6 +92,12 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
   requestScope.signal?.addEventListener('abort', clear, { once: true })
   return () => requestScope.signal?.removeEventListener('abort', clear)
  }, [clearPrivate, scopeController, scope.scope.generation])
+
+ useEffect(() => {
+  if (deletionEpoch.current === deletionGeneration) return
+  deletionEpoch.current = deletionGeneration
+  clearPrivate('个人求职空间已删除，已清除收件箱内容。', 'scope-changed')
+ }, [clearPrivate, deletionGeneration])
 
  const readView = useCallback(async (): Promise<CareerView | undefined> => {
   const requestScope = scopeController.current()
@@ -112,7 +119,7 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
   const read = async (): Promise<void> => {
    try {
     const next = await client.career.reminders(requestScope.signal)
-    if (!active || !scopeController.isCurrent(requestScope.scope)) return
+    if (!active || !scopeController.isCurrent(requestScope.scope) || deletionEpoch.current !== deletionGeneration) return
     // Progress-event todos deep-link into the authoritative application
     // detail; the pinned snapshot is resolved through the application
     // receipt so the link opens exactly the application the todo binds to.
@@ -122,17 +129,17 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
      if (!applicationId || applicationId in refs) continue
      try {
       const receipt = await client.career.application(applicationId, requestScope.signal)
-      if (!scopeController.isCurrent(requestScope.scope)) return
+      if (!scopeController.isCurrent(requestScope.scope) || deletionEpoch.current !== deletionGeneration) return
       refs[applicationId] = { snapshotId: receipt.pinnedEvidence.snapshotId, opportunityId: receipt.pinnedEvidence.opportunityId }
      } catch {
-      if (!scopeController.isCurrent(requestScope.scope)) return
+      if (!scopeController.isCurrent(requestScope.scope) || deletionEpoch.current !== deletionGeneration) return
       refs[applicationId] = 'failed'
      }
     }
-    if (!active) return
+    if (!active || deletionEpoch.current !== deletionGeneration) return
     setTodos(next.reminders); setApplicationRefs(refs); setReadState('ready')
    } catch (cause) {
-    if (!active || !scopeController.isCurrent(requestScope.scope)) return
+    if (!active || !scopeController.isCurrent(requestScope.scope) || deletionEpoch.current !== deletionGeneration) return
     setTodos(undefined)
     const parsed = errorDetails(cause)
     if (parsed.code === 'forbidden') { setReadState('forbidden'); setReadMessage('当前空间不可访问收件箱。请切换到本人拥有的单成员个人空间后重试。'); return }

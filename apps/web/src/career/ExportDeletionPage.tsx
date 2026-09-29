@@ -44,7 +44,7 @@ function DeletionStepRow({ step }: { step: CareerDeletionStep }): ReactNode {
 // which rows are retained. The page never claims complete deletion while
 // any step failed, and after a real deletion it re-reads the pre-deletion
 // export receipt to prove the old grant is dead before clearing caches.
-export function ExportDeletionPage({ client, scopeController, onCareerDeleted }: { client: WeKnoraClient; scopeController: ScopeController; onCareerDeleted?: () => void }): ReactNode {
+export function ExportDeletionPage({ client, scopeController, onCareerDeleted, deletionGeneration = 0 }: { client: WeKnoraClient; scopeController: ScopeController; onCareerDeleted?: () => void; deletionGeneration?: number }): ReactNode {
  const scope = scopeController.current()
  const [revision, setRevision] = useState<number | undefined>()
  const [revisionState, setRevisionState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -69,6 +69,8 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  const exportInFlight = useRef(false)
  const deletionInFlight = useRef(false)
  const deletedAnnounced = useRef(false)
+ const observedDeletionGeneration = useRef(deletionGeneration)
+ const deletionReceiptRef = useRef<CareerDeletionReceipt | undefined>(undefined)
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   revisionReadSequence.current++
@@ -79,6 +81,18 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
   setScopeRecoveryLoading(false)
   lastExportRequest.current = undefined; deletedAnnounced.current = false
  }, [])
+ useEffect(() => {
+  if (observedDeletionGeneration.current === deletionGeneration) return
+  observedDeletionGeneration.current = deletionGeneration
+  const receipt = deletion
+  deletionReceiptRef.current = receipt?.status === 'deleted' ? receipt : deletionReceiptRef.current
+  const terminalReceipt = deletionReceiptRef.current
+  clearPrivate('个人求职空间已删除，已清除导出包与待处理操作。', 'scope-changed')
+  if (terminalReceipt?.status === 'deleted') {
+   setDeletion(terminalReceipt)
+   setDeletionMessage(`空间已完全删除（完成于 ${terminalReceipt.completedAt ?? ''}）。保留范围已在下方披露。`)
+  }
+ }, [clearPrivate, deletion, deletionGeneration])
  useEffect(() => {
   const requestScope = scopeController.current()
   const clear = () => clearPrivate('空间已切换或登录已失效，已清除导出与删除内容。', 'scope-changed')
@@ -243,6 +257,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
   setDeletion(next)
   setAcknowledged(false)
   if (next.status === 'deleted') {
+   deletionReceiptRef.current = next
    setDeletionAttempt(undefined); setDeletionPhase('idle')
    setDeletionMessage(`空间已完全删除（完成于 ${next.completedAt ?? ''}）。保留范围已在下方披露。`)
    if (!deletedAnnounced.current) {
@@ -382,15 +397,15 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
     {deletion?.status === 'partial' && deletionAttempt && deletionPhase !== 'busy' ? <div className="wk-lifecycle__actions"><button type="button" onClick={() => void runDeletion(deletionAttempt)}>用原请求编号重试删除</button></div> : null}
     {deletionMessage && deletionPhase !== 'idle' ? <p className={deletionPhase === 'error' ? 'wk-lifecycle__message wk-lifecycle__message--error' : 'wk-lifecycle__message'} role={deletionPhase === 'error' ? 'alert' : 'status'} aria-live="polite">{deletionMessage}</p> : null}
     {deletionPhase === 'error' && deletionConflict !== undefined ? <div className="wk-lifecycle__actions"><button type="button" onClick={() => { setDeletionConflict(undefined); void readRevision() }}>重新读取档案修订</button></div> : null}
-    {deletion ? <section className={deletion.status === 'deleted' ? 'wk-lifecycle__receipt wk-lifecycle__receipt--deleted' : deletion.status === 'partial' ? 'wk-lifecycle__receipt wk-lifecycle__receipt--partial' : 'wk-lifecycle__receipt'} aria-label="删除结果">
-     <h4>删除状态：{deletionStatusLabels[deletion.status]}</h4>
-     {deletion.status === 'deleted' && deletion.completedAt ? <p className="wk-lifecycle__receipt-meta">完成于 <time dateTime={deletion.completedAt}>{deletion.completedAt}</time> · 起始于 <time dateTime={deletion.startedAt}>{deletion.startedAt}</time> · 空间修订 {deletion.revision}</p> : <p className="wk-lifecycle__receipt-meta">起始于 <time dateTime={deletion.startedAt}>{deletion.startedAt}</time> · 空间修订 {deletion.revision}</p>}
-     <ol className="wk-lifecycle__steps" aria-label="删除步骤">{deletion.steps.map((step) => <DeletionStepRow key={step.name} step={step} />)}</ol>
-     <h4>保留范围与状态</h4>
-     <ul>{deletion.retention.map((item) => <li key={item.holder}>{item.holder}：{item.reason}（{item.status}）</li>)}</ul>
-    </section> : null}
-    {verifyMessage ? <p className="wk-lifecycle__message" role="status" aria-live="polite">{verifyMessage}</p> : null}
    </fieldset>
   </>}
+  {deletion ? <section className={deletion.status === 'deleted' ? 'wk-lifecycle__receipt wk-lifecycle__receipt--deleted' : deletion.status === 'partial' ? 'wk-lifecycle__receipt wk-lifecycle__receipt--partial' : 'wk-lifecycle__receipt'} aria-label="删除结果">
+   <h4>删除状态：{deletionStatusLabels[deletion.status]}</h4>
+   {deletion.status === 'deleted' && deletion.completedAt ? <p className="wk-lifecycle__receipt-meta">完成于 <time dateTime={deletion.completedAt}>{deletion.completedAt}</time> · 起始于 <time dateTime={deletion.startedAt}>{deletion.startedAt}</time> · 空间修订 {deletion.revision}</p> : <p className="wk-lifecycle__receipt-meta">起始于 <time dateTime={deletion.startedAt}>{deletion.startedAt}</time> · 空间修订 {deletion.revision}</p>}
+   <ol className="wk-lifecycle__steps" aria-label="删除步骤">{deletion.steps.map((step) => <DeletionStepRow key={step.name} step={step} />)}</ol>
+   <h4>保留范围与状态</h4>
+   <ul>{deletion.retention.map((item) => <li key={item.holder}>{item.holder}：{item.reason}（{item.status}）</li>)}</ul>
+  </section> : null}
+  {verifyMessage ? <p className="wk-lifecycle__message" role="status" aria-live="polite">{verifyMessage}</p> : null}
  </section>
 }
