@@ -6,6 +6,8 @@
 - Branch: `codex/issue30-b6-t63-task3`
 - BASE: `0fa8c3d162332dfe532e2adf2556f9622ffccf8a`
 - Implementation HEAD: `1897d6491` (`feat(marketplace): add lifecycle service and deprecated release gates`)
+- Full review package: `.superpowers/sdd/plan-t63/review-package-task-3-0fa8c3d..a51b354.patch`
+- Review package SHA-256: `7af8d4d1457bce77b98808bff8931f47c457300b6e704c7c14c1cc41977d925a`
 - Touched package paths: `internal/types/interfaces`; `internal/application/service`
 - Runtime role/model: runtime did not expose role/model metadata.
 
