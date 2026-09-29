@@ -163,10 +163,17 @@ function makeClient(options: {
   typePresets?: Array<Record<string, unknown>> | null;
   placeholders?: Record<string, Array<Record<string, unknown>>> | null;
   promptTemplates?: Record<string, Array<Record<string, unknown>>> | null;
-} = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
+  /** 发布集成 fixtures：IM/嵌入渠道计数 + 共享空间/共享行（Vue loadAgentIntegrationCounts / AgentShareSettings） */
+  imChannels?: Array<Record<string, unknown>>;
+  embedChannels?: Array<Record<string, unknown>>;
+  organizations?: Array<Record<string, unknown>>;
+  agentShares?: Array<Record<string, unknown>>;
+} = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[]; shareCalls: Array<{ kind: 'create' | 'remove'; agentId: string; shareId?: string; organizationId?: string }> } {
   const requests: RoutedRequest[] = [];
   const mbtiSubmits: Array<Record<string, 'A' | 'B'>> = [];
   const subagentCalls: SubagentCall[] = [];
+  const shareCalls: Array<{ kind: 'create' | 'remove'; agentId: string; shareId?: string; organizationId?: string }> = [];
+  let serverShares = [...(options.agentShares ?? [])];
   // server-side installed list the install/remove endpoints mutate + return;
   // seeded to match the agent fixture so responses mirror the stored config
   let installedSubagents = options.initialSubagents ?? ['code-reviewer'];
@@ -264,8 +271,37 @@ function makeClient(options: {
                 : { data: options.promptTemplates, success: true },
           },
     },
+    // 发布集成（Vue listIMChannels / listEmbedChannels / organizations.agentShares）
+    // —— 按需注入：未传对应 fixture 时不提供端点，模态按「端点缺失」处理（计数保持 0），
+    //    既有用例不为此多跑一轮异步 effect。
+    ...(options.imChannels === undefined && options.embedChannels === undefined ? {} : {
+      embed: {
+        im: { listByAgent: async () => [...(options.imChannels ?? [])] },
+        channels: { listByAgent: async () => [...(options.embedChannels ?? [])] },
+      },
+    }),
+    ...(options.organizations === undefined && options.agentShares === undefined ? {} : {
+      identity: {
+        organizations: {
+          list: async () => ({ items: [...(options.organizations ?? [])] }),
+          agentShares: {
+            list: async () => ({ items: [...serverShares], total: serverShares.length }),
+            create: async (agentId: string, input: { organization_id: string }) => {
+              shareCalls.push({ kind: 'create', agentId, organizationId: input.organization_id });
+              const row = { id: 'share-' + (serverShares.length + 1), agent_id: agentId, organization_id: input.organization_id, organization_name: '空间' + (serverShares.length + 1), permission: 'viewer', created_at: '2026-09-01T10:00:00Z' };
+              serverShares = [...serverShares, row];
+              return row;
+            },
+            remove: async (agentId: string, shareId: string) => {
+              shareCalls.push({ kind: 'remove', agentId, shareId });
+              serverShares = serverShares.filter((row) => row.id !== shareId);
+            },
+          },
+        },
+      },
+    }),
   };
-  return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls };
+  return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls, shareCalls };
 }
 
 let mountedRoot: Root | undefined;
@@ -954,6 +990,88 @@ test('skills section renders the manage-sandboxes link navigating to settings?sa
     link!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
   assert.equal(window.location.pathname + window.location.search, '/platform/settings?section=sandbox');
+});
+
+// --- 发布集成（Vue AgentEditorModal.vue 77-96 发布渠道行 + 1767-1771/2680-2711 共享管理） ---
+
+const SHARE_ORGS = [
+  { id: 'org-1', name: '研发空间', is_owner: true },
+  { id: 'org-2', name: '运营空间', my_role: 'admin' },
+  { id: 'org-3', name: '访客空间', my_role: 'viewer' },
+];
+const SHARE_ROWS = [
+  { id: 's-1', agent_id: 'a-1', organization_id: 'org-1', organization_name: '研发空间', shared_by_username: 'alice', permission: 'viewer', created_at: '2026-08-01T08:00:00Z' },
+];
+
+test('edit own agent: 发布集成 rail group + 共享管理 section renders the share panel and mutations', async () => {
+  const { client, shareCalls } = makeClient({ organizations: SHARE_ORGS, agentShares: SHARE_ROWS });
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  // rail：第 4 组「发布集成」+ share 项（Vue navGroups 2707-2711）
+  assert.match(document.body.textContent ?? '', /发布集成/);
+  assert.ok($('[data-section-key="share"]', root), 'share nav item missing');
+  await goto(root, 'share');
+  const section = $('[data-editor-section="share"]', root);
+  assert.ok(section, 'share section missing');
+  const text = section!.textContent ?? '';
+  assert.match(text, /共享到共享空间/);
+  assert.match(text, /将智能体共享到共享空间/);
+  assert.match(text, /已共享到/);
+  assert.equal($('[data-share-count]', section)?.textContent, '1');
+  assert.match(text, /研发空间/);
+  assert.match(text, /来自 alice/);
+  assert.match(text, /只读/);
+  // 添加共享：内联 popup 选空间（org-2 可选，org-1 已共享、org-3 只读不可选）
+  await click(section, '[data-share-add-trigger]');
+  const popup = $('[data-share-add-popup]', section)!;
+  const orgSelect = popup.querySelector('[data-share-add-org]') as HTMLSelectElement;
+  const optionValues = Array.from(orgSelect.options).map((option) => option.value);
+  assert.deepEqual(optionValues.filter(Boolean), ['org-2'], 'only unshared owner/admin/editor orgs are offered');
+  await setValue(section, '[data-share-add-org]', 'org-2');
+  await click(popup, '[data-share-add-confirm]');
+  assert.deepEqual(shareCalls, [{ kind: 'create', agentId: 'a-1', organizationId: 'org-2' }]);
+  assert.equal($('[data-share-count]', root)?.textContent, '2');
+  // 取消共享：内联确认（Vue t-popconfirm）
+  await click(root, '[data-share-unshare-trigger]');
+  await click(root, '[data-share-unshare-confirm]');
+  assert.deepEqual(shareCalls.slice(1), [{ kind: 'remove', agentId: 'a-1', shareId: 's-1' }]);
+  assert.equal($('[data-share-count]', root)?.textContent, '1');
+});
+
+test('edit own agent: basic 发布渠道 row shows counts and navigates to the integrations center', async () => {
+  let closed = 0;
+  const { client } = makeClient({
+    imChannels: [{ id: 'im-1' }, { id: 'im-2' }],
+    embedChannels: [{ id: 'embed-1' }],
+  });
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT, onClose: () => { closed += 1; } });
+  const section = $('[data-editor-section="basic"]', root)!;
+  assert.match(section.textContent ?? '', /发布渠道/);
+  const imLink = $('[data-goto-integrations="im"]', section)!;
+  const embedLink = $('[data-goto-integrations="embed"]', section)!;
+  assert.match(imLink.textContent ?? '', /IM 集成 · 2/);
+  assert.match(embedLink.textContent ?? '', /网页嵌入 · 1/);
+  await act(async () => {
+    embedLink.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  assert.equal(closed, 1, 'gotoIntegrations closes the editor first (Vue handleClose)');
+  assert.equal(
+    window.location.pathname + window.location.search,
+    '/platform/settings?section=integration-embed&agentId=a-1',
+  );
+});
+
+test('publish surfaces stay off in create mode and share nav hides for builtin agents', async () => {
+  const { client } = makeClient({ organizations: SHARE_ORGS, agentShares: SHARE_ROWS });
+  const created = await mountModal({ client, mode: 'create' });
+  assert.equal($('[data-section-key="share"]', created), null, 'no share nav in create mode');
+  assert.equal($('[data-integration-inline]', created), null, 'no publish-channels row in create mode');
+
+  const builtin = { ...EDIT_AGENT, is_builtin: true };
+  const builtinRoot = await mountModal({ client, mode: 'edit', agent: builtin });
+  // Vue 2680: share nav needs !is_builtin; the basic 发布渠道 row only needs an
+  // edit-session id (Vue 78), so builtin agents keep the row.
+  assert.equal($('[data-section-key="share"]', builtinRoot), null, 'no share nav for builtin agents');
+  assert.ok($('[data-integration-inline]', builtinRoot), 'publish-channels row stays for builtin agents (Vue 78 gate)');
 });
 
 // --- R485 D1: the three Vue sections the React rail omitted ------------------------------

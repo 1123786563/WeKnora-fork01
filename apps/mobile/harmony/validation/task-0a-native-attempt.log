@@ -1,0 +1,23 @@
+Task 0A native feasibility attempt
+Timestamp: 2026-09-29 Asia/Shanghai
+
+Native candidate: OpenHarmony SIG React Native for OpenHarmony (RNOH), using the upstream Harmony native application/HAP route. This is native Harmony rendering and packaging, not an Android APK compatibility container and not WebView.
+
+Source checkout commands/evidence:
+$ git clone --depth 1 --branch 5.0.0.813 https://gitee.com/openharmony-sig/ohos_react_native.git /tmp/issue140-ohos-react-native
+Tag resolves to source commit c33f63ace9efcb5df192c66e6aebbbf0c9fd3d20 (verified with git ls-remote).
+Package @rnoh/react-native-harmony version 0.72.48. Its package.json pins dependency react-native 0.72.5.
+
+$ git -C /tmp/issue140-ohos-react-native fetch --depth 1 origin master
+$ git -C /tmp/issue140-ohos-react-native checkout -q FETCH_HEAD
+Current upstream master observed 2026-09-29: bc7ad74d4df66886733d09f1c3b964caf022903a.
+Package @rnoh/react-native-harmony version 0.72.58; its package.json still pins dependency react-native 0.72.5. Upstream docs/zh-cn/环境搭建.md say the framework currently supports React Native 0.72.5 and setup targets HarmonyOS SDK API 13.
+
+$ rg -n '"react-native"|"expo"|expo-' apps/mobile/package.json
+The existing app is Expo SDK 55 / RN 0.83.10, not RNOH's documented/pinned RN 0.72.5.
+
+$ pnpm --dir apps/mobile exec expo prebuild --platform harmony --no-install
+CLI warns app config only declares ios, android; warns no Harmony template is available; skips Harmony project generation. Despite exit 0, no HAP project/build artifact is produced.
+
+$ command -v hvigor; command -v hdc; command -v ohpm
+All unavailable. No DevEco Studio installation at /Applications/DevEco-Studio.app. No Harmony device identity/HDC response exists. Therefore no HAP compilation, install, launch or on-device capability probe can be run in this environment.

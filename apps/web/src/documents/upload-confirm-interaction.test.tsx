@@ -90,12 +90,13 @@ async function renderPage(client: WeKnoraClient): Promise<Root> {
 }
 
 function dropFiles(files: File[]): void {
-  // tdesign 平移后拖放面 = .knowledge-main（Vue 全局拖放语义）。
-  const zone = document.querySelector('.knowledge-main');
-  assert.ok(zone, 'documents dropzone is mounted');
-  const event = new dom.window.Event('drop', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'dataTransfer', { value: { files } });
-  act(() => { zone.dispatchEvent(event); });
+  // 全局拖拽上传（Vue platform/index.vue 语义）：平台壳层监听 document 级
+  // drop 并派发 weknora:knowledge-file-drop；页面监听该事件暂存文件
+  //（本地 .knowledge-main onDrop 已收敛移除，壳层不在本测试挂载）。
+  const event = new dom.window.CustomEvent('weknora:knowledge-file-drop', {
+    detail: { kbId: 'kb-1', files },
+  });
+  act(() => { window.dispatchEvent(event); });
 }
 
 function confirmButton(): HTMLButtonElement {

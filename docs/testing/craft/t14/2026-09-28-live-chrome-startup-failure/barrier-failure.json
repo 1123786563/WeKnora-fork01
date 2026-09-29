@@ -1,0 +1,22 @@
+{
+  "cleanup": {
+    "errors": [],
+    "helper_ids_before_cleanup": [],
+    "helper_ids_removed": [],
+    "policy_cleanup_record": null,
+    "renderer_absent_confirmed": true,
+    "renderer_id": "5770a5d05f1e406ba5a34d7f75a1b959644eb2e1de9b5fafeb57b2a7d8bda9c9",
+    "renderer_inspect_returncode": 1,
+    "renderer_remove_returncode": 0,
+    "status": "verified-clean"
+  },
+  "completed_windows": [],
+  "container_id": "5770a5d05f1e406ba5a34d7f75a1b959644eb2e1de9b5fafeb57b2a7d8bda9c9",
+  "controller_records": [],
+  "error": "host receipt read failed: Error response from daemon: container 5770a5d05f1e406ba5a34d7f75a1b959644eb2e1de9b5fafeb57b2a7d8bda9c9 is not running\n",
+  "error_type": "RuntimeError",
+  "nonce": "6010d2df557fb5b7edbeec24c6fa6f39eca3ea3560036a89",
+  "renderer_log_sha256": "198900086cf59f22931b7e99839dabf89a568f0b04065c0620fde70960eba8e3",
+  "renderer_stderr_sha256": "d4b7326b721c29910cae895e6e3935766321c9c61fc86baaa26f82e9f9f3b8c6",
+  "status": "incomplete"
+}

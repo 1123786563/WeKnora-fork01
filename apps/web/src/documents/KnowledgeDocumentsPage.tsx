@@ -115,6 +115,7 @@ function listRowStatus(document: KnowledgeDocument, t: (key: string) => string):
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import { navigate } from "../platform/navigation.ts";
+import { KNOWLEDGE_FILE_DROP_EVENT } from "../platform/global-file-drop.ts";
 import {
   applyUploadOverrides,
   asrSectionIssue,
@@ -3059,7 +3060,9 @@ export function KnowledgeDocumentsPage({
   const [uploadStates, setUploadStates] = useState<readonly UploadEntryState[]>(
     [],
   );
-  const [dragActive, setDragActive] = useState(false);
+  // dragActive 已随本地 dropzone 收敛移除：拖拽视觉反馈与文件接收统一切到
+  // 平台壳层全局遮罩 + weknora:knowledge-file-drop（Vue KnowledgeBase.vue
+  // 语义——页面只挂自定义事件监听，无原生 drop 处理器）。
   const [manualTitle, setManualTitle] = useState("");
   const [manualContent, setManualContent] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -3523,6 +3526,27 @@ export function KnowledgeDocumentsPage({
     if (merged.addedCount > 0) showStageNotice(ct("uploadConfirm.filesAdded", { count: merged.addedCount }), "neutral");
     else if (merged.duplicateCount > 0) showStageNotice(ct("uploadConfirm.filesAllDuplicate"), "warning");
   }
+
+  // Vue KnowledgeBase.vue:1275-1279/1352 — 平台壳层全局拖拽（platform/
+  // index.vue handleGlobalDrop 知识库分支）校验 KB 初始化后派发
+  // weknora:knowledge-file-drop；页面按 kbId 匹配把文件投入上传暂存
+  // （handleUploadSourceFiles 同位）。本地 .knowledge-main 原生 onDrop 已
+  // 收敛移除，避免同一 drop 双重暂存；refs 透传最新闭包，监听只挂一次。
+  const knowledgeFileDropRef = useRef({ kbId: knowledgeBaseId, canContribute, stageFiles });
+  knowledgeFileDropRef.current = { kbId: knowledgeBaseId, canContribute, stageFiles };
+  useEffect(() => {
+    const handleKnowledgeFileDrop = (event: Event) => {
+      const detail = (event as CustomEvent<{ kbId?: string; files?: File[] }>).detail;
+      const current = knowledgeFileDropRef.current;
+      if (!detail || detail.kbId !== current.kbId) return;
+      if (!Array.isArray(detail.files) || detail.files.length === 0) return;
+      if (!current.canContribute) return;
+      current.stageFiles(detail.files);
+    };
+    window.addEventListener(KNOWLEDGE_FILE_DROP_EVENT, handleKnowledgeFileDrop as EventListener);
+    return () => window.removeEventListener(KNOWLEDGE_FILE_DROP_EVENT, handleKnowledgeFileDrop as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Vue appendUrl: append to the staged URL list, dedupe with a warning.
   function appendStagedUrl(rawUrl: string, input: string): boolean {
@@ -4281,26 +4305,10 @@ export function KnowledgeDocumentsPage({
             is no manual reload button — uploads/uploads-in-progress refresh
             the lists through their own watchers. */}
       </div>
-      <div className="knowledge-main" data-drag-active={dragActive && canContribute ? "true" : undefined}
-            onDragOver={
-              canContribute
-                ? (event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }
-                : undefined
-            }
-            onDragLeave={canContribute ? () => setDragActive(false) : undefined}
-            onDrop={
-              canContribute
-                ? (event) => {
-                    event.preventDefault();
-                    setDragActive(false);
-                    stageFiles(event.dataTransfer.files);
-                  }
-                : undefined
-            }
-      >
+      {/* 拖拽上传由平台壳层全局监听接管（platform/global-file-drop.ts：
+          全屏遮罩 + weknora:knowledge-file-drop 派发，见上方监听）；本地
+          onDrop 已收敛，对齐 Vue KnowledgeBase.vue 无页面级 drop 处理器。 */}
+      <div className="knowledge-main">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
           {showFolderTree ? <aside className="wk-folder-panel wk-kd-105">
             {/* Vue folderTree title (目录), not documents.folders (文件夹). */}

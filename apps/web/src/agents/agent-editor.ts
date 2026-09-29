@@ -384,7 +384,7 @@ export const agentModeOf = (config: Record<string, unknown> | undefined): AgentM
 
 export type AgentSectionKey =
   | 'basic' | 'prompts' | 'model' | 'conversation' | 'suggestions' | 'knowledge' | 'retrieval'
-  | 'websearch' | 'multimodal' | 'tools' | 'mcp' | 'skills' | 'personalization' | 'subagents';
+  | 'websearch' | 'multimodal' | 'tools' | 'mcp' | 'skills' | 'personalization' | 'subagents' | 'share';
 
 export type AgentFieldError =
   | 'name' | 'system_prompt' | 'context_template' | 'model_id'
@@ -457,7 +457,13 @@ export function buildAgentPayload(form: AgentEditorForm): Record<string, unknown
 export interface AgentNavItem { key: AgentSectionKey; icon: string; labelKey: string }
 export interface AgentNavGroup { key: string; labelKey: string; items: AgentNavItem[] }
 
-export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase: boolean }): AgentNavGroup[] {
+/**
+ * showShareNav ports the Vue「发布」gate (AgentEditorModal.vue:2680-2682):
+ * edit mode + a persisted agent id + non-builtin + not lite edition. The
+ * caller resolves those flags (the modal owns the lite-mode localStorage
+ * read, mirroring Vue authStore.isLiteMode).
+ */
+export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase: boolean; showShareNav?: boolean }): AgentNavGroup[] {
   const items: AgentNavItem[] = [
     { key: 'basic', icon: 'info-circle', labelKey: 'agent.editor.basicInfo' },
     { key: 'prompts', icon: 'file-paste', labelKey: 'agent.editor.promptsConfig' },
@@ -483,6 +489,10 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     // entries were a visible parity diff on ix-agents-create. Both sections
     // remain reachable through the initialSection deep link.
   }
+  // 发布（仅编辑模式且非内置智能体，Vue 2679-2682）
+  if (options.showShareNav) {
+    items.push({ key: 'share', icon: 'share', labelKey: 'knowledgeEditor.sidebar.share' });
+  }
   const byKey = new Map(items.map((item) => [item.key, item]));
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
     keys.map((key) => byKey.get(key)).filter((item): item is AgentNavItem => item !== undefined);
@@ -492,6 +502,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
     // Vue capability order: multimodal, tools, mcp, skills
     { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['multimodal', 'tools', 'mcp', 'skills']) },
+    // Vue 2707-2711 — 第 4 组「发布集成」只装 share（空组照旧被过滤）
+    { key: 'integration', labelKey: 'agentEditor.navGroups.integration', items: pick(['share']) },
   ].filter((group) => group.items.length > 0);
 }
 

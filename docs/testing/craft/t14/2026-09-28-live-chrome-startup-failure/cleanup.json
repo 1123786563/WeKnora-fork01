@@ -1,0 +1,11 @@
+{
+  "errors": [],
+  "helper_ids_before_cleanup": [],
+  "helper_ids_removed": [],
+  "policy_cleanup_record": null,
+  "renderer_absent_confirmed": true,
+  "renderer_id": "5770a5d05f1e406ba5a34d7f75a1b959644eb2e1de9b5fafeb57b2a7d8bda9c9",
+  "renderer_inspect_returncode": 1,
+  "renderer_remove_returncode": 0,
+  "status": "verified-clean"
+}

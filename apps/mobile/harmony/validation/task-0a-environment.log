@@ -1,0 +1,54 @@
+Task 0A environment probe
+Timestamp: 2026-09-29 Asia/Shanghai
+Workspace: /Users/wuyongjun/.codex/worktrees/issue-140-p0a-harmony/WeKnora-fork01
+BASE: 477da9f677e0357ea8bc360c2802314fef534723
+Probe HEAD before task changes: 2c4438af69b4ea60e5cf783f2e1318f3147d593c
+
+$ uname -a
+Darwin wuyongjundeMacBook-Air.local 27.0.0: Tue Aug 11 21:02:59 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8142 arm64
+
+$ node --version
+v26.7.0
+
+$ pnpm --version
+10.28.2
+
+$ pnpm install --frozen-lockfile
+PASS; lockfile up to date; 1,949 packages installed; no lockfile changes.
+
+$ pnpm --dir apps/mobile exec expo --version
+55.0.36
+
+$ node -p "require('./apps/mobile/node_modules/react-native/package.json').version"
+0.83.10
+
+$ command -v hvigor
+(no output; unavailable)
+$ command -v hdc
+(no output; unavailable)
+$ command -v ohpm
+(no output; unavailable)
+$ command -v adb
+(no output; unavailable)
+$ command -v xcodebuild
+/usr/bin/xcodebuild (present; Apple-only and not a Harmony toolchain)
+$ test -d /Applications/DevEco-Studio.app
+FAIL (DevEco Studio not installed at the standard macOS application path)
+
+$ pnpm --dir apps/mobile exec expo prebuild --platform harmony --no-install
+⚠️ Requested prebuild for "harmony", but only "ios, android" is present in app config ("expo.platforms" entry). Continuing with "harmony".
+- Creating native directory (./harmony)
+⚠️ Skipping platform harmony. Use a template that contains native files for harmony (./harmony).
+- Creating native directory
+✔ Created native directory
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+✔ Finished prebuild
+Interpretation: command exit status 0, but no Harmony native project/template was generated; this is not a native build or pass. The unsupported target was explicitly warned/skipped.
+
+$ rg '"platforms"' apps/mobile/app.json
+"platforms": ["ios", "android"]
+
+$ rg '"react-native"|"expo"|"expo-' apps/mobile/package.json
+Expo SDK dependency range ~55.0.0; installed 55.0.36. React Native pinned 0.83.10. (See package.json for all Expo modules.)

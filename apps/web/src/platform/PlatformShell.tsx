@@ -53,6 +53,11 @@ import './platform-u.css';
 import '../../../../packages/views/src/guides/guides.css';
 import './platform-shell.td.css';
 import { Icon as TIcon } from 'tdesign-icons-react';
+// 全局拖拽上传（Vue platform/index.vue document 级监听 + upload-mask.vue）：
+// 壳层负责原生事件、计数式遮罩与 weknora:*-file-drop 派发；插画复用
+// documents 域同款 upload-mask.svg（与 Vue assets 逐字节一致）。
+import { fileUploadTitle, useGlobalFileDrop } from './global-file-drop.ts';
+import uploadMaskIllustration from '../documents/upload-mask.svg';
 
 // Vue menu.vue getImgSrc 同款解析（new URL(..., import.meta.url)）：vite 资产
 // 管线在 dev/build 均支持；node 直算 href 不加载文件，测试无需 svg 拦截。
@@ -940,6 +945,21 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     typeof shareApi?.share === 'function' && typeof shareApi?.unshare === 'function',
   );
 
+  // 全局拖拽上传的结果提示（Vue platform/index.vue 用 MessagePlugin 弹
+  // dragFileNotText / missingId / notInitialized / getInfoFailed）：壳层没有
+  // tdesign toast 通道，复用 SessionShareDialog 的 wk-shell-6 status 形态。
+  const [dragNotice, setDragNotice] = useState<string | null>(null);
+  const dragNoticeTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (dragNoticeTimer.current !== null) window.clearTimeout(dragNoticeTimer.current); }, []);
+  const showDragNotice = useCallback((message: string) => {
+    setDragNotice(message);
+    if (dragNoticeTimer.current !== null) window.clearTimeout(dragNoticeTimer.current);
+    dragNoticeTimer.current = window.setTimeout(() => setDragNotice(null), 2400);
+  }, []);
+  // document 级计数式拖拽监听（capture）+ 全屏遮罩态；drop 事件流见
+  // global-file-drop.ts 头注（聊天/知识库分支与 Vue 逐分支对齐）。
+  const uploadMaskVisible = useGlobalFileDrop({ client, locale, notify: showDragNotice });
+
   // `/platform/knowledge-search?q=...` redirects to `?cmdk=...` (routes.tsx).
   // Consume it once on mount, open the palette, and strip the param so
   // Back/Refresh doesn't reopen it (mirrors platform/index.vue's route.query.cmdk watcher).
@@ -1374,6 +1394,23 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         agentsEnabled={paletteAccess.canOpenAgents}
         retrievalSettings={paletteRetrievalSettings}
       />
+      {/* 全局拖拽上传遮罩（Vue platform/index.vue:7-9 .upload-mask >
+          upload-mask.vue .mask；样式 platform-shell.td.css 同构段）。 */}
+      {uploadMaskVisible ? (
+        <div className="upload-mask" data-testid="wk-upload-drag-mask">
+          <div className="mask">
+            <img className="upload-mask-img" src={uploadMaskIllustration} alt="" />
+            <span className="drag-txt">{fileUploadTitle(locale)}</span>
+            <span className="drag-type-txt">{t('knowledgeBase.pdfDocFormat')}</span>
+            <span className="drag-type-txt">{t('knowledgeBase.textMarkdownFormat')}</span>
+          </div>
+        </div>
+      ) : null}
+      {dragNotice ? (
+        <div role="status" aria-live="polite" className="wk-shell-6">
+          {dragNotice}
+        </div>
+      ) : null}
       {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
       <NewUserGuide locale={locale} actions={guideActions} />
       {/* Contextual guides (Vue mounts ContextualGuide/KbCreateContextualGuide/

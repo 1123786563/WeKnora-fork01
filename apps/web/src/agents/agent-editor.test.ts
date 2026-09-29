@@ -308,6 +308,31 @@ test('nav groups add retrieval with KB capability and tools/skills in agent mode
   assert.deepEqual(groups[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills']);
 });
 
+// 发布集成（Vue navItems 2679-2682 + navGroups 2707-2711）：share 项与第 4 组
+// 只在 showShareNav（编辑态 own 智能体且非 lite 版）出现。
+
+test('nav groups append the integration group with the share item when showShareNav is on', () => {
+  const groups = buildNavGroups({ isAgentMode: false, hasKnowledgeBase: false, showShareNav: true });
+  assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability', 'integration']);
+  const integration = groups[3]!;
+  assert.equal(integration.labelKey, 'agentEditor.navGroups.integration');
+  assert.deepEqual(integration.items.map((item) => item.key), ['share']);
+  const share = integration.items[0]!;
+  assert.equal(share.icon, 'share');
+  assert.equal(share.labelKey, 'knowledgeEditor.sidebar.share');
+});
+
+test('nav groups keep three groups without the share nav (create mode / builtin / lite)', () => {
+  assert.deepEqual(
+    buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true }).map((group) => group.key),
+    ['basic', 'knowledge', 'capability'],
+  );
+  assert.deepEqual(
+    buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true, showShareNav: false }).map((group) => group.key),
+    ['basic', 'knowledge', 'capability'],
+  );
+});
+
 // --- tool requirement evaluation (frontend/src/utils/tool-capabilities.ts) -----------
 
 test('tool requirements: base tools always ok, RAG tools need a RAG KB, wiki tools need wiki', () => {

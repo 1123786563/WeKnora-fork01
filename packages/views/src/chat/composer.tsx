@@ -9,6 +9,10 @@ export interface ChatSubmission {
   modelId?: string;
 }
 
+// Vue Input-field.vue:81 — 平台壳层全局拖拽上传在聊天路由派发的自定义事件
+//（frontend/src/views/platform/index.vue:166-169 同名派发）。
+export const CHAT_FILE_DROP_EVENT = 'weknora:chat-file-drop';
+
 export type ChatAttachmentStatus = 'pending' | 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
 
 export interface ChatAttachmentView {
@@ -229,6 +233,26 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  // Vue Input-field.vue:81/1821/1869 — CHAT_FILE_DROP_EVENT 监听随组件
+  // 挂载/卸载；handler 读取的 onAttachmentSelect 经 ref 透传最新值。
+  const attachmentSelectRef = useRef(onAttachmentSelect);
+  attachmentSelectRef.current = onAttachmentSelect;
+  useEffect(() => {
+    // 平台壳层（Vue platform/index.vue handleGlobalDrop 聊天分支）派发的
+    // weknora:chat-file-drop：把拖入文件投入输入框附件。Vue
+    // handleDroppedFiles（Input-field.vue:91-107）把图片/普通文件分流到
+    // 图片与附件两条管线；React 侧附件已统一为单一列表（R472-A2 图片
+    // 同走临时附件通道），因此统一经 onAttachmentSelect 进入，数量/大小/
+    // 类型校验由宿主 selectAttachment 承担（对齐 Vue AttachmentUpload
+    // .addFiles 的拒绝提示）。
+    const handleChatFileDrop = (event: Event) => {
+      const files = (event as CustomEvent<{ files?: File[] }>).detail?.files;
+      if (!files || files.length === 0) return;
+      for (const file of files) void attachmentSelectRef.current?.(file);
+    };
+    window.addEventListener(CHAT_FILE_DROP_EVENT, handleChatFileDrop as EventListener);
+    return () => window.removeEventListener(CHAT_FILE_DROP_EVENT, handleChatFileDrop as EventListener);
+  }, []);
   // Vue Input-field.vue prefill consume: nextTick(() => textarea.focus()).
   useEffect(() => {
     if (focusSignal) draftRef.current?.focus();

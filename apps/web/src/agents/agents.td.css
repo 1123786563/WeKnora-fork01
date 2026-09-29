@@ -4220,3 +4220,373 @@
   border-color: var(--td-brand-color-disabled) !important;
   color: var(--td-text-color-anti) !important;
 }
+
+/* --- 共享管理分区（Vue frontend/src/components/AgentShareSettings.vue +
+ * share-to-space-panel.less / share-to-space-panel.overlay.less 平移）。
+ * 类名 1:1 保留 Vue 命名；弹层（提示气泡 / 添加共享 / 取消确认）在 React 侧
+ * 渲染为编辑器内联面板（KBShareSettingsSection 同款移植取舍）。 */
+
+.settings-overlay .share-to-space-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-overlay .share-panel-header .share-panel-header-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.settings-overlay .share-panel-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-overlay .share-panel-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .share-panel-desc {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-overlay .share-hint-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.settings-overlay .share-hint-trigger-btn .t-icon {
+  display: block;
+}
+
+.settings-overlay .share-hint-trigger-btn:hover {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.settings-overlay .share-hint-trigger-btn:focus-visible {
+  outline: 2px solid var(--td-brand-color-focus);
+  outline-offset: 1px;
+}
+
+/* Vue t-popup hover 气泡 → 内联提示面板（overlay less 的 hint 样式） */
+.settings-overlay .share-hint-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.settings-overlay .share-hint-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1300;
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 24px));
+  max-width: min(400px, calc(100vw - 24px));
+  max-height: min(280px, 65vh);
+  overflow: hidden auto;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  box-shadow: var(--td-shadow-2), 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.settings-overlay .share-hint-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .share-hint-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-overlay .share-panel-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-overlay .share-panel-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+}
+
+.settings-overlay .share-panel-list-header .share-panel-titlewrap {
+  gap: 8px;
+}
+
+.settings-overlay .share-panel-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .share-panel-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.settings-overlay .share-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.settings-overlay .share-panel-search {
+  flex: 0 0 14rem;
+  width: 14rem;
+  min-width: 0;
+}
+
+.settings-overlay .share-panel-search .t-input {
+  width: 100%;
+}
+
+.settings-overlay .share-panel-add-btn {
+  flex-shrink: 0;
+}
+
+/* Vue t-popup 添加共享弹层 → 内联面板（overlay less 的 add-popup 样式） */
+.settings-overlay .share-add-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.settings-overlay .share-add-popup-inner {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1300;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 32px));
+  max-width: 100%;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  box-shadow: var(--td-shadow-2), 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.settings-overlay .share-add-popup-inner .member-invite-popup-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .share-add-popup-inner .org-upgrade-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-overlay .share-add-popup-inner .org-upgrade-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-overlay .share-add-popup-inner .org-upgrade-field--last {
+  margin-bottom: 0;
+}
+
+.settings-overlay .share-add-popup-inner .org-upgrade-field-label {
+  display: block;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .share-add-popup-inner .share-org-select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+}
+
+.settings-overlay .share-add-popup-inner .invite-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.settings-overlay .share-panel-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 0 8px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-overlay .share-panel-empty {
+  padding: 8px 0 16px;
+}
+
+.settings-overlay .share-panel-empty-text {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.settings-overlay .share-panel-table-shell {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+}
+
+.settings-overlay .share-panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.settings-overlay .share-panel-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  border-bottom: 1px solid var(--td-component-stroke);
+  white-space: nowrap;
+}
+
+.settings-overlay .share-panel-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  border-bottom: 1px solid var(--td-component-stroke);
+  vertical-align: middle;
+}
+
+.settings-overlay .share-panel-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.settings-overlay .share-panel-table tbody tr:hover {
+  background: var(--td-bg-color-container-hover);
+}
+
+.settings-overlay .share-panel-table .share-space-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.settings-overlay .share-panel-table .share-space-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  min-width: 0;
+}
+
+.settings-overlay .share-panel-table .share-space-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-overlay .share-panel-table .share-space-meta {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+/* Vue t-tag theme="default" variant="light" —— 智能体共享固定只读 */
+.settings-overlay .share-panel-table .share-permission-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: var(--td-radius-default);
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.settings-overlay .share-panel-table .share-table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Vue t-popconfirm → 内联确认 */
+.settings-overlay .share-panel-table .share-unshare-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.settings-overlay .share-panel-table .share-unshare-confirm-text {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  white-space: nowrap;
+}

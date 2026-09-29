@@ -80,6 +80,7 @@ import {
   type Translate,
 } from './agent-editor.ts';
 import { loadAgentEditorResources, resolveAgentEditorResources, type AgentEditorRuntimeData } from './agent-editor-resources.ts';
+import { AgentShareSettings } from './AgentShareSettings.tsx';
 import { AgentParserRules, chatParserGroups, ensureCompleteParserRules } from './AgentParserRules.tsx';
 import type { ParserEngineInfo, ParserEngineRule } from '../knowledge-settings/parserSettings.tsx';
 import { PersonaSection } from './PersonaSection.tsx';
@@ -293,6 +294,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const contextTemplateNodeRef = useRef<{ textareaElement: HTMLTextAreaElement | null } | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
+  // 发布渠道行计数（Vue agentIMChannelCount / agentEmbedChannelCount 3002-3003）
+  const [imChannelCount, setImChannelCount] = useState(0);
+  const [embedChannelCount, setEmbedChannelCount] = useState(0);
 
   useEffect(() => () => { if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current); }, []);
 
@@ -318,7 +322,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setInitializing(true);
     setSaveError(null);
     setIssues([]);
-    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization', 'knowledge', 'retrieval', 'websearch', 'multimodal', 'tools', 'mcp', 'skills', 'subagents'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
+    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization', 'knowledge', 'retrieval', 'websearch', 'multimodal', 'tools', 'mcp', 'skills', 'subagents', 'share'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
     const highlight = initialHighlightField && VALID_INITIAL_HIGHLIGHTS.has(initialHighlightField) ? initialHighlightField : null;
     setHighlightedField(highlight);
     setPostCreate(false);
@@ -441,6 +445,40 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  // 发布渠道行计数（Vue loadAgentIntegrationCounts 3005-3017；调用点 3472 编辑
+  // 打开 / 4827 post-create 首存 —— 等价为「编辑态且有持久化 id」时加载，失败清零）。
+  // 防御式取 embed 命名空间：测试桩 / embed 挂载可能没有该端点（PlatformShell 同款姿势）。
+  useEffect(() => {
+    if (!open || (mode !== 'edit' && !postCreate)) { return; }
+    const agentId = form.id;
+    if (!agentId) { setImChannelCount(0); setEmbedChannelCount(0); return; }
+    let active = true;
+    const embedApi = (client as unknown as {
+      embed?: {
+        im?: { listByAgent?: (agentId: string) => Promise<unknown[]> };
+        channels?: { listByAgent?: (agentId: string) => Promise<unknown[]> };
+      };
+    }).embed;
+    // 两端点都缺（测试桩 / embed 挂载）→ 保持 0 计数，不发请求也不进异步闭包
+    if (!embedApi?.im?.listByAgent && !embedApi?.channels?.listByAgent) return;
+    void (async () => {
+      try {
+        const [im, embed] = await Promise.all([
+          embedApi?.im?.listByAgent ? embedApi.im.listByAgent(agentId) : Promise.resolve([]),
+          embedApi?.channels?.listByAgent ? embedApi.channels.listByAgent(agentId) : Promise.resolve([]),
+        ]);
+        if (!active) return;
+        setImChannelCount(Array.isArray(im) ? im.length : 0);
+        setEmbedChannelCount(Array.isArray(embed) ? embed.length : 0);
+      } catch {
+        if (!active) return;
+        setImChannelCount(0);
+        setEmbedChannelCount(0);
+      }
+    })();
+    return () => { active = false; };
+  }, [open, mode, postCreate, form.id, client]);
+
   // R486 — Vue KBParserSettings ensureCompleteRules (onMounted → loadEngines):
   // once the parser registry is loaded, materialise a rule per chat-relevant
   // family so the stored config covers defaults too, not only touched rows.
@@ -470,6 +508,10 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const isAgentMode = form.config.agent_mode === 'smart-reasoning';
   const hasKnowledgeBase = kbMode !== 'none';
   const quickAnswer = !isAgentMode;
+  // Vue authStore.isLiteMode（stores/auth.ts:538 从持久化 key 读取、setLiteMode 写
+  // 同一 key）——React 侧读同一 durable key，PlatformShell 的 system-info edition
+  // 探测（menu.vue:986-991 同源）会先把它落盘。
+  const isLiteEdition = typeof window !== 'undefined' && window.localStorage.getItem('weknora_lite_mode') === 'true';
   // R485 D2 — Vue activeAgentTypePreset 3118-3123 (agent-mode gated); R491 —
   // looked up in the runtime catalog with the static table as the fallback.
   const activeAgentTypePreset = isAgentMode && form.config.agent_type && form.config.agent_type !== 'custom'
@@ -512,8 +554,15 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   );
 
   const navGroups = useMemo(
-    () => buildNavGroups({ isAgentMode, hasKnowledgeBase }),
-    [hasKnowledgeBase, isAgentMode],
+    // 「共享管理」nav 项门控 = Vue 2680：编辑态 + 有持久化 id + 非内置 + 非 lite 版。
+    // lite 信号读持久化 key（Vue authStore.isLiteMode 同源 weknora_lite_mode，
+    // PlatformShell 的 edition 探测会先写入该 key）。
+    () => buildNavGroups({
+      isAgentMode,
+      hasKnowledgeBase,
+      showShareNav: (mode === 'edit' || postCreate) && !!form.id && !form.is_builtin && !isLiteEdition,
+    }),
+    [hasKnowledgeBase, isAgentMode, mode, postCreate, form.id, form.is_builtin, isLiteEdition],
   );
 
   const evaluateTool = useCallback((tool: typeof TOOL_CATALOG[number]): { ok: boolean; missKind: string } => {
@@ -681,6 +730,16 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     }
   };
 
+  // 发布渠道跳转（Vue gotoIntegrations 3019-3024）：先关弹窗，再带
+  // section=integration-{im|embed}&agentId= 跳集成中心（integrationSectionKey
+  // 的前缀拼接等价展开；React 侧 navigate 与 storage/sandbox 跳转同一路径）。
+  const gotoIntegrations = (tab: 'im' | 'embed') => {
+    const agentId = form.id;
+    if (!agentId) return;
+    onClose();
+    navigate(`/platform/settings?section=integration-${tab}&agentId=${encodeURIComponent(agentId)}`);
+  };
+
   if (!open) return null;
 
   const editorMode: 'create' | 'edit' = postCreate ? 'edit' : mode;
@@ -785,6 +844,37 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                     <TIcon name="file-copy" />
                   </Button>
                 </Tooltip>
+              </div>
+            </Row>
+          ) : null}
+          {editId ? (
+            // 发布渠道行（Vue 77-96）：仅编辑态（含内置智能体 —— Vue 门控就是
+            // editorMode === 'edit' && editorAgent?.id，配置在集成中心）；desc 在
+            // post-create 首存会话换成引导文案（Vue 81 isPostCreateSession 分支）。
+            <Row
+              label={t('integrations.agentEditor.label')}
+              desc={postCreate ? t('agent.editor.postCreateHint.integrationDesc') : t('integrations.agentEditor.desc')}
+            >
+              <div className="integration-inline" data-integration-inline="">
+                <button
+                  type="button"
+                  className="integration-inline__stat integration-inline__link"
+                  data-goto-integrations="im"
+                  onClick={() => gotoIntegrations('im')}
+                >
+                  <span>{t('integrations.tabs.im')} · {imChannelCount}</span>
+                  <TIcon name="chevron-right" size="14px" />
+                </button>
+                <span className="integration-inline__sep" aria-hidden="true">|</span>
+                <button
+                  type="button"
+                  className="integration-inline__stat integration-inline__link"
+                  data-goto-integrations="embed"
+                  onClick={() => gotoIntegrations('embed')}
+                >
+                  <span>{t('integrations.tabs.embed')} · {embedChannelCount}</span>
+                  <TIcon name="chevron-right" size="14px" />
+                </button>
               </div>
             </Row>
           ) : null}
@@ -1922,6 +2012,17 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     return <SubagentsSection config={form.config} patchConfig={patchConfig} client={client} t={t} agentId={form.id ?? ''} />;
   }
 
+  // 共享管理分区（Vue 1767-1771：仅编辑模式且非内置智能体渲染 AgentShareSettings；
+  // 分区入口由 nav 门控保证编辑态 + form.id 存在，post-create 首存后用表单记录补 agent）。
+  function renderShare() {
+    const agentRecord = agent ?? (form.id ? { id: form.id, name: form.name, is_builtin: form.is_builtin, config: form.config } : null);
+    return (
+      <div className="section" data-editor-section="share">
+        <AgentShareSettings agentId={form.id ?? ''} agent={agentRecord} client={client} t={t} locale={locale} />
+      </div>
+    );
+  }
+
   function renderSkillRow(row: ReturnType<typeof catalogSkillRows>[number]) {
     const busy = row.installStatus === 'installing' || row.installStatus === 'removing';
     const canInstall = !busy && (!row.installed || row.installStatus === 'failed')
@@ -1976,6 +2077,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       case 'skills': return renderSkills();
       case 'personalization': return renderPersonalization();
       case 'subagents': return renderSubagents();
+      case 'share': return renderShare();
       default: return renderBasic();
     }
   };
