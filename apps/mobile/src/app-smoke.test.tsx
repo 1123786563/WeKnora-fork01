@@ -1687,7 +1687,7 @@ test('the task detail route reports when recovery authorization disappears after
   });
   currentRecovery = undefined;
   await assert.rejects(action({ runId: 'run-1', deliveryId: 'dlv-1' }));
-  assert.ok(visibleError?.includes('授权或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
+  assert.ok(visibleError?.includes('登录状态或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
 });
 
 test('the task detail route ignores recovery completion after the run changes', async () => {
@@ -1810,6 +1810,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
   assert.equal(signedOut.props.recoveryError, undefined, 'sign-out hides prior scope error synchronously');
   assert.equal(signedOut.props.onRecoverDelivery, undefined, 'sign-out removes the recovery action');
   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleSignOut = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleSignOut.props.delivery, undefined, 'sign-out never reveals the old receipt');
+  assert.match(String(afterStaleSignOut.props.error), /登录状态或活动空间已变化/, 'scope loss appears in the detail route general error surface');
 
   snapshot = {
     surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
@@ -1824,6 +1827,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
   assert.equal(switchedTenant.props.delivery, undefined, 'tenant switch does not reveal the previous tenant receipt');
   assert.equal(switchedTenant.props.recoveryError, undefined, 'tenant switch does not reveal the previous tenant error');
   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleTenantAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleTenantAction.props.delivery, undefined, 'tenant switch never reveals the old receipt');
+  assert.match(String(afterStaleTenantAction.props.error), /登录状态或活动空间已变化/, 'stale tenant action is visible on the current route');
 
   snapshot = {
     surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
@@ -1838,6 +1844,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
   assert.equal(reauthenticated.props.delivery, undefined, 'same origin/tenant with a new user and lease starts without prior receipt state');
   assert.equal(reauthenticated.props.recoveryError, undefined, 'same origin/tenant reauthentication starts without prior error state');
   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleReauthAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleReauthAction.props.delivery, undefined, 'reauthentication never reveals the previous user receipt');
+  assert.match(String(afterStaleReauthAction.props.error), /登录状态或活动空间已变化/, 'stale reauth action is visible without a delivery receipt section');
   hooks().__unmount();
   reactRuntime.useSyncExternalStore = originalUseSyncExternalStore;
 });
