@@ -131,7 +131,7 @@
 
 **Files:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, focused document action tests, and narrowly scoped CSS only if needed.
 
-**Consumes / produces:** Existing move destination and move-mode callbacks. Replace click-only destination and mode `div`s with native buttons and radio/checkbox controls as appropriate; preserve styling and selected state. Tests must focus a destination, invoke it through keyboard semantics, and assert that the existing callback receives the selected destination and mode.
+**Consumes / produces:** Existing move destination and move-mode callbacks. Replace click-only destination controls with native buttons. Represent the move modes as native toggle buttons inside a named group, using `aria-pressed` for the selected mode; do not claim `role=radio` unless implementing a complete radio group with arrow-key behavior. Preserve styling and selected state. Tests must focus a destination, invoke it through the supported keyboard interaction helper when available, and assert callback destination/mode payloads.
 
 **Steps:**
 
@@ -141,6 +141,25 @@
 - [ ] Commit a repair on the Task 1 branch and report RED/GREEN evidence plus any browser-only evidence.
 
 **Acceptance:** Every choice needed to finish a document move can be opened, selected and confirmed without a pointer.
+
+## Task 10: Align document move-mode semantics with keyboard behavior
+
+**Dependency:** Follow-up to UI review finding `UI-R2-DOC-02`; continue on the Task 1 repair branch after Task 8.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, focused document move tests, and scoped CSS only if selected state needs adjustment.
+
+**Consumes / produces:** Task 8 native move-mode buttons currently expose `role="radio"` without a containing radio group or arrow-key model. Replace that partial radio contract with a named button group and `aria-pressed` state, or implement a complete native radio group. Add assertions for group labeling, selected mode, and callback behavior. Keep both modes operable with Tab/Enter/Space and preserve the selected visual indicator.
+
+**Steps:**
+
+- [ ] Add a failing test for the current radio-without-group semantics and a selected-mode assertion.
+- [ ] Use a semantically complete grouped control; prefer native toggle buttons with `aria-pressed` unless full radio arrow-key behavior is implemented.
+- [ ] Run focused document tests and `git diff --check`; if the test environment cannot model native keyboard defaults, document the limitation and retain semantic DOM assertions for native buttons.
+- [ ] Commit and report.
+
+**Acceptance:** Assistive technology sees a coherent mode group and the selected mode; the controls remain keyboard operable without an incomplete radio contract.
 
 ## Task 9: Preserve Agent Editor section button layout and verify real keyboard semantics
 
