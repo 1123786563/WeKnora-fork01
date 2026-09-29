@@ -112,3 +112,15 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 5. Request independent scoped re-review; do not release R2 until R3-F1 passes or is explicitly adjudicated.
 
 **Status:** pending; R1 clean script and initial R3 fixtures are integrated. R3 remains unverified until this round passes review.
+
+## Task R3-F1: Include every app configuration and pin counterexamples (repair round 2)
+
+**Source:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-review.md` follow-up review message after `54a7dd071`; remaining Medium configuration blind spot plus low negative-fixture gaps.
+
+**Files:** `apps/mobile/scripts/verify-ios-scene-project.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, repair report/ledger only.
+
+**Change:** Parse every object ID in the WeKnora native target's `buildConfigurations` array without relying on inline Debug/Release labels; resolve each ID to its `XCBuildConfiguration` and reject missing or non-16.4 deployment value. Extend synthetic project with a third `Staging` configuration and negative drift there. Add negative plist where the Expo delegate marker occurs outside application-role scene mapping, and universal-link override without RCT forwarding while open-URL still forwards.
+
+**Verification:** RED/GREEN focused `ios-xcode27.test.ts`; full mobile test; typecheck; `verify-ios-scene-project.ts ios`; source diff-check. Commit, report/hash, scoped reviewer re-review before releasing Task R2.
+
+**Status:** pending.

@@ -33,3 +33,9 @@
 - Ruling: strengthen actual relationships and negative fixtures; reviewers supplied direct generated output and scenario evidence, so issue is valid. Cost if stricter parsing misreads a future legitimate Expo template: clean SDK bump requires updating contract/fixture.
 - Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r1-brief.md`; owned files bounded to checker/tests/report/ledger.
 - Status: pending → running after implementation role dispatch.
+
+## Review repair round 2: remaining R3 F1
+- Re-review after round 1 found that only inline Debug/Release-named config IDs were included; a referenced Staging app configuration could drift unnoticed. Low test gaps remain for unrelated scene marker and universal-link-specific forwarding.
+- Ruling: accept and fix; the gap is valid under the requirement “all app target configurations.” Cost if wrong: added parsing strictness might need amendment for new Xcode project format/config shape.
+- Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r2-brief.md`; exact owned code/test/report files recorded.
+- Status: pending → running.
