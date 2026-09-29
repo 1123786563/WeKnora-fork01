@@ -25,4 +25,4 @@
 - `apps/mobile/src/ios-framework-closure.test.ts`
 - This report.
 
-Commit SHA: pending.
+Commit SHA: `ed9754492113ecaf16715848d1ce371f1013dcd9`.
