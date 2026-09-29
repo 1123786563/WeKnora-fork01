@@ -71,6 +71,33 @@ func TestAgentRunAdmitSecurityDenialPreservesRetirementGateAndWritesNothing(t *t
 	require.ErrorIs(t, err, agentruntime.ErrAgentUseDenied)
 }
 
+func TestAgentRunAdmitRejectsSecurityPinsWithoutAgentID(t *testing.T) {
+	for _, shape := range []struct {
+		name    string
+		version string
+		release string
+	}{
+		{name: "version only", version: "trusted-version"},
+		{name: "release only", release: "trusted-release"},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			db := openRunTestDB(t)
+			in := testAdmission()
+			in.LocalAgentVersionID, in.ReleaseID = shape.version, shape.release
+			_, err := NewAgentRunStore(db).Admit(context.Background(), in)
+			require.ErrorIs(t, err, ErrAgentSecurityReleaseUnresolvable)
+			var count int64
+			require.NoError(t, db.Table("agent_runs").Count(&count).Error)
+			require.Zero(t, count)
+			require.NoError(t, db.Table("messages").Count(&count).Error)
+			require.Zero(t, count)
+			var slot *string
+			require.NoError(t, db.Table("sessions").Where("tenant_id = ? AND id = ?", 1, "s1").Select("active_agent_run_id").Scan(&slot).Error)
+			require.Nil(t, slot)
+		})
+	}
+}
+
 func TestAgentRunAdmitReplaysExistingRunAfterRevocation(t *testing.T) {
 	db := openRunTestDB(t)
 	agentID, versionID, releaseID, _ := seedRunSecurityIdentity(t, db)

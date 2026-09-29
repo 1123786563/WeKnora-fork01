@@ -221,6 +221,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if in.AgentID == "" && (in.LocalAgentVersionID != "" || in.ReleaseID != "") {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
 		if strings.TrimSpace(in.AgentID) != "" {
 			// Serialize against RetireVariant before reading lifecycle state. The
 			// no-op UPDATE locks every matching tenant-local variant row on
