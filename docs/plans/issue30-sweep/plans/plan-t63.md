@@ -352,7 +352,7 @@ git commit -m "feat(marketplace): 生命周期仓储原语——EndAdoption 事�
   - 新哨兵：`service.ErrAgentReleaseDeprecated`（Adopt/CreateVariant/Accept 命中弃用 Release 时的 409 载体，消息携带 successor 提示）、`service.ErrAgentMarketplaceLifecycleInvalidInput`。
   - 行为闸（无新签名）：`AgentAdoptionService.Adopt`/`CreateVariant` 在 release 读出后、`DeprecatedAt != nil` 时拒绝；`AgentUpgradeService.AcceptUpgradeProposal` 在 toRelease `DeprecatedAt != nil` 时拒绝（`ErrAgentUpgradeStateConflict`）；`reconcileProposals` 对 `DeprecatedAt != nil` 的 toRelease `continue`。
 
-- [ ] **Step 1: 写失败的 service 测试**
+- [x] **Step 1: 写失败的 service 测试**
 
 `internal/application/service/agent_marketplace_lifecycle_test.go`（RED：类型未定义，编译失败）：
 
@@ -549,12 +549,12 @@ func TestUpgradeReconcileSkipsDeprecatedTarget(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/application/service/ -run 'TestRetireVariantIsCAS|TestEndAdoptionGate|TestUnlistAndDeprecate|TestDeprecateSuccessor|TestUpgradeReconcileSkipsDeprecated' -count=1`
 Expected: 编译 FAIL（`undefined: NewAgentMarketplaceLifecycleService` / `ErrAgentReleaseDeprecated`）
 
-- [ ] **Step 3: 实现 service 与行为闸**
+- [x] **Step 3: 实现 service 与行为闸**
 
 `internal/types/interfaces/agent_marketplace_lifecycle.go`：定义 Produces 所列四方法接口。`internal/application/service/agent_marketplace_lifecycle.go`（struct：`type AgentMarketplaceLifecycleService struct { adoptions repository.AgentAdoptionRepository; listings repository.AgentMarketplaceRepository; now func() time.Time }`，`now` 缺省 `time.Now`）：
 
@@ -565,12 +565,12 @@ Expected: 编译 FAIL（`undefined: NewAgentMarketplaceLifecycleService` / `ErrA
 - `DeprecateRelease`：trim→successor 必填非空、≠releaseID→`s.listings.GetRelease(releaseID)`（nil→`ErrAgentMarketplaceNotFound`）→`s.listings.GetRelease(successor)`（nil→`ErrAgentMarketplaceLifecycleInvalidInput: successor release ... not found`）→successor.ListingID==release.ListingID、successor.DeprecatedAt==nil→`s.listings.DeprecateRelease`。 新常量 `AgentAdoptionStateEnded = "ended"`（放本文件，与 `AgentAdoptionStateActive` 相邻语义）。
 - 行为闸三处（各 ~4 行）：`agent_adoption.go` Adopt 在 `:87` release 归属校验后、CreateVariant 在 `:141` 后加 `if release.DeprecatedAt != nil { return ..., fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID)) }`（multi-`%w` 双哨兵：service 测试 `errors.Is(err, ErrAgentReleaseDeprecated)` 成立，而既有 `adoptionClientError`（`internal/handler/agent_adoption.go:117-123`）命中 `ErrAgentAdoptionStateConflict` → 409 且消息透传 successor——零 handler 改动；`successorHint` 为包内小 helper：空时返回 `"none declared"`）；`agent_upgrade.go` AcceptUpgradeProposal 在 `:126` 后同款拒绝（哨兵 `ErrAgentUpgradeStateConflict` 前置包裹，`internal/handler/agent_upgrade.go:71-87` 的 `upgradeClientError` 已把该哨兵映射 `NewConflictError(err.Error())` 409 透传）、reconcileProposals 在 `:276` 后 `if toRelease.DeprecatedAt != nil { continue }`。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/application/service/ -run 'Lifecycle|RetireVariant|EndAdoption|UnlistAndDeprecate|DeprecateSuccessor|UpgradeReconcileSkipsDeprecated|AgentAdoption|AgentUpgrade' -count=1`
 Expected: PASS（含 #59/#61 既有套件不回归）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/types/interfaces/agent_marketplace_lifecycle.go internal/application/service/agent_marketplace_lifecycle.go internal/application/service/agent_marketplace_lifecycle_test.go internal/application/service/agent_adoption.go internal/application/service/agent_upgrade.go
