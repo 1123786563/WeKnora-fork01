@@ -339,7 +339,8 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 			}
 			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 		}
-		receipt, err := s.gateway.FindBenefit(ctx, domain.FulfillmentKey(order.ID, "credits"))
+		gwCtx := domain.WithBenefitCustomer(ctx, OrderCustomerID(order.TenantID))
+		receipt, err := s.gateway.FindBenefit(gwCtx, domain.FulfillmentKey(order.ID, "credits"))
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return err
