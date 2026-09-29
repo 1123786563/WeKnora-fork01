@@ -50,7 +50,22 @@ test('generated SDK57 scene checker rejects nested elements in unrelated plist s
     const plistPath = join(root, 'WeKnora', 'Info.plist');
     const source = readFileSync(plistPath, 'utf8');
     writeFileSync(plistPath, source.replace('<key>UIApplicationSceneManifest</key>', '<key>Bad</key><string><true/></string><key>UIApplicationSceneManifest</key>'));
-    assert.notDeepEqual(verifyIosSceneProject(root), []);
+    const messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /WeKnora\/Info\.plist is malformed and could not be parsed/);
+    assert.doesNotMatch(messages, /application scene role/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 scene checker reports unreliable Swift tokenization without contract violations', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    writeFileSync(appDelegate, `${source}\nlet damaged = "unterminated`);
+    const messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /AppDelegate\.swift could not be tokenized reliably/);
+    assert.doesNotMatch(messages, /must conform to ExpoReactNativeFactoryProvider|open-URL callback|universal-link callback/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

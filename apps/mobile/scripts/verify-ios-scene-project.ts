@@ -14,29 +14,38 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
   const project = read('WeKnora.xcodeproj/project.pbxproj');
   const podProperties = read('Podfile.properties.json');
   if (plist !== undefined) {
-    const plistValue = parsePlist(plist);
-    const manifest = objectValue(objectValue(plistValue)?.UIApplicationSceneManifest);
-    const configurations = objectValue(manifest?.UISceneConfigurations);
-    const applicationScenes = configurations?.UIWindowSceneSessionRoleApplication;
-    const sceneDelegateNames = Array.isArray(applicationScenes)
-      ? applicationScenes.map((scene) => objectValue(scene)?.UISceneDelegateClassName)
-      : [];
-    if (!sceneDelegateNames.includes('EXExpoAppSceneDelegate')) {
-      issues.push('WeKnora/Info.plist application scene role must map to EXExpoAppSceneDelegate');
+    const parsedPlist = parsePlist(plist);
+    if (!parsedPlist.ok) {
+      issues.push('WeKnora/Info.plist is malformed and could not be parsed');
+    } else {
+      const plistValue = parsedPlist.value;
+      const manifest = objectValue(objectValue(plistValue)?.UIApplicationSceneManifest);
+      const configurations = objectValue(manifest?.UISceneConfigurations);
+      const applicationScenes = configurations?.UIWindowSceneSessionRoleApplication;
+      const sceneDelegateNames = Array.isArray(applicationScenes)
+        ? applicationScenes.map((scene) => objectValue(scene)?.UISceneDelegateClassName)
+        : [];
+      if (!sceneDelegateNames.includes('EXExpoAppSceneDelegate')) {
+        issues.push('WeKnora/Info.plist application scene role must map to EXExpoAppSceneDelegate');
+      }
     }
   }
   if (appDelegate !== undefined) {
     const swiftCode = maskSwiftNonCode(appDelegate);
-    if (!swiftCode?.includes('ExpoReactNativeFactoryProvider')) {
-      issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
-    }
-    const openUrlBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
-    if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
-      issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
-    }
-    const universalLinkBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
-    if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
-      issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
+    if (swiftCode === undefined) {
+      issues.push('AppDelegate.swift could not be tokenized reliably; inspect the generated file');
+    } else {
+      if (!swiftCode.includes('ExpoReactNativeFactoryProvider')) {
+        issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
+      }
+      const openUrlBody = swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
+      if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
+        issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
+      }
+      const universalLinkBody = swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
+      if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
+        issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
+      }
     }
   }
   if (project !== undefined) {
@@ -99,7 +108,7 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 }
 
 // Parse the plist value forms emitted by the generated Xcode project without a runtime dependency.
-function parsePlist(xml: string): unknown {
+function parsePlist(xml: string): { ok: true; value: unknown } | { ok: false } {
   const tokens = (xml.match(/<[^>]*>|[^<]+/g) ?? [])
     .filter((token) => token.startsWith('<') || token.trim().length > 0);
   let index = 0;
@@ -142,10 +151,10 @@ function parsePlist(xml: string): unknown {
   };
   try {
     const root = tokens.findIndex((token) => token.trim() === '<dict>');
-    if (root < 0) return undefined;
+    if (root < 0) return { ok: false };
     index = root;
-    return parseValue();
-  } catch { return undefined; }
+    return { ok: true, value: parseValue() };
+  } catch { return { ok: false }; }
 }
 
 // Preserve positions and braces in executable code while hiding Swift comments and literals.
