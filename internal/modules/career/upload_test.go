@@ -33,6 +33,7 @@ type careerUploadFiles struct {
 	entered, resume chan struct{}
 	data            []byte
 	deleteErr       error
+	deleteHook      func(string)
 	db              *gorm.DB
 	register        func(name string, data []byte, saveNumber int) (string, error)
 }
@@ -120,6 +121,107 @@ func TestUploadStoreErrorKeepsLifecycleClaimUnresolved(t *testing.T) {
 	require.Equal(t, "processing", source.Status)
 	require.Empty(t, source.ResourceRef)
 	require.ErrorIs(t, o.beginLifecycleDeletion(ctx, Scope{TenantID: 1, UserID: "u1"}, "delete-while-write-unknown", "delete-fingerprint"), ErrCareerOperationsBusy)
+}
+
+func TestUnknownWriteSurvivesStaleSweepRetryAndDeletion(t *testing.T) {
+	o, ctx := testOffice(t)
+	physical := map[string][]byte{}
+	stableRef := ""
+	var saveNames []string
+	files := &careerUploadFiles{}
+	files.register = func(name string, data []byte, attempt int) (string, error) {
+		saveNames = append(saveNames, name)
+		if stableRef == "" {
+			stableRef = "private://tenant-1/" + name
+		}
+		physical[stableRef] = append([]byte(nil), data...)
+		if attempt == 1 {
+			return "", errors.New("provider stored object but response was lost")
+		}
+		return stableRef, nil
+	}
+	files.deleteHook = func(ref string) { delete(physical, ref) }
+	catalog := &careerUploadCatalog{}
+	adapter := NewUploadAdapter(files, catalog, careerUploadReader{})
+	o.SetSourceUploadReleaser(adapter)
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: adapter}
+	request := func(requestID string) *httptest.ResponseRecorder {
+		data := []byte("Resume plaintext")
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		head := make(textproto.MIMEHeader)
+		head.Set("Content-Disposition", `form-data; name="file"; filename="retry-after-loss.txt"`)
+		head.Set("Content-Type", "text/plain")
+		part, err := mw.CreatePart(head)
+		require.NoError(t, err)
+		_, err = part.Write(data)
+		require.NoError(t, err)
+		require.NoError(t, mw.WriteField("requestId", requestID))
+		require.NoError(t, mw.WriteField("expectedRevision", "0"))
+		require.NoError(t, mw.Close())
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		base := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+		base = context.WithValue(base, types.TenantIDContextKey, uint64(1))
+		req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		c.Request = req.WithContext(base)
+		h.Upload(c)
+		return rec
+	}
+	first := request("retry-after-loss")
+	require.Equal(t, 504, first.Code, first.Body.String())
+	require.Contains(t, physical, stableRef)
+	var source sourceRevision
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND request_id=?", 1, "u1", "retry-after-loss").First(&source).Error)
+	require.Empty(t, source.ResourceRef)
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", source.ID).Update("lease_until", time.Now().Add(-time.Second)).Error)
+	require.NoError(t, h.reconcileStaleSourcesExcept(ctx, "different-request"))
+	source, err := o.privateSource(ctx, source.ID)
+	require.NoError(t, err)
+	require.Equal(t, "processing", source.Status, "unknown no-ref writes must stay retryable")
+	require.Empty(t, source.ResourceRef)
+	var claimCount int64
+	require.NoError(t, o.db.Model(&lifecycleClaim{}).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", 1, "u1", "source_upload", "retry-after-loss").Count(&claimCount).Error)
+	require.EqualValues(t, 1, claimCount, "stale sweep must not release the upload deletion claim")
+	deleteFingerprint, err := careerDeletionFingerprint("delete-after-retry", 0)
+	require.NoError(t, err)
+	require.ErrorIs(t, o.beginLifecycleDeletion(ctx, Scope{TenantID: 1, UserID: "u1"}, "delete-after-retry", deleteFingerprint), ErrCareerOperationsBusy)
+	retry := request("retry-after-loss")
+	require.Equal(t, 201, retry.Code, retry.Body.String())
+	require.Equal(t, 2, files.saves)
+	require.Len(t, saveNames, 2)
+	require.Equal(t, saveNames[0], saveNames[1], "same request retry must invoke SaveBytes with the same stable caller key")
+	require.Equal(t, []byte("Resume plaintext"), physical[stableRef])
+	source, err = o.privateSource(ctx, source.ID)
+	require.NoError(t, err)
+	require.Equal(t, stableRef, source.ResourceRef)
+	require.Equal(t, stableRef, catalog.bound)
+
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	files.deleteErr = errors.New("private object removal failed")
+	partial, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-after-retry", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusPartial, partial.Status)
+	require.Contains(t, physical, stableRef, "deletion cannot claim completion while the object remains")
+	files.deleteErr = nil
+	completed, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-after-retry", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, completed.Status, "%+v", completed.Steps)
+	require.NotContains(t, physical, stableRef)
+}
+
+func TestLegacyInterruptedEmptyRefClaimReplaysInsteadOfTerminalRelease(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 11, Digest: "legacy-interrupted-digest", RequestID: "legacy-interrupted", IntentHash: "legacy-interrupted-intent"}
+	claim, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", claim.ID).Updates(map[string]any{"status": "failed", "error_category": "interrupted", "lease_until": nil}).Error)
+	recovered, terminal, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.False(t, terminal, "legacy stale no-ref rows must re-enter stable-key recovery")
+	require.Equal(t, claim.ID, recovered.ID)
+	require.Equal(t, "processing", recovered.Status)
 }
 
 func TestUploadReferenceIsPersistedBeforeCatalogBind(t *testing.T) {
@@ -342,6 +444,9 @@ func (f *careerUploadFiles) DeleteFile(_ context.Context, ref string) error {
 	f.deleted = ref
 	if f.deleteErr != nil {
 		return f.deleteErr
+	}
+	if f.deleteHook != nil {
+		f.deleteHook(ref)
 	}
 	if f.db != nil {
 		handle, _ := types.ParseResourcePath(ref)
@@ -647,16 +752,16 @@ func TestCatalogCleanupRetriesDeletingCandidateAfterPhysicalFailure(t *testing.T
 	require.Equal(t, types.ResourceStateDeleted, stored.State)
 }
 
-func TestStaleSourceWithUnrecordedCatalogRefShowsCleanupPending(t *testing.T) {
+func TestStaleSourceWithUnrecordedCatalogRefRemainsRetryable(t *testing.T) {
 	o, ctx := testOffice(t)
 	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 16, Digest: "registered-digest", RequestID: "unrecorded-stale", IntentHash: "stale-intent"}
 	claim, _, err := o.ClaimUpload(ctx, u)
 	require.NoError(t, err)
-	ref := "resource://0000000000000000000021"
 	require.NoError(t, o.db.Create(&types.StoredResource{Handle: "0000000000000000000021", TenantID: 1, Provider: "test", PhysicalPath: "test://stale", LocationHash: "stale", OriginalName: "career_source_" + claim.ID + ".txt", ContentHash: u.Digest, Size: u.Size}).Error)
 	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", claim.ID).Update("lease_until", time.Now().Add(-time.Second)).Error)
 	catalog := &careerUploadCatalog{releaseErr: errors.New("release unavailable")}
-	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(&careerUploadFiles{db: o.db}, catalog, careerUploadReader{})}
+	files := &careerUploadFiles{db: o.db}
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(files, catalog, careerUploadReader{})}
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	base := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
@@ -664,11 +769,11 @@ func TestStaleSourceWithUnrecordedCatalogRefShowsCleanupPending(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/api/v1/career/sources", nil).WithContext(base)
 	h.Sources(c)
 	require.Equal(t, 200, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "cleanup_pending_interrupted")
+	require.NotContains(t, rec.Body.String(), "cleanup_pending_interrupted")
 	row, err := o.privateSource(ctx, claim.ID)
 	require.NoError(t, err)
-	require.Equal(t, "cleanup_pending_interrupted", row.ErrorCategory)
-	require.Equal(t, ref, row.ResourceRef)
+	require.Equal(t, "processing", row.Status)
+	require.Empty(t, row.ResourceRef)
 	catalog.releaseErr = nil
 	next := httptest.NewRecorder()
 	nextContext, _ := gin.CreateTestContext(next)
@@ -677,8 +782,9 @@ func TestStaleSourceWithUnrecordedCatalogRefShowsCleanupPending(t *testing.T) {
 	require.Equal(t, 200, next.Code, next.Body.String())
 	row, err = o.privateSource(ctx, claim.ID)
 	require.NoError(t, err)
+	require.Equal(t, "processing", row.Status)
 	require.Empty(t, row.ResourceRef)
-	require.Equal(t, "interrupted", row.ErrorCategory)
+	require.Empty(t, files.deleted, "other-request stale cleanup cannot guess at an unknown physical write")
 }
 
 type careerUploadReader struct {

@@ -109,6 +109,13 @@ func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time, exclude
 		for i := range rows {
 			r := &rows[i]
 			if r.Status == "processing" {
+				// With no durable locator, a processing lease may represent a
+				// provider write whose response was lost. Keep it retryable and
+				// leave its lifecycle claim in place; a same-request retry will
+				// overwrite/reconcile the deterministic physical key.
+				if r.ResourceRef == "" {
+					continue
+				}
 				category := "interrupted"
 				if r.ResourceRef != "" {
 					category = "cleanup_pending_interrupted"
@@ -147,6 +154,9 @@ func (o *Office) ClearSourceResource(ctx context.Context, id, token, ref, finalC
 	s, e := getScope(ctx)
 	if e != nil {
 		return e
+	}
+	if finalCategory == "interrupted" {
+		finalCategory = "interrupted_cleaned"
 	}
 	res := o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='failed' AND claim_token=? AND resource_ref=? AND error_category LIKE 'cleanup_pending_%'", s.TenantID, s.UserID, id, token, ref).Updates(map[string]any{"resource_ref": "", "error_category": finalCategory})
 	if res.Error != nil {
@@ -189,7 +199,7 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 			if prior.IntentHash != upload.IntentHash || prior.Digest != upload.Digest || prior.ExpectedRevision != upload.ExpectedRevision {
 				return ErrIdempotencyConflict
 			}
-			if prior.Status == "ready" || prior.Status == "failed" {
+			if prior.Status == "ready" || prior.Status == "failed" && !(prior.ResourceRef == "" && prior.ErrorCategory == "interrupted") {
 				row = prior
 				return nil
 			}
@@ -200,6 +210,24 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 				return e
 			}
 			now := time.Now().UTC()
+			if prior.Status == "failed" && prior.ResourceRef == "" && prior.ErrorCategory == "interrupted" {
+				newToken := uuid.NewString()
+				newLease := now.Add(30 * time.Minute)
+				res := tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='failed' AND resource_ref='' AND error_category='interrupted'", s.TenantID, s.UserID, prior.ID).Updates(map[string]any{"status": "processing", "claim_token": newToken, "lease_until": newLease, "error_category": "", "error_message": ""})
+				if res.Error != nil {
+					return res.Error
+				}
+				if res.RowsAffected != 1 {
+					return ErrUploadInProgress
+				}
+				prior.Status = "processing"
+				prior.ClaimToken = newToken
+				prior.LeaseUntil = &newLease
+				prior.ErrorCategory = ""
+				prior.ErrorMessage = ""
+				row = prior
+				return nil
+			}
 			if prior.LeaseUntil != nil && prior.LeaseUntil.After(now) {
 				row = prior
 				return ErrUploadInProgress

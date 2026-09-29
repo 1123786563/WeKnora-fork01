@@ -28,6 +28,7 @@ type ossFileService struct {
 	pathPrefix     string
 	bucketName     string
 	tempBucketName string
+	putBytesHook   fileBytesPutHook
 }
 
 const ossScheme = "oss://"
@@ -237,6 +238,12 @@ func (s *ossFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 		objectName = fmt.Sprintf("exports/%d/%s%s", tenantID, uuid.New().String(), ext)
 	}
 
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, targetBucket, objectName, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to OSS: %w", err)
+		}
+		return fmt.Sprintf("oss://%s/%s", targetBucket, objectName), nil
+	}
 	_, err = client.PutObject(ctx, &oss.PutObjectRequest{
 		Bucket:      oss.Ptr(targetBucket),
 		Key:         oss.Ptr(objectName),
