@@ -224,6 +224,102 @@ func TestLegacyInterruptedEmptyRefClaimReplaysInsteadOfTerminalRelease(t *testin
 	require.Equal(t, "processing", recovered.Status)
 }
 
+func TestLegacyInterruptedRetryTransactionFailureKeepsDeletionClaim(t *testing.T) {
+	o, ctx := testOffice(t)
+	data := []byte("Resume plaintext")
+	digest := sha256.Sum256(data)
+	requestID := "legacy-retry-db-failure"
+	intentBytes, err := json.Marshal([]any{"resume.txt", "text/plain"})
+	require.NoError(t, err)
+	intent := sha256.Sum256(intentBytes)
+	upload := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: int64(len(data)), Digest: hex.EncodeToString(digest[:]), RequestID: requestID, IntentHash: hex.EncodeToString(intent[:])}
+	legacy, _, err := o.ClaimUpload(ctx, upload)
+	require.NoError(t, err)
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", legacy.ID).Updates(map[string]any{"status": "failed", "error_category": "interrupted", "lease_until": nil}).Error)
+	stableRef := "private://tenant-1/career_source_" + legacy.ID + ".txt"
+	physical := map[string][]byte{stableRef: append([]byte(nil), data...)}
+	files := &careerUploadFiles{register: func(name string, payload []byte, _ int) (string, error) {
+		require.Equal(t, "career_source_"+legacy.ID+".txt", name)
+		physical[stableRef] = append([]byte(nil), payload...)
+		return stableRef, nil
+	}}
+	files.deleteHook = func(ref string) { delete(physical, ref) }
+	adapter := NewUploadAdapter(files, &careerUploadCatalog{}, careerUploadReader{})
+	o.SetSourceUploadReleaser(adapter)
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: adapter}
+	request := func() *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		head := make(textproto.MIMEHeader)
+		head.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
+		head.Set("Content-Type", "text/plain")
+		part, e := mw.CreatePart(head)
+		require.NoError(t, e)
+		_, e = part.Write(data)
+		require.NoError(t, e)
+		require.NoError(t, mw.WriteField("requestId", requestID))
+		require.NoError(t, mw.WriteField("expectedRevision", "0"))
+		require.NoError(t, mw.Close())
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		base := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+		base = context.WithValue(base, types.TenantIDContextKey, uint64(1))
+		req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		c.Request = req.WithContext(base)
+		h.Upload(c)
+		return rec
+	}
+	callbackName := "task32_fail_legacy_claim_transition"
+	require.NoError(t, o.db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "career_source_revisions" {
+			return
+		}
+		updates, ok := tx.Statement.Dest.(map[string]interface{})
+		if ok && updates["status"] == "processing" {
+			tx.AddError(errors.New("injected legacy claim transition failure"))
+		}
+	}))
+	failedRetry := request()
+	require.NoError(t, o.db.Callback().Update().Remove(callbackName))
+	require.Equal(t, 504, failedRetry.Code, failedRetry.Body.String())
+	require.Contains(t, failedRetry.Body.String(), `"code":"outcome_unknown"`)
+	require.Equal(t, 0, files.saves, "failed retry transaction must not reach physical storage")
+	require.Contains(t, physical, stableRef)
+	var claimCount int64
+	require.NoError(t, o.db.Model(&lifecycleClaim{}).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", 1, "u1", "source_upload", requestID).Count(&claimCount).Error)
+	require.EqualValues(t, 1, claimCount, "fallback must not release the legacy upload claim")
+	deleteFingerprint, err := careerDeletionFingerprint("delete-legacy-retry", 0)
+	require.NoError(t, err)
+	require.ErrorIs(t, o.beginLifecycleDeletion(ctx, Scope{TenantID: 1, UserID: "u1"}, "delete-legacy-retry", deleteFingerprint), ErrCareerOperationsBusy)
+	legacyAfterError, err := o.privateSource(ctx, legacy.ID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", legacyAfterError.Status, "failed transaction must leave legacy status unchanged")
+	require.Empty(t, legacyAfterError.ResourceRef)
+
+	retried := request()
+	require.Equal(t, 201, retried.Code, retried.Body.String())
+	require.Equal(t, 1, files.saves)
+	var response UploadResponse
+	require.NoError(t, json.Unmarshal(retried.Body.Bytes(), &response))
+	require.Equal(t, legacy.ID, response.Source.ID)
+	legacyAfterRetry, err := o.privateSource(ctx, legacy.ID)
+	require.NoError(t, err)
+	require.Equal(t, stableRef, legacyAfterRetry.ResourceRef)
+
+	files.deleteErr = errors.New("private object removal failed")
+	partial, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-legacy-retry", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusPartial, partial.Status)
+	require.Contains(t, physical, stableRef)
+	files.deleteErr = nil
+	completed, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-legacy-retry", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, completed.Status)
+	require.NotContains(t, physical, stableRef)
+}
+
 func TestUploadReferenceIsPersistedBeforeCatalogBind(t *testing.T) {
 	o, ctx := testOffice(t)
 	claim, _, err := o.ClaimUpload(ctx, SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 11, Digest: "digest-bind-order", RequestID: "bind-order", IntentHash: "bind-order-intent"})
