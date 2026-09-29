@@ -19,7 +19,7 @@ The existing untracked `paseo.json` was left untouched.
 - Listing state updates are tenant scoped and CAS guarded. A lost CAS re-reads within tenant scope to distinguish not found from state conflict.
 - Release deprecation is tenant scoped and guarded by `deprecated_at IS NULL`; a lost CAS distinguishes not found from already deprecated. The complete row is returned after a successful write.
 - Retired local-Agent lookup includes tenant and `state='retired'` predicates.
-- The new tests apply the actual SQLite migration stream and cover end preconditions/rollback, successful lifecycle timestamp updates, repeat-transition conflicts, tenant isolation, release successor metadata, and retired-agent lookup.
+- The new tests apply the actual SQLite migration stream and cover end preconditions/rollback, successful lifecycle timestamp updates, repeat-transition conflicts, tenant isolation, release successor metadata, and retired-agent lookup. A lifecycle update cannot move or rename its row through `updates`: `id`, `tenant_id`, and `created_at` are filtered; state and updated timestamp are controlled by the repository.
 
 ## Verification
 
@@ -31,10 +31,10 @@ The existing untracked `paseo.json` was left untouched.
 
 ## Commit and Review Package
 
-- Code checkpoint: `6346ca0ee8e194e87080f858f5ba2f27660a0752` (`feat(marketplace): add lifecycle repository primitives`).
-- Review range: `197794496..6346ca0ee8e194e87080f858f5ba2f27660a0752`.
-- Exact patch: `.superpowers/sdd/plan-t63/review-package-task-2-6346ca0ee.patch`.
-- SHA-256: `20dc5cf2813ce860263e325053542d6fbe24847a961f6b6432655a841f80e977`.
+- Code checkpoints: `6346ca0ee8e194e87080f858f5ba2f27660a0752` (`feat(marketplace): add lifecycle repository primitives`) and `81abe4136d654f8e272ab8531dcb9bbe08624f42` (`fix(marketplace): keep lifecycle updates tenant scoped`).
+- Review range: `197794496..81abe4136d654f8e272ab8531dcb9bbe08624f42`.
+- Exact patch: `.superpowers/sdd/plan-t63/review-package-task-2-81abe4136.patch`.
+- SHA-256: `357b2d74e3beaf66ecab87197882638061d2019745a5503262864f13f85e9c0f`.
 
 ## Remaining review / risk
 
