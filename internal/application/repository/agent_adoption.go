@@ -97,21 +97,47 @@ func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint
 		return nil, ErrAgentAdoptionTransition
 	}
 	now := time.Now().UTC()
-	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND id = ? AND state = ? AND NOT EXISTS (SELECT 1 FROM agent_adoption_variants v WHERE v.tenant_id = agent_adoptions.tenant_id AND v.adoption_id = agent_adoptions.id AND v.state <> ?)", tenantID, adoptionID, "active", "retired").
-		Updates(map[string]any{"state": "ended", "ended_by": strings.TrimSpace(actorID), "ended_at": now, "end_reason": strings.TrimSpace(reason), "updated_at": now})
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected != 1 {
-		var count int64
-		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND id = ?", tenantID, adoptionID).Count(&count).Error; err != nil {
-			return nil, err
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// This conditional no-op UPDATE is the same parent-row gate used by
+		// CreateVariant. Keep the child check in a later command so PostgreSQL
+		// READ COMMITTED takes a fresh snapshot after any gate wait.
+		gate := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, "active").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
 		}
-		if count == 0 {
-			return nil, ErrAgentAdoptionNotFound
+		if gate.RowsAffected != 1 {
+			var count int64
+			if err := tx.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND id = ?", tenantID, adoptionID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return ErrAgentAdoptionNotFound
+			}
+			return ErrAgentAdoptionTransition
 		}
-		return nil, ErrAgentAdoptionTransition
+		var variants int64
+		if err := tx.Model(&types.AgentAdoptionVariantEntity{}).
+			Where("tenant_id = ? AND adoption_id = ? AND state <> ?", tenantID, adoptionID, "retired").Count(&variants).Error; err != nil {
+			return err
+		}
+		if variants != 0 {
+			return ErrAgentAdoptionTransition
+		}
+		ended := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, "active").
+			Updates(map[string]any{"state": "ended", "ended_by": strings.TrimSpace(actorID), "ended_at": now, "end_reason": strings.TrimSpace(reason), "updated_at": now})
+		if ended.Error != nil {
+			return ended.Error
+		}
+		if ended.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return r.GetAdoption(ctx, tenantID, adoptionID)
 }

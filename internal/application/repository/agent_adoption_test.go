@@ -129,6 +129,27 @@ func TestAgentAdoptionRepositoryRejectsWritesAfterEnd(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
 }
 
+func TestAgentAdoptionRepositoryEndRequiresRetiredVariants(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-end-guard", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	adoption, _, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, CreatedBy: "admin"})
+	require.NoError(t, err)
+	variant, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Sales"})
+	require.NoError(t, err)
+	_, err = repo.EndAdoption(ctx, 1, adoption.ID, "admin", "closed")
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	stored, err := repo.GetAdoption(ctx, 1, adoption.ID)
+	require.NoError(t, err)
+	require.Equal(t, "active", stored.State)
+	_, err = repo.RetireVariant(ctx, 1, variant.ID, "admin", "retired")
+	require.NoError(t, err)
+	ended, err := repo.EndAdoption(ctx, 1, adoption.ID, "admin", "closed")
+	require.NoError(t, err)
+	require.Equal(t, "ended", ended.State)
+}
+
 func TestAgentAdoptionRepositoryRejectsAdoptionAfterTenantUnlist(t *testing.T) {
 	db := openRunTestDB(t)
 	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-unlisted", "1.0.0")
