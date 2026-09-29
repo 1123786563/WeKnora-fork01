@@ -58,7 +58,7 @@
 | 编号 | T | 标题 | URL | 父节点 | 状态 | Blocked by | 关联 PR | 处理决定（本次收集建议） |
 |---|---|---|---|---|---|---|---|---|
 | #30 | - | Spec: WeKnora 移动 AI Office | https://github.com/1123786563/WeKnora-fork01/issues/30 | -（根） | open | 无 | 无 | 作为父规格 Issue 保留为事实源；原生 sub-issues 为空，父子关系依赖 #31–#71 的声明式 `## Parent` |
-| #31 | T01 | 原生客户端登录并进入受支持的 Deployment | https://github.com/1123786563/WeKnora-fork01/issues/31 | #30 | open | 无 | 无 | 保持 open：实现已集成 feature/mobile-office@0c5a6bdc，但验收开放（iOS 27 Scene lifecycle 阻塞、HTTPS staging 登录/OIDC 与 Android 设备证据缺失）→ 待验收收口 |
+| #31 | T01 | 原生客户端登录并进入受支持的 Deployment | https://github.com/1123786563/WeKnora-fork01/issues/31 | #30 | open | 无 | 无 | 保持 open / blocked-external（部分）：本地 iOS 27 scene/startup 已修复，R4 Release 登录界面显示在状态栏下方；HTTPS staging 密码/OIDC、真实 Deployment capability 和 Android 真机证据仍待验收 → 待外部验收收口 |
 | #32 | T02 | Active Tenant 切换与 Scoped Vault 隔离 | https://github.com/1123786563/WeKnora-fork01/issues/32 | #30 | open | #31 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |
 | #33 | T03 | Resource Shelf 展示当前空间可用资源 | https://github.com/1123786563/WeKnora-fork01/issues/33 | #30 | open | #32 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |
 | #34 | T04 | 首页 Attention 与统一 Task 列表 | https://github.com/1123786563/WeKnora-fork01/issues/34 | #30 | open | #32 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |

@@ -329,7 +329,7 @@ graph TD
 
 | 节点 | 阻塞成分 | 性质 | 可先行子集 |
 |---|---|---|---|
-| #31 (T01) | 端到端真实集成验收需真实 HTTPS staging（WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD）与 Android 真机（密码/OIDC/capability 证据），本环境不存在该外部资源；集成测试实跑 SKIP | blocked-external（部分） | iOS 27 UIScene life cycle 修复（issue-31.md 评论 2/3；已有计划 docs/superpowers/plans/2026-09-21-t01-ios27-scene-lifecycle.md）、scene manifest 落 apps/mobile/app.json、测试脚手架。仍排 B0，按「可实施子集完成 + 外部验收缺口挂账」放行 B1，避免全链空转——是否放行由主流程决策 |
+| #31 (T01) | 本地 iOS 27 UIScene/startup 已修复，R4 Release 启动证据显示登录界面位于状态栏下方；HTTPS staging 密码/OIDC 登录与真实 Deployment capability 验收、Android 真机证据仍待外部资源 | blocked-external（部分） | 本地 iOS 27 UIScene/startup 修复及登录布局已验证（见 `docs/testing/mobile-runtime-login-device-acceptance.md` 与 `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/`）。HTTPS staging 密码/OIDC、真实 Deployment capability（含兼容/不兼容结果）和 Android 真机证据仍待验收；集成测试实跑 SKIP。仍排 B0，按「可实施子集完成 + 外部验收缺口挂账」放行 B1，避免全链空转——是否放行由主流程决策 |
 | #41 (T11) | 真机 APNs/FCM 推送验收依赖本环境不存在的真实设备与推送凭据（旧通知/深链实现已随提交 723de9179 删除，当前零命中） | blocked-external（部分，仅验收证据） | 设备注册/深链/通知处理的实现与 mock Port 测试（B3 时点） |
 | #48 (T18) | TestNotionRealControlledCreate 需 NOTION_TOKEN/NOTION_PARENT_PAGE_ID，实跑 SKIP（skip is not a pass） | blocked-env（仅真实集成证据） | 版本读取/冲突检测、Adapter 生产接线、端到端链路实现（B4 时点） |
 | #69 (T39) | iOS 安装包需签名配置/开发者账号与真机；当前无 iOS 原生工程与 Release 包 | blocked-env（验收证据） | 核心工作流实现随各前置推进（B5 时点做工程化准备），真机验收待外部资源 |
@@ -345,7 +345,7 @@ graph TD
 | 编号 | T | 标题（简） | Issue 状态 | 核实状态 | 批次 | 未完成前置 | 备注 |
 |---|---|---|---|---|---|---|---|
 | #30 | - | Spec: WeKnora 移动 AI Office | open | -（规格根） | - | - | 范围归属根，事实源，不入执行图 |
-| #31 | T01 | 原生客户端登录并进入 Deployment | open | blocked-external | B0 | 0 | iOS 27 黑屏未修复；staging/Android 证据外部阻塞 |
+| #31 | T01 | 原生客户端登录并进入 Deployment | open | blocked-external | B0 | 0 | 本地 iOS 27 scene/startup 已修复，R4 Release 登录界面显示在状态栏下方；HTTPS staging 密码/OIDC、真实 Deployment capability 与 Android 真机证据仍待验收 |
 | #32 | T02 | Active Tenant 切换与 Scoped Vault 隔离 | open | partial | B1 | 1 (#31) | 无 switchTenant API/UI；Scoped Vault 零命中 |
 | #33 | T03 | Resource Shelf | open | partial | B2 | 1 (#32) | 深模块 Interface 不存在；无 Resources 页 |
 | #34 | T04 | 首页 Attention 与统一 Task 列表 | open | partial | B2 | 1 (#32) | 无 Home 屏；overview owner-only |
