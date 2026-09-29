@@ -3,8 +3,16 @@
  * t-button GUI tap 不被 automator 触达（T24 定论）：t-button 动作由 172 单测覆盖，本脚本走数据面与原生可达控件。
  * 机器强相关路径/端口一律 env 注入（对齐 T24 live-driver 写法），换机重放示例：
  *   T33_AUTOMATOR=<node_modules/miniprogram-automator 绝对路径> T33_WS_PORT=9433 \
+ *   T33_USER_EMAIL=<测试账号邮箱> T33_USER_PASS=<测试账号密码> \
  *   T33_SHOTS=<截图输出目录> node wx-driver.cjs
  * 未注入时：automator 依次尝试 NODE_PATH 解析与历史 /tmp 安装位；截图回落本脚本所在目录；端口回落 9433。 */
+
+const userEmail = process.env.T33_USER_EMAIL;
+const userPass = process.env.T33_USER_PASS;
+if (!userEmail || !userPass) {
+  console.error('Missing required env vars: T33_USER_EMAIL and T33_USER_PASS');
+  process.exit(1);
+}
 
 function loadAutomator() {
   const candidates = [process.env.T33_AUTOMATOR, 'miniprogram-automator', '/tmp/wk-t33-automator/node_modules/miniprogram-automator'].filter(Boolean);
@@ -74,8 +82,8 @@ async function relaunch(mp, path) {
     let page = await relaunch(mp, '/subpackages/auth/login/index');
     await sleep(3000);
     page = await mp.currentPage();
-    await fillInput(page, '请输入账号邮箱', 't33a@t33.io');
-    await fillInput(page, '请输入密码', '[REDACTED-disposable]');
+    await fillInput(page, '请输入账号邮箱', userEmail);
+    await fillInput(page, '请输入密码', userPass);
     await shot(mp, '01-login-filled');
     // 勾选同意（直达 checkbox 本体的精确选择器，对齐 T24 先例）：登录前置条件，失败即 record 并快速失败（对齐 T24「tap 超时即 throw」，
     // 不允许勾选未生效仍继续点登录、把根因埋进 login 步骤）
