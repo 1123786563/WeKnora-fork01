@@ -113,7 +113,7 @@
 2. #31–#71 各自的原生 sub-issues 也为空（无嵌套子 Issue），下级结构到 T01–T41 一层为止。
 3. `## Blocked by` 声明与 GitHub 原生 blocked-by 关系完全重合，无仅声明未建原生关系（或反之）的项。Blocked by 目标全部落在 #31–#70，即 #30 后代集合内部，无外部依赖 Issue。
 4. #30 正文与评论均无 `#NN` Issue 引用、无 T 编号引用，评论数为 0 → 无额外声明的子任务；#31–#71 正文除 Parent/Blocked by 段外亦无其它 `#NN` 引用。评论中仅 #58 第 4 条评论存在一处自引用（"Ticket #58"）。
-5. 关联 PR: #30–#71 的 timeline 中无任何来自 PR 的 cross-referenced 事件；仓库仅有的 PR #1、#2（MERGED，miniprogram QA 回归修复）与本系列无关。
+5. 关联 PR（原始 2026-09-23 快照）: 当时 #30–#71 的 timeline 无来自 PR 的 cross-reference；2026-09-29 复核发现根 Issue #30 新增 PR #174 cross-reference，当前状态见 [issue-30.md](issue-30.md)。子 Issue 的各自关联 PR 字段仍代表 2026-09-23 快照，尚未逐个重新轮询。
 6. #58（T28）为唯一 closed Issue，历经 关闭→重开→再关闭（详见 issue-58.md 评论摘要）；#31（T01）open 但评论表明实现已集成分支、验收开放。
 
 ## 下游产物

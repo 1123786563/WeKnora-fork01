@@ -237,4 +237,4 @@ WeKnora 后端继续作为 Deployment、Tenant、Task、Run、权限、预算、
 
 ## 关联 PR
 
-无。本 Issue timeline 中 cross-referenced 事件来源均为 Issue（非 PR）；仓库全部 PR（#1、#2，MERGED）与 #30 移动 AI Office 系列无关。
+原始 2026-09-23 快照中无关联 PR；截至 2026-09-29，timeline 另有 PR #174 cross-reference，当前状态见上方实时复核。
