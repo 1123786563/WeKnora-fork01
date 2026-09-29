@@ -32,7 +32,7 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T1 Ledger pointer and exact checkpoint ──> T2 plan traceability correction
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check
 ```
 
 Only these documentation Tasks are in scope. No application implementation Task is ready under the current #86/#87 gates.
@@ -75,7 +75,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 - [ ] Verify that `git status --short` contains only the two owned documentation paths.
 - [ ] Commit only those two paths with message `docs(issue-72): record parallel evidence refresh`.
 
-**Verification:** At Task 1 base `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` and checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, `git diff --check` passes; relative links in the audit note point to existing paths; the Ledger diff adds a pointer and status only; `git diff --name-only <BASE>..HEAD` lists exactly the audit note and Ledger. This verification is local to that Task 1 checkpoint and does not include later plan edits.
+**Verification:** At Task 1 base `27745734eae97f2f83b8b2ad504d753ed3c8da97` and checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, `git diff --check` passes; relative links in the audit note point to existing paths; the Ledger diff adds a pointer and status only; `git diff --name-only 27745734eae97f2f83b8b2ad504d753ed3c8da97..d2121488f52491add5e3b240b40bf7e30aa2b838` lists exactly the audit note and Ledger. This two-file-only claim is limited to that Task 1 base-to-checkpoint range; it does not include later plan edits or describe Task 3's verification scope.
 
 **Acceptance mapping:** #72 issue-tree scope → authenticated GitHub audit evidence; #86 → ancestry, artifact hashes, and current-source hash comparison; #87 → pinned-v1.53 evidence classification; #88/#89 → issue acceptance and explicit predecessor gates; safe work frontier → current registry, process, and worktree state.
 
@@ -121,7 +121,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 - Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
 
-**Produces:** Task 1's verification is explicitly identified as local to its checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, with base `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f`; it does not describe later plan edits.
+**Produces:** Task 1's verification is explicitly identified as local to its checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, with base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; it does not describe later plan edits. Task 3 verifies its own plan edit and makes no claim that only two files changed.
 
 **Implementation steps:**
 
@@ -133,10 +133,38 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 **Failure handling:** If the recorded Task 1 base or checkpoint differs from the SDD report, stop and resolve that evidence discrepancy before editing the claim.
 
+### Task 4: Correct Task 1 range and review-task traceability
+
+**Dependencies:** Tasks 1–3 are complete; review found that Task 1's recorded base must match its SDD report, and that the plan DAG and self-check must include Task 3 before this correction.
+
+**Owner role:** `mechanical_worker` for the bounded plan-only corrections.
+
+**Validator role:** `reviewer` for checkpoint-range and task-graph consistency.
+
+**Owned files:**
+
+- Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+
+**Consumes:** Task 1 report records base `27745734eae97f2f83b8b2ad504d753ed3c8da97` and checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`.
+
+**Produces:** Task 1's two-file-only range is explicitly `27745734..d2121488`; Task 3's verification is distinguished from that range claim; the top-level DAG and self-check account for Tasks 1–4.
+
+**Implementation steps:**
+
+- [ ] Correct Task 1's verification base to the report's base and spell out the exact base-to-checkpoint two-file range.
+- [ ] Add Task 3 to the top-level DAG and clarify its self-check coverage alongside Task 2.
+- [ ] Append this Task 4 record and update the self-check count and explanation.
+- [ ] Run `git diff --check`; expect exit code 0.
+- [ ] Verify only this plan changed and commit with message `docs(issue-72): correct audit plan task ranges`.
+
+**Verification:** The Task 1 report base/checkpoint match the stated `27745734..d2121488` range; the DAG orders T1 → T2 → T3 → T4; the self-check names Task 2, Task 3, and Task 4's respective corrections; `git diff --check` passes and only this plan is changed.
+
+**Failure handling:** If the Task 1 report's base/checkpoint cannot be confirmed, stop and resolve the evidence discrepancy before claiming a verified range.
+
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 is a review-driven correction to the Task 1 plan wording.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, and Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: three documentation tasks; Task 3 is a review-driven wording and verification-scope clarification. No production tests are relevant.
+- Proportion: four documentation tasks; Tasks 2–4 are review-driven plan corrections covering the hash conclusion, verification scope, and Task 1 range plus task traceability. No production tests are relevant.
