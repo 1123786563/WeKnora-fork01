@@ -104,6 +104,15 @@ async function freshLogin(extraRoutes = {}) {
   career.resetCareerDesk();
 }
 const careerCall = suffix => stub.state.calls.filter(c => new URL(c.options.url).pathname.startsWith('/api/v1/career') && (!suffix || new URL(c.options.url).pathname.includes(suffix)));
+const waitForCareerRequest = async (method, path, occurrence = 1) => {
+  for (let i = 0; i < 50; i++) {
+    const calls = stub.state.calls.filter(c => c.kind === 'request' && (c.options.method ?? 'GET') === method && new URL(c.options.url).pathname === path);
+    const call = calls[occurrence - 1];
+    if (call) return call;
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  assert.fail(`native ${method} ${path} request was dispatched`);
+};
 const errorCode = error => error?.code;
 const notFound = call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'career export receipt not found' } } });
 
@@ -318,13 +327,14 @@ test('N9: a deletion response stores its recoverable intent under the scope capt
   runtime.client.request = async function(options) {
     const result = await originalRequest.call(runtime.client, options);
     if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
-      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+    runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
     }
     return result;
   };
   try {
     const write = career.deleteWholeSpace();
-    stub.succeed(stub.lastCall('request'), { data: partialReceipt() });
+    const deletion = await waitForCareerRequest('POST', '/api/v1/career/deletions');
+    stub.succeed(deletion, { data: partialReceipt() });
     await write;
   } finally { runtime.client.request = originalRequest; }
 
@@ -351,19 +361,12 @@ test('N9: a completed deletion retry removes the original sending-scope key afte
   const originalScope = runtime.auth.scope.capture();
   const originalKey = intentKeyFor('spaceDeletion', originalScope);
   const requestId = career.pendingSpaceDeletion()?.requestId;
-  const originalRequest = runtime.client.request;
-  runtime.client.request = async function(options) {
-    const result = await originalRequest.call(runtime.client, options);
-    if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
-      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
-    }
-    return result;
-  };
-  try {
-    const retry = career.retryPendingSpaceDeletion();
-    stub.succeed(stub.lastCall('request'), { data: deletedReceipt({ requestId }) });
-    await retry;
-  } finally { runtime.client.request = originalRequest; }
+  const deletionPostsBeforeRetry = stub.state.calls.filter(c => c.kind === 'request' && (c.options.method ?? 'GET') === 'POST' && new URL(c.options.url).pathname === '/api/v1/career/deletions').length;
+  const retry = career.retryPendingSpaceDeletion();
+  const deletion = await waitForCareerRequest('POST', '/api/v1/career/deletions', deletionPostsBeforeRetry + 1);
+  runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+  stub.succeed(deletion, { data: deletedReceipt({ requestId }) });
+  await retry;
 
   assert.equal(stub.state.storage.get(originalKey), undefined, 'the completed retry removes the intent from the sending scope');
   assert.equal(career.pendingSpaceDeletion(), null, 'the new scope remains clear');
