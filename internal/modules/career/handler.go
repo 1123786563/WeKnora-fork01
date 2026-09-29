@@ -794,6 +794,20 @@ func (h *Handler) RuleReceipt(c *gin.Context) {
 	c.JSON(http.StatusOK, receipt)
 }
 
+// ListRules serves a bounded owner-scoped page of rule summaries.
+func (h *Handler) ListRules(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	page, err := h.office.ListRules(ctx, c.Query("cursor"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, page)
+}
+
 // GetRule serves the live rule contract: configuration, deterministic
 // estimate, full run history (including blocked statuses), and discovery
 // todos.

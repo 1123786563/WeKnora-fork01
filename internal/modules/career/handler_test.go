@@ -602,6 +602,29 @@ func TestCareerRuleHTTPContract(t *testing.T) {
 	require.NotNil(t, receipt.NextDueAt)
 	require.NotEmpty(t, receipt.Estimate.Basis)
 
+	listRec := httptest.NewRecorder()
+	listCtx, _ := gin.CreateTestContext(listRec)
+	listCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules", nil).WithContext(base)
+	h.ListRules(listCtx)
+	require.Equal(t, 200, listRec.Code, listRec.Body.String())
+	var page struct {
+		Rules      []map[string]json.RawMessage `json:"rules"`
+		NextCursor *string                      `json:"nextCursor"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &page))
+	require.Len(t, page.Rules, 1)
+	require.Nil(t, page.NextCursor)
+	require.Contains(t, page.Rules[0], "nextDueAt")
+	require.Contains(t, page.Rules[0], "estimate")
+	require.NotContains(t, page.Rules[0], "runs")
+	require.NotContains(t, page.Rules[0], "todos")
+
+	unauthenticatedListRec := httptest.NewRecorder()
+	unauthenticatedListCtx, _ := gin.CreateTestContext(unauthenticatedListRec)
+	unauthenticatedListCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules", nil)
+	h.ListRules(unauthenticatedListCtx)
+	require.Equal(t, 403, unauthenticatedListRec.Code)
+
 	// Exact replay replays the stored receipt by request ID.
 	rec = post(`{"requestId":"rule-http-1","query":"go engineer","intervalMinutes":60,"status":"enabled","expectedRevision":0}`)
 	require.Equal(t, 200, rec.Code, rec.Body.String())
