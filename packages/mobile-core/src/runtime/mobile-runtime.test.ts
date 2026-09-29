@@ -672,20 +672,41 @@ test('authorizedRequest does not refresh or replay a POST after a 401', async ()
 });
 
 test('authorizedRequest returns scope changed instead of a stale write 401 after sign-out', async () => {
+  const started = deferred<void>();
   const response = deferred<void>();
   const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
   const runtime = createMobileRuntime({
     ...ports(fakeStore(), () => remote()),
-    authorizedTransport: () => async () => { await response.promise; throw unauthorized; },
+    authorizedTransport: () => async () => { started.resolve(); await response.promise; throw unauthorized; },
   });
   await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
 
   const pending = runtime.authorizedRequest({ method: 'POST', path: '/api/v1/tasks', body: { title: 'task' } });
-  await Promise.resolve();
+  await started.promise;
   await runtime.signOut();
   response.resolve();
 
   await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+});
+
+test('authorizedRequest refreshes and replays HEAD and OPTIONS after a 401', async () => {
+  for (const method of ['HEAD', 'OPTIONS']) {
+    let refreshes = 0;
+    const sentTokens: string[] = [];
+    const runtime = createMobileRuntime({
+      ...ports(fakeStore(), () => remote({ refresh: async () => { refreshes += 1; return { access_token: 'access-2', refresh_token: 'refresh-2' }; } })),
+      authorizedTransport: () => async (input, token) => {
+        sentTokens.push(`${input.method}:${token}`);
+        if (token === 'access-1') throw Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+        return { success: true, data: { ok: true } };
+      },
+    });
+    await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+    assert.deepEqual(await runtime.authorizedRequest({ method, path: '/api/v1/tasks' }), { success: true, data: { ok: true } });
+    assert.deepEqual(sentTokens, [`${method}:access-1`, `${method}:access-2`]);
+    assert.equal(refreshes, 1);
+  }
 });
 
 test('authorizedRequest does not retry PUT, PATCH, or DELETE and normalizes read methods', async () => {
