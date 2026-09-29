@@ -23,10 +23,10 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
   if (!sceneDelegateNames.includes('EXExpoAppSceneDelegate')) {
     issues.push('WeKnora/Info.plist application scene role must map to EXExpoAppSceneDelegate');
   }
-  if (!appDelegate.includes('ExpoReactNativeFactoryProvider')) {
+  const swiftCode = maskSwiftNonCode(appDelegate);
+  if (!swiftCode?.includes('ExpoReactNativeFactoryProvider')) {
     issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
   }
-  const swiftCode = maskSwiftNonCode(appDelegate);
   const openUrlBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
   if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
     issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');

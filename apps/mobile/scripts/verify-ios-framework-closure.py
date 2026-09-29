@@ -80,7 +80,7 @@ def main(app_path: str, properties_path: str) -> None:
     for owner, binary in binaries:
         for line in inspect(binary):
             load = line.strip().split(" ", 1)[0]
-            if load.startswith("/System/Library/Frameworks/"):
+            if load.startswith(("/System/Library/", "/usr/lib/")):
                 continue
             token_match = re.match(r"(?P<token>@(?:rpath|loader_path|executable_path))/(?P<remainder>[^\s]+)$", load)
             component = re.search(r"(?:^|/)(?P<framework>[^/]+\.framework)(?:/|$)", load)
@@ -91,6 +91,8 @@ def main(app_path: str, properties_path: str) -> None:
                     fail(f"MALFORMED_FRAMEWORK_LOAD_PATH: {owner} requires {framework_name}: {load}")
                 if component:
                     fail(f"UNSUPPORTED_FRAMEWORK_LOAD_PATH: {owner}: {load}")
+                if load.startswith(("@rpath/", "@loader_path/", "@executable_path/")) or load.startswith("/"):
+                    fail(f"UNSUPPORTED_DYNAMIC_LIBRARY_LOAD: {owner}: {load}")
                 continue
             token = token_match.group("token")
             remainder = token_match.group("remainder")

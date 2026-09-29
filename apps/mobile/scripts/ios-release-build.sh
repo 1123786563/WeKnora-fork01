@@ -53,8 +53,8 @@ pod install
 cd "$MOBILE"
 pnpm exec tsx scripts/verify-ios-native-deps.ts
 
-# 4) 模拟器 Release 全量构建。注意：build/ 已存在时无需删除；确需删除则必须回到
-#    第 3 步重建（codegen 生成源码在 build/generated/ios/ReactCodegen 下，B4 实测）。
+# 4) 模拟器 Release 全量构建。clean prebuild 已重建 ios/ 并删除旧 build/ 与 codegen 输出，
+#    因此每次均为全量构建；codegen 源码会在本次构建中重新生成。
 cd "$IOS"
 xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator \
   -configuration Release -derivedDataPath build \

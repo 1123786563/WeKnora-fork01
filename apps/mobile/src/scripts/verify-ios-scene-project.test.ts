@@ -43,6 +43,17 @@ test('generated SDK57 project contract accepts scene, factory, URL and deploymen
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 project contract ignores provider name in Swift comments and strings', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8').replace('ExpoReactNativeFactoryProvider', '/* ExpoReactNativeFactoryProvider */ "ExpoReactNativeFactoryProvider"');
+    writeFileSync(appDelegate, source.replace('ExpoAppDelegate, /* ExpoReactNativeFactoryProvider */ "ExpoReactNativeFactoryProvider" {', 'ExpoAppDelegate {'));
+    assert.match(verifyIosSceneProject(root).join('\n'), /AppDelegate must conform to ExpoReactNativeFactoryProvider/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 project contract rejects broken effective scene, callback, or app configuration relationships', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {

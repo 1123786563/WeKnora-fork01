@@ -159,13 +159,31 @@ test('production checker ignores system framework paths', () => {
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
-test('production checker ignores non-framework dylib names containing the framework suffix text', () => {
+test('production checker permits only explicit OS roots and rejects unresolved dynamic libraries', () => {
+  for (const load of ['@rpath/libMissing.dylib', '@loader_path/libMissing.dylib', '/opt/vendor/libMissing.dylib']) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.notEqual(result.status, 0, `${load} unexpectedly passed: ${result.output}`);
+      assert.match(result.output, /UNSUPPORTED_DYNAMIC_LIBRARY_LOAD/);
+      assert.doesNotMatch(result.output, /Traceback/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
+  const system = fixture({ app: '/usr/lib/libobjc.A.dylib' });
+  try {
+    const result = run(system);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+  } finally { rmSync(system.root, { recursive: true, force: true }); }
+});
+
+test('production checker rejects unresolved non-framework dylib loads', () => {
   for (const load of ['@rpath/Foo.framework.dylib', '@rpath/libFoo.dylib']) {
     const f = fixture({ app: load });
     try {
       const result = run(f);
-      assert.equal(result.status, 0, result.output);
-      assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+      assert.notEqual(result.status, 0, result.output);
+      assert.match(result.output, /UNSUPPORTED_DYNAMIC_LIBRARY_LOAD/);
     } finally { rmSync(f.root, { recursive: true, force: true }); }
   }
 });
