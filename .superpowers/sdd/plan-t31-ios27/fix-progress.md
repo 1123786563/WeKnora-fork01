@@ -47,3 +47,9 @@
 - Verification: mobile suite 295 total, 281 pass, 14 opt-in skips, 0 fail; mobile typecheck pass; actual generated SDK57 tree contract pass; diff-check pass.
 - Patch SHA-256: `874a6972170d5078632853d4335c98064efebb73d484aee44d998b174ea78530`; commit `1eb90c6e15a96420d26931aed18cfd88521a6ea5`; local worktree clean.
 - Status: implementation complete; independent round-2 review pending.
+
+## Review repair round 3: PBX comment false positive
+- Review `.superpowers/sdd/plan-t31-ios27/fix-task-1-r2-review.md` found raw regex could accept a 16.4 string inside a PBX comment for a missing app setting. This is valid Medium because missing settings must fail closed.
+- Ruling: strip block comments and read actual per-configuration buildSettings; add an absent-key-with-comment fixture. Cost if too strict: generated PBX syntax changes require a corresponding parser/fixture update.
+- Brief: `.superpowers/sdd/plan-t31-ios27/fix-task-1-r3-brief.md`; implementation scope only checker/test/report/ledger.
+- Status: pending → running.

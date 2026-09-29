@@ -124,3 +124,15 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 **Verification:** RED/GREEN focused `ios-xcode27.test.ts`; full mobile test; typecheck; `verify-ios-scene-project.ts ios`; source diff-check. Commit, report/hash, scoped reviewer re-review before releasing Task R2.
 
 **Status:** pending.
+
+## Task R3-F1: Read actual PBX build settings, not comment text (repair round 3)
+
+**Source:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-r2-review.md` F1 Medium. A commented-out `IPHONEOS_DEPLOYMENT_TARGET = 16.4;` can satisfy the raw setting regex when a referenced configuration has no actual value.
+
+**Files:** `apps/mobile/scripts/verify-ios-scene-project.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, report/ledger only.
+
+**Acceptance:** For each actual `XCBuildConfiguration` object referenced by the app target, extract its `buildSettings` dictionary; strip PBX `/*...*/` comments before matching keys; require a concrete non-comment `IPHONEOS_DEPLOYMENT_TARGET` of 16.4. Missing config object, missing buildSettings, missing key, or wrong value must fail. Add test whose Staging config has only a comment containing the expected value. Retain arbitrary-name and scene/callback counterexamples.
+
+**Verification:** prove new fixture fails on previous helper; focused/full mobile tests, typecheck, actual generated SDK57 project checker, source diff-check; update report/hash and commit; scoped re-review required before Task R2.
+
+**Status:** pending.
