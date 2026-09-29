@@ -289,6 +289,26 @@
 
 **Acceptance:** Every rule read/write surface has the same explicit timestamp-or-null schedule field and validates its status relationship.
 
+## Task 20: Keep RulePage writes locked across inconsistent receipts and stale reads
+
+**Dependency:** Task 12 commit `25ef240c911388db0291d737eb2f6916e00c32a6`; independent review `/tmp/issue140-r2-task12-review.md`. Task 20 may proceed against Task 11's current paginated list contract; Task 18 later updates nullable detail/write-receipt decoding without changing these state transitions.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/career/RulePage.tsx` and its focused tests. Do not modify the API client or backend in this task.
+
+**Consumes / produces:** Preserve the current durable attempt key, selected rule ID, and selection-generation seam. A listed rule with missing detail stays unresolved and cannot enable create. A write receipt whose request ID differs from the persisted attempt stays in unknown/reconciliation state without overwriting the original ID. Any detail refresh may update `ruleView` only while both captured selected ID and selection generation remain current.
+
+**Steps:**
+
+- [ ] Add a listed-rule `not_found` detail test with another rule present; assert no create/write is enabled until rediscovery resolves the inconsistency.
+- [ ] Add mismatched write-receipt test; assert the original durable ID and unknown lock survive a second submit attempt and remount/recovery.
+- [ ] Add save-A → select-B → late refresh-A test; assert B remains selected and is the only rule ID on the next save.
+- [ ] Run tests RED, then make the smallest state-machine changes to keep unresolved writes locked and fence every read by selection generation and selected ID.
+- [ ] Run focused RulePage tests, Web typecheck and `git diff --check`; commit only owned RulePage files and report each tested interleaving.
+
+**Acceptance:** No list/detail inconsistency or mismatched receipt can unlock a new rule write, and stale post-save reads cannot change the currently selected edit target.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
