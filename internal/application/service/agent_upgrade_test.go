@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,6 +36,18 @@ func newAgentUpgradeServiceForTest(t *testing.T) (*AgentUpgradeService, *gorm.DB
 	t.Helper()
 	db := openAgentVersionServiceTestDB(t)
 	return NewAgentUpgradeService(repository.NewAgentUpgradeRepository(db)), db
+}
+
+type gatedUpgradeCreateVariantRepository struct {
+	repository.AgentUpgradeRepository
+	reached chan struct{}
+	resume  <-chan struct{}
+}
+
+func (r *gatedUpgradeCreateVariantRepository) CreateVariant(ctx context.Context, variant *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
+	close(r.reached)
+	<-r.resume
+	return r.AgentUpgradeRepository.CreateVariant(ctx, variant)
 }
 
 // publishUpgradeServiceRelease publishes ONE release on the agent-a listing
@@ -212,6 +225,60 @@ func TestAgentUpgradeServiceResolvesAndRefusesOutOfStateOperations(t *testing.T)
 	}
 	_, err = svc.DismissUpgradeProposal(ctx, 1, "admin", openID)
 	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+}
+
+func TestAcceptUpgradeProposalMapsConcurrentAdoptionEndToConflict(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
+	_, toReleaseID := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+
+	baseRepo := svc.repo
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	gate := &gatedUpgradeCreateVariantRepository{
+		AgentUpgradeRepository: baseRepo,
+		reached:                make(chan struct{}),
+		resume:                 resume,
+	}
+	svc.repo = gate
+	type result struct {
+		err error
+	}
+	accepted := make(chan result, 1)
+	go func() {
+		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "Upgrade draft"})
+		accepted <- result{err: err}
+	}()
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not reach CreateVariant after its state prechecks")
+	}
+
+	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+	select {
+	case got := <-accepted:
+		require.ErrorIs(t, got.err, ErrAgentUpgradeStateConflict)
+		require.ErrorIs(t, got.err, repository.ErrAgentAdoptionTransition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not return after resuming CreateVariant")
+	}
+
+	variants, err := baseRepo.ListVariantsByAdoption(context.Background(), 1, adoption.ID)
+	require.NoError(t, err)
+	require.Empty(t, variants, "rejected upgrade acceptance must not create a Variant after Adoption ended")
+	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, proposal)
+	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
+	require.NotEmpty(t, toReleaseID)
 }
 
 func TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades(t *testing.T) {
