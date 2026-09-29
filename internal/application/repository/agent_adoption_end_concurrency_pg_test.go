@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -47,17 +49,18 @@ func TestAgentAdoptionEndWaitsThenSeesCommittedVariant(t *testing.T) {
 			<-releaseInsert
 		}))
 		t.Cleanup(func() { _ = db.Callback().Create().Remove(name) })
-		createDone := make(chan error, 1)
+		createDone := make(chan struct{})
+		var createErr error
 		go func() {
-			_, err := repo.CreateVariant(context.Background(), &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Sales"})
-			createDone <- err
+			_, createErr = repo.CreateVariant(context.Background(), &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Sales"})
+			close(createDone)
 		}()
 		select {
 		case <-insertPaused:
 		case <-time.After(10 * time.Second):
 			t.Fatal("CreateVariant did not reach its paused insert after acquiring parent gate")
 		}
-		endDone := make(chan error, 1)
+		endDone := make(chan struct{})
 		endSQLDB, err := other.DB()
 		require.NoError(t, err)
 		conn, err := endSQLDB.Conn(context.Background())
@@ -65,17 +68,40 @@ func TestAgentAdoptionEndWaitsThenSeesCommittedVariant(t *testing.T) {
 		t.Cleanup(func() { _ = conn.Close() })
 		var endPID int
 		require.NoError(t, conn.QueryRowContext(context.Background(), "SELECT pg_backend_pid()").Scan(&endPID))
+		var endErr error
 		go func() {
-			// Keep this repository transaction on the same backend whose PID is
-			// observed below.
-			pinned, err := gorm.Open(other.Dialector, &gorm.Config{ConnPool: conn, Logger: other.Config.Logger})
+			// postgres.Dialector.Init replaces Config.ConnPool unless its own
+			// Conn field is set. Bind the pinned sql.Conn at the dialector seam.
+			pinnedDialector := postgres.New(postgres.Config{Conn: conn})
+			pinned, err := gorm.Open(pinnedDialector, &gorm.Config{Logger: other.Config.Logger})
 			if err != nil {
-				endDone <- err
+				endErr = err
+				close(endDone)
 				return
 			}
-			_, err = NewAgentAdoptionRepository(pinned).EndAdoption(context.Background(), 1, adoption.ID, "admin", "closed")
-			endDone <- err
+			var actualPID int
+			err = pinned.Raw("SELECT pg_backend_pid()").Scan(&actualPID).Error
+			if err == nil && actualPID != endPID {
+				err = fmt.Errorf("pinned End handle backend PID %d differs from observed PID %d", actualPID, endPID)
+			}
+			if err == nil {
+				_, err = NewAgentAdoptionRepository(pinned).EndAdoption(context.Background(), 1, adoption.ID, "admin", "closed")
+			}
+			endErr = err
+			close(endDone)
 		}()
+		// Always release the creator first, then wait a bounded time for both
+		// goroutines before their DB handles or test schema are cleaned up.
+		t.Cleanup(func() {
+			release()
+			for label, done := range map[string]<-chan struct{}{"CreateVariant": createDone, "EndAdoption": endDone} {
+				select {
+				case <-done:
+				case <-time.After(15 * time.Second):
+					t.Errorf("timed out joining %s goroutine during cleanup", label)
+				}
+			}
+		})
 		var waiting bool
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
@@ -90,8 +116,10 @@ func TestAgentAdoptionEndWaitsThenSeesCommittedVariant(t *testing.T) {
 		}
 		require.True(t, waiting, "EndAdoption must be observed waiting on the parent gate")
 		release()
-		require.NoError(t, <-createDone)
-		require.ErrorIs(t, <-endDone, ErrAgentAdoptionTransition)
+		<-createDone
+		require.NoError(t, createErr)
+		<-endDone
+		require.ErrorIs(t, endErr, ErrAgentAdoptionTransition)
 		stored, err := repo.GetAdoption(context.Background(), 1, adoption.ID)
 		require.NoError(t, err)
 		require.Equal(t, "active", stored.State)
