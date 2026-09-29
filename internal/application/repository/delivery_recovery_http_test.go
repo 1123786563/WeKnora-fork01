@@ -1,7 +1,8 @@
 package repository_test
 
-// T25 (#55) recovery evidence over the highest-stable interface: the real
-// HTTP delivery surface (routing + auth context + real handlers), a REAL
+// T25 (#55) recovery evidence over the real HTTP handler surface with an
+// explicit test identity context (production route guard/read-gate wiring is
+// pinned separately in internal/router/workbench_delivery_registration_test.go), a REAL
 // fully-migrated sqlite database, the real A03 approval chain, and a
 // GitHub stub speaking the wire contract pinned by
 // codedelivery/github_wire_test.go. The stub is the only double; the
@@ -9,6 +10,7 @@ package repository_test
 // real-provider loop). This file mirrors delivery_collaboration_http_test.go.
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +19,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +28,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
+	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/middleware"
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
@@ -56,8 +61,8 @@ type recoveryGitHubStub struct {
 	prs             []map[string]any
 	prSeq           int64
 	calls           map[string]int
-	failPRCreations int // >0: every PR creation answers 422 (definite failure)
-	failPRTransport bool
+	failPRCreations int  // >0: every PR creation answers 422 (definite failure)
+	failPRTransport bool // persist a PR, then abort before its response reaches the client
 }
 
 func newRecoveryGitHubStub(t *testing.T) *recoveryGitHubStub {
@@ -93,6 +98,17 @@ func (s *recoveryGitHubStub) snapshotCalls() map[string]int {
 		out[k] = v
 	}
 	return out
+}
+
+func (s *recoveryGitHubStub) snapshotWrites() map[string]int {
+	calls := s.snapshotCalls()
+	writes := map[string]int{}
+	for key, count := range calls {
+		if strings.HasPrefix(key, "POST ") || strings.HasPrefix(key, "PATCH ") {
+			writes[key] = count
+		}
+	}
+	return writes
 }
 
 func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
@@ -174,11 +190,6 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		failCreations := s.failPRCreations
 		failTransport := s.failPRTransport
 		s.mu.Unlock()
-		if failTransport {
-			// Unobservable outcome: the connection dies mid-request, the
-			// client sees a transport error, the delivery settles unknown.
-			panic(http.ErrAbortHandler)
-		}
 		if failCreations > 0 {
 			s.mu.Lock()
 			s.failPRCreations--
@@ -191,6 +202,11 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		pr := map[string]any{"number": s.prSeq, "html_url": fmt.Sprintf("https://github.com/octocat/hello/pull/%d", s.prSeq), "draft": true, "state": "open", "head_ref": "weknora/task/s1"}
 		s.prs = append(s.prs, pr)
 		s.mu.Unlock()
+		if failTransport {
+			// GitHub committed the PR, but the response was lost. This is
+			// genuinely unknown to the caller; resolution must find this PR.
+			panic(http.ErrAbortHandler)
+		}
 		s.writeJSON(w, http.StatusCreated, pr)
 	default:
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected " + r.Method + " " + path})
@@ -236,10 +252,12 @@ func (s *t25CredentialSource) Resolve(ctx context.Context, connectionID string, 
 // recoveryEnv mirrors newDeliveryCollabEnv WITH the Providers wiring (the
 // regression Task 1 fixed) and the counting/injecting stub.
 type recoveryEnv struct {
-	db     *gorm.DB
-	engine *gin.Engine
-	wsRoot string
-	github *recoveryGitHubStub
+	db        *gorm.DB
+	engine    *gin.Engine
+	wsRoot    string
+	github    *recoveryGitHubStub
+	responses []string
+	logs      bytes.Buffer
 }
 
 func newRecoveryEnv(t *testing.T) *recoveryEnv {
@@ -274,17 +292,21 @@ func newRecoveryEnv(t *testing.T) *recoveryEnv {
 		Workspace: workspace, Runs: runs, Dispatcher: dispatcher,
 	})
 
+	deliveryHandler := session.NewWorkbenchDeliveryHandler(runs, runs, svc)
+	actionHandler := handler.NewAppActionHandler(db)
+	actionHandler.SetActionService(actions)
+	// The router-package contract test exercises production route registration,
+	// role guards and the read gate. This harness retains the real HTTP logger
+	// so the credential test can inspect emitted request/response logs.
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	r.Use(middleware.RequestID(), middleware.Logger())
 	v1 := r.Group("/api/v1")
-	deliveryHandler := session.NewWorkbenchDeliveryHandler(runs, runs, svc)
 	v1.GET("/workbench/executions/:run_id/delivery", deliveryHandler.GetDelivery)
 	v1.POST("/workbench/executions/:run_id/baseline", deliveryHandler.MaterializeBaseline)
 	v1.POST("/workbench/executions/:run_id/delivery", deliveryHandler.PrepareDelivery)
 	v1.POST("/workbench/executions/:run_id/delivery/:delivery_id/dispatch", deliveryHandler.DispatchDelivery)
 	v1.POST("/workbench/executions/:run_id/delivery/:delivery_id/resolve", deliveryHandler.ResolveDeliveryUnknown)
-	actionHandler := handler.NewAppActionHandler(db)
-	actionHandler.SetActionService(actions)
 	v1.POST("/apps/actions/:id/approve", actionHandler.ApproveAction)
 	return &recoveryEnv{db: db, engine: r, wsRoot: wsRoot, github: github}
 }
@@ -299,6 +321,7 @@ func (e *recoveryEnv) do(t *testing.T, method, path, body string) *httptest.Resp
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	e.engine.ServeHTTP(w, req)
+	e.responses = append(e.responses, w.Body.String())
 	return w
 }
 
@@ -409,6 +432,7 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	code, view := env.dispatchState(t, deliveryID)
 	require.Equal(t, http.StatusOK, code)
 	require.Equal(t, "unknown", view.State, "an unobservable PR transport failure settles unknown, never a replay")
+	beforeResolve := env.github.snapshotWrites()
 
 	w := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -418,38 +442,40 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 		}
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resolved))
-	require.Equal(t, "pushed", resolved.Data.Delivery.State, "remote facts: branch pushed, draft PR absent")
-
-	env.github.mu.Lock()
-	env.github.failPRTransport = false
-	env.github.mu.Unlock()
-	code, view = env.dispatchState(t, deliveryID)
-	require.Equal(t, http.StatusOK, code)
-	require.Equal(t, "delivered", view.State)
-	require.NotZero(t, view.PRNumber)
+	require.Equal(t, "delivered", resolved.Data.Delivery.State, "remote facts include the PR committed before its response was lost")
+	require.NotZero(t, resolved.Data.Delivery.PRNumber)
+	require.Equal(t, beforeResolve, env.github.snapshotWrites(), "resolution must reconcile remote facts without issuing any provider writes")
 }
 
 // AC2/凭据隔离 e2e（spec :140 "does not ... expose remote credentials to
-// Shell"）：探针 token 只允许出现在出网 Authorization 头——不出现在任何
-// 响应 body、工作区文件（Shell 能看到的世界）或交付台账的任何列。
+// Shell"）：在此 delivery path 中探针 token 只用于 GitHub Authorization；
+// 它不出现在 HTTP response、共享工作区、交付台账、连接/Action 行、环境或日志。
+// 该 server-side delivery path 不启动 Shell / RemoteSandboxClient，见 Task 2 Ruling。
 func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
+	// This test is intentionally not parallel: SetOutput is package-global.
+	// The logger's documented default destination is os.Stdout; restore it
+	// after the captured production request/application log stream.
 	env := newRecoveryEnv(t)
+	logger.SetOutput(&env.logs)
+	defer logger.SetOutput(os.Stdout)
 	env.github.mu.Lock()
 	env.github.failPRCreations = 1
 	env.github.mu.Unlock()
 	deliveryID := env.seedApprovedDelivery(t)
 
-	bodies := []string{}
-	capture := func(w *httptest.ResponseRecorder) { bodies = append(bodies, w.Body.String()) }
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", ""))
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", ""))
-	capture(env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", ""))
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", ""))
+	// e.do records every HTTP response, including baseline materialization,
+	// delivery preparation and the real A03 approval response from seeding.
+	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", "")
+	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", "")
+	env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", "")
+	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
+	require.GreaterOrEqual(t, len(env.responses), 7, "credential scan must cover baseline, prepare, approval and later delivery responses")
 
-	for i, body := range bodies {
+	for i, body := range env.responses {
 		require.NotContains(t, body, t25ProbeToken, "response %d must not carry credential material", i)
 	}
-	// The workspace IS the Shell's world: no dispatched file may embed the probe.
+	// The task workspace is the file surface shared with task execution; no
+	// dispatched file may embed the probe. This flow does not launch a Shell.
 	require.NoError(t, filepath.WalkDir(env.wsRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -469,8 +495,37 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 			require.NotContains(t, field, t25ProbeToken, "the delivery ledger must not carry credential material")
 		}
 	}
+	var actions []appconnectorrepo.ActionRow
+	require.NoError(t, env.db.Find(&actions).Error)
+	for _, row := range actions {
+		assertNoProbeInStringFields(t, "app_actions", row)
+	}
+	var connections []appconnectorrepo.ConnectionRow
+	require.NoError(t, env.db.Find(&connections).Error)
+	for _, row := range connections {
+		assertNoProbeInStringFields(t, "connections", row)
+	}
+	for _, entry := range os.Environ() {
+		require.NotContains(t, entry, t25ProbeToken, "credential resolution must not add the probe to the inherited environment used by shell launchers")
+	}
+	require.NotContains(t, env.logs.String(), t25ProbeToken, "request/response and application logs must not contain the credential")
 	// Positive control: the probe DID leave as the Authorization header —
 	// every provider call carried it (otherwise the stub 401s and the run
 	// above would not have reached delivered/pushed states).
 	require.NotZero(t, env.github.snapshotCalls()["POST /git/blobs"])
+}
+
+func assertNoProbeInStringFields(t *testing.T, table string, row any) {
+	t.Helper()
+	value := reflect.ValueOf(row)
+	for value.Kind() == reflect.Pointer {
+		value = value.Elem()
+	}
+	require.Equal(t, reflect.Struct, value.Kind())
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		if field.Kind() == reflect.String {
+			require.NotContains(t, field.String(), t25ProbeToken, "%s.%s must not persist credential material", table, value.Type().Field(i).Name)
+		}
+	}
 }
