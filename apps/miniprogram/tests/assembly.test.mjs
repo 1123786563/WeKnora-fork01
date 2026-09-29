@@ -192,9 +192,12 @@ test('assembly: TaskOffice and session client paths have matching Go route regis
   hasRoute('/api/v1/workbench/tasks', 'POST', '/:task_id/archive');
   hasRoute('/api/v1/workbench/tasks', 'DELETE', '/:task_id/archive');
 
+  const clientOverview = readFileSync(new URL('../../../packages/api-client/src/mobile/overview.ts', import.meta.url), 'utf8');
   const clientTaskOffice = readFileSync(new URL('../../../packages/api-client/src/mobile/task-office.ts', import.meta.url), 'utf8');
   const clientInteractions = readFileSync(new URL('../../../packages/api-client/src/mobile/interactions.ts', import.meta.url), 'utf8');
   const pair = (source, method, path) => assert.match(source, new RegExp(`method:\\s*'${method}',[\\s\\S]{0,220}?path:\\s*${path}`));
+  hasRoute('/api/v1/workbench', 'GET', '/overview');
+  pair(clientOverview, 'GET', "'\\/api\\/v1\\/workbench\\/overview'");
   pair(clientExecutions, 'GET', '`/api/v1/workbench/executions\\$\\{query === \'\' \\? \'\' : `\\?\\$\\{query\\}`\\}`');
   pair(clientExecutions, 'GET', '`/api/v1/workbench/executions/\\$\\{pathId\\(requestedRunID, \'runID\'\\)\\}`');
   pair(clientExecutions, 'GET', '`/api/v1/workbench/executions/\\$\\{pathId\\(requestedRunID, \'runID\'\\)\\}/snapshot`');
