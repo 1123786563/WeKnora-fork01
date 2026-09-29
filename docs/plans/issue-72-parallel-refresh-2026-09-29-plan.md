@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T1 Ledger pointer and exact checkpoint
+T1 evidence/status note ──> T1 Ledger pointer and exact checkpoint ──> T2 plan traceability correction
 ```
 
-Only Task 1 is in scope. No application implementation Task is ready under the current #86/#87 gates.
+Only these documentation Tasks are in scope. No application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -81,10 +81,38 @@ Only Task 1 is in scope. No application implementation Task is ready under the c
 
 **Failure handling:** If any cited path, hash, or status cannot be independently confirmed from the collected report and current worktree state, omit the claim or label it partial/missing; do not edit another Worktree to resolve a discrepancy.
 
+### Task 2: Correct the plan's source-hash conclusion
+
+**Dependencies:** Task 1 note and Ledger pointer reviewed; the scoped re-review identified an incorrect comparison between SHA-256 file digests and Git blob SHA-1 IDs in this plan's Task 1 deliverable description.
+
+**Owner role:** `mechanical_worker` for the single-sentence documentation correction.
+
+**Validator role:** `reviewer` for independent hash-method and plan-to-deliverable consistency review.
+
+**Owned files:**
+
+- Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+- Do not alter Task 1's reviewed audit note or execution Ledger.
+
+**Consumes:** The Task 1 audit note's verified comparison: `git show <revision>:<path> | shasum -a 256` yields `f1fe9f...` for `lago.go` and `4553d1...` for `lago_credits_order_integration_test.go` at both `dd089662...` and `8329b85...`; the revisions differ in 81 files overall; the README records no fresh live replay at current integration HEAD or stable-identity verification.
+
+**Produces:** The Task 1 description in this plan states that the two representative files match, the revisions differ in 81 files overall, and the absent exact-checkpoint live replay leaves #86 acceptance unverified. It makes no file-drift claim from mismatched hash algorithms.
+
+**Implementation steps:**
+
+- [ ] Replace the false assertion in Task 1's #86 `Produces` bullet with the precise same-method result and replay limitation above.
+- [ ] Recompute both historical/current file SHA-256 pairs with `git show <revision>:<path> | shasum -a 256`; expect identical values for each path.
+- [ ] Run `git diff --check`; expect exit code 0.
+- [ ] Verify the diff changes only this plan and commit with message `docs(issue-72): correct evidence refresh plan wording`.
+
+**Verification:** Both SHA-256 pairs match, `git diff --check` passes, and `git diff --name-only <BASE>..HEAD` lists only this plan file.
+
+**Failure handling:** If either pair no longer matches the recorded value, stop the documentation correction and inspect the exact commit/path; do not infer acceptance from source similarity or ancestry alone.
+
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 is a review-driven correction to the Task 1 plan wording.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
 - Proportion: one documentation task; no production tests are relevant.
