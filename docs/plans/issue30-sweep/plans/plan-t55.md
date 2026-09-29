@@ -91,7 +91,7 @@ git commit -m "fix(codedelivery): wire Providers into the T23 delivery e2e rig �
 
 **设计要点**：stub 镜像 `delivery_collaboration_http_test.go:47-145` 的 `githubStub`（同一最小 GitHub REST 子集），追加三类能力：①按方法+路径的调用计数（`calls map[string]int`，键形如 `"POST /git/blobs"`）；②`failPRCreations int`（>0 时 `POST /pulls` 返回 422，制造确定性 PR 失败 → `pushed`）；③`failPRTransport bool`（`POST /pulls` 时 `panic(http.ErrAbortHandler)` 掐断连接，`http.Client` 收到 EOF = 传输不可观测 → `unknown`）。`GET /pulls` 按 `r.URL.Query().Get("head")` 过滤（`github_client.go:261` 以 `?head=` 查询，ResolveUnknown 的 `QueryProvider` 经它找 PR——`dispatcher.go:279`）。
 
-- [ ] **Step 1: 写失败测试（三个 e2e，完整代码）**
+- [x] **Step 1: 写失败测试（三个 e2e，完整代码）**
 
 新建 `internal/application/repository/delivery_recovery_http_test.go`：
 
@@ -576,24 +576,24 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 
 注意：`e.db.Raw(...).Scan(&fence)` 是 #53 `approveThroughHTTP` 同款参数绑定读（`delivery_collaboration_http_test.go:328`）；approve 不带 `expected_version` 会被 A03 的 fence 检查拒绝，这是镜像而非新设计。
 
-- [ ] **Step 2: 运行测试确认失败形态**
+- [x] **Step 2: 运行测试确认失败形态**
 
 Run: `go test ./internal/application/repository/ -run 'TestT25' -count=1`
 Expected: 首跑为编译期或断言期 FAIL 均可接受（例如 import 遗漏、`seedApprovedDelivery` 的 baseline 请求体与服务端 `deliveryPrepareInput`/`MaterializeBaseline` 的绑定字段不匹配导致的 4xx）。若 baseline 请求被 400 拒绝，对照 `workbench_delivery.go:76-100` 的 `deliveryPrepareInput` 字段名（`connection_id`/`repo`/`baseline_sha`）与 `#53 prepareDelivery`（`delivery_collaboration_http_test.go:289-321`）的实际请求体修正——以两处源码为准。
 
-- [ ] **Step 3: 最小修正至通过**
+- [x] **Step 3: 最小修正至通过**
 
 按 Step 2 的失败信息修正（不做超出断言需要的实现改动；本任务零生产代码改动——任何需要动生产代码才能绿的断言都是信号，停下核对语义而不是放宽断言）。
 
 Run: `go test ./internal/application/repository/ -run 'TestT25' -count=1`
 Expected: PASS（3 个测试）。
 
-- [ ] **Step 4: 回归邻近面**
+- [x] **Step 4: 回归邻近面**
 
 Run: `go test ./internal/application/repository/ -run 'TestDeliveryCollaboration|TestT25' -count=1`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/application/repository/delivery_recovery_http_test.go
@@ -790,7 +790,7 @@ export function createDeliveryRecovery(ports: {
 
 `recover` 语义（固定顺序，写进实现注释）：①lease 前置守卫；②`remote.delivery(runId)` 读现状——`null` ⇒ `DELIVERY_INVALID_INPUT`（无交付可恢复）；③状态路由：`delivered` ⇒ 直接返回视图（**零写请求**，幂等重入）；`pushed` ⇒ `dispatchDelivery`（PR-only 半程）；`unknown` ⇒ `resolveDelivery`（远端事实收敛）；`prepared`/`dispatched`/`failed` ⇒ `DELIVERY_STATE_CONFLICT`（消息含 state 名——prepared 待审批、dispatched 派发在途均不是恢复窗口）；④写调用异常：ApiError 双形状（顶层 `.status === 409` 或 `.code`/`.body?.code` 等于 `code_delivery_state_conflict`）⇒ `DELIVERY_STATE_CONFLICT`，其余 ⇒ `DELIVERY_BACKEND`；⑤写返回后 lease 复验（在途撤销 ⇒ `DELIVERY_SCOPE_CHANGED`，迟到结果丢弃）；⑥`deliveryViewOf(record)` 返回。409 双形状判定写成模块内私有 helper（mobile-core 不 import api-client——`app-smoke.test.tsx:592-595` 的 Interface-only 纪律），形态镜像 `delivery-reader.ts` 的 `DeliveryRemote` 依赖方向。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 新建 `packages/mobile-core/src/delivery/delivery-recovery.test.ts`（lease 铸造范式复用 `delivery-reader.test.ts:16-21` 的 `RuntimeScopeLease`）：
 
@@ -940,16 +940,16 @@ test('any other backend failure translates to DELIVERY_BACKEND', async () => {
 Run: `pnpm exec tsx --test packages/mobile-core/src/delivery/delivery-recovery.test.ts`
 Expected: FAIL（模块不存在，加载错误）。
 
-- [ ] **Step 2: 实现 `delivery-recovery.ts`**
+- [x] **Step 2: 实现 `delivery-recovery.ts`**
 
 按 Interfaces 段的签名与固定顺序语义实现；`DeliveryRecoveryError` 形态镜像 `delivery-reader.ts:11-17`（`readonly code` + constructor）。
 
-- [ ] **Step 3: 运行测试验证 GREEN + typecheck**
+- [x] **Step 3: 运行测试验证 GREEN + typecheck**
 
 Run: `pnpm exec tsx --test packages/mobile-core/src/delivery/delivery-recovery.test.ts && pnpm --filter @weknora/mobile typecheck`
 Expected: PASS + 类型检查通过。类型检查用 apps/mobile 的 tsc 而非 mobile-core 自身——`packages/mobile-core` 无独立 tsconfig（`pnpm --filter @weknora/mobile-core exec tsc --noEmit` 会因无输入文件只打印帮助文本，不是有效验证，勿用）；mobile-core 以 TS 源直出（`package.json` exports `"./src/index.ts"`），其类型经 apps/mobile 的 tsc 程序传递覆盖（`delivery-view.ts:6-7` 注释即声称由该路径证明同构；`pnpm --filter @weknora/mobile typecheck` 计划作者实跑 exit 0）。
 
-- [ ] **Step 4: barrel 导出**
+- [x] **Step 4: barrel 导出**
 
 `packages/mobile-core/src/index.ts:103-107` 的 delivery 导出段追加：
 
@@ -961,7 +961,7 @@ export type { DeliveryRecovery, DeliveryRecoveryErrorCode, DeliveryRecoveryRemot
 Run: `pnpm --filter @weknora/mobile typecheck`
 Expected: 通过（理由同 Task 5 Step 3——mobile-core 无独立 tsconfig，类型检查经 apps/mobile 的 tsc 传递覆盖）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/mobile-core/src/delivery/delivery-recovery.ts packages/mobile-core/src/delivery/delivery-recovery.test.ts packages/mobile-core/src/index.ts

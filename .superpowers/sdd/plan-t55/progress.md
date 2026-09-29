@@ -21,13 +21,13 @@
 
 | Task | Internal consistency review | Status |
 |---|---|---|
-| 1 | Existing failing collaboration e2e and provider fixture are named; one-line `Providers` wiring resolves stated root cause | Ready |
-| 2 | Depends on T1 host fixture; HTTP routes and real migration DB named; credential probe and dispatch counters specified | Ready after T1 |
+| 1 | Existing failing collaboration e2e and provider fixture are named; one-line `Providers` wiring resolves stated root cause | Verified |
+| 2 | Depends on T1 host fixture; HTTP routes and real migration DB named; credential probe and dispatch counters specified | Verified |
 | 3 | Isolated sandbox environment contract test; no T1/T2 output consumed | Ready; can run independently in a separate worktree if needed |
 | 4 | API recovery methods and terminal read-only surface tests are in owned API-client files | Verified: implementation + repair round 1 reviewed |
-| 5 | Depends on T4 recovery API; package export named | Ready after T4 |
+| 5 | Depends on T4 recovery API; package export named | Verified for module behavior; concrete composition typecheck assigned to Task 6 (Ruling T55-R2) |
 | 6 | Depends on T5 constructor/export; UI callbacks and terminal purity checks named | Ready after T5 |
-| 7 | Credential-gated real-provider test; env-missing path must report blocked-env | Locally verified and reviewed; live-provider path skipped blocked-env |
+| 7 | Credential-gated real-provider test; env-missing path must report blocked-env | Verified for local behavior; live-provider path skipped blocked-env |
 | 8 | Extends opt-in integration evidence after app recovery wiring | Ready after T6 |
 
 ## Cross-plan scheduling
@@ -35,13 +35,13 @@
 - #63 and #64 overlap adoption, upgrade, router/container, and workbench admission files; they must not write concurrently. #64 will remain queued until #63 is integrated and reviewed.
 
 ## Task status
-- Task 1: pending.
-- Task 2: pending (blocked on Task 1 review/integration).
-- Task 3: pending (independent).
-- Task 4: pending.
-- Task 5: pending (blocked on Task 4 review/integration).
+- Task 1: verified.
+- Task 2: verified.
+- Task 3: verified.
+- Task 4: verified.
+- Task 5: verified for module behavior; composition type compatibility is carried into Task 6 per Ruling T55-R2.
 - Task 6: pending (blocked on Task 5 review/integration).
-- Task 7: pending.
+- Task 7: verified locally; live provider blocked-env.
 - Task 8: pending (blocked on Task 6 review/integration).
 
 ## Execution update
@@ -66,3 +66,5 @@
 - Task 7 real-provider behavior is not marked live-verified: no credential values were inspected and no repository writes were attempted.
 - Task 2 repair rounds 1–4 completed in isolated worktree `/Users/wuyongjun/.paseo/worktrees/144ixsa6/issue30-b6-t55-task2`; implementation and repairs were integrated in dependency order as `c51f04cc0`, `d8ed93e6a`, `cc30ca6f1`, `728a9097e`, and `62c1039d6`. Final round-4 package `.superpowers/sdd/plan-t55/task-2-review-r4.patch`, SHA-256 `427a0eb02c09226d63f8ac3478e5cbd2b2da8fe734284371b3f8500673aeadda`, BASE `3b76d7cff9806ccaefdcd17b632ab6480b608b5e`, HEAD `70fd8bfcb203c4bf0b2b1e6b6977fbd0a3dbd324`; reviewer `/root/review_t55_task2_r4` confirmed SHA and returned Spec PASS / Quality PASS, no findings. Round-4 focused test, gofmt and diff-check passed per implementation report. Task 2 is scoped-verified; router test still does not claim global JWT/API-key authentication coverage.
 - Task 5 initial independent review `/root/review_t55_task5` returned Spec FAIL / Quality CHANGES REQUIRED on package SHA-256 `a33e2ce19e361c7fd97ad687a0617532db7864dcf2a0ea9b004f599a4193883c`. Findings: Task 4 adapter methods are absent from Task 5's actual base file despite existing in the integration history; and recovery must reject a returned delivery row whose `id` differs from the requested `deliveryId`. SDD repair round 1 is active; Task 5 remains unverified and Task 6/8 remain blocked.
+- Task 5 repair round 1 package SHA-256 `548aa734ae77c53b8ef8838f5de956fb632f3cb9dea8a8503abdf081c87eaa84`; review package `.superpowers/sdd/plan-t55/review-e6b98fe69..05d06cd7b.diff`, BASE `e6b98fe69bc824c750872ee93ad2c799014056fe`, HEAD `05d06cd7bf2d448288c67dd2df0c3fd945d786ad`. Reviewer `/root/review_t55_task5_r1` returned Spec PASS / Quality PASS with two low findings: concrete composition compatibility will be demonstrated by planned Task 6 typecheck; task report fix-checkpoint metadata was stale. Ruling T55-R2: accept the Task 6 evidence boundary because Task 5 exports the port and Task 6 owns production composition; Task 6 must typecheck the concrete adapter-to-recovery assignment. For traceability, the integrated Task 5 report's stale `b6011750a` references are corrected below.
+- Task 5 implementation and repair integrated as `54d4368e2` and `b98c7cc82`; the repair's adapter methods were already present from reviewed Task 4 commits `75f1983b4` and `c5ba5e588`. The report metadata is corrected in this checkpoint; the low composition-type evidence item is accepted under Ruling T55-R2 and must be closed by Task 6's concrete composition typecheck. Task 6 is now ready.
