@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference ──> T11 clarify evidence path base and mapping provenance ──> T12 restore Task 8 historical wording ──> T13 restore Task 8 output-history wording
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference ──> T11 clarify evidence path base and mapping provenance ──> T12 restore Task 8 historical wording ──> T13 restore Task 8 output-history wording ──> T14 durable final review/OCR/status checkpoint
 ```
 
-These thirteen documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference; Task 11 clarifies only the path base and evidence provenance wording; Task 12 restores Task 8's implementation steps and verification to their historical checkpoint wording; Task 13 restores its historical `Produces` wording and keeps later audit conclusions in Task 10. No application implementation Task is ready under the current #86/#87 gates.
+These fourteen documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference; Task 11 clarifies only the path base and evidence provenance wording; Task 12 restores Task 8's implementation steps and verification to their historical checkpoint wording; Task 13 restores its historical `Produces` wording and keeps later audit conclusions in Task 10; Task 14 records the durable whole-branch review disposition, incomplete OCR state, and bounded process snapshot. No application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -218,10 +218,10 @@ These thirteen documentation Tasks are in scope. Task 7 addresses the five findi
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps, Task 11 clarifies the refresh-worktree-root path base and separates direct session-to-Issue attachment evidence from inferred PID/session pairing, and Task 12 restores Task 8's historical implementation steps and verification while recording chronology, and Task 13 restores Task 8's historical `Produces` wording while keeping current audit conclusions in Task 10.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps, Task 11 clarifies the refresh-worktree-root path base and separates direct session-to-Issue attachment evidence from inferred PID/session pairing, Task 12 restores Task 8's historical implementation steps and verification while recording chronology, Task 13 restores Task 8's historical `Produces` wording while keeping current audit conclusions in Task 10, and Task 14 records the final review/OCR/status checkpoint without promoting incomplete OCR to a pass.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: thirteen documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, Task 10 makes the two evidence-strength corrections, Task 11 tightens only path-base and provenance wording, Task 12 restores Task 8's implementation-step and verification history, and Task 13 restores Task 8's output-history wording. No production tests are relevant.
+- Proportion: fourteen documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, Task 10 makes the two evidence-strength corrections, Task 11 tightens only path-base and provenance wording, Task 12 restores Task 8's implementation-step and verification history, Task 13 restores Task 8's output-history wording, and Task 14 records durable final review/OCR/process status. No production tests are relevant.
 
 ### Task 7: Correct partial OCR documentation findings
 
@@ -404,3 +404,28 @@ These thirteen documentation Tasks are in scope. Task 7 addresses the five findi
 - [ ] Commit only this plan with `docs(issue-72): preserve task eight output chronology`.
 
 **Verification:** Task 8 `Produces` matches the checkpoint text; Task 10 distinguishes current inferred PID/session and correct issue mappings from historical wording; the DAG and self-check state thirteen documentation tasks; `git diff --check` passes and only this plan changed.
+
+### Task 14: Record durable final review, OCR, and process status checkpoint
+
+**Dependencies:** Tasks 1–13 are recorded; independent whole-branch review is complete for its stated range, while OCR remains incomplete.
+
+**Owner role:** `mechanical_worker` for append-only documentation recording.
+
+**Validator role:** `reviewer` for range, status, and chronology consistency.
+
+**Owned files:** Modify only this plan and `docs/plans/issue-72-execution-ledger.md`.
+
+**Consumes:** Independent review exact range `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f..33841cb48e0b8f1cbac143a0d3be56515648c67b`; partial OCR note `docs/plans/issue-72-parallel-refresh-2026-09-29-ocr-partial.md`; process/session snapshot supplied for 2026-09-29 23:19 CST.
+
+**Produces:** The Ledger records whole-branch Spec PASS / quality PASS with no actionable findings, the four reviewed documentation paths and clean links/diff, prior finding resolution including Task 8 chronology restored by Tasks 12–13, explicit incomplete OCR status and its recorded attempt limits, plus the bounded live-process snapshot and mapping limits. Current R-6 and #87 gating remain as previously recorded.
+
+**Implementation steps:**
+
+- [ ] Append the dated review and OCR disposition to the execution Ledger; do not characterize OCR as complete or full-range.
+- [ ] Append the supplied process snapshot, preserving timestamp-inferred PID/session pairing, direct issue/attachment mapping, absent task/worktree mapping, and no lane release; do not stop or alter any process or worktree.
+- [ ] Add Task 14 to the DAG, self-check, and task count while preserving Tasks 1–13 chronology.
+- [ ] Run `git diff --check`; confirm only this plan and the execution Ledger changed; commit only those two paths as `docs(issue-72): record refresh review checkpoint`.
+
+**Verification:** Recorded review range is exact; the four paths are the plan, audit note, execution Ledger, and partial OCR note; OCR remains explicitly incomplete, with sessions and exact earlier range/coverage linked to the partial note; process identities/status and limitations match the supplied 23:19 CST snapshot. The R-6/#87 gates are unmodified. `git diff --check` passes and only the two owned paths change. No tests apply.
+
+**Failure handling:** If the supplied status conflicts with the durable partial OCR note or the requested process snapshot, preserve the discrepancy without upgrading coverage or acting on external processes.
