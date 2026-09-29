@@ -18,7 +18,7 @@
 - Do not turn malformed or incomplete source/evaluation data into successful empty results.
 - Preserve manual Career entry for candidates without resumes and show the full shared JD that will be submitted.
 - Local commits are authorized; no push, merge, publish, deployment, or GitHub issue mutation.
-- User confirmed on 2026-09-30 that no database has applied the #140 Career/Workbench migrations and authorized version reordering. Keep the 19 #140 migrations at SQLite 112–130 and versioned/PostgreSQL 191–209; move the 12 colliding #30 migrations to SQLite 131–142 and versioned/PostgreSQL 210–221. This is safe only for database histories that have not already recorded the displaced #30 versions; verify/restate this deployment assumption in the final migration ruling.
+- User confirmed on 2026-09-30 that no database has applied the #140 Career/Workbench migrations, but is unsure whether older databases recorded #30 versions and explicitly instructed us to preserve existing migration numbers. Therefore keep #30 at SQLite 112–123 and versioned/PostgreSQL 191–202; keep #140 at SQLite 124–142 and versioned/PostgreSQL 203–221. Do not integrate migration re-numbering commit `65ada6a5388a27a681fdf991ed33f726e1c62e33`. Any new #140 schema changes append at SQLite 143 / versioned 222. Verify pairings/unique sequence and record that no existing IDs were changed.
 
 ## Review Focus
 
@@ -330,22 +330,20 @@
 
 **Acceptance:** Redirects cannot be mislabeled unreachable; a backend allowing unauthenticated reads cannot produce a passing live-gate result.
 
-## Task 9: Re-sequence #140 and colliding #30 migrations without duplicate version numbers
+## Task 9: Preserve existing #30 and #140 migration identities
 
-**Dependency:** None; migration files and database migration tests are separate from Tasks 1–8. This task must integrate before any release candidate is tested or built.
+**Dependency:** User clarification on 2026-09-30 supersedes the initial re-sequencing request: old #30 application history is unknown, so existing numeric identities must remain stable.
 
-**Role:** `mechanical_worker`; validator `backend_validator`; reviewer `reviewer`.
+**Role:** `backend_validator`; reviewer `reviewer`.
 
-**Files:** Paired migration files in `migrations/sqlite/` and `migrations/versioned/` for the 19 #140 Career/Workbench migrations and 12 colliding #30 migrations; `internal/database/migration.go`; `internal/database/migration_version_uniqueness_test.go`; filename/version references in Career, Workbench, code-delivery and mobile migration tests.
+**Files:** Existing files under `migrations/sqlite/` and `migrations/versioned/`; migration loader and migration identity tests. No existing migration file should be renamed or edited by this task.
 
-**Consumes / produces:** Preserve within-cohort dependency order. Move #140 `career_profile` through `career_reconciliations` from SQLite 124–142 to 112–130 and versioned 203–221 to 191–209. Move #30 `task_grants` through `space_connection_grants` from SQLite 112–123 to 131–142 and versioned 191–202 to 210–221. Move the SQLite `public_agent_marketplace` no-transaction gate and exact migration path from version 114 to 133. Migration loader must observe one unique, contiguous sequence; both public trees must point to the same schema transition for each name.
+**Consumes / produces:** Preserve the established order and identities: #30 `task_grants` through `space_connection_grants` stay at SQLite 112–123 and versioned 191–202; #140 `career_profile` through `career_reconciliations` stay at SQLite 124–142 and versioned 203–221. The SQLite marketplace no-transaction gate remains at its current version/path 114. Any new migration appends after the current tail: SQLite 143 and versioned 222. Verify unique paired sequences without changing any existing filename, numeric version, or loader special case.
 
 **Steps:**
 
-- [ ] Add/update a migration uniqueness/identity test that asserts both trees contain the expected paired names and unique versions after the mapping; update version-specific tests to assert the moved paths and down/up behavior.
-- [ ] Run migration-focused tests and capture any stale filename or numeric assumptions.
-- [ ] Apply the complete paired-file mapping, update the SQLite special transaction gate, and update every discovered filename/version reference.
-- [ ] Run `go test -count=1 ./internal/database ./internal/modules/commercial/... ./internal/modules/plugins/...` plus the direct code-delivery and mobile migration tests identified during implementation; run `git diff --check`.
-- [ ] Commit only migration files, loader and migration tests. Report the assumption that no existing deployment requires the displaced #30 numeric identities, because golang-migrate stores numeric versions rather than migration identity.
+- [ ] Verify both migration trees pair names consistently and have unique monotonic versions, with #30 and #140 remaining at their original IDs.
+- [ ] Run `go test -count=1 ./internal/database` and inspect the loader's SQLite special transaction gate at version 114; run `git diff --check`.
+- [ ] Do not commit migration renumbering; record the user ruling and compatibility reason in the execution ledger. For appended migrations, add explicit identity tests for 143/222.
 
-**Acceptance:** No duplicate migration numbers remain; fresh SQLite and PostgreSQL migration sequences apply Career/Workbench at 112–130 / 191–209, #30 schema changes remain in dependency order at 131–142 / 210–221, and the special SQLite marketplace migration still executes outside a transaction.
+**Acceptance:** Existing migration IDs and semantics are unchanged; #30 remains 112–123 / 191–202, #140 remains 124–142 / 203–221, and new schema changes append at 143 / 222.
