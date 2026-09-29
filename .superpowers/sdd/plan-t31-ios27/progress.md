@@ -18,3 +18,4 @@
 - Task 1–3 combined vertical task: pending.
 - External acceptance status: staging credentials, installed iOS auth/OIDC, and Android device evidence are blocked/pending; do not close Issue #31.
 - Task scope refinement after read-only research: `apps/mobile/src/android-release-config.test.ts` hard-codes Expo 55 versions for expo-audio/network/file-system and must be updated to the selected SDK57 compatibility versions. This is a directly affected contract test, not an unrelated scope expansion. Research found Expo SDK57 does not require TypeScript6 specifically; root already pins TS6. No downgrade based solely on SDK migration.
+- Scope refinement 2026-09-29: full mobile tests exposed `apps/mobile/src/release-deps.test.ts` with two more `^~55.` assertions for expo-audio/network (T39/#69 test). Include only those version assertions as directly affected by SDK57 manifest changes; no unrelated test cleanup.
