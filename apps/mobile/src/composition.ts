@@ -14,6 +14,7 @@ import type { TaskMaterial } from '@weknora/mobile-core';
 import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
 import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
 import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
+import { createDeliveryRecovery, type DeliveryRecovery } from '@weknora/mobile-core';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
@@ -347,6 +348,25 @@ export function activeDeliveryReader(): DeliveryReader | undefined {
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
   return deliveryFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
+}
+
+const deliveryRecoveries = new Map<string, DeliveryRecovery>();
+
+/** Delivery recovery 按 deployment scope key 记忆化；同一 remote 结构实现读与恢复两端口
+ * （镜像 taskOfficeFor 的 `backend: remote, detail: remote` 范式，T05）。 */
+function deliveryRecoveryFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): DeliveryRecovery {
+  return cachePut(deliveryRecoveries, deploymentScopeKey(origin, tenantId), () => {
+    const remote = createMobileCodeDeliveryRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
+    return createDeliveryRecovery({ remote, lease: () => activeRuntime.scopeLease() });
+  });
+}
+
+/** 详情路由经此取当前授权 scope 的交付恢复器（无授权面返回 undefined）。 */
+export function activeDeliveryRecovery(): DeliveryRecovery | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return deliveryRecoveryFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 const dictations = new Map<string, Dictation>();
