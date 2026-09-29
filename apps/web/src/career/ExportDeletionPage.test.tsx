@@ -258,6 +258,66 @@ test('confirmed deletion immediately removes mounted archive controls and preser
  assert.match(container.textContent ?? '', /保留范围/)
 })
 
+test('a pending boundary refresh cannot restore pre-deletion inventory after the deleted receipt', async () => {
+ let resolveRefresh!: (value: CareerDeletionBoundaryView) => void
+ let boundaryReads = 0
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  careerDeletionBoundary: async () => {
+   boundaryReads++
+   if (boundaryReads === 1) return boundaryView()
+   return await new Promise((resolve) => { resolveRefresh = resolve })
+  },
+  deleteCareer: async (input: Record<string, unknown>) => deletionReceipt({ requestId: input.requestId as string }),
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const client = { career } as unknown as WeKnoraClient
+ function TestHarness() {
+  const [currentGeneration, setCurrentGeneration] = React.useState(0)
+  return React.createElement(React.Fragment, null,
+   React.createElement('button', { type: 'button', onClick: () => setCurrentGeneration((value) => value + 1) }, '模拟父级确认删除'),
+   React.createElement(ExportDeletionPage, { client, scopeController, deletionGeneration: currentGeneration, onCareerDeleted: () => setCurrentGeneration((value) => value + 1) }))
+ }
+ const container = render(React.createElement(TestHarness))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查看删除边界')); await settle(); await settle() })
+ assert.ok(container.querySelector('[aria-label="删除边界清单"]'))
+ toggle(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!)
+ await act(async () => { await settle() })
+ await act(async () => { click(byLabel(container, 'button', '刷新删除边界')); await settle() })
+ assert.equal(boundaryReads, 2)
+ const boundaryHiddenDuringRefresh = container.querySelector('[aria-label="删除边界清单"]') === null
+ const acknowledgementCleared = container.querySelector('input[type="checkbox"]') === null
+ const deletionBlockedDuringRefresh = byLabel(container, 'button', '发起完整删除').hasAttribute('disabled')
+ await act(async () => { click(byLabel(container, 'button', '模拟父级确认删除')); await settle() })
+ await act(async () => { resolveRefresh(boundaryView()); await settle(); await settle() })
+ assert.equal(boundaryHiddenDuringRefresh, true, 'refresh immediately drops the stale boundary')
+ assert.equal(acknowledgementCleared, true, 'refresh clears prior acknowledgement')
+ assert.equal(deletionBlockedDuringRefresh, true, 'deletion stays blocked until the new boundary is read and acknowledged')
+ assert.equal(container.querySelector('[aria-label="删除边界清单"]'), null)
+ assert.equal(container.querySelector('[aria-label="完整删除"]'), null)
+})
+
+test('forbidden old-grant verification preserves the confirmed deletion receipt and retention', async () => {
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  exportCareer: async (input: Record<string, unknown>) => exportReceipt({ requestId: input.requestId as string }),
+  careerExportReceipt: async () => { throw Object.assign(new Error('grant no longer available'), { code: 'forbidden' }) },
+  careerDeletionBoundary: async () => boundaryView(),
+  deleteCareer: async (input: Record<string, unknown>) => deletionReceipt({ requestId: input.requestId as string }),
+ }
+ const { container } = await mountLifecycle(career)
+ await act(async () => { click(byLabel(container, 'button', '发起导出')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查看删除边界')); await settle(); await settle() })
+ toggle(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!)
+ await act(async () => { await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起完整删除')); await settle(); await settle(); await settle() })
+ assert.match(container.querySelector('[aria-label="删除结果"]')?.textContent ?? '', /已完全删除/)
+ assert.match(container.querySelector('[aria-label="删除结果"]')?.textContent ?? '', /完成于/)
+ assert.match(container.querySelector('[aria-label="删除结果"]')?.textContent ?? '', /保留范围/)
+ assert.match(container.textContent ?? '', /旧导出授权|不可访问|无法读取/)
+})
+
 test('revision conflicts on deletion surface the current revision and a re-read affordance', async () => {
  const career: CareerStub = {
   open: async () => ({ revision: 4 }),
