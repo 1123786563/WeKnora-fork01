@@ -3,6 +3,9 @@ import Taro from '@tarojs/taro';
 import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
+import { client, auth } from '../services/runtime.ts';
+import { decodeCareerReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import { createControlledStore, intentKeyFor, recoverableWrite, retryRecoverable, readStoredIntent, type StoredIntent } from '../services/career-intent.ts';
 import {
   saveRule, pendingRuleWrite, reconcilePendingRule, retryPendingRule, abandonPendingRuleWrite, readStoredRuleId, readRule,
   fetchUsageEstimate, fetchReminders, createReminder, pendingReminderWrite, reconcilePendingReminder, retryPendingReminder, abandonPendingReminderWrite,
@@ -33,6 +36,27 @@ const pushOutcomeNote = (receipt: ReminderReceipt): string => {
   if (!receipt.push.attempted) return '当前已退订推送：未发送提醒，待办以站内为准。';
   return receipt.push.delivered ? '推送提醒已发送（推送只是提醒，以站内为准）。' : '推送投递失败——待办已保存，以站内为准；推送失败不改变站内事实。';
 };
+const pushPreferenceStore = createControlledStore();
+const pushPreferenceKey = (): string => intentKeyFor('push-subscription', auth.scope.capture());
+const pendingPushPreference = (): StoredIntent<{ value: 'subscribed' }> | null => readStoredIntent(pushPreferenceStore, pushPreferenceKey());
+const pushAuthorizationKey = (): string => intentKeyFor('push-authorization-pending', auth.scope.capture());
+function pushAuthorizationPending(): boolean { return pushPreferenceStore.read(pushAuthorizationKey()) === true; }
+function sendPushPreference(id: string, expected: number): Promise<ReturnType<typeof decodeCareerReceipt>> {
+  return client.request({ method: 'POST', path: '/api/v1/career/act', body: { action: 'confirm', key: 'notifications.push', value: 'subscribed', source: { kind: 'user', label: '微信小程序' }, requestId: id, expectedRevision: expected } }).then(decodeCareerReceipt);
+}
+function persistPushPreference(expectedRevision: number): Promise<ReturnType<typeof decodeCareerReceipt>> {
+  return recoverableWrite(pushPreferenceStore, { kind: 'push-subscription', describe: '推送订阅偏好', input: { value: 'subscribed' as const }, expected: expectedRevision, send: sendPushPreference });
+}
+function retryPushPreference(): Promise<ReturnType<typeof decodeCareerReceipt>> {
+  return retryRecoverable(pushPreferenceStore, 'push-subscription', '推送订阅偏好', sendPushPreference);
+}
+async function reconcilePushPreference(): Promise<ReturnType<typeof decodeCareerReceipt>> {
+  const pending = pendingPushPreference();
+  if (!pending) throw new Error('没有待对账的推送订阅偏好');
+  const receipt = decodeCareerReceipt(await client.request({ method: 'GET', path: `/api/v1/career/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
+  pushPreferenceStore.remove(pushPreferenceKey());
+  return receipt;
+}
 
 export default function RulesUsageRemindersPage() {
   const session = useSession();
@@ -42,6 +66,7 @@ export default function RulesUsageRemindersPage() {
   const inboxBusy = useAction(); const remindBusy = useAction();
   const recRemindBusy = useAction(); const retryRemindBusy = useAction();
   const subscribeBusy = useAction(); const optOutBusy = useAction();
+  const recPushBusy = useAction(); const retryPushBusy = useAction();
 
   // —— 额度预估（执行前只读）——
   const [estimate, setEstimate] = useState<UsageEstimateView>();
@@ -64,6 +89,7 @@ export default function RulesUsageRemindersPage() {
 
   const pendingRule = pendingRuleWrite();
   const pendingReminder = pendingReminderWrite();
+  const pendingPush = pendingPushPreference();
   const revision = desk.data?.revision;
   const intervalNumber = Number(intervalText);
   const intervalValid = Number.isSafeInteger(intervalNumber) && intervalNumber >= 1 && intervalNumber <= 43200;
@@ -198,15 +224,52 @@ export default function RulesUsageRemindersPage() {
       <Notice tone='info'>{REMINDER_PUSH_PRIVACY_NOTE}拒绝订阅或环境不支持时，站内待办始终可用；这里绝不显示“已送达”。</Notice>
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='订阅提醒' customStyle={tdesignButtonStyle} loading={subscribeBusy.busy} onTap={() => void subscribeBusy.run(async () => {
-          const outcome = await requestReminderSubscription();
-          setSubscription(outcome);
+          if (pendingPushPreference()) {
+            setPushNotice('已有一次订阅偏好写入结果未知；请先对账或安全重发原请求。不会再次请求微信授权。');
+            return;
+          }
+          const alreadyAuthorized = pushAuthorizationPending();
+          const outcome = alreadyAuthorized ? undefined : await requestReminderSubscription();
+          if (outcome) setSubscription(outcome);
+          if (outcome?.status === 'accepted') pushPreferenceStore.write(pushAuthorizationKey(), true);
+          if (outcome && outcome.status !== 'accepted') { void inboxBusy.run(loadInbox); return; }
+          if (alreadyAuthorized || outcome?.status === 'accepted') {
+            if (!Number.isSafeInteger(revision) || revision === undefined || revision < 0) {
+              setPushNotice('微信授权已接受，但当前没有可用的档案修订，服务器订阅偏好未确认。请刷新档案后再同步偏好。');
+              return;
+            }
+            try {
+              await persistPushPreference(revision);
+              pushPreferenceStore.remove(pushAuthorizationKey());
+              setPushNotice('微信授权已接受，服务器订阅偏好也已保存；这不代表提醒已送达。');
+            } catch (error) {
+              if (typedCode(error) === 'outcome_unknown') setPushNotice('微信授权已接受，但服务器订阅偏好结果未知。请用原请求对账或安全重发，不会再次请求微信授权。');
+              throw error;
+            }
+          }
           void inboxBusy.run(loadInbox);
         })}>订阅提醒（微信订阅消息）</t-button>
       </View></View>
-      {subscription?.status === 'accepted' && <Notice tone='info'>已授权订阅消息：本次授权只代表允许发送；是否真的送达由服务端后续推送决定，站内待办始终是完整事实。{REMINDER_PUSH_PRIVACY_NOTE}</Notice>}
+      {subscription?.status === 'accepted' && <Notice tone='info'>{pushNotice || '已授权订阅消息：本次授权只代表允许发送；是否真的送达由服务端后续推送决定，站内待办始终是完整事实。'}{REMINDER_PUSH_PRIVACY_NOTE}</Notice>}
       {subscription?.status === 'rejected' && <Notice tone='warning'>你{subscription.reason === 'main_switch_off' ? '已在微信设置中关闭订阅消息' : '拒绝了本次订阅'}：不会发送订阅消息，也绝不显示“已送达”；站内待办仍完整可读（点下方“查看站内待办”）。</Notice>}
       {subscription?.status === 'unavailable' && <Notice tone='warning'>订阅消息当前不可用（{subscription.reason === 'no_templates' ? '本构建未配置订阅消息模板 id——模板需在微信公众平台与本 appid 绑定后申请' : subscription.reason === 'api_unavailable' ? '当前环境没有 wx.requestSubscribeMessage（模拟器或基础库不支持）' : `原生调用失败${subscription.errMsg ? `：${subscription.errMsg}` : ''}`}）。如实告知未订阅：站内待办为准，不伪造已送达。</Notice>}
       {subscription && <Text className='wk-muted wk-small'>订阅请求只携带模板 id，不含任何找岗条件或岗位内容。</Text>}
+      {pendingPush && <>
+        <Notice tone='warning'>微信授权已接受，但服务器订阅偏好写入结果未知（原请求 {pendingPush.requestId.slice(0, 10)}…）。恢复操作不会再次请求微信授权。</Notice>
+        <Action secondary loading={recPushBusy.busy} onClick={() => void recPushBusy.run(async () => { await reconcilePushPreference(); pushPreferenceStore.remove(pushAuthorizationKey()); setPushNotice('服务器订阅偏好已对账确认；授权不代表提醒已送达。'); })}>对账原订阅偏好请求</Action>
+        <Action secondary loading={retryPushBusy.busy} onClick={() => void retryPushBusy.run(async () => { await retryPushPreference(); pushPreferenceStore.remove(pushAuthorizationKey()); setPushNotice('服务器订阅偏好已用原请求安全重发保存；授权不代表提醒已送达。'); })}>安全重发原订阅偏好</Action>
+        {recPushBusy.error && <Notice tone='danger'>{recPushBusy.error} 对账失败时 intent 保留；稍后可继续恢复。</Notice>}
+        {retryPushBusy.error && <Notice tone='danger'>{retryPushBusy.error} 原请求和修订已保留；不会再次请求微信授权。</Notice>}
+      </>}
+      {!pendingPush && pushAuthorizationPending() && <>
+        <Notice tone='warning'>微信授权已接受，但缺少可用档案修订，尚未写入服务器偏好。档案修订就绪后点「订阅提醒」同步；不会再次请求微信授权。</Notice>
+        <Action secondary disabled={revision === undefined} loading={subscribeBusy.busy} onClick={() => void subscribeBusy.run(async () => {
+          if (revision === undefined) return;
+          await persistPushPreference(revision);
+          pushPreferenceStore.remove(pushAuthorizationKey());
+          setPushNotice('服务器订阅偏好已保存；微信授权不代表提醒已送达。');
+        })}>同步已授权的服务器订阅偏好</Action>
+      </>}
       <Action secondary loading={optOutBusy.busy} onClick={() => void optOutBusy.run(async () => {
         if (revision === undefined) throw new Error('请先读取档案修订');
         await setPushSubscription('unsubscribed', revision);
