@@ -1,0 +1,192 @@
+diff --git a/internal/application/repository/delivery_recovery_http_test.go b/internal/application/repository/delivery_recovery_http_test.go
+index f80cb1528..830ed82f4 100644
+--- a/internal/application/repository/delivery_recovery_http_test.go
++++ b/internal/application/repository/delivery_recovery_http_test.go
+@@ -512,8 +512,12 @@ func deliveryState(t *testing.T, env *recoveryEnv, id string) string {
+ }
+ 
+ func requestRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
++	return requestRecoveryContext(env, context.Background(), id)
++}
++
++func requestRecoveryContext(env *recoveryEnv, requestCtx context.Context, id string) *httptest.ResponseRecorder {
+ 	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", nil)
+-	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
++	ctx := context.WithValue(requestCtx, types.TenantIDContextKey, uint64(1))
+ 	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+ 	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
+ 	w := httptest.NewRecorder()
+@@ -521,6 +525,82 @@ func requestRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
+ 	return w
+ }
+ 
++func TestT55CanceledRecoverySettlesUnknownUsingIndependentContext(t *testing.T) {
++	env := newRecoveryEnv(t)
++	env.github.mu.Lock()
++	env.github.failPRCreations = 1
++	env.github.mu.Unlock()
++	id := env.seedApprovedDelivery(t)
++	code, _ := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	env.github.mu.Lock()
++	env.github.failPRTransport = true
++	env.github.mu.Unlock()
++	env.github.prEntered, env.github.prRelease = make(chan struct{}, 1), make(chan struct{})
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan *httptest.ResponseRecorder, 1)
++	go func() { done <- requestRecoveryContext(env, ctx, id) }()
++	<-env.github.prEntered
++	cancel()
++	close(env.github.prRelease)
++	w := <-done
++	require.NotEqual(t, http.StatusOK, w.Code)
++	require.Equal(t, "unknown", deliveryState(t, env, id), "cancelled request must settle the claimed Delivery despite its canceled context")
++	w = doResolveRecovery(env, id)
++	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++	require.Equal(t, "delivered", deliveryState(t, env, id))
++	require.Equal(t, 2, env.github.snapshotCalls()["POST /pulls"], "cancellation recovery must reconcile, never create a second PR")
++}
++
++func TestT55RecoverySettlementFailureIsSurfaced(t *testing.T) {
++	env := newRecoveryEnv(t)
++	env.github.mu.Lock()
++	env.github.failPRCreations = 1
++	env.github.mu.Unlock()
++	id := env.seedApprovedDelivery(t)
++	code, _ := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	env.github.mu.Lock()
++	env.github.failPRTransport = true
++	env.github.mu.Unlock()
++	require.NoError(t, env.db.Exec(`CREATE TRIGGER fail_unknown_settlement BEFORE UPDATE OF state ON code_deliveries WHEN NEW.state = 'unknown' BEGIN SELECT RAISE(ABORT, 'injected settlement failure'); END`).Error)
++	w := requestRecovery(env, id)
++	require.NotEqual(t, http.StatusOK, w.Code)
++	require.NotEqual(t, http.StatusOK, w.Code, "the persistence failure must prevent a success response")
++	require.Equal(t, "dispatched", deliveryState(t, env, id), "failed CAS must not be reported as safely settled")
++}
++
++func TestT55DispatchedClaimReconcilesRemotePRWithoutWriting(t *testing.T) {
++	env := newRecoveryEnv(t)
++	id := env.seedApprovedDelivery(t)
++	code, view := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	require.Equal(t, "delivered", view.State)
++	require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("state", "dispatched").Error)
++	writes := env.github.snapshotWrites()
++	w := doResolveRecovery(env, id)
++	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++	require.Equal(t, "delivered", deliveryState(t, env, id))
++	require.Equal(t, writes, env.github.snapshotWrites(), "recovery of a durable dispatched claim must only query remote facts")
++}
++
++func TestT55DispatchedClaimWithoutPRFactRemainsFailClosed(t *testing.T) {
++	env := newRecoveryEnv(t)
++	env.github.mu.Lock()
++	env.github.failPRCreations = 1
++	env.github.mu.Unlock()
++	id := env.seedApprovedDelivery(t)
++	code, view := env.dispatchState(t, id)
++	require.Equal(t, http.StatusOK, code)
++	require.Equal(t, "pushed", view.State)
++	require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("state", "dispatched").Error)
++	writes := env.github.snapshotWrites()
++	w := doResolveRecovery(env, id)
++	require.NotEqual(t, http.StatusOK, w.Code, "an empty PR query cannot prove no in-flight write")
++	require.Equal(t, "dispatched", deliveryState(t, env, id))
++	require.Equal(t, writes, env.github.snapshotWrites(), "a dispatched claim with no PR fact stays blocked and read-only")
++}
++
+ func TestT25DeliveryRunOwnerMismatchDoesNotReachProvider(t *testing.T) {
+ 	for _, field := range []string{"run_id", "owner_id"} {
+ 		t.Run(field, func(t *testing.T) {
+diff --git a/internal/modules/codedelivery/dispatcher.go b/internal/modules/codedelivery/dispatcher.go
+index 4e180f7b1..641e992aa 100644
+--- a/internal/modules/codedelivery/dispatcher.go
++++ b/internal/modules/codedelivery/dispatcher.go
+@@ -305,12 +305,17 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
+ 			return appconnectorsvc.DispatchOutcome{}, err
+ 		}
+ 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
+-			[]string{string(DeliveryUnknown)}, string(DeliveryDelivered), ""); err != nil {
++			[]string{string(DeliveryUnknown), string(DeliveryDispatched)}, string(DeliveryDelivered), ""); err != nil {
+ 			return appconnectorsvc.DispatchOutcome{}, err
+ 		}
+ 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
+ 	}
+ 	if sha, exists, berr := client.BranchHead(ctx, material.Branch); berr == nil && exists {
++		if row.State == string(DeliveryDispatched) {
++			// A live or abandoned claimant may still have an in-flight POST. A
++			// read-only miss cannot release its durable claim for another create.
++			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: PR absence cannot release dispatched claim %s", appconnectorsvc.ErrDispatchUnknown, head)
++		}
+ 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
+ 			return appconnectorsvc.DispatchOutcome{}, err
+ 		}
+diff --git a/internal/modules/codedelivery/service.go b/internal/modules/codedelivery/service.go
+index dd8c0736c..b59b08676 100644
+--- a/internal/modules/codedelivery/service.go
++++ b/internal/modules/codedelivery/service.go
+@@ -370,16 +370,21 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
+ 		}
+ 		// dispatched → PR-only recovery; the dispatcher never repeats push steps.
+ 		if s.deps.Dispatcher == nil {
+-			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), "")
+-			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
++			claimErr := fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
++			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, DeliveryPushed, claimErr); settleErr != nil {
++				return DeliveryView{}, errors.Join(claimErr, settleErr)
++			}
++			return DeliveryView{}, claimErr
+ 		}
+ 		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
+ 			var rejected *PRWriteRejectedError
+ 			var notStarted *RecoveryNotStartedError
++			next := DeliveryUnknown
+ 			if errors.As(err, &rejected) || errors.As(err, &notStarted) {
+-				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), err.Error())
+-			} else {
+-				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryUnknown), err.Error())
++				next = DeliveryPushed
++			}
++			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, next, err); settleErr != nil {
++				return DeliveryView{}, errors.Join(err, settleErr)
+ 			}
+ 			return DeliveryView{}, err
+ 		}
+@@ -389,6 +394,19 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
+ 	return s.viewAfter(ctx, in, row.ID)
+ }
+ 
++// settleRecoveryClaim must outlive the request: a canceled HTTP context after
++// a possible provider write cannot be allowed to strand the durable claim.
++// The bounded detached context is only used for the local CAS settlement.
++func (s *CodeDeliveryService) settleRecoveryClaim(ctx context.Context, in DispatchInput, id string, to DeliveryState, cause error) error {
++	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
++	defer cancel()
++	if err := s.deps.Store.TransitionState(settleCtx, in.TenantID, id,
++		[]string{string(DeliveryDispatched)}, string(to), cause.Error()); err != nil {
++		return fmt.Errorf("settle interrupted recovery claim to %s: %w", to, err)
++	}
++	return nil
++}
++
+ // ResolveDeliveryUnknown settles an unknown delivery from remote facts only.
+ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in DispatchInput) (DeliveryView, error) {
+ 	if _, err := s.deps.Runs.GetOwnedRun(ctx, in.TenantID, in.CallerID, in.RunID); err != nil {
+@@ -401,14 +419,14 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
+ 	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
+ 		return DeliveryView{}, ErrNotDeliveryOwner
+ 	}
+-	if row.State != string(DeliveryUnknown) {
++	if row.State != string(DeliveryUnknown) && row.State != string(DeliveryDispatched) {
+ 		return DeliveryView{}, fmt.Errorf("%w: resolve from %s", ErrDeliveryState, row.State)
+ 	}
+ 	action, err := s.deps.ActionRows.FindAction(ctx, row.ActionID)
+ 	if err != nil {
+ 		return DeliveryView{}, err
+ 	}
+-	if action.State == appconnector.ActionUnknown {
++	if action.State == appconnector.ActionUnknown && row.State == string(DeliveryUnknown) {
+ 		if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+ 			return DeliveryView{}, err
+ 		}
