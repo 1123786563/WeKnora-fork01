@@ -34,3 +34,23 @@ The dedicated T9 live-stack rerun remains incomplete because its dedicated `lab.
 ## Review and commit
 
 Implementation self-check and targeted verification are complete. The task is committed locally on the assigned branch; the final HEAD is reported to the parent. Independent review/validator status is pending parent dispatch.
+
+## Fix round 1 — latest-candidate identity alignment
+
+### Review findings addressed
+
+- **F1 Medium:** Resolved selection drift when multiple captured PaymentIntents succeed. The pre-settle response now records each candidate's ID, positive integral `created` timestamp, and `lago_invoice_id`; the test resolves the unique greatest timestamp using the production `latestIntent` rule before issuing settle. Missing/invalid creation timestamps and tied greatest timestamps fail closed before settlement. Post-settle lookup accepts only that exact expected ID and retains the nonempty invoice metadata guard.
+- Regression coverage uses two candidates returned in reverse chronological order: only the newest target is selected; an older-only success fails with expected and observed IDs; tied newest timestamps fail closed.
+- **F2 Low:** Corrected the #72 execution ledger implementation checkpoint from the erroneous `4ac0c0af...` to `7e7975a7262dcea43f0fbef42df54438b39af836`. The plan (`9d3df6f961142a6c5e0734d9eea4a283b34859d7`) and review record (`fac64ec95f3a7af2343069ef016060cda4dc5337`) remain identified as such.
+
+### RED → GREEN and verification
+
+- RED: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1` failed to build because the new regression referenced the not-yet-implemented candidate capture and latest-ID resolver (`undefined: preSettlePaymentIntentCandidates`, `undefined: expectedPaymentIntentID`). This established the regression preceded implementation.
+- An intermediate focused run after implementation failed only because the assertion expected the word “tie” while the diagnostic says “share created timestamp”; the assertion was aligned to the explicit diagnostic. No production behavior change was required for that assertion repair.
+- GREEN focused run: same tagged focused command — PASS (0.727s).
+- `go test ./internal/modules/commercial/commercialplatform -count=1` — PASS (72.555s).
+- `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'` — PASS, compile-only (0.844s).
+- `gofmt -w internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go` and `git diff --check` — PASS.
+- No Docker, database, network API, or live payment was run. Parent-provided `validator-report.md` was preserved unchanged.
+
+Live T9 dedicated-stack rerun and AC4 real Alipay sandbox evidence remain incomplete.
