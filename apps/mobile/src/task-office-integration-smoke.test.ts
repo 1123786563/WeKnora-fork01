@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeUnauthenticatedRead, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
+import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeUnauthenticatedRead, probeUnauthenticatedWrite, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
 import { createTaskOffice, TaskOfficeError, type TaskOffice } from '@weknora/mobile-core';
 
 test('Task Office live integration remains opt-in and requires all credentials', () => {
@@ -26,6 +26,7 @@ test('Task Office evidence reports unauthenticated rejection and never serialize
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: 'https://weknora.example.org',
     unauthenticatedRead: 'rejected',
+    unauthenticatedWrite: 'rejected',
     serverAuthBoundary: 'unreachable',
     home: 'failed',
     sections: 'unavailable',
@@ -48,6 +49,9 @@ test('pre-login probe accepts only typed scope rejection and detects fail-open',
       async overview() { backendCalls += 1; throw new Error('unexpected transport'); },
       async list() { backendCalls += 1; return { items: [] }; },
       async archive() { backendCalls += 1; }, async restore() { backendCalls += 1; },
+      async createSession() { throw new Error('unexpected transport'); },
+      async start() { throw new Error('unexpected transport'); },
+      async lookup() { throw new Error('unexpected transport'); },
     },
   });
   assert.equal(await probeUnauthenticatedRead(unauthenticated), 'rejected');
@@ -58,7 +62,26 @@ test('pre-login probe accepts only typed scope rejection and detects fail-open',
   assert.equal(backendCalls, 2, 'the real no-lease Office made no backend call; only deliberately broken adapters did');
 });
 
-test('server auth boundary probe rejects only on 401/403 without credentials (ocr2-043)', async () => {
+test('pre-login write probe requires the client scope lease and never reaches the backend', async () => {
+  let backendWrites = 0;
+  const unauthenticated = createTaskOffice({
+    lease: () => undefined,
+    backend: {
+      async overview() { return { needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '' }; },
+      async list() { return { items: [] }; },
+      async archive() { backendWrites += 1; }, async restore() { backendWrites += 1; },
+      async createSession() { throw new Error('unexpected transport'); },
+      async start() { throw new Error('unexpected transport'); },
+      async lookup() { throw new Error('unexpected transport'); },
+    },
+  });
+  assert.equal(await probeUnauthenticatedWrite(unauthenticated), 'rejected');
+  const broken: TaskOffice = { ...unauthenticated, async archive() { backendWrites += 1; } };
+  assert.equal(await probeUnauthenticatedWrite(broken), 'failed-open');
+  assert.equal(backendWrites, 1, 'only the deliberately broken Office reaches the write adapter');
+});
+
+test('server auth boundary rejects only explicit 401/403, and treats redirects and unauthenticated success as fail-open (ocr2-043)', async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const install = (respond: () => Promise<Response>): void => {
@@ -78,13 +101,15 @@ test('server auth boundary probe rejects only on 401/403 without credentials (oc
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
     install(async () => status(302));
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
+    install(async () => new Response('', { status: 302, headers: { location: '/login' } }));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
     install(async () => { throw new TypeError('network down'); });
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'unreachable');
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 6);
     for (const call of calls) {
       assert.ok(call.url.startsWith('https://weknora.example.org/api/v1/workbench/executions'), call.url);
       assert.equal(call.init?.method, 'GET');
-      assert.equal(call.init?.redirect, 'error');
+      assert.equal(call.init?.redirect, 'manual');
       assert.equal(Object.keys(call.init?.headers ?? {}).includes('authorization'), false, 'no credentials are sent');
     }
   } finally {

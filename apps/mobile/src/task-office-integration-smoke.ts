@@ -14,6 +14,8 @@ export interface TaskOfficeIntegrationEvidence {
   /** 客户端 lease gate 拒绝（signIn 前 scopeLease() 恒 undefined，见
    * probeUnauthenticatedRead）——只证明本地编排层 fail-closed。 */
   unauthenticatedRead: 'rejected' | 'failed-open';
+  /** 客户端 lease gate 拒绝未登录写入（archive 在 signIn 前同样无 scope lease）。 */
+  unauthenticatedWrite: 'rejected' | 'failed-open';
   /** OCR ocr2-043：无凭证直连服务端 executions 端点的真实鉴权边界
    * （401/403 → rejected；其余 2xx/4xx → failed-open；不可达 → unreachable）。 */
   serverAuthBoundary: 'rejected' | 'failed-open' | 'unreachable';
@@ -37,15 +39,26 @@ export async function probeUnauthenticatedRead(office: TaskOffice): Promise<'rej
   }
 }
 
+/** Client-gate write probe: an unauthenticated archive must be rejected before
+ * the backend adapter can receive the sentinel task ID. */
+export async function probeUnauthenticatedWrite(office: TaskOffice): Promise<'rejected' | 'failed-open'> {
+  try {
+    await office.archive('unauthenticated-smoke-probe');
+    return 'failed-open';
+  } catch (error) {
+    return error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED' ? 'rejected' : 'failed-open';
+  }
+}
+
 /** OCR ocr2-043：无凭证直连真实生产端点，证明服务端鉴权边界 fail-closed。
  * GET /api/v1/workbench/executions 不带任何凭证：401/403 才算 rejected；
- * 任何其他状态（含重定向后 200 的登录页）都是 failed-open；网络不可达如实记
- * unreachable。redirect:'error' 防止跟随后跳到登录页被误判。 */
+ * 任何其他状态（包括 3xx 登录重定向）都是 failed-open；网络不可达如实记
+ * unreachable。redirect:'manual' 保留原始 3xx 响应，避免跟随后把登录页 200 误判。 */
 export async function probeServerAuthBoundary(deploymentOrigin: string): Promise<'rejected' | 'failed-open' | 'unreachable'> {
   try {
     const response = await fetch(new URL('/api/v1/workbench/executions?limit=1', deploymentOrigin).toString(), {
       method: 'GET',
-      redirect: 'error',
+      redirect: 'manual',
       headers: { accept: 'application/json' },
     });
     return response.status === 401 || response.status === 403 ? 'rejected' : 'failed-open';
@@ -131,6 +144,7 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: config.deploymentOrigin,
     unauthenticatedRead: 'failed-open',
+    unauthenticatedWrite: 'failed-open',
     serverAuthBoundary: 'unreachable',
     home: 'failed',
     sections: 'unavailable',
@@ -164,7 +178,8 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     lease: () => runtime.scopeLease(),
   });
   evidence.unauthenticatedRead = await probeUnauthenticatedRead(unauthenticatedOffice);
-  if (evidence.unauthenticatedRead !== 'rejected') { runtime.dispose(); return evidence; }
+  evidence.unauthenticatedWrite = await probeUnauthenticatedWrite(unauthenticatedOffice);
+  if (evidence.unauthenticatedRead !== 'rejected' || evidence.unauthenticatedWrite !== 'rejected') { runtime.dispose(); return evidence; }
   let snapshot: RuntimeSnapshot;
   try {
     snapshot = await runtime.signIn({

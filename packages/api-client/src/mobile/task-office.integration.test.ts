@@ -21,6 +21,9 @@ test('real HTTP home, list, search and archive roundtrip through the task office
   }
   const evidence = await runTaskOfficeIntegration(config);
   emitTaskOfficeIntegrationEvidence(evidence, (record) => t.diagnostic(record));
+  assert.equal(evidence.serverAuthBoundary, 'rejected', 'the unauthenticated server boundary must reject the direct request');
+  assert.equal(evidence.unauthenticatedRead, 'rejected', 'the client-side scope lease must keep unauthenticated reads closed');
+  assert.equal(evidence.unauthenticatedWrite, 'rejected', 'the client-side scope lease must keep unauthenticated writes closed');
   assert.equal(evidence.home, 'loaded', 'the aggregate overview must load end to end');
   assert.equal(evidence.sections !== 'unavailable', true);
   assert.notEqual(evidence.listSearch, 'failed');
