@@ -42,11 +42,13 @@ button, textarea { font: inherit; }
 .embed-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .embed-btn--text { border-color: transparent; background-color: transparent; padding-inline: 0.5rem; color: #506078; }
 .embed-btn--text:hover:not(:disabled), .embed-btn--text:focus-visible:not(:disabled) { background-color: #f2f5fa; }
-.embed-btn--primary { border-color: #07c05f; background-color: #07c05f; color: #ffffff; }
-.embed-btn--primary:hover:not(:disabled) { background-color: #0a8f4c; }
+.embed-btn--primary { border-color: var(--wk-color-brand, #07c05f); background-color: var(--wk-color-brand, #07c05f); color: #ffffff; }
+.embed-btn--primary:hover:not(:disabled) { background-color: var(--wk-color-brand-hover, #0a8f4c); }
 .embed-btn--small { height: 1.75rem; min-height: 24px; padding: 2px 8px; font-size: 0.75rem; line-height: 1rem; }
 
 :root[data-theme="dark"] { color: #edf2ff; background: #131923; color-scheme: dark; }
+:root[data-theme="dark"] .embed-btn--text { color: inherit; background-color: color-mix(in srgb, currentColor 12%, transparent); }
+:root[data-theme="dark"] .embed-btn--text:hover:not(:disabled), :root[data-theme="dark"] .embed-btn--text:focus-visible:not(:disabled) { background-color: color-mix(in srgb, currentColor 20%, transparent); }
 .embed-shell { --embed-primary: #2864dc; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: inherit; }
 .embed-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent); background: inherit; flex: 0 0 auto; }
 .embed-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 10px; color: var(--embed-primary); background: color-mix(in srgb, var(--embed-primary) 12%, transparent); font-size: 20px; line-height: 1; }
