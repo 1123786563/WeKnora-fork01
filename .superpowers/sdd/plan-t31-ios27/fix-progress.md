@@ -31,9 +31,9 @@
 - T39 tracked Release log SHA256 verified at original `12a27ed4f698074356c5e1d7722b5d7af78b2d60b5cdf9e9856e44e37b7bb71e`.
 - Initial implementation commit: `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`; Task R4 review package BASE `003f12cc1456b0eba6578c6c164474c31fa9fc70`, HEAD `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`, SHA256 `0e6c31b7f75fd2c61036356f0045317ef13f512b842c67502b8d785eae4a08e2`.
 - Independent screenshot-only frontend validation: visible login title/form below status bar, screenshot SHA256 `2bcd87c0d9e6c757c59348fcad03717466b724b5fe97c2dbb08a0d240ce25485`; cannot alone bind pixels to app binary.
-- Independent Task Review: Spec FAIL / Quality FAIL; findings are tracked in `.superpowers/sdd/plan-t31-ios27/fix-task-4-review.md` and addressed by repair round 1.
+- Independent Task Review: initial verdict Spec FAIL / Quality FAIL; first re-review verdict Spec PASS / Quality FAIL with one Medium closure false positive and one Low mode-label issue. Full evidence is in `.superpowers/sdd/plan-t31-ios27/fix-task-4-review.md`.
 - Ruling on brief criterion: approved Issue/spec/ADR do not prescribe dynamic React.framework packaging. Corrected the Task Brief to accept coherent supported Expo source mode when the app launches and all actual non-system framework dependencies resolve. Cost if wrong: undocumented release policy could require standalone React.framework; no evidence of such a policy was found.
-- Status: initial implementation had actionable findings; round-1 repair is implemented and awaits scoped re-review.
+- Status: round-1 repair addressed the original High and Medium findings; a new Medium false-positive path remains. Round-2 repair is running.
 
 ### R4 round-1 preflight consistency scan
 
@@ -48,7 +48,13 @@
 - Task base: `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`.
 - Repair commits: `c4c16ad6cef751cec16e1c5bf22f694f3a83679e` (implementation), `d4e15789d80c0065bd3b0fd737967e01379a7f08` (report correction). Scoped re-review is now pending.
 - Evidence: focused 8/8; full suite 306 total / 292 passed / 14 opt-in skips / 0 fail; typecheck, Expo install check and diff-check passed per the implementation report. The production checker passed on the retained Release artifact; no native rebuild occurred. Full log gzip and simulator command output are tracked in the repair commit.
+- Round-1 re-review package: `.superpowers/sdd/2026-09-29-t31-review-repairs/review-eb821ee9d..1ebf2dfe5.diff`, SHA-256 `c7b0770f29dd69bf1f1e906539bdc857d239a7671a99cfe3b6811f2312c2c4d1`. Reviewer `/root/review_t31_r4_r1`: Spec PASS; Quality FAIL. Medium R4-R1-1 is bundle containment/path identity; Low R4-R1-2 is mode inference. Versioned path false rejection recorded as nonblocking edge case.
+- Round-2 ruling: verify the canonical resolved dependency path so legitimate `Versions/A` layouts work while sibling bundle paths fail; mode output derives from effective generated Podfile properties. Cost if wrong: unsupported versioned layouts might be rejected or a future Expo property shape may require checker updates.
+- Round-2 brief: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r2-brief.md`; new implementation base `1ebf2dfe5`.
 - Updated brief correction committed `3bf8d0082`; implementation agent resumed with frontend_implementer role.
+- Round-2 independent review `.superpowers/sdd/plan-t31-ios27/fix-task-4-r2-review.md`: Spec FAIL only on fixture fidelity; Quality PASS with Low R4-R2-1. Production implementation fixes prior findings; sibling test wrote `../Beta/Alpha` although the existing executable lives at `Beta.framework/Alpha`, and no sibling-framework symlink case existed. Valid coverage finding; no production false pass identified.
+- Round-3 brief `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-brief.md` limited changes to integration fixtures and the report. Implementation commits `1818cd5a5` / `196f85d02`; focused 13/13, full suite 311 total / 297 pass / 14 opt-in skips, typecheck, Expo check and diff-check pass per report. No native rebuild or evidence change.
+- Round-3 review `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-review.md`: Spec PASS / Quality PASS; R4-R2-1 resolved by real sibling executable and sibling symlink fixtures. Scoped review covered `10c05c1e7..196f85d02`. R4 repair task is verified; T31 final integrated review remains pending.
 
 ## Task R1+R3 integration verification addendum
 - Agent initial report noted `expo-build-properties` resolution failure under stale Expo 55 worktree modules. Ruling: run `pnpm install --frozen-lockfile` in the integration worktree before prebuild because its tracked SDK57 manifest/lock were integrated while ignored node_modules links remained from SDK55; risk is no source changes, only worktree dependency alignment.
