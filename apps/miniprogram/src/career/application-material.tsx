@@ -59,6 +59,7 @@ export default function ApplicationMaterialPage() {
   const [abandonNotice, setAbandonNotice] = useState('');
 
   const pendingApplication = career.pendingApplication();
+  const pendingEvaluation = career.pendingEvaluation();
   const pendingMaterial = career.pendingMaterialWrite();
   const pendingSubmission = career.pendingSubmission();
   const pendingPublish = career.pendingMaterialPublish();
@@ -76,6 +77,9 @@ export default function ApplicationMaterialPage() {
     <Notice tone='info'>与 Web 端同源同版本：同一份档案、同一份申请与结构化正文；材料确认后生成不可变新版本，旧版本不被覆盖。</Notice>
 
     {/* 恢复态置顶（T24 discovery 同款次序）：结果未知的写入是当务之急，必须第一屏可见、可操作。 */}
+    {pendingEvaluation && <><Notice tone='warning'>有一次结果未知的资格评估（{pendingEvaluation.requestId.slice(0, 10)}…），在恢复前不会发起另一次评估。</Notice>
+      <Action secondary loading={evaluateBusy.busy} onClick={() => void evaluateBusy.run(async () => setEvaluation(await career.reconcilePendingEvaluation()))}>对账原评估</Action>
+      <Action secondary onClick={() => void evaluateBusy.run(async () => setEvaluation(await career.retryPendingEvaluation()))}>安全重发原评估</Action></>}
     {pendingApplication && <>
       <Notice tone='warning'>有一次结果未知的申请创建（{pendingApplication.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复创建。</Notice>
       <Action secondary loading={recoverAppBusy.busy} onClick={() => void recoverAppBusy.run(async () => { setApplication(await career.reconcilePendingApplication()); })}>用原请求对账申请</Action>
@@ -135,6 +139,18 @@ export default function ApplicationMaterialPage() {
           <Text className='wk-muted wk-small'>按档案修订 {evaluation.profileRevision} · 岗位 {evaluation.opportunityId} · 快照 {evaluation.snapshotId}</Text>
         </View>
         <Badge tone={evaluationTone[evaluation.status] ?? 'neutral'}>{evaluationLabel[evaluation.status] ?? evaluation.status}</Badge>
+      </View>}
+      {evaluation && <View>
+        <Text className='wk-row-title'>硬性条件证据</Text>
+        {evaluation.hard.rules.map(rule => <View key={rule.ruleId} className='wk-listrow'><View className='wk-grow'>
+          <Text>{rule.criterion}：{evaluationLabel[rule.outcome] ?? rule.outcome}（{rule.reasonCode}）</Text>
+          {rule.jobEvidence && <Text className='wk-muted wk-small'>职位原文：“{rule.jobEvidence.quotedText}”</Text>}
+          {rule.profileEvidence && <Text className='wk-muted wk-small'>档案事实：{rule.profileEvidence.factKey}：{rule.profileEvidence.value}（修订 {rule.profileEvidence.factRevision}）</Text>}
+        </View></View>)}
+        <Text className='wk-row-title'>匹配与差距</Text>
+        {evaluation.soft.matches.map((match, index) => <Text key={`${match.kind}-${index}`} className='wk-muted wk-small'>匹配 {match.kind}：{match.value}；职位证据“{match.jobEvidence.quotedText}”，档案事实 {match.profileEvidence.factKey}：{match.profileEvidence.value}</Text>)}
+        {!evaluation.soft.matches.length && <Text className='wk-muted wk-small'>当前没有可引用的支持性匹配事实。</Text>}
+        {evaluation.facts.map(fact => <Text key={`${fact.factKey}-${fact.factRevision}`} className='wk-muted wk-small'>纳入评估的档案事实：{fact.factKey}：{fact.value}</Text>)}
       </View>}
     </Card>
 

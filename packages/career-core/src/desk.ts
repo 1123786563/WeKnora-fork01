@@ -8,6 +8,9 @@ export interface CareerRemote {
  receipt(requestId: string, signal?: AbortSignal): Promise<CareerReceipt>
 }
 
+export interface CareerPendingStore { read(key: string): unknown; write(key: string, value: unknown): void; remove(key: string): void }
+export type CareerPendingKey = (scope: CareerScope) => string
+
 export interface CareerScope { userId: string | null; tenantId: string | null }
 type OutcomeUnknown = Error & { code: 'outcome_unknown'; requestId: string; safeToRetry: boolean }
 function outcomeUnknown(action: CareerAction, cause: unknown, safeToRetry: boolean): OutcomeUnknown {
@@ -33,9 +36,11 @@ export class CareerDesk {
  private unresolved?: CareerAction
  private receiptMissing = false
  private readonly remote: CareerRemote
+ private readonly pendingStore?: CareerPendingStore
+ private readonly pendingKeyFor: CareerPendingKey
  // 显式赋值而非 constructor 参数属性：小程序端 node --experimental-strip-types
  // （strip-only，无 transform）不支持 parameter property 语法，共享包需保持可直载。
- constructor(remote: CareerRemote) { this.remote = remote }
+ constructor(remote: CareerRemote, pendingStore?: CareerPendingStore, pendingKeyFor: CareerPendingKey = scope => `career-action:${scope.userId}:${scope.tenantId}`) { this.remote = remote; this.pendingStore = pendingStore; this.pendingKeyFor = pendingKeyFor }
  get snapshot(): CareerView | undefined { return this.currentView }
  get pendingAction(): CareerAction | undefined { return this.unresolved }
  get safeToRetry(): boolean { return this.receiptMissing }
@@ -46,11 +51,20 @@ export class CareerDesk {
   this.controller = new AbortController()
   this.currentScope = { userId, tenantId }
   this.currentView = undefined
-  this.unresolved = undefined
+  this.unresolved = this.readPending()
   this.receiptMissing = false
  }
  clear(): void { this.activate(null, null) }
  private clearPrivateState(): void { this.currentView = undefined; this.unresolved = undefined; this.receiptMissing = false }
+ private pendingKey(): string | undefined { return this.currentScope?.userId && this.currentScope.tenantId ? this.pendingKeyFor(this.currentScope) : undefined }
+ private readPending(): CareerAction | undefined {
+  const key = this.pendingKey(); if (!key) return undefined
+  const value = this.pendingStore?.read(key)
+  if (!value || typeof value !== 'object' || typeof (value as CareerAction).requestId !== 'string') return undefined
+  return value as CareerAction
+ }
+ private savePending(action: CareerAction): void { const key = this.pendingKey(); if (key) this.pendingStore?.write(key, action); this.unresolved = action }
+ private clearPending(): void { const key = this.pendingKey(); if (key) this.pendingStore?.remove(key); this.unresolved = undefined }
  private invalidatePrivateState(): void {
   this.epoch += 1
   this.controller?.abort()
@@ -97,7 +111,7 @@ export class CareerDesk {
   try { return await this.read((signal) => this.remote.receipt(requestId, signal).then(decodeCareerReceipt), (receipt) => {
    reconciled = receipt
    if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
-   if (this.unresolved?.requestId === requestId) { this.unresolved = undefined; this.receiptMissing = false }
+   if (this.unresolved?.requestId === requestId) { this.clearPending(); this.receiptMissing = false }
   }, () => reconciled!) } catch (error) { if (errorCode(error) === 'not_found' && this.unresolved?.requestId === requestId) this.receiptMissing = true; throw error }
  }
  async mutate(action: CareerAction): Promise<CareerReceipt | undefined> {
@@ -124,7 +138,7 @@ export class CareerDesk {
    if (!stillOwned()) return undefined
   }
   try { return await this.send(action) } catch (error) {
-   if (['revision_conflict', 'invalid_request', 'proposal_resolved', 'not_found'].includes(errorCode(error) ?? '')) { this.unresolved = undefined; this.receiptMissing = false }
+    if (['revision_conflict', 'invalid_request', 'proposal_resolved', 'not_found'].includes(errorCode(error) ?? '')) { this.clearPending(); this.receiptMissing = false }
    throw error
   }
  }
@@ -134,19 +148,19 @@ export class CareerDesk {
    const receipt = decodeCareerReceipt(await this.remote.act(action, signal))
    if (!this.current(epoch)) return undefined
    if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
-   if (this.unresolved?.requestId === action.requestId) { this.unresolved = undefined; this.receiptMissing = false }
+   if (this.unresolved?.requestId === action.requestId) { this.clearPending(); this.receiptMissing = false }
    return receipt
   } catch (error) {
    if (!this.current(epoch)) return undefined
    if (errorCode(error) === 'forbidden') this.invalidatePrivateState()
    if (!isAmbiguousOutcome(error)) throw error
-   this.unresolved = action
+   this.savePending(action)
    this.receiptMissing = false
    try {
     const receipt = decodeCareerReceipt(await this.remote.receipt(action.requestId, signal))
     if (!this.current(epoch)) return undefined
     if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
-    this.unresolved = undefined; this.receiptMissing = false
+    this.clearPending(); this.receiptMissing = false
     return receipt
    } catch (receiptError) {
     if (!this.current(epoch)) return undefined
