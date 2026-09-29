@@ -55,13 +55,15 @@ Task 1: direct pre-settle ID-set regression -> final whole-range review
 
 **Implementation steps:**
 
-- [ ] Store the four-row pre-settle response in a `preSettleRows` variable and pass that same value to both candidate parsing and `paymentIntentIDSet`.
-- [ ] Assert the helper result contains each of the four IDs and has exactly four entries; then replace the hard-coded `preObservedIDs` map in the existing candidate-selection test with this helper result.
-- [ ] Run the focused tagged test `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1`; expect PASS on the unchanged helper.
-- [ ] In a temporary local mutation only, make the helper discard `pi_unlinked` and `pi_already_done`; run the same focused test and expect a clear failure on the missing-ID assertion. Restore the helper exactly from BASE and verify its hash matches.
-- [ ] Run the focused tagged test again; expect PASS. Run `go test ./internal/modules/commercial/commercialplatform -count=1`, `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'`, `gofmt`, and `git diff --check`; expect all pass and no external service calls.
-- [ ] Update both owned Issue ledgers with the commit SHA, exact commands/outcomes, mutation-control failure, retained L1 disposition, and unchanged live T9/AC4 gates.
-- [ ] Commit only the three task-owned paths with subject `test(commercial): cover T9 pre-settle identity set`.
+- [x] Store the four-row pre-settle response in a `preSettleRows` variable and pass that same value to both candidate parsing and `paymentIntentIDSet`.
+- [x] Assert the helper result contains each of the four IDs and has exactly four entries; then replace the hard-coded `preObservedIDs` map in the existing candidate-selection test with this helper result.
+- [x] Run the focused tagged test `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1`; PASS before and after the negative control.
+- [x] In a temporary local mutation only, make the helper discard `pi_unlinked` and `pi_already_done`; the focused test failed with both missing IDs and the 2-vs-4 count. Restore the helper exactly from BASE; SHA-256 matched `c30f71b65fb2c8af44ded2abcac00479ae8af299d0fc45f6cd0e271d686235d7`.
+- [x] Run the focused tagged test again (PASS), `go test ./internal/modules/commercial/commercialplatform -count=1` (PASS, 72.497s), `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'` (PASS), `gofmt -w internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go` (PASS), and `git diff --check` (PASS). No external service calls.
+- [x] Update both owned Issue ledgers with implementation commit `11abb192a36eef9526ad3134d29385163fc310f6`, verification commands/outcomes, mutation-control failure, retained L1 disposition, and unchanged live T9/AC4 gates.
+- [x] Commit task-owned paths as `11abb192a36eef9526ad3134d29385163fc310f6` (`test(commercial): cover T9 pre-settle identity set`). Controller evidence/plan update: `921be32c944749bd5c94e3d87ad6906445905932`.
+
+**Review and OCR:** Task reviewer and final whole-range reviewer both returned Spec compliance PASS and code quality PASS with no open findings after the ledger evidence fix. Backend validator independently reran the focused tagged test successfully. OCR whole range `d8d21cd967c94c09d32c34a2981904758f442330..921be32c944749bd5c94e3d87ad6906445905932` selected zero files and reported `Review skipped: no items were selected`; OCR coverage is unavailable, not passed. Live T9 and AC4 remain open.
 
 **Verification:** The complete response slice drives both parsing and identity capture; all four required IDs are asserted; the negative-control mutant fails the regression; the restored helper hash equals BASE; focused/full package/compile-only tests, formatting, and diff check pass.
 
@@ -76,3 +78,7 @@ Task 1: direct pre-settle ID-set regression -> final whole-range review
 - **Type consistency:** Existing helper signatures are unchanged and named exactly as in the candidate checkpoint.
 - **Review Focus:** Each line maps to the four-ID assertion, same-slice construction, negative control, non-live test command, or residual status update.
 - **Proportion:** One regression and two ledger entries are bounded to one already-reviewed fixture finding.
+
+## Status
+
+- Task 1: verified at implementation commit `11abb192a36eef9526ad3134d29385163fc310f6`; evidence and plan checkpoint `921be32c944749bd5c94e3d87ad6906445905932`. Final SDD reviews pass; OCR has no file coverage. Live T9 and AC4 acceptance remain incomplete.
