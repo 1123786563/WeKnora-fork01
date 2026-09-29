@@ -46,7 +46,7 @@ function ProgressEventRow({ item, onCorrect }: { item: ProgressEventView; onCorr
 // A correction appends a referencing event — the original stays visible — and
 // an unknown write outcome is recovered through the receipt of the original
 // request ID, never by silently minting a new one.
-export function ProgressPage({ client, scopeController, applicationId }: { client: WeKnoraClient; scopeController: ScopeController; applicationId: string }): ReactNode {
+export function ProgressPage({ client, scopeController, applicationId, materialId }: { client: WeKnoraClient; scopeController: ScopeController; applicationId: string; materialId?: string }): ReactNode {
  const scope = scopeController.current()
  const [view, setView] = useState<ProgressView>()
  const [readState, setReadState] = useState<ReadState>('loading')
@@ -180,7 +180,7 @@ export function ProgressPage({ client, scopeController, applicationId }: { clien
    {readState === 'loading' ? <p className="wk-progress__state" role="status" aria-busy="true">正在读取申请进展…</p> : readState === 'error' ? <p className="wk-progress__message wk-progress__message--error" role="alert">{readMessage}</p> : view ? <>
     <p className="wk-progress__stage" aria-label="当前阶段投影">当前阶段：<strong>{stageLabels[view.stage]}</strong>（确定性投影 · 事件修订 {view.revision}）</p>
     <div className="wk-progress__actions"><button type="button" onClick={refresh}>刷新</button><button type="button" onClick={() => setSubmissionOpen((open) => !open)}>{submissionOpen ? '收起投递确认与回看' : '投递确认与回看'}</button></div>
-    {submissionOpen ? <SubmissionPage client={client} scopeController={scopeController} applicationId={applicationId} /> : null}
+    {submissionOpen ? <SubmissionPage client={client} scopeController={scopeController} applicationId={applicationId} materialId={materialId} /> : null}
     <fieldset className="wk-progress__compose"><legend>记录新的进展事件</legend>
      <label className="wk-progress__label" htmlFor="wk-progress-type">事件类型</label>
      <select id="wk-progress-type" aria-label="事件类型" value={eventType} disabled={composeBlocked} onChange={(event) => setEventType(event.target.value)}>

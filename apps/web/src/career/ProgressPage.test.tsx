@@ -97,6 +97,46 @@ test('generic timeline omits submission event choices and routes to dedicated su
  assert.match(container.textContent ?? '', /记录投递确认/)
 })
 
+test('progress submission confirmation loads and records the exact known material export', async () => {
+ const digest = 'a'.repeat(64)
+ const sent: unknown[] = []
+ const exportReceipt = { kind: 'material_published', requestId: 'publish-1', exportId: 'export-known', materialId: 'material-current', version: 7, status: 'submittable', submittable: true, contentDigest: digest, files: [
+  { format: 'pdf', materialId: 'material-current', version: 7, contentDigest: digest, verified: true },
+  { format: 'docx', materialId: 'material-current', version: 7, contentDigest: digest, verified: true },
+ ], createdAt: ts }
+ const career: CareerStub = {
+  applicationProgress: async () => view('preparing', []),
+  applicationSubmissions: async () => ({ applicationId: 'app-1', submissions: [] }),
+  open: async () => ({ revision: 9 }),
+  materialExports: async (materialId: string) => ({ materialId, exports: [exportReceipt] }),
+  recordSubmission: async (input: unknown) => { sent.push(input); return { requestId: 'record-1' } },
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(ProgressPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'material-current' }))
+ await act(async () => { await settle(); await settle() })
+ click(byLabel(container, 'button', '投递确认与回看'))
+ await act(async () => { await settle(); await settle() })
+ const version = container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!
+ assert.ok([...version.options].some((option) => option.value === 'export-known'))
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); choose(version, 'export-known'); await settle() })
+ click(byLabel(container, 'button', '确认投递'))
+ await act(async () => { await settle(); await settle() })
+ assert.equal(sent.length, 1)
+ assert.deepEqual(sent[0], { requestId: (sent[0] as { requestId: string }).requestId, applicationId: 'app-1', channel: 'web', materialId: 'material-current', exportId: 'export-known', versionUnknown: false, expectedRevision: 9 })
+})
+
+test('progress submission confirmation keeps absent material explicit and offers unknown version', async () => {
+ let exportReads = 0
+ const career: CareerStub = { applicationProgress: async () => view('preparing', []), applicationSubmissions: async () => ({ applicationId: 'app-1', submissions: [] }), open: async () => ({ revision: 1 }), materialExports: async () => { exportReads += 1; return { exports: [] } } }
+ const { container } = await mountProgress(career)
+ click(byLabel(container, 'button', '投递确认与回看'))
+ await act(async () => { await settle(); await settle() })
+ assert.equal(exportReads, 0)
+ assert.match(container.textContent ?? '', /尚无可投递版本/)
+ assert.equal(container.querySelector<HTMLOptionElement>('[aria-label="投递版本"] option[value="__unknown__"]')?.disabled, false)
+ assert.equal(container.textContent?.includes('版本 V'), false)
+})
+
 test('recording an interview event updates the projection and reopening shows the same stage', async () => {
  let current = view('submitted', [event(1, 'submitted', '已通过官网投递')])
  const sent: unknown[] = []
