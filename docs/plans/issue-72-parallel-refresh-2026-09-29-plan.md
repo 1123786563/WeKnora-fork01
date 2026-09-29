@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference ──> T11 clarify evidence path base and mapping provenance
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference ──> T11 clarify evidence path base and mapping provenance ──> T12 restore Task 8 historical wording
 ```
 
-These eleven documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference; Task 11 clarifies only the path base and evidence provenance wording. No application implementation Task is ready under the current #86/#87 gates.
+These twelve documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference; Task 11 clarifies only the path base and evidence provenance wording; Task 12 restores Task 8's implementation steps and verification to their historical checkpoint wording. No application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -218,10 +218,10 @@ These eleven documentation Tasks are in scope. Task 7 addresses the five finding
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps, and Task 11 clarifies the refresh-worktree-root path base and separates direct session-to-Issue attachment evidence from inferred PID/session pairing.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps, Task 11 clarifies the refresh-worktree-root path base and separates direct session-to-Issue attachment evidence from inferred PID/session pairing, and Task 12 restores Task 8's historical implementation steps and verification while recording chronology.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: eleven documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, Task 10 makes the two evidence-strength corrections, and Task 11 tightens only path-base and provenance wording. No production tests are relevant.
+- Proportion: twelve documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, Task 10 makes the two evidence-strength corrections, Task 11 tightens only path-base and provenance wording, and Task 12 restores Task 8's historical wording. No production tests are relevant.
 
 ### Task 7: Correct partial OCR documentation findings
 
@@ -269,13 +269,15 @@ These eleven documentation Tasks are in scope. Task 7 addresses the five finding
 
 **Implementation steps:**
 
-- [ ] Replace durable-looking R7 hyperlinks with literal sibling-worktree paths and record the staged-at-capture status, hashes, HEAD exclusion, and loss-of-source caveat.
+- [ ] Correct both R7 evidence Markdown targets to `../../../lago-int/...` and verify both files exist.
 - [ ] Clarify the initial JSON versus later README evidence, and narrow the Ledger zero-call statement to the later explicit-isolation R7 rerun after health HTTP `000`.
 - [ ] Add the dated read-only TTY/session correlation section to the audit note and Ledger, preserving the stated mapping limits and no-action boundary.
 - [ ] Append Task 8 to this plan DAG and self-check; retain all Tasks 1–7 and their history.
 - [ ] Run `git diff --check`; verify only the plan, audit note, and Ledger changed; commit only those paths with `docs(issue-72): clarify TTY mapping and R7 evidence scope`.
 
-**Verification:** `ps`/`lsof` output confirms the four live `codex` PIDs, TTYs, and repo-root cwd; process/session pairs are inferred by timestamp because `session_meta` has no PID/TTY, while goal attachments directly support session-to-issue mappings. The sibling R7 file hashes and staged status were checked read-only; HEAD `8329b85d...` excludes both. JSON contains the initial start/setup context; README carries the later isolation/HTTP-000/zero-call conclusion. `git diff --check` passes and the only changed paths are this plan, the audit note, and the execution Ledger.
+**Verification:** `ps`/`lsof` output confirms the four live `codex` PIDs, TTYs, and repo-root cwd; rollout metadata and user goal/attachment evidence support the one-to-one session and issue-level mappings. Both sibling R7 files exist and the corrected Markdown links resolve. The R7 JSON contains the initial start/setup context; README carries the later isolation/HTTP-000/zero-call conclusion. `git diff --check` passes and the only changed paths are this plan, the audit note, and the execution Ledger.
+
+**Chronology:** The follow-up corrections to Task 8's issue mapping, evidence durability, PID/session inference, and path base are recorded in Tasks 9–11; those later entries supersede this historical checkpoint wording.
 
 **Failure handling:** If any process is absent or mapping evidence is inconsistent, report only verified fields and leave the unresolved mapping explicit; do not act on or signal any shell, infer child/task ownership, or modify `lago-int`.
 
@@ -354,3 +356,27 @@ These eleven documentation Tasks are in scope. Task 7 addresses the five finding
 **Verification:** Task 10 names the refresh worktree root as the base for both sibling paths; Task 9 distinguishes direct attachment/session-to-Issue evidence from inferred PID/session pairing; the DAG/self-check list eleven documentation tasks; `git diff --check` passes and only this plan is changed.
 
 **Failure handling:** If either recorded path is not relative to the refresh worktree root or the cited evidence supports a different relationship, preserve the discrepancy and stop before strengthening the wording.
+
+### Task 12: Restore Task 8 historical wording
+
+**Dependencies:** Tasks 1–11 are recorded; whole-branch review found Task 8 had retroactively absorbed later corrections.
+
+**Owner role:** `mechanical_worker` for a plan-only historical wording restoration.
+
+**Validator role:** `reviewer` for comparison against the Task 8 checkpoint.
+
+**Owned files:** Modify only this plan.
+
+**Consumes:** Task 8's Implementation steps and Verification in commit `aad6ae84bf32d7404fc3bb88f794b11f38580e8c`; follow-up corrections recorded in Tasks 9–11.
+
+**Produces:** Task 8 Implementation steps and Verification match their historical checkpoint wording; the chronology note points to Tasks 9–11; the DAG and self-check account for Task 12.
+
+**Implementation steps:**
+
+- [ ] Restore only Task 8's Implementation steps and Verification from the specified checkpoint.
+- [ ] Add a short chronology note to Task 8 pointing to follow-up corrections in Tasks 9–11.
+- [ ] Add Task 12 to the DAG, self-check, and task count.
+- [ ] Run `git diff --check` and verify only this plan changed.
+- [ ] Commit only this plan with `docs(issue-72): restore task eight chronology`.
+
+**Verification:** Task 8's Implementation steps and Verification match commit `aad6ae84bf32d7404fc3bb88f794b11f38580e8c`; follow-up corrections remain recorded in Tasks 9–11; DAG and self-check state twelve documentation tasks; `git diff --check` passes and only this plan changed.
