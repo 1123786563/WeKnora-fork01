@@ -7,6 +7,8 @@
 
 > **状态更正（2026-09-28）**：以上 #82-only readiness 是历史快照，已被 `issue-72-execution-ledger.md` 的当前证据 overlay supersede；目前没有任何实现节点已验证为 ready。
 
+> **T9 replay evidence overlay（2026-09-30）**：环境门控 T9 测试现含激活后的同一 webhook 事件重复投递断言（HTTP 200、authority snapshot byte-identical、Lago succeeded payment 恰 1）；本轮离线编译/包测试不等于 live acceptance。非 skip 的 live T9 仍开放，AC4 沙箱证据仍不可用；见 `issue-72-execution-ledger.md`。
+
 ## 1. Mermaid DAG
 
 实线=业务依赖边（75 条）；**虚线 `-.->` =调度约束边（6 条，非业务依赖，仅为 merge 冲突串行化，§2.5）**。

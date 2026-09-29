@@ -525,6 +525,22 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 					snap.Purchase.InvoicePaymentStatus != "succeeded" {
 					t.Fatalf("D6' re-check failed: %+v", snap.Purchase)
 				}
+				beforeReplay := purchaseSnapshotJSON(t, a, tenant)
+				paymentsBeforeReplay := countLagoSucceededPayments(t, a, extCustomer)
+				if paymentsBeforeReplay != 1 {
+					t.Fatalf("setup: exactly one succeeded Lago payment expected before webhook replay, got %d", paymentsBeforeReplay)
+				}
+				if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
+					t.Fatalf("duplicate webhook delivery answered HTTP %d", code)
+				}
+				afterReplay := purchaseSnapshotJSON(t, a, tenant)
+				if afterReplay != beforeReplay {
+					t.Fatalf("duplicate webhook changed the authority state:\nbefore %s\nafter  %s", beforeReplay, afterReplay)
+				}
+				paymentsAfterReplay := countLagoSucceededPayments(t, a, extCustomer)
+				if paymentsAfterReplay != 1 {
+					t.Fatalf("duplicate webhook must leave exactly one succeeded Lago payment: before=%d after=%d", paymentsBeforeReplay, paymentsAfterReplay)
+				}
 				return
 			}
 			if time.Now().After(finalizeDeadline) {

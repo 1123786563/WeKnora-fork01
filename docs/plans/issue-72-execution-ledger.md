@@ -359,6 +359,11 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - Implementation remains gated on verified #86 integration and Lago Task 0 live contract; the tenant resolver additionally awaits the owner/overlap ruling; removal of `ensureNoCharges` additionally awaits the R-3 purchase contract. R16's migration numbers were allocated against earlier integration HEAD `ea76c90fd`; recheck both dialect migration heads at eventual dispatch (current integration was `787414e2c` before this plan commit). User input on the two still-open Task0A rulings is pending; no answer is inferred.
 # Issue #82 T9 fixture identity repair checkpoint — 2026-09-30
 
+## T9 duplicate webhook replay assertion — 2026-09-30
+
+- Added the AC3 assertion after T9 activation and InvoiceFees validation: capture the active authority snapshot and exactly-one succeeded-payment baseline; replay the identical event and require HTTP 200; then require the authority snapshot to remain byte-identical and succeeded-payment count to remain one.
+- Offline evidence is limited to the focused selector regressions, `commercialplatform` package tests, integration-tag compile-only, formatting, and diff checks recorded in the implementation report. No external services were started or contacted; live T9 replay remains OPEN and compile-only is not live acceptance. AC4 real Alipay evidence remains unavailable.
+
 - Task brief: `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/task-1-brief.md`; implementation report: `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/task-1-report.md`.
 - Baseline/initial HEAD: `8329b85d4dfff301d03f94406dfc829d87cb5b26`. Owned change is limited to the tagged integration test and #82 evidence records; no production code or external resources touched.
 - RED: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1` failed assertions for selecting old `pi_old` rather than `pi_expected` and accepting a new linked ID.

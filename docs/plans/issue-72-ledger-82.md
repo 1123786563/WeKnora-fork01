@@ -1,5 +1,10 @@
 # Issue #82 执行 Ledger（Lago 10 · 支付宝付款后恰好一次激活套餐 · R-4 重做轮）
 
+## T9 duplicate webhook replay assertion — 2026-09-30
+
+- After activation and InvoiceFees validation, the test captures the active authority snapshot and requires exactly one succeeded Lago payment, redelivers the same event object through the same route/provider/secret, requires HTTP 200, then requires a byte-identical authority snapshot and exactly one succeeded payment.
+- Offline verification covers selector regressions, package tests, and integration-tag compilation only. The environment-gated live T9 replay was not run; AC3 replay acceptance remains OPEN pending a non-skip run. AC4 real Alipay sandbox evidence remains unavailable.
+
 ## T9 fixture identity repair — 2026-09-30
 
 - Test-only repair in `lago_settlement_integration_test.go`: the synthetic success webhook now uses only the exact invoice-linked unsettled PaymentIntent captured before settle; unrelated historical successes are not fallback candidates. Missing or ambiguous pre-settle identity and missing post-settle match fail closed. No production source changed.
