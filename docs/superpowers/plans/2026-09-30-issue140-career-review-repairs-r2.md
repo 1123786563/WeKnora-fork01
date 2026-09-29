@@ -77,7 +77,7 @@
 
 **Files:** `internal/modules/career/search_rule.go`, `handler.go`, focused handler/service tests, and `internal/router/routes_career.go` only if explicit route registration is required.
 
-**Consumes / produces:** Add `Office.ListRules(ctx context.Context) ([]RuleSummary, error)` and authenticated `GET /api/v1/career/rules` returning `{ "rules": RuleSummary[] }`. Each summary has `ruleId`, `query`, `intervalMinutes`, `status`, `revision`, `nextDueAt`, `estimate`, `createdAt`, and `updatedAt`; empty scope returns `{ "rules": [] }`; sort `updated_at DESC, id ASC`. Do not load per-rule run/todo history to build summaries. Keep the existing multiple-rule policy. Before quota admission and starting an external search, re-read the candidate and require the same rule ID, enabled status, revision, and query as the due-row snapshot; a committed pause/edit prevents a new search. A search already started before pause may finish under existing reconciliation behavior.
+**Consumes / produces:** Add authenticated paginated `GET /api/v1/career/rules?cursor=<opaque>` returning `{ "rules": RuleSummary[], "nextCursor": string | null }`; each bounded page contains at most 50 summaries. Each summary has `ruleId`, `query`, `intervalMinutes`, `status`, `revision`, `nextDueAt` (timestamp for enabled; `null` for paused/disabled), `estimate`, `createdAt`, and `updatedAt`; empty scope returns `{ "rules": [], "nextCursor": null }`; sort `updated_at DESC, id ASC`. Do not load per-rule run/todo history to build summaries. Keep the existing multiple-rule policy. Before quota admission and starting an external search, establish a durable run claim transaction that locks/revalidates the current rule ID, enabled status, revision, and query and persists the period as started. The claim commit is the linearization point: a pause/edit committed first prevents external search; a pause/edit committed after the claim is an already-started operation and may finish. A process crash after the claim must recover the same deterministic request ID through SearchOnce and must not strand a started run.
 
 **Steps:**
 
@@ -97,7 +97,7 @@
 
 **Files:** `packages/api-client/src/career.ts` and focused contract tests; `apps/web/src/career/RulePage.tsx` and focused tests.
 
-**Consumes / produces:** Strictly decode `GET /api/v1/career/rules` as `{ rules: RuleSummary[] }` with the Task 3a fields. Resolve localStorage's rule ID only if present in the scoped server list; auto-select the sole rule, require explicit selection for multiple rules, and block create on list failure. Capture user/tenant scope and persist unresolved set-rule `{requestId, ruleId?, query, intervalMinutes, status, expectedRevision}` before sending; after remount reconcile the same receipt or replay the exact request before enabling another create. Keep outgoing scope state isolated on switch.
+**Consumes / produces:** Strictly decode each `GET /api/v1/career/rules?cursor=<opaque>` page as `{ rules: RuleSummary[], nextCursor: string | null }`; accept `nextDueAt: null` only for non-enabled rules, and require a valid timestamp for enabled rules. Follow cursors with repeated-cursor protection until all summaries are loaded. Resolve localStorage's rule ID only if present in the scoped server list; auto-select the sole rule, require explicit selection for multiple rules, and block create on list failure. Capture user/tenant scope and persist unresolved set-rule `{requestId, ruleId?, query, intervalMinutes, status, expectedRevision}` before sending; after remount reconcile the same receipt or replay the exact request before enabling another create. Keep outgoing scope state isolated on switch.
 
 **Steps:**
 
@@ -108,6 +108,46 @@
 - [ ] Commit only the API client and RulePage files.
 
 **Acceptance:** Storage loss cannot hide an existing server rule or create a duplicate while an earlier write is unresolved; all rule access remains user/tenant scoped.
+
+## Task 11: Make due-rule claiming atomic with the pause/edit decision and bound list reads
+
+**Dependency:** Repair to Task 3a Review finding `RULE-R2-BE-01`; use the exact persisted claim invariant below before code changes.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** `internal/modules/career/search_rule.go`, its database models/schema migration files and search-rule tests. Migration numbering must use the integration's finally ruled migration sequence.
+
+**Consumes / produces:** In one short database transaction, lock the current rule row, require the scanned ID, enabled status, revision and query to match, then persist a recoverable period claim before any external call. The claim commit is the operation's start point. After the claim, `SearchOnce` keeps its deterministic `rule:<id>:<period>` request ID; retries recover/replay that same operation after a crash. Pause/edit transactions serialize against the same rule row. Paginate summaries with a fixed maximum of 50 rows, an opaque owner-scoped cursor over `(updated_at DESC, id ASC)`, and `{rules,nextCursor}` response; never load run/todo histories. `nextDueAt` is nullable for paused/disabled rules and a valid time for enabled rules.
+
+**Steps:**
+
+- [ ] Add a two-Office/shared-DB race test that blocks after candidate scan, commits pause/edit through another Office, then proves no claim/search starts. Add a second test where claim commits first and pause follows, proving the same request ID completes/reconciles as an already-started run. Add pagination tests for same-timestamp IDs, empty end page, malformed cursor, and >50 rules.
+- [ ] Run regressions RED and record which race is currently accepted.
+- [ ] Implement transactionally serialized claims and restart reconciliation without time-only claim takeover; do not hold a DB transaction over quota/network I/O. Add bounded cursor pagination and nullable `nextDueAt` schema/contract behavior.
+- [ ] Run focused Career Go tests and the SQLite migration/up-down tests; run Postgres migration integration if configured, plus `git diff --check`.
+- [ ] Commit only owned backend/schema paths and report exact linearization/recovery semantics.
+
+**Acceptance:** A pause/edit that commits before a due-period claim prevents the external search; a committed claim resolves under the same deterministic request ID after restart; each list page is bounded and stable.
+
+## Task 12: Keep RulePage locked through list, detail, and unknown-write recovery
+
+**Dependency:** Task 11 response contract is fixed above; this frontend repair may run concurrently only after Task 11's interface is frozen, and integration must verify both together.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/api-client/src/career.ts` and career API client tests; `apps/web/src/career/RulePage.tsx` and focused RulePage tests.
+
+**Consumes / produces:** Match Task 11 cursor page and nullable schedule contract. Keep `viewPhase='loading'` until the rule list, selected detail, and any stored pending request have reached a known outcome. A found receipt is accepted; a missing receipt replays the exact attempt; any unresolved result keeps create/edit disabled. Add a request generation token for manual rule selection so an older `getRule` response cannot replace the current selection. Never create a new rule while either list/detail discovery or pending-write recovery is in flight or failed.
+
+**Steps:**
+
+- [ ] Add failing tests for paused/disabled `nextDueAt:null`, paged lists, pending create during slow receipt lookup, failed detail read, and out-of-order selection responses.
+- [ ] Run tests RED; verify a new create is currently possible during each incomplete state.
+- [ ] Implement strict cursor and nullable-field decoding; keep the form unavailable until initialization/recovery completes; fence detail responses by scope and selection generation.
+- [ ] Run API-client tests, RulePage tests, Web typecheck, and `git diff --check`.
+- [ ] Commit only API-client and RulePage paths; report race timelines and cursor termination evidence.
+
+**Acceptance:** No second rule write can start before existing rule state and unresolved requests are known; delayed reads cannot overwrite the user's latest selection.
 
 ## Task 4: Bind submitted progress to an actual submission record
 
