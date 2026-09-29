@@ -4,6 +4,7 @@
 > 来源：33 个子 Issue（#73–#105）逐票调查结果（代码证据为调查会话实查/实跑）；GitHub 状态**第五次修订会话**经 `gh issue list --state all` 全量复测：#73/75/76/77/78/79/80 CLOSED（7 票），#72/#74 及 #81–#105 OPEN（27 票）——与最终报告 §2.4 一致（#74/#81 完成但 GitHub 关票滞后，见 §3 治理项）。
 > 父 Issue：[#72](https://github.com/1123786563/WeKnora-fork01/issues/72)（Lago 替换 OpenMeter 迁移 Spec 总票）——只提供总体目标与验收，**不计入 DAG 节点**；33 个子 Issue 均为 #72 直接子票，层级树退化为单层（无嵌套父子）。
 > 状态口径：`done`=已有完成证据不重新实施；`blocked`=依赖缺失（外部输入或前置未决），保留原因；`todo`=待实施（前置未齐属正常排期，不算 blocked）。
+> Live refresh (2026-09-30): [Issue #72 native tree and gate audit](issue-72-live-tree-refresh-2026-09-30.md) records the 2026-09-29 full recursive API traversal (33 direct children, no grandchildren) and later 00:00 spot checks. This is an evidence pointer; it does not assert a GitHub status change or rewrite the historical per-Issue analysis. Current #82/#86/#87 gates are in DAG §8 and the execution Ledger.
 
 ## 1. 总览
 
