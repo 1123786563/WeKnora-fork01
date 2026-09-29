@@ -24,7 +24,7 @@
 
 ## Task status
 - Task 1: verified and integrated; versioned/PostgreSQL runtime remains unverified and must remain a stated risk.
-- Task 2: implementation checkpoint `6346ca0ee8e194e87080f858f5ba2f27660a0752` committed; targeted lifecycle tests pass. Review Package `.superpowers/sdd/plan-t63/review-package-task-2-6346ca0ee.patch` SHA-256 `20dc5cf2813ce860263e325053542d6fbe24847a961f6b6432655a841f80e977`. Independent review pending. Full repository package test was stopped after ~6m20s after two delivery collaboration HTTP test failures; see Task 2 report.
+- Task 2: implementation checkpoint `6346ca0ee8e194e87080f858f5ba2f27660a0752` and tenant-identity guard fix `81abe4136d654f8e272ab8531dcb9bbe08624f42` committed; targeted lifecycle tests pass. Review Package `.superpowers/sdd/plan-t63/review-package-task-2-81abe4136.patch` SHA-256 `357b2d74e3beaf66ecab87197882638061d2019745a5503262864f13f85e9c0f`. Independent review pending. Full repository package test was stopped after ~6m20s after two delivery collaboration HTTP test failures; see Task 2 report.
 - Task 3: blocked on T2 review/integration.
 - Task 4: blocked on T3.
 - Task 5: blocked on T2/T3.
