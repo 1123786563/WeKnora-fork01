@@ -52,6 +52,7 @@ func TestCheckLocalAgentReleaseAdmissionTx(t *testing.T) {
 				seedAdmissionRelease(t, db, tt.deps)
 				seedAdmissionVariant(t, db, "variant-1", localAgent, "version-1", "release-1", tt.deps, "published")
 				if tt.duplicate {
+					require.NoError(t, db.Exec("DROP INDEX uq_agent_adoption_variant_local_agent").Error)
 					require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{ID: "variant-2", TenantID: 1, AdoptionID: "adoption-1", ReleaseID: "release-1", Name: "duplicate", State: "published", LocalAgentID: localAgent, LocalAgentVersionID: "version-1"}).Error)
 				}
 				if tt.wantID == "retired" || tt.wantID == "draft" {
