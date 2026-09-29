@@ -3,6 +3,7 @@
 Date: 2026-09-30
 Plan: `docs/plans/issue-72-plan-82-t9-ocr-fix-r5.md`
 Finding: R4-F1 (unexported shell values are not visible to child Compose).
+Implementation commit: `06a50d732ea93126753e405a6e8b37bdb85fb3df`.
 
 ## Change
 
