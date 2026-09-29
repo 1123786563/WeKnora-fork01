@@ -1671,3 +1671,75 @@ test('the delivery receipt section offers the recovery action for partial and un
   });
   assert.equal(JSON.stringify(sectionOf(noCallback)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
 });
+
+test('the task detail route reports when recovery authorization disappears after render', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const initialRecovery = { recover: async () => receipt } as import('@weknora/mobile-core').DeliveryRecovery;
+  let currentRecovery: import('@weknora/mobile-core').DeliveryRecovery | undefined = initialRecovery;
+  let visibleError: string | undefined;
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery: initialRecovery, currentRecovery: () => currentRecovery,
+    isCurrentRun: () => true, setDelivery: () => {}, clearError: () => { visibleError = undefined; }, setError: (error) => { visibleError = error; },
+  });
+  currentRecovery = undefined;
+  await assert.rejects(action({ runId: 'run-1', deliveryId: 'dlv-1' }));
+  assert.ok(visibleError?.includes('授权或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
+});
+
+test('the task detail route ignores recovery completion after the run changes', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'delivered', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: false, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let resolveRecovery!: (view: import('@weknora/mobile-core').DeliveryReceiptView) => void;
+  const recovery = { recover: () => new Promise<import('@weknora/mobile-core').DeliveryReceiptView>((resolve) => { resolveRecovery = resolve; }) } as import('@weknora/mobile-core').DeliveryRecovery;
+  let runIsCurrent = true;
+  const applied: import('@weknora/mobile-core').DeliveryReceiptView[] = [];
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery: recovery, currentRecovery: () => recovery,
+    isCurrentRun: () => runIsCurrent, setDelivery: (view) => applied.push(view), clearError: () => {}, setError: () => {},
+  });
+  const pending = action({ runId: 'run-1', deliveryId: 'dlv-1' });
+  runIsCurrent = false;
+  resolveRecovery(receipt);
+  await pending;
+  assert.deepEqual(applied, [], 'a late prior-run receipt cannot replace the current run receipt');
+});
+
+test('the task detail route ignores recovery completion after the active recovery scope changes', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'delivered', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: false, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let resolveRecovery!: (view: import('@weknora/mobile-core').DeliveryReceiptView) => void;
+  const capturedRecovery = { recover: () => new Promise<import('@weknora/mobile-core').DeliveryReceiptView>((resolve) => { resolveRecovery = resolve; }) } as import('@weknora/mobile-core').DeliveryRecovery;
+  const nextRecovery = { recover: async () => receipt } as import('@weknora/mobile-core').DeliveryRecovery;
+  let currentRecovery: import('@weknora/mobile-core').DeliveryRecovery = capturedRecovery;
+  const applied: import('@weknora/mobile-core').DeliveryReceiptView[] = [];
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery, currentRecovery: () => currentRecovery,
+    isCurrentRun: () => true, setDelivery: (view) => applied.push(view), clearError: () => {}, setError: () => {},
+  });
+  const pending = action({ runId: 'run-1', deliveryId: 'dlv-1' });
+  currentRecovery = nextRecovery;
+  resolveRecovery(receipt);
+  await pending;
+  assert.deepEqual(applied, [], 'a completion from a revoked scope cannot update the current receipt');
+});
+
+test('the task detail route hides prior delivery and recovery error immediately after the run changes', async () => {
+  const { deliveryForRoute, recoveryErrorForRoute } = await import('./app/tasks/detail.tsx');
+  const oldDelivery: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const oldRecoveryIssue = { taskId: 'task-1', runId: 'run-1', message: 'prior recovery failure' };
+  assert.equal(deliveryForRoute(oldDelivery, 'task-1', 'run-2'), undefined, 'prior run delivery is hidden synchronously');
+  assert.equal(recoveryErrorForRoute(oldRecoveryIssue, 'task-1', 'run-2'), undefined, 'prior run recovery error is hidden synchronously');
+});
