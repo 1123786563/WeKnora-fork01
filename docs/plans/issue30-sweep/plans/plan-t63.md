@@ -217,7 +217,7 @@ git commit -m "feat(marketplace): lifecycle 迁移与实体列——retire/end/u
   - `RetiredVariantAgentExists(ctx context.Context, tenantID uint64, localAgentID string) (bool, error)`——`SELECT COUNT(*) > 0 FROM agent_adoption_variants WHERE tenant_id=? AND local_agent_id=? AND state='retired'`。
   - 新哨兵：`ErrAgentAdoptionEndPrecondition`、`ErrAgentAdoptionTransition`、`ErrAgentMarketplaceListingTransition`、`ErrAgentReleaseDeprecateConflict`（均 `errors.New`，与既有哨兵同放新文件顶部）。
 
-- [ ] **Step 1: 写失败的 repository 测试**
+- [x] **Step 1: 写失败的 repository 测试**
 
 在 `agent_marketplace_lifecycle_test.go` 追加（RED：方法未声明，编译失败即 RED）：
 
@@ -308,21 +308,21 @@ func TestRetiredVariantAgentExists(t *testing.T) {
 
 文件头补 import：`"context"`、`"github.com/Tencent/WeKnora/internal/types"`。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/application/repository/ -run 'TestEndAdoption|TestTransitionListingState|TestDeprecateRelease|TestRetiredVariantAgentExists' -count=1`
 Expected: 编译 FAIL（`repo.EndAdoption undefined` 等）
 
-- [ ] **Step 3: 实现 `agent_marketplace_lifecycle.go`**
+- [x] **Step 3: 实现 `agent_marketplace_lifecycle.go`**
 
 新文件实现 Produces 列出的四个方法：`EndAdoption`/`RetiredVariantAgentExists` 挂 `agentAdoptionRepository`，`TransitionListingState`/`DeprecateRelease` 挂 `agentMarketplaceRepository`（全部 `r.db.WithContext(ctx)` 参数绑定；时间戳 `time.Now().UTC()`）。接口声明插入：`AgentAdoptionRepository`（`internal/application/repository/agent_adoption.go:52` `}` 前）加 `EndAdoption(...)` 与 `RetiredVariantAgentExists(...)` 两行；`AgentMarketplaceRepository`（`internal/application/repository/agent_marketplace.go:45` `GetListing` 行后）加 `TransitionListingState(...)` 与 `DeprecateRelease(...)` 两行。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/application/repository/ -run 'AgentMarketplaceLifecycle|EndAdoption|TransitionListingState|DeprecateRelease|RetiredVariantAgentExists' -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/application/repository/agent_marketplace_lifecycle.go internal/application/repository/agent_adoption.go internal/application/repository/agent_marketplace.go internal/application/repository/agent_marketplace_lifecycle_test.go
