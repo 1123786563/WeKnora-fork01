@@ -115,6 +115,15 @@ test('resume upload renders six category review, exact evidence and confirmed fa
  for (const value of ['Example Co', 'Search Engine', 'Go', 'Reduced latency 20%', 'Cloud certificate']) assert.match(container.textContent ?? '', new RegExp(value))
 })
 
+test('manual profile entry offers projects, internships and skills without a resume', async () => {
+ const sent: CareerAction[] = []
+ const container = await mount({ open: async () => ({ ...profile, facts: [] }), list: async () => ({ ...profile, facts: [] }), changes: async () => ({ revision: 1, changes: [] }), act: async (action: CareerAction) => { sent.push(action); return { kind: 'proposed', requestId: action.requestId!, revision: 2, proposal: { id: 'p2', key: action.key, value: action.value, source: action.source, status: 'pending', createdAt: 'now' } } }, receipt: async () => { throw new Error('unused') } } as never)
+ const select = container.querySelector('[role="combobox"]') as HTMLElement
+ assert.ok(select, 'accessible field selector exists')
+ await act(async () => { select.click(); await new Promise((resolve) => setImmediate(resolve)) })
+ for (const field of ['项目经历', '实习经历', '技能']) assert.ok([...document.querySelectorAll<HTMLElement>('[role="option"]')].some((option) => option.textContent?.trim() === field), `${field} is selectable without a resume`)
+})
+
 test('failed resume upload preserves confirmed facts and offers a fresh attempt', async () => {
  const failedSource = { id: 'failed-1', revision: 2, fileName: 'bad.pdf', mimeType: 'application/pdf', size: 3, digest: 'd', status: 'failed' as const, errorMessage: '无法解析简历', createdAt: 'now' }
  const container = await mount({

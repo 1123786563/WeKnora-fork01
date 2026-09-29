@@ -7,8 +7,8 @@ import type { CareerAction, CareerDocumentSource, CareerSource, CareerUpload, Ca
 import { ExportDeletionPage } from './ExportDeletionPage.tsx'
 import { InboxPage } from './InboxPage.tsx'
 
-const fields = ['毕业时间', '学历', '城市', '意向'] as const
-const fieldLabel: Record<string, string> = { 毕业时间: '毕业时间', 学历: '最高学历', 城市: '意向城市', 意向: '求职意向' }
+const fields = ['毕业时间', '学历', '城市', '意向', 'project.name', 'internship.company', 'skill.name'] as const
+const fieldLabel: Record<string, string> = { 毕业时间: '毕业时间', 学历: '最高学历', 城市: '意向城市', 意向: '求职意向', 'project.name': '项目经历', 'internship.company': '实习经历', 'skill.name': '技能' }
 const makeId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 function message(error: unknown): { code?: string; currentRevision?: number; text: string } {
  const value = error as { code?: string; currentRevision?: number; message?: string }
@@ -212,6 +212,6 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    <Card bordered><h2 style={{ marginTop: 0 }}>补充档案</h2><form onSubmit={submitProposal} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))', gap: 12, alignItems: 'end' }}><label>档案字段<Select value={form.key} onChange={(value) => setForm((current) => ({ ...current, key: String(value) }))}>{fields.map((field) => <Select.Option key={field} value={field} label={fieldLabel[field]} />)}</Select></label><label>内容<Input value={form.value} placeholder="填写待确认内容" onChange={(value) => setForm((current) => ({ ...current, value: String(value) }))} /></label><Button type="submit" variant="outline" disabled={busy || mutationBlocked || !form.value.trim()}>保存为提案</Button><Button type="button" disabled={busy || mutationBlocked || !form.value.trim()} onClick={() => { if (view) void doAction({ action: 'confirm', key: form.key, value: form.value.trim(), source: { kind: 'user', label: '本人确认' }, requestId: makeId(), expectedRevision: view.revision }) }}>直接确认</Button></form></Card>
   </> : null}
   {error?.code === 'forbidden' ? null : <InboxPage client={client} scopeController={scopeController} />}
-  {error?.code === 'forbidden' ? null : <ExportDeletionPage client={client} scopeController={scopeController} onCareerDeleted={() => { scopeEpoch.current += 1; desk.clear(); void load() }} />}
+  {error?.code === 'forbidden' ? null : <ExportDeletionPage client={client} scopeController={scopeController} onCareerDeleted={() => { scopeEpoch.current += 1; desk.clear(); setView(undefined); setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice(''); setUnknownAction(undefined); setReceiptNotice(''); setError(undefined); void load() }} />}
  </main>
 }

@@ -15,7 +15,7 @@ const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.incl
 
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
-type WriteAttempt = { kind: 'reminder'; requestId: string; input: SetReminderInput } | { kind: 'subscription'; requestId: string; value: 'subscribed' | 'unsubscribed' }
+type WriteAttempt = { kind: 'reminder'; requestId: string; input: SetReminderInput } | { kind: 'subscription'; requestId: string; value: 'subscribed' | 'unsubscribed'; expectedRevision: number }
 type SubscriptionAttempt = Extract<WriteAttempt, { kind: 'subscription' }>
 type ApplicationRef = { snapshotId: string; opportunityId: string }
 // Frozen backend enums rendered verbatim (internal/modules/career/
@@ -179,7 +179,7 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
     if (!scopeController.isCurrent(requestScope.scope)) return
     acceptReminderReceipt(next, current.requestId)
    } else {
-    const action: CareerAction = { action: 'confirm', key: PUSH_FACT_KEY, value: current.value, source: { kind: 'user', label: '本人确认' }, requestId: current.requestId, expectedRevision: view?.revision ?? 0 }
+    const action: CareerAction = { action: 'confirm', key: PUSH_FACT_KEY, value: current.value, source: { kind: 'user', label: '本人确认' }, requestId: current.requestId, expectedRevision: current.expectedRevision }
     const next = await client.career.act(action, requestScope.signal)
     if (!scopeController.isCurrent(requestScope.scope)) return
     acceptSubscriptionReceipt(next, current)
@@ -243,7 +243,7 @@ export function InboxPage({ client, scopeController }: { client: WeKnoraClient; 
    {readState === 'loading' ? <p className="wk-inbox__state" role="status" aria-busy="true">正在读取站内待办…</p> : readState === 'error' ? <p className="wk-inbox__message wk-inbox__message--error" role="alert">{readMessage} <button type="button" onClick={refresh}>重新读取</button></p> : <>
     <div className="wk-inbox__push" aria-label="推送订阅">
      <p aria-label="推送提醒状态">{unsubscribed ? '已退订推送提醒（站内待办不受影响，仍可读取）' : '已订阅推送提醒'}</p>
-     <button type="button" disabled={composeBlocked || view === undefined} onClick={() => { if (view) void runWrite({ kind: 'subscription', requestId: newRequestId(), value: unsubscribed ? 'subscribed' : PUSH_UNSUBSCRIBED }) }}>{unsubscribed ? '重新订阅推送提醒' : '退订推送提醒'}</button>
+     <button type="button" disabled={composeBlocked || view === undefined} onClick={() => { if (view) void runWrite({ kind: 'subscription', requestId: newRequestId(), value: unsubscribed ? 'subscribed' : PUSH_UNSUBSCRIBED, expectedRevision: view.revision }) }}>{unsubscribed ? '重新订阅推送提醒' : '退订推送提醒'}</button>
     </div>
     <div className="wk-inbox__actions"><button type="button" onClick={refresh}>刷新待办</button></div>
     {todos && todos.length ? <ol className="wk-inbox__todos" aria-label="站内待办列表">
