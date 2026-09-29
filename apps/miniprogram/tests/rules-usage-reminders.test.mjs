@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 // T30 小程序 持续规则、额度与提醒的可观察行为：真实 transport + AuthCoordinator 装配
 // （T24/T26/T28/T32 同款），假后端按 method+pathname 路由。三份冻结合同：
@@ -311,6 +312,24 @@ test('C1: requesting the subscription passes only the template ids — zero job 
   assert.deepEqual(seen[0].tmplIds, ['TMPL-REMIND-001']);
   assert.ok(!JSON.stringify(wirePayload).includes('上海'), 'no job query text ever reaches the native subscribe payload');
   assert.notEqual(outcome.delivered, true, 'the client never claims a delivered push — delivery is the server\'s later fact');
+});
+
+test('C7: accepted native authorization persists subscribed preference at the captured profile revision', async () => {
+  const source = await readFile(new URL('../src/career/rules-usage-reminders.tsx', import.meta.url), 'utf8');
+  const flow = source.slice(source.indexOf('const alreadyAuthorized = pushAuthorizationPending()'), source.indexOf('})}>订阅提醒', source.indexOf('const alreadyAuthorized = pushAuthorizationPending()')));
+  assert.match(flow, /outcome\?\.status === 'accepted'[\s\S]*?pushPreferenceStore\.write\(pushAuthorizationKey\(\), true\)/);
+  assert.match(flow, /Number\.isSafeInteger\(revision\)[\s\S]*?服务器订阅偏好未确认/);
+  assert.match(flow, /persistPushPreference\(revision\)/);
+  assert.match(flow, /catch \(error\)[\s\S]*?outcome_unknown[\s\S]*?不会再次请求微信授权/);
+});
+
+test('C8: rejected or unavailable native authorization returns before any preference write', async () => {
+  const source = await readFile(new URL('../src/career/rules-usage-reminders.tsx', import.meta.url), 'utf8');
+  const flow = source.slice(source.indexOf('const alreadyAuthorized = pushAuthorizationPending()'), source.indexOf('})}>订阅提醒', source.indexOf('const alreadyAuthorized = pushAuthorizationPending()')));
+  assert.match(flow, /outcome && outcome\.status !== 'accepted'\) \{ void inboxBusy\.run\(loadInbox\); return; \}/);
+  const pendingRecovery = source.slice(source.indexOf('{pendingPush &&'), source.indexOf('</>}', source.indexOf('{pendingPush &&')));
+  assert.match(pendingRecovery, /retryPushPreference\(\)/);
+  assert.match(pendingRecovery, /不会再次请求微信授权/);
 });
 
 test('C2: a rejected subscription keeps the in-station todos readable — no fake delivery', async () => {
