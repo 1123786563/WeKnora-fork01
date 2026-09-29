@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -72,6 +73,48 @@ func admitLifecycleClaimTx(tx *gorm.DB, s Scope, operation, requestID string, in
 
 func (o *Office) resolveLifecycleClaim(ctx context.Context, s Scope, operation, requestID string) error {
 	return o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", s.TenantID, s.UserID, operation, requestID).Delete(&lifecycleClaim{}).Error
+}
+
+// acquireLifecycleClaim obtains positive exclusion before assigning this
+// attempt as owner. The guard remains held through the caller's external work.
+func (o *Office) acquireLifecycleClaim(ctx context.Context, s Scope, operation, requestID, fingerprint string) (string, func(), error) {
+	unlock, err := acquireLifecycleExecutionGuard(ctx, o.db, s, operation, requestID)
+	if err != nil {
+		return "", nil, err
+	}
+	token := uuid.NewString()
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := admitLifecycleClaimTx(tx, s, operation, requestID, fingerprint); err != nil {
+			return err
+		}
+		res := tx.Model(&lifecycleClaim{}).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=? AND fingerprint=?", s.TenantID, s.UserID, operation, requestID, fingerprint).Update("owner_token", token)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return ErrIdempotencyConflict
+		}
+		return nil
+	})
+	if err != nil {
+		unlock()
+		return "", nil, err
+	}
+	return token, unlock, nil
+}
+
+func (o *Office) resolveLifecycleClaimOwned(ctx context.Context, s Scope, operation, requestID, ownerToken string) error {
+	if ownerToken == "" {
+		return ErrUploadClaimLost
+	}
+	res := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=? AND owner_token=?", s.TenantID, s.UserID, operation, requestID, ownerToken).Delete(&lifecycleClaim{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return ErrUploadClaimLost
+	}
+	return nil
 }
 
 // beginLifecycleDeletion changes the durable phase only after all previously

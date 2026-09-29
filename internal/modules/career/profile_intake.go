@@ -173,6 +173,12 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 				row = prior
 				return nil
 			}
+			// Uploads can create private file/catalog state. Admit the scoped
+			// request in the same transaction as its active claim, before any
+			// retry can invoke SaveBytes or Bind.
+			if e = admitLifecycleClaimTx(tx, s, "source_upload", upload.RequestID, upload.IntentHash); e != nil {
+				return e
+			}
 			now := time.Now().UTC()
 			if prior.LeaseUntil != nil && prior.LeaseUntil.After(now) {
 				row = prior
@@ -211,6 +217,9 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 		if e = tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Select("COALESCE(MAX(revision),0)").Scan(&last).Error; e != nil {
 			return e
 		}
+		if e = admitLifecycleClaimTx(tx, s, "source_upload", upload.RequestID, upload.IntentHash); e != nil {
+			return e
+		}
 		now := time.Now().UTC()
 		row = sourceRevision{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, Revision: last + 1, FileName: upload.FileName, MIMEType: upload.MIMEType, Size: upload.Size, Digest: upload.Digest, RequestID: upload.RequestID, IntentHash: upload.IntentHash, ExpectedRevision: upload.ExpectedRevision, ClaimToken: uuid.NewString(), LeaseUntil: &[]time.Time{now.Add(30 * time.Minute)}[0], Status: "processing"}
 		return tx.Create(&row).Error
@@ -235,6 +244,14 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 }
 
 func (o *Office) PersistUploadResource(ctx context.Context, sourceID, token, ref string) error {
+	return o.persistUploadResource(ctx, sourceID, token, ref, "")
+}
+
+func (o *Office) PersistUploadResourceOwned(ctx context.Context, sourceID, uploadToken, ownerToken, ref string) error {
+	return o.persistUploadResource(ctx, sourceID, uploadToken, ref, ownerToken)
+}
+
+func (o *Office) persistUploadResource(ctx context.Context, sourceID, token, ref, ownerToken string) error {
 	s, err := getScope(ctx)
 	if err != nil {
 		return err
@@ -246,7 +263,17 @@ func (o *Office) PersistUploadResource(ctx context.Context, sourceID, token, ref
 	if res.RowsAffected != 1 {
 		return ErrUploadClaimLost
 	}
-	return nil
+	var requestID string
+	if err := o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, sourceID).Select("request_id").Scan(&requestID).Error; err != nil {
+		return err
+	}
+	if requestID == "" {
+		return ErrUploadClaimLost
+	}
+	if ownerToken != "" {
+		return nil
+	}
+	return o.resolveLifecycleClaim(ctx, s, "source_upload", requestID)
 }
 
 // CareerSource intentionally omits the private resource handle and extracted text.

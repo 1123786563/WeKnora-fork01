@@ -1122,10 +1122,16 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	if replay, found, lookupErr := o.replayExportReceipt(ctx, s, input.RequestID, fingerprint, MaterialKindPublished); lookupErr != nil {
 		return ExportReceipt{}, lookupErr
 	} else if found {
-		// A process may have committed this receipt and crashed before dropping
-		// its operation claim. The durable receipt proves the effect is terminal.
-		if releaseErr := o.resolveLifecycleClaim(context.Background(), s, "material_publish", input.RequestID); releaseErr != nil {
-			return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		var existing lifecycleClaim
+		if lookup := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", s.TenantID, s.UserID, "material_publish", input.RequestID).First(&existing).Error; lookup == nil {
+			ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, s, "material_publish", input.RequestID, fingerprint)
+			if claimErr != nil {
+				return ExportReceipt{}, claimErr
+			}
+			defer unlockAttempt()
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), s, "material_publish", input.RequestID, ownerToken); releaseErr != nil {
+				return ExportReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+			}
 		}
 		return replay, nil
 	}
@@ -1149,11 +1155,13 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	if renderErr != nil {
 		return ExportReceipt{}, fmt.Errorf("render career material docx: %w", renderErr)
 	}
-	if err = o.admitLifecycleClaim(ctx, s, "material_publish", input.RequestID, fingerprint); err != nil {
-		return ExportReceipt{}, err
+	ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, s, "material_publish", input.RequestID, fingerprint)
+	if claimErr != nil {
+		return ExportReceipt{}, claimErr
 	}
+	defer unlockAttempt()
 	finishClaim := func() error {
-		return o.resolveLifecycleClaim(context.Background(), s, "material_publish", input.RequestID)
+		return o.resolveLifecycleClaimOwned(context.Background(), s, "material_publish", input.RequestID, ownerToken)
 	}
 	pdfKey, err := o.exportStorage.SaveExport(ctx, s.TenantID, "career_export_"+exportID+pdfExportExtension, pdfBytes)
 	if err != nil {

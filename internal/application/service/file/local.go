@@ -231,10 +231,15 @@ func (s *localFileService) SaveBytes(ctx context.Context, data []byte, tenantID 
 		return "", fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Generate unique filename using timestamp
-	ext := filepath.Ext(safeName)
-	baseName := safeName[:len(safeName)-len(ext)]
-	uniqueFileName := fmt.Sprintf("%s_%d%s", baseName, time.Now().UnixNano(), ext)
+	// Career export/source names contain a durable request-derived identity.
+	// Keep those keys stable so a retry overwrites the same physical object
+	// after a successful write whose response was lost.
+	uniqueFileName := safeName
+	if !strings.HasPrefix(safeName, "career_export_") && !strings.HasPrefix(safeName, "career_source_") {
+		ext := filepath.Ext(safeName)
+		baseName := safeName[:len(safeName)-len(ext)]
+		uniqueFileName = fmt.Sprintf("%s_%d%s", baseName, time.Now().UnixNano(), ext)
+	}
 	filePath := filepath.Join(dir, uniqueFileName)
 
 	// Write data to file

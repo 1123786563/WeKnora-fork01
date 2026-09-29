@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"net/textproto"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -92,6 +94,54 @@ func TestUploadHTTPRequestIDReplayAndChangedBytesConflictBeforeStorage(t *testin
 	changed := request("Education: Changed University", "resume-request-1")
 	require.Equal(t, 409, changed.Code)
 	require.Equal(t, 1, files.saves)
+}
+
+func TestTwoOfficesDeletionWaitsForPausedResumeUpload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upload-lifecycle-gate.db")
+	db1, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	o1, err := NewOffice(db1)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{TenantID: 1, UserID: "u1"})
+	require.NoError(t, o1.ClaimSpace(ctx))
+	require.NoError(t, o1.db.AutoMigrate(&types.StoredResource{}, &types.ResourceBinding{}))
+	db2, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	o2, err := NewOffice(db2)
+	require.NoError(t, err)
+	defer func() { raw, _ := db2.DB(); _ = raw.Close() }()
+	files := &careerUploadFiles{entered: make(chan struct{}), resume: make(chan struct{})}
+	h := &Handler{office: o1, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(files, &careerUploadCatalog{}, careerUploadReader{})}
+	view, err := o1.Open(ctx)
+	require.NoError(t, err)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
+	partHeader.Set("Content-Type", "text/plain")
+	part, _ := mw.CreatePart(partHeader)
+	_, _ = part.Write([]byte("Resume plaintext"))
+	_ = mw.WriteField("requestId", "upload-delete-race")
+	_ = mw.WriteField("expectedRevision", fmt.Sprint(view.Revision))
+	_ = mw.Close()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	requestCtx := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+	requestCtx = context.WithValue(requestCtx, types.TenantIDContextKey, uint64(1))
+	req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	c.Request = req.WithContext(requestCtx)
+	done := make(chan struct{})
+	go func() { h.Upload(c); close(done) }()
+	<-files.entered
+	_, err = o2.DeleteCareer(ctx, CareerDeletionInput{RequestID: "upload-delete", ExpectedRevision: view.Revision})
+	require.ErrorIs(t, err, ErrCareerOperationsBusy)
+	close(files.resume)
+	<-done
+	require.Equal(t, 201, recorder.Code, recorder.Body.String())
+	var claimCount int64
+	require.NoError(t, db2.Model(&lifecycleClaim{}).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", 1, "u1", "source_upload", "upload-delete-race").Count(&claimCount).Error)
+	require.Zero(t, claimCount)
 }
 
 func TestUploadExactRetryWithoutExpectedRevisionUsesStoredClaimRevision(t *testing.T) {
@@ -441,7 +491,10 @@ func TestCatalogRecoveryUsesOnlyExactScopedSourceResource(t *testing.T) {
 	insert("0000000000000000000004", 1, name, u.Digest, u.Size+1)
 	insert("0000000000000000000005", 1, name, u.Digest, u.Size)
 	h := &Handler{office: o, upload: NewUploadAdapter(&careerUploadFiles{}, &careerUploadCatalog{db: o.db}, careerUploadReader{})}
-	ref, err := h.recoverCatalogRef(ctx, claim.ID, claim.ClaimToken, u.RequestID)
+	ownerToken, unlock, err := o.acquireLifecycleClaim(ctx, Scope{TenantID: 1, UserID: "u1"}, "source_upload", u.RequestID, u.IntentHash)
+	require.NoError(t, err)
+	defer unlock()
+	ref, err := h.recoverCatalogRef(ctx, claim.ID, claim.ClaimToken, u.RequestID, ownerToken)
 	require.NoError(t, err)
 	require.Equal(t, "resource://0000000000000000000005", ref)
 	row, err := o.privateSource(ctx, claim.ID)

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	appfile "github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -56,6 +57,34 @@ func TestLifecycleClaimBindsRequestIDToOriginalIntent(t *testing.T) {
 	require.NoError(t, o.admitLifecycleClaim(ctx, scope, "material_publish", "same-request", "fingerprint-a"))
 	require.ErrorIs(t, o.admitLifecycleClaim(ctx, scope, "material_publish", "same-request", "fingerprint-b"), ErrIdempotencyConflict)
 	require.NoError(t, o.resolveLifecycleClaim(context.Background(), scope, "material_publish", "same-request"))
+}
+
+func TestLifecycleClaimReleaseRequiresCurrentAttemptOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "attempt-owner.db")
+	db1, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	o1, err := NewOffice(db1)
+	require.NoError(t, err)
+	db2, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	o2, err := NewOffice(db2)
+	require.NoError(t, err)
+	defer func() { raw, _ := db2.DB(); _ = raw.Close() }()
+	scope := Scope{TenantID: 81, UserID: "owner"}
+	ctx := WithScope(context.Background(), scope)
+	first, releaseFirst, err := o1.acquireLifecycleClaim(ctx, scope, "material_publish", "owner-token-request", "fingerprint")
+	require.NoError(t, err)
+	require.NoError(t, o1.resolveLifecycleClaimOwned(ctx, scope, "material_publish", "owner-token-request", first))
+	releaseFirst()
+	second, releaseSecond, err := o2.acquireLifecycleClaim(ctx, scope, "material_publish", "owner-token-request", "fingerprint")
+	require.NoError(t, err)
+	defer releaseSecond()
+	require.NotEqual(t, first, second)
+	require.ErrorIs(t, o1.resolveLifecycleClaimOwned(ctx, scope, "material_publish", "owner-token-request", first), ErrUploadClaimLost)
+	var count int64
+	require.NoError(t, db1.Model(&lifecycleClaim{}).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", scope.TenantID, scope.UserID, "material_publish", "owner-token-request").Count(&count).Error)
+	require.EqualValues(t, 1, count)
+	require.NoError(t, o2.resolveLifecycleClaimOwned(ctx, scope, "material_publish", "owner-token-request", second))
 }
 
 type pausedCareerLinker struct {
@@ -207,6 +236,45 @@ func (s *writeThenErrorStorage) DeleteExport(ctx context.Context, key string) er
 	return s.inner.DeleteExport(ctx, key)
 }
 
+type loseFirstFileServiceResponse struct {
+	inner materialExportStorage
+	keys  []string
+}
+
+func (s *loseFirstFileServiceResponse) SaveExport(ctx context.Context, tenant uint64, name string, data []byte) (string, error) {
+	key, err := s.inner.SaveExport(ctx, tenant, name, data)
+	if err != nil {
+		return "", err
+	}
+	s.keys = append(s.keys, key)
+	if len(s.keys) == 1 {
+		return "", errors.New("storage response lost after object write")
+	}
+	return key, nil
+}
+func (s *loseFirstFileServiceResponse) ReadExport(ctx context.Context, key string) ([]byte, error) {
+	return s.inner.ReadExport(ctx, key)
+}
+func (s *loseFirstFileServiceResponse) DeleteExport(ctx context.Context, key string) error {
+	return s.inner.DeleteExport(ctx, key)
+}
+
+func TestFileServiceStorageRetryAfterLostResponseUsesSamePhysicalObject(t *testing.T) {
+	files := appfile.NewLocalFileService(t.TempDir(), "")
+	storage := &loseFirstFileServiceResponse{inner: newFileExportStorage(files)}
+	name := "career_export_retry-stable.pdf"
+	_, err := storage.SaveExport(context.Background(), 31, name, []byte("first write"))
+	require.ErrorContains(t, err, "response lost")
+	key, err := storage.SaveExport(context.Background(), 31, name, []byte("retried write"))
+	require.NoError(t, err)
+	require.Len(t, storage.keys, 2)
+	require.Equal(t, storage.keys[0], storage.keys[1])
+	require.Equal(t, key, storage.keys[0])
+	data, err := storage.ReadExport(context.Background(), key)
+	require.NoError(t, err)
+	require.Equal(t, []byte("retried write"), data)
+}
+
 func (p *pausingExportStorage) SaveExport(ctx context.Context, tenant uint64, name string, data []byte) (string, error) {
 	p.once.Do(func() { close(p.entered); <-p.release })
 	return p.inner.SaveExport(ctx, tenant, name, data)
@@ -251,6 +319,10 @@ func TestTwoOfficesDeletionWaitsForMaterialPublishAndReplayUsesStableKeys(t *tes
 		publishErr <- e
 	}()
 	<-storage.entered
+	// A second Office using the exact same public request is not an owner and
+	// must not enter storage or release the first attempt's lifecycle claim.
+	_, retryErr := o2.PublishMaterial(ctx, PublishMaterialInput{RequestID: "gate-publish", MaterialID: edit.MaterialID, Version: 1, ExpectedRevision: seed.Revision})
+	require.ErrorIs(t, retryErr, ErrCareerOperationsBusy)
 	_, err = o2.DeleteCareer(ctx, CareerDeletionInput{RequestID: "gate-material-delete", ExpectedRevision: seed.Revision})
 	require.ErrorIs(t, err, ErrCareerOperationsBusy)
 	close(storage.release)
@@ -264,7 +336,9 @@ func TestTwoOfficesDeletionWaitsForMaterialPublishAndReplayUsesStableKeys(t *tes
 	require.Equal(t, first.Files, second.Files)
 	// Simulate a crash after the receipt transaction committed but before the
 	// lifecycle claim release, then verify exact replay reconciles the claim.
-	require.NoError(t, db1.Create(&lifecycleClaim{TenantID: 722, UserID: "owner", Operation: "material_publish", RequestID: "gate-publish"}).Error)
+	fingerprint, err := materialFingerprint(materialFingerprintPublish, "gate-publish", edit.MaterialID, uint64(1), seed.Revision)
+	require.NoError(t, err)
+	require.NoError(t, db1.Create(&lifecycleClaim{TenantID: 722, UserID: "owner", Operation: "material_publish", RequestID: "gate-publish", Fingerprint: fingerprint}).Error)
 	_, err = o2.PublishMaterial(ctx, PublishMaterialInput{RequestID: "gate-publish", MaterialID: edit.MaterialID, Version: 1, ExpectedRevision: seed.Revision})
 	require.NoError(t, err)
 	var claimCount int64

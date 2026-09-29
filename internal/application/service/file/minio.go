@@ -208,6 +208,9 @@ func (s *minioFileService) SaveBytes(ctx context.Context, data []byte, tenantID 
 	}
 	ext := filepath.Ext(safeName)
 	objectName := fmt.Sprintf("%d/exports/%s%s", tenantID, uuid.New().String(), ext)
+	if strings.HasPrefix(safeName, "career_export_") || strings.HasPrefix(safeName, "career_source_") {
+		objectName = fmt.Sprintf("%d/exports/%s", tenantID, safeName)
+	}
 
 	// Upload bytes to MinIO
 	reader := bytes.NewReader(data)
