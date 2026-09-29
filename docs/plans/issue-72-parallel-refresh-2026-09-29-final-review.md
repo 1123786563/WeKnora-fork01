@@ -1,11 +1,11 @@
 # Issue #72 parallel refresh — final review and process snapshot
 
-**Captured:** 2026-09-29 23:24:09 CST  
+**Captured:** 2026-09-29 23:24:09 CST
 **Scope:** Documentation checkpoint and read-only process/session inventory. This record does not change R-6, #87/#88/#89 gates, shared `lago-int`, or any running process.
 
 ## Independent full-branch review
 
-Independent full-branch review covered BASE `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` through checkpoint HEAD `33841cb48e0b8f1cbac143a0d3be56515648c67b`. It reviewed four Markdown files: `docs/plans/issue-72-execution-ledger.md`, `docs/plans/issue-72-parallel-refresh-2026-09-29-ocr-partial.md`, `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`, and `docs/plans/issue-72-parallel-refresh-2026-09-29.md`. Verdict: **Spec PASS; quality PASS; no actionable findings.** The reviewer report in `issue72_refresh_full_review` says all prior issues are addressed, including R7's provisional external hashes/source-loss caveat, the distinction between inferred PID/session pairing and direct session→Issue attachment mapping, the evidence path base, and restoration of Task 8 historical wording. This review applies only through that checkpoint and predates Task 14.
+An attributed summary reports that the independent full-branch review covered BASE `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` through checkpoint HEAD `33841cb48e0b8f1cbac143a0d3be56515648c67b`. It lists four Markdown files: `docs/plans/issue-72-execution-ledger.md`, `docs/plans/issue-72-parallel-refresh-2026-09-29-ocr-partial.md`, `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`, and `docs/plans/issue-72-parallel-refresh-2026-09-29.md`, and attributes **Spec PASS; quality PASS; no actionable findings** to reviewer task `issue72_refresh_full_review`. The original reviewer report was not found in the accessible local record directories when this note was prepared, so this verdict is an attributed, unverified summary; readers cannot independently verify its disposition from this repository. The summary says prior issues were addressed, including R7's provisional external hashes/source-loss caveat, inferred PID/session pairing versus direct session→Issue attachment mapping, evidence path base, and restored Task 8 historical wording. Its stated scope ends at that checkpoint and predates Task 14.
 
 ## OCR status
 
@@ -13,7 +13,7 @@ OCR remains partial and non-pass. The durable [partial OCR record](issue-72-para
 
 ## Sanitized live process/session snapshot
 
-Read-only snapshot captured at **2026-09-29 23:24:09 CST**:
+Read-only process/session values were supplied as a snapshot captured at **2026-09-29 23:24:09 CST**. The raw `ps`/`lsof` output and rollout metadata source files were not preserved or located, so this is a supplied snapshot rather than independently reproducible process evidence:
 
 | PID | TTY | Elapsed | Work/goal mapping | cwd |
 | --- | --- | --- | --- | --- |
@@ -23,9 +23,9 @@ Read-only snapshot captured at **2026-09-29 23:24:09 CST**:
 | 84486 | `ttys003` | 09:29:09 | Session `01a0ebbb-3fa1-7b30-9be0-85351aeb9463`, goal Issue #140 | repository root |
 | 88833 | `ttys004` | 09:28:19 | Session `01a0ebbb-eb35-7453-b985-f9c0ceaef7b7`, goal Craft #107 | repository root |
 
-All four root-repository sessions remain live. Rollout `session_meta` records report branch `main` and repository-root cwd. Session→Issue mapping comes directly from rollout goals/attachments. PID↔session/TTY pairing is inferred from start-time proximity because `session_meta` does not directly store PID or TTY. No specific task or worktree is mapped to these four shells; the #72 session remains live, so no #72 lane release is recorded. No shell or worktree was acted on.
+The supplied snapshot states that all four root-repository sessions were live and that rollout `session_meta` records reported branch `main` and repository-root cwd. The underlying records were not preserved or located, so these values and the reported direct session→Issue mapping cannot be independently verified here. PID↔session/TTY pairing is described as inferred from start-time proximity. No specific task or worktree mapping or #72 lane release was reported. This note records no action on any shell or worktree.
 
-Exact read-only commands recorded for this snapshot:
+Command templates reported for this snapshot (the rollout path was provided only as a placeholder):
 
 ```sh
 ps -axo pid,tty,etime,lstart,command
@@ -40,7 +40,7 @@ cat <rollout-session-directory>/01a0ebbb-3fa1-7b30-9be0-85351aeb9463/session_met
 cat <rollout-session-directory>/01a0ebbb-eb35-7453-b985-f9c0ceaef7b7/session_meta
 ```
 
-The rollout directory placeholder denotes the local rollout metadata root used for those reads; no authentication material or secrets are included here. The exact `ps` output and `lsof` cwd observations were supplied for this capture. No shell was stopped, signaled, or modified.
+The rollout-directory placeholder cannot identify the source used. The values above are transcribed from supplied observations, not preserved command output. No authentication material or secrets are included. No shell was stopped, signaled, or modified.
 
 ## Scope boundary
 
