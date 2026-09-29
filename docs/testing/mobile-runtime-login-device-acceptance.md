@@ -60,16 +60,27 @@ device evidence file.
 }
 ```
 
-## Current Task 7 status (2026-09-21): unresolved native acceptance
+## Current Task 7 status (2026-09-29): iOS 27 scene build in progress
 
-Neither platform is accepted. This checkout has iOS simulators and Xcode, but
-does not contain an iOS/Android native project or an installed WeKnora
-development build. `adb` and the EAS CLI are unavailable. No staging
-deployment or mobile test credential variable is configured. Consequently no
-password or OIDC flow, callback behavior, or protocol gate has been exercised
-on an installed native build.
+The Expo SDK 57 generated iOS project contract now passes in the isolated
+prebuild at `/tmp/weknora-issue31-final-prebuild-_x7w61dy/ios`: its
+`UIApplicationSceneManifest` names `EXExpoAppSceneDelegate`, its AppDelegate
+conforms to `ExpoReactNativeFactoryProvider` without creating a React Native
+window in `didFinishLaunchingWithOptions`, and generated Xcode/Pod deployment
+targets are all 16.4. CocoaPods installation completed for that project.
 
-Task 6 also found no local HTTPS fixture or protected staging credentials; see
-`.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for
-the safe opt-in HTTP harness and its limitation. The Expo exports and local
-test/typecheck results must remain build evidence only.
+The iOS 27 simulator build is running with the booted iPhone 18 Pro simulator
+(`0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`). Its command log is
+`/tmp/issue31-xcodebuild.log`; install, launch, screenshot and launch-log
+inspection will be recorded after the build completes. JavaScript exports are
+build evidence only: iOS output is under `/tmp/issue31-ios-export` and Android
+output is under `/tmp/issue31-android-export`.
+
+The simulator gate does not exercise a real staging login. No staging
+Deployment or short-lived mobile credentials are configured, and no Android
+device acceptance has been performed. Therefore password/OIDC/capability
+flows on staging and Android installation remain Pending. Task 6 also found no
+local HTTPS fixture or protected staging credentials; see
+`.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for the
+safe opt-in HTTP harness and its limitation. No credentials were inspected or
+added to source, logs, screenshots or evidence.
