@@ -94,3 +94,7 @@ ios/
 .mimosa/
 parity-audit/
 migrations/
+
+# Casdoor runtime artifacts (SQLite db and object storage)
+config/casdoor/casdoor.db*
+config/casdoor/storage/

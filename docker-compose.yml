@@ -540,6 +540,18 @@ services:
     # 添加停机时的优雅退出时间
     stop_grace_period: 1m
 
+  casdoor:
+    image: casbin/casdoor:latest
+    container_name: WeKnora-casdoor
+    restart: unless-stopped
+    ports:
+      - "${CASDOOR_PORT:-8000}:8000"
+    volumes:
+      - ./config/casdoor:/conf
+    networks:
+      - WeKnora-network
+    stop_grace_period: 30s
+
   redis:
     image: redis:7.0-alpine
     container_name: WeKnora-redis
