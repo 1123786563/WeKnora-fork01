@@ -65,6 +65,8 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
  const [deletionConflict, setDeletionConflict] = useState<number>()
  const [verifyMessage, setVerifyMessage] = useState('')
  const lastExportRequest = useRef<string | undefined>(undefined)
+ const deletionGenerationRef = useRef(deletionGeneration)
+ deletionGenerationRef.current = deletionGeneration
  const revisionReadSequence = useRef(0)
  const exportInFlight = useRef(false)
  const deletionInFlight = useRef(false)
@@ -129,10 +131,10 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
-   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
+   if (parsed.code === 'forbidden') { setVerifyMessage(`删除后验证：旧导出授权不可访问（${exportRequestId}），旧入口已失效。`); return }
    setVerifyMessage(parsed.code === 'not_found' ? `删除后验证：导出回执 ${exportRequestId} 已不可读取（旧授权与旧入口已失效）。` : `删除后验证暂时无法完成：${parsed.message}`)
   }
- }, [clearPrivate, client, scopeController])
+ }, [client, scopeController])
 
  const acceptExport = (next: CareerExportReceipt, expected: Attempt): void => {
   if (next.requestId !== expected.requestId) throw new ReceiptMismatchError('导出回执与本次请求不匹配')
@@ -211,14 +213,16 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
 
  const loadBoundary = async (): Promise<void> => {
   if (boundaryState === 'loading') return
+  const requestDeletionGeneration = deletionGenerationRef.current
   const requestScope = scopeController.current()
+  setBoundary(undefined); setAcknowledged(false)
   setBoundaryState('loading'); setBoundaryMessage('正在读取删除边界清单…')
   try {
    const next = await client.career.careerDeletionBoundary(requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || requestDeletionGeneration !== deletionGenerationRef.current) return
    setBoundary(next); setBoundaryState('ready'); setBoundaryMessage('')
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || requestDeletionGeneration !== deletionGenerationRef.current) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
    setBoundary(undefined); setBoundaryState('error')
@@ -229,6 +233,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
  const recoverCurrentScope = async (): Promise<void> => {
   if (scopeRecoveryLoading) return
   const operation = ++revisionReadSequence.current
+  const requestDeletionGeneration = deletionGenerationRef.current
   const requestScope = scopeController.current()
   setScopeRecoveryLoading(true)
   setBoundaryMessage('正在重新读取当前空间的档案修订与删除边界…')
@@ -237,18 +242,18 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
     client.career.open(requestScope.signal),
     client.career.careerDeletionBoundary(requestScope.signal),
    ])
-   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current || requestDeletionGeneration !== deletionGenerationRef.current) return
    setRevision(view.revision); setRevisionState('ready')
    setBoundary(nextBoundary); setBoundaryState('ready'); setBoundaryMessage('')
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current || requestDeletionGeneration !== deletionGenerationRef.current) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
    setRevision(undefined); setRevisionState('error')
    setBoundary(undefined); setBoundaryState('scope-changed')
    setBoundaryMessage('当前空间信息暂时无法完整读取。导出与删除仍不可用，可重试重新加载。')
   } finally {
-   if (scopeController.isCurrent(requestScope.scope) && operation === revisionReadSequence.current) setScopeRecoveryLoading(false)
+   if (scopeController.isCurrent(requestScope.scope) && operation === revisionReadSequence.current && requestDeletionGeneration === deletionGenerationRef.current) setScopeRecoveryLoading(false)
   }
  }
 
@@ -277,7 +282,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
   let current = fixed
   if (!current) {
    if (deletionPhase === 'busy' || deletionPhase === 'unknown') return
-   if (revision === undefined || !boundary || !acknowledged) return
+   if (revision === undefined || !boundary || boundaryState !== 'ready' || !acknowledged) return
    if (deletion?.status === 'deleted') return
    current = { requestId: newRequestId(), expectedRevision: revision }
   }
@@ -339,7 +344,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted, d
 
  const exportBlocked = exportPhase === 'busy' || exportPhase === 'unknown'
  const deletionBlocked = deletionPhase === 'busy' || deletionPhase === 'unknown' || exportBlocked
- const startDeletionDisabled = deletionBlocked || revision === undefined || !boundary || !acknowledged || deletion?.status === 'deleting' || deletion?.status === 'deleted'
+ const startDeletionDisabled = deletionBlocked || revision === undefined || !boundary || boundaryState !== 'ready' || !acknowledged || deletion?.status === 'deleting' || deletion?.status === 'deleted'
  const archive = exported?.archive
  const snapshotTotal = archive?.opportunities.reduce((total, item) => total + item.snapshots.length, 0) ?? 0
  const eventTotal = archive?.applications.reduce((total, item) => total + item.progressEvents.length, 0) ?? 0
