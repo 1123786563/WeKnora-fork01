@@ -53,4 +53,4 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r1-brief.md`; repaired fi
 - Fresh screenshot `ios27-release-launch-r1.png`, SHA-256 `6982dfa2728819aec625a1c85785a14271431e7d3135957d42fb2caab48cbd73`, inspected: sign-in content is visible below the status bar.
 - Full outer Release log is persisted as tracked `xcodebuild-release-final.log.gz`; uncompressed SHA-256 `46f47407fb270ca1f8361a0442d32c5cbe184eaf7b1ed928420aa8afd1b3de83`, compressed SHA-256 `4d182b68807f739504742a13bb1dfb3c62208f0629d36eb6184da41ce8fa435d`. Original T39 tracked log remains SHA-256 `12a27ed4f698074356c5e1d7722b5d7af78b2d60b5cdf9e9856e44e37b7bb71e`.
 - Full mobile suite `pnpm --filter @weknora/mobile test`: 306 total, 292 pass, 14 opt-in skips, 0 failures. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
-- Repair commit: pending local commit.
+- Repair implementation commit: `c4c16ad6cef751cec16e1c5bf22f694f3a83679e`.
