@@ -155,7 +155,11 @@ function maskSwiftNonCode(source: string): string | undefined {
       if ((source[quote] === '"' && (current === '"' || current === '#')) || current === "'") {
         rawHashes = quote - index;
         multiline = source.slice(quote, quote + 3) === '"""';
-        delimiter = (current === "'" ? "'" : multiline ? '"""' : '"') + '#'.repeat(rawHashes);
+        let quoteDelimiter: string;
+        if (current === "'") quoteDelimiter = "'";
+        else if (multiline) quoteDelimiter = '"""';
+        else quoteDelimiter = '"';
+        delimiter = quoteDelimiter + '#'.repeat(rawHashes);
         state = 'string';
         const end = quote + (multiline ? 3 : 1);
         while (index < end) mask(index++);

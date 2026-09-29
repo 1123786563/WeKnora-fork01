@@ -82,6 +82,15 @@ test('production checker rejects unresolved loader-relative framework dependenci
   }
 });
 
+test('production checker rejects an executable-relative framework load outside the app', () => {
+  const f = fixture({ app: '@executable_path/../Missing.framework/Missing' });
+  try {
+    const result = run(f);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /FRAMEWORK_LOAD_OUTSIDE_APP/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
 test('production checker rejects framework install names without an executable path', () => {
   for (const load of ['@rpath/Missing.framework', '@rpath/Missing.framework/']) {
     const f = fixture({ app: load });
@@ -238,6 +247,11 @@ test('production checker reports mode from generated properties and rejects miss
   finally { rmSync(precompiled.root, { recursive: true, force: true }); }
   const invalid = fixture({ app: '' });
   try {
+    writeFileSync(invalid.propertiesPath, JSON.stringify([]));
+    const nonObject = run(invalid);
+    assert.notEqual(nonObject.status, 0);
+    assert.match(nonObject.output, /FRAMEWORK_MODE_PROPERTIES_INVALID/);
+    assert.doesNotMatch(nonObject.output, /Traceback/);
     writeFileSync(invalid.propertiesPath, JSON.stringify({ 'ios.buildReactNativeFromSource': 'false', EXPO_USE_PRECOMPILED_MODULES: 'false' }));
     assert.match(run(invalid).output, /FRAMEWORK_MODE_PROPERTIES_CONTRADICTORY/);
     writeFileSync(invalid.propertiesPath, JSON.stringify({}));

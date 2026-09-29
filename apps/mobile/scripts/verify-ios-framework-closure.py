@@ -57,6 +57,8 @@ def main(app_path: str, properties_path: str) -> None:
             properties = plistlib.load(stream) if properties_path.endswith(".plist") else __import__("json").load(stream)
     except Exception as error:
         fail(f"FRAMEWORK_MODE_PROPERTIES_INVALID: {properties_path}: {error}")
+    if not isinstance(properties, dict):
+        fail(f"FRAMEWORK_MODE_PROPERTIES_INVALID: expected object in {properties_path}")
     source_value = properties.get("ios.buildReactNativeFromSource")
     expo_value = properties.get("EXPO_USE_PRECOMPILED_MODULES")
     if source_value not in ("true", "false") or expo_value not in ("true", "false"):
