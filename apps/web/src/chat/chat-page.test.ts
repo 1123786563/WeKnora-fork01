@@ -36,6 +36,9 @@ test('chat view keeps destructive session actions behind the Vue confirmation st
   assert.match(headerSource, /'delete'/);
   assert.match(headerSource, /chat-header-confirm__btn is-danger/);
   assert.match(routeSource, /onClearSession=\{clearMessages\}/);
+  assert.doesNotMatch(routeSource, /window\.confirm\(/, 'the header owns the sole confirmation interaction');
+  assert.match(routeSource, /await client\.sessions\.remove\(sessionId, scope\.signal\)/, 'delete failures propagate to the menu caller');
+  assert.match(routeSource, /await client\.sessions\.clear\(selectedSessionId, scope\.signal\)/, 'clear failures propagate to the menu caller');
   assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'error'/);
   assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'stopped'/);
   assert.match(sidebarSource, /clearConfirmBody/);

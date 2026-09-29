@@ -63,7 +63,6 @@ import type { SteerMutationResponse } from '@weknora/contracts';
 import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
-import { chatClearConfirmation } from './clear-confirmation.ts';
 // SP13 Task 8 — 会话分享弹窗（侧栏 ⋯ 菜单「分享」→ mint 只读链接）。
 import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
@@ -1417,28 +1416,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
-    if (!window.confirm(copy.deleteConfirmBody)) return;
-    try {
-      await client.sessions.remove(sessionId, scope.signal);
-      setSessions((items) => items.filter((session) => session.id !== sessionId));
-      if (selectedSessionId === sessionId) {
-        selectedSessionIdRef.current = null;
-        setSelectedSessionId(null); setMessages([]); setStreamState(initialChatStreamState());
-        window.history.pushState({}, '', '/platform/creatChat');
-      }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
+    await client.sessions.remove(sessionId, scope.signal);
+    setSessions((items) => items.filter((session) => session.id !== sessionId));
+    if (selectedSessionId === sessionId) {
+      selectedSessionIdRef.current = null;
+      setSelectedSessionId(null); setMessages([]); setStreamState(initialChatStreamState());
+      window.history.pushState({}, '', '/platform/creatChat');
+    }
   }
 
   async function clearMessages(): Promise<void> {
-    if (!selectedSessionId || !window.confirm(chatClearConfirmation(readStoredLocale()))) return;
-    try {
-      await client.sessions.clear(selectedSessionId, scope.signal);
-      setMessages([]);
-      setSuggestions(undefined);
-      setHasMoreMessages(false);
-      setStreamState(initialChatStreamState());
-      approvalMemoryRef.current.clear();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
+    if (!selectedSessionId) return;
+    await client.sessions.clear(selectedSessionId, scope.signal);
+    setMessages([]);
+    setSuggestions(undefined);
+    setHasMoreMessages(false);
+    setStreamState(initialChatStreamState());
+    approvalMemoryRef.current.clear();
   }
 
   function updateDraft(value: string) {

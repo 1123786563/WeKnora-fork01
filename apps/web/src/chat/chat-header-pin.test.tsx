@@ -68,3 +68,21 @@ test('pin menu item asks for the next pin state, not the current one', async () 
     container.remove();
   }
 });
+
+test('destructive confirmation invokes the action once and keeps the menu open on rejection', async () => {
+  let calls = 0;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ChatHeader {...headerProps({
+    onClearSession: async () => { calls += 1; throw new Error('network failed'); },
+  })} />));
+  await act(async () => { container.querySelector<HTMLButtonElement>('.chat-header__menu-btn')?.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { document.querySelector<HTMLButtonElement>('[data-menu-action="clear"]')?.click(); });
+  await act(async () => { document.querySelector<HTMLButtonElement>('.chat-header-confirm__btn.is-danger')?.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(calls, 1, 'one explicit confirmation should invoke the callback exactly once');
+  assert.ok(document.querySelector('.chat-header-confirm'), 'the failed action should leave confirmation available for retry');
+  assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /network failed/);
+});
