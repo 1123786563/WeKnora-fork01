@@ -14,5 +14,5 @@
   - `go test ./internal/application/repository/ -run TestT25UnknownResolvesFromRemoteFactsOverHTTP -count=1` — PASS
   - `git diff --check` — PASS
 - Residual risk: owner confirmation cannot prove a delayed provider create will never complete after inspection. Resolve remains no-POST; a later dispatch is separate.
-- Commit: `df8914cfb00015f8249317b8c17a8ec88129bcc7`.
+- Commit: `0b294b3ffc9da657c10d4b31476faec565179371`.
 - Payload SHA (SHA-256 over sorted committed `internal/` paths, filename-NUL-content): `e521743596c0cfe0e6656e7ecb401e270d410ffc0bc4edb5326afd6b36d25d7c`.
