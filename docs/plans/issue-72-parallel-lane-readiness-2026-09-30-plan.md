@@ -8,7 +8,7 @@
 
 **Tech Stack:** Markdown, Git state inspection, authenticated GitHub API snapshots, and pinned upstream Lago source references.
 
-**Spec:** [Issue #72 execution DAG](issue-72-dag.md), [Issue inventory](issue-72-issues-inventory.md), [approved user rulings](issue-72-user-rulings.md), [R16 plan in owner-controlled integration worktree](../../.worktrees-issue72/lago-int/docs/plans/issue-72-plan-87-r16.md), and read-only evidence reports listed in Task 1.
+**Spec:** [Issue #72 execution DAG](issue-72-dag.md), [Issue inventory](issue-72-issues-inventory.md), [approved user rulings](issue-72-user-rulings.md), [R16 plan](issue-72-plan-87-r16.md), and read-only evidence reports listed in Task 1.
 
 ## Global Constraints
 
