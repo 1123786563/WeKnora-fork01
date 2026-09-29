@@ -49,6 +49,8 @@ type AgentAdoptionRepository interface {
 	PublishedAvailableAgents(context.Context, uint64) ([]AgentAdoptionPublishedRow, error)
 	GetMarketplaceListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+	EndAdoption(context.Context, uint64, string, string, string, map[string]any) (*types.AgentAdoptionEntity, error)
+	RetiredVariantAgentExists(context.Context, uint64, string) (bool, error)
 }
 
 type agentAdoptionRepository struct{ db *gorm.DB }
