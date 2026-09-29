@@ -187,6 +187,25 @@
 
 **Acceptance:** The test suite supplies the real login → `/auth/me` → `/system/capabilities` runtime flow; A1 and the configured mini-program test suite pass; no auth or CareerDesk production guard is weakened; polling cannot spin forever.
 
+## Task 8: Record the Exact Workbench → AgentRuntime Root Contract
+
+**Dependency:** Task 4 implementation commit is independently reviewed; the only expected Architecture Guard finding is `command_queue_next.go` importing the approved AgentRuntime module-root error sentinels.
+
+**Role:** `mechanical_worker`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:**
+- Modify: `tools/architectureguard/check.go`
+- Modify: `tools/architectureguard/check_test.go`
+
+**Contract:** The workbench queue imports only the stable `github.com/Tencent/WeKnora/internal/modules/agentruntime` module root for `ErrNotFound` and `ErrConflict`; it does not import an agentruntime subpackage. Add one exact file→package exception with reason that queue mapping must preserve the AgentRun outcome identity and Pass B cleanup task `B-workbench`.
+
+- [ ] Add a focused failing guard assertion proving the exact workbench queue → agentruntime root pair is the only new allowlisted pair and a neighboring file remains forbidden.
+- [ ] Add one exact `importExceptions` entry; do not broaden owner rules or suppress any other import.
+- [ ] Run guard unit tests, architecture discovery/coverage tests, and `git diff --check`. At integration, require the full guard to reduce from 8 known findings to 7 until all Task 4 source changes are present.
+- [ ] Commit `docs(architecture): allow exact workbench runtime contract` and record the exact contract rationale.
+
+**Acceptance:** The approved module-root contract is explicit, exact, and tested; internal subpackage imports remain forbidden and neighboring cross-module imports still diagnose.
+
 ## Shared DAG and Integration
 
 | Task | Source Issue | Depends on | Owned scope | Status at plan creation |
@@ -196,5 +215,6 @@
 | T5 | #140 integration | issue30 baseline `db234c5e`; user confirms not deployed | 19 migration pairs + references | ready |
 | T6 | #140 integration | Task 2 route counts; guard diagnostics | 15 manifests + guard discovery tests | ready |
 | T7 | #140 integration | Task 1 route-contract commit `4e168777` review + focused validation | 7 mini-program test fixtures | ready |
+| T8 | #140 integration | Task 4 root-sentinel contract and review | Architecture Guard exact import exception + tests | pending |
 
 All four tasks use distinct writable files and isolated worktrees. Run tasks concurrently; integration is serial and begins only after each task's scoped validator/reviewer passes. Final verification must run on the integrated HEAD: full `go test -count=1 ./internal/handler/session ./internal/container ./internal/database ./tools/architectureguard`, Task 1's complete mini-program suite under supported Node `v22.22.3`, web/mobile regression suites from the verification map, `git diff --check`, and complete-range OCR from `db234c5eb171f2dde7427d382b55b503a038f879` through final HEAD plus workspace content.
