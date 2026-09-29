@@ -142,6 +142,44 @@
 
 **Acceptance:** The regression tests pass under deterministic locale setup and prove that a user can activate history loading even when the first page does not overflow.
 
+## Task 14: Give TDesign Craft overlays an accessible name
+
+**Dependency:** Repair finding `CRAFT-R2-1` on Task 6 commit `72e36c5860c968b868a6d00caaf14479d43ba67e`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/craft/overlay-a11y.ts`, `shell.tsx`, `versions.tsx`, and focused overlay tests only.
+
+**Consumes / produces:** Existing Craft Drawer/restore Dialog localized title/header and `useTDesignOverlayA11y`. Give each opened `role=dialog` panel a programmatic accessible name using `aria-labelledby` tied to the rendered heading or a localized `aria-label`; avoid duplicate IDs and preserve focus containment, Escape, close and focus-return behavior.
+
+**Steps:**
+
+- [ ] Add failing focused assertions that each open dialog has its expected accessible name.
+- [ ] Implement heading association or title label for both Drawer and restore Dialog.
+- [ ] Run focused shell/versions overlay tests, shared typecheck and `git diff --check`; expected: accessible names and existing keyboard lifecycle both pass.
+- [ ] Commit only the overlay helper/call-site/test files and report.
+
+**Acceptance:** Screen readers can identify both overlays by their visible localized title while all existing keyboard/focus behavior remains verified.
+
+## Task 15: Exercise message-history load activation in a DOM test
+
+**Dependency:** Repair finding `HISTORY-R2-1` on Task 13 commit `9075822ab8f8d6879b5af83d2a873768d7244335`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/chat/message-list.test.tsx` only unless the package's existing interaction-test helper requires a narrowly scoped test utility change.
+
+**Consumes / produces:** Existing `MessageList` native button and callback. Render one populated message in an underfilled page, activate Load more via the existing DOM interaction helper, and assert exactly one callback. Render loading state and assert activation produces no callback; retain exhausted-state absence. Do not alter production behavior unless a newly reproduced failure requires a separate reviewed task.
+
+**Steps:**
+
+- [ ] First resolve why dependencies were unavailable in the prior worktree using the repository's normal install/workspace setup; do not leave temporary dependency symlinks.
+- [ ] Add an interaction test that fails when the callback is inert or invoked while loading.
+- [ ] Run focused views chat tests and applicable package typecheck; run `git diff --check`.
+- [ ] Commit only owned test paths and report commands and environment evidence.
+
+**Acceptance:** The suite demonstrates that an underfilled first page can invoke older-history loading once and loading state blocks further activation.
+
 ## Task 8: Make document move destinations and mode choices keyboard-operable
 
 **Dependency:** Follow-up to Task 1 review finding `UI-R2-DOC-01`; continue in the Task 1 worktree after its initial commit.
