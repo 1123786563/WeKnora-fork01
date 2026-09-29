@@ -137,3 +137,11 @@ test('revocation during read rejects before any write', async () => {
     (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED');
   assert.deepEqual(calls, ['delivery']);
 });
+
+
+test('a mismatched delivery id is invalid input before any recovery write', async () => {
+  const h = harness('pushed');
+  await assert.rejects(() => h.recover({ runId: 'run-1', deliveryId: 'other-delivery' }), (error: unknown) =>
+    error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_INVALID_INPUT');
+  assert.deepEqual(h.calls, ['delivery']);
+});

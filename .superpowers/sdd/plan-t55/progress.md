@@ -27,7 +27,7 @@
 - Task 2: repair round 2 implemented; independent review pending on the parallel integration stream.
 - Task 3: integrated/reviewed complete with Ruling T55-R1 limiting evidence scope.
 - Task 4: integrated/reviewed complete (repair round 1 Spec+Quality PASS).
-- Task 5: implemented and locally committed; targeted tests/typecheck pass. Review package generated from BASE to task HEAD; independent review pending.
+- Task 5: fix round 1 implemented; targeted core/API adapter tests and mobile typecheck pass. Review package generated from BASE to fix HEAD; independent review pending.
 - Task 6: blocked until Task 5 verified, reviewed and integrated.
 - Task 7: integrated and code-reviewed; real-provider path remains blocked-env.
 - Task 8: blocked until Task 6 verified, reviewed and integrated.
@@ -35,3 +35,5 @@
 ## Task 5 checkpoint
 - Commit: `ca19289859a9dfd719a38cf96fbba661883a25a2`; review package `.superpowers/sdd/plan-t55/review-0e418c7ad..ca1928985.diff`, SHA-256 `d61c0659a7c1dd5209770613bcc79f496e34464c431bfb3c2e306ef556331c72`.
 - Verification: 10 targeted tests pass; mobile typecheck passes; diff check passes.
+
+- Task 5 fix round 1 commit: `b6011750a538461f8a00485908dfe32e0f0fad28`; review package: `.superpowers/sdd/plan-t55/review-e6b98fe69..b6011750a.diff` (fix BASE `e6b98fe69bc824c750872ee93ad2c799014056fe`).
