@@ -115,6 +115,8 @@ func applicationTaskTitle(opportunityID string) string {
 // before any external call; the Workbench linker is invoked only after that
 // commit, always with the original request ID.
 func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationInput) (ApplicationReceipt, error) {
+	o.lifecycleMu.RLock()
+	defer o.lifecycleMu.RUnlock()
 	scope, err := getScope(ctx)
 	if err != nil {
 		return ApplicationReceipt{}, err

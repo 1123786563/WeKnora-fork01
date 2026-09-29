@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -86,6 +87,8 @@ type fakeCareerApplicationLinker struct {
 	ensureScopes  []ensureScope
 	findArguments []findArgument
 	taskSequence  int
+	ensureStarted chan struct{}
+	ensureRelease chan struct{}
 }
 
 type ensureScope struct {
@@ -102,6 +105,13 @@ type findArgument struct {
 func (f *fakeCareerApplicationLinker) EnsureCareerApplicationTask(
 	_ context.Context, tenantID uint64, ownerID string, intent interfaces.CareerApplicationTaskIntent,
 ) (interfaces.CareerApplicationTaskLink, error) {
+	if f.ensureStarted != nil {
+		select {
+		case f.ensureStarted <- struct{}{}:
+		default:
+		}
+		<-f.ensureRelease
+	}
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.ensureCalls++
@@ -115,6 +125,39 @@ func (f *fakeCareerApplicationLinker) EnsureCareerApplicationTask(
 		TaskID: fmt.Sprintf("task-%d", f.taskSequence),
 		RunID:  fmt.Sprintf("run-%d", f.taskSequence),
 	}, nil
+}
+
+func TestDeleteCareerWaitsForCommittedApplicationWorkbenchLink(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1951)
+	seed := seedApplicationEvaluation(t, o, ctx, "Go backend engineer", "2027", "delete-link-race")
+	linker := &fakeCareerApplicationLinker{ensureStarted: make(chan struct{}, 1), ensureRelease: make(chan struct{})}
+	o.SetApplicationTaskLinker(linker)
+	remover := &fakeCareerTaskRemover{}
+	o.SetApplicationTaskRemover(remover)
+	appDone := make(chan error, 1)
+	go func() {
+		_, err := o.CreateApplication(ctx, applicationInput(seed, "delete-link-race-app", "batch-1"))
+		appDone <- err
+	}()
+	<-linker.ensureStarted // Career commit is complete; linking is paused.
+
+	deleteDone := make(chan error, 1)
+	go func() {
+		_, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-link-race-delete", ExpectedRevision: seed.Revision})
+		deleteDone <- err
+	}()
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("deletion crossed the in-flight Workbench linker: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(linker.ensureRelease)
+	require.NoError(t, <-appDone)
+	require.NoError(t, <-deleteDone)
+	require.GreaterOrEqual(t, remover.calls, 1)
+	var applications int64
+	require.NoError(t, db.Table("career_applications").Count(&applications).Error)
+	require.Zero(t, applications)
 }
 
 func (f *fakeCareerApplicationLinker) FindCareerApplicationTask(

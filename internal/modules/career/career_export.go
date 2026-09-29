@@ -739,6 +739,8 @@ var careerPurgeTables = []string{
 // failing step leaves a partial, recoverable state under the same request
 // ID — the receipt never claims full deletion until every step is done.
 func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (CareerDeletionReceipt, error) {
+	o.lifecycleMu.Lock()
+	defer o.lifecycleMu.Unlock()
 	s, err := getScope(ctx)
 	if err != nil {
 		return CareerDeletionReceipt{}, err
@@ -1072,7 +1074,7 @@ func (o *Office) runDeletionSteps(ctx context.Context, s Scope, requestID string
 func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
 	var rows []materialExportRecord
 	if err := o.db.WithContext(ctx).
-		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
 		Find(&rows).Error; err != nil {
 		return err
 	}
@@ -1089,7 +1091,7 @@ func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
 		}
 	}
 	return o.db.WithContext(ctx).Model(&materialExportRecord{}).
-		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
 		Updates(map[string]any{"status": ExportStatusRevoked, "revoked_at": time.Now().UTC(), "updated_at": time.Now().UTC()}).Error
 }
 
