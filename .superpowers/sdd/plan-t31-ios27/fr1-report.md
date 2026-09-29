@@ -41,4 +41,4 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fr1-r2-brief.md`; addressed FR1-1 an
 - Retained checker command again printed `FRAMEWORK_MODE=source-expo-modules` and `FRAMEWORK_CLOSURE_OK`; app executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
 - `pnpm install --frozen-lockfile` was required because the fresh isolated worktree had no `node_modules`; install exited 0 with the lockfile unchanged and 1,915 packages linked.
 - No native build, evidence modification, or out-of-scope changes.
-- Round-2 implementation commit: pending.
+- Round-2 implementation commit: `677f5e792215d4ada267b106052fe42fd38b6515`.
