@@ -39,13 +39,13 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
   const configListId = targetBlock.match(/buildConfigurationList\s*=\s*([A-F0-9]+)/)?.[1];
   const configLists = project.match(/\/\* Begin XCConfigurationList section \*\/([\s\S]*?)\/\* End XCConfigurationList section \*\//)?.[1] ?? '';
   const configListBlock = configListId ? pbxBlock(configLists, configListId) : undefined;
-  const configIds = [...(configListBlock ?? '').matchAll(/([A-F0-9]+)\s*\/\* (?:Debug|Release) \*\//g)].map((match) => match[1]);
+  const configIds = [...(configListBlock ?? '').matchAll(/([A-F0-9]+)(?=\s*(?:\/\*[^*]*\*\/\s*)?[,])/g)].map((match) => match[1]);
   const configSections = project.match(/\/\* Begin XCBuildConfiguration section \*\/([\s\S]*?)\/\* End XCBuildConfiguration section \*\//)?.[1] ?? '';
   const deploymentValues = configIds.map((id) => {
     const block = pbxBlock(configSections, id);
     return block?.match(/IPHONEOS_DEPLOYMENT_TARGET\s*=\s*([^;]+);/)?.[1].trim();
   });
-  if (deploymentValues.length < 2 || deploymentValues.some((value) => value !== '16.4')) {
+  if (configIds.length === 0 || deploymentValues.some((value) => value !== '16.4')) {
     issues.push('All app target deployment settings must be 16.4');
   }
   try {

@@ -39,3 +39,11 @@
 - Ruling: accept and fix; the gap is valid under the requirement “all app target configurations.” Cost if wrong: added parsing strictness might need amendment for new Xcode project format/config shape.
 - Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r2-brief.md`; exact owned code/test/report files recorded.
 - Status: pending → running.
+
+
+## Review repair round 2 implementation
+- Scope: parse every WeKnora target configuration ID regardless of comment/name; fail closed for unresolved ID or missing/non-16.4 deployment setting. Fixture now covers Debug/Release/Staging and unrelated Pods value; negative cases cover Staging drift, wrong effective application scene mapping while marker remains elsewhere, and universal-link-specific forwarding while open-URL remains.
+- TDD: RED reproduced with the old Debug/Release-only parser (focused test 3 pass / 1 fail; Staging 16.0 returned no issue); GREEN focused test 4/4.
+- Verification: mobile suite 295 total, 281 pass, 14 opt-in skips, 0 fail; mobile typecheck pass; actual generated SDK57 tree contract pass; diff-check pass.
+- Patch SHA-256: `874a6972170d5078632853d4335c98064efebb73d484aee44d998b174ea78530`; commit `1eb90c6e15a96420d26931aed18cfd88521a6ea5`; local worktree clean.
+- Status: implementation complete; independent round-2 review pending.
