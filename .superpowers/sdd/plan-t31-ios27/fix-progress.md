@@ -70,3 +70,9 @@
 - R3 R4 implementation committed `9937fa095`; report commit `8619b5f70`. Focused 6/6, full mobile 297 total (283 pass, 14 opt-in skips), typecheck, generated SDK57 verifier and diff-check passed.
 - R4 includes a dependency-free Swift comment scanner and explicit comment-only negatives for both callback bodies plus URL string control. Prior repair rounds corrected distinct false positives in app-target config extraction.
 - R4 reviewer upgrade ruling: use default agent with explicit `gpt-6-sol` high for independent review. Fixed `reviewer` role exposes Sol medium and does not permit a reasoning override; the scanner/parser now spans Swift lexical edge cases and the R3 checker has had multiple rounds of newly found false passes, so high-effort adversarial review is justified. No implementation escalation; frontend_implementer handled the repair.
+
+## Review repair round 5: executable Swift call validation
+- High reasoning review report `.superpowers/sdd/plan-t31-ios27/fix-task-1-r4-review.md` found call text could come from a string and commented signature could be mistaken for real open-URL override. Both are valid Medium findings.
+- Ruling: mask literals and comments before signature/call matching; add both counterexamples. This final plan round has one high-reasoning reviewer; if any residual finding remains, adjudicate accurately rather than exceed the five-round limit.
+- Model/role upgrade: earlier fixed frontend implementer (gpt-6-luna) repeatedly fixed the specific false-pass classes but the latest adversarial review exposed lexical parsing limitations. Assign default + explicit gpt-6-sol/high with strict frontend-only file ownership to meet round 5 upgrade and model-task boundary.
+- Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r5-brief.md`; status pending → running.

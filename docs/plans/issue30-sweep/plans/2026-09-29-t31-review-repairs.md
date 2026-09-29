@@ -146,3 +146,15 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 **Acceptance:** Strip Swift line/block comments (preserving quoted string content enough to avoid deleting protocol URL strings) before testing each independently extracted callback body. Add two negative fixtures: open-URL contains only commented forwarding, universal-link contains only commented forwarding while open-URL remains valid. Existing valid fixture and actual generated tree pass.
 
 **Verification:** RED/GREEN focused native contract tests; full mobile suite; typecheck; actual generated SDK57 checker; source diff-check. Commit and send high-reasoning independent review. Status pending.
+
+## Task R3-F2: Distinguish executable Swift calls/signatures (repair round 5, final)
+
+**Source:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-r4-review.md` Medium findings: call marker in a string literal passes; a commented open-URL signature can be selected before a universal-link method.
+
+**Files:** `apps/mobile/scripts/verify-ios-scene-project.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, report/ledger.
+
+**Acceptance:** Run method signature extraction against Swift with comments removed; require a concrete `RCTLinkingManager.application(` call token sequence after both comments and string literals are masked. Add separate regressions for a forwarding marker only in a string and a commented open-URL signature before valid universal-link callback. Preserve valid URL string fixture, comment-only callback negatives, structural application scene and all PBX config checks.
+
+**Verification:** RED/GREEN focused/full suite/typecheck/actual generated checker/diff-check; write report and commit. This is the final SDD repair wave; independently re-review at high reasoning. Any residual finding is adjudicated with evidence rather than starting another implementation loop.
+
+**Status:** pending.
