@@ -124,6 +124,10 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{},
 			fmt.Errorf("%w: proposed release does not belong to the listing", ErrAgentUpgradeInvalidInput)
 	}
+	if toRelease.DeprecatedAt != nil {
+		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{},
+			fmt.Errorf("%w: proposed release %s is deprecated; successor: %s", ErrAgentUpgradeStateConflict, toRelease.ID, successorHint(toRelease.SuccessorReleaseID))
+	}
 	// 接受 = 以新 Release 创建一个新的草稿 Variant（spec §9）。随后走 #59
 	// 既有 mapping/test/publish 流程；本方法绝不触碰其他 Variant 或既有
 	// 本地 Agent Version。
@@ -275,6 +279,9 @@ func (s *AgentUpgradeService) reconcileProposals(ctx context.Context, tenantID u
 			return err
 		}
 		if toRelease == nil {
+			continue
+		}
+		if toRelease.DeprecatedAt != nil {
 			continue
 		}
 		diff, err := diffUpgradeBundles(fromRelease, toRelease)
