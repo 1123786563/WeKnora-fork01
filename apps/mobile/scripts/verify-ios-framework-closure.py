@@ -81,13 +81,13 @@ def main(app_path: str, properties_path: str) -> None:
             if load.startswith("/System/Library/Frameworks/"):
                 continue
             token_match = re.match(r"(?P<token>@(?:rpath|loader_path|executable_path))/(?P<remainder>[^\s]+)$", load)
+            component = re.search(r"(?:^|/)(?P<framework>[^/]+\.framework)(?:/|$)", load)
             match = re.search(r"(?:^|/)(?P<framework>[^/]+\.framework)/(?P<requested>[^\s]+)$", token_match.group("remainder")) if token_match else None
             if not token_match or not match:
-                framework_name_match = re.search(r"([^/]+\.framework)(?:/|$)", load)
-                framework_name = framework_name_match.group(1) if framework_name_match else load
-                if load.endswith(".framework") or load.endswith(".framework/"):
+                framework_name = component.group("framework") if component else load
+                if component and (load.endswith(".framework") or load.endswith(".framework/")):
                     fail(f"MALFORMED_FRAMEWORK_LOAD_PATH: {owner} requires {framework_name}: {load}")
-                if ".framework" in load:
+                if component:
                     fail(f"UNSUPPORTED_FRAMEWORK_LOAD_PATH: {owner}: {load}")
                 continue
             token = token_match.group("token")

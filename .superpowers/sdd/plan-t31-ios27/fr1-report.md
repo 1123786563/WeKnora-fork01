@@ -42,3 +42,18 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fr1-r2-brief.md`; addressed FR1-1 an
 - `pnpm install --frozen-lockfile` was required because the fresh isolated worktree had no `node_modules`; install exited 0 with the lockfile unchanged and 1,915 packages linked.
 - No native build, evidence modification, or out-of-scope changes.
 - Round-2 implementation commit: `677f5e792215d4ada267b106052fe42fd38b6515`.
+
+## FR1 repair round 3
+
+Authority: `.superpowers/sdd/plan-t31-ios27/fr1-r3-brief.md`; base `22195943262b560e9846a1e2d0ae714202e4acc9`.
+
+- RED: added a positive fixture for `@rpath/Foo.framework.dylib` (plus `@rpath/libFoo.dylib`); focused test failed because substring classification reported `UNSUPPORTED_FRAMEWORK_LOAD_PATH` for the non-framework dylib.
+- Checker now recognizes only a complete `<name>.framework` path component followed by slash or end of token. The framework-suffix dylib and ordinary dylib fixtures pass without weakening malformed framework bundle path failures.
+- The universal fixture emits distinct dependency rows after exact arm64 and x86_64 image headers; the absolute missing path-prefix dependency is repeated after each header and still fails closed. Existing unresolved framework negative cases remain in the focused suite.
+- Focused `node --import tsx --test src/ios-framework-closure.test.ts src/scripts/ios-acceptance-scripts.test.ts` from `apps/mobile`: 21/21 pass.
+- Full `pnpm --filter @weknora/mobile test`: 319 total, 305 passed, 14 environment/credential-gated skips, 0 failures.
+- `pnpm --filter @weknora/mobile typecheck`: pass.
+- `pnpm --filter @weknora/mobile exec expo install --check`: first invocation failed transiently with `read ECONNRESET`; separate retry exited 0 with `Dependencies are up to date`.
+- Retained production checker printed `FRAMEWORK_MODE=source-expo-modules` and `FRAMEWORK_CLOSURE_OK`; executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
+- `git diff --check`: pass. No native build or evidence changes.
+- Round-3 implementation commit: pending.

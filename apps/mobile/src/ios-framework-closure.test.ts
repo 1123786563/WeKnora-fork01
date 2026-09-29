@@ -33,13 +33,11 @@ function fixture(
   const bin = join(root, 'bin');
   mkdirSync(bin);
   const fakeOtool = join(bin, 'otool');
+  const dependencyRows = `case "$name" in WeKnora) deps='${loads.app ?? ''}' ;; Alpha) deps='${loads.Alpha ?? ''}' ;; Beta) deps='${loads.Beta ?? ''}' ;; esac; [ -z "$deps" ] || printf '    %s\\n' "$deps"${options.pathPrefixAppLoad ? `; if [ "$name" = WeKnora ]; then printf '    %sExtra.framework/Missing\\n' "$2"; fi` : ''}`;
   const headers = options.architectureHeaders
-    ? `printf '%s (architecture arm64):\\n%s (architecture x86_64):\\n' "$2" "$2"`
-    : `echo "$2:"`;
-  const prefixLoad = options.pathPrefixAppLoad
-    ? `if [ "$name" = WeKnora ]; then printf '    %sExtra.framework/Missing\\n' "$2"; fi`
-    : '';
-  writeFileSync(fakeOtool, `#!/bin/sh\nname=$(basename "$2")\nif [ "$name" = "${failBinary ?? '__none__'}" ]; then echo fake-failure >&2; exit 9; fi\n${headers}\ncase "$name" in WeKnora) deps='${loads.app ?? ''}' ;; Alpha) deps='${loads.Alpha ?? ''}' ;; Beta) deps='${loads.Beta ?? ''}' ;; esac\n[ -z "$deps" ] || printf '    %s\\n' "$deps"\n${prefixLoad}\n`);
+    ? `for arch in arm64 x86_64; do printf '%s (architecture %s):\\n' "$2" "$arch"; ${dependencyRows}; done`
+    : `echo "$2:"; ${dependencyRows}`;
+  writeFileSync(fakeOtool, `#!/bin/sh\nname=$(basename "$2")\nif [ "$name" = "${failBinary ?? '__none__'}" ]; then echo fake-failure >&2; exit 9; fi\n${headers}\n`);
   chmodSync(fakeOtool, 0o755);
   return { root, app, bin, appBinary, propertiesPath };
 }
@@ -150,6 +148,17 @@ test('production checker ignores system framework paths', () => {
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
   } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker ignores non-framework dylib names containing the framework suffix text', () => {
+  for (const load of ['@rpath/Foo.framework.dylib', '@rpath/libFoo.dylib']) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.equal(result.status, 0, result.output);
+      assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
 });
 
 test('production checker rejects missing framework executable despite framework directory presence', () => {
