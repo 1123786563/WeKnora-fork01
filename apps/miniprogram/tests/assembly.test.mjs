@@ -273,6 +273,11 @@ test('assembly: protected DOCX opens with the user menu and removes its private 
 
 test('assembly: scope switch during refresh rejects before downloading protected content', async () => {
   await freshLogin();
+  const enrichmentDeadline = Date.now() + 1500;
+  while (runtime.auth.snapshot().userName !== 'Lin' && Date.now() < enrichmentDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(runtime.auth.snapshot().userName, 'Lin', 'session enrichment settles before intercepting the file-auth request');
   let releaseMe;
   stub.use(call => {
     if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/me') {
@@ -282,13 +287,22 @@ test('assembly: scope switch during refresh rejects before downloading protected
     call.options.fail({ errMsg: `unexpected ${call.kind}` });
   });
   const files = await import('../src/platform/files.ts');
+  const authDeadline = Date.now() + 1500;
   const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=scope', 'report.pdf');
-  const releaseDeadline = Date.now() + 1500;
-  while (!releaseMe && Date.now() < releaseDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+  while (!releaseMe && Date.now() < authDeadline) await new Promise(resolve => setTimeout(resolve, 10));
   assert.ok(releaseMe, 'timed out waiting for the /auth/me refresh request');
-  runtime.auth.scope.switchTo({ origin: ORIGIN, userId: 'u1', tenantId: '2' });
   releaseMe();
-  await assert.rejects(pending, /SCOPE_CHANGED/);
+  runtime.auth.scope.switchTo({ origin: ORIGIN, userId: 'u1', tenantId: '2' });
+  const pendingResult = pending.then(value => ({ value }), error => ({ error }));
+  let settleTimer;
+  const result = await Promise.race([
+    pendingResult,
+    new Promise(resolve => { settleTimer = setTimeout(() => resolve({ timedOut: true }), 1500); }),
+  ]);
+  clearTimeout(settleTimer);
+  assert.ok(!result.timedOut, 'timed out waiting for the protected-file operation to settle');
+  assert.ok(result.error, 'stale protected-file operation must reject');
+  assert.match(result.error.message, /SCOPE_CHANGED/);
   assert.equal(stub.state.calls.filter(call => call.kind === 'downloadFile').length, 0, 'stale refresh cannot authorize a file request');
   assert.deepEqual(stub.state.copies, [], 'no private copy is created for a stale scope');
 });
@@ -342,9 +356,17 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
 
 test('assembly: revoked download is denied without creating any app-managed file', async () => {
   await freshLogin();
-  stub.use(call => stub.succeed(call, { statusCode: 403, tempFilePath: '/tmp/denied.json' }));
+  stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/me') {
+      stub.succeed(call, { data: me() });
+      return;
+    }
+    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: `unexpected ${call.kind}` }); return; }
+    stub.succeed(call, { statusCode: 403, tempFilePath: '/tmp/denied.json' });
+  });
   const files = await import('../src/platform/files.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=revoked', 'report.pdf'), error => error.status === 403);
+  assert.equal(stub.state.calls.filter(call => call.kind === 'downloadFile').length, 1, 'revocation must be observed on native redemption');
   assert.equal(stub.state.openedDocuments.length, 0);
   assert.deepEqual(stub.state.copies, []);
   assert.deepEqual(stub.state.removedFiles, [], '运行时临时错误体不由应用管理（DevTools 对 tmp 路径 deny unlink）');
