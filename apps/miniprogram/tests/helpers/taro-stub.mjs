@@ -169,6 +169,6 @@ function paths() {
 }
 
 export default Taro;
-export const stub = { reset, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state,
+export const stub = { reset, dispatch, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state,
   /** 安装网络 handler：handler(call, task) 必须自行调用 succeed/fail 或 emit*。 */
   use(fn) { state.handler = fn; } };

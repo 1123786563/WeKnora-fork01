@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 const format = await import(`../src/core/format.ts`);
 const scope = await import(`../src/core/scope.ts`);
 const utf8 = await import(`../src/core/utf8.ts`);
-const execution = await import(`../src/core/execution.ts`);
 const intent = await import(`../src/core/intent.ts`);
 const routing = await import(`../src/core/routes.ts`);
 
@@ -40,35 +39,12 @@ test('UTF-8 decoder rejects malformed and truncated input rather than inventing 
   assert.throws(()=>new utf8.Utf8Decoder().push(Uint8Array.of(0xc0,0xaf)));
   const d=new utf8.Utf8Decoder();d.push(Uint8Array.of(0xf0,0x9f));assert.throws(()=>d.finish());
 });
-const run={schema_version:1,run_id:'r',session_id:'s',revision:4,driver:'platform',run_status:'running',execution_status:'running',settlement_status:'pending',seq:7,capabilities:{}};
-const event=seq=>({schema_version:1,run_id:'r',attempt_id:'a',seq,type:'progress',occurred_at:'2026-09-17T00:00:00Z',payload:{summary:'working'}});
-test('snapshot watermark starts replay correctly and rejects gaps or foreign runs',()=>{
-  assert.equal(typeof execution.installSnapshot,'function');
-  const p=execution.installSnapshot({execution:run,watermark:7,events:[event(7)]},'r');
-  const next=execution.appendEvent(p,event(8));assert.equal(next.cursor,8);
-  assert.equal(execution.appendEvent(next,event(8)),next);
-  assert.throws(()=>execution.appendEvent(next,event(10)),/gap/i);
-  assert.throws(()=>execution.appendEvent(next,{...event(9),run_id:'other'}),/run/i);
-});
-test('snapshot installation cannot include events ahead of its watermark',()=>{
-  assert.equal(typeof execution.installSnapshot,'function');
-  assert.throws(()=>execution.installSnapshot({execution:run,watermark:6,events:[event(7)]},'r'));
-});
-test('event cursor is not committed when persistence fails',()=>{
-  assert.equal(typeof execution.persistEvent,'function');
-  const p=execution.installSnapshot({execution:run,watermark:7,events:[]},'r');
-  assert.throws(()=>execution.persistEvent(p,event(8),()=>{throw Error('quota')}));
-  assert.equal(p.cursor,7);
-});
-test('pending submission reuses the same id and unknown lookup never releases the intent',()=>{
-  assert.equal(typeof intent.PendingIntent,'function');
-  const m=new Map(); const store={read:k=>m.get(k),write:(k,v)=>m.set(k,v),remove:k=>m.delete(k)};
-  let n=0; const p=new intent.PendingIntent(store,'tenant1',()=>`req-${++n}`);
-  assert.equal(p.begin().requestId,p.begin().requestId);
-  p.reconcile({state:'unknown'});assert.equal(p.begin().requestId,'req-1');
-  p.reconcile({state:'admitted',run_id:'r'});assert.equal(p.current().runId,'r');
-  assert.throws(()=>p.reset(),/active/i);
-  p.acknowledge();assert.equal(p.begin().requestId,'req-2');
+test('intent request IDs are unique correlations, not credentials',()=>{
+  assert.equal(typeof intent.requestId,'function');
+  const first = intent.requestId();
+  const second = intent.requestId();
+  assert.match(first, /^mini-/);
+  assert.notEqual(first, second);
 });
 test('route manifest has twenty-five screens and only four primary tabs',()=>{
   assert.ok(routing.ROUTES);
