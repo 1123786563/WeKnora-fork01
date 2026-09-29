@@ -2,6 +2,7 @@ package codedelivery
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -276,6 +277,89 @@ func TestDispatchedUnknownActionSettlesBothRecordsWithConfirmation(t *testing.T)
 	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
 	require.NoError(t, err)
 	require.Equal(t, appconnector.ActionSucceeded, action.State)
+}
+
+func TestUnknownResolutionSettlementFailureLeavesDeliveryAmbiguousAndRetriesReadOnly(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	f.github.liftBlackout()
+	require.NoError(t, f.db.Exec(`CREATE TRIGGER fail_action_success BEFORE UPDATE OF state ON app_actions WHEN NEW.state = 'succeeded' BEGIN SELECT RAISE(FAIL, 'injected settlement failure'); END`).Error)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	before := snapshotCalls(f)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionUnknown, action.State)
+	_, err = f.svc.DispatchDelivery(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryState)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"], "unknown action cannot enter create path")
+	require.NoError(t, f.db.Exec(`DROP TRIGGER fail_action_success`).Error)
+	before = snapshotCalls(f)
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	action, err = f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"], "resolve must remain read-only")
+}
+
+func TestUnknownResolutionPropagatesBranchLookupErrorWithoutWrites(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryUnknown), view.State)
+	f.github.liftBlackout()
+	f.github.failNextBranchRead()
+	before := snapshotCalls(f)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	var apiErr *GitHubAPIError
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, http.StatusServiceUnavailable, apiErr.Status)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionUnknown, action.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
+}
+
+func TestSucceededActionReconcilesAmbiguousDeliveryOnRetry(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	f.github.liftBlackout()
+	require.NoError(t, f.db.Exec(`CREATE TRIGGER fail_delivery_settle BEFORE UPDATE OF state ON code_deliveries WHEN NEW.state = 'pushed' BEGIN SELECT RAISE(FAIL, 'injected delivery settlement failure'); END`).Error)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+	before := snapshotCalls(f)
+	_, err = f.svc.DispatchDelivery(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryState)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
+	require.NoError(t, f.db.Exec(`DROP TRIGGER fail_delivery_settle`).Error)
+	before = snapshotCalls(f)
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
 }
 
 // A02 拒绝（成员资格撤销）：动作不消费、零远端调用。

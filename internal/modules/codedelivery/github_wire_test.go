@@ -34,6 +34,7 @@ type githubEmulator struct {
 	nextPR            int64
 	protectedBranches []string
 	failPR            bool // 下一条 POST /pulls 确定性 422 一次
+	failBranchRead    bool // 下一次 GET /git/ref 返回可观测 provider error
 	blackout          bool // 所有请求 hijack 断连（传输不可观测）
 	blackoutAfterRef  bool // 下一次成功的 POST /git/refs 之后进入 blackout
 }
@@ -107,6 +108,7 @@ func (e *githubEmulator) protectBranch(branch string) {
 }
 
 func (e *githubEmulator) failNextPRCreation() { e.mu.Lock(); e.failPR = true; e.mu.Unlock() }
+func (e *githubEmulator) failNextBranchRead() { e.mu.Lock(); e.failBranchRead = true; e.mu.Unlock() }
 
 // blackoutAfterRefCreate：下一次成功的 POST /git/refs 之后，所有后续请求
 // hijack 断连（模拟推送已完成、PR 创建中途网络不可观测）。
@@ -196,6 +198,14 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"sha": sha, "tree": treeSHA, "parents": []string{}})
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/git/ref/heads/"):
 		e.note("GET /git/ref")
+		e.mu.Lock()
+		failBranchRead := e.failBranchRead
+		e.failBranchRead = false
+		e.mu.Unlock()
+		if failBranchRead {
+			http.Error(w, "injected branch lookup failure", http.StatusServiceUnavailable)
+			return
+		}
 		branch := strings.TrimPrefix(path, "/repos/octocat/hello/git/ref/heads/")
 		e.mu.Lock()
 		sha, ok := e.refs["refs/heads/"+branch]

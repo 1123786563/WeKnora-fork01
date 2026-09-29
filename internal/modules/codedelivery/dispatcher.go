@@ -277,6 +277,51 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 }
 
 var _ appconnectorsvc.AttestedUnknownResolver = (*DeliveryDispatcher)(nil)
+var _ appconnectorsvc.ReadOnlyUnknownResolver = (*DeliveryDispatcher)(nil)
+
+// QueryProviderReadOnly classifies provider facts for A03. It deliberately
+// performs no Delivery writes: ActionService must durably settle first.
+func (d *DeliveryDispatcher) QueryProviderReadOnly(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string, ownerConfirmed bool) (appconnectorsvc.DispatchOutcome, error) {
+	material, err := ParseDeliveryMaterial(snap.Args)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	row, err := d.findByAction(ctx, snap.TenantID, snap.ID)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	token, err := d.tokenFor(ctx, snap)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	client, err := d.clientForTarget(snap.Target, token, material.Repo)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchUnknown, err)
+	}
+	info, err := client.Repository(ctx)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	head := material.Repo.Owner + ":" + material.Branch
+	receipt, err := client.PullRequestForHead(ctx, head, info.DefaultBranch)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	if receipt != nil {
+		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
+	}
+	_, exists, err := client.BranchHead(ctx, material.Branch)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	if !exists {
+		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: no remote fact for %s yet", appconnectorsvc.ErrDispatchUnknown, head)
+	}
+	if !ownerConfirmed || (row.State == string(DeliveryDispatched) && !ownerConfirmed) {
+		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %s", ErrDeliveryConfirmationRequired, head)
+	}
+	return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: branch pushed, draft PR absent"}, nil
+}
 
 func (d *DeliveryDispatcher) QueryProviderConfirmed(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string, ownerConfirmed bool) (appconnectorsvc.DispatchOutcome, error) {
 	material, err := ParseDeliveryMaterial(snap.Args)
@@ -315,7 +360,11 @@ func (d *DeliveryDispatcher) QueryProviderConfirmed(ctx context.Context, snap ap
 		}
 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
 	}
-	if sha, exists, berr := client.BranchHead(ctx, material.Branch); berr == nil && exists {
+	sha, exists, berr := client.BranchHead(ctx, material.Branch)
+	if berr != nil {
+		return appconnectorsvc.DispatchOutcome{}, berr
+	}
+	if exists {
 		if row.State == string(DeliveryDispatched) && !ownerConfirmed {
 			// A live or abandoned claimant may still have an in-flight POST. A
 			// read-only miss cannot release its durable claim for another create.

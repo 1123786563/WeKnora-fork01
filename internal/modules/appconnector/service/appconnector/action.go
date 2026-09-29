@@ -128,6 +128,12 @@ type AttestedUnknownResolver interface {
 	QueryProviderConfirmed(ctx context.Context, snap ActionSnapshot, providerKey string, ownerConfirmed bool) (DispatchOutcome, error)
 }
 
+// ReadOnlyUnknownResolver reports provider facts without mutating caller-owned state.
+// ActionService uses it before persisting the Action's terminal outcome.
+type ReadOnlyUnknownResolver interface {
+	QueryProviderReadOnly(ctx context.Context, snap ActionSnapshot, providerKey string, ownerConfirmed bool) (DispatchOutcome, error)
+}
+
 // A02Guard re-checks, on EVERY execute, that the PERSISTED subject may
 // still use the connection: subject shape, tenant scope, strict
 // auth_version, live membership, active installation, explicit grant for
@@ -616,7 +622,9 @@ func (s *ActionService) ResolveUnknownConfirmed(ctx context.Context, id string, 
 	}
 	var out DispatchOutcome
 	var qerr error
-	if attested, ok := s.unknown.(AttestedUnknownResolver); ok {
+	if readonly, ok := s.unknown.(ReadOnlyUnknownResolver); ok {
+		out, qerr = readonly.QueryProviderReadOnly(ctx, snap, row.ProviderKey, ownerConfirmed)
+	} else if attested, ok := s.unknown.(AttestedUnknownResolver); ok {
 		out, qerr = attested.QueryProviderConfirmed(ctx, snap, row.ProviderKey, ownerConfirmed)
 	} else {
 		out, qerr = s.unknown.QueryProvider(ctx, snap, row.ProviderKey)
