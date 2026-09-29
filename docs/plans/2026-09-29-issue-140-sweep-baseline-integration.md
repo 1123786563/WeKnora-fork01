@@ -17,6 +17,7 @@
 - Keep #140's authenticated Task access, tenant/owner checks, scope fencing, immutable Artifact-version grants and revocation semantics.
 - Keep issue30-sweep's refresh-once bearer-token behavior, mobile-office/session/task behavior, terminal availability contract, Artifact digest/version listing, and architecture migration intent.
 - Do not weaken tests or choose an entire branch side for a conflict when that drops the other side's required behavior.
+- Preserve issue30 behavioral Task/session assertions; service-export presence checks do not replace stream, idempotency/recovery, and wire-route behavior tests.
 - Implementers may commit local task changes. No push, shared-branch merge, deployment, publishing, or GitHub mutation.
 
 ## Review Focus
@@ -60,7 +61,7 @@
 **Steps:**
 
 - [ ] Inspect stage-2 (`9bc0d93`) and stage-3 (`db234c5`) versions, callers, and tests. Record the retained exports and scope/token ordering in the task report.
-- [ ] Add/adjust focused regression tests for refresh-once plus scope-switch rejection/private-file cleanup, and for both Artifact download API entry points remaining reachable through Career service assembly.
+- [ ] Retain or relocate issue30 behavioral tests for snapshot/watermark plus streamed `watchExecution`, unknown-result same-request-ID recovery, and registered wire routes against the dedicated office/session service APIs. Add focused regression tests for refresh-once plus scope-switch rejection/private-file cleanup, and verify both Artifact download API entry points remain reachable through Career service assembly. Do not replace behavior assertions with only export-presence assertions.
 - [ ] Run those focused tests and capture expected failing assertions before implementation.
 - [ ] Implement a focused Artifact module at `services/workbench.ts` only if still needed by callers; keep it Artifact-only and delegate auth/session/task work to the issue30 services. Compose the protected file download behavior without weakening either side's guards.
 - [ ] Run `pnpm --filter @weknora/miniprogram test` and `pnpm --filter @weknora/miniprogram build:weapp`; report any pre-existing typecheck failures separately from owned-file failures.
@@ -77,6 +78,7 @@
 **Files owned:**
 - `internal/container/workbench.go`
 - `internal/handler/session/workbench_artifacts.go`
+- `internal/handler/session/workbench_artifacts_test.go`
 - `internal/database/semantic_migration_test.go`
 - `docs/architecture/moves/workbench.yaml`
 - `tools/architectureguard/discovery_test.go`
@@ -88,7 +90,7 @@
 **Steps:**
 
 - [ ] Compare stage-2/stage-3 handler constructors, options and container call sites; inspect all migration versions and registered Workbench routes.
-- [ ] Add/adjust regression tests for terminal availability plus immutable artifact version listing/grant/revoke and for migrate-106 → latest → rollback/reapply.
+- [ ] Add/adjust handler regression tests for terminal availability with and without a wired reader, digest/version listing, signed version grant owner/tenant/run binding, and post-revocation denial; also test migrate-106 → latest → rollback/reapply. The tests must exercise the handler behavior, not just constructor composition or counters.
 - [ ] Run focused tests to capture expected failing assertions before implementation.
 - [ ] Resolve handler/container wiring and response fields while preserving all authorization and revocation checks. Union the architecture manifest and derive, rather than guess, route expectations from the merged graph. Make migration tests select the actual latest registered version dynamically and exercise rollback.
 - [ ] Run `go test -count=1 ./internal/handler/session ./internal/container ./internal/database ./tools/architectureguard` and `git diff --check`.
