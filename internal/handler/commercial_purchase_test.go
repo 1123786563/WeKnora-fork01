@@ -9,6 +9,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -390,6 +391,35 @@ func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"payment_attention":true`)) {
 		t.Fatalf("duplicate checkout replay must carry unresolved payment attention: %s", rec.Body.String())
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := env.db.Where("order_id = ?", first.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repocommercial.NewOrderStore(env.db).ResolvePaymentAnomaly(ctx, anomaly.ID, anomaly.Version); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/commercial/orders", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("resolved replay must retain conflict status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Order map[string]any `json:"order"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode resolved replay: %v: %s", err, rec.Body.String())
+	}
+	if response.Order["id"] != first.ID || response.Order["checkout_url"] != first.CheckoutURL {
+		t.Fatalf("resolved replay lost payable order: %#v", response.Order)
+	}
+	if rawAttention, present := response.Order["payment_attention"]; present {
+		attention, ok := rawAttention.(bool)
+		if !ok || attention {
+			t.Fatalf("resolved replay must omit payment_attention or encode boolean false: %#v", response.Order)
+		}
 	}
 }
 

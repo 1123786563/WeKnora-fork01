@@ -1081,6 +1081,9 @@ func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := repocommercial.NewOrderStore(db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 111, OrderID: "count_order_29", AttemptID: "a", Provider: "wechat", Merchant: "count-merchant", Transaction: "count-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&repocommercial.OrderRow{ID: "count_single_order", TenantID: 112, QuoteID: "count_single_quote", Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -1113,6 +1116,13 @@ func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
 			}
 			if n := int(anomalyQueries.Load()); n != tc.wantQueries {
 				t.Fatalf("anomaly-table SELECT count=%d want %d", n, tc.wantQueries)
+			}
+			if tc.name == "forty orders" {
+				for _, v := range got {
+					if v.PaymentAttention != (v.ID == "count_order_29") {
+						t.Fatalf("attention for %s=%v", v.ID, v.PaymentAttention)
+					}
+				}
 			}
 		})
 	}
