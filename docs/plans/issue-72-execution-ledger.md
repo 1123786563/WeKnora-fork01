@@ -473,3 +473,10 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - Full Task 1 OCR command used audience `agent`, business background, exact range `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce..5e8ce5eb4cb3fc808ce0baeb7d8f6ed94bdb8319`, and output `docs/plans/issue-72-live-tree-and-agent-refresh-2026-09-30-ocr.md`. It exited 0 but selected 0 files and wrote `Review skipped: no items were selected.` This is not an OCR pass; Markdown coverage is unavailable for the range.
 - No behavioral tests were run because this task archives read-only observations only. The only completion claim is this documentation Task 1; the overall Issue #72 production implementation remains incomplete, with #82/#86 acceptance and #87 Task 0/runtime gates open.
 - Task 1 implementation range `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce..c869ae0ccf41bd0494c1359114f35b007a70010d`, fix range `c869ae0ccf41bd0494c1359114f35b007a70010d..5e8ce5eb4cb3fc808ce0baeb7d8f6ed94bdb8319`; commits `c869ae0ccf41bd0494c1359114f35b007a70010d` and `5e8ce5eb4cb3fc808ce0baeb7d8f6ed94bdb8319`.
+
+## Task 1 final review fix — UTC timestamp correction — 2026-09-30
+
+- Addressed the final whole-branch review's Low finding: the 2026-09-30 01:38:39 CST status observation corresponds to exact UTC `2026-09-29T17:38:39Z`, not 2026-09-30. Snapshot now records both local time and exact ISO UTC timestamp.
+- This is a timestamp transcription correction only. Worktree status values, unknown ownership/release boundaries, acceptance gates, and OCR limitations are unchanged. No tests or services were run.
+- Corrected synthesized snapshot SHA-256: `2f88d85e2b78169b5f2d423c3cd4ddaae75fac8babca2b3a704899ee2c1bedfa`. Original `/tmp` input hashes remain as recorded above.
+- Final review fix BASE: `0da887615e5a1fcb52479f080d097ffcf83105c3`; exact fix HEAD/range is recorded in the local Task 1 report after the documentation checkpoint commit. Final independent re-review pending.

@@ -63,7 +63,7 @@ The sanitized process audit was observed 2026-09-30 01:23 Asia/Shanghai. Six req
 
 `paseo ls --json` returned one non-archived agent: ID `103c8a15-f69f-428c-8b00-37e8e2f79b6e` (short ID `103c8a1`), `拉取最新代码`, provider `claude/glm-5.3`, idle, cwd `~/trea/deepseek-harness`. No mapping to Issue #72 is established. No other non-archived agent was returned at that observation; archived or external sessions are not ruled out.
 
-The supplied registry snapshot listed these #72-named worktrees and HEAD/branch values. A fresh read-only status observation was captured at 2026-09-30 01:38:39 CST (17:38:39 UTC); statuses below are names-only, and dirty worktree contents were not inspected. The documentation worktree was clean immediately before the ignored SDD report was touched. These statuses do not establish task ownership, release, or readiness.
+The supplied registry snapshot listed these #72-named worktrees and HEAD/branch values. A fresh read-only status observation was captured at 2026-09-30 01:38:39 CST (`2026-09-29T17:38:39Z`); statuses below are names-only, and dirty worktree contents were not inspected. The documentation worktree was clean immediately before the ignored SDD report was touched. These statuses do not establish task ownership, release, or readiness.
 
 | Worktree | HEAD | Branch/state | Status at 2026-09-30 01:38:39 CST |
 |---|---|---|---|
