@@ -88,11 +88,11 @@
 
 **Steps:**
 
-- [ ] Reproduce the three OCR2-037 cases after local logout and capture error code/message plus storage state.
-- [ ] Add/adjust tests to assert there is no network request and no saved intent for material publish, search, and whole-space deletion.
-- [ ] Extend the shared definite-local-failure classification to recognize the runtime's exact unauthenticated error without classifying network ambiguity or server errors as definite.
-- [ ] Run those three focused tests, related `career-intent` tests, and `git diff --check`.
-- [ ] Commit and report exact focused results.
+- [x] Reproduce the three OCR2-037 cases after local logout and capture error code/message plus storage state.
+- [x] Add/adjust tests to assert there is no network request and no saved intent for material publish, search, and whole-space deletion.
+- [x] Extend the shared definite-local-failure classification to recognize exact local sentinels without classifying network ambiguity or server errors as definite; 503 regression contains all three sentinel strings and remains recoverable.
+- [x] Run focused auth/sentinel tests (4/4), all application-material tests (38/38), career discovery tests (26/26), and `git diff --check`; round-2 independent review passed.
+- [x] Commit and report evidence in `docs/superpowers/reports/2026-09-29-issue140-task11-report.md`, `*-review-round2.md`, and `*-validation-round2.md`.
 
 **Acceptance:** All three operations fail closed before transport, retain the authentication failure for UI handling, and leave their recovery stores empty; ambiguous network failures still persist recoverable intents.
 
@@ -110,15 +110,18 @@
 
 **Steps:**
 
-- [ ] Reproduce both N9 deletion tests with per-request traces for `/auth/me`, POST dispatch, scope transition, completion receipt, and storage key mutation. The current fixtures call `stub.succeed(stub.lastCall('request'), ...)` immediately after starting an async service call; check that this identifies the deletion POST rather than a prior request.
-- [ ] Add assertions for the captured scope key, current scope key, request count, completed receipt, and ambiguous timeout behavior.
-- [ ] If a fixture responds to the wrong request, add a bounded wait for the intended deletion POST and retain the captured-key assertions. If the deterministic response still exposes a production defect, fix the deletion recovery boundary so it consumes the captured-scope result safely without widening access to another scope.
-- [ ] Run the two N9 tests plus existing deletion idempotency, partial receipt, ambiguous retry, and abandon-while-busy tests; run `git diff --check`.
-- [ ] Commit and report focused evidence.
+- [x] Reproduce both N9 deletion tests with per-request traces; found the fixtures could answer a preceding asynchronous native request instead of the targeted deletion POST.
+- [x] Add captured-scope, new-scope, request-count, receipt, and ambiguous-timeout assertions.
+- [x] Add a bounded wait for the intended deletion POST. After deterministic fixture repair, no production defect remained; production recovery code was unchanged.
+- [x] Run N9 cases (3/3), full export/deletion file (33/33), full Mini Program suite (214 passed, 0 failed, 1 opt-in skip), and `git diff --check`; independent review passed.
+- [x] Commit and report evidence in `docs/superpowers/reports/2026-09-29-issue140-task12-n9-review.md` and `*-task12-validation-final.md`.
 
 **Acceptance:** Both N9 cases finish promptly; completion clears only the original scope's key; an incomplete or ambiguous retry preserves that key; existing deletion recovery tests pass.
 
 ## Integration and Final Verification
+
+- Integrated T11/T12 at `3712062df7d672a77d7411aa055660d13d63351a`; Mini Program WeChat build passed with Node 26.7.0.
+- Final range OCR attempted for `db234c5eb171f2dde7427d382b55b503a038f879..3712062df7d672a77d7411aa055660d13d63351a`. OCR selected 333 items but all 333 failed because the configured provider returned HTTP 429 rate limits (18 failed and 8 cancelled out of 28 review requests); no findings were produced. `ocr llm test` independently returned account rate limit code 1302. The full-range OCR gate remains incomplete; do not treat this attempt as a pass.
 
 - T9, T10, and T11 are independent and may be implemented in separate worktrees. T12 waits for T11 and must also integrate after Task 7 so the shared deletion test file is current.
 - Integrate in dependency order and resolve only task-owned conflicts. Re-run affected focused tests after integration.
