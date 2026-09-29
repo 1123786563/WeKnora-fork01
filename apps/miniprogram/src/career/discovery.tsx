@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Taro, { useShareAppMessage } from '@tarojs/taro';
-import { Text, View } from '@tarojs/components';
+import { ScrollView, Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, Empty, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import { navigate } from '../platform/navigation.ts';
 import { auth } from '../services/runtime.ts';
@@ -39,6 +39,7 @@ export default function DiscoveryPage() {
   const pendingFactAction = career.pendingAction();
   const pendingSearch = career.pendingSearch();
   const pendingUpload = career.pendingUpload();
+  const pendingImport = career.pendingSharedImport();
   // 额度不足专属提示（typed 429 search_quota_refused）经 errorMessage 真实可达：
   // useAction 存的串即页面呈现文案，专属句式同时决定 Notice 降为 warning 而非失败。
   const quotaRefused = (message?: string) => message?.includes('搜索额度不足') ?? false;
@@ -51,6 +52,10 @@ export default function DiscoveryPage() {
 
     {pendingFactAction && <Notice tone='warning'>有结果未知的档案操作（{pendingFactAction.requestId.slice(0, 10)}…）。</Notice>}
     {pendingFactAction && <Action secondary loading={recoverBusy.busy} onClick={() => void recoverBusy.run(async () => { await career.reconcilePending(); query.reload(); })}>用原请求对账恢复</Action>}
+    {pendingFactAction && <Action secondary onClick={() => void recoverBusy.run(async () => { const action = career.pendingAction(); if (action) await career.retryPending(action); query.reload(); })}>回执不存在时安全重发原操作</Action>}
+    {pendingImport && <><Notice tone='warning'>有一次结果未知的职位导入（{pendingImport.requestId.slice(0, 10)}…），原文已安全保存。</Notice>
+      <Action secondary loading={reconcileBusy.busy} onClick={() => void reconcileBusy.run(async () => { setImported((receipt => ({ opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }))(await career.reconcileSharedImport())); })}>对账原职位导入</Action>
+      <Action secondary onClick={() => void importBusy.run(async () => { const receipt = await career.retrySharedImport(); setImported({ opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }); })}>安全重发原职位导入</Action></>}
 
     <DataBoundary state={query}>{view => view && <>
       {career.needsOnboarding(view) && <Empty title='还没有求职档案' body='上传已有简历或逐项建档；每条抽取的事实都需要你逐项确认后才生效。'/>}
@@ -155,7 +160,9 @@ export default function DiscoveryPage() {
       <Text className='wk-h3'>分享导入</Text>
       {draft && <>
         <Notice tone='info'>来自 {draft.sourceLabel}，共 {draft.preview.fullLength} 字。提交前请核对以下内容。</Notice>
-        <Text className='wk-small'>{draft.preview.excerpt}</Text>
+        <ScrollView scrollY style={{ maxHeight: '360px' }} ariaLabel='完整职位描述'>
+          <Text className='wk-small' userSelect>{draft.rawText}</Text>
+        </ScrollView>
         <View className='wk-between'><View className='wk-tdesign-scope'>
           <t-button block size='large' theme='primary' ariaLabel='确认导入该职位' customStyle={tdesignButtonStyle} loading={importBusy.busy} onTap={() => void importBusy.run(async () => {
             const receipt = await career.confirmSharedImport(draft);

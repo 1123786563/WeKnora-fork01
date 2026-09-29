@@ -78,6 +78,31 @@ test('A1: opening the desk reads the same server-side profile and never mints a 
   assert.ok(!paths.some(p => /POST .*\/career/.test(p)), 'loading performs no career writes — linkage only');
 });
 
+test('completed search rejects a receipt missing required coverage or evidence fields', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => stub.succeed(call, { data: { ...searchReceipt(), coverage: undefined } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.searchOnce('Go 工程师'), error => error.code === 'contract_violation');
+  assert.equal(career.pendingSearch(), null, 'a malformed completed response is a contract error, not a recoverable empty success');
+});
+
+test('profile mutation request identity survives service and desk reconstruction', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 7, facts: [], proposals: [] } }),
+    'POST /api/v1/career/act': call => stub.fail(call, 'request:fail timeout'),
+    'GET /api/v1/career/receipt': call => stub.fail(call, 'request:fail timeout'),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.proposeFact('城市', '上海'), error => error.code === 'outcome_unknown');
+  const original = career.pendingAction();
+  assert.equal(original.expectedRevision, 7);
+  career.resetCareerDesk();
+  await career.loadCareer();
+  assert.deepEqual(career.pendingAction(), original);
+});
+
 test('A2: an empty profile reports onboarding instead of creating a parallel one', async () => {
   await freshLogin({
     'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),

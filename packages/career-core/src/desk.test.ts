@@ -30,6 +30,22 @@ test('unknown act reconciles durable receipt before returning', async () => {
  assert.deepEqual(await desk.mutate({ action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'r2', expectedRevision: 0 }), confirmed)
 })
 
+test('ambiguous action survives desk reconstruction and replays the identical request', async () => {
+ const values = new Map<string, unknown>(); const persisted = { read: (key: string) => values.get(key), write: (key: string, value: unknown) => values.set(key, value), remove: (key: string) => values.delete(key) }
+ const action: CareerAction = { action: 'propose', key: '城市', value: '上海', source: { kind: 'user' }, requestId: 'durable-id', expectedRevision: 7 }
+ let calls = 0
+ const first = new CareerDesk(remote({ act: async () => { calls++; throw new Error('network') } }), persisted)
+ first.activate('u', 't')
+ await assert.rejects(first.mutate(action), error => error.code === 'outcome_unknown')
+ const second = new CareerDesk(remote({ act: async replayed => { calls++; assert.deepEqual(replayed, action); return { kind: 'proposed', requestId: replayed.requestId, revision: 8, proposal: pending } }, receipt: async () => { throw Object.assign(new Error('missing'), { code: 'not_found' }) } }), persisted)
+ second.activate('u', 't')
+ assert.deepEqual(second.pendingAction, action)
+ assert.equal(second.safeToRetry, false)
+ await second.retryUnknown(action)
+ assert.equal(calls, 2)
+ assert.equal(values.size, 0)
+})
+
 test('revision conflict exposes backend current revision', async () => {
  const desk = new CareerDesk(remote({ act: async () => { throw Object.assign(new Error('conflict'), { code: 'revision_conflict', currentRevision: 4 }) } }))
  desk.activate('u', 't')

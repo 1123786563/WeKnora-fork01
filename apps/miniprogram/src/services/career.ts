@@ -23,6 +23,7 @@ export type { SharedImportDraft, SharedEntry } from '../adapters/career-platform
 let desk: CareerDesk | undefined;
 /** 测试隔离用：丢弃共享 desk 单例。 */
 export function resetCareerDesk(): void { desk = undefined; }
+const deskPendingStore = createControlledStore();
 function remote(): CareerRemote {
   return {
     open: async signal => record(await client.request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) })) as CareerView,
@@ -32,7 +33,7 @@ function remote(): CareerRemote {
     receipt: async (requestId, signal) => record(await client.request({ method: 'GET', path: `/api/v1/career/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) })) as CareerReceipt,
   };
 }
-export function careerDesk(): CareerDesk { if (!desk) desk = new CareerDesk(remote()); return desk; }
+export function careerDesk(): CareerDesk { if (!desk) desk = new CareerDesk(remote(), deskPendingStore, scope => intentKeyFor('desk-action', { ...auth.scope.capture(), userId: scope.userId, tenantId: scope.tenantId })); return desk; }
 const revision = (): number => careerDesk().snapshot?.revision ?? 0;
 
 /** 把共享 desk 绑定到当前认证身份（同一用户/空间 = 同一份档案；切换即失效旧读）。 */
@@ -78,11 +79,14 @@ function decodeSearchOutcome(value: unknown): SearchOutcome {
   const r = record(value);
   if (r.kind !== 'search_once') throw new Error('无效的搜索回执');
   if (r.status !== 'completed' && r.status !== 'failed') throw new Error('无效的搜索状态');
+  if (!text(r.requestId) || !text(r.query) || !text(r.checkedAt) || !Number.isFinite(Date.parse(text(r.checkedAt)))) throw new Error('搜索回执缺少请求、查询或有效检查时间');
+  if (r.status === 'completed' && (!r.coverage || typeof r.coverage !== 'object' || !Array.isArray((r.coverage as Record<string, unknown>).sources) || !Array.isArray(r.results) || !Array.isArray(r.scopeNotes))) throw new Error('已完成搜索回执缺少覆盖、来源、结果或范围说明');
   const searchId = text(r.searchId); if (!searchId) throw new Error('无效的搜索 ID');
   const coverage = r.coverage === undefined ? {} : record(r.coverage);
   const sourcesRaw = Array.isArray(coverage.sources) ? coverage.sources : [];
   const sources: SearchCoverageSource[] = sourcesRaw.map(raw => {
     const s = record(raw);
+    if (!text(s.sourceId) || typeof s.available !== 'boolean' || !Array.isArray(s.accessMethods) || !s.accessMethods.every(v => typeof v === 'string') || !Array.isArray(s.cities) || !s.cities.every(v => typeof v === 'string')) throw new Error('搜索来源数据无效');
     return {
       sourceId: text(s.sourceId), label: text(s.label, text(s.sourceId, '未命名来源')), available: s.available === true,
       accessMethods: Array.isArray(s.accessMethods) ? s.accessMethods.filter((v): v is string => typeof v === 'string') : [],
@@ -93,12 +97,14 @@ function decodeSearchOutcome(value: unknown): SearchOutcome {
   const rowsRaw = Array.isArray(r.results) ? r.results : [];
   const rows: SearchRow[] = rowsRaw.map(raw => {
     const row = record(raw);
+    if (!text(row.resultId) || !text(row.sourceId) || !text(row.link) || !text(row.checkedAt) || !Number.isFinite(Date.parse(text(row.checkedAt))) || !['qualified', 'needs_review', 'not_qualified'].includes(text(row.qualification)) || typeof row.uncertainty !== 'string') throw new Error('搜索结果证据字段无效');
     return {
       resultId: text(row.resultId), sourceId: text(row.sourceId), link: text(row.link),
       checkedAt: text(row.checkedAt), qualification: text(row.qualification), uncertainty: text(row.uncertainty),
     };
   });
   const scopeNotes = Array.isArray(r.scopeNotes) ? r.scopeNotes.filter((v): v is string => typeof v === 'string') : [];
+  if (r.status === 'completed' && (!Array.isArray(r.scopeNotes) || !r.scopeNotes.every((note): note is string => typeof note === 'string'))) throw new Error('搜索范围说明无效');
   return {
     searchId, requestId: text(r.requestId), status: r.status, query: text(r.query),
     rows, sources, scopeNotes,
@@ -205,10 +211,15 @@ export async function listSources(): Promise<CareerDocumentSource[]> {
 
 /** 分享导入第二阶段：核对预览后才提交，提交原文而非摘录。 */
 export async function confirmSharedImport(draft: SharedImportDraft): Promise<OpportunityReceipt> {
-  return decodeOpportunityReceipt(await client.request({
-    method: 'POST', path: '/api/v1/career/opportunities/import',
-    body: { requestId: draft.requestId, rawText: draft.rawText, ...(draft.sourceLabel ? { sourceLabel: draft.sourceLabel } : {}) },
-  }));
+  const input = { rawText: draft.rawText, ...(draft.sourceLabel ? { sourceLabel: draft.sourceLabel } : {}) };
+  const send = async (id: string): Promise<OpportunityReceipt> => decodeAs(decodeOpportunityReceipt, await client.request({ method: 'POST', path: '/api/v1/career/opportunities/import', body: { requestId: id, ...input } }));
+  return recoverableWrite<OpportunityReceipt>(store, { kind: 'opportunity-import', describe: '职位导入', input, expected: revision(), reuseId: draft.requestId, send: async id => send(id) });
+}
+export function pendingSharedImport(): StoredIntent<{ rawText: string; sourceLabel?: string }> | null { return readIntent(intentKey('opportunity-import')); }
+export async function reconcileSharedImport(): Promise<OpportunityReceipt> { return reconcileIntent('opportunity-import', '职位导入', async id => decodeOpportunityReceipt(await client.request({ method: 'GET', path: `/api/v1/career/opportunities/receipt?requestId=${encodeURIComponent(id)}` }))); }
+export async function retrySharedImport(): Promise<OpportunityReceipt> {
+  const pending = pendingSharedImport(); if (!pending) throw new Error('没有待恢复的职位导入');
+  return retryIntent('opportunity-import', '职位导入', async (id) => decodeAs(decodeOpportunityReceipt, await client.request({ method: 'POST', path: '/api/v1/career/opportunities/import', body: { requestId: id, ...pending.input } })));
 }
 /** 导入后查看解析出的 JD 事实（needs_review 也能看到如实来源状态）。 */
 export async function opportunityEvidence(opportunityId: string, snapshotId: string): Promise<OpportunityEvidence> {
@@ -223,8 +234,12 @@ export async function opportunityEvidence(opportunityId: string, snapshotId: str
 /** 评估当前档案对固定岗位快照的资格（申请创建前的一步；三值结论如实返回）。 */
 export async function evaluateOpportunity(opportunityId: string, snapshotId: string): Promise<EvaluationReceipt> {
   if (!opportunityId.trim() || !snapshotId.trim()) throw new Error('缺少岗位快照信息');
-  return decodeEvaluationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: newRequestId(), opportunityId: opportunityId.trim(), snapshotId: snapshotId.trim() } }));
+  const input = { opportunityId: opportunityId.trim(), snapshotId: snapshotId.trim() };
+  return writeRecoverable<EvaluationReceipt>('evaluation', '资格评估', input, async id => decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...input } })));
 }
+export function pendingEvaluation(): StoredIntent<{ opportunityId: string; snapshotId: string }> | null { return readIntent(intentKey('evaluation')); }
+export async function reconcilePendingEvaluation(): Promise<EvaluationReceipt> { return reconcileIntent('evaluation', '资格评估', async id => decodeEvaluationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/evaluations/receipt?requestId=${encodeURIComponent(id)}` }))); }
+export async function retryPendingEvaluation(): Promise<EvaluationReceipt> { const pending = pendingEvaluation(); if (!pending) throw new Error('没有待恢复的资格评估'); return retryIntent('evaluation', '资格评估', async id => decodeAs(decodeEvaluationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: id, ...pending.input } }))); }
 
 export interface ApplicationIntentInput { opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean }
 export type { StoredIntent } from './career-intent.ts';

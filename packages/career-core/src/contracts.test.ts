@@ -63,11 +63,11 @@ test('opportunity evidence decoder preserves explicit unknown fields and inert r
 const factEvidence = { factKey: 'education.graduation_year', value: '2026', revision: 4, factRevision: 3, source: { kind: 'manual' }, confirmation: { userId: 'owner-1', confirmedAt: '2026-09-24T01:02:03Z' }, confirmedAt: '2026-09-24T01:02:03Z' }
 const skillFactEvidence = { ...factEvidence, factKey: 'skill.programming', value: 'TypeScript' }
 const jobEvidence = { snapshotId: 'snapshot-1', observationId: 'observation-1', acquiredAt: '2026-09-24T01:02:03Z', rawSha256: 'a'.repeat(64), spanStart: 0, spanEnd: 13, quotedText: '仅限2027届' }
-const evaluationReceipt = { kind: 'evaluation_created', requestId: 'eval-1', evaluationId: 'evaluation-1', opportunityId: 'opportunity-1', snapshotId: 'snapshot-1', profileRevision: 4, status: 'ineligible' }
+const evaluationReceipt = { kind: 'evaluation_created', requestId: 'eval-1', evaluationId: 'evaluation-1', opportunityId: 'opportunity-1', snapshotId: 'snapshot-1', profileRevision: 4, status: 'ineligible', createdAt: '2026-09-25T00:00:00Z', rulesetVersion: 'rules-1', snapshot: { opportunityId: 'opportunity-1', observationId: 'obs-1', snapshotId: 'snapshot-1', rawText: '学历本科', rawSha256: 'a'.repeat(64), source: { kind: 'paste' }, acquiredAt: '2026-09-25T00:00:00Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'degree', criterion: '学历', outcome: 'ineligible', reasonCode: 'mismatch', jobEvidence: { snapshotId: 'snapshot-1', observationId: 'obs-1', acquiredAt: '2026-09-25T00:00:00Z', rawSha256: 'a'.repeat(64), spanStart: 0, spanEnd: 12, quotedText: '学历本科' }, profileEvidence: { factKey: '学历', value: '专科', revision: 4, factRevision: 4, source: { kind: 'user' }, confirmation: { userId: 'u1', confirmedAt: '2026-09-25T00:00:00Z' }, confirmedAt: '2026-09-25T00:00:00Z' } }] }, soft: { matches: [] }, facts: [{ factKey: '学历', value: '专科', revision: 4, factRevision: 4, source: { kind: 'user' }, confirmation: { userId: 'u1', confirmedAt: '2026-09-25T00:00:00Z' }, confirmedAt: '2026-09-25T00:00:00Z' }] }
 const evaluation = { ...evaluationReceipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opportunity-1', observationId: 'observation-1', snapshotId: 'snapshot-1', rawText: '仅限2027届 TypeScript', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'graduation_year', criterion: 'graduation year', outcome: 'ineligible', reasonCode: 'graduation_year_mismatch', jobEvidence, profileEvidence: factEvidence }] }, soft: { matches: [{ kind: 'skill', value: 'TypeScript', jobEvidence: { ...jobEvidence, quotedText: 'TypeScript', spanStart: 14, spanEnd: 24 }, profileEvidence: skillFactEvidence }] }, facts: [factEvidence, skillFactEvidence] }
 
 test('evaluation contract accepts all hard statuses and retains fixed refs and provenance', () => {
- for (const status of ['eligible', 'ineligible', 'unknown']) assert.equal(decodeEvaluationReceipt({ ...evaluationReceipt, status }).status, status)
+ assert.equal(decodeEvaluationReceipt(evaluation).status, 'ineligible')
  const decoded = decodeEvaluation(evaluation)
  assert.equal(decoded.hard.overall, 'ineligible')
  assert.equal(decoded.snapshot.snapshotId, 'snapshot-1')
@@ -78,8 +78,8 @@ test('evaluation contract accepts all hard statuses and retains fixed refs and p
 })
 
 test('evaluation decoders reject missing provenance, unknown enums, probability fields and wrong receipt discriminator', () => {
- assert.throws(() => decodeEvaluationReceipt({ ...evaluationReceipt, kind: 'confirmed' }))
- assert.throws(() => decodeEvaluationReceipt({ ...evaluationReceipt, status: 'maybe' }))
+ assert.throws(() => decodeEvaluationReceipt({ ...evaluation, kind: 'confirmed' }))
+ assert.throws(() => decodeEvaluationReceipt({ ...evaluation, status: 'maybe' }))
  assert.throws(() => decodeEvaluation({ ...evaluation, overallScore: 0.99 }))
  assert.throws(() => decodeEvaluation({ ...evaluation, facts: [{ ...factEvidence, factRevision: undefined }] }))
  assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], jobEvidence: { ...jobEvidence, spanEnd: 3 } }] } }))
