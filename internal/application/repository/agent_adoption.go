@@ -76,6 +76,15 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 // listing) row reconciles its accepted pointer; a first insert races on
 // uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	// Serialize eligibility checks with UnlistListing/DeprecateRelease before
+	// either inserting or reconciling an Adoption. A service-side precheck is
+	// useful for errors, but cannot authorize this write by itself.
+	if err := requireListedListing(tx, adoption.TenantID, adoption.ListingID); err != nil {
+		return nil, false, err
+	}
+	if err := requireActiveRelease(tx, adoption.TenantID, adoption.AcceptedReleaseID, adoption.ListingID); err != nil {
+		return nil, false, err
+	}
 	var existing types.AgentAdoptionEntity
 	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
@@ -111,6 +120,20 @@ func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.Ag
 // the same Release returns as-is; a different Release advances the accepted
 // pointer (last write wins, matching sequential adopt semantics).
 func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
+	guard := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
+		UpdateColumn("id", gorm.Expr("id"))
+	if guard.Error != nil {
+		return nil, false, guard.Error
+	}
+	if guard.RowsAffected != 1 {
+		return nil, false, ErrAgentAdoptionNotFound
+	}
+	// Refresh after acquiring the row guard so concurrent lifecycle changes
+	// cannot make the reconciliation decision from a stale Adoption snapshot.
+	if err := tx.Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).First(existing).Error; err != nil {
+		return nil, false, err
+	}
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil
 	}
@@ -155,6 +178,22 @@ func (r *agentAdoptionRepository) CreateVariant(ctx context.Context, variant *ty
 	created.CreatedAt = time.Now().UTC()
 	created.UpdatedAt = created.CreatedAt
 	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Lock rows in the shared order listing -> release -> adoption. This
+		// keeps new variant writes synchronized with unlist/deprecate and with
+		// adoption lifecycle transitions.
+		var adoption types.AgentAdoptionEntity
+		if err := tx.Where("tenant_id = ? AND id = ?", created.TenantID, created.AdoptionID).First(&adoption).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentAdoptionNotFound
+			}
+			return err
+		}
+		if err := requireListedListing(tx, created.TenantID, adoption.ListingID); err != nil {
+			return err
+		}
+		if err := requireActiveRelease(tx, created.TenantID, created.ReleaseID, adoption.ListingID); err != nil {
+			return err
+		}
 		if err := lockAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
 			return err
 		}

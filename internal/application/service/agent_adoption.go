@@ -93,6 +93,12 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 		State: AgentAdoptionStateActive, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) {
+			return interfaces.AdoptionView{}, false, fmt.Errorf("%w: listing is no longer available for adoption", ErrAgentAdoptionStateConflict)
+		}
+		if errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) {
+			return interfaces.AdoptionView{}, false, fmt.Errorf("%w: %w: release is no longer eligible", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict)
+		}
 		return interfaces.AdoptionView{}, false, err
 	}
 	view, err := s.adoptionView(ctx, tenantID, row)
@@ -150,6 +156,12 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) {
+			return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: listing is no longer available for new variants", ErrAgentAdoptionStateConflict)
+		}
+		if errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) {
+			return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: %w: release is no longer eligible", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict)
+		}
 		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
 			return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: %w", ErrAgentAdoptionStateConflict, err)
 		}

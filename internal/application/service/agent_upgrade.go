@@ -150,6 +150,9 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) || errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: source listing or release is no longer eligible", ErrAgentUpgradeStateConflict)
+		}
 		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
 			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w", ErrAgentUpgradeStateConflict, err)
 		}
@@ -303,6 +306,11 @@ func (s *AgentUpgradeService) reconcileProposals(ctx context.Context, tenantID u
 			ToSemanticVersion: toRelease.SemanticVersion, DiffJSON: string(raw),
 			State: AgentUpgradeProposalStateOpen,
 		}); err != nil {
+			if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) || errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) || errors.Is(err, repository.ErrAgentAdoptionTransition) {
+				// Eligibility changed after the reconcile snapshot; the transactional
+				// repository guard deliberately refuses stale materialization.
+				continue
+			}
 			return err
 		}
 		materialized[adoption.ID+"\x00"+toReleaseID] = struct{}{}

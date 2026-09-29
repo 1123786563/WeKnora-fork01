@@ -72,19 +72,51 @@ func (r *agentUpgradeRepository) FindOrCreateProposal(ctx context.Context, propo
 	if created.State == "" {
 		created.State = "open"
 	}
-	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
-	if inserted.Error != nil {
-		return nil, false, inserted.Error
-	}
-	if inserted.RowsAffected == 1 {
-		return &created, true, nil
-	}
-	// 输给了 uq_agent_upgrade_proposals_scope：重读赢家行，与顺序重放同收敛。
-	winner, err := key()
+	createdAt := time.Now().UTC()
+	created.CreatedAt, created.UpdatedAt = createdAt, createdAt
+	var result *types.AgentUpgradeProposalEntity
+	wasCreated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Reconcile materializes only while all source rows still permit new
+		// use. Follow the same listing -> release -> adoption lock order as
+		// AdoptListing and CreateVariant.
+		if err := requireListedListing(tx, created.TenantID, created.ListingID); err != nil {
+			return err
+		}
+		if err := requireActiveRelease(tx, created.TenantID, created.ToReleaseID, created.ListingID); err != nil {
+			return err
+		}
+		if err := lockAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
+			return err
+		}
+		var existing types.AgentUpgradeProposalEntity
+		findErr := tx.Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", created.TenantID, created.AdoptionID, created.ToReleaseID).First(&existing).Error
+		if findErr == nil {
+			result = &existing
+			return nil
+		}
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return findErr
+		}
+		inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 1 {
+			result, wasCreated = &created, true
+			return nil
+		}
+		var winner types.AgentUpgradeProposalEntity
+		if err := tx.Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", created.TenantID, created.AdoptionID, created.ToReleaseID).First(&winner).Error; err != nil {
+			return err
+		}
+		result = &winner
+		return nil
+	})
 	if err != nil {
 		return nil, false, err
 	}
-	return winner, false, nil
+	return result, wasCreated, nil
 }
 
 func (r *agentUpgradeRepository) GetProposal(ctx context.Context, tenantID uint64, proposalID string) (*types.AgentUpgradeProposalEntity, error) {
