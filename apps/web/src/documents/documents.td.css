@@ -931,6 +931,11 @@
 }
 
 .card-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1010,6 +1015,11 @@
 }
 
 .move-menu .move-menu-header {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1069,6 +1079,11 @@
 }
 
 .move-menu .move-confirm-body .move-mode-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -1076,6 +1091,28 @@
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 4px;
+}
+
+.move-menu .move-mode-radio {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--td-component-border);
+  border-radius: 50%;
+  margin-top: 1px;
+  position: relative;
+}
+
+.move-menu .move-mode-radio.checked {
+  border-color: var(--td-brand-color);
+}
+
+.move-menu .move-mode-radio.checked::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--td-brand-color);
 }
 
 .move-menu .move-confirm-body .move-mode-item:hover {

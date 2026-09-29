@@ -526,47 +526,48 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
         <div className="card-menu" onClick={(event) => event.stopPropagation()}>
           {moveView === "targets" && move ? (
             <div className="move-menu" data-move-view="targets">
-              <div className="move-menu-header" onClick={() => move.onBack()}>
+              <button type="button" className="move-menu-header" onClick={() => move.onBack()}>
                 <TIcon name="chevron-left" size="16px" />
                 <span>{t("knowledgeBase.moveToKnowledgeBase")}</span>
-              </div>
+              </button>
               {move.loading ? (
                 <div className="move-menu-loading"><TdLoading size="small" /></div>
               ) : move.targets.length === 0 ? (
                 <div className="move-menu-empty">{t("knowledgeBase.moveNoTargets")}</div>
               ) : move.targets.map((kb) => (
-                <div key={kb.id} className="card-menu-item" onClick={() => move.onSelectTarget(kb)}>
+                <button key={kb.id} type="button" className="card-menu-item" onClick={() => move.onSelectTarget(kb)}>
                   <TIcon className="icon" name="root-list" />
                   <span className="move-target-name">{kb.name}</span>
                   {kb.knowledge_count !== undefined ? <span className="move-target-count">{kb.knowledge_count}</span> : null}
-                </div>
+                </button>
               ))}
             </div>
           ) : moveView === "confirm" && move ? (
             <div className="card-menu move-menu" data-move-view="confirm">
-              <div className="move-menu-header" onClick={() => move.onBack()}>
+              <button type="button" className="move-menu-header" onClick={() => move.onBack()}>
                 <TIcon name="chevron-left" size="16px" />
                 <span>{t("knowledgeBase.moveConfirmTitle")}</span>
-              </div>
+              </button>
               <div className="move-confirm-body">
                 <div className="move-target-info">
                   <TIcon name="arrow-right" size="14px" />
                   <span>{move.selectedTargetName}</span>
                 </div>
                 {(["reuse_vectors", "reparse"] as const).map((mode) => (
-                  <div
+                  <button
+                    type="button"
                     key={mode}
                     className={'move-mode-item' + (move.mode === mode ? ' active' : '')}
                     onClick={() => move.onModeChange(mode)}
                     role="radio"
                     aria-checked={move.mode === mode}
                   >
-                    <TdRadio checked={move.mode === mode} />
+                    <span className={'move-mode-radio' + (move.mode === mode ? ' checked' : '')} aria-hidden="true" />
                     <div className="move-mode-text">
                       <span className="move-mode-label">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
                       <span className="move-mode-desc">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
                 <div className="move-confirm-actions">
                   <TdButton size="small" variant="outline" onClick={() => move.onBack()}>{t("common.cancel")}</TdButton>

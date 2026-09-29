@@ -192,21 +192,30 @@ test('selecting a target shows the Vue confirm panel and posts the move on 确�
   assert.ok(moveItem);
   act(() => { (moveItem as HTMLElement).click(); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
-  // Vue move targets render as .card-menu-item rows (divs, not buttons).
-  const target = [...document.querySelectorAll('.card-menu-item')].find((row) => row.textContent?.includes('Wiki Parity Fixture')) as HTMLElement | undefined;
-  assert.ok(target, 'target row is clickable');
-  act(() => { target.click(); });
+  const target = [...document.querySelectorAll('.card-menu-item')].find((row) => row.textContent?.includes('Wiki Parity Fixture')) as HTMLButtonElement | undefined;
+  assert.ok(target, 'target is a native button');
+  assert.equal(target.tagName, 'BUTTON');
+  act(() => { target.focus(); target.click(); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   const bodyText = document.body.textContent ?? '';
   assert.ok(bodyText.includes('确认移动设置'), 'confirm header renders');
   assert.ok(bodyText.includes('复用向量（快速）'), 'reuse-vectors mode renders');
   assert.ok(bodyText.includes('重新解析'), 'reparse mode renders');
+  const reuse = [...document.querySelectorAll('.move-mode-item')].find((row) => row.textContent?.includes('复用向量（快速）')) as HTMLButtonElement | undefined;
+  assert.ok(reuse, 'reuse-vectors choice is a native button');
+  assert.equal(reuse.tagName, 'BUTTON');
+  act(() => { reuse.focus(); reuse.click(); });
+  assert.equal(reuse.getAttribute('aria-checked'), 'true', 'choosing reuse mode exposes checked state');
+  const reparse = [...document.querySelectorAll('.move-mode-item')].find((row) => row.textContent?.includes('重新解析')) as HTMLButtonElement | undefined;
+  assert.ok(reparse);
+  act(() => { reparse.focus(); reparse.click(); });
+  assert.equal(reparse.getAttribute('aria-checked'), 'true', 'choosing reparse mode exposes checked state');
   const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === '确认移动');
   assert.ok(confirm, '确认移动 button renders');
   act(() => { confirm.click(); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
   assert.deepEqual(calls.move, [
-    { knowledge_ids: ['doc-failed'], source_kb_id: 'kb-1', target_kb_id: 'kb-2', mode: 'reuse_vectors' },
+    { knowledge_ids: ['doc-failed'], source_kb_id: 'kb-1', target_kb_id: 'kb-2', mode: 'reparse' },
   ]);
   assert.ok((document.body.textContent ?? '').includes('移动任务已提交'), 'move started notice renders');
 });
