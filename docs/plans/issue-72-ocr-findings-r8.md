@@ -56,10 +56,10 @@ The SDD implementation/review loop is serial. Tasks 1–5 touch related commerci
 
 **Produces:** Conditional claim from `pending` or `closed` only while `provider_transaction_id IS NULL`; a succeeded attempt and its provider transaction remain immutable. A late first success after close stores the exact winning transaction and produces one fulfill event; a later distinct success continues down the existing over-payment path without a second fulfill event.
 
-- [ ] **Step 1 — RED:** Extend `TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment` reverse-order case to assert the attempt becomes `succeeded`, its transaction equals `wx_txn_late`, and a fulfillment drain can validate the saved winner. Exercise both quoted and unquoted purchase routes through a fulfillment drain. Add a second-success assertion proving the original transaction remains the winner and one over-payment fact is retained. Run the focused test and record the failing state/assertion.
-- [ ] **Step 2 — GREEN:** Change the guarded payment-attempt claim predicate to accept `pending` and `closed` while retaining `provider_transaction_id IS NULL`; leave the succeeded/same-transaction idempotency and order-CAS guards unchanged.
-- [ ] **Step 3 — Verification:** Run `go test ./internal/modules/commercial/service/commercial -run '^TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment$' -count=1 -v`, then the repository package suite and `git diff --check`; expect PASS and no second fulfillment identity.
-- [ ] **Step 4 — Report and commit:** Record RED/GREEN outputs and source/test hashes, then commit only the owned files as `fix(commercial): claim late success after close`.
+- [x] **Step 1 — RED:** Extend `TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment` reverse-order case to assert the attempt becomes `succeeded`, its transaction equals `wx_txn_late`, and a fulfillment drain can validate the saved winner. Exercise both quoted and unquoted purchase routes through a fulfillment drain. Add a second-success assertion proving the original transaction remains the winner and one over-payment fact is retained. Run the focused test and record the failing state/assertion.
+- [x] **Step 2 — GREEN:** Change the guarded payment-attempt claim predicate to accept `pending` and `closed` while retaining `provider_transaction_id IS NULL`; leave the succeeded/same-transaction idempotency and order-CAS guards unchanged.
+- [x] **Step 3 — Verification:** Run `go test ./internal/modules/commercial/service/commercial -run '^TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment$' -count=1 -v`, then the repository package suite and `git diff --check`; expect PASS and no second fulfillment identity.
+- [x] **Step 4 — Report and commit:** Record RED/GREEN outputs and source/test hashes, then commit only the owned files as `fix(commercial): claim late success after close`.
 
 ### Task 2: Keep paid top-up winner failures visible and replayable
 
@@ -123,10 +123,10 @@ Both `ConfirmPayment` conflicts and channel-query `RecordPaymentAnomaly` conflic
 
 **Produces:** `consume_86.py` returns a fixed bounded output-dir preflight error without leaking paths or writing into an existing directory; argparse help/usage behavior is unchanged. `reconcile.py` catches Ctrl-C during uncommitted processing, best-effort writes a sanitized `RECONCILE FAIL` artifact with current stage and `reason=interrupted`, exits 130, and never overwrites an already published canonical PASS/FAIL artifact.
 
-- [ ] **Step 1 — RED:** Add tests for output path already exists, parent missing, and help; interruption before artifact publication; and Ctrl-C after publication. Assert no path/error marker leaks, no output directory is overwritten, pre-publication creates a bounded artifact and returns 130, and post-publication artifact/verdict is unchanged. Run focused selectors and capture expected failures.
-- [ ] **Step 2 — GREEN:** Add bounded preflight error handling in `consume_86.py`; add a specific `KeyboardInterrupt` branch in `reconcile.py` scoped to processing before canonical publication, preserving published verdict semantics.
-- [ ] **Step 3 — Verification:** From the evidence directory, run all new selectors and `python3 -m unittest test_evidence_helpers -v`, `python3 -m py_compile consume_86.py reconcile.py test_evidence_helpers.py`, and `git diff --check`; expect PASS.
-- [ ] **Step 4 — Report and commit:** Save output/hashes and commit only the three owned files as `fix(issue-72): bound evidence runner failure paths`.
+- [x] **Step 1 — RED:** Add tests for output path already exists, parent missing, and help; interruption before artifact publication; and Ctrl-C after publication. Assert no path/error marker leaks, no output directory is overwritten, pre-publication creates a bounded artifact and returns 130, and post-publication artifact/verdict is unchanged. Run focused selectors and capture expected failures.
+- [x] **Step 2 — GREEN:** Add bounded preflight error handling in `consume_86.py`; add a specific `KeyboardInterrupt` branch in `reconcile.py` scoped to processing before canonical publication, preserving published verdict semantics. Three scoped review rounds additionally hardened exact-byte verification and atomic create-if-absent failure publication.
+- [x] **Step 3 — Verification:** From the evidence directory, run all new selectors and `python3 -m unittest test_evidence_helpers -v`, `python3 -m py_compile consume_86.py reconcile.py test_evidence_helpers.py`, and `git diff --check`; expect PASS.
+- [x] **Step 4 — Report and commit:** Save output/hashes and commit only the three owned files as `fix(issue-72): bound evidence runner failure paths`.
 
 ### Task 7: Describe the exact ignored #86 snapshot rule accurately
 
@@ -136,10 +136,10 @@ Both `ConfirmPayment` conflicts and channel-query `RecordPaymentAnomaly` conflic
 
 **Produces:** The comment says the exact rule prevents accidental normal staging of the currently untracked sanitized snapshot and is defense in depth; the exact ignore pattern remains unchanged. The medium directory-wide exposure claim is not implemented because the audit found no current raw sibling and the assignment explicitly requires the exact path.
 
-- [ ] **Step 1 — RED:** Record `git check-ignore -v docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot` and `git ls-files --error-unmatch ...` results; verify the exact rule and untracked status.
-- [ ] **Step 2 — GREEN:** Rewrite only the comment to say that sanitation is the first protection and the exact ignore rule prevents accidental normal staging of this untracked snapshot; state that Git ignore does not protect force-added or already-tracked files.
-- [ ] **Step 3 — Verification:** Re-run both path checks and `git diff --check`; verify no rule pattern changed.
-- [ ] **Step 4 — Report and commit:** Record before/after file hash and commit only `.gitignore` as `docs(issue-72): clarify evidence snapshot ignore rule`.
+- [x] **Step 1 — RED:** Record `git check-ignore -v docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot` and `git ls-files --error-unmatch ...` results; verify the exact rule and untracked status.
+- [x] **Step 2 — GREEN:** Rewrite only the comment to say that sanitation is the first protection and the exact ignore rule prevents accidental normal staging of this untracked snapshot; state that Git ignore does not protect force-added or already-tracked files.
+- [x] **Step 3 — Verification:** Re-run both path checks and `git diff --check`; verify no rule pattern changed.
+- [x] **Step 4 — Report and commit:** Record before/after file hash and commit only `.gitignore` as `docs(issue-72): clarify evidence snapshot ignore rule`.
 
 ### Task 8: Add an auditable old-outbox upgrade runbook
 
