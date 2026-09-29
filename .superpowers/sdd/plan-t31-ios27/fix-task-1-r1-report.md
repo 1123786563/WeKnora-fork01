@@ -17,7 +17,7 @@ Negative evidence: the focused fixtures reject a wrong effective scene delegate,
 ## Patch and commit
 
 - Pre-commit patch SHA-256 (`git diff --` owned production/test paths, after final fixture strengthening): `83ce89a1b084803aed8e5713808572fdd59bd933efc69c67bdc6196870bbcff4`.
-- Commit: `a710440e40edee3137f6531288582717640718dc` (`fix(mobile): enforce generated scene contract relationships`).
+- Commit: `54a7dd071fb0676d5b5689962db8c11a9a0371b5` (`fix(mobile): enforce generated scene contract relationships`).
 
 ## Limitations
 
