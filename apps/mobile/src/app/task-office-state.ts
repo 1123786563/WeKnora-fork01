@@ -23,7 +23,8 @@ export function createTaskOfficeListController(input: {
   publish(state: TaskOfficeListState): void;
 }) {
   let generation = 0;
-  let active = true;
+  let active = false;
+  let revoked = false;
   let state: TaskOfficeListState = { tasks: [], loading: true };
   const publish = (next: TaskOfficeListState) => {
     if (!active) return;
@@ -31,15 +32,26 @@ export function createTaskOfficeListController(input: {
     input.publish(state);
   };
   const invalidate = () => {
+    revoked = true;
     generation += 1;
     publish({ tasks: [], loading: false });
   };
-  const unsubscribe = input.openingLease.onRevoke?.(invalidate);
+  let unsubscribe: (() => void) | undefined;
 
   return {
     state: () => state,
+    mount() {
+      active = true;
+      unsubscribe = input.openingLease.onRevoke?.(invalidate);
+      return () => {
+        active = false;
+        generation += 1;
+        unsubscribe?.();
+        unsubscribe = undefined;
+      };
+    },
     async load(): Promise<void> {
-      if (!active) return;
+      if (!active || revoked) return;
       const request = ++generation;
       publish({ ...state, loading: true, error: undefined });
       try {
@@ -50,11 +62,6 @@ export function createTaskOfficeListController(input: {
         if (!active || request !== generation) return;
         publish({ tasks: [], loading: false, error: failure instanceof Error ? failure.message : String(failure) });
       }
-    },
-    dispose() {
-      active = false;
-      generation += 1;
-      unsubscribe?.();
     },
     revoke: invalidate,
   };

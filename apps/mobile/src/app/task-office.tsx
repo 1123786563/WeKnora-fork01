@@ -37,8 +37,9 @@ export function TaskOfficeEntryLifecycle({ runtime, origin, tenantId, openingLea
   }));
 
   useEffect(() => {
+    const unmount = controller.mount();
     void controller.load();
-    return () => controller.dispose();
+    return unmount;
     // The parent keys this route by deployment, tenant, user, and lease.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller]);
