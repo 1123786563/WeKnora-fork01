@@ -102,6 +102,34 @@ func TestInboundWebhookReplayGateAndCanonicalCollection(t *testing.T) {
 	}
 }
 
+func TestPaymentsForInvoiceUsesInvoiceIDsMembership(t *testing.T) {
+	rows := []any{
+		map[string]any{"lago_id": "pay-target", "invoice_ids": []any{"inv-other", "inv-target"}},
+		map[string]any{"lago_id": "pay-other", "invoice_ids": []any{"inv-other"}},
+	}
+	got, err := paymentsForInvoice(rows, "inv-target")
+	if err != nil || len(got) != 1 || got[0].(map[string]any)["lago_id"] != "pay-target" {
+		t.Fatalf("target invoice membership: %#v %v", got, err)
+	}
+	if _, err := paymentsForInvoice([]any{map[string]any{"lago_id": "bad", "invoice_id": "inv-target"}}, "inv-target"); err == nil {
+		t.Fatal("malformed invoice_ids accepted")
+	}
+	if _, err := paymentsForInvoice([]any{map[string]any{"lago_id": "bad", "invoice_ids": []any{7}}}, "inv-target"); err == nil {
+		t.Fatal("non-string invoice ID accepted")
+	}
+}
+
+func TestWaitForReplayWebhookFailsImmediatelyOnFailedRow(t *testing.T) {
+	calls := 0
+	err := waitForReplayWebhook(context.Background(), func(context.Context) ([]inboundWebhookRow, error) {
+		calls++
+		return []inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: "failed"}}, nil
+	}, "base")
+	if err == nil || calls != 1 {
+		t.Fatalf("failed row must fail immediately, err=%v calls=%d", err, calls)
+	}
+}
+
 type inboundWebhookRow struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
@@ -156,8 +184,9 @@ const inboundWebhookSQL = `SELECT id::text, status::text FROM inbound_webhooks W
 
 func readInboundWebhookRows(ctx context.Context, dbContainer, dbUser, dbName, orgID, providerCode, eventID string) ([]inboundWebhookRow, error) {
 	args := []string{"exec", "-i", dbContainer, "psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-U", dbUser, "-d", dbName,
-		"-v", "organization_id=" + orgID, "-v", "provider_code=" + providerCode, "-v", "event_id=" + eventID, "-c", inboundWebhookSQL}
+		"-v", "organization_id=" + orgID, "-v", "provider_code=" + providerCode, "-v", "event_id=" + eventID, "-f", "-"}
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdin = strings.NewReader(inboundWebhookSQL)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -177,6 +206,9 @@ func waitForReplayWebhook(ctx context.Context, read func(context.Context) ([]inb
 		row, gateErr := requireReplayWebhook(rows, baselineID)
 		if gateErr == nil && row.Status == "succeeded" {
 			return nil
+		}
+		if gateErr != nil && strings.Contains(gateErr.Error(), " failed") {
+			return gateErr
 		}
 		if gateErr != nil && len(rows) > 2 {
 			return gateErr
@@ -205,6 +237,34 @@ func canonicalCollection(rows []any, complete bool) ([]byte, error) {
 		return fmt.Sprint(rows[i].(map[string]any)["lago_id"]) < fmt.Sprint(rows[j].(map[string]any)["lago_id"])
 	})
 	return json.Marshal(rows)
+}
+
+func paymentsForInvoice(rows []any, invoiceID string) ([]any, error) {
+	if invoiceID == "" {
+		return nil, fmt.Errorf("target invoice ID missing")
+	}
+	selected := make([]any, 0)
+	for _, item := range rows {
+		row, ok := item.(map[string]any)
+		if !ok || row["lago_id"] == nil {
+			return nil, fmt.Errorf("payment missing lago_id")
+		}
+		ids, ok := row["invoice_ids"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("payment %v has malformed invoice_ids", row["lago_id"])
+		}
+		for _, id := range ids {
+			value, ok := id.(string)
+			if !ok {
+				return nil, fmt.Errorf("payment %v has non-string invoice ID", row["lago_id"])
+			}
+			if value == invoiceID {
+				selected = append(selected, row)
+				break
+			}
+		}
+	}
+	return selected, nil
 }
 
 type t9ObjectSnapshot struct {
@@ -242,16 +302,20 @@ func apiCollection(ctx context.Context, a *LagoAdapter, path, root string) ([]an
 				TotalCount *int `json:"total_count"`
 			} `json:"meta"`
 		}
-		if err := json.Unmarshal(body, &envelope); err != nil || envelope.Meta.TotalCount == nil {
-			return nil, fmt.Errorf("%s page %d missing pagination total_count", root, page)
-		}
-		var rows map[string][]any
-		if err := json.Unmarshal(body, &rows); err != nil {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
 			return nil, err
 		}
-		batch, ok := rows[root]
+		if err := json.Unmarshal(raw["meta"], &envelope.Meta); err != nil || envelope.Meta.TotalCount == nil {
+			return nil, fmt.Errorf("%s page %d missing pagination total_count", root, page)
+		}
+		collection, ok := raw[root]
 		if !ok {
 			return nil, fmt.Errorf("%s response missing collection", root)
+		}
+		var batch []any
+		if err := json.Unmarshal(collection, &batch); err != nil {
+			return nil, fmt.Errorf("%s collection malformed: %w", root, err)
 		}
 		all = append(all, batch...)
 		if len(all) == *envelope.Meta.TotalCount {
@@ -291,17 +355,11 @@ func t9LagoSnapshot(ctx context.Context, a *LagoAdapter, extPurchase, extCustome
 	if err != nil {
 		return nil, err
 	}
-	filteredPayments := []any{}
-	succeededPayments := 0
-	for _, item := range payments {
-		row, ok := item.(map[string]any)
-		if !ok || row["lago_id"] == nil {
-			return nil, fmt.Errorf("payment missing lago_id")
-		}
-		if row["invoice_id"] == invoiceID {
-			filteredPayments = append(filteredPayments, row)
-		}
+	filteredPayments, err := paymentsForInvoice(payments, invoiceID)
+	if err != nil {
+		return nil, err
 	}
+	succeededPayments := 0
 	if len(filteredPayments) == 0 {
 		return nil, fmt.Errorf("target invoice has no payment records")
 	}
@@ -324,10 +382,18 @@ func t9LagoSnapshot(ctx context.Context, a *LagoAdapter, extPurchase, extCustome
 	if len(wallets) == 0 {
 		return nil, fmt.Errorf("customer wallets missing")
 	}
+	purchaseWalletFound := false
 	for _, item := range wallets {
 		wallet, ok := item.(map[string]any)
 		if !ok || wallet["lago_id"] == nil {
 			return nil, fmt.Errorf("wallet missing lago_id")
+		}
+		name, _ := wallet["name"].(string)
+		if strings.HasPrefix(name, extPurchase+"-") {
+			if wallet["status"] != "active" {
+				return nil, fmt.Errorf("purchase wallet %s is not active", name)
+			}
+			purchaseWalletFound = true
 		}
 		txPath := "/api/v1/wallets/" + url.PathEscape(fmt.Sprint(wallet["lago_id"])) + "/wallet_transactions"
 		txs, err := apiCollection(ctx, a, txPath, "wallet_transactions")
@@ -339,6 +405,9 @@ func t9LagoSnapshot(ctx context.Context, a *LagoAdapter, extPurchase, extCustome
 			return nil, err
 		}
 		wallet["wallet_transactions"] = json.RawMessage(txJSON)
+	}
+	if !purchaseWalletFound {
+		return nil, fmt.Errorf("active purchase wallet for %q missing", extPurchase)
 	}
 	walletJSON, err := canonicalCollection(wallets, true)
 	if err != nil {

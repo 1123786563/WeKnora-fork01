@@ -30,3 +30,14 @@ Focused build-tag-free selector had no tests to run because the helper lives in 
 - T9 prep script SHA-256: `916df717b75bb6318c0dfd0803830e85c0cd7466c44979f6bfa869e9db8090ee`
 - Implementation commit: `b7751ee51`
 - The replay assertion was **not run live**. AC3/T9 live acceptance and AC4 real Alipay sandbox evidence remain OPEN; compile-only is not live evidence.
+
+## Fix round — pinned API contract corrections
+
+- Changed payment selection to require exact invoice membership in Lago `invoice_ids`; malformed/non-string association shapes fail closed. Added match/exclusion/malformed tests.
+- Changed psql to receive query text on stdin via `psql -f -`; psql variables remain separate argv values and safely quoted by `:'name'`.
+- Pagination envelopes now decode `meta` separately from the named collection array. A failed webhook row now returns immediately instead of polling to timeout.
+- Snapshot validates that the purchase wallet (name prefixed by the exact external purchase identity) exists and is active; all wallet objects and transactions remain included.
+- T9 prep resolves DB user/database defaults before the organization query and uses those same labels for that query.
+- Fix round SHA-256: Go `ce94bfcdbc8c89346e206db8484368fc575756915c58fdc3d67803d4cc1c851d`; prep script `6057ec4067a3602f5eb86d6483a723ba05dc704a4890e4efbaadc4b435417c7d`.
+- Verification: tagged focused selectors (payment invoice membership, webhook gate/canonicalization, immediate failed-row handling) PASS; full package `-count=1` PASS (`72.213s`); integration-tag compile-only PASS; `bash -n` PASS; `git diff --check` PASS.
+- No live services started and no live replay claimed. Live T9/AC3 and AC4 remain OPEN. Previous implementation/report commits remain intact; this fix round is committed separately.
