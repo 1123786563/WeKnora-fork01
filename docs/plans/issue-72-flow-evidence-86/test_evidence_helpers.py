@@ -70,6 +70,24 @@ class EvidenceHelpersTest(unittest.TestCase):
         self.assertIn("reason=interrupted", artifact)
         self.assertNotIn("SECRET_INTERRUPT_TEXT", artifact + stderr.getvalue())
 
+    def test_reconcile_interrupt_does_not_replace_concurrent_artifact(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            artifact_path = out / "reconcile-output.txt"
+            competing = b"concurrent publisher\nRECONCILE PASS\n"
+            real_link = reconcile.os.link
+            def create_competing_artifact_then_link(source, destination):
+                artifact_path.write_bytes(competing)
+                return real_link(source, destination)
+            with mock.patch.object(reconcile, "lago_wallets", side_effect=KeyboardInterrupt()), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(reconcile.os, "link",
+                                   side_effect=create_competing_artifact_then_link):
+                result = reconcile.main()
+            artifact = artifact_path.read_bytes()
+        self.assertEqual(result, 1)
+        self.assertEqual(artifact, competing)
+
     def test_reconcile_interrupt_after_publication_preserves_canonical_verdict(self):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / "run"
@@ -91,6 +109,47 @@ class EvidenceHelpersTest(unittest.TestCase):
         self.assertIn("RECONCILE PASS", artifact)
         self.assertNotIn("RECONCILE FAIL", artifact)
         self.assertNotIn("reason=interrupted", artifact)
+
+    def test_reconcile_interrupt_during_emit_rejects_mutated_published_artifact(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            account = Path(root) / "account.json"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "available_micro": 0,
+                "held_micro": 0, "refund_locked_micro": 0}}}}))
+            artifact_path = out / "reconcile-output.txt"
+            changed = b"changed after publish\nRECONCILE PASS\n"
+            def mutate_then_interrupt(text, stream):
+                artifact_path.write_bytes(changed)
+                raise KeyboardInterrupt("interrupt after mutation")
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(reconcile, "_emit_text", side_effect=mutate_then_interrupt):
+                result = reconcile.main()
+            artifact = artifact_path.read_bytes()
+        self.assertEqual(result, 1)
+        self.assertEqual(artifact, changed)
+
+    def test_reconcile_interrupt_during_emit_rejects_unreadable_published_artifact(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            account = Path(root) / "account.json"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "available_micro": 0,
+                "held_micro": 0, "refund_locked_micro": 0}}}}))
+            artifact_path = out / "reconcile-output.txt"
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(reconcile, "_emit_text",
+                                   side_effect=KeyboardInterrupt("interrupt after publish")), \
+                 mock.patch.object(reconcile.Path, "read_bytes", side_effect=PermissionError("denied")):
+                result = reconcile.main()
+            artifact = artifact_path.read_text()
+        self.assertEqual(result, 1)
+        self.assertIn("RECONCILE PASS", artifact)
+        self.assertNotIn("RECONCILE FAIL", artifact)
 
     def test_reconcile_interrupt_after_atomic_replace_preserves_published_bytes(self):
         with tempfile.TemporaryDirectory() as root:
