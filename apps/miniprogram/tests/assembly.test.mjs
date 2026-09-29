@@ -16,6 +16,7 @@ globalThis.__API_ORIGIN__ = 'https://api.example.test';
 const { stub } = await import('./helpers/taro-stub.mjs');
 const runtime = await import('../src/services/runtime.ts');
 const workbench = await import('../src/services/workbench.ts');
+const { loadAssemblyHarness } = await import('./helpers/assembly-harness.mjs');
 
 const ORIGIN = 'https://api.example.test';
 const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: 1, name: 'Space' }, memberships: [] } });
@@ -127,13 +128,19 @@ test('assembly: chatStream assembles SSE frames end-to-end through the native ch
   assert.equal(events[0].content, '你好😀');
 });
 
-test('assembly: Task office and auth session are supplied by their dedicated services', async () => {
-  await freshLogin();
-  const office = await import('../src/services/mobile-office.ts');
-  assert.equal(typeof office.activeTaskOffice, 'function');
-  assert.equal(typeof runtime.auth.switchTenant, 'function');
-  assert.equal(workbench.startTask, undefined);
-  assert.equal(workbench.watchExecution, undefined);
+test('assembly: Task list behavior routes through the dedicated TaskOffice service', async () => {
+  const { stub: officeStub, office, harness } = await loadAssemblyHarness({ withOffice: true });
+  await harness.freshLogin({
+    'GET /api/v1/workbench/executions': call => officeStub.succeed(call, { data: { success: true, data: { items: [
+      { run_id: 'run-1', session_id: 'session-1', title: '整理资料', status: 'running', run_status: 'running', attention: 'none', created_at: '2026-09-29T00:00:00Z', updated_at: '2026-09-29T00:00:00Z' },
+    ] } } }),
+  });
+  const page = await office.requireTaskOffice().tasks({});
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].runId, 'run-1');
+  assert.ok(officeStub.paths().includes('GET /api/v1/workbench/executions'));
+  assert.equal(workbench.startTask, undefined, 'Task submission remains owned by TaskOffice');
+  assert.equal(typeof runtime.auth.switchTenant, 'function', 'session switching remains owned by the auth session');
 });
 
 test('assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action', async () => {
