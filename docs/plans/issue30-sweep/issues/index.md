@@ -3,7 +3,9 @@
 - 仓库: 1123786563/WeKnora-fork01
 - 父 Issue: #30 「Spec: WeKnora 移动 AI Office」（open，标签 ready-for-agent，无评论）
 - 下级 Issue: #31–#71（T01–T41，共 41 个），全部在正文中声明 `## Parent` → #30
-- 收集时间: 2026-09-23（UTC 时戳以各 Issue 文件内 API 数据为准）
+- 原始树快照: 2026-09-23（各 Issue 文件保存原始 API 数据）
+- 实时复核: 2026-09-29（GitHub API，repo `1123786563/WeKnora-fork01`）
+- 根 Issue 新增 cross-reference: PR #174（open，dirty mergeable state；详见 [issue-30.md](issue-30.md)）
 
 ## 层级树
 
