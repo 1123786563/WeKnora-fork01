@@ -275,3 +275,9 @@
 - `prepare_t9_env.sh` now selects the first `docker compose ps -q db` result before removing whitespace, and documents that `POSTGRES_USER` / `POSTGRES_DB` fallbacks track `deploy/lago/compose.yaml` defaults.
 - `bash -n` and `git diff --check` passed. No services or live T9 were started. Independent review and final OCR remain pending.
 - Task evidence: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r2/task-1-report.md`.
+
+## T9 OCR finding repair r4 — 2026-09-30
+
+- `prepare_t9_env.sh` now resolves `POSTGRES_USER` and `POSTGRES_DB` using Compose precedence: set shell value first (including empty, which reaches the `${VAR:-lago}` fallback), then the selected `lab.env`, then `lago`. The organization query and polling exports share the resolved labels.
+- Verification: `bash -n`, `git diff --check`, source wiring assertions, and deterministic shell resolver cases for nonempty overrides, set-empty overrides, env-file-only values, and final defaults all passed. No services or live T9 were started.
+- SDD task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r4/task-1-report.md`. Independent validation/review and final OCR remain pending.

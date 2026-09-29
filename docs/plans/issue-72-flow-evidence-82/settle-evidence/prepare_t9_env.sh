@@ -34,8 +34,16 @@ env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//;
 _t9_base="$(env_value LAGO_API_URL)" || true
 _t9_orgcred="$(env_value LAGO_ORG_API_KEY)" || true
 _t9_db_container="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" ps -q db | head -n 1 | tr -d '[:space:]')" || true
-_t9_db_user="$(env_value POSTGRES_USER)" || true
-_t9_db_name="$(env_value POSTGRES_DB)" || true
+if [[ ${POSTGRES_USER+x} ]]; then
+  _t9_db_user="$POSTGRES_USER"
+else
+  _t9_db_user="$(env_value POSTGRES_USER)" || true
+fi
+if [[ ${POSTGRES_DB+x} ]]; then
+  _t9_db_name="$POSTGRES_DB"
+else
+  _t9_db_name="$(env_value POSTGRES_DB)" || true
+fi
 [ -n "$_t9_base" ] || { echo "LAGO_API_URL missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_orgcred" ] || { echo "LAGO_ORG_API_KEY missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_db_container" ] || { echo "db container id unavailable (local stack may not be running; start it with lab.sh up)" >&2; return 1 2>/dev/null || exit 1; }
