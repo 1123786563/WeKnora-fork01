@@ -27,7 +27,7 @@ Evidence includes a barrier-controlled HTTP concurrency case (one recovery POST 
 
 ## Commit and review package
 
-- Commit: `ca7e7540cb7cf430ca1ff1bed2511a6c52f6c920`
+- Commit: `e43c859b8ab0a84ba69c64136a91067dac6127e0`
 - Base: `38240b187b0122219a881a2fc46e2336a0cfa6fa`
 - Review package: `.superpowers/sdd/plan-t55/task-1-review-package.patch`
 - Review package SHA-256: `446cd099b09c5b6777d40d945a631cd0e39aaaec2842af9321f25e80792d8309`
