@@ -236,6 +236,7 @@ func newDeliveryCollabEnv(t *testing.T) *deliveryCollabEnv {
 		Store: store, Actions: actions, ActionRows: actionStore,
 		Connections: connections, Creds: connections,
 		GitHub: factory, Workspace: workspace, Runs: runs,
+		Providers:  appconnectorrepo.NewInstallationStore(db),
 		Dispatcher: dispatcher,
 	})
 
