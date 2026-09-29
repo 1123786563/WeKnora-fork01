@@ -340,8 +340,50 @@ func (o *Office) attemptSubmissionWrite(ctx context.Context, s Scope, input Reco
 		if e = tx.Create(&row).Error; e != nil {
 			return e
 		}
+		var progressHead struct{ Count int64 }
+		if e = tx.Model(&progressEventRecord{}).Where("tenant_id=? AND user_id=? AND application_id=?", s.TenantID, s.UserID, input.ApplicationID).Count(&progressHead.Count).Error; e != nil {
+			return e
+		}
+		if progressHead.Count < 0 {
+			return ErrInvalidRequest
+		}
+		progressSeq := uint64(progressHead.Count) + 1
+		// The timeline event and submission fact share this transaction. Its
+		// deterministic request identity prevents replay from creating a second
+		// submitted event, while the linked submission ID preserves provenance.
+		progressReceipt := ProgressReceipt{
+			Kind: ProgressKindAppended, RequestID: submissionProgressRequestID(receipt.SubmissionID),
+			ApplicationID: input.ApplicationID, EventID: uuid.NewString(), Seq: progressSeq, Revision: progressSeq,
+			EventType: ProgressEventSubmitted, Stage: ProgressStageSubmitted,
+			Note: input.Note, OccurredAt: occurredAt, Source: Source{Kind: "manual"},
+			Confirmer: s.UserID, CreatedAt: now,
+		}
+		progressSource, e := json.Marshal(progressReceipt.Source)
+		if e != nil {
+			return e
+		}
+		progressBody, e := json.Marshal(progressReceipt)
+		if e != nil {
+			return e
+		}
+		progressRow := progressEventRecord{
+			ID: progressReceipt.EventID, TenantID: s.TenantID, UserID: s.UserID,
+			ApplicationID: input.ApplicationID, Seq: progressSeq, Kind: ProgressKindAppended,
+			EventType: ProgressEventSubmitted, Note: input.Note, OccurredAt: occurredAt,
+			Source: string(progressSource), Confirmer: s.UserID,
+			RequestID: progressReceipt.RequestID, Fingerprint: fingerprint,
+			ReceiptBody: string(progressBody), CreatedAt: now,
+		}
+		if e = tx.Create(&progressRow).Error; e != nil {
+			return e
+		}
 		if o.afterSubmissionPersist != nil {
 			if hookErr := o.afterSubmissionPersist(); hookErr != nil {
+				return hookErr
+			}
+		}
+		if o.afterSubmissionProgressPersist != nil {
+			if hookErr := o.afterSubmissionProgressPersist(); hookErr != nil {
 				return hookErr
 			}
 		}
@@ -351,6 +393,10 @@ func (o *Office) attemptSubmissionWrite(ctx context.Context, s Scope, input Reco
 		return SubmissionReceipt{}, err
 	}
 	return receipt, nil
+}
+
+func submissionProgressRequestID(submissionID string) string {
+	return "submission:" + submissionID
 }
 
 // FindSubmissionReceipt replays the stored submission receipt by request ID

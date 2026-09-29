@@ -278,17 +278,18 @@ type Office struct {
 	// no resident scheduler exists on the production path.
 	searchRuleNow func() time.Time
 	// These hooks only synchronize transaction-boundary and error-path tests.
-	beforeFirstWrite             func()
-	afterReceiptPersist          func()
-	beforeReplayReceipt          func(context.Context)
-	beforeOpportunityTransaction func()
-	afterOpportunityCommit       func() error
-	afterEvaluationCommit        func() error
-	afterEvaluationReceiptMiss   func()
-	failApplicationReadyUpdate   func() error
-	failSearchTerminalCommit     func() error
-	afterProgressEventPersist    func() error
-	afterSubmissionPersist       func() error
+	beforeFirstWrite               func()
+	afterReceiptPersist            func()
+	beforeReplayReceipt            func(context.Context)
+	beforeOpportunityTransaction   func()
+	afterOpportunityCommit         func() error
+	afterEvaluationCommit          func() error
+	afterEvaluationReceiptMiss     func()
+	failApplicationReadyUpdate     func() error
+	failSearchTerminalCommit       func() error
+	afterProgressEventPersist      func() error
+	afterSubmissionPersist         func() error
+	afterSubmissionProgressPersist func() error
 	// failUsageLedgerRead (T21) injects an unreadable quota ledger: admission
 	// and estimates must then fail closed instead of executing first.
 	failUsageLedgerRead func() error
