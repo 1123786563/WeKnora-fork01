@@ -1,17 +1,20 @@
 package container
 
 import (
+	"context"
 	"os"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"gorm.io/gorm"
 )
 
 // NewWorkbenchReadHandler wires the ownership facade to the same durable run
@@ -74,11 +77,55 @@ func NewWorkbenchInteractionStore(db *gorm.DB) *workbenchservice.GormInteraction
 	return workbenchservice.NewGormInteractionStore(db)
 }
 
-func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager) *workbenchservice.Service {
-	// Command ports are intentionally nil until the lifecycle/stream adapters
-	// are supplied by the runtime container; command requests fail closed with
-	// capability_unavailable rather than mutating a different subsystem.
-	return workbenchservice.NewInteractionServiceWithApproval(store, workbenchservice.NewGormSteerPort(storeDB(store), streams), workbenchservice.NewGormCancelPort(storeDB(store)), gate)
+func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager, runs *repository.AgentRunStore, admission *workbenchservice.AdmissionCoordinator) *workbenchservice.Service {
+	db := storeDB(store)
+	return workbenchservice.NewInteractionServiceWithRestart(store, workbenchservice.NewGormSteerPort(db, streams), workbenchservice.NewGormCancelPort(runs), gate, workbenchservice.NewGormRunRestartPort(db, admission))
+}
+
+func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
+	knowledgeBases := repository.NewKnowledgeBaseRepository(db)
+	return researchSourceAuthorizerFunc(func(ctx context.Context, tenantID uint64, id string) error {
+		_, err := knowledgeBases.GetKnowledgeBaseByIDAndTenant(ctx, id, tenantID)
+		if err != nil {
+			return session.ErrResearchSourceOutOfScope
+		}
+		return nil
+	})
+}
+
+type researchSourceAuthorizerFunc func(context.Context, uint64, string) error
+
+func (f researchSourceAuthorizerFunc) AuthorizeResearchSource(ctx context.Context, tenantID uint64, id string) error {
+	return f(ctx, tenantID, id)
+}
+
+func NewWorkbenchResearchHandler(db *gorm.DB, runs *repository.AgentRunStore, messages interfaces.MessageService, sessions interfaces.SessionRepository, members interfaces.TenantMemberRepository) *session.WorkbenchResearchHandler {
+	grants := appservice.NewTaskGrantService(repository.NewTaskGrantStore(db), sessions, members)
+	return session.NewWorkbenchResearchHandler(runs, runs, messages, repository.NewTaskResearchStore(db), repository.NewTaskAnnotationStore(db), NewResearchSourceAuthorizer(db), grants)
+}
+
+func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
+	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
+}
+
+func NewWorkbenchTaskGrantsHandler(grants *repository.TaskGrantStore, sessions interfaces.SessionRepository, members interfaces.TenantMemberRepository) *session.WorkbenchTaskGrantsHandler {
+	return session.NewWorkbenchTaskGrantsHandler(appservice.NewTaskGrantService(grants, sessions, members))
+}
+
+func NewTaskComplianceStore(db *gorm.DB) *repository.TaskComplianceStore {
+	return repository.NewTaskComplianceStore(db)
+}
+func NewTaskComplianceService(store *repository.TaskComplianceStore, audit interfaces.AuditLogService) *appservice.TaskComplianceService {
+	return appservice.NewTaskComplianceService(store, audit)
+}
+func NewWorkbenchTaskComplianceHandler(compliance *appservice.TaskComplianceService) *session.WorkbenchTaskComplianceHandler {
+	return session.NewWorkbenchTaskComplianceHandler(compliance)
+}
+
+func wireTaskDeletionGuard(handler *session.Handler, compliance *appservice.TaskComplianceService) {
+	if handler != nil && compliance != nil {
+		handler.SetTaskDeletionGuard(compliance)
+	}
 }
 
 // storeDB is kept in the service constructor's dependency graph through the

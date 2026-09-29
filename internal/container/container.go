@@ -299,6 +299,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// pins this subset.
 	must(container.Provide(repository.NewTaskGrantStore))
 	must(container.Provide(NewWorkbenchTaskGrantsHandler))
+	must(container.Provide(repository.NewTaskResearchStore))
+	must(container.Provide(repository.NewTaskAnnotationStore))
+	must(container.Provide(repository.NewWorkbenchLegacyListStore))
 	must(container.Provide(NewTaskComplianceStore))
 	must(container.Provide(NewTaskComplianceService))
 	must(container.Provide(NewWorkbenchTaskComplianceHandler))
