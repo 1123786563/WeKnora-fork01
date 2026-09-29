@@ -370,16 +370,21 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 		}
 		// dispatched → PR-only recovery; the dispatcher never repeats push steps.
 		if s.deps.Dispatcher == nil {
-			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), "")
-			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+			claimErr := fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, DeliveryPushed, claimErr); settleErr != nil {
+				return DeliveryView{}, errors.Join(claimErr, settleErr)
+			}
+			return DeliveryView{}, claimErr
 		}
 		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
 			var rejected *PRWriteRejectedError
 			var notStarted *RecoveryNotStartedError
+			next := DeliveryUnknown
 			if errors.As(err, &rejected) || errors.As(err, &notStarted) {
-				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryPushed), err.Error())
-			} else {
-				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID, []string{string(DeliveryDispatched)}, string(DeliveryUnknown), err.Error())
+				next = DeliveryPushed
+			}
+			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, next, err); settleErr != nil {
+				return DeliveryView{}, errors.Join(err, settleErr)
 			}
 			return DeliveryView{}, err
 		}
@@ -387,6 +392,19 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 		return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryState, row.State)
 	}
 	return s.viewAfter(ctx, in, row.ID)
+}
+
+// settleRecoveryClaim must outlive the request: a canceled HTTP context after
+// a possible provider write cannot be allowed to strand the durable claim.
+// The bounded detached context is only used for the local CAS settlement.
+func (s *CodeDeliveryService) settleRecoveryClaim(ctx context.Context, in DispatchInput, id string, to DeliveryState, cause error) error {
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.deps.Store.TransitionState(settleCtx, in.TenantID, id,
+		[]string{string(DeliveryDispatched)}, string(to), cause.Error()); err != nil {
+		return fmt.Errorf("settle interrupted recovery claim to %s: %w", to, err)
+	}
+	return nil
 }
 
 // ResolveDeliveryUnknown settles an unknown delivery from remote facts only.
@@ -401,14 +419,14 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
 	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
 		return DeliveryView{}, ErrNotDeliveryOwner
 	}
-	if row.State != string(DeliveryUnknown) {
+	if row.State != string(DeliveryUnknown) && row.State != string(DeliveryDispatched) {
 		return DeliveryView{}, fmt.Errorf("%w: resolve from %s", ErrDeliveryState, row.State)
 	}
 	action, err := s.deps.ActionRows.FindAction(ctx, row.ActionID)
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if action.State == appconnector.ActionUnknown {
+	if action.State == appconnector.ActionUnknown && row.State == string(DeliveryUnknown) {
 		if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
 			return DeliveryView{}, err
 		}

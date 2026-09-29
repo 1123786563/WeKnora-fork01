@@ -512,13 +512,93 @@ func deliveryState(t *testing.T, env *recoveryEnv, id string) string {
 }
 
 func requestRecovery(env *recoveryEnv, id string) *httptest.ResponseRecorder {
+	return requestRecoveryContext(env, context.Background(), id)
+}
+
+func requestRecoveryContext(env *recoveryEnv, requestCtx context.Context, id string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", nil)
-	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
+	ctx := context.WithValue(requestCtx, types.TenantIDContextKey, uint64(1))
 	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
 	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
 	w := httptest.NewRecorder()
 	env.engine.ServeHTTP(w, req.WithContext(ctx))
 	return w
+}
+
+func TestT55CanceledRecoverySettlesUnknownUsingIndependentContext(t *testing.T) {
+	env := newRecoveryEnv(t)
+	env.github.mu.Lock()
+	env.github.failPRCreations = 1
+	env.github.mu.Unlock()
+	id := env.seedApprovedDelivery(t)
+	code, _ := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	env.github.mu.Lock()
+	env.github.failPRTransport = true
+	env.github.mu.Unlock()
+	env.github.prEntered, env.github.prRelease = make(chan struct{}, 1), make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() { done <- requestRecoveryContext(env, ctx, id) }()
+	<-env.github.prEntered
+	cancel()
+	close(env.github.prRelease)
+	w := <-done
+	require.NotEqual(t, http.StatusOK, w.Code)
+	require.Equal(t, "unknown", deliveryState(t, env, id), "cancelled request must settle the claimed Delivery despite its canceled context")
+	w = doResolveRecovery(env, id)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "delivered", deliveryState(t, env, id))
+	require.Equal(t, 2, env.github.snapshotCalls()["POST /pulls"], "cancellation recovery must reconcile, never create a second PR")
+}
+
+func TestT55RecoverySettlementFailureIsSurfaced(t *testing.T) {
+	env := newRecoveryEnv(t)
+	env.github.mu.Lock()
+	env.github.failPRCreations = 1
+	env.github.mu.Unlock()
+	id := env.seedApprovedDelivery(t)
+	code, _ := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	env.github.mu.Lock()
+	env.github.failPRTransport = true
+	env.github.mu.Unlock()
+	require.NoError(t, env.db.Exec(`CREATE TRIGGER fail_unknown_settlement BEFORE UPDATE OF state ON code_deliveries WHEN NEW.state = 'unknown' BEGIN SELECT RAISE(ABORT, 'injected settlement failure'); END`).Error)
+	w := requestRecovery(env, id)
+	require.NotEqual(t, http.StatusOK, w.Code)
+	require.NotEqual(t, http.StatusOK, w.Code, "the persistence failure must prevent a success response")
+	require.Equal(t, "dispatched", deliveryState(t, env, id), "failed CAS must not be reported as safely settled")
+}
+
+func TestT55DispatchedClaimReconcilesRemotePRWithoutWriting(t *testing.T) {
+	env := newRecoveryEnv(t)
+	id := env.seedApprovedDelivery(t)
+	code, view := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "delivered", view.State)
+	require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("state", "dispatched").Error)
+	writes := env.github.snapshotWrites()
+	w := doResolveRecovery(env, id)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "delivered", deliveryState(t, env, id))
+	require.Equal(t, writes, env.github.snapshotWrites(), "recovery of a durable dispatched claim must only query remote facts")
+}
+
+func TestT55DispatchedClaimWithoutPRFactRemainsFailClosed(t *testing.T) {
+	env := newRecoveryEnv(t)
+	env.github.mu.Lock()
+	env.github.failPRCreations = 1
+	env.github.mu.Unlock()
+	id := env.seedApprovedDelivery(t)
+	code, view := env.dispatchState(t, id)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "pushed", view.State)
+	require.NoError(t, env.db.Model(&deliveryrepo.DeliveryRow{}).Where("id = ?", id).Update("state", "dispatched").Error)
+	writes := env.github.snapshotWrites()
+	w := doResolveRecovery(env, id)
+	require.NotEqual(t, http.StatusOK, w.Code, "an empty PR query cannot prove no in-flight write")
+	require.Equal(t, "dispatched", deliveryState(t, env, id))
+	require.Equal(t, writes, env.github.snapshotWrites(), "a dispatched claim with no PR fact stays blocked and read-only")
 }
 
 func TestT25DeliveryRunOwnerMismatchDoesNotReachProvider(t *testing.T) {

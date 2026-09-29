@@ -305,12 +305,17 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
-			[]string{string(DeliveryUnknown)}, string(DeliveryDelivered), ""); err != nil {
+			[]string{string(DeliveryUnknown), string(DeliveryDispatched)}, string(DeliveryDelivered), ""); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
 	}
 	if sha, exists, berr := client.BranchHead(ctx, material.Branch); berr == nil && exists {
+		if row.State == string(DeliveryDispatched) {
+			// A live or abandoned claimant may still have an in-flight POST. A
+			// read-only miss cannot release its durable claim for another create.
+			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: PR absence cannot release dispatched claim %s", appconnectorsvc.ErrDispatchUnknown, head)
+		}
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
