@@ -14,3 +14,5 @@
 - Interface: clean prebuild produces the ignored SDK57 `apps/mobile/ios` tree; contract helper consumes that directory before CocoaPods.
 - Commit strategy: local commit only; no push.
 - Status: ready → running; R1 and R3 implementation combined because script/test boundary overlaps.
+- Ruling: copied the read-only review into the integration workspace and corrected ADR pointer to `docs/adr/0005-weknora-native-mobile-client.md`; added `apps/mobile/scripts/verify-ios-scene-project.ts` as explicit owned helper to keep validation reusable/testable. Cost if wrong: small task-scope expansion, bounded to the exact generated native project contract requested by R3.
+- Updated brief correction committed `3bf8d0082`; implementation agent resumed with frontend_implementer role.
