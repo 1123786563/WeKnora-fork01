@@ -45,9 +45,10 @@ def inspect(binary: pathlib.Path) -> list[str]:
         fail(f"FRAMEWORK_INSPECTION_FAILED: otool not found while inspecting {binary}")
     if result.returncode:
         fail(f"FRAMEWORK_INSPECTION_FAILED: {binary}: {result.stderr.strip() or result.returncode}")
-    # Universal binaries may print one header per architecture; only dependency
-    # rows begin with a load path, not the inspected binary's own pathname.
-    return [line for line in result.stdout.splitlines()[1:] if not line.strip().startswith(str(binary))]
+    # Skip only the exact image header forms emitted by otool -L. A dependency
+    # may legitimately share the inspected image's path as a string prefix.
+    header = re.compile(re.escape(str(binary)) + r"(?: \(architecture [^)]+\))?:")
+    return [line for line in result.stdout.splitlines() if not header.fullmatch(line.strip())]
 
 
 def main(app_path: str, properties_path: str) -> None:
@@ -82,7 +83,11 @@ def main(app_path: str, properties_path: str) -> None:
             token_match = re.match(r"(?P<token>@(?:rpath|loader_path|executable_path))/(?P<remainder>[^\s]+)$", load)
             match = re.search(r"(?:^|/)(?P<framework>[^/]+\.framework)/(?P<requested>[^\s]+)$", token_match.group("remainder")) if token_match else None
             if not token_match or not match:
-                if ".framework/" in load:
+                framework_name_match = re.search(r"([^/]+\.framework)(?:/|$)", load)
+                framework_name = framework_name_match.group(1) if framework_name_match else load
+                if load.endswith(".framework") or load.endswith(".framework/"):
+                    fail(f"MALFORMED_FRAMEWORK_LOAD_PATH: {owner} requires {framework_name}: {load}")
+                if ".framework" in load:
                     fail(f"UNSUPPORTED_FRAMEWORK_LOAD_PATH: {owner}: {load}")
                 continue
             token = token_match.group("token")

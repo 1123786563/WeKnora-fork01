@@ -6,7 +6,12 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 const script = join(import.meta.dirname, '../scripts/verify-ios-framework-closure.py');
-function fixture(loads: Record<string, string>, failBinary?: string, mode: 'source' | 'precompiled' = 'source') {
+function fixture(
+  loads: Record<string, string>,
+  failBinary?: string,
+  mode: 'source' | 'precompiled' = 'source',
+  options: { architectureHeaders?: boolean; pathPrefixAppLoad?: boolean } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), 'ios-framework-closure-'));
   const app = join(root, 'WeKnora.app');
   const frameworks = join(app, 'Frameworks');
@@ -28,7 +33,13 @@ function fixture(loads: Record<string, string>, failBinary?: string, mode: 'sour
   const bin = join(root, 'bin');
   mkdirSync(bin);
   const fakeOtool = join(bin, 'otool');
-  writeFileSync(fakeOtool, `#!/bin/sh\nname=$(basename "$2")\nif [ "$name" = "${failBinary ?? '__none__'}" ]; then echo fake-failure >&2; exit 9; fi\necho "$2:"\ncase "$name" in WeKnora) deps='${loads.app ?? ''}' ;; Alpha) deps='${loads.Alpha ?? ''}' ;; Beta) deps='${loads.Beta ?? ''}' ;; esac\n[ -z "$deps" ] || printf '    %s\\n' "$deps"\n`);
+  const headers = options.architectureHeaders
+    ? `printf '%s (architecture arm64):\\n%s (architecture x86_64):\\n' "$2" "$2"`
+    : `echo "$2:"`;
+  const prefixLoad = options.pathPrefixAppLoad
+    ? `if [ "$name" = WeKnora ]; then printf '    %sExtra.framework/Missing\\n' "$2"; fi`
+    : '';
+  writeFileSync(fakeOtool, `#!/bin/sh\nname=$(basename "$2")\nif [ "$name" = "${failBinary ?? '__none__'}" ]; then echo fake-failure >&2; exit 9; fi\n${headers}\ncase "$name" in WeKnora) deps='${loads.app ?? ''}' ;; Alpha) deps='${loads.Alpha ?? ''}' ;; Beta) deps='${loads.Beta ?? ''}' ;; esac\n[ -z "$deps" ] || printf '    %s\\n' "$deps"\n${prefixLoad}\n`);
   chmodSync(fakeOtool, 0o755);
   return { root, app, bin, appBinary, propertiesPath };
 }
@@ -71,6 +82,31 @@ test('production checker rejects unresolved loader-relative framework dependenci
       assert.match(result.output, /WeKnora\.app requires Missing\.framework/);
     } finally { rmSync(f.root, { recursive: true, force: true }); }
   }
+});
+
+test('production checker rejects framework install names without an executable path', () => {
+  for (const load of ['@rpath/Missing.framework', '@rpath/Missing.framework/']) {
+    const f = fixture({ app: load });
+    try {
+      const result = run(f);
+      assert.notEqual(result.status, 0, `${load} unexpectedly passed: ${result.output}`);
+      assert.match(result.output, /MALFORMED_FRAMEWORK_LOAD_PATH: WeKnora\.app.*Missing\.framework/);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  }
+});
+
+test('production checker does not discard dependency paths that share an image path prefix', () => {
+  const f = fixture(
+    { app: '' },
+    undefined,
+    'source',
+    { architectureHeaders: true, pathPrefixAppLoad: true },
+  );
+  try {
+    const result = run(f);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /UNSUPPORTED_FRAMEWORK_LOAD_PATH: WeKnora\.app/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
 
 test('production checker resolves loader-relative dependencies to embedded executables', () => {
