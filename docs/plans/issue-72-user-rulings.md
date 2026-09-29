@@ -39,4 +39,11 @@
 - **实施约束**：收费维度的唯一 owning subscription/Plan Version、重复维度处置与待处理/取消/不可读状态仍未决；无唯一有效价格必须 fail closed。付费 Usage Charge 是否满足 R-3 Quote/Invoice 单行约束也仍未决，不得以此裁决删除 `ensureNoCharges` 或新增付款行。
 - **错误代价**：若错误地合并价格或选错 owner，可能造成错价、错收或拒绝本应可用的付费能力；需修订计费身份解析、重做相关账单证据并对账。若错误地新增 Usage Charge，可能破坏已批准的付款金额与 Invoice line-item 防线。
 
+## R-6 ｜ 2026-09-29 ｜ #87 计费维度归属 fail closed，继续排除 Charges
+
+- **决定**：每个已发布 Plan Version 的显式 Billable Metric→计费维度映射确定唯一 owning subscription 与不可变 Plan Version。Base/付费订阅重叠或多个订阅重复声明同一维度时，仅阻断该受影响维度的新付费调用，直至配置消歧；其他唯一归属维度可以继续。保留 `PurchaseService.ensureNoCharges`，继续排除含 Lago Usage Charges 的付费套餐购买。
+- **依据**：用户在本次 Issue #72 执行对话中批准“fail closed”和“继续排除 Charges”。此 R-6 将 R-5 留待决定的归属和付款边界具体化；已写入批准 Spec、ADR-0012 和 `CONTEXT.md`，本条为其裁决索引，不表示代码已满足要求。
+- **实施约束**：待处理、取消、未激活、陈旧、不可读或其他不可用权威价格继续 fail closed；不得按最新订阅、Base/付费偏好或混合价格猜测归属。要重新考虑 Charges，必须先批准 R-3 相容契约，明确金额、币种、购买付款金额排除 Usage 行及付款时完整 finalized-Invoice 对账。该业务裁决不解除 #86 集成/验收及认证 Lago v1.53 契约证据门槛。
+- **错误代价**：若错误地 fail closed，会暂时拒绝本可计价维度的调用；若错误放行歧义维度，会造成错价或不可审计收费。若无 R-3 对账规则即允许 Charges，付款金额可能与最终 Invoice 行不一致。
+
 ---
