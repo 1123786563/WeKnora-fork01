@@ -378,6 +378,98 @@ func TestAcceptUpgradeProposalRechecksLifecycleAfterVariantCreation(t *testing.T
 	require.Equal(t, AgentVariantStateDraft, variants[0].State)
 }
 
+func TestAcceptUpgradeProposalRechecksAdoptionEndAfterVariantCreation(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
+	_, _ = publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+
+	baseRepo := svc.repo
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	gate := &gatedUpgradeTransitionRepository{AgentUpgradeRepository: baseRepo, reached: make(chan struct{}), resume: resume}
+	svc.repo = gate
+	accepted := make(chan error, 1)
+	go func() {
+		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "retired orphan"})
+		accepted <- err
+	}()
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not reach TransitionProposal after draft creation")
+	}
+	var draft types.AgentAdoptionVariantEntity
+	require.NoError(t, db.Where("tenant_id = ? AND adoption_id = ?", 1, adoption.ID).First(&draft).Error)
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", 1, draft.ID).Update("state", "retired").Error)
+	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+	select {
+	case err := <-accepted:
+		require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+		require.ErrorIs(t, err, repository.ErrAgentUpgradeProposalTransition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not return after ending Adoption")
+	}
+	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
+	require.Empty(t, proposal.AcceptedVariantID)
+}
+
+func TestAcceptUpgradeProposalRechecksAcceptedReleaseAfterVariantCreation(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
+	_, targetReleaseID := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+	_, advancedTo := publishUpgradeServiceRelease(t, db, 3, "1.2.0", upgradeManifestV3, upgradeLockV1, upgradeBundleV3)
+
+	baseRepo := svc.repo
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	gate := &gatedUpgradeTransitionRepository{AgentUpgradeRepository: baseRepo, reached: make(chan struct{}), resume: resume}
+	svc.repo = gate
+	accepted := make(chan error, 1)
+	go func() {
+		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "stale source"})
+		accepted <- err
+	}()
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not reach TransitionProposal after draft creation")
+	}
+	_, _, err = repository.NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: advancedTo, State: "active", CreatedBy: "admin",
+	})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+	select {
+	case err := <-accepted:
+		require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+		require.ErrorIs(t, err, repository.ErrAgentUpgradeProposalTransition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AcceptUpgradeProposal did not return after advancing the accepted Release")
+	}
+	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
+	require.Empty(t, proposal.AcceptedVariantID)
+	var current types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, adoption.ID).First(&current).Error)
+	require.Equal(t, advancedTo, current.AcceptedReleaseID)
+	require.NotEqual(t, targetReleaseID, advancedTo)
+}
+
 func TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades(t *testing.T) {
 	svc, db := newAgentUpgradeServiceForTest(t)
 	ctx := context.Background()
