@@ -26,12 +26,13 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
   if (!appDelegate.includes('ExpoReactNativeFactoryProvider')) {
     issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
   }
-  const openUrlBody = swiftMethodBody(appDelegate, /application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL/);
-  if (!openUrlBody || !stripSwiftComments(openUrlBody).includes('RCTLinkingManager.application')) {
+  const swiftCode = maskSwiftNonCode(appDelegate);
+  const openUrlBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
+  if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
     issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
   }
-  const universalLinkBody = swiftMethodBody(appDelegate, /application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity/);
-  if (!universalLinkBody || !stripSwiftComments(universalLinkBody).includes('RCTLinkingManager.application')) {
+  const universalLinkBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
+  if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
     issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
   }
   const nativeTarget = project.match(/\/\* Begin PBXNativeTarget section \*\/([\s\S]*?)\/\* End PBXNativeTarget section \*\//)?.[1] ?? '';
@@ -129,49 +130,88 @@ function parsePlist(xml: string): unknown {
   } catch { return undefined; }
 }
 
-function stripSwiftComments(source: string): string {
-  let result = '';
-  let state: 'code' | 'line-comment' | 'block-comment' | 'string' | 'multiline-string' | 'character' = 'code';
+// Preserve positions and braces in executable code while hiding Swift comments and literals.
+// This only recognizes the lexical forms needed to inspect generated AppDelegate callbacks.
+function maskSwiftNonCode(source: string): string | undefined {
+  const result = source.split('');
+  const mask = (index: number) => { if (source[index] !== '\n' && source[index] !== '\r') result[index] = ' '; };
+  let state: 'code' | 'line-comment' | 'block-comment' | 'string' = 'code';
   let blockDepth = 0;
-  for (let index = 0; index < source.length; index++) {
+  let delimiter = '';
+  let multiline = false;
+  let rawHashes = 0;
+  for (let index = 0; index < source.length;) {
     const current = source[index];
     const next = source[index + 1];
     if (state === 'code') {
-      if (current === '/' && next === '/') { state = 'line-comment'; index++; continue; }
-      if (current === '/' && next === '*') { state = 'block-comment'; blockDepth = 1; index++; continue; }
-      if (current === '"' && source.slice(index, index + 3) === '"""') { state = 'multiline-string'; result += '"""'; index += 2; continue; }
-      if (current === '"') { state = 'string'; result += current; continue; }
-      if (current === "'") { state = 'character'; result += current; continue; }
-      result += current;
+      if (current === '/' && (next === '/' || next === '*')) {
+        state = next === '/' ? 'line-comment' : 'block-comment';
+        blockDepth = next === '*' ? 1 : 0;
+        mask(index++); mask(index++);
+        continue;
+      }
+      let quote = index;
+      if (current === '#') { while (source[quote] === '#') quote++; }
+      if ((source[quote] === '"' && (current === '"' || current === '#')) || current === "'") {
+        rawHashes = quote - index;
+        multiline = source.slice(quote, quote + 3) === '"""';
+        delimiter = (current === "'" ? "'" : multiline ? '"""' : '"') + '#'.repeat(rawHashes);
+        state = 'string';
+        const end = quote + (multiline ? 3 : 1);
+        while (index < end) mask(index++);
+        continue;
+      }
+      index++;
       continue;
     }
     if (state === 'line-comment') {
-      if (current === '\n' || current === '\r') { result += current; state = 'code'; }
+      if (current === '\n' || current === '\r') state = 'code';
+      else mask(index);
+      index++;
       continue;
     }
     if (state === 'block-comment') {
-      if (current === '/' && next === '*') { blockDepth++; index++; }
-      else if (current === '*' && next === '/') { blockDepth--; index++; if (blockDepth === 0) state = 'code'; }
-      else if (current === '\n' || current === '\r') result += current;
+      if (current === '/' && next === '*') { blockDepth++; mask(index++); mask(index++); }
+      else if (current === '*' && next === '/') {
+        blockDepth--; mask(index++); mask(index++);
+        if (blockDepth === 0) state = 'code';
+      } else mask(index++);
       continue;
     }
-    if (state === 'multiline-string') {
-      if (source.slice(index, index + 3) === '"""') { result += '"""'; index += 2; state = 'code'; }
-      else result += current;
+    if (source.startsWith(delimiter, index)) {
+      for (let count = 0; count < delimiter.length; count++) mask(index++);
+      state = 'code';
       continue;
     }
-    result += current;
-    if (current === '\\') { if (next !== undefined) result += source[++index]; continue; }
-    if ((state === 'string' && current === '"') || (state === 'character' && current === "'")) state = 'code';
+    if (!multiline && (current === '\n' || current === '\r')) return undefined;
+    if (current === '\\' && rawHashes > 0 && source.startsWith('#'.repeat(rawHashes) + '"', index + 1)) {
+      // A raw string's escaped quote is content, not its closing delimiter.
+      for (let count = 0; count < rawHashes + 2; count++) mask(index++);
+      continue;
+    }
+    if (current === '\\' && rawHashes === 0) {
+      mask(index++);
+      if (index < source.length) mask(index++);
+    } else mask(index++);
   }
-  return result;
+  return state === 'code' || state === 'line-comment' ? result.join('') : undefined;
 }
 
 function swiftMethodBody(source: string, signature: RegExp): string | undefined {
   const match = signature.exec(source);
   if (!match) return undefined;
-  const open = source.indexOf('{', match.index + match[0].length);
-  if (open < 0) return undefined;
+  const openParameters = source.indexOf('(', match.index);
+  let parentheses = 0;
+  let closeParameters = -1;
+  for (let index = openParameters; index < source.length; index++) {
+    if (source[index] === '(') parentheses++;
+    else if (source[index] === ')' && --parentheses === 0) { closeParameters = index; break; }
+    else if (source[index] === '{' || source[index] === '}') return undefined;
+  }
+  if (closeParameters < 0) return undefined;
+  const opening = /^\s*->\s*Bool\s*\{/.exec(source.slice(closeParameters + 1));
+  if (!opening) return undefined;
+  const open = closeParameters + 1 + opening[0].length - 1;
   let depth = 1;
   for (let index = open + 1; index < source.length; index++) {
     if (source[index] === '{') depth++;

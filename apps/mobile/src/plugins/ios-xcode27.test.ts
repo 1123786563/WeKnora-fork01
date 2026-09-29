@@ -152,3 +152,68 @@ test('generated SDK57 project contract ignores Swift comments in URL callbacks',
     assert.match(verifyIosSceneProject(root).join('\n'), /universal-link callback/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('generated SDK57 project contract rejects URL forwarding named only in string literals', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const openWithMarker = source.replace(
+      'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+      'let marker = "RCTLinkingManager.application"\n      return super.application(app, open: url, options: options)',
+    );
+    assert.notEqual(openWithMarker, source);
+    writeFileSync(appDelegate, openWithMarker);
+    assert.match(verifyIosSceneProject(root).join('\n'), /open-URL callback/);
+
+    fixture(root);
+    const universalWithMarker = source.replace(
+      'let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+      'let marker = "RCTLinkingManager.application"\n      let result = false',
+    );
+    assert.notEqual(universalWithMarker, source);
+    writeFileSync(appDelegate, universalWithMarker);
+    assert.match(verifyIosSceneProject(root).join('\n'), /universal-link callback/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 project contract rejects a commented open-URL signature', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const withoutOpenUrl = source.replace(
+      /    override func application\(_ app: UIApplication, open url: URL[^\n]*\n      return[^\n]*\n    }\n/,
+      '    // application(_ app: UIApplication, open url: URL\n',
+    );
+    assert.notEqual(withoutOpenUrl, source);
+    writeFileSync(appDelegate, withoutOpenUrl);
+    assert.match(verifyIosSceneProject(root).join('\n'), /open-URL callback/);
+    assert.doesNotMatch(verifyIosSceneProject(root).join('\n'), /universal-link callback/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 project contract masks Swift literal braces and nested comments', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const withLiterals = source.replace(
+      'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+      'let diagnosticURL = "https://example.test/}"\n      let note = """\n        } // quoted\n        """\n      /* outer /* inner RCTLinkingManager.application(app) */ } */\n      return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+    );
+    assert.notEqual(withLiterals, source);
+    writeFileSync(appDelegate, withLiterals);
+    assert.deepEqual(verifyIosSceneProject(root), []);
+
+    const noRealCall = withLiterals.replace(
+      ' || RCTLinkingManager.application(app, open: url, options: options)',
+      '',
+    );
+    writeFileSync(appDelegate, noRealCall);
+    assert.match(verifyIosSceneProject(root).join('\n'), /open-URL callback/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
