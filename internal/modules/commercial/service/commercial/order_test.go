@@ -85,7 +85,10 @@ func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, err := db.DB(); err == nil {
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
@@ -99,6 +102,15 @@ func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.
 		t.Fatal(err)
 	}
 	return svc, provider, db
+}
+
+func closeSQLiteDBOnCleanup(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 }
 
 func seedPublishedPlan(t *testing.T, db *gorm.DB) {
@@ -313,12 +325,15 @@ func TestOpenOrderPersistsChannelFailurePastCallerCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, err := db.DB(); err == nil {
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
 		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
-		&repocommercial.Subscription{}); err != nil {
+		&repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -654,8 +669,7 @@ func TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly(t *testing.T) {
 		anomaly.ExpectedCurrency != "CNY" || anomaly.ActualCurrency != "USD" {
 		t.Fatalf("currency anomaly snapshot mismatch: %+v", anomaly)
 	}
-	var nFulfill int64
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
+	nFulfill := countOutbox(t, db, repocommercial.OutboxKindFulfill)
 	if nFulfill != 0 {
 		t.Fatalf("a wrong-currency collection must not mint a fulfill right, got %d", nFulfill)
 	}
@@ -851,7 +865,10 @@ func newRealWechatObservationEnv(t *testing.T, response string) (*OrderService, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, err := db.DB(); err == nil {
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{}, &repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{}, &repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
@@ -1033,9 +1050,8 @@ func TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment(t *t
 	if recovered.State != domain.OrderStateFulfilled {
 		t.Fatalf("a fulfilled order must stay fulfilled through recovery, got %s", recovered.State)
 	}
-	var nFulfill, nOver int64
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindOverPaid).Count(&nOver)
+	nFulfill := countOutbox(t, db, repocommercial.OutboxKindFulfill)
+	nOver := countOutbox(t, db, repocommercial.OutboxKindOverPaid)
 	if nFulfill != 1 {
 		t.Fatalf("the late success must never mint a second fulfill right, got %d", nFulfill)
 	}
@@ -1087,6 +1103,9 @@ func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
 	if err := db.Create(&repocommercial.OrderRow{ID: "count_single_order", TenantID: 112, QuoteID: "count_single_quote", Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := repocommercial.NewOrderStore(db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 112, OrderID: "count_single_order", AttemptID: "a", Provider: "wechat", Merchant: "count-merchant", Transaction: "count-single-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
 	var anomalyQueries atomic.Int64
 	callbackName := "test/count_anomaly_queries/" + strings.ReplaceAll(t.Name(), "/", "_")
 	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
@@ -1101,9 +1120,10 @@ func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
 		name                  string
 		tenant                uint64
 		wantRows, wantQueries int
+		attentionOrderID      string
 	}{
-		{name: "one order", tenant: 112, wantRows: 1, wantQueries: 1},
-		{name: "forty orders", tenant: 111, wantRows: 40, wantQueries: 1},
+		{name: "one order", tenant: 112, wantRows: 1, wantQueries: 1, attentionOrderID: "count_single_order"},
+		{name: "forty orders", tenant: 111, wantRows: 40, wantQueries: 1, attentionOrderID: "count_order_29"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			anomalyQueries.Store(0)
@@ -1117,11 +1137,9 @@ func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
 			if n := int(anomalyQueries.Load()); n != tc.wantQueries {
 				t.Fatalf("anomaly-table SELECT count=%d want %d", n, tc.wantQueries)
 			}
-			if tc.name == "forty orders" {
-				for _, v := range got {
-					if v.PaymentAttention != (v.ID == "count_order_29") {
-						t.Fatalf("attention for %s=%v", v.ID, v.PaymentAttention)
-					}
+			for _, v := range got {
+				if v.PaymentAttention != (v.ID == tc.attentionOrderID) {
+					t.Fatalf("attention for %s=%v", v.ID, v.PaymentAttention)
 				}
 			}
 		})
@@ -1180,6 +1198,9 @@ func TestCurrentPayablePendingOrderViewProjectsAndClearsAttention(t *testing.T) 
 	if err != nil || !v.PaymentAttention {
 		t.Fatalf("unresolved view=%+v err=%v", v, err)
 	}
+	if v.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("unresolved view checkout URL=%q want %q", v.CheckoutURL, order.CheckoutURL)
+	}
 	var a repocommercial.PaymentAnomalyRow
 	if err = db.Where("order_id = ?", order.ID).First(&a).Error; err != nil {
 		t.Fatal(err)
@@ -1190,5 +1211,8 @@ func TestCurrentPayablePendingOrderViewProjectsAndClearsAttention(t *testing.T) 
 	v, err = svc.CurrentPayablePendingOrderView(ctx, 101)
 	if err != nil || v.PaymentAttention {
 		t.Fatalf("resolved view=%+v err=%v", v, err)
+	}
+	if v.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("resolved view checkout URL=%q want %q", v.CheckoutURL, order.CheckoutURL)
 	}
 }
