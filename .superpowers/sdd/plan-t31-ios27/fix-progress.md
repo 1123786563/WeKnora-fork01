@@ -65,3 +65,8 @@
 - Review `.superpowers/sdd/plan-t31-ios27/fix-task-1-r3-review.md`: PBX comment finding resolved; new Medium F2 says callback body substring search can accept commented-out RCT forwarder.
 - Ruling: strip Swift comments before per-method assertion and pin both callback cases. The finding is valid because release gate must prove executable URL handoff; cost if wrong is parser sensitivity to Swift comments/strings, mitigated by focused tests.
 - Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r4-brief.md`; status pending → running.
+
+## Review repair round 4 checkpoint
+- R3 R4 implementation committed `9937fa095`; report commit `8619b5f70`. Focused 6/6, full mobile 297 total (283 pass, 14 opt-in skips), typecheck, generated SDK57 verifier and diff-check passed.
+- R4 includes a dependency-free Swift comment scanner and explicit comment-only negatives for both callback bodies plus URL string control. Prior repair rounds corrected distinct false positives in app-target config extraction.
+- R4 reviewer upgrade ruling: use default agent with explicit `gpt-6-sol` high for independent review. Fixed `reviewer` role exposes Sol medium and does not permit a reasoning override; the scanner/parser now spans Swift lexical edge cases and the R3 checker has had multiple rounds of newly found false passes, so high-effort adversarial review is justified. No implementation escalation; frontend_implementer handled the repair.
