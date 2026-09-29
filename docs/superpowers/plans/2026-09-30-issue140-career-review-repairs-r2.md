@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Keep original issue30-sweep BASE `db234c5eb171f2dde7427d382b55b503a038f879` as ancestor; use isolated task worktrees from integration checkpoint `e7edfa72728c5d44940d9f145a0b5489089f4692`.
+- Keep original issue30-sweep BASE `db234c5eb171f2dde7427d382b55b503a038f879` as ancestor. The original R2 execution checkpoint was `e7edfa72728c5d44940d9f145a0b5489089f4692`; this repair wave began at `4cac8ac0e5cbd196e414737f871d025eaf4a20e7`; Tasks 11–15 and new review repairs branch from integration checkpoint `49914ca3b27ff5162c4afcdc8eaef200f9df3cf8`. Each task report must record its exact BASE and HEAD.
 - Keep authenticated user, tenant, owner, expected-revision, request-ID and scope-generation checks intact.
 - A user-confirmed submission must carry actual channel/time/material version or an explicit unknown marker.
 - Do not turn malformed or incomplete source/evaluation data into successful empty results.
