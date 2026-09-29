@@ -14,9 +14,9 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Agent marketplace lineage (application/repository)
     passb_task: B-agentcatalog
-  - path: internal/application/repository/agent_run_terminal.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Agent run terminal (application/repository)
+  - path: internal/application/repository/public_marketplace.go
+    reason: Agent Catalog marketplace listing and adoption domain remains in horizontal repository package (Pass B file split)
+    navigation_label: Public marketplace (application/repository)
     passb_task: B-agentcatalog
   - path: internal/application/repository/agent_upgrade.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
@@ -85,6 +85,10 @@ legacy_files:
   - path: internal/application/service/agent_upgrade_diff.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Agent upgrade diff (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/public_marketplace.go
+    reason: Agent Catalog marketplace listing and adoption domain remains in horizontal service package (Pass B file split)
+    navigation_label: Public marketplace (application/service)
     passb_task: B-agentcatalog
   - path: internal/application/service/agent_marketplace.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)

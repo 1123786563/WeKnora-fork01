@@ -84,6 +84,10 @@ alias_obligations:
   - old_import_path: internal/modelcontext
     passb_task: B-agentruntime
 legacy_files:
+  - path: internal/application/repository/agent_run_terminal.go
+    reason: extends AgentRunSnapshotRepository and reads runtime RunKey events (Pass B file split)
+    navigation_label: Agent run terminal (application/repository)
+    passb_task: B-agentruntime
   - path: internal/application/repository/agent_checkpoint.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Agent checkpoint (application/repository)
