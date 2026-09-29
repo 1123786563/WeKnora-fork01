@@ -1,5 +1,12 @@
 # Issue #82 执行 Ledger（Lago 10 · 支付宝付款后恰好一次激活套餐 · R-4 重做轮）
 
+## T9 fixture identity repair — 2026-09-30
+
+- Test-only repair in `lago_settlement_integration_test.go`: the synthetic success webhook now uses only the exact invoice-linked unsettled PaymentIntent captured before settle; unrelated historical successes are not fallback candidates. Missing or ambiguous pre-settle identity and missing post-settle match fail closed. No production source changed.
+- RED evidence: focused tagged selector test failed by assertion for the old succeeded PI (`pi_old` selected instead of `pi_expected`) and for newly appearing linked PI (unexpected success accepted).
+- GREEN evidence: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1`; `go test ./internal/modules/commercial/commercialplatform`; `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'`; `git diff --check` all pass. The tagged full live T9 flow was not run.
+- Residuals remain OPEN: live T9 acceptance still requires an environment-backed non-skip run; AC4 real Alipay sandbox evidence remains unavailable (`ac4-sandbox-credentials-unavailable`). This test-harness repair does not close either gate.
+
 ## 计划身份
 
 | 项 | 值 |

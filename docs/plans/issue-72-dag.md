@@ -365,3 +365,8 @@ This overlay is the current execution-state source; sections 1–7 are historica
 
 - #84 narrow payment-attempt identity repair was independently task-reviewed and committed locally as `ae8f57c8cb33b15f7ec78cab3758ae00d3bd3cbe` in `codex/issue-72-lago-84`. Scoped task review R2 passes Spec Compliance and Code Quality; final whole-branch review is pending. Required repo/service/PostgreSQL tests passed as recorded in `issue-72-ledger-84.md` and its SDD report. This verifies only the narrow immutable-first-transaction repair, not whole #84 acceptance or inherited OCR residuals.
 - #87 R6 in the isolated T15 worktree is independently validated as a distinct result (`53a02242…`); it confirms 5-cent granted top-up and current-usage/wallet projection shape only. Wallet balances did not move as current usage rose; event internal IDs remained null. It does not verify debit, invoice settlement, balance exhaustion, negative balance or refusal. Task 0 remains open. A read-only v1.53 wallet contract research and minimal next-probe recommendation is underway.
+# T9 fixture repair checkpoint — 2026-09-30
+
+- Task 1 implemented in test harness only: synthetic webhook is bound to unique pre-settle invoice-linked unsettled PI identity; historical or newly appeared PI cannot be selected. Production code unchanged.
+- RED reproduced: assertion selected `pi_old` over expected `pi_expected`, and accepted a newly appearing linked ID. GREEN: focused tagged regression, package suite, tagged compile-only, and `git diff --check` passed.
+- Live T9 and real Alipay AC4 remain open and unverified; this task did not access external services.
