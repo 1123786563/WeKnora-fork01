@@ -46,8 +46,8 @@
 - [x] Record what R16 Task 0 still needs: exact parent publication/version identity, billable metric-to-dimension mapping, charge model/amount/package/free-unit/pricing fields, plus 1/99/100/101 runtime measurement and sanitized evidence on isolated v1.53.0.
 - [x] Keep Task 0 incomplete and #87 not ready; carry forward the #86 acceptance gate and approved R-6/R-3 rulings unchanged.
 - [x] Record the prior final OCR result-record Review (range `3a3ec8820150aefb1edf913c0fe775c53722efc2..59ad12e0f6b445186894a4a9cd8ee8422a39dddf`) as Spec PASS / quality PASS, no finding, with report path.
-- [ ] Verify the archived source SHA-256 matches `/tmp`, all local links resolve, `git diff --check` passes, and only the new report, Ledger, and plan checkbox change.
-- [ ] Commit the archive and Ledger as one local documentation checkpoint.
+- [x] Verify the archived source SHA-256 matches `/tmp`, all local links resolve, `git diff --check` passes, and only the new report, Ledger, and plan checkbox change.
+- [x] Commit the archive and Ledger as one local documentation checkpoint.
 
 **Verification:** Independent reviewer confirms the archive distinguishes fixture from parent evidence, cites the exact committed paths/values, does not overclaim current Lago state, preserves all open gates/rulings, records the source hash and prior review verdict, and changes no Issue/lane status.
 

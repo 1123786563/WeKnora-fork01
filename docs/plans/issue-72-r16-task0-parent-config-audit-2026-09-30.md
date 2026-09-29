@@ -38,4 +38,4 @@ Until that evidence exists, amount/package/free-unit/pricing-unit facts and pare
 
 ## Prior final OCR result-record review
 
-The independent review at [`.superpowers/sdd/issue-72-live-tree-and-agent-refresh-2026-09-30-plan/final-ocr-record-review.md`](../../.superpowers/sdd/issue-72-live-tree-and-agent-refresh-2026-09-30-plan/final-ocr-record-review.md) covers range `3a3ec8820150aefb1edf913c0fe775c53722efc2..59ad12e0f6b445186894a4a9cd8ee8422a39dddf`. Its scoped verdict is Spec compliance PASS, document quality PASS, no finding. It also observes the OCR output says `Review skipped: no items were selected.`; therefore the outer OCR gate is incomplete, not passed.
+The independent review archived at [`issue-72-live-tree-and-agent-refresh-2026-09-30-final-ocr-record-review.md`](issue-72-live-tree-and-agent-refresh-2026-09-30-final-ocr-record-review.md) covers range `3a3ec8820150aefb1edf913c0fe775c53722efc2..59ad12e0f6b445186894a4a9cd8ee8422a39dddf`. Its scoped verdict is Spec compliance PASS, document quality PASS, no finding. It also observes the OCR output says `Review skipped: no items were selected.`; therefore the outer OCR gate is incomplete, not passed.
