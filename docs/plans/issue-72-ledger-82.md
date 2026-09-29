@@ -1,5 +1,11 @@
 # Issue #82 执行 Ledger（Lago 10 · 支付宝付款后恰好一次激活套餐 · R-4 重做轮）
 
+## T9 OCR r3 diagnostic repair — 2026-09-30
+
+- Updated only the empty DB-container guard diagnostic in `prepare_t9_env.sh`: it now says the local stack may not be running and suggests `lab.sh up`. The existing `return 1` / `exit 1` path remains intact. No live stack was used; this does not claim live T9/AC3/AC4 evidence.
+- Static checks: `bash -n docs/plans/issue-72-flow-evidence-82/settle-evidence/prepare_t9_env.sh` and `git diff --check`.
+- SDD report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r3/task-1-report.md`.
+
 ## T9 duplicate webhook replay assertion — 2026-09-30
 
 - After activation and InvoiceFees validation, the test captures the active authority snapshot and requires exactly one succeeded Lago payment, redelivers the same event object through the same route/provider/secret, requires HTTP 200, then requires a byte-identical authority snapshot and exactly one succeeded payment.
