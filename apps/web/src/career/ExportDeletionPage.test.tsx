@@ -229,6 +229,35 @@ test('a completed deletion discloses retention, verifies the old export grant is
  assert.match(container.textContent ?? '', new RegExp(exports[0]!))
 })
 
+test('confirmed deletion immediately removes mounted archive controls and preserves only its receipt', async () => {
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  exportCareer: async (input: Record<string, unknown>) => exportReceipt({ requestId: input.requestId as string }),
+  careerExportReceipt: async () => { throw Object.assign(new Error('receipt gone'), { code: 'not_found' }) },
+  careerDeletionBoundary: async () => boundaryView(),
+  deleteCareer: async (input: Record<string, unknown>) => deletionReceipt({ requestId: input.requestId as string }),
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ let generation = 0
+ const client = { career } as unknown as WeKnoraClient
+ function TestHarness() {
+  const [currentGeneration, setCurrentGeneration] = React.useState(0)
+  return React.createElement(ExportDeletionPage, { client, scopeController, deletionGeneration: currentGeneration, onCareerDeleted: () => setCurrentGeneration((value) => value + 1) })
+ }
+ const container = render(React.createElement(TestHarness))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起导出')); await settle(); await settle() })
+ assert.ok(container.querySelector('[aria-label="导出包内容"]'))
+ await act(async () => { click(byLabel(container, 'button', '查看删除边界')); await settle(); await settle() })
+ await act(async () => { toggle(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起完整删除')); await settle(); await settle(); await settle() })
+ assert.equal(container.querySelector('[aria-label="导出包内容"]'), null)
+ assert.equal(container.querySelector('[aria-label="删除边界清单"]'), null)
+ assert.equal([...container.querySelectorAll('button')].some((item) => item.textContent?.trim() === '下载导出包'), false)
+ assert.match(container.querySelector('[aria-label="删除结果"]')?.textContent ?? '', /已完全删除/)
+ assert.match(container.textContent ?? '', /保留范围/)
+})
+
 test('revision conflicts on deletion surface the current revision and a re-read affordance', async () => {
  const career: CareerStub = {
   open: async () => ({ revision: 4 }),
