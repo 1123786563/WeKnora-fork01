@@ -20,3 +20,10 @@
 //	(m *Module) Stop(ctx context.Context) error
 //	    优雅停止 Start 启动的后台任务。
 package agentruntime
+
+import "errors"
+
+var (
+	ErrNotFound = errors.New("agent run not found")
+	ErrConflict = errors.New("agent runtime conflict")
+)

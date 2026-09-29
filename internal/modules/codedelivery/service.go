@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
 	"github.com/google/uuid"
 )
@@ -32,14 +29,9 @@ var (
 	ErrConnectionNotUsable = errors.New("code_delivery_connection_not_usable")
 )
 
-// RunReader mirrors session.OwnedRunReader (production: *repository.AgentRunStore).
-type RunReader interface {
-	GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (agentruntime.Run, error)
-}
-
 // ConnectionReader is the connection lookup the owner-only rule needs.
 type ConnectionReader interface {
-	FindConnectionByID(ctx context.Context, connectionID string) (appconnector.Connection, error)
+	FindConnectionByID(ctx context.Context, connectionID string) (ConnectionIdentity, error)
 }
 
 // CodeDeliveryDeps wires the module. Actions is the DELIVERY-DEDICATED
@@ -49,10 +41,10 @@ type ConnectionReader interface {
 // never enter any response, log, or the sandbox.
 type CodeDeliveryDeps struct {
 	Store       *deliveryrepo.DeliveryStore
-	Actions     *appconnectorsvc.ActionService
-	ActionRows  appconnectorsvc.ActionStoreSource
+	Actions     ActionLifecycle
+	ActionRows  ActionStoreSource
 	Connections ConnectionReader
-	Creds       appconnectorsvc.CredentialResolver
+	Creds       CredentialResolver
 	// GitHub 与 GitLab 是统一 seam 背后的两个平台适配器（T24 #54）；缺失
 	// 的适配器让对应平台在 prepare 面即 fail closed。
 	GitHub GitHubClientFactory
@@ -242,9 +234,9 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	// 锚定 A03：digest 绑定 repo/基线/分支/文件清单/提交信息/PR 标题 + 连接
 	// 版本；内容变化=新 digest=旧批准失效（immutable approval anchor）。
 	// conn 已由 authorize 装载（T24 #54：authorize 返回连接供提供者解析）。
-	actionID, err := s.deps.Actions.Prepare(ctx, appconnector.Action{
+	actionID, err := s.deps.Actions.Prepare(ctx, ActionInput{
 		TenantID: in.TenantID, ActorID: in.CallerID, ConnectionID: in.ConnectionID,
-		Target: DeliveryTargetOf(provider), Risk: appconnector.RiskDeliver,
+		Target: DeliveryTargetOf(provider), Risk: "deliver",
 		AuthVersion: conn.AuthVersion, Args: args,
 	})
 	if err != nil {
@@ -256,7 +248,7 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if row.State != appconnector.ActionAwaitingApproval {
+	if row.State != "awaiting_approval" {
 		return DeliveryView{}, fmt.Errorf("%w: delivery action must await approval, got %s", ErrInvalidMaterial, row.State)
 	}
 	drow := deliveryrepo.DeliveryRow{
@@ -327,7 +319,7 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 			return DeliveryView{}, err
 		}
 		if err := s.deps.Actions.Execute(ctx, row.ActionID); err != nil {
-			if errors.Is(err, appconnectorsvc.ErrDispatchUnknown) {
+			if errors.Is(err, ErrDispatchUnknown) {
 				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
 					[]string{string(DeliveryDispatched), string(DeliveryPushed)}, string(DeliveryUnknown), "")
 				return s.viewAfter(ctx, in, row.ID)
@@ -350,7 +342,7 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 		if gerr != nil {
 			return DeliveryView{}, gerr
 		}
-		if action.State == appconnector.ActionFailed {
+		if action.State == "failed" {
 			failure := action.ProviderResult
 			if failure == "" {
 				failure = "dispatch rejected before send"
@@ -456,25 +448,25 @@ func (s *CodeDeliveryService) viewOf(ctx context.Context, row deliveryrepo.Deliv
 // It returns the run's sessionID (= taskID, ADR-0004) and the loaded
 // connection (provider resolution needs its installation); the service keeps
 // no mutable state.
-func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, appconnector.Connection, error) {
+func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, ConnectionIdentity, error) {
 	run, err := s.deps.Runs.GetOwnedRun(ctx, tenantID, callerID, runID)
 	if err != nil || run.SessionID == "" {
-		return "", appconnector.Connection{}, fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
+		return "", ConnectionIdentity{}, fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
 	}
 	conn, err := s.deps.Connections.FindConnectionByID(ctx, connectionID)
 	if err != nil {
-		return "", appconnector.Connection{}, err
+		return "", ConnectionIdentity{}, err
 	}
-	if conn.Kind != appconnector.ConnectionKindPersonal || conn.OwnerID != callerID ||
-		conn.TenantID != tenantID || conn.State != appconnector.ConnectionActive {
-		return "", appconnector.Connection{}, ErrConnectionNotUsable
+	if conn.Kind != "personal" || conn.OwnerID != callerID ||
+		conn.TenantID != tenantID || conn.State != "active" {
+		return "", ConnectionIdentity{}, ErrConnectionNotUsable
 	}
 	return run.SessionID, conn, nil
 }
 
 // platformProvider resolves the delivery platform from the connection's
 // installation app id — server-side authority, never client input (T24 #54).
-func (s *CodeDeliveryService) platformProvider(ctx context.Context, conn appconnector.Connection) (string, error) {
+func (s *CodeDeliveryService) platformProvider(ctx context.Context, conn ConnectionIdentity) (string, error) {
 	if s.deps.Providers == nil {
 		return "", fmt.Errorf("%w: provider source not wired", ErrUnsupportedProvider)
 	}

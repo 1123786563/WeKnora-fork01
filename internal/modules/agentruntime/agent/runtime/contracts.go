@@ -7,18 +7,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime"
 	"time"
 )
 
 var (
 	// ErrConflict reports an incompatible idempotent request or state change.
-	ErrConflict = errors.New("agent runtime conflict")
+	ErrConflict = agentruntime.ErrConflict
 	// ErrRunActive indicates that a session's durable run slot is occupied.
 	ErrRunActive = errors.New("agent run already active")
 	// ErrLeaseLost rejects workers without a current owner/epoch lease.
 	ErrLeaseLost = errors.New("agent run lease lost")
 	// ErrNotFound indicates no record exists in the requested scope.
-	ErrNotFound = errors.New("agent run not found")
+	ErrNotFound = agentruntime.ErrNotFound
 	// ErrCursorExpired reports an event cursor outside retained history.
 	ErrCursorExpired = errors.New("agent event cursor expired")
 )
