@@ -38,6 +38,7 @@
 | `apps/mobile/app.json` | Expo scene-support opt-in and explicit iOS deployment target. |
 | `pnpm-lock.yaml` | Resolved workspace dependency graph. |
 | `apps/mobile/src/native-project-config.test.ts` | Public config invariants for SDK floor, scene opt-in, and iOS minimum. |
+| `apps/mobile/src/android-release-config.test.ts` | Keep the release dependency contract aligned to the SDK57 versions selected by Expo. |
 | `docs/testing/mobile-runtime-login-device-acceptance.md` | Add the iOS 27 simulator build/install/start evidence and remaining real staging-device cases. |
 
 Generated `apps/mobile/ios/` output is verification-only and must not be committed.
