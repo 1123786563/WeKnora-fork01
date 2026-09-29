@@ -148,7 +148,7 @@
 - Source SHA-256: `_layout.tsx` `1dcb178d008ad9418a1a394d0fe38dd49593232b458a4a6de5f7508c19e9744a`; `app-smoke.test.tsx` `48c15e53741c991a7eb0ddac719b95346a309cf41e12c8030dee439b5ef4a7b5`. No staging/OIDC or Android claims.
 
 ## Integrated final-review documentation repair DOC3
-- Integrated review at `057b46e0759e74f41f64e0aa1babd75900800206` independently verified FR1/DOC1/DOC2 and found Low T31-F4: DAG and Issue index still describe local iOS 27 black-screen/scene startup as unfixed despite retained Release login evidence.
+- Integrated review at `057b46e0759e74f41f64e0aa1babd75900800206` independently verified FR1/DOC1/DOC2 and found Low T31-R2-F1: DAG and Issue index still describe local iOS 27 black-screen/scene startup as unfixed despite retained Release login evidence.
 - Ruling: valid required record correction. Keep #31 open and `blocked-external (partial)` because staging/OIDC, real Deployment capability, and Android device acceptance are still pending. Cost if wrong: stale DAG could misstate a completed local fix or incorrectly release external acceptance.
 - DOC3 plan: `docs/plans/issue30-sweep/plans/2026-09-30-t31-dag-status-repair.md`; brief `.superpowers/sdd/plan-t31-ios27/doc3-brief.md`; implementation base `057b46e0759e74f41f64e0aa1babd75900800206`; status running.
 
