@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -111,6 +112,33 @@ func TestCreateWorkbenchArtifactVersionSignedURLBindsFixedReadyVersion(t *testin
 	require.Contains(t, body.Data.URL, "grant_type=artifact_version")
 	require.Contains(t, body.Data.URL, "owner_id=u1")
 	require.Contains(t, body.Data.URL, "version_id=version-7")
+
+	// Decode the emitted link and verify the signature covers the authenticated
+	// tenant/owner and the exact owned run/session/version tuple.
+	link, err := url.Parse(body.Data.URL)
+	require.NoError(t, err)
+	query := link.Query()
+	require.Equal(t, "1", query.Get("tenant_id"))
+	require.Equal(t, "u1", query.Get("owner_id"))
+	require.Equal(t, "run-1", query.Get("run_id"))
+	require.Equal(t, "sess-1", query.Get("session_id"))
+	require.Equal(t, version.ID, query.Get("version_id"))
+	expiresAt, err := strconv.ParseInt(query.Get("expires_at"), 10, 64)
+	require.NoError(t, err)
+	key, err := workbench.ArtifactSigningKeyFromEnv()
+	require.NoError(t, err)
+	grant := workbench.ArtifactVersionGrant{
+		TenantID: 1, OwnerID: "u1", RunID: "run-1", SessionID: "sess-1",
+		VersionID: version.ID, ExpiresAt: expiresAt,
+	}
+	require.NoError(t, workbench.VerifyArtifactVersionGrantAt(key, grant, query.Get("signature"), time.Now()))
+	for _, tampered := range []workbench.ArtifactVersionGrant{
+		{TenantID: 2, OwnerID: grant.OwnerID, RunID: grant.RunID, SessionID: grant.SessionID, VersionID: grant.VersionID, ExpiresAt: grant.ExpiresAt},
+		{TenantID: grant.TenantID, OwnerID: "u2", RunID: grant.RunID, SessionID: grant.SessionID, VersionID: grant.VersionID, ExpiresAt: grant.ExpiresAt},
+		{TenantID: grant.TenantID, OwnerID: grant.OwnerID, RunID: "run-2", SessionID: grant.SessionID, VersionID: grant.VersionID, ExpiresAt: grant.ExpiresAt},
+	} {
+		require.Error(t, workbench.VerifyArtifactVersionGrantAt(key, tampered, query.Get("signature"), time.Now()))
+	}
 }
 
 func TestDownloadArtifactVersionGrantRechecksOwnerAndRevocation(t *testing.T) {
