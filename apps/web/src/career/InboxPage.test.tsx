@@ -164,6 +164,24 @@ test('unsubscribing stops push, keeps the todos readable and offers resubscripti
  assert.ok(button(container, '重新订阅推送提醒'))
 })
 
+test('subscription retry reuses the first expected revision after the profile advances', async () => {
+ const sent: CareerAction[] = []
+ let opens = 0
+ const career: CareerStub = {
+  open: async () => view(++opens === 1 ? 4 : 9), reminders: async () => ({ reminders: [] }), application: async () => application(),
+  act: async (action: CareerAction) => { sent.push(action); if (sent.length === 1) throw Object.assign(new Error('timeout'), { code: 'outcome_unknown' }); return confirmFact('notifications.push', 'unsubscribed', 10, action.requestId) },
+  receipt: async () => { throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+ }
+ const container = await mount(career)
+ await act(async () => { click(button(container, '退订推送提醒')); await settle(); await settle() })
+ await act(async () => { click(button(container, '查询待办回执')); await settle(); await settle() })
+ await act(async () => { click(button(container, '用原请求编号重试')); await settle(); await settle() })
+ assert.equal(sent.length, 2)
+ assert.equal(sent[0]!.requestId, sent[1]!.requestId)
+ assert.equal(sent[0]!.expectedRevision, 4)
+ assert.equal(sent[1]!.expectedRevision, 4)
+})
+
 test('a revision conflict on the reminder write refreshes the pinned revision', async () => {
  let revision = 4
  const sent: SetReminderInput[] = []
