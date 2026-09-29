@@ -130,3 +130,24 @@ agent:
   recovery:
     enabled: false
     admission_enabled: false
+
+# Casdoor SSO / WeChat mini-program silent-login channels (SSO 集成).
+# DEFAULT OFF: leave commented to keep local-password auth; uncomment and fill
+# in when deploying against the casdoor service in docker-compose.
+# oidc_auth:
+#   enable: true
+#   issuer_url: http://casdoor:8000
+#   # 浏览器可达的授权端点须显式覆盖(issuer 指向容器网络名,浏览器访问不到):
+#   authorization_endpoint: http://localhost:8000/login/oauth/authorize
+#   client_id: <weknora-app client id>
+#   client_secret: <secret>
+#   sso_only: true
+# wechat_mp:
+#   app_id: <小程序 appid>
+#   app_secret: <secret>
+#   secret_key: <任意长随机串,AES-GCM 密钥材料>
+# casdoor_admin:
+#   base_url: http://casdoor:8000
+#   org_name: weknora
+#   admin_username: svc_weknora
+#   admin_password: <服务账号密码>

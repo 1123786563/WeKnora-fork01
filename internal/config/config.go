@@ -27,6 +27,8 @@ type Config struct {
 	Auth               *AuthConfig               `yaml:"auth"             json:"auth"`
 	Audit              *AuditConfig              `yaml:"audit"            json:"audit"`
 	OIDCAuth           *OIDCAuthConfig           `yaml:"oidc_auth"        json:"oidc_auth"`
+	WechatMP           *WechatMPConfig           `yaml:"wechat_mp"        json:"wechat_mp"`
+	CasdoorAdmin       *CasdoorAdminConfig       `yaml:"casdoor_admin"    json:"casdoor_admin"`
 	Models             []ModelConfig             `yaml:"models"           json:"models"`
 	VectorDatabase     *VectorDatabaseConfig     `yaml:"vector_database"  json:"vector_database"`
 	DocReader          *DocReaderConfig          `yaml:"docreader"        json:"docreader"`
@@ -610,6 +612,27 @@ type OIDCAuthConfig struct {
 	JwksURI               string               `yaml:"jwks_uri"               json:"jwks_uri"`
 	Scopes                []string             `yaml:"scopes"                 json:"scopes"`
 	UserInfoMapping       *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
+	SSOOnly               bool                 `yaml:"sso_only"               json:"sso_only"`
+}
+
+// WechatMPConfig carries the WeChat mini-program credentials used by the
+// silent-login channel (wx.login -> code2session).
+type WechatMPConfig struct {
+	AppID     string `yaml:"app_id"     json:"app_id"`
+	AppSecret string `yaml:"app_secret" json:"-"`
+	// SecretKey is the AES-256-GCM key (any non-empty string, hashed to 32
+	// bytes) encrypting per-user Casdoor service passwords at rest.
+	SecretKey string `yaml:"secret_key" json:"-"`
+}
+
+// CasdoorAdminConfig authenticates WeKnora's backend against Casdoor's admin
+// API for provisioning mini-program users. ROPC uses the same OIDC client
+// credentials as the web flow (OIDCAuth.ClientID/ClientSecret).
+type CasdoorAdminConfig struct {
+	BaseURL       string `yaml:"base_url"        json:"base_url"`
+	OrgName       string `yaml:"org_name"        json:"org_name"`
+	AdminUsername string `yaml:"admin_username"  json:"admin_username"`
+	AdminPassword string `yaml:"admin_password"  json:"-"`
 }
 
 // PromptTemplateI18n holds localized name and description for a prompt template.
@@ -870,6 +893,7 @@ func LoadConfig() (*Config, error) {
 
 	// Validate configuration values
 	applyOIDCEnvOverrides(&cfg)
+	applyWechatEnvOverrides(&cfg)
 	applyAgentEnvOverrides(&cfg)
 	applyMobileNotificationEnvOverrides(&cfg)
 	applyKnowledgeBaseEnvOverrides(&cfg)
@@ -1091,6 +1115,9 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("OIDC_USER_INFO_MAPPING_EMAIL")); value != "" {
 		cfg.OIDCAuth.UserInfoMapping.Email = value
 	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_SSO_ONLY")); value != "" {
+		cfg.OIDCAuth.SSOOnly = strings.EqualFold(value, "true")
+	}
 
 	if cfg.OIDCAuth.ProviderDisplayName == "" {
 		cfg.OIDCAuth.ProviderDisplayName = "OIDC"
@@ -1106,6 +1133,36 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	}
 	if cfg.OIDCAuth.DiscoveryURL == "" && cfg.OIDCAuth.IssuerURL != "" {
 		cfg.OIDCAuth.DiscoveryURL = strings.TrimRight(cfg.OIDCAuth.IssuerURL, "/") + "/.well-known/openid-configuration"
+	}
+}
+
+func applyWechatEnvOverrides(cfg *Config) {
+	if cfg.WechatMP == nil {
+		cfg.WechatMP = &WechatMPConfig{}
+	}
+	if cfg.CasdoorAdmin == nil {
+		cfg.CasdoorAdmin = &CasdoorAdminConfig{}
+	}
+	if value := strings.TrimSpace(os.Getenv("WECHAT_MP_APP_ID")); value != "" {
+		cfg.WechatMP.AppID = value
+	}
+	if value := strings.TrimSpace(os.Getenv("WECHAT_MP_APP_SECRET")); value != "" {
+		cfg.WechatMP.AppSecret = value
+	}
+	if value := strings.TrimSpace(os.Getenv("WECHAT_MP_SECRET_KEY")); value != "" {
+		cfg.WechatMP.SecretKey = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CASDOOR_ADMIN_BASE_URL")); value != "" {
+		cfg.CasdoorAdmin.BaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CASDOOR_ADMIN_ORG_NAME")); value != "" {
+		cfg.CasdoorAdmin.OrgName = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CASDOOR_ADMIN_USERNAME")); value != "" {
+		cfg.CasdoorAdmin.AdminUsername = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CASDOOR_ADMIN_PASSWORD")); value != "" {
+		cfg.CasdoorAdmin.AdminPassword = value
 	}
 }
 
