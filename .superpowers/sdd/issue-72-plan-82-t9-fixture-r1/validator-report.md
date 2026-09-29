@@ -1,6 +1,6 @@
 # Task 1 Independent Validation
 
-**Status: PASS**  
+**Status: PASS**
 **Validated checkpoint:** `7e7975a7262dcea43f0fbef42df54438b39af836`  
 **Scope:** `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/task-1-brief.md` and `task-1-report.md`.
 
@@ -15,3 +15,15 @@
 ## Limitations
 
 This validates the selector and tagged test compilation/package behavior from recorded same-checkpoint evidence. It does not establish live T9 execution, Stripe/Lago behavior in a dedicated stack, or AC4 sandbox acceptance. Those are explicitly retained as residual gates and are outside this fixture-only acceptance.
+
+## Supplemental validation — fix round 1
+
+**Status: PASS**
+**Validated checkpoint:** `ac343f22e480acebff733e058efe3e46e4d0924c`
+
+- Inspected the refreshed brief, appended fix report, tagged test source, and execution ledger at this checkpoint. Candidate capture retains ID, invoice ID, and positive integral `created`; `expectedPaymentIntentID` resolves the unique maximum timestamp, and post-settle selection requires that exact expected ID plus succeeded status and nonempty invoice metadata.
+- `TestPaymentIntentCandidateSelection` supplies candidates in reverse chronological order and asserts the newest ID, rejects an older-only succeeded row, and fails closed when the greatest timestamps tie. Candidate capture rejects missing, nonnumeric, nonpositive, or nonintegral timestamps with an explicit error before settle selection.
+- The execution ledger now distinguishes implementation checkpoint `7e7975a7262dcea43f0fbef42df54438b39af836` from the plan and review record commits; it no longer identifies the erroneous `4ac0c0af...` as implementation checkpoint.
+- Reused fix-round same-checkpoint evidence in the appended task report: focused tagged selector regression PASS (0.727s); target package PASS (72.555s); tagged compile-only PASS (0.844s); gofmt and `git diff --check` PASS. Per assignment, package tests were not rerun. No Docker, database, network API, or live payment was used.
+
+**Limitations:** This verifies the pure latest-candidate resolver and ledger correction only. Dedicated live T9 and AC4 Alipay sandbox evidence remain incomplete and are not inferred from these tests.
