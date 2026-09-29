@@ -217,3 +217,33 @@ func TestResolveBuildsFreshManagerEveryCall(t *testing.T) {
 	require.NotSame(t, first, second)
 	require.Equal(t, 2, loader.hits)
 }
+
+func TestResolveUsesOptionalRemoteClientFactoryAndDefaultsToProductionFactory(t *testing.T) {
+	loader := &stubTenantConfigLoader{result: ResolvedTenantSandboxConfig{
+		Config: &types.TenantSandboxConfig{SandboxType: "e2b", E2B: &types.E2BSandboxConfig{APIKey: "tenant-key", TemplateID: "tenant-template"}},
+		Found:  true,
+	}}
+	client := newFakeRemoteClient(SandboxTypeE2B)
+	resolver, err := NewTenantSandboxResolver(TenantSandboxResolverDeps{
+		GlobalConfig:        &Config{Type: SandboxTypeDisabled},
+		Loader:              loader,
+		Store:               NewMemorySessionSandboxBindingStore(),
+		Checker:             PermissiveSessionExistenceChecker{},
+		RemoteClientFactory: func(*Config) (RemoteSandboxClient, error) { return client, nil },
+	})
+	require.NoError(t, err)
+	manager, err := resolver.Resolve(context.Background(), 9, "tenant-e2b")
+	require.NoError(t, err)
+	bound, ok := manager.(*SessionBoundManager)
+	require.True(t, ok)
+	wrapped, ok := bound.client.(*langfuseSnapshotClient)
+	require.True(t, ok)
+	require.Same(t, client, wrapped.inner)
+	require.Equal(t, 1, loader.hits)
+
+	// The zero-value factory keeps the production concrete-client path intact.
+	defaultResolver, _ := newTestResolver(t, loader)
+	defaultManager, err := defaultResolver.Resolve(context.Background(), 9, "tenant-e2b")
+	require.NoError(t, err)
+	require.IsType(t, (*SessionBoundManager)(nil), defaultManager)
+}

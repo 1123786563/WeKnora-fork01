@@ -85,6 +85,11 @@ type TenantSandboxResolverDeps struct {
 	Store   SessionSandboxBindingStore
 	Checker SessionExistenceChecker
 
+	// RemoteClientFactory optionally supplies the provider client for resolved
+	// tenant configs. Production leaves this nil and uses the guarded concrete
+	// Cube/E2B/Docker clients built by buildClient.
+	RemoteClientFactory func(*Config) (RemoteSandboxClient, error)
+
 	// Bootstrapper customises the first sandbox create of individual sessions
 	// (session fork). Optional: nil is the ordinary path.
 	Bootstrapper SessionBootstrapper
@@ -187,7 +192,13 @@ func (r *tenantSandboxResolver) Resolve(
 	case SandboxTypeDisabled:
 		return NewDisabledManager(), nil
 	case SandboxTypeCube, SandboxTypeE2B, SandboxTypeDocker:
-		client, err := r.buildClient(effective)
+		var client RemoteSandboxClient
+		var err error
+		if r.deps.RemoteClientFactory != nil {
+			client, err = r.deps.RemoteClientFactory(effective)
+		} else {
+			client, err = r.buildClient(effective)
+		}
 		if err != nil {
 			return nil, err
 		}

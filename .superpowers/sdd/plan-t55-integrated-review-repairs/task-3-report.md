@@ -1,27 +1,28 @@
-# T55 Integrated Review Repairs — Task 3 Report
+# T55 Integrated Review Repairs — Task 3 R1 Report
 
-Status: **NEEDS_CONTEXT — stopped at the task's explicit seam boundary**
+Status: **DONE**
 
-## Scope and evidence
+## Changed files
 
-Task 3 requires a single production-wiring test that uses the persisted tenant Shell configuration loader and `SessionBoundManager` to create and execute through a fake provider, while independently resolving the fake managed Delivery credential through production Delivery wiring.
+- `internal/modules/execution/sandbox/tenant_resolver.go`: added optional `RemoteClientFactory` to `TenantSandboxResolverDeps`. Resolver uses it only when explicitly supplied; nil continues through the existing private `buildClient`, which builds concrete Cube/E2B/Docker clients using existing guarded transports. Production container wiring remains unchanged and leaves it nil.
+- `internal/modules/execution/sandbox/tenant_resolver_test.go`: added coverage for injected factory selection and the default concrete-client manager path.
+- `internal/application/repository/delivery_shell_isolation_http_test.go`: added a production-wiring credential boundary test.
 
-The Shell production path is traceable:
+## Behavior and evidence
 
-- `internal/application/service/tenant_sandbox_resolve.go` implements `NewTenantSandboxConfigLoader` and loads tenant-scoped persisted config through `TenantSandboxConfigRepository`.
-- `internal/modules/execution/sandbox/tenant_resolver.go` calls that loader, resolves effective tenant config, then its private `buildClient` constructs concrete Cube/E2B/Docker clients and passes the result to `NewSessionBoundManager`.
-- `internal/modules/execution/sandbox/session_manager.go` exposes `SessionBoundManagerConfig.Client`, but this is only injectable when constructing the manager directly; the production `TenantSandboxResolver` offers no client factory / provider override.
-- `internal/container/sandbox.go` wires the production tenant resolver to the concrete resolver and guarded shared transport.
+`TestManagedDeliveryCredentialNeverEntersGeneralShell` persists a tenant E2B configuration via the real GORM `TenantSandboxConfigRepository`, loads it through production `NewTenantSandboxConfigLoader`, resolves a real `SessionBoundManager` through `NewTenantSandboxResolver`, and executes via `ExecShellCommandWithOptions` against a fake provider client at the optional factory seam. It also drives the real Delivery baseline → approval → dispatch HTTP path with the fake credential source and GitHub wire stub, capturing outbound `Authorization` through the HTTP transport.
 
-Therefore the test cannot exercise the production tenant-config resolution path and execute a benign command against a fake `RemoteSandboxClient` without widening/changing the resolver composition seam or introducing an alternate helper-only path. The plan explicitly says to stop and report the exact seam if production Shell creation cannot be exercised from this repository integration test without expanding owned files. No source changes were made and no fake-only substitute test was added.
+The test asserts that all Delivery requests carry exactly `Bearer ghp_T25PROBE_7f3a9c1e`; the probe is absent from serialized persisted tenant config, effective Shell config, provider create requests, both provider exec requests (workspace bootstrap and requested command), and command output. The distinct operator Shell value `operator-shell-value-keep-me` survives persisted/effective configuration and appears unchanged in the provider create environment.
 
-## Verification
+## RED → GREEN and verification
 
-- `sed -n '1,250p' internal/modules/execution/sandbox/tenant_resolver.go` — confirmed tenant loader is called by `Resolve`; confirmed private `buildClient` hardcodes concrete Cube/E2B/Docker constructors.
-- `sed -n '1,180p' internal/modules/execution/sandbox/session_manager.go` — confirmed `SessionBoundManagerConfig.Client` is injectable only at direct construction.
-- `sed -n '1,170p' internal/container/sandbox.go` — confirmed container uses `NewTenantSandboxResolver` with production loader and no fake provider seam.
-- Focused boundary test, `TestWithWorkspaceEnvDefaults`, and `git diff --check` were not run because no boundary test was safely implementable within the owned files and acceptance explicitly requires stopping before widening.
+- RED: before the resolver seam, the new resolver test failed to compile with `unknown field RemoteClientFactory`.
+- GREEN: after adding the optional default-preserving factory seam, the focused resolver test passed.
+- `go test ./internal/application/repository/ -run '^TestManagedDeliveryCredentialNeverEntersGeneralShell$' -count=1 -v` — PASS.
+- `go test ./internal/modules/execution/sandbox/ -run 'TestWithWorkspaceEnvDefaults|TestResolveUsesOptionalRemoteClientFactoryAndDefaultsToProductionFactory' -count=1 -v` — PASS (workspace env preservation and resolver seam/default behavior).
+- `go test ./internal/modules/execution/sandbox/ -run 'TestWithWorkspaceEnvDefaults|TestResolve' -count=1` — PASS (complete resolver-focused regression selection).
+- `git diff --check` — PASS.
 
-## Handoff needed
+## Scope notes
 
-Provide an approved, testable provider-factory seam to `TenantSandboxResolver` (or authorize a narrowly scoped resolver test file/change) so a test can retain the production tenant config loader and `SessionBoundManager` while injecting a fake `RemoteSandboxClient`. Then the required assertions can be built without real provider credentials or network writes.
+The initial Task 3 report documented the lack of provider injection. The authorized R1 plan commit `65e02e15f` amended ownership to allow this narrow optional seam and resolver test; this report supersedes the initial NEEDS_CONTEXT status. No production credential behavior changed, no operator Shell environment values were stripped, and no real provider credential or write was used.
