@@ -58,8 +58,8 @@ export function deliveryRecoveryEvidenceOf(result: { state: string } | undefined
   return { recovery: 'failed', failure: `recovery: ${detail}` };
 }
 
-/** 真实 transport + Runtime 授权通道 + 交付读面。只读：不发起 prepare/dispatch
- * （真实交付链证据由 Go 侧 blocked-env 测试承载）。装配与 material-integration-smoke.ts
+/** 真实 transport + Runtime 授权通道 + 交付读面。默认流程只读；显式启用 recovery 时
+ * 可通过授权通道发起 dispatch/resolve（真实交付链证据由 Go 侧 blocked-env 测试承载）。装配与 material-integration-smoke.ts
  * 的 runMaterialIntegration 同构。 */
 export async function runDeliveryIntegration(config: Extract<DeliveryIntegrationConfig, { enabled: true }>): Promise<DeliveryIntegrationEvidence> {
   const evidence: DeliveryIntegrationEvidence = {
