@@ -60,7 +60,7 @@ device evidence file.
 }
 ```
 
-## Current Task 7 status (2026-09-29): native build passed; JS startup unresolved
+## Current iOS simulator status (2026-09-29): Release launch and login layout visible
 
 The Expo SDK 57 generated iOS project contract passes in the isolated prebuild
 at `/tmp/weknora-issue31-final-prebuild-_x7w61dy/ios`: its
@@ -78,20 +78,37 @@ the captured simulator log is `/tmp/issue31-fullsrc-release-startup.log` and
 shows the `com.weknora.mobile-default` app scene becoming active without a
 React Native startup exception.
 
-The first two Debug simulator attempts are retained as harness diagnostics,
-not acceptance failures: the initial incomplete disposable project omitted
-the app `src` tree and had no embedded bundle (`ios27-no-script-url-redbox.png`),
-and a full-source Debug bundle hit the expected devtools websocket error when
-it was embedded without Metro (`ios27-debug-embedded-devtools-redbox.png`).
-The final Release build is the startup acceptance evidence; it requires no
-Metro process and successfully rendered the app route.
+The fresh tracked R4 Release evidence is `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/ios27-release-launch-r1.png`
+and `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/simctl-launch-r1.txt`;
+the install/launch transcript is also retained as
+`docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/simctl-install-launch.txt`.
+The screenshot shows the login screen below the status bar, with the safe-area
+layout visible. The transcript records the app PID and
+`ReactInstance: evaluateJavaScript() with JS bundle`, with no dyld loader
+failure. Its `timeout 15s simctl launch --console` stream ended with
+`LAUNCH_COMMAND_EXIT=124`: the bounded command reached JavaScript bundle
+evaluation and was terminated at its 15-second limit while the console stream
+remained attached. This establishes launch and visible layout at capture time;
+it does not establish long-duration stability, interaction, or authentication.
+The final Release build log is retained at
+`docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/xcodebuild-release-final.log.gz`.
+
+Earlier Debug simulator attempts remain useful harness diagnostics, not current
+iOS status: the initial incomplete disposable project omitted the app `src`
+tree and had no embedded bundle (`ios27-no-script-url-redbox.png`), and a
+full-source Debug bundle hit the expected devtools websocket error when
+embedded without Metro (`ios27-debug-embedded-devtools-redbox.png`). The earlier
+Release screenshot and `/tmp` transcripts above are historical evidence; the
+tracked R4 artifacts are the current simulator evidence.
 
 JavaScript exports are build evidence only: iOS output is under
 `/tmp/issue31-ios-export` and Android output is under
 `/tmp/issue31-android-export`. The simulator gate also does not exercise a real
-staging login. No staging Deployment or short-lived mobile credentials are
-configured, and no Android device acceptance has been performed. Password,
-OIDC and capability flows on staging and Android installation remain Pending.
+staging login. The checklist above remains Pending for staging password/OIDC
+login and real Deployment capability negotiation; no staging Deployment or
+short-lived mobile credentials are configured. Android physical-device
+installation and acceptance have not been performed. These checks remain
+Pending independently of the successful iOS 27 simulator Release launch.
 Task 6 also found no local HTTPS fixture or protected staging credentials; see
 `.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for the
 safe opt-in HTTP harness and its limitation. No credentials were inspected or
