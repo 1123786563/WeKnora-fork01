@@ -118,13 +118,17 @@ func TestModelInputIncludesOnlyConfirmedInternshipCompany(t *testing.T) {
 	_, err = o.Confirm(ctx, "unapproved.private_note", "Do not send to model", "private-note-confirm", 2, Source{Kind: "manual"})
 	require.NoError(t, err)
 
-	input, err := o.BuildModelInput(ctx, "qualification_evaluation")
-	require.NoError(t, err)
-	encoded := input.String()
-	require.Contains(t, encoded, `"key":"internship.company","value":"Confirmed Internship Co"`)
-	require.NotContains(t, encoded, "Proposed Internship Co")
-	require.NotContains(t, encoded, "unapproved.private_note")
-	require.NotContains(t, encoded, "Do not send to model")
+	for _, purpose := range []string{"profile_summary", "qualification_evaluation", "material_generation"} {
+		t.Run(purpose, func(t *testing.T) {
+			input, err := o.BuildModelInput(ctx, purpose)
+			require.NoError(t, err)
+			encoded := input.String()
+			require.Contains(t, encoded, `"key":"internship.company","value":"Confirmed Internship Co"`)
+			require.NotContains(t, encoded, "Proposed Internship Co")
+			require.NotContains(t, encoded, "unapproved.private_note")
+			require.NotContains(t, encoded, "Do not send to model")
+		})
+	}
 }
 
 func TestModelInputExcludesNestedDocumentFieldsAndSeparatedNumbers(t *testing.T) {
