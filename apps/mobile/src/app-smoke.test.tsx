@@ -25,6 +25,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch' }",
+  'react-native-safe-area-context': "module.exports = { SafeAreaProvider: function SafeAreaProvider() { return null; }, SafeAreaView: function SafeAreaView() { return null; } }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
   'react/jsx-runtime': "const jsx = (type, props, key) => ({ type, props: { ...(props || {}), ...(key === undefined ? {} : { key }) } }); module.exports = { Fragment: Symbol.for('react.fragment'), jsx, jsxs: jsx };",
 };
@@ -77,6 +78,21 @@ test('app module exports an application root', async () => {
     'function',
     'src/app/_layout.tsx must default-export the application root component',
   );
+});
+
+test('root router stack is wrapped in provider and top/bottom safe-area container', async () => {
+  const layout = await import('./app/_layout.tsx');
+  const root = render(layout.default, {});
+  const nodes = descendants(root);
+  const provider = nodes.find(({ type }) => (type as { name?: string })?.name === 'SafeAreaProvider');
+  const safeView = nodes.find(({ type }) => (type as { name?: string })?.name === 'SafeAreaView');
+  const stack = nodes.find(({ type }) => (type as { name?: string })?.name === 'Stack');
+
+  assert.ok(provider, 'SafeAreaProvider wraps routed content');
+  assert.ok(safeView, 'SafeAreaView contains routed content');
+  assert.deepEqual(safeView.props.edges, ['top', 'bottom']);
+  assert.equal((safeView.props.children as { type?: unknown } | undefined)?.type, stack?.type);
+  assert.deepEqual(stack?.props.screenOptions, { headerShown: false });
 });
 
 test('OIDC callback route forwards the untouched deep link before returning to the app root', async () => {
