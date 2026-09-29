@@ -287,3 +287,28 @@ diff /tmp/t0.txt /tmp/t1.txt   # 期望：空（模块包用例集不变；宿�
 - **类型一致**：`NewMemoryRepository(db *gorm.DB) interfaces.MemoryRepository`（memory.go:26）、`NewMemoryHandler(memoryService interfaces.MemoryService) *MemoryHandler`（handler/memory.go:27）、`NewMemoryService(repo, tenantRepo, messageRepo, modelService, enqueuer, cfg)`（service.go:52）三构造器签名迁移前后不变，compat 别名类型同一。
 - **跨任务接口一致**：R1.2 产出 `NewMemoryRepository`（模块）+ 宿主 var 别名；R1.3 产出 `MemoryHandler`/`NewMemoryHandler`（模块）+ 宿主 type/var 别名；R1.4 清点与 R1.5 Brief 消费同一符号面；无任务间悬空引用。
 - **已知偏差（如实）**：① §5.2 派发 note 与冻结台账的口径冲突按 conventions 前言以冻结产物为准并上报；② brief 所写 sync_task.go:164/container.go:54 行号与当前树漂移（实测 :159/:49），以实测为准；③ brief"×6 modelcontext"实为 5 文件（台账 exc-0052..0056 同为 5 行）。
+
+## 13. R1.1 任务级 OCR 基础设施失败：根因记录与重试指引（2026-09-29 根因分析轮追加）
+
+**结论：replan（基础设施瞬态失败，任务实质已完成；无任务重拆必要）。**
+
+### 13.1 根因（本会话逐项实测）
+
+1. **失败直接原因 = OCR LLM 后端瞬态限流，非任务内容问题**。失败报告 `ocr-r1.txt`（09-29 11:29 落盘）原文：`Review failed: 0 finding(s); 4 of 4 selected item(s) failed`；核心评审请求 `rate limited (HTTP 429)` 连续 6 次重试后放弃。0 findings 是"评审未运行"，不是"评审通过"。
+2. **`--background-file 5765 字符超 2000 建议`为非致命警告**（CLI 原文 `continuing but review quality might be impacted`），不是 exit 1 的原因。
+3. **失败会话的实际区间**：`ocr session list`（主 checkout 实测）会话 `4fb30a66-f697-42d7-a9fd-82b6aef292b6`，range `d58b8030c..7c88d68f2`（= R1.3 提交区间），4 文件全失败，status failed，11:27:23 启动。选中的 4 文件与 `git show --stat 7c88d68f2` 的 4 个非 rename 变更文件一一对应（moves/agentruntime.yaml、ownership-matrix.yaml、handler compat、memory_handler.go）。与 `ocr-context.md:9` 预告的"空区间 7c88d68f2..7c88d68f2"不符，如实登记此偏差。
+4. **同区间已有成功 OCR 在案**：会话 `31546ec2-bf65-4c5a-ade8-ec368491ce5b`，同 range `d58b8030c..7c88d68f2`，4 文件，0 comments，status **complete**，09-29 00:05:19——即台账登记的 R1.3 历史 OCR 0 findings（ledger :9665/:9717 引用）。
+5. **限流已解除（本轮探针实测）**：`ocr llm test` 于本会话通过（provider z-ai-coding / glm-5.3 @ open.bigmodel.cn，`Connection test successful` + `Tool-call round trip verified`）。
+6. **R1.1 重派轮任务实质全部完成**：审查包 `R1.1-review-pkg.md`（10:55 版，零仓内改动三命令留痕）、报告 `R1.1-report.md`（10:52 版）、SDD 通过（09-29 11:18，台账 :10524）；worktree 干净（HEAD=7c88d68f2）。仅剩任务级 OCR 门禁未过。
+
+### 13.2 重试指引（按序执行，均不改仓内代码）
+
+1. **首选**：在主 checkout 重跑 R1.1 任务级 OCR。若按空区间派发（`--from 7c88d68f2 --to 7c88d68f2`），预期 0 item 选中 → status `skipped`（先例：会话 f9892ac7，0 files/skipped），与 R1.1 原轮空区间 0 findings 形态一致，视为通过。
+2. **若复用 R1.3 区间**：可直接 `ocr review --resume 4fb30a66-f697-42d7-a9fd-82b6aef292b6` 续跑失败会话；或重跑同区间（连接探针已过，预期可完成）。
+3. **背景文件瘦身**：把 OCR 背景（现 5765 字符）压到 ≤2000 字符（保留 §兼容红线 + §文件范围 + §已授权偏差要点即可），消除质量警告；此为质量项非阻塞项。
+4. **若再现 429**：不要立即连续重试（上轮 6 连击全 429）；等待限流窗口（≥15 分钟）后再试，或经 `--provider`/`--model` 覆盖换模型（`ocr llm providers` 列内置项）。
+5. **证据留痕**：重试结果覆盖写入 `$SDD/b3-r-memory/ocr-r1.txt` 并在节点报告 §0 登记"R1.1 OCR 首跑 infra 失败（429）+ 根因记录（计划 §13）"。
+
+### 13.3 对计划其余部分的影响
+
+无。§3–§11 任务边界、耦合裁定、验收标准均不受本 infra 失败影响；R1.2/R1.3 已交付且历史 OCR 0 findings；下一步推进指针应指向 R1.5（三份交付物 + commit 3，见 R1.1-review-pkg.md §4.4 遗留）。
