@@ -318,6 +318,7 @@ importers:
         version: link:../domain
 
   packages/career-core: {}
+
   packages/contracts: {}
 
   packages/core:
@@ -412,6 +413,9 @@ importers:
       react:
         specifier: ^19.3.0
         version: 19.3.0
+      tdesign-react:
+        specifier: 1.18.3
+        version: 1.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
       '@types/react':
         specifier: ^19.2.0

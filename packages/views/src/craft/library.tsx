@@ -6,7 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import type { CraftSessionKind, CraftSessionSummaryView } from '@weknora/contracts';
 import { CRAFT_SESSION_KINDS } from '@weknora/contracts';
-import { Button } from './td.tsx';
+import { Button } from 'tdesign-react';
 import { craftStrings, formatDateTime, type CraftLocale } from './presentation.ts';
 import './craft.css';
 

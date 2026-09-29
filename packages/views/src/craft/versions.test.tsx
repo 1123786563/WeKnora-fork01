@@ -16,6 +16,19 @@ if (hooks.registerHooks) {
         : nextResolve(specifier, context),
   });
 }
+const { JSDOM } = await import('jsdom');
+const dom = new JSDOM('<!doctype html><html><body></body></html>');
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  Event: dom.window.Event,
+  MutationObserver: dom.window.MutationObserver,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 const React = await import('react');
 const { renderToStaticMarkup } = await import('../../../../apps/web/node_modules/react-dom/server.js');
 const { CraftVersionsDrawer } = await import('./versions.tsx');
@@ -52,29 +65,13 @@ test('v1 (snapshot) restores; v2 (no snapshot) keeps download, disables restore 
   // v1: restore enabled
   assert.match(v1, /从此版本继续/);
   assert.ok(!/disabled=""[^>]*>从此版本继续/.test(v1) || v1.indexOf('disabled') > v1.indexOf('从此版本继续'), 'v1 restore enabled');
-  // v2: download enabled, restore disabled with the snapshot reason
-  // (tdesign Button DOM: children wrap in <span class="t-button__text">)
+  // v2: download enabled, restore uses TDesign's disabled div state and keeps the reason.
   assert.match(v2, /no_complete_recovery_snapshot/, 'the block reason stays readable');
-  const v2Buttons = v2.match(/<button[^>]*>(?:<span[^>]*>)?(?:下载|从此版本继续)(?:<\/span>)?<\/button>/g) ?? [];
-  const downloadBtn = v2Buttons.find((b) => b.includes('下载'));
-  const restoreBtn = v2Buttons.find((b) => b.includes('从此版本继续'));
-  assert.ok(downloadBtn && !downloadBtn.includes('disabled=""'), 'download stays available without a snapshot');
-  assert.ok(restoreBtn && (restoreBtn.includes('disabled=""') || restoreBtn.includes('no_complete_recovery_snapshot')), 'restore disabled without a snapshot');
+  assert.match(v2, /class="[^"]*t-button[^"]*"[^>]*><span class="t-button__text">下载/, 'download remains enabled');
+  assert.match(v2, /class="[^"]*t-is-disabled[^"]*"[^>]*><span class="t-button__text">从此版本继续/, 'restore uses the supported TDesign disabled rendering');
 });
 
 test('the restore confirmation dialog states the source and the no-overwrite contract', async () => {
-  const { JSDOM: Dom } = await import('jsdom');
-  const dom = new Dom('<!doctype html><html><body></body></html>');
-  Object.assign(globalThis, {
-    window: dom.window,
-    document: dom.window.document,
-    HTMLElement: dom.window.HTMLElement,
-    Element: dom.window.Element,
-    Node: dom.window.Node,
-    Event: dom.window.Event,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  });
-  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
   const { act } = await import('react');
   const { createRoot } = await import('../../../../apps/web/node_modules/react-dom/client.js');
   const container = document.createElement('div');
@@ -94,17 +91,50 @@ test('the restore confirmation dialog states the source and the no-overwrite con
   });
   const restoreBtn = [...document.querySelectorAll('button')].find((b) => b.textContent === '从此版本继续' && !b.disabled);
   assert.ok(restoreBtn, 'v1 restore button enabled');
+  restoreBtn.focus();
   await act(async () => {
     restoreBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  const dialog = document.querySelector('[role="dialog"]');
-  assert.ok(dialog, 'the confirmation dialog opens');
+  await act(async () => {
+    restoreBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  const dialog = document.querySelector('.wk-craft-restore-dialog .t-dialog');
+  assert.ok(dialog, `the TDesign confirmation dialog opens; DOM=${document.body.innerHTML}`);
+  assert.equal(dialog.getAttribute('role'), 'dialog');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
+  assert.ok(dialog.querySelector('button[aria-label="关闭"]'), 'the dialog close control is a native button');
+  const dialogButtons = [...dialog.querySelectorAll('button')];
+  assert.ok(dialogButtons.length >= 3, 'dialog offers close, cancel, and confirm controls');
+  dialogButtons[0].focus();
+  dialog.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+  assert.equal(document.activeElement, dialogButtons.at(-1), 'Shift+Tab wraps to the last dialog control');
+  dialogButtons.at(-1)?.focus();
+  dialog.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(document.activeElement, dialogButtons[0], 'Tab wraps to the first dialog control');
   const text = document.body.textContent ?? '';
   assert.match(text, /确认恢复/);
   assert.match(text, /完整恢复快照重建工作区/);
   assert.match(text, /已发布的历史版本不会被覆盖/);
   assert.match(text, /下一轮交付才会发布新版本/);
   assert.match(text, /编辑基线/, 'the baseline row is labelled');
+  await act(async () => {
+    document.querySelector('.wk-craft-restore-dialog')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  assert.equal(document.activeElement, restoreBtn, 'Escape closes and restores focus to the opener');
+  await act(async () => {
+    restoreBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  const reopenedDialog = document.querySelector('.wk-craft-restore-dialog .t-dialog');
+  assert.ok(reopenedDialog, 'restore confirmation can be reopened');
+  await act(async () => {
+    reopenedDialog.querySelector('button[aria-label="关闭"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  assert.equal(document.activeElement, restoreBtn, 'closing returns focus to the restore trigger');
   await act(async () => {
     root.unmount();
   });
