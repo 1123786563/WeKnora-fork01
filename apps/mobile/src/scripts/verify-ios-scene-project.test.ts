@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -41,6 +41,57 @@ test('generated SDK57 project contract accepts scene, factory, URL and deploymen
     fixture(root);
     assert.deepEqual(verifyIosSceneProject(root), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 scene checker parses valid empty and unrelated plist scalar values', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const plistPath = join(root, 'WeKnora', 'Info.plist');
+    const source = readFileSync(plistPath, 'utf8');
+    const unrelated = '<key>Empty</key><string></string><key>EmptySelfClosing</key><string/><key>Count</key><integer>7</integer><key>Ratio</key><real>1.5</real><key>Created</key><date>2026-09-30T00:00:00Z</date><key>Blob</key><data>AA==</data><key>EmptyDictionary</key><dict/><key>EmptyArray</key><array/>';
+    writeFileSync(plistPath, source.replace('<key>UIApplicationSceneManifest</key>', `${unrelated}<key>UIApplicationSceneManifest</key>`));
+    assert.deepEqual(verifyIosSceneProject(root), []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 scene checker distinguishes an unreadable PBX target block from a deployment mismatch', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const projectPath = join(root, 'WeKnora.xcodeproj', 'project.pbxproj');
+    writeFileSync(projectPath, '/* readable project file with no target sections */');
+    let messages = verifyIosSceneProject(root).join('\n');
+    assert.ok(messages.includes('Unable to locate WeKnora build configuration list in project.pbxproj'));
+    assert.doesNotMatch(messages, /All app target deployment settings must be 16\.4/);
+
+    fixture(root);
+    writeFileSync(projectPath, readFileSync(projectPath, 'utf8').replace(
+      'IPHONEOS_DEPLOYMENT_TARGET = 16.4;',
+      'IPHONEOS_DEPLOYMENT_TARGET = 16.0;',
+    ));
+    messages = verifyIosSceneProject(root).join('\n');
+    assert.ok(messages.includes('All app target deployment settings must be 16.4'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('generated SDK57 scene checker suppresses downstream errors for missing generated files', () => {
+  const missingCases = [
+    ['WeKnora/Info.plist', /application scene role/],
+    ['WeKnora/AppDelegate.swift', /must conform|callback must forward/],
+    ['WeKnora.xcodeproj/project.pbxproj', /build configuration list|deployment settings/],
+    ['Podfile.properties.json', /must be valid JSON with iOS deployment target/],
+  ] as const;
+  for (const [path, dependentMessage] of missingCases) {
+    const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+    try {
+      fixture(root);
+      unlinkSync(join(root, path));
+      const messages = verifyIosSceneProject(root).join('\n');
+      assert.ok(messages.includes(`missing generated file: ${path}`));
+      assert.doesNotMatch(messages, dependentMessage);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 test('generated SDK57 project contract ignores provider name in Swift comments and strings', () => {
@@ -128,7 +179,7 @@ test('generated SDK57 project contract rejects missing scene, URL callback, and 
     writeFileSync(appDelegate, readFileSync(appDelegate, 'utf8').replace('RCTLinkingManager', 'OtherLinkManager'));
     assert.match(verifyIosSceneProject(root).join('\n'), /RCTLinkingManager/);
     fixture(root);
-    writeFileSync(join(root, 'WeKnora.xcodeproj', 'project.pbxproj'), 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;');
+    writeFileSync(join(root, 'WeKnora.xcodeproj', 'project.pbxproj'), readFileSync(join(root, 'WeKnora.xcodeproj', 'project.pbxproj'), 'utf8').replace('IPHONEOS_DEPLOYMENT_TARGET = 16.4;', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;'));
     assert.match(verifyIosSceneProject(root).join('\n'), /16.4/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

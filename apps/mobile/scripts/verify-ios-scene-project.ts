@@ -5,36 +5,41 @@ import { join, resolve } from 'node:path';
 export function verifyIosSceneProject(iosDirectory: string): string[] {
   const root = resolve(iosDirectory);
   const issues: string[] = [];
-  const read = (path: string) => {
+  const read = (path: string): string | undefined => {
     try { return readFileSync(join(root, path), 'utf8'); }
-    catch { issues.push(`missing generated file: ${path}`); return ''; }
+    catch { issues.push(`missing generated file: ${path}`); return undefined; }
   };
   const plist = read('WeKnora/Info.plist');
   const appDelegate = read('WeKnora/AppDelegate.swift');
   const project = read('WeKnora.xcodeproj/project.pbxproj');
   const podProperties = read('Podfile.properties.json');
-  const plistValue = parsePlist(plist);
-  const manifest = objectValue(objectValue(plistValue)?.UIApplicationSceneManifest);
-  const configurations = objectValue(manifest?.UISceneConfigurations);
-  const applicationScenes = configurations?.UIWindowSceneSessionRoleApplication;
-  const sceneDelegateNames = Array.isArray(applicationScenes)
-    ? applicationScenes.map((scene) => objectValue(scene)?.UISceneDelegateClassName)
-    : [];
-  if (!sceneDelegateNames.includes('EXExpoAppSceneDelegate')) {
-    issues.push('WeKnora/Info.plist application scene role must map to EXExpoAppSceneDelegate');
+  if (plist !== undefined) {
+    const plistValue = parsePlist(plist);
+    const manifest = objectValue(objectValue(plistValue)?.UIApplicationSceneManifest);
+    const configurations = objectValue(manifest?.UISceneConfigurations);
+    const applicationScenes = configurations?.UIWindowSceneSessionRoleApplication;
+    const sceneDelegateNames = Array.isArray(applicationScenes)
+      ? applicationScenes.map((scene) => objectValue(scene)?.UISceneDelegateClassName)
+      : [];
+    if (!sceneDelegateNames.includes('EXExpoAppSceneDelegate')) {
+      issues.push('WeKnora/Info.plist application scene role must map to EXExpoAppSceneDelegate');
+    }
   }
-  const swiftCode = maskSwiftNonCode(appDelegate);
-  if (!swiftCode?.includes('ExpoReactNativeFactoryProvider')) {
-    issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
+  if (appDelegate !== undefined) {
+    const swiftCode = maskSwiftNonCode(appDelegate);
+    if (!swiftCode?.includes('ExpoReactNativeFactoryProvider')) {
+      issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
+    }
+    const openUrlBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
+    if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
+      issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
+    }
+    const universalLinkBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
+    if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
+      issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
+    }
   }
-  const openUrlBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
-  if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
-    issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
-  }
-  const universalLinkBody = swiftCode && swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
-  if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
-    issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
-  }
+  if (project !== undefined) {
   const nativeTarget = project.match(/\/\* Begin PBXNativeTarget section \*\/([\s\S]*?)\/\* End PBXNativeTarget section \*\//)?.[1] ?? '';
   const targetBlock = nativeTarget.match(/([A-F0-9]+)\s*\/\* WeKnora \*\/\s*=\s*\{([\s\S]*?)\n\s*\};/)?.[2] ?? '';
   const configListId = targetBlock.match(/buildConfigurationList\s*=\s*([A-F0-9]+)/)?.[1];
@@ -47,10 +52,14 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
     const buildSettings = block ? pbxDictionary(block, 'buildSettings') : undefined;
     return buildSettings?.match(/(?:^|\n)\s*IPHONEOS_DEPLOYMENT_TARGET\s*=\s*([^;]+);/)?.[1].trim();
   });
-  if (configIds.length === 0 || deploymentValues.some((value) => value !== '16.4')) {
+  if (configIds.length === 0) {
+    issues.push('Unable to locate WeKnora build configuration list in project.pbxproj');
+  } else if (deploymentValues.some((value) => value !== '16.4')) {
     issues.push('All app target deployment settings must be 16.4');
   }
+  }
   try {
+    if (podProperties === undefined) return issues;
     const properties = JSON.parse(podProperties) as Record<string, unknown>;
     if (properties['ios.deploymentTarget'] !== '16.4') issues.push('Podfile properties deployment target must be 16.4');
   } catch { issues.push('Podfile.properties.json must be valid JSON with iOS deployment target 16.4'); }
@@ -89,13 +98,15 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
-// Parse the plist's dict/array/string/integer/boolean subset without adding a runtime dependency.
+// Parse the plist value forms emitted by the generated Xcode project without a runtime dependency.
 function parsePlist(xml: string): unknown {
-  const tokens = (xml.match(/<\/?(?:dict|array|string|integer|true|false|key)\s*\/?\s*>|[^<]+/g) ?? [])
+  const tokens = (xml.match(/<\/?(?:dict|array|string|integer|real|date|data|true|false|key)\s*\/?\s*>|[^<]+/g) ?? [])
     .filter((token) => token.startsWith('<') || token.trim().length > 0);
   let index = 0;
   const parseValue = (): unknown => {
     const token = tokens[index++]?.trim();
+    if (token === '<dict/>' || token === '<dict />') return {};
+    if (token === '<array/>' || token === '<array />') return [];
     if (token === '<dict>') {
       const result: Record<string, unknown> = {};
       while (tokens[index]?.trim() !== '</dict>') {
@@ -113,11 +124,14 @@ function parsePlist(xml: string): unknown {
       index++;
       return result;
     }
-    if (token === '<string>' || token === '<integer>') {
-      const value = tokens[index++]?.trim() ?? '';
-      index++;
+    if (token === '<string>' || token === '<integer>' || token === '<real>' || token === '<date>' || token === '<data>') {
+      const closing = `</${token.slice(1, -1)}>`;
+      let value = '';
+      if (tokens[index]?.trim() !== closing) value = tokens[index++]?.trim() ?? '';
+      if (tokens[index++]?.trim() !== closing) throw new Error('Malformed plist scalar closing element');
       return value;
     }
+    if (token === '<string/>' || token === '<string />' || token === '<data/>' || token === '<data />') return '';
     if (token === '<true/>' || token === '<true />') return true;
     if (token === '<false/>' || token === '<false />') return false;
     throw new Error('Malformed plist value');
