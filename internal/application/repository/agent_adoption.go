@@ -142,7 +142,30 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 // reconciles the accepted pointer, so both callers get an idempotent result
 // instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	return adoptListingTx(r.db.WithContext(ctx), adoption)
+	if adoption == nil || adoption.TenantID == 0 || strings.TrimSpace(adoption.ListingID) == "" || strings.TrimSpace(adoption.AcceptedReleaseID) == "" || (adoption.State != "" && adoption.State != "active") {
+		return nil, false, ErrAgentAdoptionTransition
+	}
+	var row *types.AgentAdoptionEntity
+	var created bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		gate := tx.Model(&types.AgentMarketplaceListingEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", adoption.TenantID, adoption.ListingID, "listed").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
+		}
+		if gate.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
+		}
+		var release types.AgentReleaseEntity
+		if err := tx.Where("tenant_id = ? AND listing_id = ? AND id = ?", adoption.TenantID, adoption.ListingID, adoption.AcceptedReleaseID).Take(&release).Error; err != nil {
+			return ErrAgentAdoptionTransition
+		}
+		var err error
+		row, created, err = adoptListingTx(tx, adoption)
+		return err
+	})
+	return row, created, err
 }
 
 // adoptListingTx is the transaction-bound adopt upsert, shared with the
@@ -151,9 +174,23 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 // listing) row reconciles its accepted pointer; a first insert races on
 // uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	// A state-guarded parent UPDATE is the durable serialization point shared
+	// by reconciliation and EndAdoption. Keep it tenant scoped.
+	gate := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND listing_id = ? AND state = ?", adoption.TenantID, adoption.ListingID, "active").
+		UpdateColumn("updated_at", gorm.Expr("updated_at"))
+	if gate.Error != nil {
+		return nil, false, gate.Error
+	}
+	if gate.RowsAffected > 1 {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	var existing types.AgentAdoptionEntity
 	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
+		if gate.RowsAffected != 1 {
+			return nil, false, ErrAgentAdoptionTransition
+		}
 		return reconcileAdoptionTx(tx, &existing, adoption.AcceptedReleaseID)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -179,6 +216,9 @@ func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.Ag
 	if err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
 		return nil, false, err
 	}
+	if winner.State != "active" {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	return reconcileAdoptionTx(tx, &winner, adoption.AcceptedReleaseID)
 }
 
@@ -186,15 +226,22 @@ func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.Ag
 // the same Release returns as-is; a different Release advances the accepted
 // pointer (last write wins, matching sequential adopt semantics).
 func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
+	if existing.State != "active" {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil
 	}
 	existing.AcceptedReleaseID = acceptedReleaseID
 	existing.UpdatedAt = time.Now().UTC()
-	if err := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
-		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt}).Error; err != nil {
-		return nil, false, err
+	updated := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", existing.TenantID, existing.ID, "active").
+		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt})
+	if updated.Error != nil {
+		return nil, false, updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return nil, false, ErrAgentAdoptionTransition
 	}
 	return existing, false, nil
 }
@@ -229,7 +276,19 @@ func (r *agentAdoptionRepository) CreateVariant(ctx context.Context, variant *ty
 	}
 	created.CreatedAt = time.Now().UTC()
 	created.UpdatedAt = created.CreatedAt
-	if err := r.db.WithContext(ctx).Create(&created).Error; err != nil {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		gate := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", created.TenantID, created.AdoptionID, "active").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
+		}
+		if gate.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
+		}
+		return tx.Create(&created).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &created, nil

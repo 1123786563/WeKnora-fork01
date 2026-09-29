@@ -114,6 +114,33 @@ func TestAgentAdoptionRepositoryLifecycle(t *testing.T) {
 	require.Nil(t, foreignAdoption)
 }
 
+func TestAgentAdoptionRepositoryRejectsWritesAfterEnd(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-ended", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	adoption, _, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, CreatedBy: "admin"})
+	require.NoError(t, err)
+	_, err = repo.EndAdoption(ctx, 1, adoption.ID, "admin", "closed")
+	require.NoError(t, err)
+	_, err = repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "late"})
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	_, _, err = repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, CreatedBy: "admin"})
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+}
+
+func TestAgentAdoptionRepositoryRejectsAdoptionAfterTenantUnlist(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-unlisted", "1.0.0")
+	_, err := NewAgentMarketplaceRepository(db).UnlistTenantListing(context.Background(), 1, listingID, "admin", "closed")
+	require.NoError(t, err)
+	_, _, err = NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, CreatedBy: "admin"})
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, listingID).Count(&count).Error)
+	require.Zero(t, count)
+}
+
 func TestAgentAdoptionPublishedAvailableAgentsJoinsLocalAgents(t *testing.T) {
 	db := openRunTestDB(t)
 	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-b", "1.0.0")

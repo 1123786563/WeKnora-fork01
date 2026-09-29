@@ -398,6 +398,22 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 	var adoption *types.AgentAdoptionEntity
 	created := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Listing is always the first lifecycle gate. UnlistPublicListing CASes
+		// this exact row, so PostgreSQL serializes the operations and SQLite
+		// holds its writer lock until the full transaction commits.
+		listingGate := tx.Model(&types.PublicMarketplaceListingEntity{}).
+			Where("id = ? AND state = ?", listing.ID, "listed").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if listingGate.Error != nil {
+			return listingGate.Error
+		}
+		if listingGate.RowsAffected != 1 {
+			return ErrPublicMarketplaceLifecycleTransition
+		}
+		var persistedRelease types.PublicAgentReleaseEntity
+		if err := tx.Where("listing_id = ? AND id = ?", listing.ID, release.ID).Take(&persistedRelease).Error; err != nil {
+			return ErrPublicMarketplaceReleaseConflict
+		}
 		err := tx.Where("tenant_id = ? AND public_release_id = ?", adopterTenantID, release.ID).First(&introduced).Error
 		if err == nil {
 			adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{

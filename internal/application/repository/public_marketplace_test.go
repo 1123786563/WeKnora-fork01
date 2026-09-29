@@ -260,9 +260,31 @@ func TestPublicMarketplaceRepositoryIntroduceReleaseCopiesPortableBundleAndAdopt
 	require.NoError(t, db.Where("tenant_id = ? AND public_release_id = ?", 2, release2.ID).First(&advancedIntroduced).Error)
 	require.Equal(t, advancedIntroduced.ID, advanced.AcceptedReleaseID)
 	require.Equal(t, release2.ID, advancedIntroduced.PublicReleaseID)
+	_, err = NewAgentAdoptionRepository(db).EndAdoption(ctx, 2, adoption.ID, "tenant-admin", "closed")
+	require.NoError(t, err)
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition, "same-release re-introduction cannot revive an ended Adoption")
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, release2)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition, "a different Release cannot advance an ended Adoption")
 
 	// 其他租户互不可见
 	var count int64
 	db.Table("tenant_introduced_releases").Where("tenant_id = ?", 3).Count(&count)
 	require.Zero(t, count)
+}
+
+func TestPublicMarketplaceRepositoryRejectsIntroductionAfterUnlist(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, release := seedApprovedPublicRelease(t, db, "1.0.0")
+	_, err := repo.UnlistPublicListing(ctx, listing.ID, "platform-admin", "closed")
+	require.NoError(t, err)
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrPublicMarketplaceLifecycleTransition)
+	var introductions, adoptions int64
+	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ?", 2).Count(&introductions).Error)
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ?", 2).Count(&adoptions).Error)
+	require.Zero(t, introductions)
+	require.Zero(t, adoptions)
 }
