@@ -272,6 +272,30 @@ def _write_artifact(output_dir, lines):
                 pass
 
 
+def _write_artifact_if_absent(output_dir, lines):
+    """Atomically publish an artifact only if no destination already exists."""
+    destination = output_dir / "reconcile-output.txt"
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output_dir,
+                                         prefix=".reconcile-", suffix=".tmp",
+                                         delete=False) as fh:
+            staged = Path(fh.name)
+            fh.write("\n".join(lines) + "\n")
+            fh.flush()
+        try:
+            os.link(staged, destination)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        if staged is not None:
+            try:
+                staged.unlink()
+            except OSError:
+                pass
+
+
 def _emit_text(text, stream):
     """Best-effort text reporting; the artifact and return code are canonical."""
     try:
@@ -358,8 +382,6 @@ def main():
         _emit_text("\n".join(lines), sys.stdout)
         return 0 if passed else 1
     except KeyboardInterrupt:
-        if canonical_verdict is not None:
-            return 0 if canonical_verdict else 1
         published_artifact = output_dir / "reconcile-output.txt"
         try:
             published_bytes = published_artifact.read_bytes()
@@ -374,13 +396,19 @@ def main():
             if expected_bytes is not None and published_bytes == expected_bytes:
                 return 0 if passed else 1
             return 1
+        if canonical_verdict is not None:
+            return 1
         lines = ["RECONCILE FAIL", "stage=%s" % stage, "reason=interrupted"]
         try:
-            _write_artifact(output_dir, lines)
+            published = _write_artifact_if_absent(output_dir, lines)
         except BaseException:
-            _emit_text("RECONCILE FAIL: artifact write failed", sys.stderr)
-        else:
+            return 1
+        if not published:
+            return 1
+        try:
             _emit_text("\n".join(lines), sys.stderr)
+        except BaseException:
+            pass
         return 130
     except (Exception, SystemExit) as exc:
         reason = _safe_reason(exc)
