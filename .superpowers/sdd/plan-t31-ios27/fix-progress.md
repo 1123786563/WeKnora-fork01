@@ -29,7 +29,25 @@
 - Native verification: canonical clean script exit 0, `** BUILD SUCCEEDED **`, `FRAMEWORK_MODE=source-expo-modules`, `FRAMEWORK_CLOSURE_OK`. Evidence log `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/xcodebuild-release.log`. Installed/launched on iPhone 18 Pro iOS 27.0 (UDID `0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`); app evaluated JS bundle and rendered sign-in root without dyld loader error. Screenshot `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/ios27-release-launch.png`, SHA256 `2bcd87c0d9e6c757c59348fcad03717466b724b5fe97c2dbb08a0d240ce25485`.
 - Checks: mobile suite 303 total / 289 pass / 14 environment skips / 0 fail; typecheck pass; `expo install --check` pass; `git diff --check` pass. Negative missing-React fixture emitted `MISSING_FRAMEWORK_DEPENDENCY: ExpoModulesWorklets.framework requires React.framework` and exited 1.
 - T39 tracked Release log SHA256 verified at original `12a27ed4f698074356c5e1d7722b5d7af78b2d60b5cdf9e9856e44e37b7bb71e`.
-- Status: implementation and native acceptance verified; local commit pending.
+- Initial implementation commit: `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`; Task R4 review package BASE `003f12cc1456b0eba6578c6c164474c31fa9fc70`, HEAD `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`, SHA256 `0e6c31b7f75fd2c61036356f0045317ef13f512b842c67502b8d785eae4a08e2`.
+- Independent screenshot-only frontend validation: visible login title/form below status bar, screenshot SHA256 `2bcd87c0d9e6c757c59348fcad03717466b724b5fe97c2dbb08a0d240ce25485`; cannot alone bind pixels to app binary.
+- Independent Task Review: Spec FAIL / Quality FAIL; findings are tracked in `.superpowers/sdd/plan-t31-ios27/fix-task-4-review.md` and addressed by repair round 1.
+- Ruling on brief criterion: approved Issue/spec/ADR do not prescribe dynamic React.framework packaging. Corrected the Task Brief to accept coherent supported Expo source mode when the app launches and all actual non-system framework dependencies resolve. Cost if wrong: undocumented release policy could require standalone React.framework; no evidence of such a policy was found.
+- Status: initial implementation had actionable findings; round-1 repair is implemented and awaits scoped re-review.
+
+### R4 round-1 preflight consistency scan
+
+| Pair / Task | Shared file or interface | Check | Ruling |
+|---|---|---|---|
+| Release script ↔ closure checker | Release script invokes `verify-ios-framework-closure.py`; tests execute the same entry point | Single production algorithm is exercised with fake `otool`; no disconnected duplicate logic | Keep checker as the owned seam |
+| Checker ↔ test fixtures | `.app/Info.plist`, main executable, `.app/Frameworks/*.framework/Info.plist` binaries | XML and binary plist support comes from Python stdlib `plistlib`; fixtures pin executable resolution and fail-closed errors | No third-party dependency |
+| Build/launch evidence ↔ report | compressed full build log, raw simulator output, executable/screenshot hashes | Use tracked artifact paths and manifest fields; keep original T39 hash unchanged | Evidence must survive ignored-worktree cleanup |
+| R4 round 1 internal consistency | acceptance asks for current-app closure, not a specific dynamic React artifact | Current source-mode app launched without dyld error; production checker and test execute same code | Approved Issue/spec/ADR do not specify dynamic linking; corrected brief and recorded the cost if this ruling is wrong |
+
+- Agent and model: resumed `/root/t31_fix_native_release_closure` as `frontend_implementer`; local commit strategy; no subdelegation; no native rebuild.
+- Task base: `eb821ee9d9e6f34dba49beb2d336c7e8396ff8de`.
+- Repair commits: `c4c16ad6cef751cec16e1c5bf22f694f3a83679e` (implementation), `d4e15789d80c0065bd3b0fd737967e01379a7f08` (report correction). Scoped re-review is now pending.
+- Evidence: focused 8/8; full suite 306 total / 292 passed / 14 opt-in skips / 0 fail; typecheck, Expo install check and diff-check passed per the implementation report. The production checker passed on the retained Release artifact; no native rebuild occurred. Full log gzip and simulator command output are tracked in the repair commit.
 - Updated brief correction committed `3bf8d0082`; implementation agent resumed with frontend_implementer role.
 
 ## Task R1+R3 integration verification addendum

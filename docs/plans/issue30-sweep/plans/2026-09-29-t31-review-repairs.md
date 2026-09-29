@@ -31,7 +31,7 @@
 | R1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/ios-release-build.sh`, `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` | Clean prebuild; remove stale SDK55 comments; release script test requires clean and correct build order | implemented; prebuild blocked by missing workspace plugin resolution |
 | R2 | R4 | frontend_implementer | frontend_validator | `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app-smoke.test.tsx` | Shared safe-area provider/inset; simulator screenshot shows title/form below status bar | implemented; focused/full tests pass, runtime acceptance awaits R4 |
 | R3 | R1 | frontend_implementer | reviewer | `apps/mobile/src/native-project-config.test.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, `apps/mobile/scripts/ios-release-build.sh` | Retire SDK55 plugin behavior tests; run generated SDK57 project assertions during Release script after clean prebuild | implemented; fixture tests pass, generated output validation blocked with R1 |
-| R4 | R1 | frontend_implementer | frontend_validator | `apps/mobile/app.json`, `apps/mobile/scripts/ios-release-build.sh`, focused script/config tests and generated evidence | Clean generated Release must embed every non-system dynamic framework required by bundled XCFrameworks and launch on iOS27; script fails with actionable diagnostics if dependency closure is broken | ready |
+| R4 | R1 | frontend_implementer | reviewer + frontend_validator | `apps/mobile/app.json`, `apps/mobile/scripts/ios-release-build.sh`, focused script/config tests and generated evidence | Clean generated Release has complete non-system framework closure and launches on iOS27; source-linked React is allowed when the supported Expo source mode removes the dynamic React dependency; the production guard checks the app executable and embedded framework binaries and fails closed | repair implementation committed (`c4c16ad6c`, `d4e15789d`); scoped re-review pending |
 
 Task R2 is independent of R1/R3 and can be reviewed in the same repair round after R1/R3 land. R3 consumes the clean generated-project contract produced by R1. R4 repairs the runtime packaging failure exposed while verifying R2; R2 runtime validation consumes R4's verified Release output. No cyclic dependencies.
 
@@ -111,6 +111,14 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 ## Repair ledger
 
 - (pending)
+
+### R4 review repair round 1
+
+- Source: `.superpowers/sdd/plan-t31-ios27/fix-task-4-review.md`; review package is `003f12cc1..eb821ee9d`, SHA256 `0e6c31b7f75fd2c61036356f0045317ef13f512b842c67502b8d785eae4a08e2`.
+- Ruling: correct the task-brief requirement for a separately embedded `React.framework`; the approved Issue/spec/ADR require a working runtime, not a dynamic packaging form. The chosen Expo source mode is supported and the actual app launched. Keep closure and launch as mandatory acceptance. Cost if wrong: hidden release policy may require a standalone framework; none is documented in approved requirements.
+- Valid findings to repair together: inspect the main app executable; require each referenced framework's actual CFBundleExecutable file; make tests invoke the same checked-in checker as the Release script; preserve raw build/launch evidence in tracked artifacts and bind it to the Release executable hash.
+- Implementation Brief: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r1-brief.md`.
+- Status: implemented in commits `c4c16ad6c` and `d4e15789d`; scoped re-review pending.
 
 ## Task R3-F1: Tighten effective generated-project checks (review repair round 1)
 
