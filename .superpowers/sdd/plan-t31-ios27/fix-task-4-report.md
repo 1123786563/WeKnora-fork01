@@ -67,3 +67,15 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r2-brief.md`; addresses f
 - Full suite: `pnpm --filter @weknora/mobile test` — 310 total, 296 pass, 14 opt-in skips, 0 fail. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
 - The additional `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` change asserts the Release script passes both the `.app` and generated Podfile properties to the checked-in production checker.
 - Round-2 repair commit: `0311f57e1f03ee54c7e1b967ba16dda92a92c603`.
+
+## Review repair round 3 addendum
+
+Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-brief.md`; closes low finding R4-R2-1 in the round-2 review. Only this report and `apps/mobile/src/ios-framework-closure.test.ts` changed; checker, scripts, generated project, and retained native evidence were untouched.
+
+- Corrected sibling plist executable from the nonexistent `../Beta/Alpha` to `../Beta.framework/Alpha`, and the fixture creates that regular executable in the real sibling framework. The production checker rejects it with `FRAMEWORK_BINARY_OUTSIDE_BUNDLE`.
+- Added a separate negative fixture with `Alpha.framework/Alpha` symlinked to the real `Beta.framework/Alpha` executable; the production checker rejects it with the same own-bundle containment error.
+- Focused command from `apps/mobile`: `node --import tsx --test src/ios-framework-closure.test.ts src/scripts/ios-acceptance-scripts.test.ts` — 13/13 passed.
+- Full suite: `pnpm --filter @weknora/mobile test` — 311 total, 297 pass, 14 opt-in skips, 0 fail.
+- `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
+- No native build was run; existing runtime evidence and binary hash remain unchanged.
+- Repair commit: pending local commit.

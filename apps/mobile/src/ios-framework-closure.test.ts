@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -74,7 +74,7 @@ test('production checker rejects framework executable symlinks escaping the app'
   try {
     rmSync(join(f.app, 'Frameworks/Alpha.framework/Alpha'));
     writeFileSync(join(f.root, 'outside'), 'not inside app');
-    require('node:fs').symlinkSync(join(f.root, 'outside'), join(f.app, 'Frameworks/Alpha.framework/Alpha'));
+    symlinkSync(join(f.root, 'outside'), join(f.app, 'Frameworks/Alpha.framework/Alpha'));
     const result = run(f);
     assert.notEqual(result.status, 0);
     assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_BUNDLE/);
@@ -84,8 +84,20 @@ test('production checker rejects framework executable symlinks escaping the app'
 test('production checker rejects framework executable declared in a sibling bundle', () => {
   const f = fixture({ app: '@rpath/Alpha.framework/Alpha' });
   try {
-    writeFileSync(join(f.app, 'Frameworks/Alpha.framework/Info.plist'), plist('../Beta/Alpha'));
+    writeFileSync(join(f.app, 'Frameworks/Alpha.framework/Info.plist'), plist('../Beta.framework/Alpha'));
     writeFileSync(join(f.app, 'Frameworks/Beta.framework/Alpha'), 'sibling executable');
+    const result = run(f);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_BUNDLE/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker rejects a framework-local symlink to a sibling framework executable', () => {
+  const f = fixture({ app: '@rpath/Alpha.framework/Alpha' });
+  try {
+    writeFileSync(join(f.app, 'Frameworks/Beta.framework/Alpha'), 'sibling executable');
+    rmSync(join(f.app, 'Frameworks/Alpha.framework/Alpha'));
+    symlinkSync('../Beta.framework/Alpha', join(f.app, 'Frameworks/Alpha.framework/Alpha'));
     const result = run(f);
     assert.notEqual(result.status, 0);
     assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_BUNDLE/);
@@ -99,7 +111,7 @@ test('production checker accepts a versioned framework load path resolving to CF
     mkdirSync(versioned, { recursive: true });
     writeFileSync(join(versioned, 'Alpha'), 'versioned executable');
     rmSync(join(f.app, 'Frameworks/Alpha.framework/Alpha'));
-    require('node:fs').symlinkSync('Versions/A/Alpha', join(f.app, 'Frameworks/Alpha.framework/Alpha'));
+    symlinkSync('Versions/A/Alpha', join(f.app, 'Frameworks/Alpha.framework/Alpha'));
     const result = run(f);
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
