@@ -256,8 +256,14 @@ type recoveryEnv struct {
 	engine    *gin.Engine
 	wsRoot    string
 	github    *recoveryGitHubStub
-	responses []string
+	responses []recoveryHTTPResponse
 	logs      bytes.Buffer
+}
+
+type recoveryHTTPResponse struct {
+	status  int
+	body    string
+	headers http.Header
 }
 
 func newRecoveryEnv(t *testing.T) *recoveryEnv {
@@ -321,7 +327,9 @@ func (e *recoveryEnv) do(t *testing.T, method, path, body string) *httptest.Resp
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	e.engine.ServeHTTP(w, req)
-	e.responses = append(e.responses, w.Body.String())
+	e.responses = append(e.responses, recoveryHTTPResponse{
+		status: w.Code, body: w.Body.String(), headers: w.Result().Header.Clone(),
+	})
 	return w
 }
 
@@ -471,8 +479,13 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
 	require.GreaterOrEqual(t, len(env.responses), 7, "credential scan must cover baseline, prepare, approval and later delivery responses")
 
-	for i, body := range env.responses {
-		require.NotContains(t, body, t25ProbeToken, "response %d must not carry credential material", i)
+	for i, response := range env.responses {
+		require.NotContains(t, response.body, t25ProbeToken, "response %d body must not carry credential material", i)
+		for key, values := range response.headers {
+			for _, value := range values {
+				require.NotContains(t, value, t25ProbeToken, "response %d header %q must not carry credential material", i, key)
+			}
+		}
 	}
 	// The task workspace is the file surface shared with task execution; no
 	// dispatched file may embed the probe. This flow does not launch a Shell.
@@ -508,7 +521,10 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	for _, entry := range os.Environ() {
 		require.NotContains(t, entry, t25ProbeToken, "credential resolution must not add the probe to the inherited environment used by shell launchers")
 	}
-	require.NotContains(t, env.logs.String(), t25ProbeToken, "request/response and application logs must not contain the credential")
+	logOutput := env.logs.String()
+	require.Contains(t, logOutput, "method=POST", "credential scan requires evidence that production request logs were captured")
+	require.Contains(t, logOutput, "/apps/actions/", "captured logs must include the A03 approval request")
+	require.NotContains(t, logOutput, t25ProbeToken, "request/response and application logs must not contain the credential")
 	// Positive control: the probe DID leave as the Authorization header —
 	// every provider call carried it (otherwise the stub 401s and the run
 	// above would not have reached delivered/pushed states).
