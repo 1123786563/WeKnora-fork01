@@ -77,20 +77,23 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const [ruleView, setRuleView] = useState<RuleView>()
  const [rules, setRules] = useState<Array<{ ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number }>>([])
  const [selectedRuleId, setSelectedRuleId] = useState<string>()
+ const [detailLoading, setDetailLoading] = useState(false)
  const [storedRuleUnreadable, setStoredRuleUnreadable] = useState<TypedError>()
  const [phase, setPhase] = useState<Phase>('idle')
  const [notice, setNotice] = useState('')
  const [error, setError] = useState<TypedError>()
  const loadedForScope = useRef<string | undefined>(undefined)
+ const selectionGeneration = useRef(0)
 
  const clearForScopeChange = useCallback((message: string): void => {
+  selectionGeneration.current += 1
   // Memory only. The rule-id key is already isolated per userId/tenantId, and
   // the abort listener fires while current() still reports the outgoing
   // identity (scope.advance aborts before installing the new scope), so a
   // removeItem here would delete the outgoing user's own stored reference and
   // make their next save silently mint a second rule. The stored reference is
   // only dropped on a server-confirmed not_found in load().
-  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined); setRules([]); setSelectedRuleId(undefined); setStoredRuleUnreadable(undefined)
+  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined); setRules([]); setSelectedRuleId(undefined); setDetailLoading(false); setStoredRuleUnreadable(undefined)
   setPhase('idle'); setNotice(message); setError(undefined)
   setRevision(undefined); setViewPhase('scope-changed'); setViewError(undefined)
  }, [scopeController])
@@ -102,13 +105,21 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    const view = await client.career.open(requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    setRevision(view.revision)
-   const listed = await client.career.listRules(requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   setRules(listed.rules)
-   setViewPhase('ready')
+   const allRules: Awaited<ReturnType<typeof client.career.listRules>>['rules'] = []
+   let cursor: string | undefined
+   const seenCursors = new Set<string>()
+   do {
+    const listed = await client.career.listRules(cursor, requestScope.signal)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    allRules.push(...listed.rules)
+    cursor = listed.nextCursor ?? undefined
+    if (cursor && seenCursors.has(cursor)) throw new TypeError('重复的规则列表游标')
+    if (cursor) seenCursors.add(cursor)
+   } while (cursor)
+   setRules(allRules)
    const storage = typeof window === 'undefined' ? undefined : window.localStorage
    const storedRuleId = readStoredRuleId(storage, ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId))
-   const selected = listed.rules.find((rule) => rule.ruleId === storedRuleId) ?? (listed.rules.length === 1 ? listed.rules[0] : undefined)
+   const selected = allRules.find((rule) => rule.ruleId === storedRuleId) ?? (allRules.length === 1 ? allRules[0] : undefined)
    setSelectedRuleId(selected?.ruleId)
    if (selected) {
     try { storage?.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), selected.ruleId) } catch { /* private mode */ }
@@ -134,7 +145,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    let pending: Attempt | undefined
    let rawAttempt: string | null = null
    try { rawAttempt = storage?.getItem(attemptStorageKey) ?? null; if (rawAttempt) pending = decodeAttempt(JSON.parse(rawAttempt)) } catch { /* invalid persisted data fails closed below */ }
-   if (rawAttempt && !pending) { setStoredRuleUnreadable({ text: '本地保存的未确认请求无法安全读取；为避免重复写入，保存已停用。' }); return }
+   if (rawAttempt && !pending) { setStoredRuleUnreadable({ text: '本地保存的未确认请求无法安全读取；为避免重复写入，保存已停用。' }); setViewPhase('ready'); return }
    if (pending) {
     setAttempt(pending); setPhase('unknown'); setNotice('正在恢复上次未确认的规则保存…')
     try {
@@ -149,6 +160,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
      }
     } catch (cause) { if (scopeController.isCurrent(requestScope.scope)) { setPhase('unknown'); setNotice(`上次保存结果仍未确认：${errorDetails(cause).text}。请先恢复原请求。`) } }
    }
+   if (scopeController.isCurrent(requestScope.scope)) setViewPhase('ready')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
@@ -279,7 +291,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  // submitting a new attempt here would mint a fresh request ID and break
  // that recovery contract. A stored rule whose reference cannot be resolved
  // locks the form too (saving then would mint a second rule).
- const composeLocked = phase === 'busy' || phase === 'unknown' || storedRuleUnreadable !== undefined || (rules.length > 1 && !selectedRuleId)
+ const composeLocked = viewPhase !== 'ready' || detailLoading || phase === 'busy' || phase === 'unknown' || storedRuleUnreadable !== undefined || (rules.length > 1 && !selectedRuleId)
  // The latest write receipt is the authoritative live configuration; the
  // stored rule view backs it up on a fresh load and carries run history.
  const live = receipt ?? ruleView
@@ -295,11 +307,17 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   {viewPhase === 'scope-changed' ? <Card bordered><p>{notice}</p><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'ready' ? <>
    {rules.length > 1 ? <Card bordered><label htmlFor="career-rule-select">选择要查看或修改的规则</label><select id="career-rule-select" value={selectedRuleId ?? ''} onChange={(event) => {
-   const ruleId = event.currentTarget.value
-    setSelectedRuleId(ruleId || undefined); setRuleView(undefined); setReceipt(undefined)
+    const ruleId = event.currentTarget.value
+    const generation = ++selectionGeneration.current
+    setSelectedRuleId(ruleId || undefined); setRuleView(undefined); setReceipt(undefined); setStoredRuleUnreadable(undefined)
+    setDetailLoading(Boolean(ruleId))
     const requestScope = scopeController.current()
     try { if (ruleId) window.localStorage.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), ruleId); else window.localStorage.removeItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId)) } catch { /* private mode */ }
-    if (ruleId) void client.career.getRule(ruleId, requestScope.signal).then((next) => { if (scopeController.isCurrent(requestScope.scope)) { setRuleView(next); setDraft({ query: next.query, interval: String(next.intervalMinutes), status: next.status }) } }).catch((cause) => { if (scopeController.isCurrent(requestScope.scope)) setStoredRuleUnreadable(errorDetails(cause)) })
+    if (ruleId) void client.career.getRule(ruleId, requestScope.signal).then((next) => {
+     if (scopeController.isCurrent(requestScope.scope) && selectionGeneration.current === generation) { setRuleView(next); setDraft({ query: next.query, interval: String(next.intervalMinutes), status: next.status }); setDetailLoading(false) }
+    }).catch((cause) => {
+     if (scopeController.isCurrent(requestScope.scope) && selectionGeneration.current === generation) { setStoredRuleUnreadable(errorDetails(cause)); setDetailLoading(false) }
+    })
    }}><option value="">请选择规则</option>{rules.map((rule) => <option key={rule.ruleId} value={rule.ruleId}>{rule.query}（{statusLabels[rule.status]}）</option>)}</select></Card> : null}
    {storedRuleUnreadable ? <Card bordered><div role="alert"><strong>已保存规则暂时无法读取</strong><p>本地记录的规则编号无法读取（{storedRuleUnreadable.text}）。在重新读取成功前，保存会新建一条规则、可能造成重复的启用规则，因此保存已暂时停用。</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
    <CareerUsagePanel usage={usage.state} onRetry={usage.reload} />
