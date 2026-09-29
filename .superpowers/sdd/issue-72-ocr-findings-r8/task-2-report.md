@@ -48,5 +48,17 @@ ccf238910b2915215b26271a28f0065cef12547f7e54a778b076e984f73a4ee2  migrations/sql
 
 ## Limitations
 
-- The pre-change RED assertions were not executed against a reverted baseline; the old Dead disposition was verified from the original source branch before replacing it.
+- The implementer initially verified old Dead disposition from source rather than running RED. This evidence gap was resolved by the controller’s isolated-baseline RED test documented below.
 - PostgreSQL runtime migration/integration was not available in this local verification. The versioned SQL is additive and startup model migration is covered by the SQLite service setup.
+
+## Supplemental RED evidence (controller, isolated baseline)
+
+The implementation report originally noted that the pre-change behavior was checked by source inspection only. To complete the plan's RED evidence, I reused the now-free managed Task 6 worktree as an isolated baseline checkout at exact Task 2 BASE `d907ceb04604f5a98dd1c1e71036ad8bf9fdc700` and added a temporary test file `internal/modules/commercial/service/commercial/fulfillment_task2_red_test.go` (SHA-256 `4dcc75590731e9adbd1dfffe345267050733869e41edb1600329d4148b41787e`). The test seeded a paid top-up, removed its registered payment attempt, drained fulfillment, then asserted that the unverified event remained Pending. It compiled and failed on the intended behavior:
+
+```text
+go test ./internal/modules/commercial/service/commercial -run '^TestR8Task2RedUnverifiedPaidTopUpRemainsPending$' -count=1 -v
+fulfillment_task2_red_test.go:25: unverified paid top-up must remain pending for operator attention, got state=dead
+--- FAIL: TestR8Task2RedUnverifiedPaidTopUpRemainsPending
+```
+
+The temporary test was removed after the baseline run; no baseline source file or commit was changed. The four Task 6 implementation commits were preserved under branch `codex/issue-72-r8-task6-reviewed`, and the baseline worktree is clean at the recorded BASE.
