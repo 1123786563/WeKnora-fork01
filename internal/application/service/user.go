@@ -104,6 +104,9 @@ type userService struct {
 	memberService    interfaces.TenantMemberService
 	config           *config.Config
 	systemSettingSvc interfaces.SystemSettingService
+	// wechat holds the mini-program silent-login channel's remote clients.
+	// Lazily built from config by wechatClients(); assigned directly in tests.
+	wechat *wechatAuthClients
 }
 
 // NewUserService creates a new user service instance
@@ -565,6 +568,14 @@ func (s *userService) loginWithOIDC(
 		isNewUser = true
 	}
 
+	return s.finalizeLoginSession(ctx, user, isNewUser)
+}
+
+// finalizeLoginSession is the shared login tail behind loginWithOIDC and
+// LoginWithWeChatCode: active check, tenant-scoped token minting, and the
+// tenant + memberships payload so every SSO channel returns the same shape
+// as a password login.
+func (s *userService) finalizeLoginSession(ctx context.Context, user *types.User, isNewUser bool) (*types.OIDCCallbackResponse, error) {
 	if !user.IsActive {
 		return &types.OIDCCallbackResponse{Success: false, Message: "Account is disabled"}, nil
 	}
@@ -584,7 +595,7 @@ func (s *userService) loginWithOIDC(
 		if t, terr := s.tenantService.GetTenantByID(ctx, resolvedTenantID); terr == nil {
 			tenant = t
 		} else {
-			logger.Warnf(ctx, "OIDC login: failed to load tenant %d for user %s: %v",
+			logger.Warnf(ctx, "login: failed to load tenant %d for user %s: %v",
 				resolvedTenantID, user.ID, terr)
 		}
 	}

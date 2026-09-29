@@ -56,6 +56,13 @@ type UserPreferences struct {
 	// endpoint treats an empty string as "clear": UpdateUserPreferences
 	// turns *"" into nil.
 	DefaultModel *string `json:"default_model,omitempty"`
+
+	// WeChatServiceSecret is the AES-256-GCM ciphertext (base64) of the
+	// per-user Casdoor service password used by the mini-program silent-login
+	// channel. Key material lives only in env (WECHAT_MP_SECRET_KEY). The
+	// ciphertext is inert without the key and intentionally serializes with
+	// the rest of preferences.
+	WeChatServiceSecret string `json:"wechat_service_secret,omitempty"`
 }
 
 // Value implements driver.Valuer so GORM persists UserPreferences as
