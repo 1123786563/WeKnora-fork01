@@ -310,6 +310,28 @@
 
 **Acceptance:** No list/detail inconsistency or mismatched receipt can unlock a new rule write, and stale post-save reads cannot change the currently selected edit target.
 
+## Task 21: Keep deletion blocked until every admitted upload and retry effect is known
+
+**Dependency:** Task 13 commit `76809f586e38e9860cbd33dbecc9751916208ffb`; independent review findings T13-1 through T13-3 in `/tmp/issue140-r2-task13-review.md`. Do not integrate Task 13 or start Task 17 until this repair is validated and reviewed.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** Career lifecycle gate and export/rendering/application/upload/profile-intake modules and their focused tests; file-service storage interfaces and local/S3/MinIO implementations only as required to provide stable caller-chosen keys; migration files only if a new durable owner/attempt field is needed, append after SQLite143/versioned222 without renumbering.
+
+**Consumes / produces:** Lifecycle admission must distinguish the owning external-effect attempt from duplicate retries; only the owner may release after a durable result or known compensation. Export writes must use a deterministic, persisted storage key that local, S3 and MinIO adapters honor across retries, or remain claimed until all keys are discoverable and compensated. Resume upload must acquire the same scope gate before its first file/catalog side effect and retain the claim until the resource reference or compensated failure is durable. Deletion waits for all such claims and continues to fail closed when physical cleanup is unavailable.
+
+**Steps:**
+
+- [ ] Add production-shaped storage test whose adapter allocates a fresh physical key on each call and loses the first response; assert retry reuses the same key or the first key remains discoverable and is deleted before terminal deletion.
+- [ ] Add a two-Office exact-same-request interleaving: attempt A owns and pauses before effect, attempt B retries, deletion races; assert B cannot independently release A's ownership and deletion cannot finalize until all effects resolve.
+- [ ] Add a two-Office resume-upload/deletion interleaving paused before `SaveBytes` or catalog binding; assert deletion waits or upload is rejected before any external write.
+- [ ] Reproduce all three findings against Task 13; introduce owner-token/attempt state, stable physical object-key contract, and upload lifecycle admission with crash/replay recovery.
+- [ ] Append migration IDs only when required (next pair SQLite144/versioned223); test up/down and uniqueness while preserving 112–143 / 191–222.
+- [ ] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
+- [ ] Commit owned backend/storage changes and report the three race timelines, object-key guarantees, migration IDs and exact verification evidence.
+
+**Acceptance:** A `deleted` receipt is issued only after every application/material/upload external effect admitted before deletion is terminal and all discoverable private object keys are removed. Duplicate retries cannot release another attempt's claim, and storage retries cannot orphan an untracked prior object.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
