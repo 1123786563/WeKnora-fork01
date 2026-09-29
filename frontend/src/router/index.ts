@@ -7,6 +7,7 @@ import type { DeploymentCapabilityKey } from '@/config/deploymentCapabilities'
 import { MessagePlugin } from 'tdesign-vue-next'
 import i18n from '@/i18n'
 import { normalizeSettingsSection } from '@/config/settingsRoute'
+import { redeemLoginInviteForLoggedInVisitor } from './loginInvite'
 
 /** Lite /桌面 WebView 硬刷新时可能只打开 `/`，用 session 记住上次页面以便恢复 */
 const LITE_LAST_PATH_KEY = 'weknora_lite_last_path'
@@ -379,10 +380,28 @@ router.beforeEach(async (to, from, next) => {
 
   // 如果访问的是登录页面或初始化页面，直接放行
   if (to.meta.requiresAuth === false || to.meta.requiresInit === false) {
-    // 如果已登录用户访问登录页面，重定向到知识库列表页面
-    if (to.path === '/login' && authStore.isLoggedIn) {
-      next(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
-      return
+    if (to.path === '/login') {
+      // 已登录访客带邀请链接（/login?token=xxx）：先用 token 兑换邀请再
+      // 进入应用，无论兑换成败都进首页（对齐 React router.tsx
+      // loginBeforeLoad 的 token 分支：失败静默 + 无条件进入
+      // /platform/knowledge-bases）。刷新加载时 store 的 token 尚未回填，
+      // helper 会先用存储 token 恢复会话；未登录时返回 ''，落到下方
+      // 既有弹回 / 放行逻辑（匿名邀请注册流由 Login.vue 处理）。
+      const inviteRedirect = await redeemLoginInviteForLoggedInVisitor(to.query.token, {
+        isLoggedIn: () => authStore.isLoggedIn,
+        hasStoredToken: () => !!localStorage.getItem('weknora_token'),
+        hydrateStoredSession: () => hydrateSessionFromToken(authStore),
+        acceptInvitation: (token) => authStore.acceptInvitationByTokenAndRefresh(token),
+      })
+      if (inviteRedirect) {
+        next(inviteRedirect)
+        return
+      }
+      // 如果已登录用户访问登录页面，重定向到知识库列表页面
+      if (authStore.isLoggedIn) {
+        next(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
+        return
+      }
     }
     next()
     return
