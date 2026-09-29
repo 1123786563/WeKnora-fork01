@@ -83,3 +83,8 @@
 - GREEN: focused 9/9; full mobile 300 total, 286 pass, 14 opt-in skips, 0 fail; typecheck passed; actual generated SDK57 project checker passed; source diff-check passed.
 - Source/test patch SHA256 `82fd31a20f95192bae15fc194ea8dcc41e086f11d64c7bde3098c1a2f3fd8d0f`; local implementation commit `3060a67a952959561b4e453e21dbe2d1feb18d55`.
 - Report `.superpowers/sdd/plan-t31-ios27/fix-task-1-r5-report.md`; status implementation verified, independent final round review pending.
+
+## R1/R3 final disposition and R2 release
+- R1 clean prebuild fix: verified after actual SDK57 clean prebuild and old sentinel removal; focused release script test passes; full Pods/Xcode on the post-repair script was not repeated.
+- R3 generated project contract: five bounded repair rounds completed; final high-review report `.superpowers/sdd/plan-t31-ios27/fix-task-1-r5-review.md` gives Spec PASS / Quality PASS, no actionable C/H/M. Two low limits documented: bounded Swift syntax matching may need future SDK template update, and static call token presence cannot prove runtime reachability (the generated delegates have direct calls).
+- Task R2 safe-area brief `.superpowers/sdd/plan-t31-ios27/fix-task-2-brief.md`; now ready; release after R3 final review passed.

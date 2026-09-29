@@ -29,7 +29,7 @@
 | ID | Depends on | Owner role | Validator | Owned files | Interface / acceptance | Status |
 |---|---|---|---|---|---|---|
 | R1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/ios-release-build.sh`, `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` | Clean prebuild; remove stale SDK55 comments; release script test requires clean and correct build order | implemented; prebuild blocked by missing workspace plugin resolution |
-| R2 | none | frontend_implementer | frontend_validator | `apps/mobile/src/app/_layout.tsx` or shared mobile shell and focused test | Shared safe-area provider/inset; simulator screenshot shows title/form below status bar | pending |
+| R2 | none | frontend_implementer | frontend_validator | `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app-smoke.test.tsx` | Shared safe-area provider/inset; simulator screenshot shows title/form below status bar | ready |
 | R3 | R1 | frontend_implementer | reviewer | `apps/mobile/src/native-project-config.test.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, `apps/mobile/scripts/ios-release-build.sh` | Retire SDK55 plugin behavior tests; run generated SDK57 project assertions during Release script after clean prebuild | implemented; fixture tests pass, generated output validation blocked with R1 |
 
 Task R2 is independent of R1/R3 and can be reviewed in the same repair round after R1/R3 land. R3 consumes the clean generated-project contract produced by R1. No cyclic dependencies.
@@ -111,7 +111,7 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 4. Run focused tests, full mobile suite and typecheck. Run verifier against actual ignored SDK57 clean prebuild output. Capture report/package hash; commit fix.
 5. Request independent scoped re-review; do not release R2 until R3-F1 passes or is explicitly adjudicated.
 
-**Status:** pending; R1 clean script and initial R3 fixtures are integrated. R3 remains unverified until this round passes review.
+**Status:** R1 and R3 verified. R3-F1/F2 received five scoped repair rounds; final independent high-reasoning review is PASS with two low documented limits. R2 is ready.
 
 ## Task R3-F1: Include every app configuration and pin counterexamples (repair round 2)
 
