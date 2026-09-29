@@ -34,4 +34,7 @@ No live deployment or credentials were accessed. The supplied worktree contains 
 - **Regression evidence:** Added a controlled full-flow case where read 1 returns `pushed` and read 2 returns `delivered`. It asserts two delivery reads, zero dispatch/resolve requests, and `not-needed` with no recovery state or failure.
 - **Review:** Spec compliance — pass; evidence reports a recovery only after an action endpoint was invoked, and no API/requirements behavior changed. Code quality — pass; observation is local to the integration adapter and covered with the race scenario. No remaining finding identified in the assigned diff.
 - **Verification:** `pnpm --filter @weknora/mobile exec tsx --test src/delivery-integration-smoke.test.ts` — passed (10 tests, 0 failures); `pnpm --filter @weknora/mobile typecheck` — passed; `git diff --check` — passed.
-- **Repair commit:** `33ee26224c7d8c9bf982a57319fce53be0df999e` (`fix(mobile): report converged recovery as not needed`).
+- **Repair commit:** `878e9cec9e6d1a26763a69aa1f6d24c7c3b3d55e` (`fix(mobile): report converged recovery as not needed`). The earlier `33ee26224c7d8c9bf982a57319fce53be0df999e` was an agent-reported source-worktree identifier and is not present in this branch's Git object graph.
+- **R1 reviewed range:** `da6302d2c466695e11ca5f12d0ade1d0d139f87b..878e9cec9e6d1a26763a69aa1f6d24c7c3b3d55e`.
+- **R1 payload SHA-256:** `82e692242d2ff0f3631b22b0a4f566db5c7e14c0322b53b3600a33983f3423d9` (binary diff for the R1 commit).
+- **Independent review:** `.superpowers/sdd/plan-t55-integrated-review-repairs/task-2-r1-independent-review.md`; Spec compliance PASS, code quality PASS with this report traceability correction.
