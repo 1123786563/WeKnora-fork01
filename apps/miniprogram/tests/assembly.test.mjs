@@ -399,7 +399,7 @@ test('assembly: invalid signed-download 401 is an authorization failure rather t
   assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/invalid-grant.json', encoding: 'utf8', position: 0, length: Buffer.byteLength(invalidBody) }]);
 });
 
-test('assembly: unknown signed-download 401 body defaults to denial without app-managed files', async () => {
+test('assembly: generic signed-download 401 remains an authentication failure', async () => {
   await freshLogin();
   const unknownBody = JSON.stringify({ success: false, code: 'different_auth_failure', detail: 'x'.repeat(5000) });
   stub.use(call => {
@@ -414,8 +414,10 @@ test('assembly: unknown signed-download 401 body defaults to denial without app-
   const files = await import('../src/platform/files.ts');
   const { errorMessage } = await import('../src/core/errors.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=unknown', 'report.pdf'), error => {
-    assert.equal(error.code, 'ARTIFACT_GRANT_INVALID');
-    assert.doesNotMatch(errorMessage(error), /再次点击|重新获取/);
+    assert.equal(error.status, 401);
+    assert.equal(error.code, undefined);
+    assert.match(errorMessage(error), /登录已失效/);
+    assert.doesNotMatch(errorMessage(error), /下载授权/);
     return true;
   });
   assert.deepEqual(stub.state.removedFiles, []);

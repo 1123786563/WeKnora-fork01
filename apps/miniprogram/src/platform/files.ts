@@ -67,7 +67,7 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
      if(r.statusCode!==200){
       void downloadErrorCode(r.tempFilePath).then(responseCode=>{
        const code=r.statusCode===401
-        ?responseCode==='artifact_grant_expired'?'ARTIFACT_GRANT_EXPIRED':'ARTIFACT_GRANT_INVALID'
+        ?responseCode==='artifact_grant_expired'?'ARTIFACT_GRANT_EXPIRED':responseCode==='artifact_grant_invalid'?'ARTIFACT_GRANT_INVALID':undefined
         :undefined;
        reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(code?{code}:{})}));
       });
