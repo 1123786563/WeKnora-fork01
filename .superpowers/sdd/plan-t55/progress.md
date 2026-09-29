@@ -1,0 +1,68 @@
+# SDD ledger — plan: docs/plans/issue30-sweep/plans/plan-t55.md
+
+## Recovery facts
+- Root goal: Issue #30 descendants; this plan is Issue #55 (T25).
+- BASE: `db234c5eb171f2dde7427d382b55b503a038f879`.
+- Integration worktree: `/Users/wuyongjun/.paseo/worktrees/144ixsa6/issue30-b6-t55-cont`.
+- Branch: `codex/issue30-b6-t55-cont-exec`; created from BASE through Paseo isolated worktree (Paseo also left an unused branch `codex/issue30-b6-t55-cont` at BASE, so the checked-out branch was renamed with the codex prefix).
+- Source plan: copied from `.worktrees/issue30-sweep/docs/plans/issue30-sweep/plans/plan-t55.md`; source snapshot at BASE; target plan currently untracked in this branch until plan task commit.
+- Commit strategy: implementers commit locally per task; no push, merge to main, deploy, or Issue mutation.
+- External Issue refresh attempted 2026-09-29 via authenticated `gh api`; GitHub API TLS handshake timed out. Current Issue evidence is the committed snapshot `docs/plans/issue30-sweep/issues/issue-55.md` (captured 2026-09-20); no inference that live state is unchanged.
+- Agent inventory: no active Paseo agents at inventory time; two Codex terminals, one is this run and one handles unrelated Issue #72 Python-to-Go migration.
+
+## Preflight conflict scan
+| Pair | Shared file/interface | Check | Ruling |
+|---|---|---|---|
+| T1 → T2 | T1 changes delivery collaboration test wiring; T2 consumes that fixture pattern and adds a new HTTP e2e file | Provider wiring must be GREEN before the new test harness reuses it | T2 waits for T1 task review and integration |
+| T4 → T5 | T4 produces mobile API recovery operations; T5 consumes those operations | Types and route signatures must match | T5 waits for T4 task review and integration |
+| T5 → T6 | T5 exports `createDeliveryRecovery`; T6 consumes it in app composition | Export and callback signatures must match | T6 waits for T5 task review and integration |
+| T6 → T8 | T6 wires the user recovery flow; T8 extends opt-in evidence | The smoke evidence must call the integrated recovery flow | T8 waits for T6 task review and integration |
+| All other task pairs | No shared modified files or produced interface identified by plan task file maps | Plan dependencies and file maps scanned | No additional ordering edge inferred |
+
+| Task | Internal consistency review | Status |
+|---|---|---|
+| 1 | Existing failing collaboration e2e and provider fixture are named; one-line `Providers` wiring resolves stated root cause | Ready |
+| 2 | Depends on T1 host fixture; HTTP routes and real migration DB named; credential probe and dispatch counters specified | Ready after T1 |
+| 3 | Isolated sandbox environment contract test; no T1/T2 output consumed | Ready; can run independently in a separate worktree if needed |
+| 4 | API recovery methods and terminal read-only surface tests are in owned API-client files | Verified: implementation + repair round 1 reviewed |
+| 5 | Depends on T4 recovery API; package export named | Ready after T4 |
+| 6 | Depends on T5 constructor/export; UI callbacks and terminal purity checks named | Ready after T5 |
+| 7 | Credential-gated real-provider test; env-missing path must report blocked-env | Locally verified and reviewed; live-provider path skipped blocked-env |
+| 8 | Extends opt-in integration evidence after app recovery wiring | Ready after T6 |
+
+## Cross-plan scheduling
+- #55 has no overlapping modified files with #63 or #64 in their current plans; it can proceed beside one backend lifecycle/security stream in its own worktree.
+- #63 and #64 overlap adoption, upgrade, router/container, and workbench admission files; they must not write concurrently. #64 will remain queued until #63 is integrated and reviewed.
+
+## Task status
+- Task 1: pending.
+- Task 2: pending (blocked on Task 1 review/integration).
+- Task 3: pending (independent).
+- Task 4: pending.
+- Task 5: pending (blocked on Task 4 review/integration).
+- Task 6: pending (blocked on Task 5 review/integration).
+- Task 7: pending.
+- Task 8: pending (blocked on Task 6 review/integration).
+
+## Execution update
+- Task 1 implementation agent `/root/t55_task1` used `mechanical_worker` (runtime role profile: gpt-6-luna, medium). Commit: `32e1254478047bc8b94ceb2dda7659065dcbc918`.
+- Evidence: baseline targeted test reproduced 3 failures (`code_delivery_unsupported_provider`); same test passed after patch (4.863s); `git diff --check` passed. Full report: `.superpowers/sdd/plan-t55/task-1-report.md`.
+- Review package: `.superpowers/sdd/plan-t55/review-db234c5eb..32e125447.diff`; independent reviewer `/root/review_t55_task1` active. Status remains running until reviewer verdict and integration.
+- Live issue refresh: GitHub pages opened 2026-09-29; #30 is Open/Approved Specification and #55 is Open/ready-for-agent. Issue body and #55 AC match the committed snapshot; webpage shows no comments, no branches/PRs, and no displayed relationships. `gh api` remains unavailable due TLS timeout; native sub-issue pagination is therefore not freshly verified in this turn.
+- Task 1 independent review `/root/review_t55_task1`: Spec Compliance PASS; Code Quality PASS; no actionable findings. Task 1 integrated into this worktree (commit `32e1254478047bc8b94ceb2dda7659065dcbc918` already at HEAD).
+- Task 3 implementation commit `c7e7a2d780fadf2f3ab4ea2d7859c22d675e243a`; independent review `/root/review_t55_task3`: Spec Compliance PASS for scoped helper contract; Code Quality PASS with low evidence-scope concern. Review package `.superpowers/sdd/plan-t55/review-db234c5eb..c7e7a2d78.diff`.
+- Ruling T55-R1: accept Task 3 test as a regression check that `withWorkspaceEnvDefaults` adds only the two workspace defaults and preserves configured values; it is not proof of global Shell credential isolation or AC2. Keep global credential/Terminal acceptance open until Task 2/4/6 evidence and the connector credential boundary are verified. If this ruling is wrong, an operator-supplied credential-like EnvVar could still reach a sandbox; this risk will be checked at the full Issue review.
+- Task 3 commit integrated into this worktree; Tasks 1 and 3 marked complete in the plan. Task 1 and Task 3 remain scoped-complete; full Issue #55 acceptance is not complete.
+- Task 3 independent review `/root/review_t55_task3`: scoped Spec Compliance PASS; Code Quality PASS, one low evidence-scope finding; approval for task change granted. See Ruling T55-R1. Commit cherry-picked into the T55 integration worktree as `2583bbbfd`.
+- Plan Task 1 and Task 3 checklists were marked complete and committed as `bea332152` in the T55 integration worktree.
+- Paseo initially created an unused `codex/issue30-b6-t55-cont` branch at BASE and checked out a same-name-without-prefix branch; the active integration branch was renamed to `codex/issue30-b6-t55-cont-exec` to satisfy the codex/ naming convention. The unused base branch was not modified.
+
+
+## Repair and integration progress — 2026-09-29
+
+- Task 4 repair round 1: commit `e067c8ce510ddb33f22f7d173d5d0d75929cafb7`; original Task 4 implementation commit `6d5cbc3b3b3012757925873e37f842cbd70feecd`. Added production `errorFromResult` 409 shape checks for dispatch/resolve and 404 rejection for both. Verification: delivery tests 9/9; combined delivery + terminal tests 10/10; `git diff --check` PASS. Independent review package `.superpowers/sdd/plan-t55/task-4-review-package.patch`, SHA-256 `beb5430510fcf6efe0bc781b2b67a6b08efd5697beb42d369c3fd8416ed8301a`; verdict Spec PASS / Quality PASS, no findings. Integrated implementation + repair into this worktree as `75f1983b4` and `c5ba5e588`.
+- Task 7 repair round 1: commit `a75e315eddfa425d55fc05f6aca725db6e95b53a`; original Task 7 test commit `cdac696bb78cdee7a5b3eca6f13ea46cff702112`. Corrected BranchProtected handling of 404 (all other errors propagate), emulator behavior, baseline materialization and real PR draft assertion. Codedelivery package tests and diff-check PASS; opt-in real GitHub test skipped `blocked-env` due unavailable credentials/repository opt-in. Independent review package `.superpowers/sdd/plan-t55/task-7-fix-round1.patch`, SHA-256 `fdafa24cc69a59631f19c1467e70d029cb99a18d5d62c4b71f1728e08688c9f5`; verdict code meets brief / Quality PASS; live provider evidence remains unavailable. Integrated as `82c25af5e` and `8c978fcc3`.
+- Task 2 repair round 1 is committed but awaiting independent review: commit `d07ab8c13e81a648a57f6300fcaa765ea9fa182f`, package `.superpowers/sdd/plan-t55/task-2-review-r1.patch`, SHA-256 `f4e1c2c8b733916bd44dcaa2f268516a2227e3adbccb602db7300ecce4bfa6d0`. Reported verification: T25 e2e PASS; production delivery registrar Viewer/read-gate contract test PASS; neighboring DeliveryCollaboration + T25 regression PASS; gofmt/diff-check PASS. The registrar test does not cover global JWT/API-key auth.
+- Task 7 real-provider behavior is not marked live-verified: no credential values were inspected and no repository writes were attempted.
+- Task 2 repair rounds 1–4 completed in isolated worktree `/Users/wuyongjun/.paseo/worktrees/144ixsa6/issue30-b6-t55-task2`; implementation and repairs were integrated in dependency order as `c51f04cc0`, `d8ed93e6a`, `cc30ca6f1`, `728a9097e`, and `62c1039d6`. Final round-4 package `.superpowers/sdd/plan-t55/task-2-review-r4.patch`, SHA-256 `427a0eb02c09226d63f8ac3478e5cbd2b2da8fe734284371b3f8500673aeadda`, BASE `3b76d7cff9806ccaefdcd17b632ab6480b608b5e`, HEAD `70fd8bfcb203c4bf0b2b1e6b6977fbd0a3dbd324`; reviewer `/root/review_t55_task2_r4` confirmed SHA and returned Spec PASS / Quality PASS, no findings. Round-4 focused test, gofmt and diff-check passed per implementation report. Task 2 is scoped-verified; router test still does not claim global JWT/API-key authentication coverage.
+- Task 5 initial independent review `/root/review_t55_task5` returned Spec FAIL / Quality CHANGES REQUIRED on package SHA-256 `a33e2ce19e361c7fd97ad687a0617532db7864dcf2a0ea9b004f599a4193883c`. Findings: Task 4 adapter methods are absent from Task 5's actual base file despite existing in the integration history; and recovery must reject a returned delivery row whose `id` differs from the requested `deliveryId`. SDD repair round 1 is active; Task 5 remains unverified and Task 6/8 remain blocked.
