@@ -16,12 +16,12 @@ test('release package ships the native voice and network adapters (T39 #69)', ()
   const pkg = readJson('../package.json') as { dependencies?: Record<string, string> };
   assert.match(
     pkg.dependencies?.['expo-audio'] ?? '',
-    /^~55\./,
+    /^~57\./,
     'expo-audio 缺席 → createNativeDictationCaptureIfAvailable 恒 undefined，包上无麦克风入口（#56 留给本 Issue 的构建前置）',
   );
   assert.match(
     pkg.dependencies?.['expo-network'] ?? '',
-    /^~55\./,
+    /^~57\./,
     'expo-network 缺席 → createNativeNetworkStatusIfAvailable 恒 undefined，离线门透传（#40 留给本 Issue 的构建前置）',
   );
 });

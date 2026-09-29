@@ -26,9 +26,9 @@ test('app.json declares the Android release surface: package, scheme, versionCod
 test('the native workflow prerequisites are declared dependencies (mic / network / file cleanup)', () => {
   const pkg = JSON.parse(readFileSync(resolve(here, '..', 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
   const expected: Array<readonly [string, string]> = [
-    ['expo-audio', '~55.0.18'],
-    ['expo-network', '~55.0.18'],
-    ['expo-file-system', '~55.0.26'],
+    ['expo-audio', '~57.0.5'],
+    ['expo-network', '~57.0.2'],
+    ['expo-file-system', '~57.0.7'],
   ];
   for (const [name, version] of expected) {
     assert.equal(pkg.dependencies?.[name], version, `${name}@${version} 必须声明（版本源 node_modules/expo/bundledNativeModules.json，差异记录 7）`);
