@@ -170,6 +170,46 @@
 
 **Acceptance:** Across separately constructed handlers/processes, every application link or material object effect is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
 
+## Task 14: Correctly report saved preparation edits when follow-up reads fail
+
+**Dependency:** None; scoped to the Career preparation revision UI and its behavior tests.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/progress-preparation.tsx` and its focused tests only.
+
+**Consumes / produces:** Existing `career.editMaterial` durable receipt and `career.material` read. A successful edit is a committed fact even if the subsequent detail refresh fails; refresh failure must never re-enter the write-failure path or tell the user the edit was not submitted. The preflight material read used to preserve claims remains before submission and its failure must retain the explicit local draft and present typed recovery guidance.
+
+**Steps:**
+
+- [ ] Add regressions for (a) preflight claim read failure, and (b) edit success followed by material-detail read failure; assert only (a) says the edit remains unsubmitted and both retain enough recovery state.
+- [ ] Run tests RED and capture the contradictory saved/not-saved message on (b).
+- [ ] Move the preflight read into the handled local-draft error path; isolate post-commit detail refresh from the edit failure catch and keep the committed receipt/success state visible.
+- [ ] Run focused preparation tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
+- [ ] Commit only the page and its focused tests.
+
+**Acceptance:** Once `editMaterial` resolves successfully, no later read error can tell the user that the edit was not submitted; a preflight failure remains an explicit non-submission with recoverable local draft.
+
+## Task 15: Persist push subscription intent after native authorization is accepted
+
+**Dependency:** None; owns the reminder subscription UI and its behavior tests.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/rules-usage-reminders.tsx` and focused page/adapter tests.
+
+**Consumes / produces:** Existing `requestReminderSubscription()` native result, `setPushSubscription(value, expectedRevision)`, and Career revision. Native authorization is not delivery evidence. On an accepted authorization, persist `subscribed` under the current revision; on denial/unavailability leave server preference unchanged. If revision is unavailable or persistence outcome is unknown, state that authorization succeeded but server preference was not confirmed and retain same-request recovery semantics rather than claiming subscription complete.
+
+**Steps:**
+
+- [ ] Add tests for accepted authorization followed by successful preference write, accepted authorization with missing revision, rejected/unavailable results leaving preference untouched, and unknown preference-write recovery without a second native request.
+- [ ] Run tests RED.
+- [ ] Persist the subscription fact after accepted native authorization; display separate authorization and server-preference states and do not claim message delivery.
+- [ ] Run focused rules/reminder tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
+- [ ] Commit only owned reminder UI/test files.
+
+**Acceptance:** Users who opt back in update the shared Career push preference; permission is never represented as delivery, and ambiguous preference writes remain recoverable.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
