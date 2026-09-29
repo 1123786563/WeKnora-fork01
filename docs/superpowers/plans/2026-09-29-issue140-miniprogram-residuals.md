@@ -67,7 +67,7 @@
 - [ ] Add focused tests that show GET 401 still refreshes once and succeeds, while POST 401 neither refreshes nor sends a second request.
 - [ ] Run the focused tests first and capture the failing POST replay assertion.
 - [ ] Implement the method-sensitive replay policy without changing sign-in refresh, scope fencing, or stream authorization.
-- [ ] Run `pnpm --filter @weknora/mobile-core test` (or the package's exact runtime test script) and `git diff --check`.
+- [ ] Run `pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts` and `git diff --check`.
 - [ ] Commit and report the exact policy and validation.
 
 **Acceptance:** GET behavior remains refresh-once; write behavior is single-attempt and does not call refresh; focused mobile-core tests pass.
