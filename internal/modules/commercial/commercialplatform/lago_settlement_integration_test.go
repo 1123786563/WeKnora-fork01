@@ -231,6 +231,15 @@ func TestPaymentIntentCandidatesCaptureAllIDsAndFilterEligibility(t *testing.T) 
 }
 
 func TestPaymentIntentCandidatesExposeAmbiguity(t *testing.T) {
+	single := paymentIntentCandidate{id: "pi_unique", status: "requires_action", invoiceID: "in_unique"}
+	got, err := requireUniquePaymentIntentCandidate([]paymentIntentCandidate{single})
+	if err != nil {
+		t.Fatalf("unique candidate error = %v, want nil", err)
+	}
+	if got != single {
+		t.Fatalf("unique candidate = %+v, want exact candidate %+v", got, single)
+	}
+
 	rows := []any{
 		map[string]any{"id": "pi_a", "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_a"}},
 		map[string]any{"id": "pi_b", "status": "requires_confirmation", "metadata": map[string]any{"lago_invoice_id": "in_b"}},
