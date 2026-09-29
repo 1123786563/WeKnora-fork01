@@ -96,6 +96,68 @@ func TestUploadHTTPRequestIDReplayAndChangedBytesConflictBeforeStorage(t *testin
 	require.Equal(t, 1, files.saves)
 }
 
+func TestUploadStoreErrorKeepsLifecycleClaimUnresolved(t *testing.T) {
+	o, ctx := testOffice(t)
+	digest := sha256.Sum256([]byte("resume text"))
+	requestID := "write-response-lost"
+	intentHash := "write-response-lost-intent"
+	claim, _, err := o.ClaimUpload(ctx, SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 11, Digest: hex.EncodeToString(digest[:]), RequestID: requestID, IntentHash: intentHash})
+	require.NoError(t, err)
+	ownerToken, unlock, err := o.acquireLifecycleClaim(ctx, Scope{TenantID: 1, UserID: "u1"}, "source_upload", requestID, intentHash)
+	require.NoError(t, err)
+	defer unlock()
+	files := &careerUploadFiles{register: func(string, []byte, int) (string, error) {
+		return "", errors.New("provider accepted write, response lost")
+	}}
+	adapter := NewUploadAdapter(files, &careerUploadCatalog{}, careerUploadReader{})
+	_, err = adapter.StoreAndParseWithID(ctx, 1, claim.ID, "resume.txt", "text/plain", []byte("resume text"), nil)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+	var active lifecycleClaim
+	require.NoError(t, o.db.Where("request_id=? AND operation=?", requestID, "source_upload").First(&active).Error)
+	require.Equal(t, ownerToken, active.OwnerToken)
+	source, err := o.GetSource(ctx, claim.ID)
+	require.NoError(t, err)
+	require.Equal(t, "processing", source.Status)
+	require.Empty(t, source.ResourceRef)
+	require.ErrorIs(t, o.beginLifecycleDeletion(ctx, Scope{TenantID: 1, UserID: "u1"}, "delete-while-write-unknown", "delete-fingerprint"), ErrCareerOperationsBusy)
+}
+
+func TestUploadReferenceIsPersistedBeforeCatalogBind(t *testing.T) {
+	o, ctx := testOffice(t)
+	claim, _, err := o.ClaimUpload(ctx, SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 11, Digest: "digest-bind-order", RequestID: "bind-order", IntentHash: "bind-order-intent"})
+	require.NoError(t, err)
+	scope := Scope{TenantID: 1, UserID: "u1"}
+	ownerToken, unlock, err := o.acquireLifecycleClaim(ctx, scope, "source_upload", "bind-order", "bind-order-intent")
+	require.NoError(t, err)
+	defer unlock()
+	files := &careerUploadFiles{}
+	catalog := &careerUploadCatalog{bindErr: errors.New("catalog bind failed"), releaseErr: errors.New("physical delete failed")}
+	adapter := NewUploadAdapter(files, catalog, careerUploadReader{})
+	ref := "private://career_source_" + claim.ID + ".txt"
+	files.register = func(string, []byte, int) (string, error) { return ref, nil }
+	called := false
+	_, err = adapter.StoreAndParseWithID(ctx, 1, claim.ID, "resume.txt", "text/plain", []byte("resume text"), func(result UploadResult) error {
+		called = true
+		require.Equal(t, ref, result.Upload.ResourceRef)
+		return o.PersistUploadResourceOwned(ctx, claim.ID, claim.ClaimToken, ownerToken, ref)
+	})
+	require.ErrorContains(t, err, "bind stored resume source")
+	require.True(t, called)
+	source, err := o.GetSource(ctx, claim.ID)
+	require.NoError(t, err)
+	require.Equal(t, ref, source.ResourceRef)
+	require.Equal(t, ref, catalog.bound)
+	h := &Handler{office: o, upload: adapter}
+	_, _, err = h.finishClaimFailure(ctx, claim.ID, claim.ClaimToken, errors.New("catalog bind failed"))
+	require.ErrorContains(t, err, "physical delete failed")
+	var lifecycle lifecycleClaim
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND request_id=? AND operation=?", 1, "u1", "bind-order", "source_upload").First(&lifecycle).Error)
+	require.NotEmpty(t, lifecycle.OwnerToken, "failed compensation must retain the deletion gate")
+	source, err = o.GetSource(ctx, claim.ID)
+	require.NoError(t, err)
+	require.Equal(t, ref, source.ResourceRef)
+}
+
 func TestTwoOfficesDeletionWaitsForPausedResumeUpload(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "upload-lifecycle-gate.db")
 	db1, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -204,11 +266,12 @@ func TestFailedUploadRetainsReferenceUntilReleaseAndDeleteSucceed(t *testing.T) 
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	c.Request = req.WithContext(ctx)
 	h.Upload(c)
-	require.Equal(t, 200, rec.Code)
-	var response UploadResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Equal(t, "cleanup_pending_parse_failed", response.Source.ErrorCategory)
-	row, err := o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), response.Source.ID)
+	require.Equal(t, 500, rec.Code)
+	var row sourceRevision
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND request_id=?", 1, "u1", "cleanup-retry").First(&row).Error)
+	require.Equal(t, "cleanup_pending_parse_failed", row.ErrorCategory)
+	sourceID := row.ID
+	row, err := o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), sourceID)
 	require.NoError(t, err)
 	require.Equal(t, "private://"+files.stored, row.ResourceRef)
 	releaseRequest := func() *httptest.ResponseRecorder {
@@ -234,17 +297,17 @@ func TestFailedUploadRetainsReferenceUntilReleaseAndDeleteSucceed(t *testing.T) 
 	nextRequest.Header.Set("Content-Type", nextWriter.FormDataContentType())
 	nextContext.Request = nextRequest.WithContext(ctx)
 	h.Upload(nextContext)
-	require.Equal(t, 200, next.Code, next.Body.String())
+	require.Equal(t, 500, next.Code, next.Body.String())
 	require.Equal(t, 2, files.saves, "unrelated upload must progress while old cleanup is pending")
 	catalog.releaseErr = nil
 	files.deleteErr = errors.New("disk busy")
 	require.Equal(t, 200, releaseRequest().Code)
-	row, err = o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), response.Source.ID)
+	row, err = o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), sourceID)
 	require.NoError(t, err)
 	require.NotEmpty(t, row.ResourceRef)
 	files.deleteErr = nil
 	require.Equal(t, 200, releaseRequest().Code)
-	row, err = o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), response.Source.ID)
+	row, err = o.privateSource(WithScope(ctx, Scope{UserID: "u1", TenantID: 1}), sourceID)
 	require.NoError(t, err)
 	require.Empty(t, row.ResourceRef)
 	require.Equal(t, "parse_failed", row.ErrorCategory)
@@ -317,6 +380,7 @@ func (f *careerUploadFiles) GetFile(_ context.Context, ref string) (io.ReadClose
 type careerUploadCatalog struct {
 	interfaces.ResourceCatalog
 	bound, released string
+	bindErr         error
 	releaseErr      error
 	db              *gorm.DB
 	afterRelease    func()
@@ -324,6 +388,9 @@ type careerUploadCatalog struct {
 
 func (c *careerUploadCatalog) Bind(ctx context.Context, reference, ownerType, ownerID, relation string) error {
 	c.bound = reference
+	if c.bindErr != nil {
+		return c.bindErr
+	}
 	if c.db != nil {
 		handle, _ := types.ParseResourcePath(reference)
 		var resource types.StoredResource
@@ -401,19 +468,21 @@ func TestUploadRetryAdoptsCatalogedRefAfterClaimLoss(t *testing.T) {
 		return rec
 	}
 	first := request()
-	require.Equal(t, 202, first.Code, first.Body.String())
-	var response UploadResponse
-	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &response))
+	require.Equal(t, 504, first.Code, first.Body.String())
 	require.Empty(t, files.deleted)
+	var row sourceRevision
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND request_id=?", 1, "u1", "recover-request").First(&row).Error)
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", row.ID).Update("lease_until", time.Now().Add(-time.Second)).Error)
+	secondRetry := request()
+	require.Equal(t, 201, secondRetry.Code, secondRetry.Body.String())
+	var response UploadResponse
+	require.NoError(t, json.Unmarshal(secondRetry.Body.Bytes(), &response))
 	row, err := o.privateSource(ctx, response.Source.ID)
 	require.NoError(t, err)
-	require.Empty(t, row.ResourceRef)
+	require.NotEmpty(t, row.ResourceRef)
 	var candidates []types.StoredResource
 	require.NoError(t, o.db.Where("tenant_id=? AND original_name=? AND state=?", 1, "career_source_"+row.ID+".txt", types.ResourceStateActive).Find(&candidates).Error)
 	require.Len(t, candidates, 1)
-	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", row.ID).Update("lease_until", time.Now().Add(-time.Second)).Error)
-	second := request()
-	require.Equal(t, 201, second.Code, second.Body.String())
 	require.Equal(t, 1, files.saves)
 	row, err = o.privateSource(ctx, row.ID)
 	require.NoError(t, err)

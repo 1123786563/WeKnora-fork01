@@ -105,16 +105,16 @@ func (a *UploadAdapter) parseClaim(ctx context.Context, tenantID uint64, sourceI
 	} else {
 		resourceRef, err = a.files.SaveBytes(ctx, data, tenantID, "career_source_"+result.SourceID+ext, false)
 		if err != nil {
-			return result, fmt.Errorf("store resume: %w", err)
+			return result, &OutcomeUnknownError{RequestID: result.SourceID}
 		}
 		result.Upload.ResourceRef = resourceRef
-		if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
-			return result, fmt.Errorf("bind stored resume source: %w", err)
-		}
 		if onStored != nil {
 			if err := onStored(result); err != nil {
-				return result, fmt.Errorf("record processing resume: %w", err)
+				return result, &OutcomeUnknownError{RequestID: result.SourceID}
 			}
+		}
+		if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
+			return result, fmt.Errorf("bind stored resume source: %w", err)
 		}
 	}
 	result.Upload.ResourceRef = resourceRef

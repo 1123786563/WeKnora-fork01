@@ -227,6 +227,9 @@ func (s *ossFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 	targetBucket := s.bucketName
 	client := s.client
 	objectName := fmt.Sprintf("%s%d/exports/%s%s", s.pathPrefix, tenantID, uuid.New().String(), ext)
+	if !temp && isCareerStableName(safeName) {
+		objectName = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
 
 	if temp && s.tempClient != nil {
 		targetBucket = s.tempBucketName

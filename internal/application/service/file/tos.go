@@ -176,7 +176,6 @@ func (s *tosFileService) SaveFile(ctx context.Context, file *multipart.FileHeade
 		knowledgeID,
 		uuid.New().String()+ext,
 	)
-
 	src, err := file.Open()
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
@@ -217,6 +216,9 @@ func (s *tosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 		"exports",
 		uuid.New().String()+ext,
 	)
+	if !temp && isCareerStableName(safeName) {
+		objectName = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
 
 	if temp && s.tempBucketName != "" {
 		targetBucket = s.tempBucketName

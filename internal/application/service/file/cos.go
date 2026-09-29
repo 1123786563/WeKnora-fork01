@@ -234,6 +234,9 @@ func (s *cosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 
 	// 写入主桶
 	objectName := fmt.Sprintf("%s/%d/exports/%s%s", s.cosPathPrefix, tenantID, uuid.New().String(), ext)
+	if !temp && isCareerStableName(safeName) {
+		objectName = careerExportObjectKey(s.cosPathPrefix, tenantID, safeName)
+	}
 	_, err = s.client.Object.Put(ctx, objectName, reader, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to upload bytes to COS: %w", err)

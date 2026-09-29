@@ -306,7 +306,11 @@ func (s *obsFileService) CopyFile(ctx context.Context,
 }
 
 func (s *obsFileService) SaveBytes(ctx context.Context, data []byte, tenantID uint64, fileName string, temp bool) (string, error) {
-	ext := filepath.Ext(fileName)
+	safeName, err := utils.SafeFileName(fileName)
+	if err != nil {
+		return "", fmt.Errorf("invalid file name: %w", err)
+	}
+	ext := filepath.Ext(safeName)
 
 	var objectKey string
 	if temp {
@@ -322,8 +326,11 @@ func (s *obsFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 			objectKey = fmt.Sprintf("%d/%s%s", tenantID, uuid.New().String(), ext)
 		}
 	}
+	if !temp && isCareerStableName(safeName) {
+		objectKey = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
 
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucketName),
 		Key:         aws.String(objectKey),
 		Body:        strings.NewReader(string(data)),

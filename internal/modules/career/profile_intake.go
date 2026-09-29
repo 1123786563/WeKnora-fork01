@@ -35,6 +35,8 @@ var ErrUploadClaimLost = errors.New("career upload claim was superseded")
 
 type StaleSourceResource struct {
 	ID                 string
+	RequestID          string
+	IntentHash         string
 	ResourceRef        string
 	ClaimToken         string
 	FinalErrorCategory string
@@ -64,6 +66,24 @@ func (o *Office) FindUploadClaim(ctx context.Context, requestID string) (UploadC
 		return UploadClaimIntent{}, false, err
 	}
 	return UploadClaimIntent{FileName: row.FileName, MIMEType: row.MIMEType, Digest: row.Digest, ExpectedRevision: row.ExpectedRevision}, true, nil
+}
+
+// FindUploadSource performs a read-only lookup for a request that may already
+// be executing under another lifecycle guard.
+func (o *Office) FindUploadSource(ctx context.Context, requestID string) (CareerSource, bool, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return CareerSource{}, false, err
+	}
+	var row sourceRevision
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return CareerSource{}, false, nil
+	}
+	if err != nil {
+		return CareerSource{}, false, err
+	}
+	return sourceView(row), true, nil
 }
 
 // FailStaleUploads turns abandoned processing claims into visible failures.
@@ -118,7 +138,7 @@ func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time, exclude
 			continue
 		}
 		final := strings.TrimPrefix(r.ErrorCategory, "cleanup_pending_")
-		out = append(out, StaleSourceResource{ID: r.ID, ResourceRef: r.ResourceRef, ClaimToken: r.ClaimToken, FinalErrorCategory: final})
+		out = append(out, StaleSourceResource{ID: r.ID, RequestID: r.RequestID, IntentHash: r.IntentHash, ResourceRef: r.ResourceRef, ClaimToken: r.ClaimToken, FinalErrorCategory: final})
 	}
 	return out, nil
 }

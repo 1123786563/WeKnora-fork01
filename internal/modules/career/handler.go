@@ -95,6 +95,9 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrIdempotencyConflict):
 		status = 409
 		code = "idempotency_conflict"
+	case errors.Is(e, ErrCareerOperationsBusy):
+		status = http.StatusConflict
+		code = "processing"
 	case errors.Is(e, ErrInvalidRequest):
 		status = 400
 		code = "invalid_request"
@@ -1660,9 +1663,16 @@ func (h *Handler) Upload(c *gin.Context) {
 	ownerToken, unlockAttempt, guardErr := h.office.acquireLifecycleClaim(ctx, scope, "source_upload", requestID, hex.EncodeToString(intentSum[:]))
 	if guardErr != nil {
 		if errors.Is(guardErr, ErrCareerOperationsBusy) {
-			if pending, _, pendingErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: declaredMIME, Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision}); errors.Is(pendingErr, ErrUploadInProgress) {
-				c.JSON(http.StatusAccepted, UploadResponse{Source: pending})
-				return
+			prior, found, pendingErr := h.office.FindUploadClaim(ctx, requestID)
+			if pendingErr == nil && found {
+				if prior.Digest != digest || prior.FileName != baseName || prior.MIMEType != declaredMIME || prior.ExpectedRevision != expectedRevision {
+					writeError(c, ErrIdempotencyConflict)
+					return
+				}
+				if pending, exists, lookupErr := h.office.FindUploadSource(ctx, requestID); lookupErr == nil && exists && pending.Status == "processing" {
+					c.JSON(http.StatusAccepted, UploadResponse{Source: pending})
+					return
+				}
 			}
 		}
 		writeError(c, guardErr)
@@ -1839,13 +1849,28 @@ func (h *Handler) reconcileStaleSourcesExcept(ctx context.Context, skipRequestID
 		if resource.ResourceRef == "" {
 			continue
 		}
+		scope, scopeErr := getScope(cleanupCtx)
+		if scopeErr != nil {
+			continue
+		}
+		ownerToken, unlock, guardErr := h.office.acquireLifecycleClaim(cleanupCtx, scope, "source_upload", resource.RequestID, resource.IntentHash)
+		if guardErr != nil {
+			continue
+		}
 		if err = h.upload.Release(cleanupCtx, resource.ResourceRef, resource.ID); err != nil {
 			slog.Warn("career source cleanup pending", "source_id", resource.ID, "stage", "release")
+			unlock()
 			continue
 		}
 		if err = h.office.ClearSourceResource(cleanupCtx, resource.ID, resource.ClaimToken, resource.ResourceRef, resource.FinalErrorCategory); err != nil {
 			slog.Warn("career source cleanup state pending", "source_id", resource.ID, "stage", "state_update")
+			unlock()
+			continue
 		}
+		if err = h.office.resolveLifecycleClaimOwned(cleanupCtx, scope, "source_upload", resource.RequestID, ownerToken); err != nil {
+			slog.Warn("career source lifecycle cleanup pending", "source_id", resource.ID)
+		}
+		unlock()
 	}
 	return nil
 }
@@ -1863,7 +1888,9 @@ func (h *Handler) finishClaimFailure(ctx context.Context, id, token string, fail
 	}
 	if source.ResourceRef != "" {
 		final := strings.TrimPrefix(source.ErrorCategory, "cleanup_pending_")
-		if e := h.upload.Release(detached, source.ResourceRef, source.ID); e == nil {
+		if e := h.upload.Release(detached, source.ResourceRef, source.ID); e != nil {
+			return source, false, e
+		} else {
 			if e = h.office.ClearSourceResource(detached, source.ID, token, source.ResourceRef, final); e != nil {
 				if errors.Is(e, ErrUploadClaimLost) {
 					latest, readErr := h.office.GetSource(detached, id)

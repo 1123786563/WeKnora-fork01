@@ -1,13 +1,18 @@
 package career
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"net/url"
 	"strings"
 	"testing"
@@ -26,6 +31,46 @@ func TestCareerTenantRequiresSingleActiveOwner(t *testing.T) {
 	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u2", 7, []*types.TenantMember{owner}), ErrUnauthorized)
 	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleAdmin}}), ErrUnauthorized)
 	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, nil), ErrUnauthorized)
+}
+
+func TestBusyUploadDuplicateDoesNotCreateClaimBeforeGuardOwner(t *testing.T) {
+	o, _ := testOffice(t)
+	scope := Scope{TenantID: 1, UserID: "u1"}
+	ctx := WithScope(context.Background(), scope)
+	requestID := "busy-before-source"
+	intent, err := json.Marshal([]any{"resume.txt", "text/plain"})
+	require.NoError(t, err)
+	hash := sha256.Sum256(intent)
+	_, unlock, err := o.acquireLifecycleClaim(ctx, scope, "source_upload", requestID, hex.EncodeToString(hash[:]))
+	require.NoError(t, err)
+	defer unlock()
+	files := &careerUploadFiles{}
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(files, &careerUploadCatalog{}, careerUploadReader{})}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
+	partHeader.Set("Content-Type", "text/plain")
+	part, err := mw.CreatePart(partHeader)
+	require.NoError(t, err)
+	_, err = part.Write([]byte("Education: Example University"))
+	require.NoError(t, err)
+	require.NoError(t, mw.WriteField("requestId", requestID))
+	require.NoError(t, mw.WriteField("expectedRevision", "0"))
+	require.NoError(t, mw.Close())
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(1))
+	req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	c.Request = req.WithContext(base)
+	h.Upload(c)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Zero(t, files.saves)
+	var sourceCount int64
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("request_id=?", requestID).Count(&sourceCount).Error)
+	require.Zero(t, sourceCount, "busy duplicate must not insert a processing source")
 }
 
 func TestFinishClaimFailureTreatsCleanupClaimLossAsSuperseded(t *testing.T) {
