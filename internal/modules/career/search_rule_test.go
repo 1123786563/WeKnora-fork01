@@ -3,12 +3,33 @@ package career
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+type blockingRuleQuotaGate struct {
+	entered chan struct{}
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func (g *blockingRuleQuotaGate) AdmitSearch(context.Context, Scope, string, string) error {
+	g.mu.Lock()
+	g.calls++
+	g.mu.Unlock()
+	select {
+	case g.entered <- struct{}{}:
+	default:
+	}
+	<-g.release
+	return nil
+}
 
 // searchRuleClockBase is the deterministic clock every set_rule call uses
 // until a test overrides Office.searchRuleNow.
@@ -443,4 +464,177 @@ func TestRuleScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	outcomes, err := o.TriggerDueRules(neighborCtx, searchRuleClockBase.Add(time.Hour))
 	require.NoError(t, err)
 	require.Empty(t, outcomes, "the sweep only touches the authenticated scope's rules")
+}
+
+func TestDueRulePauseCommittedAfterScanPreventsClaimAndSearch(t *testing.T) {
+	o, transport, gate, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-race-pause-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	var scanned searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&scanned).Error)
+
+	// A separately constructed Office represents another handler/process using
+	// the same database. The stale candidate is dispatched after its pause wins.
+	o2, err := NewOffice(o.db)
+	require.NoError(t, err)
+	pause := ruleInput("rule-race-pause-update", 60, RuleStatusPaused)
+	pause.RuleID = created.RuleID
+	pause.ExpectedRevision = 0
+	_, err = o2.SetRule(ctx, pause)
+	require.NoError(t, err)
+
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+	_, err = o.triggerRulePeriod(ctx, scope, scanned, searchRuleClockBase.Add(time.Hour))
+	require.ErrorIs(t, err, errRuleCandidateStale)
+	require.Zero(t, gate.calls, "a candidate invalidated by pause cannot reach quota admission")
+	require.Empty(t, transport.calls, "a pause committed before claim prevents external search")
+	require.Zero(t, countRows(t, o, &searchRecord{}))
+	require.Zero(t, countRows(t, o, &searchRuleRunRecord{}), "no claim/run is persisted for stale candidate")
+}
+
+func TestDueRuleClaimBeforePauseFinishesSameRequest(t *testing.T) {
+	o, transport, _, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-race-claim-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	gate := &blockingRuleQuotaGate{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	o.searchQuotaGate = gate
+	o2, err := NewOffice(o.db)
+	require.NoError(t, err)
+	var outcomes []RuleRunSummary
+	finished := make(chan error, 1)
+	go func() {
+		var triggerErr error
+		outcomes, triggerErr = o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Hour))
+		finished <- triggerErr
+	}()
+	select {
+	case <-gate.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("trigger did not reach quota after claiming the period")
+	}
+	var claim searchRuleRunRecord
+	claimErr := o.db.Where("rule_id=? AND period=1", created.RuleID).First(&claim).Error
+
+	pause := ruleInput("rule-race-claim-pause", 60, RuleStatusPaused)
+	pause.RuleID = created.RuleID
+	pause.ExpectedRevision = 0
+	_, err = o2.SetRule(ctx, pause)
+	require.NoError(t, err, "pause serializes after the committed claim")
+	close(gate.release)
+	require.NoError(t, <-finished)
+	require.NoError(t, claimErr, "claim must commit before quota admission")
+	require.Equal(t, "started", claim.Status)
+	require.Equal(t, "rule:"+created.RuleID+":1", claim.RequestID)
+	require.Len(t, outcomes, 1)
+	require.Equal(t, claim.RequestID, outcomes[0].RequestID)
+	require.Equal(t, RuleRunStatusCompleted, outcomes[0].Status)
+	require.Len(t, transport.calls, 1)
+	var completed searchRuleRunRecord
+	require.NoError(t, o.db.Where("rule_id=? AND period=1", created.RuleID).First(&completed).Error)
+	require.Equal(t, claim.RequestID, completed.RequestID)
+	require.Equal(t, RuleRunStatusCompleted, completed.Status)
+}
+
+func TestListRulesUsesStableBoundedOwnerScopedPages(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	// Same timestamp forces the ID tie-breaker to determine stable page order.
+	for i := 0; i < 52; i++ {
+		id := fmt.Sprintf("rule-list-%03d", i)
+		require.NoError(t, o.db.Create(&searchRuleRecord{
+			TenantID: 96, UserID: "rule-owner", ID: id, Query: "query " + id,
+			IntervalMinutes: 60, Status: RuleStatusPaused, Revision: 2,
+			CreatedAt: searchRuleClockBase, UpdatedAt: searchRuleClockBase,
+		}).Error)
+	}
+	page, err := o.ListRules(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, page.Rules, 50)
+	require.NotNil(t, page.NextCursor)
+	require.Equal(t, "rule-list-000", page.Rules[0].RuleID)
+	require.Nil(t, page.Rules[0].NextDueAt)
+	second, err := o.ListRules(ctx, *page.NextCursor)
+	require.NoError(t, err)
+	require.Len(t, second.Rules, 2)
+	require.Nil(t, second.NextCursor)
+	require.Equal(t, []string{"rule-list-050", "rule-list-051"}, []string{second.Rules[0].RuleID, second.Rules[1].RuleID})
+	_, err = o.ListRules(ctx, "not-a-cursor")
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	other := WithScope(context.Background(), Scope{UserID: "neighbor", TenantID: 97})
+	require.NoError(t, o.ClaimSpace(other))
+	otherPage, err := o.ListRules(other, "")
+	require.NoError(t, err)
+	require.Empty(t, otherPage.Rules)
+	require.Nil(t, otherPage.NextCursor)
+	_, err = o.ListRules(other, *page.NextCursor)
+	require.ErrorIs(t, err, ErrInvalidRequest, "cursor from another owner scope must not be reusable")
+
+	pausedJSON, err := json.Marshal(page.Rules[0])
+	require.NoError(t, err)
+	require.Contains(t, string(pausedJSON), `"nextDueAt":null`)
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(pausedJSON, &fields))
+	require.Len(t, fields, 9)
+	for _, key := range []string{"ruleId", "query", "intervalMinutes", "status", "revision", "nextDueAt", "estimate", "createdAt", "updatedAt"} {
+		require.Contains(t, fields, key)
+	}
+}
+
+func TestSecondStaleDueCandidateCannotClaimNextPeriodEarly(t *testing.T) {
+	o, _, gate, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-stale-generation-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	var scanned searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&scanned).Error)
+	first, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	firstQuotaCalls := gate.calls
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+	_, err = o.triggerRulePeriod(ctx, scope, scanned, searchRuleClockBase.Add(time.Hour))
+	require.ErrorIs(t, err, errRuleCandidateStale)
+	require.Equal(t, firstQuotaCalls, gate.calls, "stale generation cannot charge for a following period")
+	require.EqualValues(t, 1, countRows(t, o, &searchRuleRunRecord{}))
+}
+
+func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
+	o, transport, gate, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-recovery-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("id=?", created.RuleID).
+		Updates(map[string]any{"next_due_at": searchRuleClockBase.Add(-time.Minute)}).Error)
+	var rule searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&rule).Error)
+	run := RuleRunView{Kind: RuleKindRun, RuleID: rule.ID, Period: 1, RequestID: "rule:" + rule.ID + ":1", Status: RuleRunStatusStarted, TriggeredAt: searchRuleClockBase}
+	body, err := json.Marshal(searchRuleRunBody{RuleRunView: run, Query: rule.Query, ExpectedProfileRevision: 0})
+	require.NoError(t, err)
+	require.NoError(t, o.db.Create(&searchRuleRunRecord{ID: uuid.NewString(), TenantID: 96, UserID: "rule-owner", RuleID: rule.ID,
+		Period: 1, RequestID: run.RequestID, Status: RuleRunStatusStarted, Body: string(body), CreatedAt: searchRuleClockBase}).Error)
+
+	o2, err := NewOffice(o.db)
+	require.NoError(t, err)
+	o2.searchRegistry = o.searchRegistry
+	o2.sourcePolicy = o.sourcePolicy
+	o2.sourceTransport = transport
+	o2.searchQuotaGate = gate
+	pause := ruleInput("rule-recovery-pause", 60, RuleStatusPaused)
+	pause.RuleID = rule.ID
+	_, err = o2.SetRule(ctx, pause)
+	require.NoError(t, err)
+
+	outcomes, err := o2.TriggerDueRules(ctx, searchRuleClockBase.Add(2*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, outcomes, 1)
+	require.Equal(t, run.RequestID, outcomes[0].RequestID)
+	require.Equal(t, RuleRunStatusCompleted, outcomes[0].Status)
+	require.Len(t, transport.calls, 1)
+	require.Equal(t, 1, gate.calls)
+	var recovered searchRuleRunRecord
+	require.NoError(t, o.db.Where("rule_id=? AND period=1", rule.ID).First(&recovered).Error)
+	require.Equal(t, RuleRunStatusCompleted, recovered.Status)
+	var storedRule searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", rule.ID).First(&storedRule).Error)
+	require.Equal(t, uint64(1), storedRule.LastPeriod)
+	require.Nil(t, storedRule.NextDueAt)
 }
