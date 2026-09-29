@@ -304,6 +304,48 @@ func TestDeleteCareerRevokesOldExportAndArtifactGrants(t *testing.T) {
 	require.ErrorIs(t, err, ErrMaterialNotFound)
 }
 
+func TestDeleteCareerRemovesPreviouslyRevokedExportObjects(t *testing.T) {
+	o, store, ctx := newExportOffice(t, "revoked-delete-owner", 1953)
+	seed := seedMaterialEvidence(t, o, ctx, "2027", "revoked-delete")
+	published := publishConfirmedVersion(t, o, ctx, seed, "revoked-delete-publish")
+	_, err := o.RevokeMaterialExport(ctx, RevokeMaterialExportInput{RequestID: "revoked-delete-revoke", MaterialID: published.MaterialID, ExportID: published.ExportID, ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.NotEmpty(t, store.files, "revoke may retain physical bytes for deletion recovery")
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "revoked-delete-final", ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, receipt.Status)
+	require.Empty(t, store.files, "deleted receipt requires physical cleanup, including revoked exports")
+}
+
+func TestDeleteCareerFailsClosedWhenExportStorageUnavailable(t *testing.T) {
+	o, store, ctx := newExportOffice(t, "missing-storage-delete-owner", 1954)
+	seed := seedMaterialEvidence(t, o, ctx, "2027", "missing-storage-delete")
+	published := publishConfirmedVersion(t, o, ctx, seed, "missing-storage-publish")
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	o.SetExportStorage(nil)
+	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "missing-storage-delete-final", ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusPartial, receipt.Status, "missing storage must not be reported as deleted")
+	require.NotEmpty(t, store.files)
+	// Retry the same durable delete intent when storage returns; all original
+	// object locators are still present for deterministic compensation.
+	o.SetExportStorage(store)
+	retry, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "missing-storage-delete-final", ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, retry.Status)
+	require.Empty(t, store.files)
+	_ = published
+}
+
+func TestCareerDeletionBoundaryReturnsCountQueryErrors(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "boundary-count-owner", 1955)
+	require.NoError(t, db.Migrator().DropTable("career_material_exports"))
+	view, err := o.CareerDeletionBoundary(ctx)
+	require.Error(t, err)
+	require.Empty(t, view.InSpace)
+}
+
 func TestDeleteCareerDisclosesRetentionScopeAndStatus(t *testing.T) {
 	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
 	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
@@ -601,6 +643,16 @@ func TestFindCareerDeletionDuringExecutionWindowReportsInProgress(t *testing.T) 
 func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testing.T) {
 	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
 	seedExportChain(t, o, ctx, "full-archive")
+	preparationReceipt := PreparationReceipt{
+		Kind: "career_preparation", RequestID: "prep-req-9", ApplicationID: "app-any",
+		PreparationID: "prep-export-1", Focus: "cover_letter", Status: "succeeded",
+		Anchor:   PreparationAnchor{SubmissionID: "submission-1", MaterialID: "material-1", ExportID: "export-1", Version: 3, ContentDigest: "digest-v3"},
+		Body:     MaterialBody{Sections: []MaterialSection{{Heading: "Cover letter", Content: "Preserve this generated draft."}}},
+		Sources:  PreparationSources{SubmittedVersion: PreparationAnchor{SubmissionID: "submission-1", MaterialID: "material-1", ExportID: "export-1", Version: 3, ContentDigest: "digest-v3"}, Snapshot: PreparationSnapshotRef{OpportunityID: "opp-1", SnapshotID: "snap-1", SnapshotSHA256: "sha256-snapshot"}, FactKeys: []string{"education.graduation_year"}, ProfileRevision: 7},
+		Revision: 7, CreatedAt: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC),
+	}
+	preparationReceiptJSON, err := json.Marshal(preparationReceipt)
+	require.NoError(t, err)
 
 	require.NoError(t, db.Exec(`INSERT INTO career_preparations
 		(id, tenant_id, user_id, application_id, request_id, fingerprint, focus, status,
@@ -609,7 +661,7 @@ func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testin
 		 receipt_body, created_at, updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		"prep-export-1", uint64(1951), "owner-1", "app-any", "prep-req-9", "fp", "cover_letter", "succeeded",
-		"", "", "", 0, "", "", "", 0, "", "", "", "{}", "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
+		"", "", "", 0, "", "", "", 0, "", "", "", string(preparationReceiptJSON), "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
 	require.NoError(t, db.Exec(`INSERT INTO career_search_rules
 		(tenant_id, user_id, id, query, interval_minutes, status, revision, last_period, next_due_at, created_at, updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -629,6 +681,9 @@ func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testin
 	require.Len(t, receipt.Archive.Preparations, 1)
 	require.Equal(t, "prep-export-1", receipt.Archive.Preparations[0].PreparationID)
 	require.Equal(t, "cover_letter", receipt.Archive.Preparations[0].Focus)
+	require.Equal(t, "Preserve this generated draft.", receipt.Archive.Preparations[0].Receipt.Body.Sections[0].Content)
+	require.Equal(t, []string{"education.graduation_year"}, receipt.Archive.Preparations[0].Receipt.Sources.FactKeys)
+	require.Equal(t, "digest-v3", receipt.Archive.Preparations[0].Receipt.Anchor.ContentDigest)
 	require.Len(t, receipt.Archive.SearchRules, 1)
 	require.Equal(t, "rule-export-1", receipt.Archive.SearchRules[0].RuleID)
 	require.Equal(t, uint64(720), receipt.Archive.SearchRules[0].IntervalMinutes)
