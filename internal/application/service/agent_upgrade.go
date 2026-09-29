@@ -146,6 +146,9 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w", ErrAgentUpgradeStateConflict, err)
+		}
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, err
 	}
 	manifest, err := releaseManifest(ctx, s.repo, tenantID, row.ToReleaseID)
