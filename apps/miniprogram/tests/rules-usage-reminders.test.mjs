@@ -423,6 +423,30 @@ test('T16-2: opt-out invalidates old authorization before a malformed committed-
   assert.equal(careerCall('/act').filter(call => (call.options.method ?? 'GET') === 'POST').length, 1, 'the malformed success was not retried');
 });
 
+test('T19-1: pending subscribed retry is blocked until profile reconciliation clears invalid receipt', async () => {
+  let subscribedPosts = 0;
+  await freshLogin({
+    'POST /api/v1/career/act': call => {
+      if (call.options.data.value === 'unsubscribed') stub.succeed(call, { data: { kind: 'confirmed', requestId: call.options.data.requestId } });
+      else if (++subscribedPosts === 1) stub.fail(call, 'request:fail timeout');
+      else stub.succeed(call, { data: confirmedAct('notifications.push', 'subscribed', 4) });
+    },
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 4, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: 4, facts: [], proposals: [] } }),
+  });
+  await assert.rejects(rulesPage.persistPushPreference(3), error => error.code === 'outcome_unknown');
+  const stamp = runtime.auth.scope.capture();
+  await assert.rejects(rulesPage.runPushOptOut(stamp, captured => runtime.auth.scope.isCurrent(captured), () => {}, () => platform.setPushSubscription('unsubscribed', 3)), error => error.code === 'contract_violation');
+  assert.equal(rulesPage.hasInvalidPushReceipt(stamp), true);
+  await assert.rejects(rulesPage.retryPushPreference(), error => error.code === 'invalid_receipt');
+  assert.equal(subscribedPosts, 1, 'retry cannot issue a second subscribed POST while profile truth is unknown');
+  const refreshed = await career.refreshCareer();
+  assert.equal(refreshed.revision, 4);
+  rulesPage.clearPushReceiptInvalidAfterProfileRefresh(stamp);
+  await rulesPage.retryPushPreference();
+  assert.equal(subscribedPosts, 2, 'the original request can be safely retried after profile reconciliation');
+});
+
 test('C2: a rejected subscription keeps the in-station todos readable — no fake delivery', async () => {
   await freshLogin({
     'GET /api/v1/career/reminders': call => stub.succeed(call, { data: { reminders: [reminderView()] } }),

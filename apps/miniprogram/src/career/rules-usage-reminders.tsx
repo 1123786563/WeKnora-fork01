@@ -66,7 +66,9 @@ export async function persistPushPreference(expectedRevision: number, stamp: Sco
     throw error;
   }
 }
-function retryPushPreference(): Promise<ReturnType<typeof decodeCareerReceipt>> {
+export async function retryPushPreference(stamp: ScopeStamp = auth.scope.capture()): Promise<ReturnType<typeof decodeCareerReceipt>> {
+  if (!auth.scope.isCurrent(stamp)) throw Object.assign(new Error('SCOPE_CHANGED'), { code: 'SCOPE_CHANGED' });
+  if (pushReceiptInvalid(stamp)) throw Object.assign(new Error('请先读取服务器订阅偏好事实'), { code: 'invalid_receipt' });
   return retryRecoverable(pushPreferenceStore, 'push-subscription', '推送订阅偏好', sendPushPreference);
 }
 async function reconcilePushPreference(): Promise<ReturnType<typeof decodeCareerReceipt>> {
@@ -322,7 +324,7 @@ export default function RulesUsageRemindersPage() {
       {pendingPush && <>
         <Notice tone='warning'>微信授权已接受，但服务器订阅偏好写入结果未知（原请求 {pendingPush.requestId.slice(0, 10)}…）。恢复操作不会再次请求微信授权。</Notice>
         <Action secondary loading={recPushBusy.busy} onClick={() => void recPushBusy.run(async () => { const stamp = auth.scope.capture(); await reconcilePushPreference(); if (!auth.scope.isCurrent(stamp)) return; pushPreferenceStore.remove(pushAuthorizationKey(stamp)); setPushNotice('服务器订阅偏好已对账确认；授权不代表提醒已送达。'); })}>对账原订阅偏好请求</Action>
-        <Action secondary loading={retryPushBusy.busy} onClick={() => void retryPushBusy.run(async () => { const stamp = auth.scope.capture(); await retryPushPreference(); if (!auth.scope.isCurrent(stamp)) return; pushPreferenceStore.remove(pushAuthorizationKey(stamp)); setPushNotice('服务器订阅偏好已用原请求安全重发保存；授权不代表提醒已送达。'); })}>安全重发原订阅偏好</Action>
+        <Action secondary disabled={pushReceiptInvalid(pageScope)} loading={retryPushBusy.busy} onClick={() => void retryPushBusy.run(async () => { const stamp = auth.scope.capture(); await retryPushPreference(stamp); if (!auth.scope.isCurrent(stamp)) return; pushPreferenceStore.remove(pushAuthorizationKey(stamp)); setPushNotice('服务器订阅偏好已用原请求安全重发保存；授权不代表提醒已送达。'); })}>安全重发原订阅偏好</Action>
         {recPushBusy.error && <Notice tone='danger'>{recPushBusy.error} 对账失败时 intent 保留；稍后可继续恢复。</Notice>}
         {retryPushBusy.error && <Notice tone='danger'>{retryPushBusy.error} 原请求和修订已保留；不会再次请求微信授权。</Notice>}
       </>}
