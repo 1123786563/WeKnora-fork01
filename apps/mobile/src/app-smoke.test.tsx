@@ -1619,3 +1619,55 @@ test('the /new route wires dictation through the composition root; confirmed tex
   assert.match(compositionSource, /createMobileVoiceTranscriptionRemote/, '转写 Remote 只在组合根装配');
   assert.match(compositionSource, /createNativeDictationCaptureIfAvailable/, '原生捕获 Adapter 只在组合根探测');
 });
+
+test('the delivery receipt section offers the recovery action for partial and unknown states only (T25 #55 AC1)', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '交付', lifecycle: 'active', runStatus: 'running', attention: 'required',
+    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 2, incomplete: false, connection: 'live',
+    timeline: [], duplicateSeqs: [],
+  };
+  const pushedReceipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed',
+    repo: 'octocat/hello', branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40),
+    commitSha: 'c1', attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const withRecovery = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: pushedReceipt, onRecoverDelivery: async () => pushedReceipt,
+  });
+  const sectionOf = (tree: unknown) => {
+    const sectionElement = descendants(tree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+    return sectionElement === undefined ? undefined : render(sectionElement.type as (props: unknown) => unknown, sectionElement.props);
+  };
+  const pushedJson = JSON.stringify(sectionOf(withRecovery));
+  assert.ok(pushedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'the honest partial-completion copy renders');
+  assert.ok(pushedJson.includes('恢复创建草稿 PR/MR'), 'the pushed state offers the recovery action');
+  const unknown: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'unknown' };
+  const unknownTree = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: unknown,
+    onRecoverDelivery: async () => unknown,
+  });
+  const unknownSection = sectionOf(unknownTree);
+  const unknownAction = descendants(unknownSection).find(({ type, props }) => type === 'Button' && props.title === '核对远端结果');
+  assert.ok(unknownAction, 'the unknown state offers the remote reconciliation action');
+  let recoveryInput: { runId: string; deliveryId: string } | undefined;
+  const wiredTree = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
+    onRecoverDelivery: async (input: { runId: string; deliveryId: string }) => { recoveryInput = input; return pushedReceipt; },
+  });
+  const wiredAction = descendants(sectionOf(wiredTree)).find(({ type, props }) => type === 'Button' && props.title === '恢复创建草稿 PR/MR');
+  assert.ok(wiredAction, 'the pushed recovery action is pressable');
+  (wiredAction!.props.onPress as () => void)();
+  assert.deepEqual(recoveryInput, { runId: 'run-1', deliveryId: 'dlv-1' }, 'recovery is bound to the displayed run and delivery');
+  const recovered: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'delivered' };
+  const settled = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: recovered,
+  });
+  assert.equal(JSON.stringify(sectionOf(settled)).includes('恢复创建草稿 PR/MR'), false, 'a delivered receipt offers no recovery action');
+  const noCallback = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
+  });
+  assert.equal(JSON.stringify(sectionOf(noCallback)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
+});
