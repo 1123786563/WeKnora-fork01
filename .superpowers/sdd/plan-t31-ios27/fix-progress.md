@@ -27,3 +27,9 @@
 - Agent initial report noted `expo-build-properties` resolution failure under stale Expo 55 worktree modules. Ruling: run `pnpm install --frozen-lockfile` in the integration worktree before prebuild because its tracked SDK57 manifest/lock were integrated while ignored node_modules links remained from SDK55; risk is no source changes, only worktree dependency alignment.
 - Re-ran clean SDK57 prebuild successfully; contract check passed. Added `apps/mobile/ios/STALE_SDK55_SENTINEL`, repeated `--clean` prebuild, confirmed sentinel removal, then contract passed. Xcode generated output is ignored. See Task 1 report addendum.
 - Task R1+R3: running review; implementation commit `a74d4280588009fcb481afda6e8414548a9c63b6`.
+
+## Review repair round 1: R3 F1
+- Independent review `.superpowers/sdd/plan-t31-ios27/fix-task-1-review.md`: R1 resolved; R3 partial. F1 Medium says checker may false-pass mismapped application scene, URL callback missing while marker occurs elsewhere, and one drifted Xcode setting.
+- Ruling: strengthen actual relationships and negative fixtures; reviewers supplied direct generated output and scenario evidence, so issue is valid. Cost if stricter parsing misreads a future legitimate Expo template: clean SDK bump requires updating contract/fixture.
+- Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r1-brief.md`; owned files bounded to checker/tests/report/ledger.
+- Status: pending → running after implementation role dispatch.

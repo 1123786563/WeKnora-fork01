@@ -96,3 +96,19 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 ## Repair ledger
 
 - (pending)
+
+## Task R3-F1: Tighten effective generated-project checks (review repair round 1)
+
+**Finding:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-review.md` F1 Medium. Current checker can accept wrong effective `UISceneDelegateClassName`, URL markers in the wrong callback, and a single changed target configuration.
+
+**Files:** `apps/mobile/scripts/verify-ios-scene-project.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, `apps/mobile/src/native-project-config.test.ts` only if shared contract fixture needs it; report/ledger files.
+
+**Consumes:** Actual clean SDK57 generated tree `apps/mobile/ios` from prior verified prebuild. **Produces:** relationship-aware, fail-closed contract with regression fixtures.
+
+1. Strengthen fixture with actual plist application-role scene configuration and realistic AppDelegate declaration containing separate open-URL and continue-user-activity bodies, plus multiple app target configurations.
+2. Add RED fixtures: delegate class marker exists outside the application scene mapping; open-URL callback does not forward even though RCTLinkingManager remains in continue-user-activity; one of the app's deployment entries is 16.0 while remaining ones are 16.4.
+3. Parse plist structurally (Node built-in/XML parsing or focused structural parser, no new runtime dependency) and require the application role maps to `EXExpoAppSceneDelegate`. Match each specific callback body and require URL forwarding in both required callback pathways. Collect all iOS deployment-target entries for the app target/configurations and reject any value other than 16.4; do not impose unrelated Pods settings if Expo may legitimately vary them.
+4. Run focused tests, full mobile suite and typecheck. Run verifier against actual ignored SDK57 clean prebuild output. Capture report/package hash; commit fix.
+5. Request independent scoped re-review; do not release R2 until R3-F1 passes or is explicitly adjudicated.
+
+**Status:** pending; R1 clean script and initial R3 fixtures are integrated. R3 remains unverified until this round passes review.
