@@ -267,3 +267,10 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - Read-only source audit `/root/issue72_r8_outbox_producer_audit` is mapping outbox producers/retries and available fencing evidence for the final runbook. No DB/Docker operation is being run.
 
 - Preserved the read-only source audit in `docs/plans/issue-72-r8-producer-audit-2026-09-29.md` (observed integration HEAD `5b071dcea17ce57ceec8f6681bffe222eabd870e5`). It confirms payment/fulfillment, usage settlement and refund producer paths, no global commercial fence, no settlement dispatch lease, and incomplete refund dispatcher wiring evidence. Task 8 draft must block unless target-specific producer queues, callers, external work, and control-plane fences are explicitly identified and proven drained.
+
+## R8 Task 2 review intake — 2026-09-29
+
+- Task 2 implementation commit `11470a6a34d9be513aafd58c0db67aed4a5e4c15` is on `codex/issue-72-r8-task2`, BASE `d907ceb04604f5a98dd1c1e71036ad8bf9fdc700`; it has not been integrated pending independent review/validation.
+- The implementer initially did not run RED. This was corrected with an isolated test-only baseline run in the reused managed worktree at the exact BASE: `TestR8Task2RedUnverifiedPaidTopUpRemainsPending` compiled and failed at the intended assertion, `unverified paid top-up must remain pending for operator attention, got state=dead`. Temporary test source was removed and baseline tracked files remain clean. Full supplemental evidence is appended to the Task 2 report.
+- Independent Task 2 code review and validation are active. PostgreSQL runtime migration proof remains unavailable while Craft #107 owns the shared Docker/PostgreSQL slot; no DB was started.
+- Task 8 producer-audit review raised one new medium procedure contradiction: producer schedulers were paused before the old fulfillment consumer was asked to drain. This is accepted; the draft is being revised to keep the designated old consumer active through drain, then stop it before lease wait/inventory.
