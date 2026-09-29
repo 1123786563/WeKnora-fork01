@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report
 ```
 
-Only these documentation Tasks are in scope. No application implementation Task is ready under the current #86/#87 gates.
+These seven documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; no application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -218,7 +218,37 @@ Only these documentation Tasks are in scope. No application implementation Task 
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, and Task 6 corrects residual failure-handling attribution.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, and Task 6 corrects residual failure-handling attribution, and Task 7 addresses the five partial OCR findings and records their incomplete coverage.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: six documentation tasks; Tasks 2–6 are review-driven plan corrections covering the hash conclusion, verification scope, Task 1 range plus task traceability, evidence source attribution, and residual failure-handling attribution. No production tests are relevant.
+- Proportion: seven documentation tasks; Tasks 2–6 retain their prior review-driven corrections, and Task 7 covers the five findings in the partial OCR record. No production tests are relevant.
+
+### Task 7: Correct partial OCR documentation findings
+
+**Dependencies:** Tasks 1–6 are complete; the partial OCR report identified five factual/traceability corrections across the audit note and Ledger and requires a durable record.
+
+**Owner role:** `mechanical_worker` for bounded Markdown corrections.
+
+**Validator role:** `reviewer` for exact finding coverage and evidence consistency.
+
+**Owned files:**
+
+- Modify only this plan, the audit note, and the execution Ledger.
+- Create `docs/plans/issue-72-parallel-refresh-2026-09-29-ocr-partial.md` as the durable partial-review record.
+
+**Consumes:** `/tmp/issue72-parallel-refresh-ocr-final.txt`; verified refs and ancestry for #86 evidence commits; integration-worktree R7 result/README; approved ruling R-6 and R16 revision hashes; Task 1 checkpoint and captured bounded inventory.
+
+**Produces:** The five partial OCR findings are corrected in the appropriate records; the durable OCR record preserves sessions, exact review range, coverage failure, findings, and non-pass status.
+
+**Implementation steps:**
+
+- [ ] Anchor both #86 evidence commits as ancestors of candidate source checkpoint `85fd67f7...` on `codex/issue-72-r8-runbook` and integration HEAD `8329b85d...` on `codex/issue-72-lago`.
+- [ ] Identify R7 result and README paths, scope zero API calls to the R7 rerun after health `000`, distinguish authenticated R2/R6 probes, and preserve offline-only Fix4, hash mismatch, and unverified Task 0 status.
+- [ ] Append the R-6 correction with ruling pointer, both R16 commit/hash pairs, and decision-documentation-only limit; preserve the earlier historical text.
+- [ ] Add Task 1 checkpoint and the three timestamped inventory observations plus unmapped TTY limitation to the Ledger.
+- [ ] Create the durable partial OCR record with exact sessions/range/coverage and all five findings; do not claim OCR pass.
+- [ ] Run `git diff --check`; verify only the four owned Markdown paths changed; commit only those paths with `docs(issue-72): correct partial OCR documentation findings`.
+
+**Verification:** Evidence refs, paths and SHA-256 values match the cited records; all five finding summaries appear in the durable partial report; the plan DAG and self-check include Task 7 and state seven documentation tasks; `git diff --check` passes and exactly the four owned Markdown paths are changed. No production tests apply.
+
+**Failure handling:** If a ref/path/hash differs from the verified values, stop and preserve the discrepancy in the partial record rather than asserting the requested fact. The OCR report remains partial unless a separate complete review is run.

@@ -8,7 +8,7 @@ Root #72 has 33 unique native direct children, #73–#105, with no nested childr
 
 ## #86 evidence provenance and current-code boundary
 
-The #86 evidence package is present in commits `c7b696b6a` and `65647cc55`; both are reachable in the inspected history. Descendant source checkpoint `85fd67f7f8be9d39d7f9f30b9a439524866fcffe` is an ancestor of integration HEAD `8329b85d4dfff301d03f94406dfc829d87cb5b26`. The committed evidence artifacts match these SHA-256 values:
+The #86 evidence package is present in commits `c7b696b6a` and `65647cc55`. Both commits were verified as ancestors of candidate source checkpoint `85fd67f7f8be9d39d7f9f30b9a439524866fcffe` on ref `codex/issue-72-r8-runbook` and integration HEAD `8329b85d4dfff301d03f94406dfc829d87cb5b26` on ref `codex/issue-72-lago`; both refs were checked. The committed evidence artifacts match these SHA-256 values:
 
 | Artifact | SHA-256 |
 |---|---|
@@ -20,7 +20,7 @@ The README identifies historical live source `dd089662becc43edb5a44dfb6f2a29f5b3
 
 ## #87–#89 readiness and rulings
 
-- **#87 Task 0 remains blocked-env.** The captured result has zero authenticated API calls; Fix4 evidence is offline-only. The script/result hash mismatch prevents treating the result as exact-script runtime evidence. No live contract or acceptance claim is made.
+- **#87 Task 0 remains blocked-env.** The R7 rerun result [`probe-results-r7-wallet-consumption.json`](../../.worktrees-issue72/lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/probe-results-r7-wallet-consumption.json) and its [`README.md`](../../.worktrees-issue72/lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/README.md) are in the integration worktree. This R7 rerun made zero API calls after API health returned HTTP `000`. Earlier R2 CNY and R6 wallet probes did make authenticated API calls; those observations do not establish wallet debit, settlement, negative-balance, or over-limit behavior. Fix4 evidence remains offline-only, and the script/result hash mismatch prevents treating the R7 result as exact-script runtime evidence. Task 0 remains unverified; no live contract or acceptance claim is made.
 - **R-6 is settled and unchanged.** The approved ruling in [user rulings](issue-72-user-rulings.md) assigns each billable dimension through the published Plan Version's explicit Billable Metric mapping. Ambiguous ownership fails closed only for the affected billable dimension; other uniquely owned dimensions may continue. Paid-plan purchases carrying Lago Usage Charges remain excluded. This audit does not reopen those decisions or imply code compliance.
 - **#88 and #89 remain blocked** on #87. Their separate readiness audits found no safe independent implementation slice. No #72 node is promoted to ready or verified by this refresh.
 
