@@ -63,6 +63,11 @@ function pick(container: HTMLElement, evaluationId: string) {
  setter?.call(radio, true)
  radio.dispatchEvent(new dom.window.Event('click', { bubbles: true }))
 }
+function choose(select: HTMLSelectElement, value: string) {
+ const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), 'value')?.set
+ setter?.call(select, value)
+ select.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+}
 async function mountApplication(career: CareerStub, options: { evaluations?: EvaluationReceipt[]; scopeController?: ReturnType<typeof createScopeController>; batchHint?: { state: 'known'; value: string } | { state: 'unknown' } } = {}) {
  const scopeController = options.scopeController ?? createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
  const element = React.createElement(ApplicationPage, {
@@ -377,4 +382,47 @@ test('the created application opens the submission confirmation panel on demand'
  assert.match(panel.textContent ?? '', /不会被视为投递/)
  assert.ok(panel.querySelector('[aria-label="确认投递表单"]'), 'confirm form is present')
  assert.ok(!panel.querySelector('button[aria-label^="下载"]'), 'no download action lives in the submission panel')
+})
+
+test('loaded material identity reaches progress confirmation and binds its exact export', async () => {
+ const materialId = 'material-loaded-from-url'
+ const exportId = 'export-current-version'
+ const digest = 'b'.repeat(64)
+ const submitted: unknown[] = []
+ const lookedUp: string[] = []
+ const career: CareerStub & { createApplication: (input: any) => Promise<ApplicationReceipt> } = {
+  open: async () => view,
+  createApplication: async (input: { requestId: string }) => ({ ...readyReceipt, requestId: input.requestId }),
+  applicationProgress: async (id: string) => ({ applicationId: id, revision: 0, stage: 'preparing', events: [] }),
+  applicationSubmissions: async () => ({ applicationId: 'app-1', submissions: [] }),
+  material: async (id: string) => ({ materialId: id, status: 'confirmed', pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snapshot ?1', profileRevision: 4 }, body: { sections: [{ heading: '经历', content: '已核实经历', claims: [] }] }, reviewRisks: [], versionCount: 1, versions: [{ version: 5, createdAt: '2026-09-30T00:00:00Z' }], createdAt: '2026-09-30T00:00:00Z', updatedAt: '2026-09-30T00:00:00Z' }),
+  materialExports: async (id: string) => {
+   lookedUp.push(id)
+   return { materialId: id, exports: [{ kind: 'material_published', requestId: 'publish-1', exportId, materialId: id, version: 5, status: 'submittable', submittable: true, contentDigest: digest, files: [
+    { format: 'pdf', materialId: id, version: 5, contentDigest: digest, verified: true },
+    { format: 'docx', materialId: id, version: 5, contentDigest: digest, verified: true },
+   ], createdAt: '2026-09-30T00:00:00Z' }] }
+  },
+  recordSubmission: async (input: unknown) => { submitted.push(input); return { requestId: 'submission-1' } },
+ }
+ const { container } = await mountApplication(career)
+ window.history.replaceState({}, '', `/platform/career/opportunities/opp%2F1?snapshotId=snapshot%20%3F1&material=${encodeURIComponent(materialId)}`)
+ await submitApplication(container, 'eval-eligible', '2026 秋招 A 批', career)
+ const loadedMaterial = container.querySelector('.wk-material')
+ assert.ok(loadedMaterial)
+ await act(async () => { await settle(); await settle(); await settle() })
+ assert.ok(lookedUp.includes(materialId), 'material detail and its exports were read from the loaded material ID')
+ await act(async () => { byLabel(container, 'button', '查看申请进展时间线').click(); await settle(); await settle() })
+ await act(async () => { byLabel(container, 'button', '投递确认与回看').click(); await settle(); await settle() })
+ const versionSelect = container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!
+ assert.ok([...versionSelect.options].some((option) => option.value === exportId))
+ await act(async () => {
+  choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web')
+  choose(versionSelect, exportId)
+  await settle()
+ })
+ await act(async () => { byLabel(container, 'button', '确认投递').click(); await settle(); await settle() })
+ assert.equal(submitted.length, 1)
+ const input = submitted[0] as { requestId: string; applicationId: string; channel: string; materialId: string; exportId: string; versionUnknown: boolean; expectedRevision: number }
+ assert.deepEqual(input, { requestId: input.requestId, applicationId: 'app-1', channel: 'web', materialId, exportId, versionUnknown: false, expectedRevision: 4 })
 })

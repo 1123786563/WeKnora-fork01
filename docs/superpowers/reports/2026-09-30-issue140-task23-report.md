@@ -15,3 +15,15 @@
 The new integration assertion verifies export `export-known`, material `material-current`, version 7 is offered and the submitted payload uses that exact binding. The absent-material case verifies no export lookup occurs, no fabricated version appears, the explicit unknown option remains enabled, and the unavailable guidance is visible.
 
 **HEAD:** `9f8ce1729571992d5b37ce4ebc8982d0e518dd85`.
+
+## Task25 follow-up — parent integration coverage
+
+Added an ApplicationPage-level test that starts with the existing `?material=` pointer, creates the application, lets the mounted MaterialPage restore the actual material and publish its ID through `onMaterialId`, then opens progress confirmation and records the chosen export. The assertion verifies the exact loaded material ID, export ID, and version binding. No production code changes were needed.
+
+- `pnpm --filter @weknora/web exec node --import tsx --test src/career/ApplicationPage.test.tsx` — 18/18 passed.
+- `pnpm --filter @weknora/web exec node --import tsx --test src/career/ProgressPage.test.tsx` — 14/14 passed.
+- `pnpm --filter @weknora/web exec node --import tsx --test src/career/SubmissionPage.test.tsx` — 19/19 passed.
+- `pnpm typecheck:web` — passed.
+- `git diff --check` — passed.
+
+Task25 commit: `47f31ff3698fae9f5adda21d9930bd4321f8989f`.
