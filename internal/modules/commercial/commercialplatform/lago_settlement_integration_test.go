@@ -56,14 +56,24 @@ func integrationEnv(names ...string) map[string]string {
 }
 
 func TestPaymentIntentCandidateSelection(t *testing.T) {
-	candidates, err := preSettlePaymentIntentCandidates([]any{
+	preSettleRows := []any{
 		map[string]any{"id": "pi_older", "created": float64(100), "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 		map[string]any{"id": "pi_newest", "created": float64(200), "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 		map[string]any{"id": "pi_unlinked", "created": float64(300), "status": "requires_action", "metadata": map[string]any{}},
 		map[string]any{"id": "pi_already_done", "created": float64(400), "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_old"}},
-	})
+	}
+	candidates, err := preSettlePaymentIntentCandidates(preSettleRows)
 	if err != nil {
 		t.Fatal(err)
+	}
+	preObservedIDs := paymentIntentIDSet(preSettleRows)
+	for _, id := range []string{"pi_older", "pi_newest", "pi_unlinked", "pi_already_done"} {
+		if _, ok := preObservedIDs[id]; !ok {
+			t.Errorf("pre-settle identity set is missing %q", id)
+		}
+	}
+	if got := len(preObservedIDs); got != 4 {
+		t.Fatalf("pre-settle identity set has %d entries, want exactly 4: %v", got, preObservedIDs)
 	}
 	expectedID, err := expectedPaymentIntentID(candidates)
 	if err != nil {
@@ -80,7 +90,6 @@ func TestPaymentIntentCandidateSelection(t *testing.T) {
 		map[string]any{"id": "pi_newest", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 		map[string]any{"id": "pi_older", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 	}
-	preObservedIDs := map[string]struct{}{"pi_older": {}, "pi_newest": {}, "pi_unlinked": {}, "pi_already_done": {}}
 	selected, err := succeededPaymentIntent(rows, expectedID, preObservedIDs)
 	if err != nil {
 		t.Fatalf("expected newest candidate to be selected: %v", err)
