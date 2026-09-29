@@ -263,3 +263,9 @@
 - Verification and commit evidence: `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/t9-webhook-replay-fix-task-1-report.md`.
 
 - Fix-round contract correction: Lago PaymentSerializer exposes `invoice_ids`; exact target invoice selection now uses array membership with malformed shape rejection. Additional validator fixes send psql SQL over stdin, parse pagination metadata independently of collection arrays, fail immediately on terminal failed rows, assert the active purchase wallet, and use effective DB labels for the prep organization query. See Task 1 report for fix-round checks and hashes.
+
+## T9 OCR finding repair r2 — 2026-09-30
+
+- `prepare_t9_env.sh` now selects the first `docker compose ps -q db` result before removing whitespace, and documents that `POSTGRES_USER` / `POSTGRES_DB` fallbacks track `deploy/lago/compose.yaml` defaults.
+- `bash -n` and `git diff --check` passed. No services or live T9 were started. Independent review and final OCR remain pending.
+- Task evidence: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r2/task-1-report.md`.

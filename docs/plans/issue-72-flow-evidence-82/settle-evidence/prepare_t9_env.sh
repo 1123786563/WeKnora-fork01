@@ -33,12 +33,13 @@ env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//;
 # 追加 || true，让显式守卫接管失败路径（skip≠pass 诊断纪律）。
 _t9_base="$(env_value LAGO_API_URL)" || true
 _t9_orgcred="$(env_value LAGO_ORG_API_KEY)" || true
-_t9_db_container="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" ps -q db | tr -d '[:space:]')" || true
+_t9_db_container="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" ps -q db | head -n 1 | tr -d '[:space:]')" || true
 _t9_db_user="$(env_value POSTGRES_USER)" || true
 _t9_db_name="$(env_value POSTGRES_DB)" || true
 [ -n "$_t9_base" ] || { echo "LAGO_API_URL missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_orgcred" ] || { echo "LAGO_ORG_API_KEY missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_db_container" ] || { echo "db container id unavailable" >&2; return 1 2>/dev/null || exit 1; }
+# Keep these fallbacks aligned with deploy/lago/compose.yaml defaults.
 [ -n "$_t9_db_user" ] || _t9_db_user="lago"
 [ -n "$_t9_db_name" ] || _t9_db_name="lago"
 _t9_org="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U "$_t9_db_user" -d "$_t9_db_name" -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')" || true
