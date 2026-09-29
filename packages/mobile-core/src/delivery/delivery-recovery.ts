@@ -52,6 +52,9 @@ export function createDeliveryRecovery(ports: {
       if (current === null) {
         throw new DeliveryRecoveryError('DELIVERY_INVALID_INPUT', 'no delivery exists to recover');
       }
+      if (current.id !== input.deliveryId) {
+        throw new DeliveryRecoveryError('DELIVERY_INVALID_INPUT', 'the requested delivery does not match the run delivery');
+      }
 
       if (current.state === 'delivered') return deliveryViewOf(current);
       let operation: 'dispatchDelivery' | 'resolveDelivery';
