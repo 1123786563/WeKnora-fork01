@@ -32,7 +32,7 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution
 ```
 
 Only these documentation Tasks are in scope. No application implementation Task is ready under the current #86/#87 gates.
@@ -131,7 +131,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 **Verification:** The Task 1 verification statement names its base and checkpoint; `git diff --check` passes.
 
-**Failure handling:** If the recorded Task 1 base or checkpoint differs from the SDD report, stop and resolve that evidence discrepancy before editing the claim.
+**Failure handling:** If the Task 1 report's base or Git metadata's checkpoint/parent differs from the recorded values, stop and resolve that evidence discrepancy before editing the claim.
 
 ### Task 4: Correct Task 1 range and review-task traceability
 
@@ -159,7 +159,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 **Verification:** The Task 1 report base and Git-established checkpoint match the stated `27745734..d2121488` range; the DAG orders T1 → T2 → T3 → T4; the self-check names Task 2, Task 3, and Task 4's respective corrections; `git diff --check` passes and only this plan is changed.
 
-**Failure handling:** If the Task 1 report's base/checkpoint cannot be confirmed, stop and resolve the evidence discrepancy before claiming a verified range.
+**Failure handling:** If the Task 1 report's base or Git metadata's checkpoint/parent cannot be confirmed, stop and resolve the evidence discrepancy before claiming a verified range.
 
 ### Task 5: Correct checkpoint evidence source attribution
 
@@ -188,10 +188,37 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 **Failure handling:** If the Task 1 report base or Git checkpoint-parent relationship differs from the recorded values, stop and resolve the evidence discrepancy before editing the attribution.
 
+### Task 6: Correct residual failure-handling source attribution
+
+**Dependencies:** Tasks 1–5 are complete; review found residual Task 3 and Task 4 failure-handling clauses that incorrectly attribute checkpoint evidence to the SDD report.
+
+**Owner role:** `mechanical_worker` for the bounded plan-only consistency correction.
+
+**Validator role:** `reviewer` for source attribution and plan traceability.
+
+**Owned files:**
+
+- Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+
+**Consumes:** Task 1 report records base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; `git show -s --format='%H%n%P' d2121488f52491add5e3b240b40bf7e30aa2b838` establishes checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838` and its parent.
+
+**Produces:** Task 3 and Task 4 failure handling consistently identify the Task 1 report as the base source and Git metadata as the checkpoint/parent source; the DAG and self-check account for Tasks 1–6.
+
+**Implementation steps:**
+
+- [ ] Correct the residual Task 3 and Task 4 failure-handling source attribution.
+- [ ] Append this Task 6 record and update the self-check count and explanation.
+- [ ] Run `git diff --check`; expect exit code 0.
+- [ ] Verify only this plan changed and commit with message `docs(issue-72): align verification failure source`.
+
+**Verification:** Task 3 and Task 4 failure handling attribute base evidence to the Task 1 report and checkpoint/parent evidence to Git metadata; the DAG orders T1 → T2 → T3 → T4 → T5 → T6; `git diff --check` passes and only this plan is changed.
+
+**Failure handling:** If the Task 1 report base or Git checkpoint-parent relationship differs from the recorded values, stop and resolve the evidence discrepancy before editing the attribution.
+
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, and Task 5 attributes report and Git evidence to their respective sources.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, and Task 6 corrects residual failure-handling attribution.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: five documentation tasks; Tasks 2–5 are review-driven plan corrections covering the hash conclusion, verification scope, Task 1 range plus task traceability, and evidence source attribution. No production tests are relevant.
+- Proportion: six documentation tasks; Tasks 2–6 are review-driven plan corrections covering the hash conclusion, verification scope, Task 1 range plus task traceability, evidence source attribution, and residual failure-handling attribution. No production tests are relevant.
