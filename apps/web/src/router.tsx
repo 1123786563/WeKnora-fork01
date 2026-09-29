@@ -150,6 +150,60 @@ async function navigationTakesOver(abortSignal: AbortSignal | undefined): Promis
   throw new Error('unreachable');
 }
 
+// Wiki documents/wikis share the wiki entry gate: a library without the wiki
+// capability falls back to the documents page at the wiki URL (parity with
+// the pre-router WikiEntry and Vue KnowledgeBase.vue's `!isWiki` documents
+// branch). Module scope (not the factory closure) so the gate is mountable
+// in isolation by the jsdom regression tests.
+export function WikiEntry(props: {
+  client: WeKnoraRouterDeps['client'];
+  knowledgeBaseId: string;
+  initialSlug?: string;
+  initialDocumentId?: string;
+  canContribute: boolean;
+}): ReactNode {
+  const { client } = props;
+  const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    void client.knowledgeBases.settings.get(props.knowledgeBaseId).then((kb) => {
+      if (active) setWikiEnabled(shouldOpenWiki(kb));
+    }).catch(() => {
+      // Preserve the existing Wiki error surface when capability lookup is unavailable.
+      if (active) setWikiEnabled(true);
+    });
+    return () => { active = false; };
+  }, [client, props.knowledgeBaseId]);
+  // The address-bar cleanup runs after commit, never during render: both the
+  // navigation observer (platform/navigation.ts syncRouter) and @tanstack's
+  // browser history patch window.history.replaceState to notify the router
+  // synchronously, so a render-phase call would setState on the router while
+  // WikiEntry is still rendering (render crash on wiki-disabled libraries).
+  useEffect(() => {
+    if (wikiEnabled === false) window.history.replaceState({}, document.title, wikiEntryPath(props.knowledgeBaseId));
+  }, [wikiEnabled, props.knowledgeBaseId]);
+  if (wikiEnabled === false) {
+    return (
+      <KnowledgeDocumentsPage
+        client={client}
+        knowledgeBaseId={props.knowledgeBaseId}
+        initialDocumentId={props.initialDocumentId}
+        onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(props.knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)}
+      />
+    );
+  }
+  if (wikiEnabled === null) return <p role="status">加载中…</p>;
+  return (
+    <WikiPage
+      client={client}
+      knowledgeBaseId={props.knowledgeBaseId}
+      initialSlug={props.initialSlug}
+      canContribute={props.canContribute}
+      onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId: props.knowledgeBaseId, navigate })}
+    />
+  );
+}
+
 export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?: RouterHistory } = {}) {
   const { client, scopeController, scopeRuntime, liteMode, development, apiBaseUrl } = deps;
 
@@ -408,44 +462,6 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   });
   const craftSplatRoute = createRoute({ getParentRoute: () => craftRoute, path: '$' });
 
-  // Wiki documents/wikis share the wiki entry gate: a library without the wiki
-  // capability falls back to the documents page at the wiki URL (parity with
-  // the pre-router WikiEntry).
-  function WikiEntry(props: { knowledgeBaseId: string; initialSlug?: string; initialDocumentId?: string }): ReactNode {
-    const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
-    useEffect(() => {
-      let active = true;
-      void client.knowledgeBases.settings.get(props.knowledgeBaseId).then((kb) => {
-        if (active) setWikiEnabled(shouldOpenWiki(kb));
-      }).catch(() => {
-        // Preserve the existing Wiki error surface when capability lookup is unavailable.
-        if (active) setWikiEnabled(true);
-      });
-      return () => { active = false; };
-    }, [client, props.knowledgeBaseId]);
-    if (wikiEnabled === false) {
-      window.history.replaceState({}, document.title, wikiEntryPath(props.knowledgeBaseId));
-      return (
-        <KnowledgeDocumentsPage
-          client={client}
-          knowledgeBaseId={props.knowledgeBaseId}
-          initialDocumentId={props.initialDocumentId}
-          onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(props.knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)}
-        />
-      );
-    }
-    if (wikiEnabled === null) return <p role="status">加载中…</p>;
-    return (
-      <WikiPage
-        client={client}
-        knowledgeBaseId={props.knowledgeBaseId}
-        initialSlug={props.initialSlug}
-        canContribute={scopeRuntime.role() !== 'viewer'}
-        onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId: props.knowledgeBaseId, navigate })}
-      />
-    );
-  }
-
   /** ?tab= documents|wiki|graph dispatch shared by the two knowledge-base paths. */
   function KnowledgeBaseView(props: { knowledgeBaseId: string; href: string }): ReactNode {
     const query = new URLSearchParams(searchOf(props.href));
@@ -453,7 +469,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     const tab = requestedTab === 'wiki' || requestedTab === 'graph' || requestedTab === 'documents' ? requestedTab : undefined;
     const slug = query.get('slug')?.trim() || undefined;
     const initialDocumentId = query.get('knowledge_id')?.trim() || undefined;
-    if (tab === 'wiki') return <WikiEntry knowledgeBaseId={props.knowledgeBaseId} initialSlug={slug} initialDocumentId={initialDocumentId} />;
+    if (tab === 'wiki') return <WikiEntry client={client} canContribute={scopeRuntime.role() !== 'viewer'} knowledgeBaseId={props.knowledgeBaseId} initialSlug={slug} initialDocumentId={initialDocumentId} />;
     if (tab === 'graph') return <KnowledgeGraphPage client={client} knowledgeBaseId={props.knowledgeBaseId} slug={slug} />;
     // Vue KnowledgeBase.vue 在同一 URL 下按 kbInfo.type 就地切换 FAQ 管理视图，
     // 不重写地址栏；React 之前的做法是把 platform 路由跳去 /knowledgeBase/:id/faq，
@@ -859,7 +875,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       const initialDocumentId = new URLSearchParams(searchOf(useLocation().href)).get('knowledge_id')?.trim() || undefined;
       return (
         <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
-          <WikiEntry knowledgeBaseId={decodeURIComponent(kbId ?? '')} initialDocumentId={initialDocumentId} />
+          <WikiEntry client={client} canContribute={scopeRuntime.role() !== 'viewer'} knowledgeBaseId={decodeURIComponent(kbId ?? '')} initialDocumentId={initialDocumentId} />
         </Suspense>
       );
     },

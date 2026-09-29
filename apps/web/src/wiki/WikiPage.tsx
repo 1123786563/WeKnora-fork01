@@ -1140,9 +1140,6 @@ export function WikiPage({
     [revision, selected],
   );
   const KNOWLEDGE_TYPES = ["entity", "concept", "synthesis", "comparison"];
-  // Vue's sidebar tab count reflects the pages visible at the current tree
-  // level (WikiBrowser visibleTabs total comes from the per-level directory
-  // state), so in tree mode only root-level pages count toward the tab.
   const isRootPage = (page: WikiPageModel) => {
     const cp = (page as Record<string, unknown>).category_path as string[] | undefined;
     return !cp || cp.length === 0;
@@ -1153,17 +1150,19 @@ export function WikiPage({
   };
   const rootPages = listPages.filter(isRootPage);
   const bucketRootPages = rootPages.filter((page) => pageInBucket(page, activeBucket));
-  const rootCountFor = (types: readonly string[]) => rootPages.filter((page) => types.includes(String((page as Record<string, unknown>).page_type ?? ""))).length;
+  // Vue WikiBrowser groupedPages（WikiBrowser.vue total = bucket.total ||
+  // statTotal(tab)）：tab 计数取 /wiki/stats 的全库 pages_by_type，与视图无关。
+  // 若按首屏已加载页面的根级计数，默认树形视图下首屏批次无根级 entity/
+  // concept 时「知识」tab 会整个消失——两种视图都必须显示同一全库计数。
   const bucketTabs = (["knowledge", "summary"] as const)
     .map((type) => {
-      const types = type === "knowledge" ? KNOWLEDGE_TYPES : [type];
       const statTotal = type === "knowledge"
         ? KNOWLEDGE_TYPES.reduce((sum, key) => sum + (pagesByType[key] ?? 0), 0)
         : (pagesByType[type] ?? 0);
       return {
         type,
         label: type === "knowledge" ? t("wikiBrowser.filterKnowledge") : t("wikiBrowser.filterSummary"),
-        total: viewMode === "tree" ? rootCountFor(types) : statTotal,
+        total: statTotal,
       };
     })
     .filter((tab) => tab.total > 0);
