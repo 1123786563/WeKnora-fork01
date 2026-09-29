@@ -12,13 +12,13 @@
 
 ## Global Constraints
 
-- Keep original issue30-sweep BASE `db234c5eb171f2dde7427d382b55b503a038f879` as ancestor; use isolated task worktrees from integration checkpoint `e7edfa72728c5d44940d9f145a0b5489089f4692`.
+- Keep original issue30-sweep BASE `db234c5eb171f2dde7427d382b55b503a038f879` as ancestor. The original R2 execution checkpoint was `e7edfa72728c5d44940d9f145a0b5489089f4692`; this repair wave began at `4cac8ac0e5cbd196e414737f871d025eaf4a20e7`; Tasks 11–15 and new review repairs branch from integration checkpoint `49914ca3b27ff5162c4afcdc8eaef200f9df3cf8`. Each task report must record its exact BASE and HEAD.
 - Keep authenticated user, tenant, owner, expected-revision, request-ID and scope-generation checks intact.
 - A user-confirmed submission must carry actual channel/time/material version or an explicit unknown marker.
 - Do not turn malformed or incomplete source/evaluation data into successful empty results.
 - Preserve manual Career entry for candidates without resumes and show the full shared JD that will be submitted.
 - Local commits are authorized; no push, merge, publish, deployment, or GitHub issue mutation.
-- User confirmed on 2026-09-30 that no database has applied the #140 Career/Workbench migrations and authorized version reordering. Keep the 19 #140 migrations at SQLite 112–130 and versioned/PostgreSQL 191–209; move the 12 colliding #30 migrations to SQLite 131–142 and versioned/PostgreSQL 210–221. This is safe only for database histories that have not already recorded the displaced #30 versions; verify/restate this deployment assumption in the final migration ruling.
+- User confirmed on 2026-09-30 that no database has applied the #140 Career/Workbench migrations, but is unsure whether older databases recorded #30 versions and explicitly instructed us to preserve existing migration numbers. Therefore keep #30 at SQLite 112–123 and versioned/PostgreSQL 191–202; keep #140 at SQLite 124–142 and versioned/PostgreSQL 203–221. Do not integrate migration re-numbering commit `65ada6a5388a27a681fdf991ed33f726e1c62e33`. Any new #140 schema changes append at SQLite 143 / versioned 222. Verify pairings/unique sequence and record that no existing IDs were changed.
 
 ## Review Focus
 
@@ -157,18 +157,18 @@
 
 **Files:** Career persistence/model/migration and repository seams, `internal/modules/career` operation admission and deletion paths, focused Career tests, and narrow Workbench/storage adapters only if fencing tokens are required.
 
-**Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, and export storage writes/removals. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Keep database transactions short; never hold one across rendering, object storage, or Workbench calls.
+**Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, export storage writes/removals, and due-rule dispatch claims. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Application linking, material publication and rule-period claims must be admitted by the gate before external Workbench/storage/search effects; rule period persistence and its lifecycle claim must commit atomically so deletion cannot slip between them. Keep database transactions short; never hold one across rendering, object storage, Workbench or search network calls.
 
 **Steps:**
 
-- [ ] Add deterministic two-Office tests with a shared database/storage/linker: pause an application linker and material writer after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while either admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
+- [ ] Add deterministic two-Office tests with a shared database/storage/linker/search seam: pause an application linker, material writer and rule search after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while any admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
 - [ ] Run the regressions and record the current cross-instance leak/order failure.
-- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
+- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Integrate rule-period claim creation and lifecycle admission in the same transaction. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
 - [ ] Ensure SQLite and PostgreSQL transitions serialize on the same durable row with conditional updates/row locks, and that failure or process restart leaves a retryable, non-terminal state.
 - [ ] Run focused race and recovery tests, relevant Career/Workbench/container suites, migration tests, and `git diff --check`; expected: two Offices observe one ordering and no effect can appear after a successful deletion receipt.
 - [ ] Commit owned paths and report schema IDs, claim recovery behavior, and exact test evidence.
 
-**Acceptance:** Across separately constructed handlers/processes, every application link or material object effect is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
+**Acceptance:** Across separately constructed handlers/processes, every application link, material object effect and paid rule-period dispatch is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
 
 ## Task 14: Correctly report saved preparation edits when follow-up reads fail
 
@@ -209,6 +209,128 @@
 - [ ] Commit only owned reminder UI/test files.
 
 **Acceptance:** Users who opt back in update the shared Career push preference; permission is never represented as delivery, and ambiguous preference writes remain recoverable.
+
+## Task 16: Keep push authorization and saved-edit facts bound to their original scope/outcome
+
+**Dependency:** Follow-up to independent Mini Program review findings M1–M4 on commits `fd1d1b63612835d61ccc92eb7802c25bd719cdcc` and `413c526016d4f80c46bb0e8944ffea00ca7549b6`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/rules-usage-reminders.tsx`, its focused tests, `apps/miniprogram/src/career/progress-preparation.tsx`, its focused tests, and only existing shared decoder/helper files if the standard `decodeAs` or scoped recovery API must be imported.
+
+**Consumes / produces:** Capture the authenticated scope before opening the native subscription prompt, bind the authorization marker and preference-write intent to that captured scope, and recheck it after native and network awaits before any storage or server effect. Explicit opt-out must invalidate accepted-but-unsynced authorization; resubscribe requires a fresh native result. Malformed 200 receipts must be classified as a contract violation via the existing decoder wrapper, with no infinite same-request retry loop. A successful `editMaterial` remains committed even if either later local draft cleanup or detail readback fails; report cleanup/readback as post-commit follow-up state, never as write failure.
+
+**Steps:**
+
+- [ ] Add behavior tests for account A→B while native prompt is pending (no B marker/write), accepted authorization→missing revision→opt-out→resubscribe (fresh prompt required), malformed success receipt (contract violation is not retryable unknown), and local draft removal failure after successful edit (committed state remains visible).
+- [ ] Run RED against current implementation and save exact reproductions.
+- [ ] Bind all pending push state and request IDs to the captured scope; revalidate after every await; clear unsynced authorization on confirmed opt-out; use `decodeAs` for write and receipt payloads. Split the `editMaterial` failure catch from all post-commit cleanup/readback effects and report each independently.
+- [ ] Run focused rule/reminder and preparation tests, Mini Program typecheck where executable, and `git diff --check`; report unrelated account-page type errors separately.
+- [ ] Commit only the owned Mini Program files and report exact scope-switch, consent, malformed-receipt, and post-commit-cleanup evidence.
+
+**Acceptance:** Authorization cannot cross account scope or survive explicit opt-out as an implicit new consent; malformed receipts stop safely; once an edit receipt is committed, cleanup/readback failure cannot label the edit unsubmitted.
+
+## Task 19: Keep malformed push receipts behind the profile-reconciliation boundary
+
+**Dependency:** Task 16 commit `7112cf0c7df60a42ef76d958f8c9778bcdebd4cf`; review findings T16-1 and T16-2 in `/tmp/issue140-r2-task16-review.md`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/miniprogram/src/career/rules-usage-reminders.tsx` and its focused tests; only the existing career platform decoder adapter if required for a verified profile read.
+
+**Consumes / produces:** Reuse the scope-bound `push-receipt-invalid` guard and existing verified profile refresh. Enforce the guard inside every preference persistence entry point, including the sync action, until the user refreshes and inspects the server preference. Invalidate accepted-but-unsynced authorization before starting opt-out network work; a malformed 200 remains an uncertain server fact but cannot preserve authorization that would skip a fresh native prompt. Preserve request IDs and scope checks across awaits.
+
+**Steps:**
+
+- [ ] Add tests for malformed subscribed receipt followed by the visible sync action; assert no second POST until a verified profile refresh clears the guard.
+- [ ] Add the combined-state test: a subscribed intent is pending, opt-out receives a malformed success receipt, and the retry action is attempted; assert the retry seam and control cannot send while profile reconciliation is required.
+- [ ] Add an opt-out action test where the server may have committed but its 200 receipt is malformed; assert the old accepted marker is already invalidated and a later subscribe requires a fresh native prompt.
+- [ ] Run the tests RED against Task 16, then enforce the invalid-receipt lock in every shared persistence/retry seam and disable all retry/sync controls while reconciliation is required; invalidate authorization at opt-out intent time while retaining uncertainty messaging.
+- [ ] Run focused reminder tests, Mini Program typecheck where executable, and `git diff --check`; separate existing account-page type errors from task diagnostics.
+- [ ] Commit only owned Mini Program files and report the exact recovery timeline and tests.
+
+**Acceptance:** No subscribed write can be retried through a secondary UI entry while the receipt is invalid; profile reconciliation is required. An opt-out attempt cannot leave stale consent that suppresses the next native authorization prompt, including malformed-success outcomes.
+
+## Task 17: Preserve rule edits across active runs and serialize dispatch safely with deletion
+
+**Dependency:** Task 11 implementation and Task 13 lifecycle gate contract. Use Task 13's transaction-scoped lifecycle-admission seam; do not integrate before Task 13's appended gate migration and API are verified.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** `internal/modules/career/search_rule.go` and tests, lifecycle-gate integration at the rule claim transaction, `internal/database/career_migration_test.go`, and paired page-index migration files at SQLite 144 / versioned 223 (Task 13 owns SQLite 143 / versioned 222). Do not renumber existing migration IDs.
+
+**Consumes / produces:** Preserve the durable `started` run and same-request recovery from Task 11. Advance `last_period` and the next scheduled instant atomically with the rule-period claim; terminalization must write only run/todo results and may not change a later edit's `next_due_at`, revision or `updated_at`. Acquire rows in the same profile→rule lock order as `SetRule`; SQLite must establish a writer/CAS point on `(scope,rule,revision,status,last_period,next_due_at)` and fail/re-read on busy/stale outcomes. Create the lifecycle claim in that same transaction, and keep it until durable run terminalization; deletion then cannot race a newly committed due search. Bound list reads to 50 summaries, select only summary columns, version the owner-bound cursor, and add index `(tenant_id,user_id,updated_at DESC,id ASC)` through migration 144/223.
+
+**Steps:**
+
+- [ ] Add a controlled claim→enabled edit→run completion test; assert exact edited schedule/revision/updatedAt survive. Add lock-order/concurrent pause-vs-claim test and deletion-vs-rule-claim test using two Office instances/shared DB. Add query-plan or schema assertion for the keyset index and reject unknown cursor versions.
+- [ ] Preserve existing production usage evidence: `usageReservationRecord` is unique by `(tenant,user,requestId)`, `admitSearchUsage` returns success for an existing reserved/settled request, and `TestDuplicateRequestDoesNotDoubleReserveOrCharge` asserts two admissions for one request retain one unit. Finding F3 from `/tmp/issue140-r2-task11-review.md` is ruled out for the production gate by this evidence; no new gate architecture is needed for it.
+- [ ] Run tests RED, then move period/schedule advancement into the claim transaction; ensure both PostgreSQL lock order and SQLite conditional write serialize with `SetRule`; use the transaction-scoped deletion-gate claim. Make terminalization update only run/todos. Add page index migration 144/223 and versioned cursor/summary-only query.
+- [ ] Run `go test -count=1 ./internal/modules/career`, `go test -count=1 ./internal/database` including migration 143/144 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
+- [ ] Commit only owned backend/schema files and report race timelines, lock order, lifecycle-claim ordering, index migration and quota-idempotency ruling.
+
+**Acceptance:** A committed edit is never overwritten by a running period; pause/edit and dispatch claim share a deadlock-safe linearization order across PostgreSQL and SQLite; deletion is ordered against rule dispatch; list pagination is indexed, summary-only and cursor-versioned. Existing quota idempotency remains covered by the current ledger test.
+
+## Task 18: Decode nullable schedule fields consistently across rule list, detail and receipts
+
+**Dependency:** Task 17's backend serialization contract; can be implemented in a separate API-client worktree after Task 12 is integrated to avoid overlapping file ownership.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/api-client/src/career.ts` and `career.test.ts`; narrowly scoped RulePage expectations only if a TypeScript nullable type requires it.
+
+**Consumes / produces:** `RuleSummary`, `RuleView` and `SetRuleReceipt` all contain required `nextDueAt: string | null`. Enabled rules require a valid timestamp; paused/disabled rules require null. Reject missing, malformed timestamp, and null for enabled responses. Keep pagination cursors and owner scope checks unchanged.
+
+**Steps:**
+
+- [ ] Add contract tests for enabled, paused and disabled list, detail and write receipt JSON; run RED against the current optional-string detail/receipt types.
+- [ ] Update client types and strict decoders for required nullable fields; preserve the valid Task 12 list behavior and fail closed on inconsistent status/time pairs.
+- [ ] Run Career API-client tests, RulePage tests, Web typecheck and `git diff --check`.
+- [ ] Commit only owned API/client test files and report exact JSON fixtures and command results.
+
+**Acceptance:** Every rule read/write surface has the same explicit timestamp-or-null schedule field and validates its status relationship.
+
+## Task 20: Keep RulePage writes locked across inconsistent receipts and stale reads
+
+**Dependency:** Task 12 commit `25ef240c911388db0291d737eb2f6916e00c32a6`; independent review `/tmp/issue140-r2-task12-review.md`. Task 20 may proceed against Task 11's current paginated list contract; Task 18 later updates nullable detail/write-receipt decoding without changing these state transitions.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/career/RulePage.tsx` and its focused tests. Do not modify the API client or backend in this task.
+
+**Consumes / produces:** Preserve the current durable attempt key, selected rule ID, and selection-generation seam. A listed rule with missing detail stays unresolved and cannot enable create. A write receipt whose request ID differs from the persisted attempt stays in unknown/reconciliation state without overwriting the original ID. Any detail refresh may update `ruleView` only while both captured selected ID and selection generation remain current.
+
+**Steps:**
+
+- [ ] Add a listed-rule `not_found` detail test with another rule present; assert no create/write is enabled until rediscovery resolves the inconsistency.
+- [ ] Add mismatched write-receipt test; assert the original durable ID and unknown lock survive a second submit attempt and remount/recovery.
+- [ ] Add save-A → select-B → late refresh-A test; assert B remains selected and is the only rule ID on the next save.
+- [ ] Run tests RED, then make the smallest state-machine changes to keep unresolved writes locked and fence every read by selection generation and selected ID.
+- [ ] Run focused RulePage tests, Web typecheck and `git diff --check`; commit only owned RulePage files and report each tested interleaving.
+
+**Acceptance:** No list/detail inconsistency or mismatched receipt can unlock a new rule write, and stale post-save reads cannot change the currently selected edit target.
+
+## Task 21: Keep deletion blocked until every admitted upload and retry effect is known
+
+**Dependency:** Task 13 commit `76809f586e38e9860cbd33dbecc9751916208ffb`; independent review findings T13-1 through T13-3 in `/tmp/issue140-r2-task13-review.md`. Do not integrate Task 13 or start Task 17 until this repair is validated and reviewed.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** Career lifecycle gate and export/rendering/application/upload/profile-intake modules and their focused tests; file-service storage interfaces and local/S3/MinIO implementations only as required to provide stable caller-chosen keys; migration files only if a new durable owner/attempt field is needed, append after SQLite143/versioned222 without renumbering.
+
+**Consumes / produces:** Lifecycle admission must distinguish the owning external-effect attempt from duplicate retries; only the owner may release after a durable result or known compensation. Export writes must use a deterministic, persisted storage key that local, S3 and MinIO adapters honor across retries, or remain claimed until all keys are discoverable and compensated. Resume upload must acquire the same scope gate before its first file/catalog side effect and retain the claim until the resource reference or compensated failure is durable. Deletion waits for all such claims and continues to fail closed when physical cleanup is unavailable.
+
+**Steps:**
+
+- [ ] Add production-shaped storage test whose adapter allocates a fresh physical key on each call and loses the first response; assert retry reuses the same key or the first key remains discoverable and is deleted before terminal deletion.
+- [ ] Add a two-Office exact-same-request interleaving: attempt A owns and pauses before effect, attempt B retries, deletion races; assert B cannot independently release A's ownership and deletion cannot finalize until all effects resolve.
+- [ ] Add a two-Office resume-upload/deletion interleaving paused before `SaveBytes` or catalog binding; assert deletion waits or upload is rejected before any external write.
+- [ ] Reproduce all three findings against Task 13; introduce owner-token/attempt state, stable physical object-key contract, and upload lifecycle admission with crash/replay recovery.
+- [ ] Append migration IDs only when required (next pair SQLite144/versioned223); test up/down and uniqueness while preserving 112–143 / 191–222.
+- [ ] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
+- [ ] Commit owned backend/storage changes and report the three race timelines, object-key guarantees, migration IDs and exact verification evidence.
+
+**Acceptance:** A `deleted` receipt is issued only after every application/material/upload external effect admitted before deletion is terminal and all discoverable private object keys are removed. Duplicate retries cannot release another attempt's claim, and storage retries cannot orphan an untracked prior object.
 
 ## Task 4: Bind submitted progress to an actual submission record
 
@@ -310,22 +432,20 @@
 
 **Acceptance:** Redirects cannot be mislabeled unreachable; a backend allowing unauthenticated reads cannot produce a passing live-gate result.
 
-## Task 9: Re-sequence #140 and colliding #30 migrations without duplicate version numbers
+## Task 9: Preserve existing #30 and #140 migration identities
 
-**Dependency:** None; migration files and database migration tests are separate from Tasks 1–8. This task must integrate before any release candidate is tested or built.
+**Dependency:** User clarification on 2026-09-30 supersedes the initial re-sequencing request: old #30 application history is unknown, so existing numeric identities must remain stable.
 
-**Role:** `mechanical_worker`; validator `backend_validator`; reviewer `reviewer`.
+**Role:** `backend_validator`; reviewer `reviewer`.
 
-**Files:** Paired migration files in `migrations/sqlite/` and `migrations/versioned/` for the 19 #140 Career/Workbench migrations and 12 colliding #30 migrations; `internal/database/migration.go`; `internal/database/migration_version_uniqueness_test.go`; filename/version references in Career, Workbench, code-delivery and mobile migration tests.
+**Files:** Existing files under `migrations/sqlite/` and `migrations/versioned/`; migration loader and migration identity tests. No existing migration file should be renamed or edited by this task.
 
-**Consumes / produces:** Preserve within-cohort dependency order. Move #140 `career_profile` through `career_reconciliations` from SQLite 124–142 to 112–130 and versioned 203–221 to 191–209. Move #30 `task_grants` through `space_connection_grants` from SQLite 112–123 to 131–142 and versioned 191–202 to 210–221. Move the SQLite `public_agent_marketplace` no-transaction gate and exact migration path from version 114 to 133. Migration loader must observe one unique, contiguous sequence; both public trees must point to the same schema transition for each name.
+**Consumes / produces:** Preserve the established order and identities: #30 `task_grants` through `space_connection_grants` stay at SQLite 112–123 and versioned 191–202; #140 `career_profile` through `career_reconciliations` stay at SQLite 124–142 and versioned 203–221. The SQLite marketplace no-transaction gate remains at its current version/path 114. Any new migration appends after the current tail: SQLite 143 and versioned 222. Verify unique paired sequences without changing any existing filename, numeric version, or loader special case.
 
 **Steps:**
 
-- [ ] Add/update a migration uniqueness/identity test that asserts both trees contain the expected paired names and unique versions after the mapping; update version-specific tests to assert the moved paths and down/up behavior.
-- [ ] Run migration-focused tests and capture any stale filename or numeric assumptions.
-- [ ] Apply the complete paired-file mapping, update the SQLite special transaction gate, and update every discovered filename/version reference.
-- [ ] Run `go test -count=1 ./internal/database ./internal/modules/commercial/... ./internal/modules/plugins/...` plus the direct code-delivery and mobile migration tests identified during implementation; run `git diff --check`.
-- [ ] Commit only migration files, loader and migration tests. Report the assumption that no existing deployment requires the displaced #30 numeric identities, because golang-migrate stores numeric versions rather than migration identity.
+- [ ] Verify both migration trees pair names consistently and have unique monotonic versions, with #30 and #140 remaining at their original IDs.
+- [ ] Run `go test -count=1 ./internal/database` and inspect the loader's SQLite special transaction gate at version 114; run `git diff --check`.
+- [ ] Do not commit migration renumbering; record the user ruling and compatibility reason in the execution ledger. For appended migrations, add explicit identity tests for 143/222.
 
-**Acceptance:** No duplicate migration numbers remain; fresh SQLite and PostgreSQL migration sequences apply Career/Workbench at 112–130 / 191–209, #30 schema changes remain in dependency order at 131–142 / 210–221, and the special SQLite marketplace migration still executes outside a transaction.
+**Acceptance:** Existing migration IDs and semantics are unchanged; #30 remains 112–123 / 191–202, #140 remains 124–142 / 203–221, and new schema changes append at 143 / 222.
