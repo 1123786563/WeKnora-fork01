@@ -22,4 +22,4 @@ Review repair R1 additionally asserts that the rendered RootLayout root itself i
 
 ## Commit and limits
 
-Original implementation commit: `ad68a23a83631e336400ae8167ee4bf2307fa225`. R1 repair commit: `9ff7dab309aaf35f015d7dc0fcd89508c759077c`. Both commits cover only the assigned test and report. The shell production source remains unchanged. No responsive or native browser behavior was changed; this task verifies static shell structure under the existing Node smoke harness.
+Original implementation commit: `ad68a23a83631e336400ae8167ee4bf2307fa225`. R1 repair commit: `187a0dfdda957ac6372b4d34e58fe103502ac502`. Both commits cover only the assigned test and report. The shell production source remains unchanged. No responsive or native browser behavior was changed; this task verifies static shell structure under the existing Node smoke harness.
