@@ -150,24 +150,36 @@ test('assembly: TaskOffice and session client paths have matching Go route regis
   const clientExecutions = readFileSync(new URL('../../../packages/api-client/src/mobile/executions.ts', import.meta.url), 'utf8');
   const clientSessions = readFileSync(new URL('../../../packages/api-client/src/chat/sessions.ts', import.meta.url), 'utf8');
 
-  // Route path fragments are paired with the common /api/v1 root group in router setup.
-  const registrations = [
-    ['Task list', /r\.Group\("\/workbench\/executions"[\s\S]*?workbench\.GET\("", list\.ListWorkbenchExecutions\)/],
-    ['Task detail/open', /workbench\.GET\("\/:run_id", h\.GetWorkbenchExecution\)/],
-    ['Task snapshot/open', /workbench\.GET\("\/:run_id\/snapshot", h\.GetWorkbenchSnapshot\)/],
-    ['Task event stream/open', /workbench\.GET\("\/:run_id\/events", h\.StreamWorkbenchEvents\)/],
-    ['Task start', /workbench\.POST\("", h\.Start\)/],
-    ['Task request reconciliation', /gated\.GET\("\/:request_id", h\.Lookup\)/],
-  ];
-  for (const [name, pattern] of registrations) assert.match(workbenchRoutes, pattern, `${name} route must remain registered`);
-  assert.match(chatRoutes, /r\.Group\("\/sessions", g\.Viewer\(\)\)[\s\S]*?sessions\.POST\("", handler\.CreateSession\)/, 'new Task session creation must remain registered');
+  const functionBlock = (source, name) => {
+    const start = source.indexOf(`func ${name}(`);
+    assert.notEqual(start, -1, `missing route function ${name}`);
+    const next = source.indexOf('\nfunc ', start + 1);
+    return source.slice(start, next < 0 ? source.length : next);
+  };
+  const route = (prefix, method, suffix, variable = 'workbench') => new RegExp(
+    `r\\.Group\\("${prefix}"[^\\n]*\\)[\\s\\S]*?${variable}\\.${method}\\("${suffix}"`,
+  );
+  const readRoutes = functionBlock(workbenchRoutes, 'RegisterWorkbenchRoutes');
+  const startRoutes = functionBlock(workbenchRoutes, 'RegisterWorkbenchStartRoutes');
+  const sessionRoutes = functionBlock(chatRoutes, 'RegisterSessionRoutes');
 
-  assert.match(clientExecutions, /path:\s*`\/api\/v1\/workbench\/executions\$\{query/,'Task list adapter keeps the registered collection path');
-  assert.match(clientExecutions, /path:\s*`\/api\/v1\/workbench\/executions\/\$\{pathId\(requestedRunID, 'runID'\)\}\/snapshot`/, 'Task open adapter keeps the registered snapshot path');
-  assert.match(clientExecutions, /path:\s*`\/api\/v1\/workbench\/executions\/\$\{id\}\/events\?version=2`/, 'Task open adapter keeps the registered event path');
-  assert.match(clientExecutions, /path:\s*'\/api\/v1\/workbench\/executions'/, 'Task start adapter keeps the registered start path');
-  assert.match(clientExecutions, /path:\s*`\/api\/v1\/workbench\/executions\/requests\/\$\{id\}`/, 'Task start adapter keeps the registered request lookup path');
-  assert.match(clientSessions, /path:\s*'\/api\/v1\/sessions'/, 'Task session adapter keeps the registered session path');
+  // Each assertion binds one router group prefix to its method and complete
+  // subpath within the same registration function (the router's root is /api/v1).
+  assert.match(readRoutes, route('/workbench/executions', 'GET', '', 'workbench'), 'GET /api/v1/workbench/executions');
+  assert.match(readRoutes, route('/workbench/executions', 'GET', '/:run_id', 'workbench'), 'GET execution detail');
+  assert.match(readRoutes, route('/workbench/executions', 'GET', '/:run_id/snapshot', 'workbench'), 'GET execution snapshot');
+  assert.match(readRoutes, route('/workbench/executions', 'GET', '/:run_id/events', 'workbench'), 'GET execution events');
+  assert.match(startRoutes, route('/workbench/executions', 'POST', '', 'workbench'), 'POST execution start');
+  assert.match(startRoutes, route('/workbench/executions/requests', 'GET', '/:request_id', 'gated'), 'GET start request lookup');
+  assert.match(sessionRoutes, route('/sessions', 'POST', '', 'sessions'), 'POST session creation');
+
+  assert.match(clientExecutions, /method:\s*'GET',[\s\S]{0,240}?path:\s*`\/api\/v1\/workbench\/executions\$\{query/, 'client GET list pairs method and path');
+  assert.match(clientExecutions, /method:\s*'GET',[\s\S]{0,240}?path:\s*`\/api\/v1\/workbench\/executions\/\$\{pathId\(requestedRunID, 'runID'\)\}`/, 'client GET execution detail pairs method and path');
+  assert.match(clientExecutions, /method:\s*'GET',[\s\S]{0,240}?path:\s*`\/api\/v1\/workbench\/executions\/\$\{pathId\(requestedRunID, 'runID'\)\}\/snapshot`/, 'client GET snapshot pairs method and path');
+  assert.match(clientExecutions, /method:\s*'GET',[\s\S]{0,240}?path:\s*`\/api\/v1\/workbench\/executions\/\$\{id\}\/events\?version=2`/, 'client GET events pairs method and path');
+  assert.match(clientExecutions, /method:\s*'POST',[\s\S]{0,240}?path:\s*'\/api\/v1\/workbench\/executions'/, 'client POST start pairs method and path');
+  assert.match(clientExecutions, /method:\s*'GET',[\s\S]{0,240}?path:\s*`\/api\/v1\/workbench\/executions\/requests\/\$\{id\}`/, 'client GET lookup pairs method and path');
+  assert.match(clientSessions, /method:\s*'POST',[\s\S]{0,240}?path:\s*'\/api\/v1\/sessions'/, 'client POST session creation pairs method and path');
 });
 
 test('assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action', async () => {
