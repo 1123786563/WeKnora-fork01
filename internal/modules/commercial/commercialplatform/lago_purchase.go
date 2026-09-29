@@ -60,6 +60,10 @@ var pmSyncTick = 500 * time.Millisecond
 // outboundProviderHost is the default host of the provider's public API.
 const outboundProviderHost = "https://api.stripe.com"
 
+// paymentProviderCode is the registration code shared by the payment
+// binding payload and the webhook route/database lookup.
+const paymentProviderCode = "weknora-stripe"
+
 // outboundProviderTimeout bounds ONE provider API round trip. It is
 // deliberately NOT the shared Lago client's health-grade 5 s budget: a
 // cross-continent TLS+HTTP round trip to the provider's public endpoint
@@ -379,7 +383,7 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 	// payment method, polled below.
 	billing := map[string]any{
 		"payment_provider":         "stripe",
-		"payment_provider_code":    "weknora-stripe",
+		"payment_provider_code":    paymentProviderCode,
 		"provider_customer_id":     providerCustomerID,
 		"provider_payment_methods": []string{"card"},
 	}

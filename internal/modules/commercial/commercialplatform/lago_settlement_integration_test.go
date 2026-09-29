@@ -57,6 +57,9 @@ func integrationEnv(names ...string) map[string]string {
 }
 
 func TestInboundWebhookReplayGateAndCanonicalCollection(t *testing.T) {
+	if paymentProviderCode != "weknora-stripe" {
+		t.Fatalf("payment provider code changed: %q", paymentProviderCode)
+	}
 	// psql runs with -t -A, so the query must return one JSON array cell,
 	// including [] when no rows match, rather than delimiter-separated columns.
 	if !strings.Contains(inboundWebhookSQL, "json_agg(json_build_object") || !strings.Contains(inboundWebhookSQL, "'[]'") {
@@ -220,7 +223,7 @@ func waitForReplayWebhook(ctx context.Context, read func(context.Context) ([]inb
 		if gateErr == nil && row.Status == "succeeded" {
 			return nil
 		}
-		if gateErr != nil && strings.Contains(gateErr.Error(), " failed") {
+		if gateErr != nil && row.Status == "failed" {
 			return gateErr
 		}
 		if gateErr != nil && len(rows) > 2 {
@@ -884,7 +887,7 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			"type":        "payment_intent.succeeded",
 			"data":        map[string]any{"object": intent},
 		}
-		providerCode := providerCodeOf(t, a)
+		providerCode := paymentProviderCode
 		if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
 			t.Fatalf("webhook delivery answered HTTP %d", code)
 		}
@@ -1056,22 +1059,6 @@ func providerCustomerOf(t *testing.T, a *LagoAdapter, extCustomer string) string
 		t.Fatalf("customer binding malformed")
 	}
 	return parsed.Customer.BillingConfiguration.ProviderCustomerID
-}
-
-func providerCodeOf(t *testing.T, a *LagoAdapter) string {
-	t.Helper()
-	status, body, err := a.do(context.Background(), http.MethodGet, "/api/v1/organizations", nil)
-	if err != nil || status != 200 {
-		t.Fatalf("organizations read: HTTP %d err=%v", status, err)
-	}
-	_ = body
-	// The lab seeds exactly one provider; its code is the settle path's own
-	// binding source — the adapter's providerCustomerPrefix env carries it
-	// on lab stacks. Fall back to the well-known lab code.
-	if a.cfg.ProviderCustomerPrefix != "" {
-		return a.cfg.ProviderCustomerPrefix
-	}
-	return "weknora-stripe"
 }
 
 func purchaseSnapshotJSON(t *testing.T, a *LagoAdapter, tenant uint64) string {

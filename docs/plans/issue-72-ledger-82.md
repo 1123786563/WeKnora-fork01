@@ -287,3 +287,10 @@
 - Task 1 changes `prepare_t9_env.sh` so only exported `POSTGRES_USER` / `POSTGRES_DB` shell variables override `lab.env`; unexported values are ignored for Compose parity. Empty exported values still reach the existing `lago` fallback. The organization query and integration polling exports continue to share the resolved labels.
 - Verification: `bash -n`, `git diff --check`, five deterministic resolver cases (both DB variables checked per case), and static checks for organization-query/export wiring passed. No services or live T9 were started.
 - Task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r5/task-1-report.md`. Independent validation/review and final OCR remain pending.
+
+## T9 OCR finding repair r6 — Task 1 (2026-09-30)
+
+- Adapter and T9 webhook replay now share `paymentProviderCode = "weknora-stripe"`; the test no longer probes organizations or derives provider code from `ProviderCustomerPrefix`.
+- Failed replay rows are detected by `row.Status == "failed"` and return the existing actionable diagnostic immediately. Added a constant contract assertion; existing single-read failed-status test covers immediate exit.
+- Focused tagged helper tests, tagged compile-only, `bash -n` for the existing T9 preparation script, and `git diff --check` passed, as did `go test ./internal/modules/commercial/commercialplatform/ -count=1` (72.565s). No live stack/T9 run.
+- Task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r6/task-1-report.md`. Independent review/validation and final OCR pending.
