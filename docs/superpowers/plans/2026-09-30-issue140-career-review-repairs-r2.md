@@ -149,6 +149,27 @@
 
 **Acceptance:** No second rule write can start before existing rule state and unresolved requests are known; delayed reads cannot overwrite the user's latest selection.
 
+## Task 13: Coordinate Career deletion with operations across handlers and replicas
+
+**Dependency:** Repair of Task 1's same-Office mutex; must integrate before claiming deletion races are closed.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** Career persistence/model/migration and repository seams, `internal/modules/career` operation admission and deletion paths, focused Career tests, and narrow Workbench/storage adapters only if fencing tokens are required.
+
+**Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, and export storage writes/removals. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Keep database transactions short; never hold one across rendering, object storage, or Workbench calls.
+
+**Steps:**
+
+- [ ] Add deterministic two-Office tests with a shared database/storage/linker: pause an application linker and material writer after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while either admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
+- [ ] Run the regressions and record the current cross-instance leak/order failure.
+- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
+- [ ] Ensure SQLite and PostgreSQL transitions serialize on the same durable row with conditional updates/row locks, and that failure or process restart leaves a retryable, non-terminal state.
+- [ ] Run focused race and recovery tests, relevant Career/Workbench/container suites, migration tests, and `git diff --check`; expected: two Offices observe one ordering and no effect can appear after a successful deletion receipt.
+- [ ] Commit owned paths and report schema IDs, claim recovery behavior, and exact test evidence.
+
+**Acceptance:** Across separately constructed handlers/processes, every application link or material object effect is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.

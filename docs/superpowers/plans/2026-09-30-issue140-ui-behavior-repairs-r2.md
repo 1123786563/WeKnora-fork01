@@ -123,6 +123,25 @@
 
 **Acceptance:** History remains loadable for underfilled viewports and invalid image fallback follows active locale.
 
+## Task 13: Repair message-history test setup and exercise the load action
+
+**Dependency:** Follow-up to Task 7 review finding; production behavior passed static review, but its new tests cannot pass as written.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/chat/message-list.test.tsx`, `packages/views/src/chat/markdown.test.tsx` only.
+
+**Consumes / produces:** Existing `MessageList` props `hasMore`, `loadingOlder`, and `onLoadOlder`; use the existing locale-copy resolver explicitly for English assertions. The Markdown test must import the resolver it calls.
+
+**Steps:**
+
+- [ ] Add/fix test setup so both locale assertions are deterministic and the resolver is imported.
+- [ ] Add a populated but underfilled first page and activate the native Load more button, asserting one callback; assert no callback while loading and no button when exhausted.
+- [ ] Run the focused views chat tests, applicable package typecheck, and `git diff --check`; expected: tests pass and directly cover activation plus locale rendering.
+- [ ] Commit only the two test files and report exact commands and results.
+
+**Acceptance:** The regression tests pass under deterministic locale setup and prove that a user can activate history loading even when the first page does not overflow.
+
 ## Task 8: Make document move destinations and mode choices keyboard-operable
 
 **Dependency:** Follow-up to Task 1 review finding `UI-R2-DOC-01`; continue in the Task 1 worktree after its initial commit.
