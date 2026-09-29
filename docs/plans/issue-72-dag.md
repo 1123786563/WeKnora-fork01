@@ -372,3 +372,8 @@ This overlay is the current execution-state source; sections 1–7 are historica
 - Implementation commit `7e7975a7262dcea43f0fbef42df54438b39af836`; fix-round commit `ac343f22e480acebff733e058efe3e46e4d0924c`; current reviewed task branch checkpoint `97956559a8de7c16b790da9961c8d703ed2987eb`. Focused regression, full package suite, tagged compile-only, formatting, and diff checks pass. Task review and supplemental backend validation pass at their recorded code checkpoints. The separate live T9 rerun (dedicated `lab.env`/credentials unavailable) and AC4 real Alipay sandbox evidence remain incomplete.
 
 - Task 1 fix round 1 addresses the scoped review: candidate resolution now matches the production unique-greatest-positive-created rule before settle; only that resolved ID can be selected after settle. Review-record checkpoint metadata corrected in the execution ledger. Verification passed as detailed in the Task 1 report; T9 live and AC4 sandbox gates remain open.
+
+### T9 concurrent PI identity guard — 2026-09-29
+
+- Final whole-range review F1 is addressed in the tagged integration fixture: the exact pre-settle response's complete nonempty PI ID set is passed to post-settle selection. Any newly appeared succeeded invoice-linked PI causes an error before webhook delivery, even if the expected PI also succeeded. Pre-existing history and new unlinked success are covered as controls.
+- Targeted selector regression, package tests, tagged compile-only check, formatting and diff checks pass. Live T9 and AC4 remain incomplete. Full evidence and checkpoint are in the execution ledger and Task 1 report.

@@ -80,7 +80,8 @@ func TestPaymentIntentCandidateSelection(t *testing.T) {
 		map[string]any{"id": "pi_newest", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 		map[string]any{"id": "pi_older", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
 	}
-	selected, err := succeededPaymentIntent(rows, expectedID)
+	preObservedIDs := map[string]struct{}{"pi_older": {}, "pi_newest": {}, "pi_unlinked": {}, "pi_already_done": {}}
+	selected, err := succeededPaymentIntent(rows, expectedID, preObservedIDs)
 	if err != nil {
 		t.Fatalf("expected newest candidate to be selected: %v", err)
 	}
@@ -88,9 +89,29 @@ func TestPaymentIntentCandidateSelection(t *testing.T) {
 		t.Fatalf("selected %v, want pi_newest", selected["id"])
 	}
 
-	_, err = succeededPaymentIntent(rows[1:], expectedID)
+	_, err = succeededPaymentIntent(rows[1:], expectedID, preObservedIDs)
 	if err == nil || !strings.Contains(err.Error(), "pi_newest") || !strings.Contains(err.Error(), "pi_older") {
 		t.Fatalf("older-only success must fail with expected/observed IDs, got %v", err)
+	}
+
+	_, err = succeededPaymentIntent(append(rows, map[string]any{
+		"id": "pi_interleaved", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"},
+	}), expectedID, preObservedIDs)
+	if err == nil || !strings.Contains(err.Error(), "pi_interleaved") {
+		t.Fatalf("new invoice-linked success must fail and name its identity, got %v", err)
+	}
+
+	// A pre-existing succeeded history row is allowed, and a newly listed
+	// succeeded row without invoice linkage does not represent an invoice race.
+	withHistory := append(rows, map[string]any{
+		"id": "pi_already_done", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_old"},
+	})
+	if _, err := succeededPaymentIntent(withHistory, expectedID, preObservedIDs); err != nil {
+		t.Fatalf("pre-existing historical success must be allowed: %v", err)
+	}
+	withoutInvoice := append(rows, map[string]any{"id": "pi_unlinked_new", "status": "succeeded", "metadata": map[string]any{}})
+	if _, err := succeededPaymentIntent(withoutInvoice, expectedID, preObservedIDs); err != nil {
+		t.Fatalf("new success without invoice metadata must not trigger identity guard: %v", err)
 	}
 
 	tied, err := preSettlePaymentIntentCandidates([]any{
@@ -217,8 +238,10 @@ func expectedPaymentIntentID(candidates map[string]paymentIntentCandidate) (stri
 	return latestID, nil
 }
 
-func succeededPaymentIntent(rows []any, expectedID string) (map[string]any, error) {
+func succeededPaymentIntent(rows []any, expectedID string, preObservedIDs map[string]struct{}) (map[string]any, error) {
 	var observed []string
+	var unexpected []string
+	var selected map[string]any
 	for _, row := range rows {
 		intent, _ := row.(map[string]any)
 		if intent == nil || intent["status"] != "succeeded" {
@@ -226,16 +249,36 @@ func succeededPaymentIntent(rows []any, expectedID string) (map[string]any, erro
 		}
 		id, _ := intent["id"].(string)
 		observed = append(observed, id)
-		if id != expectedID || id == "" {
-			continue
-		}
 		meta, _ := intent["metadata"].(map[string]any)
 		invoiceID, _ := meta["lago_invoice_id"].(string)
-		if invoiceID != "" {
-			return intent, nil
+		if id != "" && invoiceID != "" {
+			if _, wasObserved := preObservedIDs[id]; !wasObserved {
+				unexpected = append(unexpected, id)
+			}
+		}
+		if id == expectedID && id != "" && invoiceID != "" {
+			selected = intent
 		}
 	}
+	if len(unexpected) > 0 {
+		sort.Strings(unexpected)
+		return nil, fmt.Errorf("post-settle list contains newly appeared succeeded invoice-linked PaymentIntent IDs %v", unexpected)
+	}
+	if selected != nil {
+		return selected, nil
+	}
 	return nil, fmt.Errorf("no succeeded PaymentIntent matched expected pre-settle ID %s; observed succeeded IDs %v", expectedID, observed)
+}
+
+func paymentIntentIDSet(rows []any) map[string]struct{} {
+	ids := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		intent, _ := row.(map[string]any)
+		if id, _ := intent["id"].(string); id != "" {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids
 }
 
 func paymentIntentIDs(body map[string]any) []string {
@@ -391,6 +434,7 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		var status int
 		var body map[string]any
 		var candidates map[string]paymentIntentCandidate
+		var preObservedIDs map[string]struct{}
 		var expectedIntentID string
 		waitDeadline := time.Now().Add(60 * time.Second)
 		for {
@@ -399,6 +443,7 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			candidates = map[string]paymentIntentCandidate{}
 			if status == 200 {
 				rows, _ := body["data"].([]any)
+				preObservedIDs = paymentIntentIDSet(rows)
 				var err error
 				candidates, err = preSettlePaymentIntentCandidates(rows)
 				if err != nil {
@@ -441,7 +486,7 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			t.Fatalf("intent list: HTTP %d", status)
 		}
 		rows, _ := body["data"].([]any)
-		intent, err := succeededPaymentIntent(rows, expectedIntentID)
+		intent, err := succeededPaymentIntent(rows, expectedIntentID, preObservedIDs)
 		if err != nil {
 			t.Fatal(err)
 		}
