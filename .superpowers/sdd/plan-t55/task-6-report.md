@@ -43,3 +43,7 @@ Implemented the assigned Task 6 scope from `task-6-brief.md`: composition wiring
 - No native device/browser session was run. UI behavior was exercised through the existing mobile smoke harness and React Native component stubs.
 - Fourteen live integration tests were skipped because deployment/provider credentials and opt-in configuration were unavailable.
 - An existing untracked `paseo.json` was present before Task 6 work and is intentionally untouched and excluded from the commit/review package.
+
+## Repair round 1 reconciliation
+
+The initial full-suite run had **292 total tests: 278 passed, 14 skipped, 0 failed** (the 278 figure is passed tests, not total tests). After repair round 1 added four route regression tests, the full suite had **296 total: 282 passed, 14 skipped, 0 failed**. Repair checkpoint, package hash, and exact verification commands are recorded in `task-6-fix-r1-report.md`.
