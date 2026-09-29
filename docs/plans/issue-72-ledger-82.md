@@ -281,3 +281,9 @@
 - `prepare_t9_env.sh` now resolves `POSTGRES_USER` and `POSTGRES_DB` using Compose precedence: set shell value first (including empty, which reaches the `${VAR:-lago}` fallback), then the selected `lab.env`, then `lago`. The organization query and polling exports share the resolved labels.
 - Verification: `bash -n`, `git diff --check`, source wiring assertions, and deterministic shell resolver cases for nonempty overrides, set-empty overrides, env-file-only values, and final defaults all passed. No services or live T9 were started.
 - SDD task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r4/task-1-report.md`. Independent validation/review and final OCR remain pending.
+
+## T9 OCR finding repair r5 — 2026-09-30
+
+- Task 1 changes `prepare_t9_env.sh` so only exported `POSTGRES_USER` / `POSTGRES_DB` shell variables override `lab.env`; unexported values are ignored for Compose parity. Empty exported values still reach the existing `lago` fallback. The organization query and integration polling exports continue to share the resolved labels.
+- Verification: `bash -n`, `git diff --check`, five deterministic resolver cases (both DB variables checked per case), and static checks for organization-query/export wiring passed. No services or live T9 were started.
+- Task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r5/task-1-report.md`. Independent validation/review and final OCR remain pending.
