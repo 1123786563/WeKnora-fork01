@@ -20,7 +20,7 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, dirty := sqliteMigrationState(t, db)
-	latest := latestSQLiteMigrationVersion(t, filepath.Join(root, "migrations/sqlite"))
+	latest := latestMigrationVersion(t, filepath.Join(root, "migrations/sqlite"))
 	require.Equal(t, latest, version)
 	require.False(t, dirty)
 	for _, table := range append(append(semanticControlTables, semanticPolicyTables...), semanticInvocationTables...) {
@@ -52,7 +52,7 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	require.True(t, sqliteIndexExists(t, db, "idx_semantic_outbox_claim"))
 }
 
-func latestSQLiteMigrationVersion(t *testing.T, dir string) int {
+func latestMigrationVersion(t *testing.T, dir string) int {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)

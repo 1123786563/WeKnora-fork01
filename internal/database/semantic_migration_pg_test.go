@@ -63,7 +63,7 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, m.Up())
 	version, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(180), version)
+	require.Equal(t, uint(latestMigrationVersion(t, filepath.Join(root, "migrations/versioned"))), version)
 	require.False(t, dirty)
 	assertTablesAndIndex := func(want bool) {
 		for _, table := range append(append(semanticControlTables, semanticPolicyTables...), semanticInvocationTables...) {
@@ -98,7 +98,7 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, m.Up())
 	version, dirty, err = m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(180), version)
+	require.Equal(t, uint(latestMigrationVersion(t, filepath.Join(root, "migrations/versioned"))), version)
 	require.False(t, dirty)
 	assertTablesAndIndex(true)
 	_ = sql.ErrNoRows

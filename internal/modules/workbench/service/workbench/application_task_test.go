@@ -473,7 +473,7 @@ func TestApplicationTaskMigrationUpAndDownShapes(t *testing.T) {
 
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
-	require.NoError(t, execMigrationFile(sqlDB, "migrations/sqlite/000117_workbench_application_tasks.down.sql"))
+	require.NoError(t, execMigrationFile(sqlDB, "migrations/sqlite/000129_workbench_application_tasks.down.sql"))
 	var count int
 	require.NoError(t, sqlDB.QueryRow(
 		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_application_tasks'",

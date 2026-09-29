@@ -60,12 +60,10 @@ func TestApplicationTaskMigrationCreatesAndRemovesProjectionSchema(t *testing.T)
 	m, err := newSQLiteMigrator("file://"+filepath.Join(repoRoot, "migrations/sqlite"), dbPath, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
-	// Down to the explicit pre-projection version instead of a step count:
-	// parallel career migrations leave gaps (118 reserved), so one step down
-	// from the terminal version is baseline-dependent.
-	require.NoError(t, m.Migrate(116))
+	// The projection is SQLite migration 129; 128 is its immediate predecessor.
+	require.NoError(t, m.Migrate(128))
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 116, version)
+	require.Equal(t, 128, version)
 	require.False(t, dirty)
 	require.False(t, sqliteTableExists(t, db, "workbench_application_tasks"))
 }
