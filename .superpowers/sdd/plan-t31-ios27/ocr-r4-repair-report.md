@@ -27,5 +27,5 @@ Used temporary ignored `node_modules` symlinks to `/Users/wuyongjun/.paseo/workt
 ## Review package evidence
 
 - Pre-commit tracked diff SHA-256: `9061f8ea3550a8e2600a87b355568bf6921e70d4a2c74ad2a9366d0e5bd72803` (source, tests, and updated R3 report; this report is added below).
-- Commit SHA: `3dc26f767595a5d89c8d546047af62b170c1c201`.
+- Source/test and initial report commit: `3dc26f767595a5d89c8d546047af62b170c1c201`; report SHA correction commit: `4b277699c352243c71cb71011d7681e46873bae6`.
 - Final commit scope: only the six Task 1 owned files listed above plus this report.
