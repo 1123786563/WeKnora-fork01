@@ -199,7 +199,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   try {
    const result = await client.career.searchOnce(next, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次找岗不匹配；为避免重复收费，保留原请求并继续核对回执。' }); setPhase('unknown'); setNotice(''); return }
+   if (result.requestId !== next.requestId || result.query !== next.query) { setError({ code: 'invalid_response', text: '服务返回的请求编号或指令与本次找岗不匹配；为避免重复收费，保留原请求并继续核对回执。' }); setPhase('unknown'); setNotice(''); return }
    clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey)
    acceptReceipt(result, storageKey)
   } catch (cause) {
