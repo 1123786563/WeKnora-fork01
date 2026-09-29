@@ -23,4 +23,4 @@ Ran the boundary test on the R1 baseline test and fixture after temporarily addi
 
 Only the two assigned repository test files and this report are included. No production source or resolver seam changed. All outbound provider traffic used the local fake GitHub server and Shell fake client. The fixture seeds the minimal migrated `mcp_services` row required by the token table foreign key.
 
-Commit SHA: recorded after commit.
+Implementation commit SHA: `944a097f006b22c28f4ff2dc5254f0a3fba15973`.
