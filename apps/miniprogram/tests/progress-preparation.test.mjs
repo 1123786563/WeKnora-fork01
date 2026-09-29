@@ -12,7 +12,10 @@ import { readFile } from 'node:fs/promises';
 const stubURL = pathToFileURL(new URL('./helpers/taro-stub.mjs', import.meta.url).pathname).href;
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === '@tarojs/taro') return { url: stubURL, shortCircuit: true };
+    if (specifier === '@tarojs/taro') return { url: `data:text/javascript,${encodeURIComponent(`import Taro from '${stubURL}';export const useDidHide=()=>{};export const useDidShow=()=>{};export default Taro;`)}`, shortCircuit: true };
+    if (specifier === '../components/ui.tsx') return { url: 'data:text/javascript,export%20const%20Screen%3D%22Screen%22%3Bexport%20const%20Card%3D%22Card%22%3Bexport%20const%20Action%3D%22Action%22%3Bexport%20const%20Field%3D%22Field%22%3Bexport%20const%20Notice%3D%22Notice%22%3Bexport%20const%20Badge%3D%22Badge%22%3Bexport%20const%20DataBoundary%3D%22DataBoundary%22%3Bexport%20const%20useData%3D()%3D%3E()%3D%3E()%3D%3Eundefined%3Bexport%20const%20useAction%3D()%3D%3E(%7Bbusy%3Afalse,run%3Afn%3D%3Efn()%7D)%3Bexport%20const%20useSession%3D()%3D%3E(%7BuserId%3A%22u1%22,tenantId%3A%221%22%7D)', shortCircuit: true };
+    if (specifier === '@tarojs/components') return { url: 'data:text/javascript,export%20const%20View%3D%22View%22%3Bexport%20const%20Text%3D%22Text%22%3Bexport%20const%20Button%3D%22Button%22%3Bexport%20const%20Input%3D%22Input%22%3Bexport%20const%20Textarea%3D%22Textarea%22%3Bexport%20const%20Image%3D%22Image%22%3Bexport%20const%20ScrollView%3D%22ScrollView%22', shortCircuit: true };
+    if (/\.(png|scss|css)$/.test(specifier)) return { url: 'data:text/javascript,export%20default%20%22%22', shortCircuit: true };
     return nextResolve(specifier, context);
   },
 });
@@ -21,6 +24,7 @@ const { stub } = await import('./helpers/taro-stub.mjs');
 const runtime = await import('../src/services/runtime.ts');
 const career = await import('../src/services/career.ts');
 const platform = await import('../src/adapters/career-platform.ts');
+const preparationPage = await import('../src/career/progress-preparation.tsx');
 const { clearPrivateCache } = await import('../src/platform/storage.ts');
 
 const T = '2026-09-25T08:00:00Z';
@@ -269,11 +273,26 @@ test('B4a: preflight material read failure keeps the local draft and says no edi
 });
 
 test('B4b: a committed edit remains successful when the follow-up material read fails', async () => {
-  const source = await readFile(new URL('../src/career/progress-preparation.tsx', import.meta.url), 'utf8');
-  const committed = source.slice(source.indexOf('await career.editMaterial({ materialId, body })'), source.indexOf('} catch (error) {', source.indexOf('await career.editMaterial({ materialId, body })')));
-  assert.match(committed, /setGenNotice\('准备草稿修订已提交/);
-  assert.match(committed, /catch \{[\s\S]*?修订已提交，但材料回读失败/);
-  assert.doesNotMatch(committed, /throw error/, 'post-commit read failure is contained and cannot enter write failure handling');
+  const events = [];
+  await preparationPage.finishCommittedPreparationEdit({
+    clearDraft() { events.push('clear'); }, async readBack() { events.push('read'); throw new Error('readback unavailable'); },
+    onCommitted() { events.push('committed'); }, onCleanupFailure() { events.push('cleanup-warning'); },
+    onReadbackFailure() { events.push('readback-warning'); }, onReadback() { events.push('readback-ok'); },
+  });
+  assert.deepEqual(events, ['committed', 'clear', 'read', 'readback-warning']);
+});
+
+test('M4: local draft removal failure after successful edit remains a committed outcome', async () => {
+  const events = [];
+  await preparationPage.finishCommittedPreparationEdit({
+    clearDraft() { events.push('clear'); throw new Error('storage removal failed'); },
+    async readBack() { events.push('read'); return { sections: [prepSection] }; },
+    onCommitted() { events.push('committed'); },
+    onCleanupFailure() { events.push('cleanup-warning'); },
+    onReadbackFailure() { events.push('readback-warning'); },
+    onReadback(body, cleanupFailed) { events.push(`readback-ok:${body.sections.length}:${cleanupFailed}`); },
+  });
+  assert.deepEqual(events, ['committed', 'clear', 'cleanup-warning', 'read', 'readback-ok:1:true']);
 });
 
 test('B5: an unknown preparation outcome is reconciled through the preparations receipt (seam: 未知对账)', async () => {
