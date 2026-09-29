@@ -25,7 +25,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch' }",
-  'react-native-safe-area-context': "module.exports = { SafeAreaProvider: function SafeAreaProvider() { return null; }, SafeAreaView: function SafeAreaView() { return null; } }",
+  'react-native-safe-area-context': "module.exports = { initialWindowMetrics: { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, right: 0, bottom: 34, left: 0 } }, SafeAreaProvider: function SafeAreaProvider() { return null; }, SafeAreaView: function SafeAreaView() { return null; } }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
   'react/jsx-runtime': "const jsx = (type, props, key) => ({ type, props: { ...(props || {}), ...(key === undefined ? {} : { key }) } }); module.exports = { Fragment: Symbol.for('react.fragment'), jsx, jsxs: jsx };",
 };
@@ -89,6 +89,7 @@ test('root router stack is wrapped in provider and top/bottom safe-area containe
   const stack = nodes.find(({ type }) => (type as { name?: string })?.name === 'Stack');
 
   assert.ok(provider, 'SafeAreaProvider wraps routed content');
+  assert.equal((provider.props.initialMetrics as { insets: { top: number } } | undefined)?.insets.top, 47, 'SafeAreaProvider receives native initial window metrics');
   assert.equal(root && (root as { type?: unknown }).type, provider.type, 'SafeAreaProvider must be the RootLayout root');
   assert.ok(safeView, 'SafeAreaView contains routed content');
   assert.equal(

@@ -160,7 +160,7 @@ test('production checker ignores system framework paths', () => {
 });
 
 test('production checker permits only explicit OS roots and rejects unresolved dynamic libraries', () => {
-  for (const load of ['@rpath/libMissing.dylib', '@loader_path/libMissing.dylib', '/opt/vendor/libMissing.dylib']) {
+  for (const load of ['@rpath/libMissing.dylib', '@loader_path/libMissing.dylib', '@unknown_path/libMissing.dylib', 'libMissing.dylib', '/opt/vendor/libMissing.dylib']) {
     const f = fixture({ app: load });
     try {
       const result = run(f);

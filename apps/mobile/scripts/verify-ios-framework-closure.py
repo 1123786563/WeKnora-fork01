@@ -91,9 +91,7 @@ def main(app_path: str, properties_path: str) -> None:
                     fail(f"MALFORMED_FRAMEWORK_LOAD_PATH: {owner} requires {framework_name}: {load}")
                 if component:
                     fail(f"UNSUPPORTED_FRAMEWORK_LOAD_PATH: {owner}: {load}")
-                if load.startswith(("@rpath/", "@loader_path/", "@executable_path/")) or load.startswith("/"):
-                    fail(f"UNSUPPORTED_DYNAMIC_LIBRARY_LOAD: {owner}: {load}")
-                continue
+                fail(f"UNSUPPORTED_DYNAMIC_LIBRARY_LOAD: {owner}: {load}")
             token = token_match.group("token")
             remainder = token_match.group("remainder")
             framework_name = match.group("framework")

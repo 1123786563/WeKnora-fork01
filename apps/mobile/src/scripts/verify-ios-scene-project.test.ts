@@ -48,8 +48,11 @@ test('generated SDK57 project contract ignores provider name in Swift comments a
   try {
     fixture(root);
     const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
-    const source = readFileSync(appDelegate, 'utf8').replace('ExpoReactNativeFactoryProvider', '/* ExpoReactNativeFactoryProvider */ "ExpoReactNativeFactoryProvider"');
-    writeFileSync(appDelegate, source.replace('ExpoAppDelegate, /* ExpoReactNativeFactoryProvider */ "ExpoReactNativeFactoryProvider" {', 'ExpoAppDelegate {'));
+    const source = readFileSync(appDelegate, 'utf8');
+    const withoutConformance = source.replace('ExpoAppDelegate, ExpoReactNativeFactoryProvider {', 'ExpoAppDelegate {');
+    assert.notEqual(withoutConformance, source);
+    writeFileSync(appDelegate, withoutConformance.replace('class AppDelegate:', '// TODO: ExpoReactNativeFactoryProvider\nclass AppDelegate:').replace('class AppDelegate: ExpoAppDelegate {', 'class AppDelegate: ExpoAppDelegate {\n    let marker = \"ExpoReactNativeFactoryProvider\"'));
+    assert.match(readFileSync(appDelegate, 'utf8'), /ExpoReactNativeFactoryProvider/);
     assert.match(verifyIosSceneProject(root).join('\n'), /AppDelegate must conform to ExpoReactNativeFactoryProvider/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
