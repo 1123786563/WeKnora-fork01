@@ -479,4 +479,9 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - Addressed the final whole-branch review's Low finding: the 2026-09-30 01:38:39 CST status observation corresponds to exact UTC `2026-09-29T17:38:39Z`, not 2026-09-30. Snapshot now records both local time and exact ISO UTC timestamp.
 - This is a timestamp transcription correction only. Worktree status values, unknown ownership/release boundaries, acceptance gates, and OCR limitations are unchanged. No tests or services were run.
 - Corrected synthesized snapshot SHA-256: `2f88d85e2b78169b5f2d423c3cd4ddaae75fac8babca2b3a704899ee2c1bedfa`. Original `/tmp` input hashes remain as recorded above.
-- Final review fix BASE: `0da887615e5a1fcb52479f080d097ffcf83105c3`; exact fix HEAD/range is recorded in the local Task 1 report after the documentation checkpoint commit. Final independent re-review pending.
+- Final review fix range: `0da887615e5a1fcb52479f080d097ffcf83105c3..3a3ec8820150aefb1edf913c0fe775c53722efc2`; commit `3a3ec8820150aefb1edf913c0fe775c53722efc2` (`docs(issue-72): correct snapshot UTC timestamp`). The independent scoped re-review marks the Low finding ADDRESSED, Spec compliance PASS / quality PASS, with no new issue: `.superpowers/sdd/issue-72-live-tree-and-agent-refresh-2026-09-30-plan/final-fix-rereview.md`.
+
+## Task 1 final OCR after UTC correction — 2026-09-30
+
+- Re-ran OCR over the full final documentation range BASE `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce` to HEAD `3a3ec8820150aefb1edf913c0fe775c53722efc2`, with `--audience agent`, business background, and output `docs/plans/issue-72-live-tree-and-agent-refresh-2026-09-30-final-ocr.md`. Session `a9ec828a-96dd-459b-9ba6-f7f0e9fda550` exited 0, selected 0 files, and wrote `Review skipped: no items were selected.` This is not an OCR pass.
+- The exact-range output is preserved, but all code/document deliverables in the range are Markdown and OCR coverage remains unavailable. The scoped and final SDD reviews passed after fixing the timestamp date; this does not satisfy the outer OCR gate or the full Issue #72 completion criteria.

@@ -34,6 +34,7 @@
 **Files:**
 - Create: `docs/plans/issue-72-live-tree-and-agent-refresh-2026-09-30-0121.md`
 - Create: `docs/plans/issue-72-live-tree-and-agent-refresh-2026-09-30-ocr.md` (exact-range OCR result, including any skip/failure)
+- Create: `docs/plans/issue-72-live-tree-and-agent-refresh-2026-09-30-final-ocr.md` (final exact-range OCR result after UTC wording fix)
 - Modify: `docs/plans/issue-72-execution-ledger.md`
 - Modify: this plan's task checkbox.
 - Local SDD evidence: `.superpowers/sdd/issue-72-live-tree-and-agent-refresh-2026-09-30-plan/task-1-report.md`
@@ -51,6 +52,7 @@
 - [x] Record both `/tmp` input report SHA-256 values in the synthesized snapshot and verify they match the source files; resolve Markdown links, run `git diff --check`, and confirm only assigned snapshot, Ledger, OCR outcome, and plan paths change.
 - [x] Commit the snapshot and Ledger as the initial documentation-only checkpoint; preserve the later OCR result and final review disposition in a separate documentation checkpoint.
 - [x] Run exact-range OCR from Task BASE to final fix HEAD with `--audience agent`, business background, and `--output`; inspect the complete report and record the zero-file Markdown skip as incomplete coverage, not a pass.
+- [x] After the final UTC timestamp correction, rerun OCR over the full BASE..HEAD range into a distinct final report and record the zero-file Markdown skip as incomplete coverage, not a pass.
 
 **Verification:** A read-only reviewer confirms tree counts and states match the captured API report; the root comment is faithfully summarized and linked; process mappings remain appropriately unknown; worktree status is not treated as release; links/hash/diff checks pass; no Issue or implementation status is promoted.
 
