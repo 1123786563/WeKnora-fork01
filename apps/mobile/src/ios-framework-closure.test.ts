@@ -252,6 +252,12 @@ test('production checker reports mode from generated properties and rejects miss
     assert.notEqual(nonObject.status, 0);
     assert.match(nonObject.output, /FRAMEWORK_MODE_PROPERTIES_INVALID/);
     assert.doesNotMatch(nonObject.output, /Traceback/);
+    const plistPropertiesPath = invalid.propertiesPath.replace('.json', '.plist');
+    writeFileSync(plistPropertiesPath, '<?xml version="1.0"?><plist version="1.0"><array><string>invalid root</string></array></plist>');
+    const nonObjectPlist = run({ ...invalid, propertiesPath: plistPropertiesPath });
+    assert.notEqual(nonObjectPlist.status, 0);
+    assert.match(nonObjectPlist.output, /FRAMEWORK_MODE_PROPERTIES_INVALID/);
+    assert.doesNotMatch(nonObjectPlist.output, /Traceback/);
     writeFileSync(invalid.propertiesPath, JSON.stringify({ 'ios.buildReactNativeFromSource': 'false', EXPO_USE_PRECOMPILED_MODULES: 'false' }));
     assert.match(run(invalid).output, /FRAMEWORK_MODE_PROPERTIES_CONTRADICTORY/);
     writeFileSync(invalid.propertiesPath, JSON.stringify({}));

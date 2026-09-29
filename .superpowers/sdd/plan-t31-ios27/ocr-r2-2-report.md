@@ -18,3 +18,9 @@ Implemented the checker and native contract test repairs on task base `1df6f5cb2
 - The second retained generated prebuild directory was not present in the searched `/tmp` and Paseo worktree paths, so checks against a second tree could not be run.
 
 No generated native files or task R2-1 files were modified.
+
+## Review repair round 1
+
+- Added a valid XML plist array-root fixture using the `.plist` input path. It asserts nonzero exit, `FRAMEWORK_MODE_PROPERTIES_INVALID`, and no traceback. Production behavior handled the fixture correctly; no production change was needed.
+- Focused framework closure test: **19/19 passed** using the existing `tsx` binary from `issue30-b6-t55-cont`.
+- `git diff --check`: passed.
