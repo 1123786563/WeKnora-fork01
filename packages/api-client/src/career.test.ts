@@ -606,6 +606,17 @@ test('rule client encodes create, receipt replay and detail routes with strict d
  assert.equal(updated.nextDueAt, '2026-09-26T08:00:00Z')
 })
 
+test('rule list client decodes the bounded summary contract strictly', async () => {
+ const summary = { ruleId: 'rule-1', query: '前端', intervalMinutes: 60, status: 'paused', revision: 2, nextDueAt: '2026-09-26T08:00:00Z', estimate: ruleEstimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }
+ const calls: string[] = []
+ const api = createCareerApi(async (input) => { calls.push(`${input.method} ${input.path}`); return { rules: [summary] } })
+ assert.deepEqual(await api.listRules(), { rules: [summary] })
+ assert.deepEqual(calls, ['GET /api/v1/career/rules'])
+ for (const value of [{}, { rules: [summary, { ...summary, revision: 0 }] }, { rules: [{ ...summary, runs: [] }] }]) {
+  await assert.rejects(createCareerApi(async () => value).listRules(), TypeError)
+ }
+})
+
 test('rule view decode keeps blocked run statuses, todos and the estimate basis verbatim', async () => {
  const view = {
   ruleId: 'rule-1', query: '上海 前端 实习', intervalMinutes: 1440, status: 'paused', revision: 3, lastPeriod: 2,

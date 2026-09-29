@@ -275,6 +275,8 @@ export type SetRuleReceipt = { kind: 'rule_set'; requestId: string; ruleId: stri
 export type RuleRunView = { kind: 'rule_run'; ruleId: string; period: number; requestId: string; status: RuleRunStatus; searchId?: string; failureCode?: string; note?: string; triggeredAt: string }
 export type RuleTodoView = { todoId: string; ruleId: string; runId: string; searchId: string; sourceId?: string; link: string; status: RuleTodoStatus; createdAt: string }
 export type RuleView = { ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number; lastPeriod: number; nextDueAt?: string; estimate: RuleCostEstimate; runs: RuleRunView[]; todos: RuleTodoView[]; createdAt: string; updatedAt: string }
+export type RuleSummary = { ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number; nextDueAt?: string; estimate: RuleCostEstimate; createdAt: string; updatedAt: string }
+export type RuleList = { rules: RuleSummary[] }
 
 const ruleStatuses: RuleStatus[] = ['enabled', 'paused', 'disabled']
 const ruleRunStatuses: RuleRunStatus[] = ['completed', 'failed', 'blocked_no_quota', 'no_vetted_sources']
@@ -357,6 +359,26 @@ export function decodeRuleView(value: unknown): RuleView {
   runs: record.runs.map(decodeRuleRun), todos: record.todos.map(decodeRuleTodo),
   createdAt: record.createdAt, updatedAt: record.updatedAt,
  }
+}
+
+function decodeRuleSummary(value: unknown): RuleSummary {
+ const record = decodeRecord(value, 'invalid rule summary')
+ const allowed = new Set(['ruleId', 'query', 'intervalMinutes', 'status', 'revision', 'nextDueAt', 'estimate', 'createdAt', 'updatedAt'])
+ if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError('invalid rule summary')
+ if (!validIdentifier(record.ruleId) || !validIdentifier(record.query)
+  || !Number.isSafeInteger(record.intervalMinutes) || Number(record.intervalMinutes) < minRuleIntervalMinutes || Number(record.intervalMinutes) > maxRuleIntervalMinutes
+  || !ruleStatuses.includes(record.status as RuleStatus)
+  || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1
+  || (record.nextDueAt !== undefined && !validTimestamp(record.nextDueAt))
+  || !validTimestamp(record.createdAt) || !validTimestamp(record.updatedAt)) throw new TypeError('invalid rule summary')
+ return { ruleId: record.ruleId, query: record.query, intervalMinutes: record.intervalMinutes as number, status: record.status as RuleStatus, revision: record.revision as number,
+  ...(record.nextDueAt !== undefined ? { nextDueAt: record.nextDueAt } : {}), estimate: decodeRuleEstimate(record.estimate), createdAt: record.createdAt, updatedAt: record.updatedAt }
+}
+
+export function decodeRuleList(value: unknown): RuleList {
+ const record = decodeRecord(value, 'invalid rule list')
+ if (Object.keys(record).some((key) => key !== 'rules') || !Array.isArray(record.rules)) throw new TypeError('invalid rule list')
+ return { rules: record.rules.map(decodeRuleSummary) }
 }
 
 // Backend rows only ever contain links that literally appeared in fetched
@@ -1370,6 +1392,9 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async getRule(ruleId: string, signal?: AbortSignal): Promise<RuleView> {
    if (!ruleId.trim()) throw new CareerValidationError('rule ID must not be empty')
    return decodeRuleView(await request({ method: 'GET', path: `/api/v1/career/rules/${encodeURIComponent(ruleId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async listRules(signal?: AbortSignal): Promise<RuleList> {
+   return decodeRuleList(await request({ method: 'GET', path: '/api/v1/career/rules', ...(signal ? { signal } : {}) }))
   },
   async editMaterial(input: EditMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
    if (!input.requestId.trim()) throw new CareerValidationError('material requestId must not be empty')
