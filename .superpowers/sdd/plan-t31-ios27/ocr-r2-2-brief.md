@@ -1,6 +1,7 @@
 # SDD Brief — OCR-R2 Task 2 (framework/native guard edges)
 
-Base: `860b84016c8c6c94edd8c8adcd1ca672132efd17`
+Task worktree BASE: `1df6f5cb2cdfd4253941abc5b113e778248cd189`
+T31 source-review HEAD before plan: `860b84016c8c6c94edd8c8adcd1ca672132efd17`
 Plan: `docs/plans/issue30-sweep/plans/2026-09-30-t31-ocr-r2-repairs.md` (Task R2-2)
 Owned files: `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `apps/mobile/scripts/verify-ios-scene-project.ts`, rename `apps/mobile/src/plugins/ios-xcode27.test.ts` → `apps/mobile/src/scripts/verify-ios-scene-project.test.ts`, `.gitignore`, `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-report.md`
 

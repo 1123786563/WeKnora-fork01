@@ -1,6 +1,7 @@
 # SDD Brief — OCR-R2 Task 1 (shell hierarchy)
 
-Base: `860b84016c8c6c94edd8c8adcd1ca672132efd17`
+Task worktree BASE: `1df6f5cb2cdfd4253941abc5b113e778248cd189`
+T31 source-review HEAD before plan: `860b84016c8c6c94edd8c8adcd1ca672132efd17`
 Plan: `docs/plans/issue30-sweep/plans/2026-09-30-t31-ocr-r2-repairs.md` (Task R2-1)
 Owned files: `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app-smoke.test.tsx`, `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-report.md`
 
