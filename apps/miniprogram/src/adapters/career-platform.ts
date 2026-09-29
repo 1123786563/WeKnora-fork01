@@ -562,7 +562,7 @@ export function abandonPendingReminderWrite(): void { t30Clear('reminder-write')
 export const REMINDER_PUSH_FACT_KEY = 'notifications.push';
 /** 退订/重新订阅推送（档案 confirm 事实写）：退订只停推送，站内待办仍可读。 */
 export async function setPushSubscription(value: 'subscribed' | 'unsubscribed', expectedRevision: number): Promise<CareerReceipt> {
-  return decodeCareerReceipt(await client.request({
+  return decodeAs(decodeCareerReceipt, await client.request({
     method: 'POST', path: '/api/v1/career/act',
     body: { action: 'confirm', key: REMINDER_PUSH_FACT_KEY, value, source: { kind: 'user', label: '微信小程序' }, requestId: requestId(), expectedRevision },
   }));

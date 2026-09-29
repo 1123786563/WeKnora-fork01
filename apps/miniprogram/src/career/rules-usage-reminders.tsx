@@ -45,12 +45,20 @@ const pushAuthorizationKey = (stamp: ScopeStamp = auth.scope.capture()): string 
 const pushInvalidReceiptKey = (stamp: ScopeStamp = auth.scope.capture()): string => intentKeyFor('push-receipt-invalid', stamp);
 function pushAuthorizationPending(stamp: ScopeStamp = auth.scope.capture()): boolean { return pushPreferenceStore.read(pushAuthorizationKey(stamp)) === true; }
 function pushReceiptInvalid(stamp: ScopeStamp = auth.scope.capture()): boolean { return pushPreferenceStore.read(pushInvalidReceiptKey(stamp)) === true; }
+export function hasInvalidPushReceipt(stamp: ScopeStamp): boolean { return pushReceiptInvalid(stamp); }
+export function clearPushReceiptInvalidAfterProfileRefresh(stamp: ScopeStamp): boolean {
+  if (!auth.scope.isCurrent(stamp)) return false;
+  pushPreferenceStore.remove(pushInvalidReceiptKey(stamp));
+  pushPreferenceStore.remove(pushAuthorizationKey(stamp));
+  return true;
+}
 export function decodePushPreferenceReceipt(value: unknown): ReturnType<typeof decodeCareerReceipt> { return decodeAs(decodeCareerReceipt, value); }
 function sendPushPreference(id: string, expected: number): Promise<ReturnType<typeof decodeCareerReceipt>> {
   return client.request({ method: 'POST', path: '/api/v1/career/act', body: { action: 'confirm', key: 'notifications.push', value: 'subscribed', source: { kind: 'user', label: '微信小程序' }, requestId: id, expectedRevision: expected } }).then(decodePushPreferenceReceipt);
 }
 export async function persistPushPreference(expectedRevision: number, stamp: ScopeStamp = auth.scope.capture()): Promise<ReturnType<typeof decodeCareerReceipt>> {
   if (!auth.scope.isCurrent(stamp)) throw Object.assign(new Error('SCOPE_CHANGED'), { code: 'SCOPE_CHANGED' });
+  if (pushReceiptInvalid(stamp)) throw Object.assign(new Error('请先读取服务器订阅偏好事实'), { code: 'invalid_receipt' });
   try {
     return await recoverableWrite(pushPreferenceStore, { kind: 'push-subscription', describe: '推送订阅偏好', input: { value: 'subscribed' as const }, expected: expectedRevision, send: sendPushPreference });
   } catch (error) {
@@ -104,6 +112,15 @@ export function clearPushAuthorizationAfterOptOut(stamp: ScopeStamp, isCurrent: 
   if (!isCurrent(stamp)) return false;
   clear(stamp);
   return true;
+}
+export async function runPushOptOut(stamp: ScopeStamp, isCurrent: (stamp: ScopeStamp) => boolean, clearAuthorization: (stamp: ScopeStamp) => void, persist: () => Promise<unknown>): Promise<boolean> {
+  if (!isCurrent(stamp)) return false;
+  clearAuthorization(stamp);
+  try { await persist(); } catch (error) {
+    if (typedCode(error) === 'contract_violation' && isCurrent(stamp)) pushPreferenceStore.write(pushInvalidReceiptKey(stamp), true);
+    throw error;
+  }
+  return isCurrent(stamp);
 }
 
 export default function RulesUsageRemindersPage() {
@@ -316,14 +333,13 @@ export default function RulesUsageRemindersPage() {
           const refreshed = await career.refreshCareer();
           if (!auth.scope.isCurrent(stamp) || !refreshed) return;
           const fact = refreshed.facts.find(item => item.key === 'notifications.push');
-          pushPreferenceStore.remove(pushInvalidReceiptKey(stamp));
-          pushPreferenceStore.remove(pushAuthorizationKey(stamp));
+          clearPushReceiptInvalidAfterProfileRefresh(stamp);
           setPushNotice(fact ? `已读取服务器订阅偏好：${fact.value}（来自服务端档案事实）；如需更改，请重新授权后操作。` : '已读取档案，尚无 notifications.push 事实；可以重新请求微信授权后同步偏好。');
         })}>读取服务器订阅偏好事实</Action>
       </>}
       {!pendingPush && pushAuthorizationPending() && <>
         <Notice tone='warning'>微信授权已接受，但缺少可用档案修订，尚未写入服务器偏好。档案修订就绪后点「订阅提醒」同步；不会再次请求微信授权。</Notice>
-        <Action secondary disabled={revision === undefined} loading={subscribeBusy.busy} onClick={() => void subscribeBusy.run(async () => {
+        <Action secondary disabled={revision === undefined || pushReceiptInvalid(pageScope)} loading={subscribeBusy.busy} onClick={() => void subscribeBusy.run(async () => {
           if (revision === undefined) return;
           const stamp = auth.scope.capture();
           await persistPushPreference(revision, stamp);
@@ -336,8 +352,9 @@ export default function RulesUsageRemindersPage() {
         if (revision === undefined) throw new Error('请先读取档案修订');
         const stamp = auth.scope.capture();
         if (!auth.scope.isCurrent(stamp)) return;
-        await setPushSubscription('unsubscribed', revision);
-        if (!clearPushAuthorizationAfterOptOut(stamp, captured => auth.scope.isCurrent(captured), captured => { pushPreferenceStore.remove(pushAuthorizationKey(captured)); pushPreferenceStore.remove(pushInvalidReceiptKey(captured)); })) return;
+        const current = await runPushOptOut(stamp, captured => auth.scope.isCurrent(captured), captured => { pushPreferenceStore.remove(pushAuthorizationKey(captured)); }, () => setPushSubscription('unsubscribed', revision));
+        if (!current) return;
+        pushPreferenceStore.remove(pushInvalidReceiptKey(stamp));
         setPushNotice('推送提醒已退订：不再发送推送，已存在的站内待办仍可读取（随时可重新订阅）。');
         void inboxBusy.run(loadInbox);
       })}>退订推送提醒（站内待办不受影响）</Action>
