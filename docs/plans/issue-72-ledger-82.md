@@ -242,3 +242,10 @@
 1. T9 集成测试的共享栈形状修复（按 gated create 的 invoice 锚定过滤 PI）+ 专属栈 lab.env 重建——下轮或集成会话。
 2. AC4 沙箱残余 `ac4-sandbox-credentials-unavailable`（不变，R-4 已披露边界）。
 3. #84/#92 已移交项不变（废弃 pending 单回收、cancel 命令、续期收款路由）；D16 不修项不变。
+
+## T9 synthetic webhook candidate identity repair — 2026-09-29
+
+- Repaired only the tagged integration harness in `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`: the bounded pre-settle Stripe list now captures IDs only for invoice-linked `requires_payment_method`, `requires_action`, or `requires_confirmation` intents; timeout reports the last HTTP status and observed IDs. Post-settle synthetic event selection now requires a succeeded row whose ID is in that captured set and which still carries `lago_invoice_id`. No historical succeeded-intent fallback remains.
+- Added deterministic `TestPaymentIntentCandidateSelection`: captures the current unsettled candidate, excludes an unlinked PI, rejects an older succeeded PI, selects the matching succeeded candidate, and verifies a no-match error reports expected and observed IDs. The test is in the build-tagged file and runs with `-tags lago_integration`; its `-run` selector does not invoke the live test.
+- Verification on task worktree BASE `8329b85d4dfff301d03f94406dfc829d87cb5b26`: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1` PASS; `go test ./internal/modules/commercial/commercialplatform -count=1` PASS (72.210s); `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'` PASS (compile only); `gofmt` and `git diff --check` PASS. No Docker, database, network API, or live payment was used.
+- This repairs the shared-stack test fixture defect recorded as R-31. The dedicated T9 live rerun remains unverified because dedicated `lab.env`/credentials are unavailable; AC4 real Alipay sandbox evidence remains unavailable. Neither is claimed complete by these local test results.
