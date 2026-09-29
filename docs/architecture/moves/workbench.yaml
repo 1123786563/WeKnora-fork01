@@ -199,7 +199,6 @@ integration_points:
   - RegisterMobileVoiceRoutes — internal/router/routes_workbench.go:177
   - RegisterMobileDeviceRoutes — internal/router/routes_workbench.go:191
   - RegisterWorkbenchRoutes — internal/router/routes_workbench.go:33 (10 条中 workbench 5：/workbench/executions 读+写)
-  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:25 (merged graph public catalog/listing/adoption/release governance; 10 routes)
   - RegisterArtifactPreviewRoutes — internal/handler/artifact_preview.go:284 (隔离预览源 /ap/:token；票据签发经 RegisterArtifactPreviewIssueRoute，routes_chat.go:187 委托)
   - session/message artifacts 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内)
   workers:

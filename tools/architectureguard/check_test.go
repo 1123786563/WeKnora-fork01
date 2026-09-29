@@ -559,7 +559,7 @@ func TestGuardCleanAtHead(t *testing.T) {
 	// owned by their domain manifests; the guard's reverse-coverage checks then verify
 	// that ownership against the discovered source graph.
 	newRoutes := map[string][]string{
-		"agentcatalog": {"RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:18", "RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:16"},
+		"agentcatalog": {"RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:18", "RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:16", "RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:25 (merged graph public catalog/listing/adoption/release governance; 10 routes)"},
 		"appconnector": {"RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:15", "RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:14", "RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:12", "RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:14"},
 	}
 	legacyOwners := map[string][]string{
@@ -569,6 +569,11 @@ func TestGuardCleanAtHead(t *testing.T) {
 		"workbench":    {"internal/application/repository/task_compliance_store.go", "internal/application/repository/task_grant_store.go", "internal/application/repository/task_research.go", "internal/application/repository/workbench_legacy_list.go", "internal/application/service/task_compliance.go", "internal/application/service/task_grant.go", "internal/handler/session/workbench_delivery.go", "internal/handler/session/workbench_legacy_list.go", "internal/handler/session/workbench_research.go", "internal/handler/session/workbench_task_compliance.go", "internal/handler/session/workbench_task_grants.go", "internal/handler/session/workbench_terminal_log.go"},
 	}
 	for _, mod := range mods {
+		for _, route := range mod.RouteEntries {
+			if route == "RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:25 (merged graph public catalog/listing/adoption/release governance; 10 routes)" && mod.Module != "agentcatalog" {
+				t.Errorf("RegisterPublicMarketplaceRoutes must be owned by agentcatalog, found in %s", mod.Module)
+			}
+		}
 		for _, route := range newRoutes[mod.Module] {
 			if !containsString(mod.RouteEntries, route) {
 				t.Errorf("%s manifest 缺少新路由归属 %q", mod.Module, route)
