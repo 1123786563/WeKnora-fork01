@@ -75,7 +75,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 - [ ] Verify that `git status --short` contains only the two owned documentation paths.
 - [ ] Commit only those two paths with message `docs(issue-72): record parallel evidence refresh`.
 
-**Verification:** `git diff --check` passes; relative links in the audit note point to existing paths; the Ledger diff adds a pointer and status only; `git diff --name-only <BASE>..HEAD` lists exactly the audit note and Ledger.
+**Verification:** At Task 1 base `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` and checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, `git diff --check` passes; relative links in the audit note point to existing paths; the Ledger diff adds a pointer and status only; `git diff --name-only <BASE>..HEAD` lists exactly the audit note and Ledger. This verification is local to that Task 1 checkpoint and does not include later plan edits.
 
 **Acceptance mapping:** #72 issue-tree scope → authenticated GitHub audit evidence; #86 → ancestry, artifact hashes, and current-source hash comparison; #87 → pinned-v1.53 evidence classification; #88/#89 → issue acceptance and explicit predecessor gates; safe work frontier → current registry, process, and worktree state.
 
@@ -109,10 +109,34 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 **Failure handling:** If either pair no longer matches the recorded value, stop the documentation correction and inspect the exact commit/path; do not infer acceptance from source similarity or ancestry alone.
 
+### Task 3: Clarify plan verification scope
+
+**Dependencies:** Tasks 1 and 2 are complete; review identified that Task 1's verification evidence must be scoped to its own checkpoint so later plan edits are not included in that claim.
+
+**Owner role:** `mechanical_worker` for the narrow documentation wording clarification.
+
+**Validator role:** `reviewer` for checkpoint and verification-scope consistency.
+
+**Owned files:**
+
+- Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+
+**Produces:** Task 1's verification is explicitly identified as local to its checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, with base `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f`; it does not describe later plan edits.
+
+**Implementation steps:**
+
+- [ ] Clarify the scope of Task 1's verification sentence using its recorded base and checkpoint.
+- [ ] Run `git diff --check`; expect exit code 0.
+- [ ] Verify only this plan changed and commit with message `docs(issue-72): clarify audit plan verification scope`.
+
+**Verification:** The Task 1 verification statement names its base and checkpoint; `git diff --check` passes.
+
+**Failure handling:** If the recorded Task 1 base or checkpoint differs from the SDD report, stop and resolve that evidence discrepancy before editing the claim.
+
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
 - Step clarity: each step writes one or verifies one bounded artifact; Task 2 is a review-driven correction to the Task 1 plan wording.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: one documentation task; no production tests are relevant.
+- Proportion: three documentation tasks; Task 3 is a review-driven wording and verification-scope clarification. No production tests are relevant.
