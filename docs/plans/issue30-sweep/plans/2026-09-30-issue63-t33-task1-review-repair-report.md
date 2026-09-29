@@ -23,3 +23,9 @@ RED evidence: before repository changes, the new regression tests failed because
 ## Remaining limits
 
 The tests cover the end-first and unlist-first sequential rejection cases and verify final rows. This environment did not permit an actual PostgreSQL contention test, so production PostgreSQL lock behavior still requires validation where the configured DSN exists. No SQLite busy error occurred, so no transaction retry was added.
+
+## Checkpoint
+
+- Implementation commit: `868c8da752494db8d8477292e67a9a1ed09f9b06`.
+- SHA-256 of the binary patch for the four repository implementation/test files in that commit: `6d6214cca8196dadb06157567dc38a88a6e060ca9c7d147de6777ce56b5e62aa`.
+- Review status: awaiting independent review and backend validation; downstream T33 tasks remain pending.
