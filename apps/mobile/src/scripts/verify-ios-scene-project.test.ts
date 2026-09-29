@@ -95,6 +95,24 @@ test('generated SDK57 scene checker distinguishes malformed callback structure f
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 scene checker rejects an unclosed final callback before AppDelegate class boundary', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const malformedSource = source.replace(
+      '      return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result\n    }\n  }',
+      '      return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result\n  }',
+    );
+    assert.notEqual(malformedSource, source);
+    writeFileSync(appDelegate, malformedSource);
+    const messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /AppDelegate\.swift callback structure could not be analyzed \(universal-link\)/);
+    assert.doesNotMatch(messages, /universal-link callback must forward/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 scene checker rejects unknown nested markup in plist scalars', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {
