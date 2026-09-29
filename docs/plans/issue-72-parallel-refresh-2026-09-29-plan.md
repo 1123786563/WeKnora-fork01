@@ -63,7 +63,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 - One audit note with timestamp, sources, exact relevant SHAs/hashes, evidence classifications, active/idle task inventory, and safe next frontier.
 - One Ledger entry linking the note and recording that no #72 implementation agent was active in the inspected agent registry, OCR for Issue #140 was live, no #86/#87 probe/test/Docker command was live, and shared DB/Docker resource ownership remains unresolved.
-- #86 status must state: committed historical artifacts are reachable from current integration ancestry and match the artifact hashes; their referenced live source is `dd089...`; current integration code hashes differ, so fresh exact-checkpoint live acceptance is not established.
+- #86 status must state: committed historical artifacts are reachable from current integration ancestry and match the artifact hashes; their referenced live source is `dd089...`; same-method SHA-256 values for `lago.go` and `lago_credits_order_integration_test.go` match at `dd089...` and `8329b85...`, while the revisions differ in 81 files overall. The README records no exact-current-checkpoint live replay or stable-identity verification, so #86 remains acceptance-unverified.
 - #87 Task 0 remains blocked; R6 decisions are already recorded and must not be reopened by the audit.
 - #88/#89 remain blocked and no implementation Task is promoted to ready/verified.
 
