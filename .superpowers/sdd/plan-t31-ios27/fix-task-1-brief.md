@@ -2,7 +2,7 @@
 
 ## Facts and authority
 - Root Issue #30 authorized end-to-end descendant work; this is a repair from independent review saved in `.superpowers/sdd/plan-t31-ios27/review.md`.
-- Repair plan: `docs/plans/issue30-sweep/plans/2026-09-29-t31-review-repairs.md`; approved design: `docs/specs/2026-09-20-mobile-ai-office-design.md`, `docs/specs/2026-09-20-mobile-module-seams.md`, `docs/adr/0005-mobile-app-boundaries-and-runtime-session-ownership.md`.
+- Repair plan: `docs/plans/issue30-sweep/plans/2026-09-29-t31-review-repairs.md`; approved design: `docs/specs/2026-09-20-mobile-ai-office-design.md`, `docs/specs/2026-09-20-mobile-module-seams.md`, `docs/adr/0005-weknora-native-mobile-client.md`.
 - T31 implementation at `39c1359ed`; integrated ledger indicates Release startup evidence; no SDD repair task has changed production source yet.
 - Workspace: `/Users/wuyongjun/.paseo/worktrees/144ixsa6/issue30-b6-t55-cont`, BASE for full execution is `db234c5eb171f2dde7427d382b55b503a038f879`, start HEAD `2e253f9d2`.
 
@@ -10,8 +10,10 @@
 - `apps/mobile/scripts/ios-release-build.sh`
 - `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts`
 - `apps/mobile/src/native-project-config.test.ts`
+- `apps/mobile/scripts/verify-ios-scene-project.ts` (new focused reusable generated-project contract helper)
 - `apps/mobile/src/plugins/ios-xcode27.test.ts`
 - `.superpowers/sdd/plan-t31-ios27/fix-progress.md` (append task evidence only)
+- `.superpowers/sdd/plan-t31-ios27/fix-task-1-report.md`
 - `docs/plans/issue30-sweep/plans/2026-09-29-t31-review-repairs.md` (checkbox/status only)
 
 ## Acceptance and interfaces
