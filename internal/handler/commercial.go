@@ -503,6 +503,8 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, commercialsvc.ErrPaymentObservationUnavailable):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment status temporarily unavailable", "reason": "payment_status_unavailable"})
 	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
 	case errors.Is(err, repocommercial.ErrQuoteNotFound):
@@ -884,6 +886,8 @@ func (h *CommercialHandler) GetOrder(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, commercialsvc.ErrPaymentObservationUnavailable):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment status temporarily unavailable", "reason": "payment_status_unavailable"})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}

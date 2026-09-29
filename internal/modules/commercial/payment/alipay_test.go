@@ -449,15 +449,43 @@ func TestAlipayQueryReportsCollectedAmount(t *testing.T) {
 	if res.State != StateSucceeded || res.ProviderID != "trade-amt" {
 		t.Fatalf("state/provider unchanged by the additive field: %+v", res)
 	}
-	// An unparsable amount degrades to AmountFen=0 without failing the query.
+	if res.AmountCurrency != "CNY" {
+		t.Fatalf("Alipay fixed contract currency must be explicit, got %q", res.AmountCurrency)
+	}
+	// An unparsable amount is not a confirmable query observation.
 	p2, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
 		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_trade_no\":\"out-bad\",\"trade_no\":\"trade-bad\",\"trade_status\":\"TRADE_SUCCESS\",\"total_amount\":\"not-a-number\",\"seller_id\":\"2088000000000001\"}", nil
 	})
-	res2, err := p2.Query(context.Background(), "out-bad")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := p2.Query(context.Background(), "out-bad"); err == nil {
+		t.Fatal("malformed total_amount must fail the query")
 	}
-	if res2.AmountFen != 0 {
-		t.Fatalf("an unparsable amount must degrade to 0 (not reported), got %d", res2.AmountFen)
+	for _, raw := range []string{
+		`{"code":"10000","trade_status":"TRADE_SUCCESS","seller_id":"2088000000000001"}`,
+		`{"code":"10000","trade_status":"TRADE_SUCCESS","total_amount":"0.00","seller_id":"2088000000000001"}`,
+	} {
+		p, _, _ := alipayGatewayFixture(t, func(*http.Request) (string, error) { return raw, nil })
+		if _, err := p.Query(context.Background(), "out-empty"); err == nil {
+			t.Fatalf("missing/nonpositive total_amount must fail the query: %s", raw)
+		}
+	}
+}
+
+func TestAlipayQueryPendingAndClosedAllowMissingCollectedAmount(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   AttemptState
+	}{
+		{status: "WAIT_BUYER_PAY", want: StatePending},
+		{status: "TRADE_CLOSED", want: StateClosed},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			p, _, _ := alipayGatewayFixture(t, func(*http.Request) (string, error) {
+				return `{"code":"10000","msg":"Success","out_trade_no":"out-no-amount","trade_no":"trade-no-amount","trade_status":"` + tc.status + `","seller_id":"2088000000000001"}`, nil
+			})
+			res, err := p.Query(context.Background(), "out-no-amount")
+			if err != nil || res.State != tc.want || res.AmountFen != 0 || res.AmountCurrency != "CNY" {
+				t.Fatalf("non-success query without collection amount: %+v err=%v", res, err)
+			}
+		})
 	}
 }

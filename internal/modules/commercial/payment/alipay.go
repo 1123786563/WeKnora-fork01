@@ -483,15 +483,18 @@ func (p *AlipayProvider) Query(ctx context.Context, providerID string) (AttemptR
 	if id == "" {
 		id = providerID
 	}
-	// (#84/G2) The collected amount (total_amount → fen) rides along for the
-	// recovery paths' collected-vs-face comparison. An unparsable amount
-	// degrades to 0 (= channel did not report) and never fails the query:
-	// a missing amount must not block the state mapping.
+	state := mapAlipayTradeStatus(out.TradeStatus)
 	collected := int64(0)
-	if fen, err := ParseCNYAmount(out.TotalAmount); err == nil {
-		collected = fen
+	if state == StateSucceeded {
+		parsed, parseErr := ParseCNYAmount(out.TotalAmount)
+		if parseErr != nil || parsed <= 0 {
+			return AttemptResult{State: StateUnknown, ProviderID: id}, fmt.Errorf("alipay query %s: invalid collected total_amount", providerID)
+		}
+		collected = parsed
 	}
-	return AttemptResult{State: mapAlipayTradeStatus(out.TradeStatus), ProviderID: id, AmountFen: collected}, nil
+	// Alipay's trade query omits currency; its API contract fixes this account
+	// transaction currency to CNY.
+	return AttemptResult{State: state, ProviderID: id, AmountFen: collected, AmountCurrency: "CNY"}, nil
 }
 
 // Close cancels a pending channel order by its original identifier.

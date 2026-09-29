@@ -35,7 +35,10 @@ import (
 type handlerStubProvider struct {
 	mu          sync.Mutex
 	createErr   error
+	queryErr    error
+	closeErr    error
 	createCalls int
+	queryCalls  int
 }
 
 func (p *handlerStubProvider) Create(context.Context, payment.OrderRequest) (payment.AttemptResult, error) {
@@ -49,9 +52,15 @@ func (p *handlerStubProvider) Create(context.Context, payment.OrderRequest) (pay
 }
 
 func (p *handlerStubProvider) Query(context.Context, string) (payment.AttemptResult, error) {
+	p.mu.Lock()
+	p.queryCalls++
+	defer p.mu.Unlock()
+	if p.queryErr != nil {
+		return payment.AttemptResult{}, p.queryErr
+	}
 	return payment.AttemptResult{State: payment.StatePending}, nil
 }
-func (p *handlerStubProvider) Close(context.Context, string) error { return nil }
+func (p *handlerStubProvider) Close(context.Context, string) error { return p.closeErr }
 func (p *handlerStubProvider) Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error) {
 	return commercial.PaymentFact{}, nil
 }
@@ -101,7 +110,7 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 		t.Fatal(err)
 	}
 	provider := &handlerStubProvider{}
-	orders, err := commercialsvc.NewOrderService(db, map[string]payment.Provider{"wechat": provider})
+	orders, err := commercialsvc.NewOrderService(db, map[string]payment.Provider{"wechat": provider, "alipay": provider})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +120,7 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 	}
 	h := NewCommercialHandler(db)
 	h.SetPurchaseService(purchases)
+	h.SetOrderService(orders)
 
 	router := gin.New()
 	router.POST("/api/v1/commercial/purchases", func(c *gin.Context) {
@@ -121,8 +131,71 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}, h.Purchase)
+	router.GET("/api/v1/commercial/orders/:id", func(c *gin.Context) {
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(50))
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}, h.GetOrder)
 
 	return &purchaseHandlerEnv{handler: h, router: router, fake: fake, orders: orders, plans: plans, db: db, provider: provider}
+}
+
+func assertPaymentObservationUnavailable(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Code != http.StatusServiceUnavailable || strings.TrimSpace(rec.Body.String()) != `{"error":"payment status temporarily unavailable","reason":"payment_status_unavailable"}` {
+		t.Fatalf("expected closed payment observation 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "provider-private-detail") {
+		t.Fatalf("provider detail leaked in response: %s", rec.Body.String())
+	}
+}
+
+func TestGetOrderHandlerClosesUnavailablePaymentObservation(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := env.orders.CreateOrder(context.Background(), 50, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.provider.queryErr = errors.New("provider-private-detail")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/commercial/orders/"+order.ID, nil)
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	assertPaymentObservationUnavailable(t, rec)
+}
+
+func TestPurchaseChannelSwitchClosesUnavailablePaymentObservation(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := postPurchase(t, env, q.ID); rec.Code != http.StatusCreated {
+		t.Fatalf("fixture purchase failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := repocommercial.NewOrderStore(env.db).CurrentPendingPurchaseOrder(context.Background(), 50, 9900, "CNY"); err != nil {
+		t.Fatalf("fixture must have current payable pending order: %v", err)
+	}
+	q, err = env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.provider.queryErr = errors.New("provider-private-detail")
+	env.provider.closeErr = errors.New("close outcome uncertain")
+	body := `{"quote_id":"` + q.ID + `","provider":"alipay"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/purchases", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	if env.provider.queryCalls != 1 {
+		t.Fatalf("channel switch must query after close error, query calls=%d", env.provider.queryCalls)
+	}
+	assertPaymentObservationUnavailable(t, rec)
 }
 
 func seedHandlerPlan(t *testing.T, plans *commercialsvc.PlanVersionService) {
