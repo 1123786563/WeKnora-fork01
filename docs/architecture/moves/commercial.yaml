@@ -32,6 +32,14 @@ alias_obligations:
   - old_import_path: internal/usage
     passb_task: B-commercial
 legacy_files:
+  - path: internal/application/repository/public_marketplace.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Public marketplace (application/repository)
+    passb_task: B-commercial
+  - path: internal/application/service/public_marketplace.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Public marketplace (application/service)
+    passb_task: B-commercial
   - path: internal/application/repository/model_usage.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Model usage (application/repository)

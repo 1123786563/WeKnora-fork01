@@ -6,6 +6,22 @@ move_packages:
 alias_obligations:
   []
 legacy_files:
+  - path: internal/application/repository/agent_adoption.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent adoption (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_marketplace_lineage.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent marketplace lineage (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_run_terminal.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run terminal (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_upgrade.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent upgrade (application/repository)
+    passb_task: B-agentcatalog
   - path: internal/application/repository/agent_marketplace.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Agent marketplace (application/repository)
@@ -53,6 +69,22 @@ legacy_files:
   - path: internal/application/service/agent_browser_preferences.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Agent browser preferences (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_adoption.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent adoption (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_fork_lineage.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent fork lineage (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_upgrade.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent upgrade (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_upgrade_diff.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent upgrade diff (application/service)
     passb_task: B-agentcatalog
   - path: internal/application/service/agent_marketplace.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -178,6 +210,14 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Agent marketplace (handler)
     passb_task: B-agentcatalog
+  - path: internal/handler/agent_adoption.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Agent adoption (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_upgrade.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Agent upgrade (handler)
+    passb_task: B-agentcatalog
   - path: internal/handler/agent_version.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Agent version (handler)
@@ -226,6 +266,10 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: User resource favorite (handler)
     passb_task: B-agentcatalog
+  - path: internal/handler/public_marketplace.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Public marketplace (handler)
+    passb_task: B-agentcatalog
 owned_files:
   move_sources:
     []
@@ -252,6 +296,8 @@ integration_points:
   - RegisterSkillMarketRoutes — internal/router/routes_skill_market.go:32
   - RegisterTenantSkillMarketRoutes — internal/router/routes_tenant_skill_market.go:31
   - RegisterTenantExpertMarketRoutes — internal/router/routes_tenant_expert_market.go:35
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:18
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:16
   workers:
     []
   lifecycle_hooks:

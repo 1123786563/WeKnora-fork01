@@ -555,6 +555,31 @@ func TestGuardCleanAtHead(t *testing.T) {
 	if len(mods) != 17 {
 		t.Fatalf("应加载 17 份 manifest, got %d", len(mods))
 	}
+	// Newly merged route files and horizontal production files must remain explicitly
+	// owned by their domain manifests; the guard's reverse-coverage checks then verify
+	// that ownership against the discovered source graph.
+	newRoutes := map[string][]string{
+		"agentcatalog": {"RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:18", "RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:16"},
+		"appconnector": {"RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:15", "RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:14", "RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:12", "RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:14"},
+	}
+	legacyOwners := map[string][]string{
+		"agentcatalog": {"internal/application/repository/agent_adoption.go", "internal/application/repository/agent_marketplace_lineage.go", "internal/application/repository/agent_run_terminal.go", "internal/application/repository/agent_upgrade.go", "internal/application/service/agent_adoption.go", "internal/application/service/agent_fork_lineage.go", "internal/application/service/agent_upgrade.go", "internal/application/service/agent_upgrade_diff.go", "internal/handler/agent_adoption.go", "internal/handler/agent_upgrade.go", "internal/handler/public_marketplace.go"},
+		"appconnector": {"internal/handler/app_connection_grants.go", "internal/handler/app_connector_action_plan.go", "internal/handler/app_connector_confluence_publish.go", "internal/handler/app_connector_feishu_publish.go", "internal/handler/app_connector_notion_publish.go"},
+		"commercial":   {"internal/application/repository/public_marketplace.go", "internal/application/service/public_marketplace.go"},
+		"workbench":    {"internal/application/repository/task_compliance_store.go", "internal/application/repository/task_grant_store.go", "internal/application/repository/task_research.go", "internal/application/repository/workbench_legacy_list.go", "internal/application/service/task_compliance.go", "internal/application/service/task_grant.go", "internal/handler/session/workbench_delivery.go", "internal/handler/session/workbench_legacy_list.go", "internal/handler/session/workbench_research.go", "internal/handler/session/workbench_task_compliance.go", "internal/handler/session/workbench_task_grants.go", "internal/handler/session/workbench_terminal_log.go"},
+	}
+	for _, mod := range mods {
+		for _, route := range newRoutes[mod.Module] {
+			if !containsString(mod.RouteEntries, route) {
+				t.Errorf("%s manifest 缺少新路由归属 %q", mod.Module, route)
+			}
+		}
+		for _, path := range legacyOwners[mod.Module] {
+			if !containsString(mod.LegacyPaths, path) {
+				t.Errorf("%s manifest 缺少新横向生产文件归属 %q", mod.Module, path)
+			}
+		}
+	}
 	careerOwnsRoutes := false
 	for _, mod := range mods {
 		if mod.Module != "career" {
@@ -581,6 +606,15 @@ func TestGuardCleanAtHead(t *testing.T) {
 		rep.Summary.WorkerLite != wantWorkersPerMix || rep.Summary.Hooks != wantHooks {
 		t.Errorf("发现规模偏离基线: %+v", rep.Summary)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func joinChecks(ds []Diagnostic) string {
