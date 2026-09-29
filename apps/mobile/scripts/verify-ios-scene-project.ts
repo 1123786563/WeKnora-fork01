@@ -27,11 +27,11 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
     issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
   }
   const openUrlBody = swiftMethodBody(appDelegate, /application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL/);
-  if (!openUrlBody?.includes('RCTLinkingManager.application')) {
+  if (!openUrlBody || !stripSwiftComments(openUrlBody).includes('RCTLinkingManager.application')) {
     issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
   }
   const universalLinkBody = swiftMethodBody(appDelegate, /application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity/);
-  if (!universalLinkBody?.includes('RCTLinkingManager.application')) {
+  if (!universalLinkBody || !stripSwiftComments(universalLinkBody).includes('RCTLinkingManager.application')) {
     issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
   }
   const nativeTarget = project.match(/\/\* Begin PBXNativeTarget section \*\/([\s\S]*?)\/\* End PBXNativeTarget section \*\//)?.[1] ?? '';
@@ -127,6 +127,44 @@ function parsePlist(xml: string): unknown {
     index = root;
     return parseValue();
   } catch { return undefined; }
+}
+
+function stripSwiftComments(source: string): string {
+  let result = '';
+  let state: 'code' | 'line-comment' | 'block-comment' | 'string' | 'multiline-string' | 'character' = 'code';
+  let blockDepth = 0;
+  for (let index = 0; index < source.length; index++) {
+    const current = source[index];
+    const next = source[index + 1];
+    if (state === 'code') {
+      if (current === '/' && next === '/') { state = 'line-comment'; index++; continue; }
+      if (current === '/' && next === '*') { state = 'block-comment'; blockDepth = 1; index++; continue; }
+      if (current === '"' && source.slice(index, index + 3) === '"""') { state = 'multiline-string'; result += '"""'; index += 2; continue; }
+      if (current === '"') { state = 'string'; result += current; continue; }
+      if (current === "'") { state = 'character'; result += current; continue; }
+      result += current;
+      continue;
+    }
+    if (state === 'line-comment') {
+      if (current === '\n' || current === '\r') { result += current; state = 'code'; }
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (current === '/' && next === '*') { blockDepth++; index++; }
+      else if (current === '*' && next === '/') { blockDepth--; index++; if (blockDepth === 0) state = 'code'; }
+      else if (current === '\n' || current === '\r') result += current;
+      continue;
+    }
+    if (state === 'multiline-string') {
+      if (source.slice(index, index + 3) === '"""') { result += '"""'; index += 2; state = 'code'; }
+      else result += current;
+      continue;
+    }
+    result += current;
+    if (current === '\\') { if (next !== undefined) result += source[++index]; continue; }
+    if ((state === 'string' && current === '"') || (state === 'character' && current === "'")) state = 'code';
+  }
+  return result;
 }
 
 function swiftMethodBody(source: string, signature: RegExp): string | undefined {

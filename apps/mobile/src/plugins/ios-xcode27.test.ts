@@ -118,3 +118,37 @@ test('generated SDK57 project contract rejects missing scene, URL callback, and 
     assert.match(verifyIosSceneProject(root).join('\n'), /16.4/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('generated SDK57 project contract ignores Swift comments in URL callbacks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    writeFileSync(appDelegate, source.replace(
+      'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+      'let callbackURL = "https://example.test/path"\n      return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+    ));
+    assert.deepEqual(verifyIosSceneProject(root), []);
+
+    fixture(root);
+    {
+      const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+      const source = readFileSync(appDelegate, 'utf8');
+      writeFileSync(appDelegate, source.replace(
+        'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+        'return super.application(app, open: url, options: options) // RCTLinkingManager.application(app, open: url, options: options)',
+      ));
+      assert.match(verifyIosSceneProject(root).join('\n'), /open-URL callback/);
+    }
+
+    fixture(root);
+    const universalDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const universalSource = readFileSync(universalDelegate, 'utf8');
+    writeFileSync(universalDelegate, universalSource.replace(
+      'let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+      'let result = false // RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+    ));
+    assert.match(verifyIosSceneProject(root).join('\n'), /universal-link callback/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
