@@ -29,10 +29,11 @@
 | ID | Depends on | Owner role | Validator | Owned files | Interface / acceptance | Status |
 |---|---|---|---|---|---|---|
 | R1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/ios-release-build.sh`, `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` | Clean prebuild; remove stale SDK55 comments; release script test requires clean and correct build order | implemented; prebuild blocked by missing workspace plugin resolution |
-| R2 | none | frontend_implementer | frontend_validator | `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app-smoke.test.tsx` | Shared safe-area provider/inset; simulator screenshot shows title/form below status bar | ready |
+| R2 | R4 | frontend_implementer | frontend_validator | `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app-smoke.test.tsx` | Shared safe-area provider/inset; simulator screenshot shows title/form below status bar | implemented; focused/full tests pass, runtime acceptance awaits R4 |
 | R3 | R1 | frontend_implementer | reviewer | `apps/mobile/src/native-project-config.test.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, `apps/mobile/scripts/ios-release-build.sh` | Retire SDK55 plugin behavior tests; run generated SDK57 project assertions during Release script after clean prebuild | implemented; fixture tests pass, generated output validation blocked with R1 |
+| R4 | R1 | frontend_implementer | frontend_validator | `apps/mobile/app.json`, `apps/mobile/scripts/ios-release-build.sh`, focused script/config tests and generated evidence | Clean generated Release must embed every non-system dynamic framework required by bundled XCFrameworks and launch on iOS27; script fails with actionable diagnostics if dependency closure is broken | ready |
 
-Task R2 is independent of R1/R3 and can be reviewed in the same repair round after R1/R3 land. R3 consumes the clean generated-project contract produced by R1. No cyclic dependencies.
+Task R2 is independent of R1/R3 and can be reviewed in the same repair round after R1/R3 land. R3 consumes the clean generated-project contract produced by R1. R4 repairs the runtime packaging failure exposed while verifying R2; R2 runtime validation consumes R4's verified Release output. No cyclic dependencies.
 
 ## SDD execution ledger
 
@@ -55,6 +56,20 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 5. Commit `fix(mobile): cleanly regenerate iOS release project`.
 
 **Failure handling:** If clean prebuild breaks codegen/pods, retain generated output only in ignored worktree and report exact command/log. Do not revert to stale prebuild to pass.
+
+## Task R4: Clean Release framework closure
+
+**Files:** modify `apps/mobile/app.json`, `apps/mobile/scripts/ios-release-build.sh`, and focused mobile config/script tests; add generated build/launch evidence under `docs/testing/evidence/mobile-runtime-login/2026-09-29-r4/`.
+
+**Consumes:** exact dyld failure from Task R2 report and current clean Pods/App artifacts. **Produces:** a consistent Expo/RN native framework graph and a Release guard that validates every app-bundled non-system dynamic framework load command before success.
+
+1. Reproduce and inspect Podfile properties, `Podfile.lock`, Pods project targets, Embed Pods Frameworks script, and ExpoModulesWorklets `otool -L`; record the specific source/prebuilt mismatch.
+2. Add a fixture test proving the proposed dependency-closure checker fails for missing React.framework and passes when the required framework is embedded; demonstrate RED.
+3. Change only supported app configuration and the canonical Release script. Do not patch generated `ios/`, vendor XCFramework binaries, or hide the error by copying frameworks manually.
+4. Run focused tests, full mobile suite, typecheck, Expo dependency check and diff-check. Clean-build; verify `React.framework` is in the app and `simctl launch --console` starts successfully on iOS27. Preserve the T39 log baseline.
+5. Commit locally and request independent frontend runtime validation plus code review. R2 then consumes this exact verified build for Safe Area screenshot acceptance.
+
+**Failure handling:** If the correct Expo/RN build mode is incompatible or cannot be established from versioned configuration/API, report the exact evidence and leave R2 runtime pending. Do not introduce a source-built/vendor binary copy fallback.
 
 ## Task R2: Safe-area layout for deployment login
 
