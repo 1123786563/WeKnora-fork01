@@ -359,9 +359,9 @@ func (s *OrderService) CurrentPayablePendingOrderView(ctx context.Context, tenan
 	if err != nil {
 		return OrderView{}, err
 	}
-	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+	return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
-		Version: row.Version}, nil
+		Version: row.Version}), nil
 }
 
 // quoteForTenant loads and validates the quote snapshot for a tenant.
@@ -501,18 +501,25 @@ func (s *OrderService) ListOrders(ctx context.Context, tenantID uint64) ([]Order
 	if err != nil {
 		return nil, err
 	}
+	attention, attentionErr := s.orders.ListAwaitingPaymentAnomalyOrderIDs(ctx, tenantID)
+	if attentionErr != nil {
+		attention = nil
+	} // fail open: preserve the primary list
 	out := make([]OrderView, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, OrderView{ID: r.ID, QuoteID: r.QuoteID, State: r.State,
-			AmountFen: r.AmountFen, Currency: r.Currency, Version: r.Version})
+			AmountFen: r.AmountFen, Currency: r.Currency, Version: r.Version,
+			PaymentAttention: hasOrderAttention(attention, r.ID)})
 	}
 	return out, nil
 }
 
-// withAttention（#84 Task 5 / G4）decorates an order projection with the
-// unresolved-anomaly flag: one parameter-bound indexed read per order poll
-// (acceptable; no join). A read failure degrades to "no attention" — the
-// order's primary state must never 500 over the anomaly decoration.
+// hasOrderAttention checks the batched tenant anomaly set.
+func hasOrderAttention(ids map[string]struct{}, orderID string) bool {
+	_, ok := ids[orderID]
+	return ok
+}
+
 func (s *OrderService) withAttention(ctx context.Context, view OrderView) OrderView {
 	if ok, err := s.orders.HasUnresolvedPaymentAnomaly(ctx, view.ID); err == nil && ok {
 		view.PaymentAttention = true

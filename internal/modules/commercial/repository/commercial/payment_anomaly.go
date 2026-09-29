@@ -150,6 +150,25 @@ func (s *OrderStore) HasUnresolvedPaymentAnomaly(ctx context.Context, orderID st
 	return n > 0, nil
 }
 
+// ListAwaitingPaymentAnomalyOrderIDs returns the distinct order IDs with an unresolved anomaly for one tenant.
+// It deliberately accepts no order ID slice, keeping the lookup to one bounded tenant/state query.
+func (s *OrderStore) ListAwaitingPaymentAnomalyOrderIDs(ctx context.Context, tenantID uint64) (map[string]struct{}, error) {
+	ids := make(map[string]struct{})
+	if tenantID == 0 {
+		return ids, nil
+	}
+	var orderIDs []string
+	err := s.db.WithContext(ctx).Model(&PaymentAnomalyRow{}).Distinct("order_id").
+		Where("tenant_id = ? AND state = ?", tenantID, PaymentAnomalyStateAwaiting).Pluck("order_id", &orderIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range orderIDs {
+		ids[id] = struct{}{}
+	}
+	return ids, nil
+}
+
 // ListPaymentAnomalies answers the admin disposition surface: every
 // retained fact, newest first. Parameter-bound; no caller input.
 func (s *OrderStore) ListPaymentAnomalies(ctx context.Context) ([]PaymentAnomalyRow, error) {

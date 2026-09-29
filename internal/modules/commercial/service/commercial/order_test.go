@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1039,5 +1041,144 @@ func TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment(t *t
 	}
 	if nOver != 1 {
 		t.Fatalf("the late success must be audited as over_payment, got %d", nOver)
+	}
+}
+
+func TestListOrdersProjectsAnomalyAttentionFromTenantBatch(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	store := repocommercial.NewOrderStore(db)
+	ids := make([]string, 0, 40)
+	for i := 0; i < 40; i++ {
+		id := fmt.Sprintf("order_batch_%02d", i)
+		if err := db.Create(&repocommercial.OrderRow{ID: id, TenantID: 101, QuoteID: fmt.Sprintf("quote_batch_%02d", i), Kind: "purchase", AmountFen: 9900, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 101, OrderID: ids[29], AttemptID: "m", Provider: "wechat", Merchant: "m", Transaction: "t", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.ListOrders(ctx, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 40 {
+		t.Fatalf("got %d rows", len(got))
+	}
+	for _, v := range got {
+		if v.PaymentAttention != (v.ID == ids[29]) {
+			t.Fatalf("attention projection for %s = %v", v.ID, v.PaymentAttention)
+		}
+	}
+}
+
+func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	for i := 0; i < 40; i++ {
+		if err := db.Create(&repocommercial.OrderRow{ID: fmt.Sprintf("count_order_%02d", i), TenantID: 111, QuoteID: fmt.Sprintf("count_quote_%02d", i), Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&repocommercial.OrderRow{ID: "count_single_order", TenantID: 112, QuoteID: "count_single_quote", Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var anomalyQueries atomic.Int64
+	callbackName := "test/count_anomaly_queries/" + strings.ReplaceAll(t.Name(), "/", "_")
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_payment_anomalies" {
+			anomalyQueries.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove(callbackName)
+	for _, tc := range []struct {
+		name                  string
+		tenant                uint64
+		wantRows, wantQueries int
+	}{
+		{name: "one order", tenant: 112, wantRows: 1, wantQueries: 1},
+		{name: "forty orders", tenant: 111, wantRows: 40, wantQueries: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			anomalyQueries.Store(0)
+			got, err := svc.ListOrders(ctx, tc.tenant)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != tc.wantRows {
+				t.Fatalf("rows=%d want %d", len(got), tc.wantRows)
+			}
+			if n := int(anomalyQueries.Load()); n != tc.wantQueries {
+				t.Fatalf("anomaly-table SELECT count=%d want %d", n, tc.wantQueries)
+			}
+		})
+	}
+}
+
+func TestListOrdersFailsOpenWhenAnomalyQueryFails(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	row := repocommercial.OrderRow{ID: "fail_open_order", TenantID: 121, QuoteID: "fail_open_quote", Kind: "purchase", AmountFen: 1234, Currency: "CNY", State: domain.OrderStatePaid, Version: 7}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 121, OrderID: row.ID, AttemptID: "a", Provider: "wechat", Merchant: "m", Transaction: "fail-open-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	callbackName := "test/fail_anomaly_query/" + strings.ReplaceAll(t.Name(), "/", "_")
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_payment_anomalies" {
+			tx.AddError(fmt.Errorf("injected anomaly query failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove(callbackName)
+	got, err := svc.ListOrders(ctx, 121)
+	if err != nil {
+		t.Fatalf("anomaly lookup failure must fail open, err=%v", err)
+	}
+	if len(got) != 1 || got[0].ID != row.ID || got[0].State != row.State || got[0].AmountFen != row.AmountFen || got[0].Version != row.Version {
+		t.Fatalf("primary order projection lost: %+v", got)
+	}
+	if got[0].PaymentAttention {
+		t.Fatalf("failed anomaly lookup must not assert attention: %+v", got[0])
+	}
+}
+
+func TestCurrentPayablePendingOrderViewProjectsAndClearsAttention(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(ctx, 101, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err = store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 101, OrderID: order.ID, AttemptID: "m", Provider: "wechat", Merchant: "m", Transaction: "t", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := svc.CurrentPayablePendingOrderView(ctx, 101)
+	if err != nil || !v.PaymentAttention {
+		t.Fatalf("unresolved view=%+v err=%v", v, err)
+	}
+	var a repocommercial.PaymentAnomalyRow
+	if err = db.Where("order_id = ?", order.ID).First(&a).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.ResolvePaymentAnomaly(ctx, a.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	v, err = svc.CurrentPayablePendingOrderView(ctx, 101)
+	if err != nil || v.PaymentAttention {
+		t.Fatalf("resolved view=%+v err=%v", v, err)
 	}
 }

@@ -355,6 +355,9 @@ func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
 	if first.CheckoutURL == "" {
 		t.Fatalf("the existing order must be payable, got %+v", first)
 	}
+	if err := repocommercial.NewOrderStore(env.db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 50, OrderID: first.ID, AttemptID: "attempt", Provider: "wechat", Merchant: "merchant", Transaction: "txn-attention", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
 	// 新 quote 走遗留 POST /orders。
 	q2, err := env.orders.CreateQuote(ctx, 50, "pro")
 	if err != nil {
@@ -384,6 +387,9 @@ func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte(first.CheckoutURL)) {
 		t.Fatalf("the replayed order must carry the payment entry: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"payment_attention":true`)) {
+		t.Fatalf("duplicate checkout replay must carry unresolved payment attention: %s", rec.Body.String())
 	}
 }
 

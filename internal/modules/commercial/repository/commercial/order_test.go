@@ -905,3 +905,28 @@ func TestCloseAttemptAndRetireChannelAtomicPair(t *testing.T) {
 		t.Fatalf("the paid order must stay un-retired, got %+v err=%v", row2, err)
 	}
 }
+
+func TestListAwaitingPaymentAnomalyOrderIDsScopesTenantAndState(t *testing.T) {
+	s, _ := testOrderStore(t)
+	ctx := context.Background()
+	for _, row := range []PaymentAnomalyRow{
+		{ID: "a1", TenantID: 7, OrderID: "o1", Provider: "p", Merchant: "m", Transaction: "t1", State: PaymentAnomalyStateAwaiting},
+		{ID: "a2", TenantID: 7, OrderID: "o2", Provider: "p", Merchant: "m", Transaction: "t2", State: PaymentAnomalyStateResolved},
+		{ID: "a3", TenantID: 8, OrderID: "o3", Provider: "p", Merchant: "m", Transaction: "t3", State: PaymentAnomalyStateAwaiting},
+		{ID: "a4", TenantID: 7, OrderID: "o1", Provider: "p", Merchant: "m", Transaction: "t4", State: PaymentAnomalyStateAwaiting},
+	} {
+		if err := s.db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids, err := s.ListAwaitingPaymentAnomalyOrderIDs(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("awaiting tenant set = %#v, want only o1", ids)
+	}
+	if _, ok := ids["o1"]; !ok {
+		t.Fatalf("missing awaiting order: %#v", ids)
+	}
+}
