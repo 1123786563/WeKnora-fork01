@@ -162,6 +162,31 @@
 
 ---
 
+## Task 7: Repair Mini-program Authentication Test Fixtures
+
+**Dependency:** Mini-program Task 1 route-contract commit `4e168777927ababd265fc2f1004a015df3f1aa0a` passed its round-5 independent review and focused validator. Task 7 changes only non-overlapping auth fixtures and a bounded test wait.
+
+**Role:** `mechanical_worker`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:**
+- Modify: `apps/miniprogram/tests/application-material.test.mjs`
+- Modify: `apps/miniprogram/tests/artifact-cleanup.test.mjs`
+- Modify: `apps/miniprogram/tests/assembly.test.mjs`
+- Modify: `apps/miniprogram/tests/career-discovery.test.mjs`
+- Modify: `apps/miniprogram/tests/export-deletion.test.mjs`
+- Modify: `apps/miniprogram/tests/progress-preparation.test.mjs`
+- Modify: `apps/miniprogram/tests/rules-usage-reminders.test.mjs`
+
+**Interface / invariant:** Every successful password-login fixture must answer `GET /api/v1/system/capabilities` with the existing runtime contract `{code: 0, msg: 'success', data: {protocol_minimum: 1, protocol_maximum: 5}}`, matching `tests/helpers/assembly-harness.mjs`. Keep CareerDesk's active user/tenant guard unchanged. Bound the assembly test's wait for its `/auth/me` callback (1500 ms using the existing fixture timeout convention) and fail with a direct assertion if no callback arrives.
+
+- [ ] Confirm exact standalone A1 failure and missing capabilities handler; enumerate every `freshLogin` in owned fixtures.
+- [ ] Add the capabilities route to each owned successful-login fixture without changing production auth or Career identity behavior.
+- [ ] Replace only the unbounded `releaseMe` polling loop in `assembly.test.mjs` with a bounded wait and explicit assertion.
+- [ ] Run the standalone A1 test under Node 22.22.3 and verify it passes; run all miniprogram package tests with the configured command under Node 22.22.3 and require the full suite to exit successfully.
+- [ ] Run `git diff --check`, record before/after HEAD and file list, and commit `test(miniprogram): complete auth fixtures for runtime gate`.
+
+**Acceptance:** The test suite supplies the real login → `/auth/me` → `/system/capabilities` runtime flow; A1 and the configured mini-program test suite pass; no auth or CareerDesk production guard is weakened; polling cannot spin forever.
+
 ## Shared DAG and Integration
 
 | Task | Source Issue | Depends on | Owned scope | Status at plan creation |
@@ -170,5 +195,6 @@
 | T4 | #140 integration | Task 2 commits integrated | codedelivery/workbench imports, composition adapter and contract tests | ready |
 | T5 | #140 integration | issue30 baseline `db234c5e`; user confirms not deployed | 19 migration pairs + references | ready |
 | T6 | #140 integration | Task 2 route counts; guard diagnostics | 15 manifests + guard discovery tests | ready |
+| T7 | #140 integration | Task 1 route-contract commit `4e168777` review + focused validation | 7 mini-program test fixtures | ready |
 
 All four tasks use distinct writable files and isolated worktrees. Run tasks concurrently; integration is serial and begins only after each task's scoped validator/reviewer passes. Final verification must run on the integrated HEAD: full `go test -count=1 ./internal/handler/session ./internal/container ./internal/database ./tools/architectureguard`, Task 1's complete mini-program suite under supported Node `v22.22.3`, web/mobile regression suites from the verification map, `git diff --check`, and complete-range OCR from `db234c5eb171f2dde7427d382b55b503a038f879` through final HEAD plus workspace content.
