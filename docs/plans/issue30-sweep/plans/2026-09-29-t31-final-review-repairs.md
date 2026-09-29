@@ -32,7 +32,7 @@
 
 | ID | Source | Depends on | Owner role | Validator | Owned files | Interface / acceptance | Status |
 |---|---|---|---|---|---|---|---|
-| FR1 | T31-F1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `.superpowers/sdd/plan-t31-ios27/fix-task-4-report.md` | Resolve all supported bundled loader forms relative to owning image; missing and escaping targets fail; valid fixtures pass; retained app checker and executable hash stay valid | running in `t31-fr1-framework-closure`, branch `codex/t31-fr1-framework-closure`, owner role frontend_implementer |
+| FR1 | T31-F1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `.superpowers/sdd/plan-t31-ios27/fix-task-4-report.md` | Resolve supported bundled loader forms; malformed loads and unresolved dependencies fail closed; exact multi-arch headers are skipped without hiding path-prefix dependencies; valid fixtures and retained app pass | repair round 1 reviewed FAIL (FR1-1/2 Medium); round 2 running in `t31-fr1-framework-closure`, branch `codex/t31-fr1-framework-closure` |
 | DOC1 | T31-F2 | none | mechanical_worker | reviewer | `docs/plans/issue30-sweep/plans/plan-t31-ios27.md`, `.superpowers/sdd/plan-t31-ios27/doc1-report.md` | Restore a durable complete execution plan at cited path, with original task coverage and the approved 16.4 amendment; check every citation resolves | running in `t31-doc1-plan-record`, branch `codex/t31-doc1-plan-record`, owner role mechanical_worker |
 | DOC2 | T31-F3 | none | mechanical_worker | reviewer | `docs/testing/mobile-runtime-login-device-acceptance.md`, `.superpowers/sdd/plan-t31-ios27/doc2-report.md` | Update current iOS simulator status/evidence links to post-repair Release startup and safe-area proof; keep external auth/OIDC and Android checks pending | running in `t31-doc2-acceptance-record`, branch `codex/t31-doc2-acceptance-record`, owner role mechanical_worker |
 
@@ -61,6 +61,13 @@ Tasks have disjoint source/document ownership and no produced-code dependencies.
 - [ ] Run the production checker on the retained Release app plus `apps/mobile/ios/Podfile.properties.json`; expected configured source mode and closure pass. Verify app executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
 - [ ] Do not rebuild unless the checker change demonstrates a retained-app failure. If rebuild becomes necessary, preserve the canonical full log and install/launch/screenshot proof; do not overwrite T39 evidence.
 - [ ] Commit only the owned source/test/report files locally; report commit SHA, review-package range, and validation evidence.
+
+### FR1 review repair round 2
+
+- Scoped review `1134dda07..97cf8dc86`: `.superpowers/sdd/plan-t31-ios27/fr1-review.md` gives Spec FAIL / Quality FAIL on two reproduced Medium false passes.
+- FR1-1: `@rpath/Missing.framework` without an executable suffix is not matched, and the fallback misses it because it checks only `.framework/`. Add exact malformed-load rejection and fixture.
+- FR1-2: `inspect()`'s prefix filter drops real dependency rows when an install name shares the inspected image path prefix. Skip only exact `otool` image headers and add universal-header plus path-prefix dependency fixture.
+- Brief `.superpowers/sdd/plan-t31-ios27/fr1-r2-brief.md`. File scope stays checker/test/FR1 report. Round 2 running; integrate FR1 before DOC1 and DOC2 once scoped review passes.
 
 ## Task DOC1: Restore the cited current T31 execution plan
 
