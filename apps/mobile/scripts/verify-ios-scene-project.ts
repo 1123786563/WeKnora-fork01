@@ -39,11 +39,15 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
         issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
       }
       const openUrlBody = swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/);
-      if (!openUrlBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody)) {
+      if (openUrlBody.kind === 'malformed') {
+        issues.push('AppDelegate.swift callback structure could not be analyzed (open-URL)');
+      } else if (openUrlBody.kind === 'absent' || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody.body)) {
         issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
       }
       const universalLinkBody = swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/);
-      if (!universalLinkBody || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody)) {
+      if (universalLinkBody.kind === 'malformed') {
+        issues.push('AppDelegate.swift callback structure could not be analyzed (universal-link)');
+      } else if (universalLinkBody.kind === 'absent' || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody.body)) {
         issues.push('AppDelegate universal-link callback must forward to RCTLinkingManager.application');
       }
     }
@@ -228,27 +232,33 @@ function maskSwiftNonCode(source: string): string | undefined {
   return state === 'code' || state === 'line-comment' ? result.join('') : undefined;
 }
 
-function swiftMethodBody(source: string, signature: RegExp): string | undefined {
+type SwiftMethodBodyResult =
+  | { kind: 'absent' }
+  | { kind: 'extracted'; body: string }
+  | { kind: 'malformed' };
+
+function swiftMethodBody(source: string, signature: RegExp): SwiftMethodBodyResult {
   const match = signature.exec(source);
-  if (!match) return undefined;
+  if (!match) return { kind: 'absent' };
   const openParameters = source.indexOf('(', match.index);
   let parentheses = 0;
   let closeParameters = -1;
   for (let index = openParameters; index < source.length; index++) {
     if (source[index] === '(') parentheses++;
     else if (source[index] === ')' && --parentheses === 0) { closeParameters = index; break; }
-    else if (source[index] === '{' || source[index] === '}') return undefined;
+    else if (source[index] === '{' || source[index] === '}') return { kind: 'malformed' };
   }
-  if (closeParameters < 0) return undefined;
+  if (closeParameters < 0) return { kind: 'malformed' };
   const opening = /^\s*->\s*Bool\s*\{/.exec(source.slice(closeParameters + 1));
-  if (!opening) return undefined;
+  if (!opening) return { kind: 'malformed' };
   const open = closeParameters + 1 + opening[0].length - 1;
   let depth = 1;
   for (let index = open + 1; index < source.length; index++) {
     if (source[index] === '{') depth++;
-    if (source[index] === '}' && --depth === 0) return source.slice(open + 1, index);
+    if (source[index] === '}') { depth--; if (depth === 0) return { kind: 'extracted', body: source.slice(open + 1, index) }; }
+    if (source.startsWith('override func ', index) && source.slice(Math.max(0, index - 8), index).includes('\n')) return { kind: 'malformed' };
   }
-  return undefined;
+  return { kind: 'malformed' };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

@@ -69,6 +69,32 @@ test('generated SDK57 scene checker reports unreliable Swift tokenization withou
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 scene checker distinguishes malformed callback structure from absent callbacks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const malformedSource = source.replace('      return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)\n    }', '      return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)');
+    assert.notEqual(malformedSource, source);
+    writeFileSync(appDelegate, malformedSource);
+    let messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /callback structure/);
+    assert.doesNotMatch(messages, /open-URL callback must forward/);
+    assert.doesNotMatch(messages, /universal-link callback must forward/);
+
+    fixture(root);
+    const absentSource = readFileSync(appDelegate, 'utf8').replace(
+      /    override func application\(_ app: UIApplication, open url: URL[^\n]*\n      return[^\n]*\n    }\n/,
+      '',
+    );
+    writeFileSync(appDelegate, absentSource);
+    messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /open-URL callback must forward/);
+    assert.doesNotMatch(messages, /callback structure could not be analyzed/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 scene checker rejects unknown nested markup in plist scalars', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {
