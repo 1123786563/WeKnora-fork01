@@ -17,9 +17,9 @@ type admissionRaceContextKey string
 
 func TestAgentRunAdmitRejectsRetiredVariant(t *testing.T) {
 	db := openRunTestDB(t)
-	seedAgentVariant(t, db, "retired")
+	versionID, releaseID := seedAgentVariant(t, db, "retired")
 	store := NewAgentRunStore(db)
-	in := testRetiredAgentAdmission()
+	in := testRetiredAgentAdmission(versionID, releaseID)
 
 	_, err := store.Admit(context.Background(), in)
 	require.ErrorIs(t, err, agentruntime.ErrAgentUseDenied)
@@ -35,7 +35,7 @@ func TestAgentRunAdmitRejectsRetiredVariant(t *testing.T) {
 
 func TestAgentRunAdmitSerializesWithVariantRetirement(t *testing.T) {
 	db := openRunTestDB(t)
-	seedAgentVariant(t, db, "published")
+	versionID, releaseID := seedAgentVariant(t, db, "published")
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(4)
@@ -62,7 +62,7 @@ func TestAgentRunAdmitSerializesWithVariantRetirement(t *testing.T) {
 
 	admitDone := make(chan error, 1)
 	go func() {
-		_, admitErr := NewAgentRunStore(db).Admit(context.WithValue(context.Background(), admissionRaceContextKey("op"), "admit"), testRetiredAgentAdmission())
+		_, admitErr := NewAgentRunStore(db).Admit(context.WithValue(context.Background(), admissionRaceContextKey("op"), "admit"), testRetiredAgentAdmission(versionID, releaseID))
 		admitDone <- admitErr
 	}()
 	<-locked // the gate's row UPDATE executed while its transaction is open
@@ -81,23 +81,29 @@ func TestAgentRunAdmitSerializesWithVariantRetirement(t *testing.T) {
 	require.NoError(t, <-admitDone)
 	require.NoError(t, <-retireDone)
 
-	_, err = NewAgentRunStore(db).Admit(context.Background(), testRetiredAgentAdmission())
+	_, err = NewAgentRunStore(db).Admit(context.Background(), testRetiredAgentAdmission(versionID, releaseID))
 	require.NoError(t, err, "same-request idempotency must return the committed run before checking retirement")
 }
 
-func seedAgentVariant(t *testing.T, db *gorm.DB, state string) {
+func seedAgentVariant(t *testing.T, db *gorm.DB, state string) (versionID, releaseID string) {
 	t.Helper()
-	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "retired-listing", SourceAgentID: "source-agent", DisplayName: "Agent", State: "listed"}).Error)
-	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "retired-adoption", ListingID: "retired-listing", AcceptedReleaseID: "retired-release", State: "active"}).Error)
+	require.NoError(t, db.Create(&types.CustomAgent{ID: "source-agent", TenantID: 1, Name: "source", CreatedBy: "u1"}).Error)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "source-agent", "1.0.0")
+	require.NoError(t, db.Create(&types.CustomAgent{ID: "agent-retired", TenantID: 1, Name: "local", CreatedBy: "u1"}).Error)
+	versionID = "agent-retired-version"
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: versionID, TenantID: 1, AgentID: "agent-retired", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha", FrozenBy: "u1"}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "retired-adoption", ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "u1"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{
-		TenantID: 1, ID: "retired-variant", AdoptionID: "retired-adoption", ReleaseID: "retired-release",
-		Name: "retired", State: state, LocalAgentID: "agent-retired",
+		TenantID: 1, ID: "retired-variant", AdoptionID: "retired-adoption", ReleaseID: releaseID,
+		Name: "retired", State: state, LocalAgentID: "agent-retired", LocalAgentVersionID: versionID,
 	}).Error)
+	return versionID, releaseID
 }
 
-func testRetiredAgentAdmission() agentruntime.Admission {
+func testRetiredAgentAdmission(versionID, releaseID string) agentruntime.Admission {
 	return agentruntime.Admission{
 		Key: agentruntime.RunKey{TenantID: 1, RunID: "retired-agent-run"}, SessionID: "s1", AgentID: "agent-retired",
+		LocalAgentVersionID: versionID, ReleaseID: releaseID,
 		UserID: "u1", RequestID: "retired-agent-request", AssistantMessageID: "retired-agent-assistant", RequestHash: "retired-agent-hash",
 		// The snapshot is deliberately inconsistent: the gate must consume
 		// explicit server-side Admission.AgentID, never client-shaped JSON.

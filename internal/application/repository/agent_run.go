@@ -318,6 +318,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		result = row.view()
 		return nil
 	})
+	if errors.Is(err, ErrTenantNotFound) {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
 	return result, err
 }
 

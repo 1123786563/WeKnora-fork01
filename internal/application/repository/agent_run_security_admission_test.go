@@ -66,8 +66,8 @@ func TestAgentRunAdmitSecurityDenialPreservesRetirementGateAndWritesNothing(t *t
 	require.NoError(t, db.Table("sessions").Where("tenant_id = ? AND id = ?", 1, "s1").Select("active_agent_run_id").Scan(&slot).Error)
 	require.Nil(t, slot)
 	retiredDB := openRunTestDB(t)
-	seedAgentVariant(t, retiredDB, "retired")
-	_, err = NewAgentRunStore(retiredDB).Admit(context.Background(), testRetiredAgentAdmission())
+	versionID, releaseID = seedAgentVariant(t, retiredDB, "retired")
+	_, err = NewAgentRunStore(retiredDB).Admit(context.Background(), testRetiredAgentAdmission(versionID, releaseID))
 	require.ErrorIs(t, err, agentruntime.ErrAgentUseDenied)
 }
 
