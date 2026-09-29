@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"github.com/gin-gonic/gin"
@@ -61,7 +61,51 @@ func newAnomalyAdminEnv(t *testing.T, auth ...gin.HandlerFunc) (*gin.Engine, *go
 	admin := v1.Group("/admin/payment-anomalies", h.RequirePlatformRefundReviewer())
 	admin.GET("", h.AdminListPaymentAnomalies)
 	admin.POST("/:id/resolve", h.AdminResolvePaymentAnomaly)
+	fulfillmentAdmin := v1.Group("/admin/fulfillment-attentions", h.RequirePlatformRefundReviewer())
+	fulfillmentAdmin.GET("", h.AdminListFulfillmentAttentions)
 	return engine, db
+}
+
+func TestAdminFulfillmentAttentionsSanitizedAndPlatformGuarded(t *testing.T) {
+	engine, db := newAnomalyAdminEnv(t, authAsAnomalyAdmin(0, "platform-ops", "viewer"))
+	if err := db.AutoMigrate(&commercialsvc.FulfillmentExceptionRow{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO commercial_grants (tenant_id, user_id, capability, granted_by) VALUES (0, 'platform-ops', 'refund_review', 'seed')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	row := commercialsvc.FulfillmentExceptionRow{EventKey: "fulfill:internal-secret", ID: "opaque-1", TenantID: 12, OrderID: "order-1", Kind: "top_up", Reason: "invalid_winning_payment", State: "open", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/fulfillment-attentions", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, field := range []string{`"id":"opaque-1"`, `"order_id":"order-1"`, `"tenant_id":12`, `"kind":"top_up"`, `"reason":"invalid_winning_payment"`, `"state":"open"`, `"created_at"`, `"updated_at"`} {
+		if !strings.Contains(body, field) {
+			t.Fatalf("missing %s in %s", field, body)
+		}
+	}
+	for _, secret := range []string{"internal-secret", "event_key", "provider", "merchant", "transaction", "payload", "credentials"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("response leaked %q: %s", secret, body)
+		}
+	}
+	unauth, _ := newAnomalyAdminEnv(t)
+	w = httptest.NewRecorder()
+	unauth.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/fulfillment-attentions", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("unauthenticated status=%d", w.Code)
+	}
+	spaceAdmin, _ := newAnomalyAdminEnv(t, authAsAnomalyAdmin(7, "tenant-admin", "admin"))
+	w = httptest.NewRecorder()
+	spaceAdmin.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/fulfillment-attentions", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("space admin status=%d", w.Code)
+	}
 }
 
 // authAsAnomalyAdmin installs the authenticated-session context the Auth

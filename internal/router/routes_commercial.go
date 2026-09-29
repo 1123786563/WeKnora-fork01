@@ -94,6 +94,9 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		anomalyAdmin.POST("/:id/resolve", commercialHandler.AdminResolvePaymentAnomaly)
 	}
 
+	fulfillmentAdmin := r.Group("/admin/fulfillment-attentions", commercialHandler.RequirePlatformRefundReviewer())
+	fulfillmentAdmin.GET("", commercialHandler.AdminListFulfillmentAttentions)
+
 	// T07 (#79): platform plan-version admin surface. Catalog operations
 	// are cross-space, so the endpoints hang DIRECTLY on the parent group
 	// behind their OWN platform-operator gate — the exact refund-review

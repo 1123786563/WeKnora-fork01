@@ -206,8 +206,15 @@ func TestFulfillmentTopUpRejectsContradictoryWinningAttempt(t *testing.T) {
 	if err := db.Where("event_key = ?", "fulfill:ord-topup-mismatch").First(&rejected).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rejected.State != repocommercial.OutboxStateDead || orderState(t, db, "ord-topup-mismatch") != domain.OrderStatePaid || len(fulfillmentRecords(t, db, "ord-topup-mismatch")) != 0 {
-		t.Fatalf("mismatch was not quarantined: event=%+v records=%+v", rejected, fulfillmentRecords(t, db, "ord-topup-mismatch"))
+	if rejected.State != repocommercial.OutboxStatePending || orderState(t, db, "ord-topup-mismatch") != domain.OrderStatePaid || len(fulfillmentRecords(t, db, "ord-topup-mismatch")) != 0 {
+		t.Fatalf("mismatch was not retained pending: event=%+v records=%+v", rejected, fulfillmentRecords(t, db, "ord-topup-mismatch"))
+	}
+	var exceptions []FulfillmentExceptionRow
+	if err := db.Where("order_id = ?", "ord-topup-mismatch").Find(&exceptions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(exceptions) != 1 || exceptions[0].Kind != "top_up" || exceptions[0].Reason != "invalid_winning_payment" || exceptions[0].State != "open" {
+		t.Fatalf("exception rows=%+v", exceptions)
 	}
 	if gw.findCount() != 1 || gw.appliedCount() != 1 {
 		t.Fatalf("only following valid event should call gateway once: finds=%d applies=%d", gw.findCount(), gw.appliedCount())
@@ -215,9 +222,26 @@ func TestFulfillmentTopUpRejectsContradictoryWinningAttempt(t *testing.T) {
 	if got := orderState(t, db, "ord-topup-following"); got != domain.OrderStateFulfilled {
 		t.Fatalf("following order state=%s", got)
 	}
+	// A repaired, verified event is the only path that may resolve the exception.
+	contradictFulfillTransaction(t, db, "fulfill:ord-topup-mismatch", "txn-ord-topup-mismatch")
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-mismatch").First(&rejected).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rejected.State != repocommercial.OutboxStateSent || orderState(t, db, "ord-topup-mismatch") != domain.OrderStateFulfilled {
+		t.Fatalf("corrected winner did not fulfill: event=%+v", rejected)
+	}
+	if err := db.Where("order_id = ?", "ord-topup-mismatch").First(&exceptions[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+	if exceptions[0].State != "resolved" || exceptions[0].ResolvedAt == nil || gw.appliedCount() != 2 {
+		t.Fatalf("resolution=%+v gateway applies=%d", exceptions[0], gw.appliedCount())
+	}
 }
 
-func TestFulfillmentTopUpMissingWinningAttemptIsQuarantined(t *testing.T) {
+func TestFulfillmentTopUpMissingWinningAttemptIsRetained(t *testing.T) {
 	gw := &stubGateway{}
 	svc, db, store := setupFulfillment(t, gw)
 	seedPaidOrder(t, store, "ord-topup-no-attempt", 7, 2500, db)
@@ -227,7 +251,70 @@ func TestFulfillmentTopUpMissingWinningAttemptIsQuarantined(t *testing.T) {
 	if err := svc.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	assertTopUpQuarantinedWithoutGateway(t, db, gw, "ord-topup-no-attempt")
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-no-attempt").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStatePending {
+		t.Fatalf("event state=%s", ev.State)
+	}
+	var exceptions []FulfillmentExceptionRow
+	if err := db.Where("order_id = ?", "ord-topup-no-attempt").Find(&exceptions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(exceptions) != 1 || exceptions[0].Reason != "invalid_winning_payment" {
+		t.Fatalf("exceptions=%+v", exceptions)
+	}
+	if gw.findCount() != 0 || gw.appliedCount() != 0 {
+		t.Fatalf("gateway called: finds=%d applies=%d", gw.findCount(), gw.appliedCount())
+	}
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var replay []FulfillmentExceptionRow
+	if err := db.Where("order_id = ?", "ord-topup-no-attempt").Find(&replay).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(replay) != 1 || !replay[0].CreatedAt.Equal(exceptions[0].CreatedAt) {
+		t.Fatalf("replay was not idempotent: %+v", replay)
+	}
+}
+
+func TestFulfillmentTopUpExceptionStorageFailureDoesNotAcknowledge(t *testing.T) {
+	gw := &stubGateway{}
+	svc, db, store := setupFulfillment(t, gw)
+	seedPaidOrder(t, store, "ord-topup-exception-write-failure", 7, 2500, db)
+	if err := db.Where("id = ?", "att-ord-topup-exception-write-failure").Delete(&repocommercial.PaymentAttemptRow{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	callback := "test/fail_fulfillment_exception"
+	if err := db.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == (FulfillmentExceptionRow{}).TableName() {
+			tx.AddError(fmt.Errorf("injected exception storage failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(context.Background()); err == nil {
+		t.Fatal("expected exception persistence error")
+	}
+	if err := db.Callback().Create().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("event_key = ?", "fulfill:ord-topup-exception-write-failure").First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ev.State != repocommercial.OutboxStatePending {
+		t.Fatalf("event acknowledged: %+v", ev)
+	}
+	var n int64
+	if err := db.Model(&FulfillmentExceptionRow{}).Where("order_id = ?", "ord-topup-exception-write-failure").Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 || gw.findCount() != 0 || gw.appliedCount() != 0 {
+		t.Fatalf("failure side effects: rows=%d finds=%d applies=%d", n, gw.findCount(), gw.appliedCount())
+	}
 }
 
 func TestFulfillmentTopUpTransientWinningAttemptReadRetries(t *testing.T) {
