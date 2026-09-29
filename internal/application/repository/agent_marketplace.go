@@ -43,6 +43,8 @@ type AgentMarketplaceRepository interface {
 	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
 	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
 	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
+	TransitionListingState(context.Context, uint64, string, string, string, map[string]any) (*types.AgentMarketplaceListingEntity, error)
+	DeprecateRelease(context.Context, uint64, string, string, string) (*types.AgentReleaseEntity, error)
 }
 
 func (r *agentMarketplaceRepository) GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error) {
