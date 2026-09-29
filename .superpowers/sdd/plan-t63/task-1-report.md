@@ -26,7 +26,7 @@ Migration files are ignored by the repository-wide `migrations/` ignore pattern 
 
 ## Commit
 
-`6738feadc108e83b59baffcb0e113e0bb8a05281` — `feat(marketplace): add lifecycle migration and entity columns`
+`e4da2dc0c405eec92bcc99075456d2991f9ebc00` — reviewed checkpoint on `codex/issue30-b6-t63-cont`; includes the code changes, report, and commit `6738feadc108e83b59baffcb0e113e0bb8a05281` (code-only sibling checkpoint).
 
 ## Notes / risks
 
