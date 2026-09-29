@@ -20,6 +20,12 @@ type UserService interface {
 	// (resolved by the caller from auth.default_tenant_mode).
 	LoginWithOIDC(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
 	LoginWithOIDCWithPKCE(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode, codeVerifier string) (*types.OIDCCallbackResponse, error)
+	// LoginWithWeChatCode implements the mini-program silent-login channel:
+	// wx.login code -> code2session openid -> (first login) provision a
+	// Casdoor user with a service password -> issue local tokens. provisioning
+	// is the default tenant mode for a newly auto-created user, resolved by
+	// the caller from auth.default_tenant_mode like the OIDC flows.
+	LoginWithWeChatCode(ctx context.Context, code string, provisioning types.TenantProvisioningMode) (*types.LoginResponse, error)
 	// GetUserByID gets a user by ID
 	GetUserByID(ctx context.Context, id string) (*types.User, error)
 	// GetUsersByIDs batch-fetches users by id, returning a map keyed by

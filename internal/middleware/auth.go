@@ -38,6 +38,11 @@ var noAuthAPI = map[string][]string{
 	"/api/v1/auth/register":   {"POST"},
 	"/api/v1/auth/login":      {"POST"},
 	"/api/v1/auth/auto-setup": {"POST"},
+	// Mini-program silent login: the caller presents a one-time wx.login
+	// code, not a bearer token; identity is proven downstream via WeChat
+	// code2session + Casdoor, so the global Auth middleware must pass the
+	// request through to the handler.
+	"/api/v1/auth/wechat/login": {"POST"},
 	// Share-link surfaces accept a plaintext invite token from anonymous
 	// callers (an invitee who hasn't registered yet). They are registered
 	// as public routes in RegisterAuthRoutes and rate-limited by IP, so the

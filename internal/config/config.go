@@ -948,6 +948,43 @@ func ValidateConfig(cfg *Config) error {
 		}
 	}
 
+	// WeChat 小程序静默登录通道。sso_only 部署没有该通道,无需校验;只要
+	// wechat_mp 凭据被填写了一部分(AppID 或 AppSecret 任一非空),就要求
+	// 整套配置齐全:wechat_mp 的 AppID/AppSecret/SecretKey 与 casdoor_admin
+	// 的四个字段。缺失在启动时报错,而不是等用户第一次静默登录才 500。
+	wechatSSOOnly := cfg.OIDCAuth != nil && cfg.OIDCAuth.Enable && cfg.OIDCAuth.SSOOnly
+	if !wechatSSOOnly && cfg.WechatMP != nil &&
+		(strings.TrimSpace(cfg.WechatMP.AppID) != "" || strings.TrimSpace(cfg.WechatMP.AppSecret) != "") {
+		if strings.TrimSpace(cfg.WechatMP.AppID) == "" {
+			errs = append(errs, "wechat_mp.app_id is required when the wechat login channel is configured")
+		}
+		if strings.TrimSpace(cfg.WechatMP.AppSecret) == "" {
+			errs = append(errs, "wechat_mp.app_secret is required when the wechat login channel is configured")
+		}
+		if strings.TrimSpace(cfg.WechatMP.SecretKey) == "" {
+			errs = append(errs, "wechat_mp.secret_key is required when the wechat login channel is configured")
+		}
+		admin := cfg.CasdoorAdmin
+		if admin == nil {
+			// LoadConfig materializes the section, but ValidateConfig is also
+			// called directly with hand-built configs; treat a missing section
+			// as "every field empty" rather than skipping the check.
+			admin = &CasdoorAdminConfig{}
+		}
+		if strings.TrimSpace(admin.BaseURL) == "" {
+			errs = append(errs, "casdoor_admin.base_url is required when the wechat login channel is configured")
+		}
+		if strings.TrimSpace(admin.OrgName) == "" {
+			errs = append(errs, "casdoor_admin.org_name is required when the wechat login channel is configured")
+		}
+		if strings.TrimSpace(admin.AdminUsername) == "" {
+			errs = append(errs, "casdoor_admin.admin_username is required when the wechat login channel is configured")
+		}
+		if strings.TrimSpace(admin.AdminPassword) == "" {
+			errs = append(errs, "casdoor_admin.admin_password is required when the wechat login channel is configured")
+		}
+	}
+
 	if cfg.Auth != nil {
 		mode := strings.TrimSpace(cfg.Auth.RegistrationMode)
 		if mode != "" && mode != AuthRegistrationModeSelfServe && mode != AuthRegistrationModeInviteOnly {

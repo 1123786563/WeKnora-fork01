@@ -214,6 +214,10 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rba
 	r.POST("/auth/register-by-invite", publicAuthRL, handler.RegisterByInvite)
 	r.POST("/auth/invitations/lookup", publicAuthRL, handler.LookupInvitationByToken)
 	r.POST("/auth/login", handler.Login)
+	// 小程序静默登录:调用方只有 wx.login 下发的临时 code,没有 bearer
+	// token,故挂公开限流器按 IP 约束 code 暴力枚举;响应与 /auth/login
+	// 同构,handler 内部再对通道是否已配置做 503 门控。
+	r.POST("/auth/wechat/login", publicAuthRL, handler.WechatLogin)
 	r.POST("/auth/auto-setup", handler.AutoSetup)
 	r.GET("/auth/config", handler.GetAuthConfig)
 	r.POST("/auth/switch-tenant", handler.SwitchTenant)

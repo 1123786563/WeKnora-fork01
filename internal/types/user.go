@@ -160,6 +160,11 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6"`
 }
 
+// WeChatLoginRequest is the mini-program silent-login payload: a wx.login code.
+type WeChatLoginRequest struct {
+	Code string `json:"code" binding:"required"`
+}
+
 type OIDCAuthURLResponse struct {
 	Success             bool   `json:"success"`
 	ProviderDisplayName string `json:"provider_display_name,omitempty"`

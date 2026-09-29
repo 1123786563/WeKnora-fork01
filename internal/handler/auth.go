@@ -354,6 +354,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(response))
 }
 
+// WechatLogin implements the mini-program silent-login channel: the client
+// POSTs the one-time code from wx.login and receives the same response shape
+// as /auth/login. The channel is gated here on config completeness so an
+// unconfigured deployment answers a clear 503 instead of burying the failure
+// inside the service's remote calls. LoadConfig materializes WechatMP /
+// CasdoorAdmin as non-nil structs, so readiness is judged on field emptiness,
+// not section presence.
+func (h *AuthHandler) WechatLogin(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req types.WeChatLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		appErr := errors.NewValidationError("Invalid wechat login parameters").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+	if h.configInfo == nil || h.configInfo.WechatMP == nil || h.configInfo.CasdoorAdmin == nil ||
+		strings.TrimSpace(h.configInfo.WechatMP.AppID) == "" ||
+		strings.TrimSpace(h.configInfo.WechatMP.SecretKey) == "" ||
+		strings.TrimSpace(h.configInfo.CasdoorAdmin.BaseURL) == "" {
+		c.Error(errors.NewServiceUnavailableError("WeChat login channel is not configured"))
+		return
+	}
+	resp, err := h.userService.LoginWithWeChatCode(ctx, req.Code, h.resolveDefaultTenantMode(ctx))
+	if err != nil {
+		logger.Errorf(ctx, "Wechat login failed: %v", err)
+		appErr := errors.NewUnauthorizedError("Wechat login failed").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(resp))
+}
+
 // GetOIDCAuthorizationURL godoc
 // @Summary      获取OIDC授权地址
 // @Description  根据后端OIDC配置生成第三方登录跳转地址

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -107,4 +108,68 @@ casdoor_admin:
 		cfg.CasdoorAdmin.AdminPassword != "pw" {
 		t.Fatalf("casdoor_admin not parsed: %+v", cfg.CasdoorAdmin)
 	}
+}
+
+// TestValidateConfigWechatChannelCompleteness pins the startup rule for the
+// mini-program silent-login channel: a partially filled wechat_mp section
+// fails the boot listing every missing field, sso_only deployments skip the
+// check (they never serve the channel), and a fully configured channel — or
+// no configuration at all — passes.
+func TestValidateConfigWechatChannelCompleteness(t *testing.T) {
+	fullyConfigured := func() *Config {
+		return &Config{
+			WechatMP: &WechatMPConfig{AppID: "wx123", AppSecret: "s3cret", SecretKey: "k"},
+			CasdoorAdmin: &CasdoorAdminConfig{
+				BaseURL: "http://casdoor:8000", OrgName: "weknora",
+				AdminUsername: "svc", AdminPassword: "pw",
+			},
+		}
+	}
+
+	t.Run("fully configured channel passes", func(t *testing.T) {
+		if err := ValidateConfig(fullyConfigured()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("empty sections pass (channel off)", func(t *testing.T) {
+		cfg := fullyConfigured()
+		cfg.WechatMP = &WechatMPConfig{}
+		cfg.CasdoorAdmin = &CasdoorAdminConfig{}
+		if err := ValidateConfig(cfg); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("nil casdoor_admin still counted as missing fields", func(t *testing.T) {
+		err := ValidateConfig(&Config{WechatMP: &WechatMPConfig{AppSecret: "s3cret"}})
+		if err == nil {
+			t.Fatal("partial channel config must fail startup validation")
+		}
+		for _, want := range []string{
+			"wechat_mp.app_id", "wechat_mp.secret_key",
+			"casdoor_admin.base_url", "casdoor_admin.org_name",
+			"casdoor_admin.admin_username", "casdoor_admin.admin_password",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error should mention %q, got: %v", want, err)
+			}
+		}
+	})
+
+	t.Run("sso_only deployment skips the channel check", func(t *testing.T) {
+		cfg := &Config{
+			// Enable forces the OIDC block to fire (missing client creds),
+			// proving the wechat skip is what keeps the error list clean.
+			OIDCAuth: &OIDCAuthConfig{Enable: true, SSOOnly: true},
+			WechatMP: &WechatMPConfig{AppID: "wx123"},
+		}
+		err := ValidateConfig(cfg)
+		if err == nil {
+			t.Fatal("oidc_auth validation should still fire when enabled")
+		}
+		if strings.Contains(err.Error(), "wechat_mp") || strings.Contains(err.Error(), "casdoor_admin") {
+			t.Fatalf("sso_only must skip the wechat channel check, got: %v", err)
+		}
+	})
 }
