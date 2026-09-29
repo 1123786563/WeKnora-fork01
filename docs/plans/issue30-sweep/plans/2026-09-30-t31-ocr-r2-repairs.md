@@ -68,3 +68,7 @@ The independent review `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-review.md` foun
 ### Task R2-2 review repair round 1
 
 R2-2 scoped review `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-review.md` passed Spec Compliance and found no blocker; one valid Low coverage item remains because only the JSON non-object properties root was tested, while the checker also supports plist input and the plan requires both formats. Add an XML plist array fixture asserting the stable coded failure and absence of traceback. Reuse the same mechanical implementer. Brief `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-r1-brief.md`; base checkpoint `a13263252533db91abf2baab2f00360e4c893543`; pending.
+
+#### R2-1 review record correction
+
+R2-1 re-review report `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-r1-review.md` gives Spec PASS / Code Quality PASS with a Low task-report SHA mismatch. Correct the report to cite final commit `187a0dfdda957ac6372b4d34e58fe103502ac502` (not the intermediate `9ff7dab...`). Brief `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-r1-doc-fix-brief.md`; report-only scope, same implementer, no behavior change.

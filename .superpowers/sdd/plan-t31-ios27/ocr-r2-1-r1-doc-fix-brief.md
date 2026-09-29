@@ -1,0 +1,3 @@
+# SDD Brief — Correct R2-1 repair commit reference
+
+Task R2-1 review report `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-r1-review.md` passed Spec and Code Quality; one Low report mismatch remains. In `ocr-r2-1-report.md`, replace the incorrect R1 SHA `9ff7dab309aaf35f015d7dc0fcd89508c759077c` with the actual integrated task commit `187a0dfdda957ac6372b4d34e58fe103502ac502`. Preserve original implementation SHA `ad68a23a83631e336400ae8167ee4bf2307fa225`. Owned file: `.superpowers/sdd/plan-t31-ios27/ocr-r2-1-report.md` only. Confirm both SHAs exist and `git diff --check`; commit locally; no tests or code edits. No subagents.
