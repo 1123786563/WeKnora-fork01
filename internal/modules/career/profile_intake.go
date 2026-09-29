@@ -49,6 +49,13 @@ type UploadClaimIntent struct {
 	ExpectedRevision uint64
 }
 
+func isTerminalUploadSource(row sourceRevision) bool {
+	if row.Status == "ready" {
+		return true
+	}
+	return row.Status == "failed" && !(row.ResourceRef == "" && row.ErrorCategory == "interrupted")
+}
+
 func (o *Office) FindUploadClaim(ctx context.Context, requestID string) (UploadClaimIntent, bool, error) {
 	s, err := getScope(ctx)
 	if err != nil {
@@ -199,7 +206,7 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 			if prior.IntentHash != upload.IntentHash || prior.Digest != upload.Digest || prior.ExpectedRevision != upload.ExpectedRevision {
 				return ErrIdempotencyConflict
 			}
-			if prior.Status == "ready" || prior.Status == "failed" && !(prior.ResourceRef == "" && prior.ErrorCategory == "interrupted") {
+			if isTerminalUploadSource(prior) {
 				row = prior
 				return nil
 			}
@@ -278,8 +285,11 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 			if prior.IntentHash != upload.IntentHash || prior.Digest != upload.Digest || prior.ExpectedRevision != upload.ExpectedRevision {
 				return CareerSource{}, false, ErrIdempotencyConflict
 			}
-			if prior.Status == "ready" || prior.Status == "failed" {
+			if isTerminalUploadSource(prior) {
 				return sourceView(prior), true, nil
+			}
+			if prior.Status == "failed" && prior.ResourceRef == "" && prior.ErrorCategory == "interrupted" {
+				return sourceView(prior), false, &OutcomeUnknownError{RequestID: upload.RequestID}
 			}
 			if prior.LeaseUntil != nil && prior.LeaseUntil.After(time.Now().UTC()) {
 				return sourceView(prior), false, ErrUploadInProgress
@@ -288,7 +298,7 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 		}
 		return sourceView(row), false, err
 	}
-	return sourceView(row), row.Status == "ready" || row.Status == "failed", nil
+	return sourceView(row), isTerminalUploadSource(row), nil
 }
 
 func (o *Office) PersistUploadResource(ctx context.Context, sourceID, token, ref string) error {
