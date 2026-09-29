@@ -175,7 +175,8 @@ WEKNORA_API_ORIGIN=https://weknora.example.com WEKNORA_WEAPP_APPID=wx1234567890a
 | 授权页打不开（浏览器无法解析 `casdoor`） | `OIDC_AUTH_AUTHORIZATION_ENDPOINT` 没显式覆盖，被 discovery 填成了容器地址。按 2.1 节设为浏览器可达地址 |
 | 授权后 Casdoor 报 redirect URL 不匹配 | `weknora-app` 的 Redirect URLs 与浏览器实际回调地址（协议/域名/端口）不一致，逐字符比对 |
 | 小程序静默登录报 `casdoor ropc: no access token` | `weknora-app` 未勾选 Password（ROPC）授权类型；或 Client ID/Secret 与 `.env` 不一致；或用户不在 `weknora` 组织（ROPC 用户名按 `org/name` 拼接） |
-| 建号/重置密码失败（`casdoor admin auth failed`） | `svc_weknora` 密码错误、未建在 `weknora` 组织、或没有 admin 权限 |
+| 建号/重置密码失败（`casdoor admin auth failed`） | `svc_weknora` 密码错误、未建在 `weknora` 组织、或没有 admin 权限——管理 token 取不到，后续管理调用全部失败 |
+| 日志出现 `casdoor add-user: {"status":"error","msg":"Unauthorized operation"}` 或 `casdoor set-password: ...` | 管理 API 需服务账号 Bearer：后端先经 ROPC（`weknora/svc_weknora`）取管理 token，再以 **JSON body** 调 `/api/add-user`（owner/name/displayName/email/password/type），以 **userOwner/userName/newPassword 表单字段**调 `/api/set-password`（`?id=` 参数无效）；匿名或失效 token 会被 Casdoor ApiFilter 拒绝并返回 `Unauthorized operation` |
 | 静默登录 503 `WeChat login channel is not configured` | `WECHAT_MP_APP_ID`/`WECHAT_MP_SECRET_KEY`/`CASDOOR_ADMIN_BASE_URL` 有空项（sso_only 部署启动不校验，缺项在请求时才暴露） |
 | code2session 报 `invalid appid` | 小程序 appid（`WEKNORA_WEAPP_APPID`/工具项目 appid）与服务端 `WECHAT_MP_APP_ID` 不一致 |
 | 8000 端口被占 | `.env` 设 `CASDOOR_PORT=18000`；同时把 `OIDC_AUTH_AUTHORIZATION_ENDPOINT` 改成 18000 地址。`OIDC_AUTH_ISSUER_URL` 与 `CASDOOR_ADMIN_BASE_URL` 不动（容器网络内仍是 `http://casdoor:8000`） |
