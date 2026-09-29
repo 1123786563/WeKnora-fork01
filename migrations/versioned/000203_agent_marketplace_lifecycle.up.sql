@@ -1,0 +1,10 @@
+-- Versioned twin of sqlite migration 000124.
+ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_at TIMESTAMPTZ;
+ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_by VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE agent_releases ADD COLUMN deprecated_at TIMESTAMPTZ;
+ALTER TABLE agent_releases ADD COLUMN deprecated_by VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE agent_releases ADD COLUMN successor_release_id VARCHAR(36) NOT NULL DEFAULT '';
+ALTER TABLE agent_adoptions ADD COLUMN ended_at TIMESTAMPTZ;
+ALTER TABLE agent_adoptions ADD COLUMN ended_by VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE agent_adoption_variants ADD COLUMN retired_at TIMESTAMPTZ;
+ALTER TABLE agent_adoption_variants ADD COLUMN retired_by VARCHAR(255) NOT NULL DEFAULT '';

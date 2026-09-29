@@ -10,6 +10,8 @@ type AgentMarketplaceListingEntity struct {
 	Summary          string  `gorm:"type:text;not null;default:''"`
 	State            string  `gorm:"type:varchar(32);not null;default:'listed'"`
 	CurrentReleaseID *string `gorm:"type:varchar(36)"`
+	UnlistedBy       string  `gorm:"type:varchar(255);not null;default:''"`
+	UnlistedAt       *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -77,6 +79,9 @@ type AgentReleaseEntity struct {
 	ForkNotes           string `gorm:"type:text;not null;default:''"`
 	LineageLicenseID    string `gorm:"type:varchar(64);not null;default:''"`
 	PublishedBy         string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedBy        string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedAt        *time.Time
+	SuccessorReleaseID  string `gorm:"type:varchar(36);not null;default:''"`
 	CreatedAt           time.Time
 }
 
