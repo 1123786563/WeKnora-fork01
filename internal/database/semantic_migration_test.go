@@ -32,6 +32,9 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	t.Cleanup(func() { _, _ = m.Close() })
 	// Return to version 106, immediately before semantic_model_invocations(107).
 	require.NoError(t, m.Migrate(106))
+	version, dirty = sqliteMigrationState(t, db)
+	require.Equal(t, 106, version)
+	require.False(t, dirty)
 	for _, table := range semanticInvocationTables {
 		require.False(t, sqliteTableExists(t, db, table), "down migration must remove %s", table)
 	}

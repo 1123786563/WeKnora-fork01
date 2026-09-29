@@ -33,9 +33,11 @@ func NewWorkbenchReadHandler(
 func NewWorkbenchArtifactHandler(
 	runs *repository.AgentRunStore,
 	messages interfaces.MessageService,
+	snapshots *repository.AgentRunSnapshotRepository,
 	versions *repository.ArtifactVersionStore,
 ) *session.WorkbenchArtifactHandler {
 	return session.NewWorkbenchArtifactHandler(runs, messages).
+		WithTerminalLog(snapshots).
 		WithArtifactVersions(versions).
 		WithArtifactVersionRevoker(versions)
 }

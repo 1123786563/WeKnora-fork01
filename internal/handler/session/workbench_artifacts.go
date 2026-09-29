@@ -35,10 +35,18 @@ type ArtifactVersionRevoker interface {
 type WorkbenchArtifactHandler struct {
 	runs           OwnedRunReader
 	refs           ArtifactRefReader
+	terminal       TerminalLogReader
 	versions       ArtifactVersionSource
 	versionRevoker ArtifactVersionRevoker
 	signingKey     func() ([]byte, error)
 	ttl            time.Duration
+}
+
+// WithTerminalLog attaches the read-side terminal reader. The availability
+// flag in artifact listings mirrors whether the terminal-log capability is wired.
+func (h *WorkbenchArtifactHandler) WithTerminalLog(reader TerminalLogReader) *WorkbenchArtifactHandler {
+	h.terminal = reader
+	return h
 }
 
 // WithArtifactVersions enables grants for immutable, published artifact versions.
@@ -73,9 +81,23 @@ type workbenchArtifactItem struct {
 	Name      string `json:"name"`
 	Mime      string `json:"mime"`
 	Version   string `json:"version"`
+	Digest    string `json:"digest,omitempty"`
 	Size      int64  `json:"size"`
 	SourceRun string `json:"source_run"`
 	CreatedAt any    `json:"created_at"`
+}
+
+// artifactVersionOf derives an immutable identity from the persisted content
+// digest when available, falling back to the immutable message/index binding.
+func artifactVersionOf(ref types.SessionArtifactRef) string {
+	digest := strings.TrimSpace(ref.Artifact.ContentHash)
+	if len(digest) >= 16 {
+		return digest[:16]
+	}
+	if digest != "" {
+		return digest
+	}
+	return ref.MessageID + ":" + strconv.Itoa(ref.Index)
 }
 
 func artifactListItemFromRef(runID string, position int, ref types.SessionArtifactRef) workbenchArtifactItem {
@@ -94,7 +116,8 @@ func artifactListItemFromRef(runID string, position int, ref types.SessionArtifa
 		ID:        ref.MessageID + ":" + strconv.Itoa(ref.Index),
 		Name:      ref.Artifact.FileName,
 		Mime:      contentType,
-		Version:   "1",
+		Version:   artifactVersionOf(ref),
+		Digest:    strings.TrimSpace(ref.Artifact.ContentHash),
 		Size:      ref.Artifact.FileSize,
 		SourceRun: runID,
 		CreatedAt: ref.Artifact.CreatedAt,
@@ -126,7 +149,7 @@ func (h *WorkbenchArtifactHandler) ListWorkbenchArtifacts(c *gin.Context) {
 	for position, ref := range refs {
 		items = append(items, artifactListItemFromRef(run.Key.RunID, position, ref))
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "terminal": gin.H{"available": h.terminal != nil}}})
 }
 
 // CreateWorkbenchArtifactSignedURL godoc

@@ -206,19 +206,21 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // applications/:applicationId/preparations + GET preparations/receipt）。历史
 // 692 条 = 既有 689 条 + T20 Career Reminder 3（POST reminders + GET reminders
 // + GET reminders/receipt，站内待办权威、推送仅为提醒 seam 无独立路由）。
-// 当前 698 条 = 既有 693 条 + T12 Career Reconciliation 5（POST
+// 当前合并图发现 763 条路由；其中新增公共 Marketplace 与 career/agent
+// integration surfaces 已纳入 merged graph。详情见各 integration manifest。
+// 历史 698 条 = 既有 693 条 + T12 Career Reconciliation 5（POST
 // opportunities/reconcile + GET opportunities/:opportunityId/status + GET
 // opportunities/:opportunityId/reconciliations + GET reconciliations/receipt
 // + GET coverage，去重/合并决策与覆盖说明，全部只读除 reconcile 决策写）。
 // 日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 629
-	wantRouteAPIKey   = 69
+	wantRouteLiteral  = 676
+	wantRouteAPIKey   = 87
 	wantRouteHandle   = 0
-	wantRouteTotal    = 698
+	wantRouteTotal    = 763
 	wantWorkersPerMix = 23
-	wantHooks         = 58
+	wantHooks         = 59
 )
 
 func repoRoot(t *testing.T) string {
