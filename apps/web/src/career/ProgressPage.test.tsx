@@ -81,6 +81,22 @@ test('the timeline lists events in order with source, confirmer, content and a p
  assert.match(items[1]!.textContent ?? '', new RegExp(ts2))
 })
 
+test('generic timeline omits submission event choices and routes to dedicated submission confirmation', async () => {
+ const career: CareerStub = { applicationProgress: async () => view('preparing', []), applicationSubmissions: async () => ({ applicationId: 'app-1', submissions: [] }), open: async () => ({ revision: 1 }), materialExports: async () => ({ exports: [] }) }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(ProgressPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1' }))
+ await act(async () => { await settle(); await settle() })
+ const options = [...container.querySelectorAll<HTMLOptionElement>('[aria-label="事件类型"] option')].map((option) => option.value)
+ assert.equal(options.includes('submitted'), false)
+ assert.equal(options.includes('resubmitted'), false)
+ const correctionOptions = [...container.querySelectorAll<HTMLOptionElement>('[aria-label="更正事件类型"] option')].map((option) => option.value)
+ assert.equal(correctionOptions.includes('submitted'), false)
+ assert.equal(correctionOptions.includes('resubmitted'), false)
+ click(byLabel(container, 'button', '投递确认与回看'))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.textContent ?? '', /记录投递确认/)
+})
+
 test('recording an interview event updates the projection and reopening shows the same stage', async () => {
  let current = view('submitted', [event(1, 'submitted', '已通过官网投递')])
  const sent: unknown[] = []
