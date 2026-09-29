@@ -32,7 +32,7 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution
 ```
 
 Only these documentation Tasks are in scope. No application implementation Task is ready under the current #86/#87 gates.
@@ -121,7 +121,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 - Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
 
-**Produces:** Task 1's verification is explicitly identified as local to its checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`, with base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; it does not describe later plan edits. Task 3 verifies its own plan edit and makes no claim that only two files changed.
+**Produces:** Task 1's report supplies base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; Git commit metadata establishes checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838` as a commit with that parent. Task 1's verification is local to that checkpoint and does not describe later plan edits. Task 3 verifies its own plan edit and makes no claim that only two files changed.
 
 **Implementation steps:**
 
@@ -145,7 +145,7 @@ Only these documentation Tasks are in scope. No application implementation Task 
 
 - Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
 
-**Consumes:** Task 1 report records base `27745734eae97f2f83b8b2ad504d753ed3c8da97` and checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838`.
+**Consumes:** Task 1 report records base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; Git commit metadata establishes checkpoint `d2121488f52491add5e3b240b40bf7e30aa2b838` as a commit whose parent is that base.
 
 **Produces:** Task 1's two-file-only range is explicitly `27745734..d2121488`; Task 3's verification is distinguished from that range claim; the top-level DAG and self-check account for Tasks 1–4.
 
@@ -157,14 +157,41 @@ Only these documentation Tasks are in scope. No application implementation Task 
 - [ ] Run `git diff --check`; expect exit code 0.
 - [ ] Verify only this plan changed and commit with message `docs(issue-72): correct audit plan task ranges`.
 
-**Verification:** The Task 1 report base/checkpoint match the stated `27745734..d2121488` range; the DAG orders T1 → T2 → T3 → T4; the self-check names Task 2, Task 3, and Task 4's respective corrections; `git diff --check` passes and only this plan is changed.
+**Verification:** The Task 1 report base and Git-established checkpoint match the stated `27745734..d2121488` range; the DAG orders T1 → T2 → T3 → T4; the self-check names Task 2, Task 3, and Task 4's respective corrections; `git diff --check` passes and only this plan is changed.
 
 **Failure handling:** If the Task 1 report's base/checkpoint cannot be confirmed, stop and resolve the evidence discrepancy before claiming a verified range.
+
+### Task 5: Correct checkpoint evidence source attribution
+
+**Dependencies:** Tasks 1–4 are complete; review found that the Task 1 report provides the base while Git commit metadata provides the checkpoint and parent relationship.
+
+**Owner role:** `mechanical_worker` for the bounded plan-only attribution correction.
+
+**Validator role:** `reviewer` for source attribution and range consistency.
+
+**Owned files:**
+
+- Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+
+**Consumes:** Task 1 report records base `27745734eae97f2f83b8b2ad504d753ed3c8da97`; `git show -s --format='%H%n%P' d2121488f52491add5e3b240b40bf7e30aa2b838` establishes the checkpoint commit and its parent.
+
+**Produces:** Task 3/Task 4 wording attributes the base to the Task 1 report and the checkpoint/parent relation to Git metadata; Task 1's exact two-file range remains `27745734..d2121488`; the DAG and self-check account for Tasks 1–5.
+
+**Implementation steps:**
+
+- [ ] Correct Task 3 and Task 4 source attribution without changing Task 1's exact two-file range.
+- [ ] Append this Task 5 record and update the self-check count and explanation.
+- [ ] Run `git diff --check`; expect exit code 0.
+- [ ] Verify only this plan changed and commit with message `docs(issue-72): clarify checkpoint evidence source`.
+
+**Verification:** The Task 1 base is attributed to its report; the checkpoint and parent are attributed to Git metadata; the exact `27745734..d2121488` range is unchanged; the DAG orders T1 → T2 → T3 → T4 → T5; `git diff --check` passes and only this plan is changed.
+
+**Failure handling:** If the Task 1 report base or Git checkpoint-parent relationship differs from the recorded values, stop and resolve the evidence discrepancy before editing the attribution.
 
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, and Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, and Task 5 attributes report and Git evidence to their respective sources.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: four documentation tasks; Tasks 2–4 are review-driven plan corrections covering the hash conclusion, verification scope, and Task 1 range plus task traceability. No production tests are relevant.
+- Proportion: five documentation tasks; Tasks 2–5 are review-driven plan corrections covering the hash conclusion, verification scope, Task 1 range plus task traceability, and evidence source attribution. No production tests are relevant.
