@@ -39,6 +39,12 @@ func (r *authorizationRecorder) snapshot() []string {
 	return append([]string(nil), r.values...)
 }
 
+func (r *authorizationRecorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.values = nil
+}
+
 type shellBoundaryHandle struct{ id string }
 
 func (h *shellBoundaryHandle) ID() string                       { return h.id }
@@ -165,5 +171,32 @@ func TestManagedDeliveryCredentialNeverEntersGeneralShell(t *testing.T) {
 	require.Len(t, client.execs, 2, "session workspace bootstrap and requested command both cross the Shell exec boundary")
 	for _, request := range client.execs {
 		require.NotContains(t, request.Env, managedDeliveryProbe)
+	}
+}
+
+func TestManagedCredentialWrongScopeCannotDispatch(t *testing.T) {
+	cases := []struct {
+		name    string
+		tenant  uint64
+		owner   string
+		service string
+	}{
+		{name: "tenant", tenant: 2, owner: "u1", service: "github"},
+		{name: "owner", tenant: 1, owner: "u2", service: "github"},
+		{name: "service", tenant: 1, owner: "u1", service: "other-service"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			auth := &authorizationRecorder{RoundTripper: http.DefaultTransport}
+			delivery := newRecoveryEnvWithHTTPClient(t, &http.Client{Transport: auth}, true)
+			id := delivery.seedApprovedDelivery(t)
+			delivery.replaceManagedTokenWithWrongScope(t, tc.tenant, tc.owner, tc.service)
+			auth.reset()
+			status, state := delivery.dispatchState(t, id)
+			require.NotEqual(t, "delivered", state.State)
+			require.NotEqual(t, http.StatusOK, status)
+			require.Empty(t, auth.snapshot(), "scope mismatch must fail before an outbound request with Authorization")
+			require.Empty(t, delivery.github.snapshotWrites(), "scope mismatch must produce no provider write")
+		})
 	}
 }

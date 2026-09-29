@@ -414,6 +414,26 @@ func (e *recoveryEnv) dispatchState(t *testing.T, deliveryID string) (int, coded
 	return w.Code, out.Data.Delivery
 }
 
+func (e *recoveryEnv) replaceManagedTokenWithWrongScope(t *testing.T, tenant uint64, owner, service string) {
+	t.Helper()
+	require.NoError(t, e.db.Where("tenant_id = ? AND principal_type = ? AND principal_id = ? AND service_id = ?", 1, types.PrincipalWebUser, "u1", "github").Delete(&types.MCPOAuthToken{}).Error)
+	if tenant != 1 {
+		require.NoError(t, e.db.Create(&appconnectorrepo.InstallationRow{ID: "inst-gh-wrong", TenantID: tenant, AppID: "github", AppVersion: "1", State: appconnector.InstallationActive, Version: 1}).Error)
+	}
+	var memberCount int64
+	require.NoError(t, e.db.Model(&types.TenantMember{}).Where("tenant_id = ? AND user_id = ?", tenant, owner).Count(&memberCount).Error)
+	if memberCount == 0 {
+		require.NoError(t, e.db.Exec(`INSERT INTO tenant_members (user_id, tenant_id, role, status, joined_at) VALUES (?, ?, ?, ?, ?)`, owner, tenant, types.TenantRoleContributor, types.TenantMemberStatusActive, time.Now()).Error)
+	}
+	require.NoError(t, e.db.Exec(`INSERT OR IGNORE INTO mcp_services (id, tenant_id, name, transport_type) VALUES (?, ?, ?, ?)`, service, tenant, service, types.MCPTransportHTTPStreamable).Error)
+	installationID := "inst-gh"
+	if tenant != 1 { installationID = "inst-gh-wrong" }
+	bs := repository.NewMCPOAuthBindingStore(e.db)
+	require.NoError(t, bs.IssueBindingState(context.Background(), appconnector.OAuthBinding{State: "wrong-scope-state", InstallationID: installationID, ActorID: owner, TenantID: tenant, ExpiresAt: time.Now().Add(time.Minute)}, service))
+	_, err := bs.CompleteBinding(context.Background(), tenant, "wrong-scope-state", owner, &types.MCPOAuthToken{AccessToken: t25ProbeToken, TokenType: "Bearer"})
+	require.NoError(t, err)
+}
+
 // AC1 e2e：推送成功 + PR 确定性失败 = pushed；恢复只补 PR 恰一次；
 // delivered 之后的重复派发被状态机拒绝（409）且零远端副作用。
 func TestT25PartialPushPRFailureRecoversExactlyOnceOverHTTP(t *testing.T) {
