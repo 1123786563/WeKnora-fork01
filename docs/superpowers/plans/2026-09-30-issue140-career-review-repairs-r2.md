@@ -332,6 +332,46 @@
 
 **Acceptance:** A `deleted` receipt is issued only after every application/material/upload external effect admitted before deletion is terminal and all discoverable private object keys are removed. Duplicate retries cannot release another attempt's claim, and storage retries cannot orphan an untracked prior object.
 
+## Task 22: Project each recorded submission into the authoritative progress timeline
+
+**Dependency:** Task 4 commit `04f08470cdd2862268abf911b04715c3685ab79f`; review finding T4-1 in `/tmp/issue140-r2-task4-review.md`. Preserve the generic-submission guard. Sequence any migration after Task21's final migration decision; do not allocate the same migration pair concurrently.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** `internal/modules/career/submission.go`, `progress.go`, their tests, and a Career migration pair only if a persisted link is required. Keep frontend files out of this task.
+
+**Consumes / produces:** `RecordSubmission` remains the only write path for actual submission confirmation and continues to bind channel, actual time, and exact material export/version/digest or explicit unknown version. In the same database transaction, persist or derive exactly one traceable `submitted` progress event linked to the submission ID. Idempotent request replay returns the original submission and does not duplicate the timeline event. Corrections remain append-only and must preserve the original submission linkage. `ApplicationProgress` projects the submitted stage from this authoritative event in deterministic order.
+
+**Steps:**
+
+- [ ] Add RED tests that record both a known-export and explicit-unknown submission, read `ApplicationProgress`, and assert one linked submitted event, correct stage, channel/time/version facts and stable replay without duplicate events.
+- [ ] Test transaction rollback so a failed progress-event write leaves neither a submission nor a timeline event.
+- [ ] Implement an atomic link or deterministic projection from the submission record; reject generic submitted/resubmitted events as Task4 already requires.
+- [ ] Append migration IDs after the final Task21 pair if a `submission_id` link column is necessary; test up/down and uniqueness without renumbering existing IDs.
+- [ ] Run focused submission/progress tests, Career package and database migrations, and `git diff --check`; run PostgreSQL transactional test when configured, otherwise report the limitation.
+- [ ] Commit only backend event/link/test/schema files and document replay, ordering and correction semantics.
+
+**Acceptance:** A confirmed actual submission becomes visible in `ApplicationProgress` and advances the projected stage exactly once; its channel/time/material version remains traceable, including the explicit unknown-version state.
+
+## Task 23: Carry the application's material identity into submission confirmation
+
+**Dependency:** Task4 commit `04f08470cdd2862268abf911b04715c3685ab79f`; review finding T4-2 in `/tmp/issue140-r2-task4-review.md`. This UI entry fix is independent of Task22's backend timeline projection.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/career/ProgressPage.tsx` and its focused tests only; reuse the existing `SubmissionPage` contract.
+
+**Consumes / produces:** Resolve the current application detail's material ID from the already loaded application data and pass it into `SubmissionPage`, or navigate through the existing `ApplicationPage` confirmation seam that already supplies that ID. Keep export eligibility, revoked-version and explicit-unknown handling in `SubmissionPage`; do not synthesize a material ID or latest version.
+
+**Steps:**
+
+- [ ] Add a test for the confirmation entry from ProgressPage where the application has a known submittable export; assert that export appears and its exact ID/version is submitted.
+- [ ] Add a case for absent material/export that still offers only an explicit unknown version or a clear unavailable state.
+- [ ] Run tests RED, pass the real application material ID through the entry seam, and preserve the existing scope/revision behavior.
+- [ ] Run focused ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only owned Web file/test changes.
+
+**Acceptance:** A user confirming from the progress timeline can bind the actual exported material version when known, while unknown or unavailable versions remain explicit and honest.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
