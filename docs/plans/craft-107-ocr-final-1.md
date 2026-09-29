@@ -1304,3 +1304,20 @@ Core review (3 requests):
 - internal/application/repository/craft_preview_check.go,internal/application/repository/craft_stop_intent.go,internal/application/repository/craft_version.go,internal/application/repository/craft_workspace.go: rate limited (HTTP 429) -> succeeded
 
 Per-attempt detail: --format json (retry_report).
+
+## Assigned remediation evidence: F08 / F30 / F31
+
+Execution checkout: `/Users/wuyongjun/.codex/worktrees/ocr-build-pipeline/WeKnora-fork01` (base `4dc97ff8`). Scope was limited to the pinned Craft web build evidence, command gate, and staged HTML sanitizer.
+
+- **F08 — closed fail-closed; server receipt plumbing remains required.** `output/build-log.json` is sandbox-writable, so its claimed exit status no longer establishes `BuildRan` or `BuildExitCode`. `CraftWebBuildEvidence` now requires an independently observed exit code and rejects missing or mismatched observations. The current session-file evidence adapter has no server-owned execution receipt seam; it passes no observation, leaving the build check `not_run` until that seam is added. Receipt trace: `CraftDockerNormalExecService.Execute` returns terminal provider observation in `internal/application/service/craft_docker_normal_exec.go`, but repository search found no production call site (only tests and service assembly); `internal/container/craft_runtime.go` registers the web gate for a future dispatch face, and the existing build-evidence readers consume only session/run-view files. No current code ties that result to the exact pinned build command and Run. A regression test proves a fully matching forged success log remains unobserved and cannot override an observed failure. This removes the forged-pass path, but does not restore successful web-build promotion.
+- **F30 — fixed.** The command gate rejects repeated value flags, missing required value flags, `--selftest`, input paths outside `/workspace`, traversal or backslash path aliases, output paths other than `/workspace/output`, and a runtime digest that differs from the deployment pin when present. Added command-shape regression cases cover each class.
+- **F31 — fixed.** Staged HTML rejects `<style>`, `<link>`, and any `style=` attribute. The fixed template’s own stylesheet link is unaffected because only staged fragments pass through `render_html`. Updated the pinned build-program hash and derived toolchain digest in `docker/craft/web/toolchain.lock.json` and `docker/craft/runtime-config.json`, plus the checked-in offline build-log snapshot.
+
+Verification commands and results:
+
+- `go test ./internal/container -run CraftWeb -count=1` — passed (`ok github.com/Tencent/WeKnora/internal/container`, 8.436s).
+- `python3 -m unittest docker/craft/web/test_build.py` — passed (10 tests).
+- `gofmt -w internal/container/craft_web_build.go internal/container/craft_web_build_review.go internal/container/craft_web_build_review_test.go internal/container/craft_web_build_test.go internal/container/craft_web_build_ocr_regression_test.go` — completed.
+- No Docker build was run.
+
+Files changed for this remediation: `internal/container/craft_web_build.go`, `internal/container/craft_web_build_test.go`, `internal/container/craft_web_build_ocr_regression_test.go`, `internal/container/craft_web_build_review.go`, `internal/container/craft_web_build_review_test.go`, `docker/craft/web/build.py`, `docker/craft/web/test_build.py`, `docker/craft/web/toolchain.lock.json`, `docker/craft/runtime-config.json`, and `docs/testing/craft/t04/offline-build-output/build-log.json`.

@@ -41,6 +41,7 @@ var versionedSQLiteTables = []string{
 	"agent_release_submissions",
 	"agent_release_reviews",
 	"agent_releases",
+	"craft_budget_extension_intents", // SQLite migration 000136 / versioned 000215.
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the

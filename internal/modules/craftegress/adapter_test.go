@@ -1,14 +1,20 @@
 package craftegress
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/sirupsen/logrus"
 )
 
 // mockGateway plays the Craft model gateway for adapter tests: it records the
@@ -46,9 +52,16 @@ func (m *mockGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respBody = `{"id":"chatcmpl-1","usage":{"prompt_tokens":1}}`
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if failBody {
+		w.Header().Set("Content-Length", strconv.Itoa(len(respBody)))
+	}
 	w.WriteHeader(status)
 	if failBody {
-		// Panic with http.ErrAbortHandler drops the connection mid-response.
+		// Send a torn body, then drop the connection.
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		_, _ = w.Write([]byte(respBody[:len(respBody)/2]))
 		panic(http.ErrAbortHandler)
 	}
 	_, _ = w.Write([]byte(respBody))
@@ -194,7 +207,7 @@ func TestAdapterFailsClosedWhenJournalCannotPersist(t *testing.T) {
 }
 
 func TestAdapterReusesActivityIDAfterUnknownAndMintsNewAfterResolution(t *testing.T) {
-	gateway := &mockGateway{failBody: true}
+	gateway := &mockGateway{failBody: true, status: http.StatusBadGateway, body: `{"error":{"code":"ACTIVITY_UNRESOLVED"}}`}
 	server := httptest.NewServer(gateway)
 	defer server.Close()
 	path := filepath.Join(t.TempDir(), "attempts.jsonl")
@@ -217,6 +230,7 @@ func TestAdapterReusesActivityIDAfterUnknownAndMintsNewAfterResolution(t *testin
 	// The transport recovers: the same logical call now completes.
 	gateway.mu.Lock()
 	gateway.failBody = false
+	gateway.status = http.StatusOK
 	gateway.mu.Unlock()
 	third := postChat(t, adapter, body)
 	if third.Code != http.StatusOK {
@@ -239,7 +253,7 @@ func TestAdapterReusesActivityIDAfterUnknownAndMintsNewAfterResolution(t *testin
 }
 
 func TestAdapterJournalSurvivesRestartAndReusesUnresolvedID(t *testing.T) {
-	gateway := &mockGateway{failBody: true}
+	gateway := &mockGateway{failBody: true, status: http.StatusBadGateway, body: `{"error":{"code":"ACTIVITY_UNRESOLVED"}}`}
 	server := httptest.NewServer(gateway)
 	defer server.Close()
 	path := filepath.Join(t.TempDir(), "attempts.jsonl")
@@ -254,6 +268,7 @@ func TestAdapterJournalSurvivesRestartAndReusesUnresolvedID(t *testing.T) {
 	defer restarted.Close()
 	gateway.mu.Lock()
 	gateway.failBody = false
+	gateway.status = http.StatusOK
 	gateway.mu.Unlock()
 	rec := postChat(t, restarted, `{"model":"m1","messages":[]}`)
 	if rec.Code != http.StatusOK {
@@ -285,6 +300,199 @@ func TestAdapterPassesGatewayConflictThroughWithoutMinting(t *testing.T) {
 	ids := gateway.activities()
 	if len(ids) != 2 || ids[0] != ids[1] {
 		t.Fatalf("409 must not trigger a new id, got %v", ids)
+	}
+}
+
+func TestGatewayOutcomeDefinitivePolicy(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{name: "non-5xx response", status: http.StatusOK, body: `{"ok":true}`, want: true},
+		{name: "known not-started envelope remains uncertain", status: http.StatusBadGateway, body: `{"success":false,"error":{"code":"UPSTREAM_ERROR","message":"the activity never started"}}`, want: false},
+		{name: "full appFail terminal envelope cannot prove origin", status: http.StatusBadGateway, body: `{"success":false,"error":{"code":"UPSTREAM_ERROR","message":"the upstream request failed"}}`, want: false},
+		{name: "missing success field is not terminal proof", status: http.StatusBadGateway, body: `{"error":{"code":"UPSTREAM_ERROR","message":"failed"}}`, want: false},
+		{name: "success true lookalike is not terminal proof", status: http.StatusBadGateway, body: `{"success":true,"error":{"code":"UPSTREAM_ERROR","message":"failed"}}`, want: false},
+		{name: "missing message is not terminal proof", status: http.StatusBadGateway, body: `{"success":false,"error":{"code":"UPSTREAM_ERROR"}}`, want: false},
+		{name: "empty message is not terminal proof", status: http.StatusBadGateway, body: `{"success":false,"error":{"code":"UPSTREAM_ERROR","message":""}}`, want: false},
+		{name: "unresolved envelope stays parked", status: http.StatusBadGateway, body: `{"error":{"code":"ACTIVITY_UNRESOLVED"}}`, want: false},
+		{name: "bare 409 is a definitive upstream response", status: http.StatusConflict, body: `{"error":{"code":"OTHER"}}`, want: true},
+		{name: "bare 502 stays parked", status: http.StatusBadGateway, body: `gateway error`, want: false},
+		{name: "503 cannot prove gateway outcome", status: http.StatusServiceUnavailable, body: `{"error":"upstream failure"}`, want: false},
+		{name: "504 proxy JSON cannot prove gateway outcome", status: http.StatusGatewayTimeout, body: `{"error":"upstream failure"}`, want: false},
+		{name: "UPSTREAM_ERROR at another status remains uncertain", status: http.StatusServiceUnavailable, body: `{"error":{"code":"UPSTREAM_ERROR"}}`, want: false},
+		{name: "non-envelope 502 JSON is uncertain", status: http.StatusBadGateway, body: `{"error":"proxy timeout"}`, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gatewayOutcomeIsDefinitive(tt.status, []byte(tt.body)); got != tt.want {
+				t.Fatalf("gatewayOutcomeIsDefinitive(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdapterComplete502EnvelopeKeepsAttemptParked(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		responseBody string
+	}{
+		{name: "actual gateway appFail shape", responseBody: `{"success":false,"error":{"code":"UPSTREAM_ERROR","message":"the activity never started"}}`},
+		{name: "missing success", responseBody: `{"error":{"code":"UPSTREAM_ERROR","message":"proxy error"}}`},
+		{name: "success true", responseBody: `{"success":true,"error":{"code":"UPSTREAM_ERROR","message":"proxy error"}}`},
+		{name: "missing message", responseBody: `{"success":false,"error":{"code":"UPSTREAM_ERROR"}}`},
+		{name: "empty message", responseBody: `{"success":false,"error":{"code":"UPSTREAM_ERROR","message":""}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gateway := &mockGateway{status: http.StatusBadGateway, body: tt.responseBody}
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+			adapter := newAdapterForTest(t, server, filepath.Join(t.TempDir(), "attempts.jsonl"))
+			defer adapter.Close()
+			body := `{"model":"m1","messages":[{"role":"user","content":"envelope shape"}]}`
+			if got := postChat(t, adapter, body); got.Code != http.StatusBadGateway {
+				t.Fatalf("first response must pass through as 502, got %d", got.Code)
+			}
+			gateway.mu.Lock()
+			gateway.status = http.StatusOK
+			gateway.mu.Unlock()
+			if got := postChat(t, adapter, body); got.Code != http.StatusOK {
+				t.Fatalf("retry must complete, got %d", got.Code)
+			}
+			ids := gateway.activities()
+			if len(ids) != 2 {
+				t.Fatalf("expected two physical sends, got %v", ids)
+			}
+			same := ids[0] == ids[1]
+			if !same {
+				t.Fatalf("complete 502 response must keep retry on the same attempt id; ids=%v", ids)
+			}
+		})
+	}
+}
+
+func TestAdapterProxy5xxJSONKeepsAttemptParked(t *testing.T) {
+	for _, tt := range []struct {
+		status int
+		body   string
+	}{
+		{status: http.StatusBadGateway, body: `{"error":"proxy timeout"}`},
+		{status: http.StatusBadGateway, body: `{"error":{"code":"UPSTREAM_ERROR"}}`},
+		{status: http.StatusGatewayTimeout, body: `{"error":"upstream timed out"}`},
+	} {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			gateway := &mockGateway{status: tt.status, body: tt.body}
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+			adapter := newAdapterForTest(t, server, filepath.Join(t.TempDir(), "attempts.jsonl"))
+			defer adapter.Close()
+			body := `{"model":"m1","messages":[{"role":"user","content":"proxy error"}]}`
+			if got := postChat(t, adapter, body); got.Code != tt.status {
+				t.Fatalf("proxy response must pass through, got %d want %d", got.Code, tt.status)
+			}
+			gateway.mu.Lock()
+			gateway.status = http.StatusOK
+			gateway.mu.Unlock()
+			if got := postChat(t, adapter, body); got.Code != http.StatusOK {
+				t.Fatalf("retry must complete, got %d", got.Code)
+			}
+			ids := gateway.activities()
+			if len(ids) != 2 || ids[0] != ids[1] {
+				t.Fatalf("proxy %d JSON response must keep retry on the same attempt id, got %v", tt.status, ids)
+			}
+		})
+	}
+}
+
+func TestAdapterTornBodyResolutionIsStatusSensitive(t *testing.T) {
+	for _, tt := range []struct {
+		status       int
+		wantReissued bool
+	}{
+		{status: http.StatusOK, wantReissued: true},
+		{status: http.StatusConflict, wantReissued: false},
+		{status: http.StatusBadGateway, wantReissued: false},
+		{status: http.StatusServiceUnavailable, wantReissued: false},
+		{status: http.StatusGatewayTimeout, wantReissued: false},
+	} {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			gateway := &mockGateway{failBody: true, status: tt.status, body: `{"error":{"code":"UPSTREAM_ERROR"}}`}
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+			adapter := newAdapterForTest(t, server, filepath.Join(t.TempDir(), "attempts.jsonl"))
+			defer adapter.Close()
+			body := `{"model":"m1","messages":[{"role":"user","content":"torn response"}]}`
+			first := postChat(t, adapter, body)
+			if first.Code != http.StatusBadGateway {
+				t.Fatalf("torn response must surface 502, got %d", first.Code)
+			}
+			gateway.mu.Lock()
+			gateway.failBody = false
+			gateway.status = http.StatusOK
+			gateway.mu.Unlock()
+			if got := postChat(t, adapter, body); got.Code != http.StatusOK {
+				t.Fatalf("retry must complete, got %d", got.Code)
+			}
+			ids := gateway.activities()
+			if len(ids) != 2 {
+				t.Fatalf("expected two physical attempts, got %v", ids)
+			}
+			same := ids[0] == ids[1]
+			if same == tt.wantReissued {
+				t.Fatalf("status %d: retry ID reuse = %v, want reissued=%v; ids=%v", tt.status, same, tt.wantReissued, ids)
+			}
+		})
+	}
+}
+
+func TestAdapterLogsTornBodyResolutionFailure(t *testing.T) {
+	var adapter *CraftEgressAdapter
+	var logs bytes.Buffer
+	log := logrus.New()
+	log.SetOutput(&logs)
+	log.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true, DisableColors: true})
+	log.SetLevel(logrus.ErrorLevel)
+
+	var attemptID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attemptID = r.Header.Get(craftModelActivityHeader)
+		// Mint has already been persisted before forwarding. Closing the journal
+		// here makes the subsequent Resolve append fail deterministically.
+		if err := adapter.journal.file.Close(); err != nil {
+			t.Errorf("close journal file to induce Resolve failure: %v", err)
+		}
+		body := `{"ok":true}`
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		_, _ = w.Write([]byte(body[:len(body)/2]))
+		panic(http.ErrAbortHandler)
+	}))
+	defer server.Close()
+
+	adapter = newAdapterForTest(t, server, filepath.Join(t.TempDir(), "attempts.jsonl"))
+	defer adapter.Close()
+	requestBody := `{"model":"m1","messages":[{"role":"user","content":"torn resolve failure"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), types.LoggerContextKey, logrus.NewEntry(log)))
+	recorder := httptest.NewRecorder()
+	adapter.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("torn response must remain HTTP 502, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if attemptID == "" {
+		t.Fatal("gateway must receive an attempt ID")
+	}
+	for _, want := range []string{attemptID, "definitive=true", "gateway_status=200", "error="} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("journal resolution failure log missing %q: %s", want, logs.String())
+		}
 	}
 }
 

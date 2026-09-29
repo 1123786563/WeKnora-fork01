@@ -1,7 +1,7 @@
 package craftegress
 
 import (
-	"github.com/Tencent/WeKnora/internal/logger"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Tencent/WeKnora/internal/logger"
 )
 
 // craftModelActivityHeader mirrors the gateway contract
@@ -192,7 +194,7 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		attemptID = record.AttemptID
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, forwardURL, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, forwardURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "egress forward unavailable", http.StatusBadGateway)
 		return
@@ -219,7 +221,15 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if readErr != nil || int64(len(responseBody)) > a.maxBody {
 		if attemptID != "" {
 			digest := craftEgressRequestDigest(r.Method, r.URL.Path, r.URL.RawQuery, body)
-			_ = a.journal.Resolve(attemptID, digest, resp.StatusCode, false)
+			// A torn response has no trustworthy envelope. Status-only fallback
+			// resolves non-5xx responses except 409; any 5xx may have come from
+			// an ingress timeout while the physical call is still running.
+			definitive := responseBodyReadOutcomeIsDefinitive(resp.StatusCode)
+			if err := a.journal.Resolve(attemptID, digest, resp.StatusCode, definitive); err != nil {
+				logger.ErrorWithFields(r.Context(), err, map[string]any{
+					"craft_attempt_id": attemptID, "definitive": definitive, "gateway_status": resp.StatusCode,
+				})
+			}
 			w.Header().Set(craftModelActivityHeader, attemptID)
 		}
 		http.Error(w, "egress response incomplete", http.StatusBadGateway)
@@ -228,13 +238,12 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if attemptID != "" {
 		digest := craftEgressRequestDigest(r.Method, r.URL.Path, r.URL.RawQuery, body)
 		// The gateway marks an unknown-outcome send with the machine-readable
-		// appFail code ACTIVITY_UNRESOLVED — on 409 (its own binding
-		// conflict) and on 502 (initiation timeout, failed forward, lost
-		// response). Only that code parks; a bare status (an upstream 409
-		// passed through verbatim) is definitive, and a definitive resolve
-		// of an actually-unknown send would mint a fresh identity on retry
-		// and bill the same logical request twice.
-		definitive := !gatewayReportsActivityUnresolved(resp.StatusCode, responseBody)
+		// appFail code ACTIVITY_UNRESOLVED. All 5xx responses also stay parked
+		// because their origin cannot be authenticated from status or body
+		// shape alone. A bare non-5xx status (such as an upstream 409 passed
+		// through verbatim) is definitive; resolving an actually-unknown send
+		// would mint a fresh identity on retry and could bill it twice.
+		definitive := gatewayOutcomeIsDefinitive(resp.StatusCode, responseBody)
 		if err := a.journal.Resolve(attemptID, digest, resp.StatusCode, definitive); err != nil {
 			// A definitive resolve that failed to persist strands the parked
 			// identity (every same-fingerprint retry reuses it and hits the
@@ -318,4 +327,23 @@ func gatewayReportsActivityUnresolved(status int, body []byte) bool {
 	// outcome. Parking a definitive failure makes the same-fingerprint retry
 	// reuse the parked id and deadlock on the gateway's 409 forever.
 	return envelope.Error.Code == "ACTIVITY_UNRESOLVED"
+}
+
+// gatewayOutcomeIsDefinitive permits a new physical attempt only when the
+// response status is non-5xx and does not explicitly report an unresolved
+// activity. A JSON envelope alone cannot authenticate its origin, so all 5xx
+// responses stay parked even when they look like gateway appFail responses.
+func gatewayOutcomeIsDefinitive(status int, body []byte) bool {
+	if gatewayReportsActivityUnresolved(status, body) {
+		return false
+	}
+	return status < http.StatusInternalServerError
+}
+
+// responseBodyReadOutcomeIsDefinitive is the status-only fallback when the
+// response body could not be read completely and therefore cannot prove which
+// gateway outcome produced it. All 5xx responses stay unresolved; a 409 is
+// also ambiguous because it may be the gateway's unresolved-activity conflict.
+func responseBodyReadOutcomeIsDefinitive(status int) bool {
+	return status < http.StatusInternalServerError && status != http.StatusConflict
 }

@@ -28,6 +28,32 @@ export interface CraftCreateSessionInput {
   kind: CraftSessionKind;
 }
 
+/** A durable, server-issued budget extension action and its approved quantum. */
+export interface CraftBudgetExtensionAction {
+  key: string;
+  extra_calls: number;
+  extra_credits: number;
+}
+
+export interface CraftBudgetPauseView {
+  pause: CraftBudgetPause;
+  extensionAction: CraftBudgetExtensionAction | null;
+}
+
+function parseCraftBudgetExtensionAction(value: unknown): CraftBudgetExtensionAction | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft budget extension action' });
+  }
+  const action = value as Record<string, unknown>;
+  if (typeof action['key'] !== 'string' || action['key'] === ''
+    || typeof action['extra_calls'] !== 'number' || !Number.isSafeInteger(action['extra_calls']) || action['extra_calls'] <= 0
+    || typeof action['extra_credits'] !== 'number' || !Number.isSafeInteger(action['extra_credits']) || action['extra_credits'] <= 0) {
+    throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Invalid craft budget extension action' });
+  }
+  return { key: action['key'], extra_calls: action['extra_calls'], extra_credits: action['extra_credits'] };
+}
+
 export interface CraftListSessionsParams {
   cursor?: string;
   limit?: number;
@@ -343,22 +369,37 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
      * GET /sessions/:id/craft/runs/:run_id/budget/pause — the T20 (#139)
      * durable budget-pause view. Extension actors (Task owner / tenant
      * billing admin) read the frozen {run_id, reason, limit, used} wire plus
-     * the server-projected can_extend; anyone else is refused server-side.
+     * an optional server-issued extension action; anyone else is refused server-side.
      */
-    async budgetPause(sessionId: string, runId: string, signal?: AbortSignal): Promise<{ pause: CraftBudgetPause; canExtend: boolean }> {
-      // can_extend rides the ENVELOPE top level (beside data), NOT inside
-      // the pause body — reading it off data would always answer false and
-      // hide the extension entrance.
+    async budgetPause(sessionId: string, runId: string, signal?: AbortSignal): Promise<CraftBudgetPauseView> {
       const envelope = await request({
         method: 'GET',
         path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/budget/pause',
         signal,
       });
       const data = unwrap(envelope, 'budget pause view');
-      const canExtend = typeof (envelope as Record<string, unknown>)['can_extend'] === 'boolean'
-        ? ((envelope as Record<string, unknown>)['can_extend'] as boolean)
-        : false;
-      return { pause: parseCraftBudgetPause(data), canExtend };
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft budget pause body' });
+      }
+      const body = data as Record<string, unknown>;
+      let pause: CraftBudgetPause;
+      try {
+        pause = parseCraftBudgetPause(body);
+      } catch (error) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Invalid craft budget pause', cause: error });
+      }
+      let extensionAction: CraftBudgetExtensionAction | null = null;
+      try {
+        extensionAction = parseCraftBudgetExtensionAction(body['extension_action']);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== 'INVALID_RESPONSE') throw error;
+        // The extension tuple is optional; retain the strict, required pause
+        // projection while withholding an unusable server action.
+      }
+      return {
+        pause,
+        extensionAction,
+      };
     },
     /**
      * POST /sessions/:id/craft/runs/:run_id/budget/extend — the owner/billing-
@@ -369,7 +410,7 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
     async extendBudget(
       sessionId: string,
       runId: string,
-      input: { key: string; extra_calls: number; extra_credits: number },
+      input: CraftBudgetExtensionAction,
       signal?: AbortSignal,
     ): Promise<void> {
       requireCraftActionSuccess(await request({

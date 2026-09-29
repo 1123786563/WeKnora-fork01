@@ -1,11 +1,11 @@
 package container
 
 import (
-	"sync"
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -59,10 +59,10 @@ const craftWebBuildToolchainPath = "/opt/craft/web"
 // pin; Review is per dispatch.
 type CraftWebBuildCommandGate struct {
 	warnInputsRootOnce sync.Once
-	policy        service.CraftExecutionPolicyGate
-	pin           CraftWebToolchainPin
-	toolchainDir  string
-	hostInputsRel string // symlink-resolved staged inputs root, "" when unknown
+	policy             service.CraftExecutionPolicyGate
+	pin                CraftWebToolchainPin
+	toolchainDir       string
+	hostInputsRel      string // symlink-resolved staged inputs root, "" when unknown
 }
 
 // CraftWebBuildCommandOption configures one assembled command gate.
@@ -134,7 +134,7 @@ var craftWebBuildValueFlags = map[string]bool{
 // craftWebBuildCommandShapeOk reports whether the command is exactly the
 // pinned build program invocation: python3 + the image build program + a
 // known flag set, with --toolchain pinned to the image directory.
-func craftWebBuildCommandShapeOk(command []string) bool {
+func craftWebBuildCommandShapeOk(command []string, expectedRuntimeDigest string) bool {
 	// argv[0] is pinned to the EXACT interpreter name (never a path):
 	// a same-named wrapper or symlink at any writable location
 	// (/tmp/evil/python3, ./python3) must not borrow this entry, and
@@ -142,18 +142,22 @@ func craftWebBuildCommandShapeOk(command []string) bool {
 	if len(command) < 2 || command[0] != "python3" || command[1] != craftWebBuildProgramPath {
 		return false
 	}
-	toolchainSeen := false
+	seen := make(map[string]bool, len(craftWebBuildValueFlags))
 	for i := 2; i < len(command); {
 		arg := command[i]
 		if arg == "--selftest" {
-			i++
-			continue
+			// Self-test writes to a temporary directory and is not the build
+			// operation admitted through this server dispatch entry.
+			return false
 		}
 		if !strings.HasPrefix(arg, "--") {
 			return false
 		}
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
 		if !craftWebBuildValueFlags[name] {
+			return false
+		}
+		if seen[name] {
 			return false
 		}
 		if !hasValue {
@@ -164,16 +168,49 @@ func craftWebBuildCommandShapeOk(command []string) bool {
 			value = command[i]
 		}
 		i++
+		seen[name] = true
 		if name == "toolchain" {
 			if value != craftWebBuildToolchainPath {
 				return false
 			}
-			toolchainSeen = true
+		}
+		if name == "input" && !craftWebWorkspacePath(value) {
+			return false
+		}
+		if name == "output" && value != "/workspace/output" {
+			return false
+		}
+		if name == "runtime-digest" && (strings.TrimSpace(value) == "" || strings.ContainsAny(value, "\x00\r\n")) {
+			return false
+		}
+		if name == "runtime-digest" && expectedRuntimeDigest != "" && value != expectedRuntimeDigest {
+			return false
 		}
 	}
-	// The build always names its toolchain so the pinned program verifies its
-	// own files against the shipped lock.
-	return toolchainSeen
+	// The fixed build requires each value exactly once. `argparse` otherwise
+	// uses the last duplicate value, which could redirect input/output or
+	// replace the runtime identity after this gate has screened the request.
+	for name := range craftWebBuildValueFlags {
+		if !seen[name] {
+			return false
+		}
+	}
+	return true
+}
+
+// craftWebWorkspacePath allows absolute data paths inside the container's
+// workspace while refusing traversal, normalization aliases, and paths
+// outside the mounted workspace. Output has a stricter fixed destination.
+func craftWebWorkspacePath(value string) bool {
+	if !filepath.IsAbs(value) || filepath.Clean(value) != value || strings.Contains(value, "\\") || value == "/workspace" || !strings.HasPrefix(value, "/workspace/") {
+		return false
+	}
+	for _, component := range strings.Split(value, string(filepath.Separator)) {
+		if component == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // craftWebShapeRefusal is the member-visible refusal for a foreign command
@@ -215,7 +252,7 @@ func (g *CraftWebBuildCommandGate) Review(ctx context.Context, request repositor
 		logger.Warnf(ctx, "[CraftWebBuild] command gate has NO T03 execution policy attached; refusing dispatch for run %s", request.RunID)
 		return fmt.Errorf("%w: craft web build command entry is not wired to the uploaded-material execution policy; the dispatch is refused", craft.ErrForbidden)
 	}
-	if !craftWebBuildCommandShapeOk(request.Command) {
+	if !craftWebBuildCommandShapeOk(request.Command, g.pin.RuntimeDigest) {
 		logger.Warnf(ctx, "[CraftWebBuild] refusing foreign command shape for run %s: %s", request.RunID, strings.Join(request.Command, " "))
 		return craftWebShapeRefusal(request.Command)
 	}

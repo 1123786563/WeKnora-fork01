@@ -61,6 +61,7 @@ func newCraftInteractionAssembly(
 		}
 	}
 	assembly.Control = service.NewCraftControlService(runs, store, nil, interactions, assembly.Client)
+	assembly.Control.SetTaskAccess(service.NewCraftAccessService(db))
 	// T17 (#136) production stop-intent seam: the member's stop request
 	// persists as its own durable fact (requested → confirmed/unknown) in
 	// craft_stop_intents, so a refresh replays the same durable answer and a

@@ -1,0 +1,1 @@
+[{"address": "00:00:00:00:00:00", "broadcast": "00:00:00:00:00:00", "flags": ["LOOPBACK", "UP", "LOWER_UP"], "group": "default", "ifindex": 1, "ifname": "lo", "link_type": "loopback", "linkmode": "DEFAULT", "mtu": 65536, "operstate": "UNKNOWN", "qdisc": "noqueue", "txqlen": 1000}]

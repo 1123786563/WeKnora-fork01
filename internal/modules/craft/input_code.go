@@ -288,6 +288,26 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		}
 	}
 	if req.Shell {
+		// Java expands @argfiles before the launcher policy can inspect their
+		// contents. For shell forms, use the same quote/escape-normalized
+		// tokens as the other lexical checks and fail closed on any Java
+		// command carrying an argfile token.
+		shellArgv := shellTokens(req.CommandText)
+		if hasJavaLauncherToken(shellArgv) {
+			if value := strings.TrimSpace(req.Environment["JDK_JAVA_OPTIONS"]); value != "" {
+				return p.deny("interpreter_input", "JDK_JAVA_OPTIONS", "")
+			}
+			for _, rawToken := range strings.Fields(req.CommandText) {
+				if key, value, ok := javaEnvAssignment(trimQuotes(rawToken)); ok && key == "JDK_JAVA_OPTIONS" && strings.Trim(value, "'\"") != "" {
+					return p.deny("interpreter_input", key, "")
+				}
+			}
+			for _, token := range shellArgv {
+				if target, ok := javaArgFileReference(token, req.WorkingDir, p); ok {
+					return p.deny("interpreter_input", target, "")
+				}
+			}
+		}
 		// Fail-closed: a shell expression cannot be reviewed lexically with
 		// sufficient confidence (indirection, quoting and escapes can hide
 		// the real target). Only adapter-supplied normalized evidence — a
@@ -365,9 +385,28 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// programFileNext marks that the previous option token was a
 		// separated-form program-file flag whose VALUE operand follows.
 		programFileNext := false
+		javaPathValueNext := ""
 		// phpSawServer marks that php's -S already appeared: only THEN is a
 		// positional the router script php executes per request.
 		phpSawServer := false
+		interpreter := path.Base(req.Command[offset-1])
+		if interpreter == "java" {
+			for _, arg := range rest {
+				if target, ok := javaArgFileReference(arg, req.WorkingDir, p); ok {
+					return p.deny("interpreter_input", target, "")
+				}
+			}
+			for _, prefixArg := range req.Command[:offset-1] {
+				if key, value, ok := javaEnvAssignment(prefixArg); ok && key == "JDK_JAVA_OPTIONS" && value != "" {
+					return p.deny("interpreter_input", key, "")
+				}
+			}
+			for key, value := range req.Environment {
+				if key == "JDK_JAVA_OPTIONS" && strings.TrimSpace(value) != "" {
+					return p.deny("interpreter_input", key, "")
+				}
+			}
+		}
 		for _, arg := range rest {
 			if !scriptSeen {
 				// run subcommands (deno run x.ts, bun run x.js) shift the
@@ -384,6 +423,22 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					pendingRun = true
 					continue
 				}
+				if javaPathValueNext != "" {
+					option := javaPathValueNext
+					javaPathValueNext = ""
+					if option == "--patch-module" {
+						target, valid := javaPatchModuleInputEntry(arg, req.WorkingDir, p)
+						if !valid {
+							return p.deny("interpreter_input", arg, "")
+						}
+						if target != "" {
+							return p.deny("interpreter_input", target, "")
+						}
+					} else if target := javaClasspathInputEntry(req.WorkingDir, arg, p); target != "" {
+						return p.deny("interpreter_input", target, "")
+					}
+					continue
+				}
 				if strings.HasPrefix(arg, "-") {
 					// Program-text options are unreviewable by construction
 					// (their payload is code, not a screenable path):
@@ -394,7 +449,7 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					// --print=, --execute=, --require=, --init-file=, ...)
 					// are program text or startup hooks exactly the same
 					// way, whatever value syntax they use.
-					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) {
+					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) && !benignInterpreterLauncherFlag(interpreter, arg) {
 						return p.deny("interpreter_input", arg, "")
 					}
 					if strings.HasPrefix(arg, "--") {
@@ -404,6 +459,35 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 						}
 						if longProgramTextOptions[name] {
 							return p.deny("interpreter_input", arg, "")
+						}
+					}
+					if interpreter == "java" {
+						if arg == "-cp" || arg == "-classpath" || arg == "--class-path" || arg == "--module-path" || arg == "-p" || arg == "--upgrade-module-path" || arg == "--patch-module" {
+							javaPathValueNext = arg
+							continue
+						}
+						attachedPathHandled := false
+						for _, option := range []string{"--class-path=", "--module-path=", "--upgrade-module-path=", "-p="} {
+							if strings.HasPrefix(arg, option) {
+								attachedPathHandled = true
+								if target := javaClasspathInputEntry(req.WorkingDir, strings.TrimPrefix(arg, option), p); target != "" {
+									return p.deny("interpreter_input", target, "")
+								}
+								break
+							}
+						}
+						if attachedPathHandled {
+							continue
+						}
+						if strings.HasPrefix(arg, "--patch-module=") {
+							target, valid := javaPatchModuleInputEntry(strings.TrimPrefix(arg, "--patch-module="), req.WorkingDir, p)
+							if !valid {
+								return p.deny("interpreter_input", arg, "")
+							}
+							if target != "" {
+								return p.deny("interpreter_input", target, "")
+							}
+							continue
 						}
 					}
 					// An attached value is still a value: --flag=inputs/x,
@@ -917,6 +1001,90 @@ func carriesProgramTextFlag(arg string) bool {
 		}
 	}
 	return false
+}
+
+// benignInterpreterLauncherFlag exempts common options whose letters overlap
+// the program-text heuristic but whose meaning is a normal launcher setting.
+// Keep these exact and interpreter-specific so code-bearing flags such as
+// python -c, node -e, ruby -r, and python -m remain fail-closed.
+func benignInterpreterLauncherFlag(interpreter, arg string) bool {
+	switch interpreter {
+	case "java":
+		switch arg {
+		case "-jar", "-cp", "-classpath", "-ea", "-m":
+			return true
+		}
+		return strings.HasPrefix(arg, "-ea:")
+	case "pwsh", "powershell":
+		return strings.EqualFold(arg, "-File")
+	case "bash":
+		return arg == "-e"
+	}
+	return false
+}
+
+// javaClasspathInputEntry checks each path element separately because a
+// classpath is a colon-delimited list, not one filesystem path.
+func javaClasspathInputEntry(workingDir, classpath string, policy *InputExecutionPolicy) string {
+	for _, entry := range strings.Split(classpath, ":") {
+		if abs := policy.canonical(workingDir, entry); policy.withinInputs(abs) {
+			return abs
+		}
+	}
+	return ""
+}
+
+// javaArgFileReference recognizes the launcher's @argfile token. The
+// policy rejects these tokens even outside the inputs tree because it cannot
+// inspect the referenced file's contents at this seam.
+func javaArgFileReference(token, workingDir string, policy *InputExecutionPolicy) (string, bool) {
+	token = trimQuotes(strings.TrimSpace(token))
+	if token == "" {
+		return "", false
+	}
+	if value, ok := stripEnvAssignment(token); ok {
+		return javaArgFileReference(value, workingDir, policy)
+	}
+	if !strings.HasPrefix(token, "@") || len(token) == 1 {
+		return "", false
+	}
+	target := policy.canonical(workingDir, strings.TrimPrefix(token, "@"))
+	return target, true
+}
+
+func javaEnvAssignment(token string) (key, value string, ok bool) {
+	prefix := envAssignment(token)
+	if prefix == "" {
+		return "", "", false
+	}
+	return strings.TrimSuffix(prefix, "="), token[len(prefix):], true
+}
+
+func hasJavaLauncherToken(tokens []string) bool {
+	for _, token := range tokens {
+		if path.Base(token) == "java" {
+			return true
+		}
+	}
+	return false
+}
+
+// javaPatchModuleInputEntry parses module=path[:path]. The selector must be
+// present and every path entry is checked independently.
+func javaPatchModuleInputEntry(value, workingDir string, policy *InputExecutionPolicy) (string, bool) {
+	module, paths, ok := strings.Cut(value, "=")
+	if !ok || strings.TrimSpace(module) == "" || paths == "" {
+		return "", false
+	}
+	for _, entry := range strings.Split(paths, ":") {
+		if entry == "" {
+			return "", false
+		}
+		if abs := policy.canonical(workingDir, entry); policy.withinInputs(abs) {
+			return abs, true
+		}
+	}
+	return "", true
 }
 
 // shellTokens splits a shell expression into policy-checkable tokens.

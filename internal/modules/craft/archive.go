@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"math"
 	"path"
 	"sort"
 	"strings"
@@ -39,10 +40,7 @@ const (
 	// MaxArchiveExtractDuration bounds the wall clock of one expansion as
 	// enforced by the SERVICE layer's context around the database/file IO;
 	// the pure-CPU decompression loop itself is bounded indirectly by the
-	// byte and entry ceilings (including pax header bytes), not by this
-	// constant directly.
-	// which bounds the CPU an archive can consume: each expanded byte costs
-	// O(1) work and both byte totals are capped above.
+	// byte and entry ceilings, not by this constant directly.
 	MaxArchiveExtractDuration = 30 * time.Second
 )
 
@@ -175,20 +173,102 @@ type archiveBudget struct {
 	members    []ArchiveMember
 }
 
-// countPaxHeader charges one metadata header's decompressed size against
-// both the total-bytes and compression-ratio budgets.
-func (b *archiveBudget) countPaxHeader(size int64) {
-	if size <= 0 {
-		return
+func newArchiveBudget(compressed int64) *archiveBudget {
+	return &archiveBudget{compressed: compressed, seen: map[string]struct{}{}}
+}
+
+func archiveRatioExceeded(expanded, compressed int64) bool {
+	if expanded <= 0 {
+		return false
 	}
-	b.total += size
-	if b.total > b.compressed*MaxArchiveCompressionRatio {
-		// checked again at finish(), but failing early stops the CPU burn
+	if compressed <= 0 {
+		return true
+	}
+	if compressed > math.MaxInt64/MaxArchiveCompressionRatio {
+		return false
+	}
+	return expanded > compressed*MaxArchiveCompressionRatio
+}
+
+// addExpandedBytes accounts for bytes already expanded by a container
+// reader. Check before addition so cumulative accounting cannot overflow.
+func (b *archiveBudget) addExpandedBytes(size int64) error {
+	if size <= 0 {
+		return nil
+	}
+	if b.total < 0 || size > math.MaxInt64-b.total {
+		return fmt.Errorf("%w: archive expanded-byte accounting overflow", ErrInvalidInput)
+	}
+	total := b.total + size
+	if total > MaxArchiveExpandedBytes {
+		return fmt.Errorf("%w: archive expands over the %d byte cap", ErrInvalidInput, MaxArchiveExpandedBytes)
+	}
+	if archiveRatioExceeded(total, b.compressed) {
+		return fmt.Errorf("%w: archive expands %d bytes from %d compressed bytes over the %d:1 ratio cap",
+			ErrInvalidInput, total, b.compressed, MaxArchiveCompressionRatio)
+	}
+	b.total = total
+	return nil
+}
+
+// archiveStreamReader accounts for the complete decompressed tar stream
+// underneath archive/tar. PAX metadata is parsed inside tar.Reader.Next, so
+// charging after Next returns would allow allocation before the limit.
+type archiveStreamReader struct {
+	reader       io.Reader
+	budget       *archiveBudget
+	limit        int64
+	ratioLimited bool
+}
+
+func newArchiveStreamReader(reader io.Reader, budget *archiveBudget) *archiveStreamReader {
+	ratioLimit := int64(math.MaxInt64)
+	if budget.compressed <= 0 {
+		ratioLimit = 0
+	} else if budget.compressed <= math.MaxInt64/MaxArchiveCompressionRatio {
+		ratioLimit = budget.compressed * MaxArchiveCompressionRatio
+	}
+	limit := int64(MaxArchiveExpandedBytes)
+	if ratioLimit < limit {
+		limit = ratioLimit
+	}
+	return &archiveStreamReader{
+		reader: reader, budget: budget, limit: limit,
+		ratioLimited: ratioLimit < int64(MaxArchiveExpandedBytes),
 	}
 }
 
-func newArchiveBudget(compressed int64) *archiveBudget {
-	return &archiveBudget{compressed: compressed, seen: map[string]struct{}{}}
+func (r *archiveStreamReader) limitError() error {
+	if r.ratioLimited {
+		return fmt.Errorf("%w: archive expands %d bytes from %d compressed bytes over the %d:1 ratio cap",
+			ErrInvalidInput, r.budget.total+1, r.budget.compressed, MaxArchiveCompressionRatio)
+	}
+	return fmt.Errorf("%w: archive expands over the %d byte cap", ErrInvalidInput, MaxArchiveExpandedBytes)
+}
+
+func (r *archiveStreamReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	remaining := r.limit - r.budget.total
+	if remaining <= 0 {
+		var probe [1]byte
+		n, err := io.ReadFull(r.reader, probe[:])
+		if n > 0 {
+			return 0, r.limitError()
+		}
+		return 0, err
+	}
+	if int64(len(p)) > remaining {
+		p = p[:int(remaining)]
+	}
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		if addErr := r.budget.addExpandedBytes(int64(n)); addErr != nil {
+			return 0, addErr
+		}
+	}
+	return n, err
 }
 
 // reserveEntry canonicalizes one entry name for the seen set and rejects
@@ -217,6 +297,16 @@ func (b *archiveBudget) reserveEntry(name string) (string, error) {
 // readMember reads one regular member inside every ceiling. The read itself
 // is bounded, so a lying header size cannot defer the rejection.
 func (b *archiveBudget) readMember(r io.Reader, canonical string) error {
+	return b.readMemberWithAccounting(r, canonical, true)
+}
+
+// readTarMember relies on archiveStreamReader, which has already charged the
+// member's bytes together with headers, padding and PAX metadata.
+func (b *archiveBudget) readTarMember(r io.Reader, canonical string) error {
+	return b.readMemberWithAccounting(r, canonical, false)
+}
+
+func (b *archiveBudget) readMemberWithAccounting(r io.Reader, canonical string, countBytes bool) error {
 	if b.entries >= MaxArchiveEntries {
 		return fmt.Errorf("%w: archive holds more than %d members", ErrInvalidInput, MaxArchiveEntries)
 	}
@@ -228,14 +318,10 @@ func (b *archiveBudget) readMember(r io.Reader, canonical string) error {
 		return fmt.Errorf("%w: archive member %s expands over the %d byte cap",
 			ErrInvalidInput, canonical, MaxArchiveMemberBytes)
 	}
-	b.total += int64(len(content))
-	if b.total > MaxArchiveExpandedBytes {
-		return fmt.Errorf("%w: archive expands to %d bytes over the %d cap",
-			ErrInvalidInput, b.total, MaxArchiveExpandedBytes)
-	}
-	if b.total > b.compressed*MaxArchiveCompressionRatio {
-		return fmt.Errorf("%w: archive expands %d bytes from %d compressed bytes over the %d:1 ratio cap",
-			ErrInvalidInput, b.total, b.compressed, MaxArchiveCompressionRatio)
+	if countBytes {
+		if err := b.addExpandedBytes(int64(len(content))); err != nil {
+			return err
+		}
 	}
 	if nestedArchiveMember(canonical, content) {
 		// Deterministic content rejection: retrying the same archive can
@@ -321,8 +407,9 @@ func extractZipArchive(data []byte) ([]ArchiveMember, error) {
 }
 
 func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
-	reader := tar.NewReader(r)
 	budget := newArchiveBudget(compressed)
+	stream := newArchiveStreamReader(r, budget)
+	reader := tar.NewReader(stream)
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
@@ -337,7 +424,7 @@ func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := budget.readMember(reader, canonical); err != nil {
+			if err := budget.readTarMember(reader, canonical); err != nil {
 				return nil, err
 			}
 		case tar.TypeDir:
@@ -351,21 +438,24 @@ func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
 				return nil, err
 			}
 		case tar.TypeXHeader, tar.TypeXGlobalHeader:
-			// Extended pax records are metadata consumed by the reader, but
-			// their BYTES still count against the expansion budget: a 20MiB
-			// all-zero tar.gz can decompress to gigabytes of pure pax-head
-			// stream, and without counting them the CPU burns for minutes
-			// before finish() ever rejects.
+			// tar.Reader normally consumes these internally in Next; if one
+			// is exposed, the underlying stream reader already charged it.
 			if _, err := io.Copy(io.Discard, reader); err != nil {
 				return nil, fmt.Errorf("%w: archive pax header unreadable: %v", ErrInvalidInput, err)
 			}
-			budget.countPaxHeader(header.Size)
 		default:
 			// Hard links, symlinks, char/block devices, FIFOs, contiguous
 			// files and vendor extensions are all refused.
 			return nil, fmt.Errorf("%w: archive entry %q has unsupported type %q",
 				ErrInvalidInput, header.Name, string(header.Typeflag))
 		}
+	}
+	// tar.Reader stops at the first pair of zero blocks, but the enclosing
+	// gzip stream may contain more expanded data or additional gzip members.
+	// Drain through the same accounting reader so trailing bytes stay within
+	// the archive budget and gzip checksums are validated before accepting it.
+	if _, err := io.Copy(io.Discard, stream); err != nil {
+		return nil, fmt.Errorf("%w: tar stream failed after archive terminator: %v", ErrInvalidInput, err)
 	}
 	return budget.finish()
 }

@@ -15,7 +15,9 @@ package container
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -24,6 +26,8 @@ import (
 
 // craftPromotionScanLimit bounds one promotion pass.
 const craftPromotionScanLimit = 32
+const craftPromotionAfterTerminalBudget = 20 * time.Second
+const craftPromotionRetryCooldown = 5 * time.Minute
 
 var registeredCraftWebPageLoadProbe service.WebPageLoadProbe
 
@@ -46,7 +50,7 @@ func RegisteredCraftWebPageLoadProbe() service.WebPageLoadProbe {
 // the Workspace draft head, this pass attempts the four-check promotion of
 // exactly that sealed head.
 type craftPostTerminalPromoter struct {
-	db       *gorm.DB
+	captures *repository.CraftRunCaptureStore
 	promote  *service.CraftArtifactService
 	drafts   craft.DraftHeadStore
 	versions craft.VersionStore
@@ -65,48 +69,49 @@ func newCraftPostTerminalPromoter(
 			"[CraftPromotion] post-terminal promotion NOT assembled: the trigger stays inert (captures seal, nothing publishes)")
 		return nil
 	}
-	return &craftPostTerminalPromoter{db: db, promote: promote, drafts: drafts, versions: versions}
+	return &craftPostTerminalPromoter{captures: repository.NewCraftRunCaptureStore(db), promote: promote, drafts: drafts, versions: versions}
 }
 
-// craftPromotionReceiptRow is the terminal-receipt scan shape (parameter-
-// bound query; scope reconstructs exactly the way the repository maps rows).
-type craftPromotionReceiptRow struct {
-	TenantID      uint64
-	WorkspaceID   string
-	RunID         string
-	OwnerID       string
-	SessionID     string
-	State         string
-	DraftRevision *int64
-}
-
-// promoteTerminalReceipts scans the terminal capture receipts and attempts
-// the four-check promotion for every SEALED head that is the selected
-// product of the receipt's own Run. Idempotent: a replayed identical
-// promotion adopts the already published version, so repeated passes (per
-// Run completion and every periodic scan) are safe and cheap — the version
-// existence check precedes any probe observation.
+// promoteTerminalReceipts processes one keyset page of terminal capture
+// receipts. The cursor wraps after reaching the end so a refusal cannot
+// permanently occupy the bounded scan window. Identical published versions
+// are adopted without probing again.
 func (p *craftPostTerminalPromoter) promoteTerminalReceipts(ctx context.Context, limit int) {
+	p.promoteReceipts(ctx, limit)
+}
+
+func (p *craftPostTerminalPromoter) promoteReceiptsForRun(ctx context.Context, tenantID uint64, runID string) {
 	if p == nil {
 		return
 	}
-	if limit <= 0 {
-		limit = craftPromotionScanLimit
-	}
-	var rows []craftPromotionReceiptRow
-	if err := p.db.WithContext(ctx).
-		Table("craft_run_captures").
-		Select("tenant_id, workspace_id, run_id, owner_id, session_id, state, draft_revision").
-		Where("state IN ? AND draft_revision IS NOT NULL", []string{"sealed", "advanced"}).
-		Order("updated_at ASC").Limit(limit).Scan(&rows).Error; err != nil {
-		logger.Warnf(ctx, "[CraftPromotion] terminal receipt scan failed: %v", err)
+	promoteCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftPromotionAfterTerminalBudget)
+	defer cancel()
+	rows, err := p.captures.ClaimPromotionForRun(promoteCtx, tenantID, runID, craftPromotionRetryCooldown)
+	if err != nil {
+		logger.Warnf(promoteCtx, "[CraftPromotion] per-run receipt claim failed: %v", err)
 		return
 	}
+	p.processPromotionRows(promoteCtx, rows)
+}
+
+func (p *craftPostTerminalPromoter) promoteReceipts(ctx context.Context, limit int) {
+	if p == nil {
+		return
+	}
+	rows, err := p.captures.ClaimPromotionBatch(ctx, limit, craftPromotionRetryCooldown)
+	if err != nil {
+		logger.Warnf(ctx, "[CraftPromotion] terminal receipt claim failed: %v", err)
+		return
+	}
+	p.processPromotionRows(ctx, rows)
+}
+
+func (p *craftPostTerminalPromoter) processPromotionRows(ctx context.Context, rows []repository.CraftRunCapturePromotionCandidate) {
 	for _, row := range rows {
 		if row.DraftRevision == nil {
 			continue
 		}
-		scope := craft.Scope{TenantID: row.TenantID, UserID: row.OwnerID, SessionID: row.SessionID}
+		scope := row.Scope
 		head, err := p.drafts.ReadRevision(ctx, scope, row.WorkspaceID, *row.DraftRevision)
 		if err != nil {
 			// An unreadable revision (concurrently advanced workspace) is not a
@@ -117,16 +122,19 @@ func (p *craftPostTerminalPromoter) promoteTerminalReceipts(ctx context.Context,
 		if head.State != craft.DraftHeadSelected {
 			// A failed, stopped or superseded Run never promotes: the head is
 			// not its sealed product.
+			p.completePromotion(ctx, row)
 			continue
 		}
 		if head.SourceRunID != row.RunID {
 			logger.Warnf(ctx, "[CraftPromotion] head %s@%d sealed from run %s but receipt names run %s; refusing",
 				row.WorkspaceID, head.Revision, head.SourceRunID, row.RunID)
+			p.completePromotion(ctx, row)
 			continue
 		}
 		versionID := craft.VersionID(head.WorkspaceID, head.SourceRunID, head.ManifestDigest)
 		if _, err := p.versions.Get(ctx, scope, versionID); err == nil {
 			// Already published: an identical replay adopts the stored version.
+			p.completePromotion(ctx, row)
 			continue
 		} else if !errors.Is(err, craft.ErrNotFound) {
 			logger.Warnf(ctx, "[CraftPromotion] version lookup %s failed: %v", versionID, err)
@@ -146,5 +154,12 @@ func (p *craftPostTerminalPromoter) promoteTerminalReceipts(ctx context.Context,
 		}
 		logger.Infof(ctx, "[CraftPromotion] run %s promoted to version %s at workspace revision %d",
 			head.SourceRunID, version.ID, head.Revision)
+		p.completePromotion(ctx, row)
+	}
+}
+
+func (p *craftPostTerminalPromoter) completePromotion(ctx context.Context, row repository.CraftRunCapturePromotionCandidate) {
+	if err := p.captures.CompletePromotion(ctx, row.Scope.TenantID, row.WorkspaceID, row.RunID); err != nil {
+		logger.Warnf(ctx, "[CraftPromotion] could not complete receipt %s: %v", row.RunID, err)
 	}
 }

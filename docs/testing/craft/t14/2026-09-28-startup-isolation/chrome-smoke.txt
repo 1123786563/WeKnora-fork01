@@ -1,0 +1,5 @@
+Exact immutable renderer image: sha256:a2dc460f05d310ad0de3f82658a83676d71db6628832ad0d9958075d3893b590 linux/arm64
+Container constraints: --network none --read-only --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges --memory 1536m --cpus 2 --pids-limit 256 --shm-size 128m --tmpfs /tmp:rw,noexec,nosuid,size=256m; no host mounts or published ports.
+Minimal direct Chrome startup result: T14_STARTUP_SMOKE={"result":"success","version":"153.0.8010.52"}
+Closer launch with --log-net-log, --net-log-capture-mode=Everything, goog:loggingPrefs={"performance":"ALL"}: success, Chrome 153.0.8010.52, 197 performance entries.
+Diagnostic only; neither run invoked the T14 host barrier or acceptance matrix.

@@ -6,9 +6,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,6 +102,131 @@ func buildTestTarGz(t *testing.T, entries []testTarEntry) []byte {
 	return gzBuf.Bytes()
 }
 
+// buildPaxOnlyTarGz builds metadata-only streams without retaining the
+// uncompressed archive in memory. When expandedBytes is large, a skewed
+// four-byte alphabet keeps the gzip input below its upload ceiling while
+// remaining far below the 100:1 expansion-ratio limit.
+func buildPaxTarGz(t *testing.T, expandedBytes int, noisy, includeFile bool) []byte {
+	t.Helper()
+	var compressed bytes.Buffer
+	gz, err := gzip.NewWriterLevel(&compressed, gzip.BestSpeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeHeader := func(name string, size int, typeflag byte) {
+		t.Helper()
+		var header [512]byte
+		copy(header[0:100], name)
+		copy(header[100:108], "0000644\x00")
+		copy(header[108:116], "0000000\x00")
+		copy(header[116:124], "0000000\x00")
+		copy(header[124:136], fmt.Sprintf("%011o\x00", size))
+		copy(header[136:148], "00000000000\x00")
+		for i := 148; i < 156; i++ {
+			header[i] = ' '
+		}
+		header[156] = typeflag
+		copy(header[257:263], "ustar\x00")
+		copy(header[263:265], "00")
+		var checksum int
+		for _, value := range header {
+			checksum += int(value)
+		}
+		copy(header[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+		if _, err := gz.Write(header[:]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writePadded := func(data []byte) {
+		t.Helper()
+		if _, err := gz.Write(data); err != nil {
+			t.Fatal(err)
+		}
+		if pad := (512 - len(data)%512) % 512; pad != 0 {
+			if _, err := gz.Write(make([]byte, pad)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rng := rand.New(rand.NewSource(41))
+	randomBytes := make([]byte, 32<<10)
+	remaining := expandedBytes
+	for index := 0; remaining > 0; index++ {
+		// A complete PAX record is "<length> comment=<value>\n". Solve
+		// the decimal length prefix until its own digit count stabilizes.
+		digits := 1
+		recordSize := remaining
+		for {
+			recordSize = min(remaining, 1<<20)
+			nextDigits := len(strconv.Itoa(recordSize))
+			valueSize := recordSize - nextDigits - len(" comment=\n")
+			if valueSize < 0 {
+				t.Fatalf("PAX record size %d is too small", recordSize)
+			}
+			if nextDigits == digits {
+				break
+			}
+			digits = nextDigits
+		}
+		writeHeader(fmt.Sprintf("PaxHeaders/%d", index), recordSize, tar.TypeXHeader)
+		prefix := fmt.Sprintf("%d comment=", recordSize)
+		if _, err := io.WriteString(gz, prefix); err != nil {
+			t.Fatal(err)
+		}
+		valueSize := recordSize - len(prefix) - 1
+		chunk := make([]byte, 32<<10)
+		for valueSize > 0 {
+			writeSize := min(valueSize, len(chunk))
+			if noisy {
+				if _, err := rng.Read(randomBytes[:writeSize]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range chunk[:writeSize] {
+				if noisy {
+					sample := int(randomBytes[i])
+					switch {
+					case sample < 242:
+						chunk[i] = 'a'
+					case sample < 249:
+						chunk[i] = 'b'
+					case sample < 253:
+						chunk[i] = 'c'
+					default:
+						chunk[i] = 'd'
+					}
+				} else {
+					chunk[i] = 'a'
+				}
+			}
+			if _, err := gz.Write(chunk[:writeSize]); err != nil {
+				t.Fatal(err)
+			}
+			valueSize -= writeSize
+		}
+		if _, err := gz.Write([]byte{'\n'}); err != nil {
+			t.Fatal(err)
+		}
+		if pad := (512 - recordSize%512) % 512; pad != 0 {
+			if _, err := gz.Write(make([]byte, pad)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		remaining -= recordSize
+	}
+	if includeFile {
+		writeHeader("payload.txt", 2, tar.TypeReg)
+		writePadded([]byte("ok"))
+	}
+	if _, err := gz.Write(make([]byte, 1024)); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return compressed.Bytes()
+}
+
 func TestArchiveDetectsSupportedFormats(t *testing.T) {
 	zipData := loadArchiveFixture(t, "valid.zip")
 	format, ok := DetectArchiveFormat(zipData)
@@ -150,6 +279,21 @@ func TestArchiveExtractsTarGzWithinLimits(t *testing.T) {
 	require.Len(t, members, 2, "directory entries produce no material")
 	require.Equal(t, "docs/guide.md", members[0].Path)
 	require.Equal(t, "top.txt", members[1].Path)
+}
+
+func TestArchiveRejectsCorruptGzipTrailerAfterTarEOF(t *testing.T) {
+	data := buildTestTarGz(t, []testTarEntry{{name: "hello.txt", content: []byte("hello\n")}})
+	validMembers, err := ExtractArchive(data)
+	require.NoError(t, err, "the unmodified tar.gz fixture must be valid")
+	require.Len(t, validMembers, 1)
+
+	// RFC 1952 stores CRC32 in the first four bytes of the final eight-byte
+	// gzip trailer. Corrupt one CRC bit without changing the valid tar body.
+	corrupt := append([]byte(nil), data...)
+	corrupt[len(corrupt)-8] ^= 0x01
+	_, err = ExtractArchive(corrupt)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.ErrorContains(t, err, "after archive terminator")
 }
 
 func TestArchiveRejectsUnsupportedBytes(t *testing.T) {
@@ -329,6 +473,78 @@ func TestArchiveEnforcesCumulativeCap(t *testing.T) {
 	require.Less(t, int64(len(data)), int64(MaxArchiveExpandedBytes), "fixture must stay compressed")
 	_, err := ExtractArchive(data)
 	require.ErrorIs(t, err, ErrInvalidInput, "cumulative expanded bytes cannot bypass the round cap")
+}
+
+func TestArchiveRejectsPaxMetadataOverExpandedByteCap(t *testing.T) {
+	data := buildPaxTarGz(t, MaxArchiveExpandedBytes, true, false)
+	require.Less(t, int64(len(data)), int64(MaxInputBytes), "pax-only stream must fit the uploaded archive cap")
+	require.Greater(t, int64(len(data))*MaxArchiveCompressionRatio, int64(MaxArchiveExpandedBytes), "expanded-byte cap must be the active limit")
+
+	_, err := ExtractArchive(data)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.ErrorContains(t, err, "over the 104857600 byte cap")
+}
+
+func TestArchiveRejectsPaxMetadataOverCompressionRatio(t *testing.T) {
+	data := buildPaxTarGz(t, 128<<10, false, false)
+	_, err := ExtractArchive(data)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.ErrorContains(t, err, "ratio cap")
+}
+
+func TestArchiveAcceptsPaxMetadataWithinExpandedByteCap(t *testing.T) {
+	data := buildPaxTarGz(t, 32<<10, true, true)
+	members, err := ExtractArchive(data)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	require.Equal(t, "payload.txt", members[0].Path)
+	require.Equal(t, []byte("ok"), members[0].Content)
+}
+
+func TestArchiveRejectsOverLimitGzipExpansionAfterTarTerminator(t *testing.T) {
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	tw := tar.NewWriter(gz)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "payload.txt", Mode: 0o644, Size: 2, Typeflag: tar.TypeReg}))
+	_, err := tw.Write([]byte("ok"))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close()) // Writes tar's two zero terminator blocks.
+
+	// Data after the tar terminator is still part of the gzip stream. Keep it
+	// noisy enough that the compressed input permits more than 100 MiB at the
+	// configured ratio, while staying well below MaxInputBytes.
+	rng := rand.New(rand.NewSource(42))
+	randomBytes := make([]byte, 32<<10)
+	chunk := make([]byte, len(randomBytes))
+	remaining := MaxArchiveExpandedBytes + 1
+	for remaining > 0 {
+		size := min(remaining, len(chunk))
+		_, err := rng.Read(randomBytes[:size])
+		require.NoError(t, err)
+		for i, sample := range randomBytes[:size] {
+			switch {
+			case sample < 242:
+				chunk[i] = 'a'
+			case sample < 249:
+				chunk[i] = 'b'
+			case sample < 253:
+				chunk[i] = 'c'
+			default:
+				chunk[i] = 'd'
+			}
+		}
+		_, err = gz.Write(chunk[:size])
+		require.NoError(t, err)
+		remaining -= size
+	}
+	require.NoError(t, gz.Close())
+	require.Less(t, int64(compressed.Len()), int64(MaxInputBytes))
+	require.Greater(t, int64(compressed.Len())*MaxArchiveCompressionRatio, int64(MaxArchiveExpandedBytes),
+		"fixture must exceed the expanded-byte cap before reaching the ratio cap")
+
+	_, err = ExtractArchive(compressed.Bytes())
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.ErrorContains(t, err, "over the 104857600 byte cap")
 }
 
 func TestArchiveRejectsTruncatedStreamMidExtraction(t *testing.T) {

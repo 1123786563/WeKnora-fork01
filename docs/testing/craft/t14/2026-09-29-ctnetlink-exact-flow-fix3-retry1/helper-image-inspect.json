@@ -1,0 +1,63 @@
+{
+  "Architecture": "arm64",
+  "Comment": "buildkit.dockerfile.v0",
+  "Config": {
+    "Entrypoint": [
+      "timeout",
+      "30",
+      "python3",
+      "/policy-helper.py"
+    ],
+    "Env": [
+      "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "LANG=C.UTF-8",
+      "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+      "PYTHON_VERSION=3.12.14",
+      "PYTHON_SHA256=5c8462af5790baf43a321a1559dbe0db06d1be4300fb85fb53c40060668e548a"
+    ],
+    "Labels": {
+      "org.opencontainers.image.base.name": "python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111",
+      "org.opencontainers.image.description": "Short-lived NET_ADMIN-only nftables/iproute2 helper for disposable renderer namespaces",
+      "org.opencontainers.image.source": "local:deploy/craft/render-boundary/policy-helper",
+      "org.opencontainers.image.title": "T14 isolated renderer policy helper"
+    },
+    "WorkingDir": "/"
+  },
+  "Created": "2026-09-29T05:42:59.038725295+08:00",
+  "Descriptor": {
+    "digest": "sha256:6ece2b481951b1069db834db6e1ea814f5a1e893f1f58b45d75daed54b705f86",
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "size": 856
+  },
+  "Id": "sha256:6ece2b481951b1069db834db6e1ea814f5a1e893f1f58b45d75daed54b705f86",
+  "Identity": {
+    "Build": [
+      {
+        "CreatedAt": "2026-09-29T05:43:00.046813446+08:00",
+        "Ref": "ldna3apivwsikxedlkr32bke0"
+      }
+    ]
+  },
+  "Metadata": {
+    "LastTagTime": "2026-09-28T21:42:59.337944092Z"
+  },
+  "Os": "linux",
+  "RepoDigests": [
+    "craft-t14-policy-helper@sha256:6ece2b481951b1069db834db6e1ea814f5a1e893f1f58b45d75daed54b705f86"
+  ],
+  "RepoTags": [
+    "craft-t14-policy-helper:2026-09-24"
+  ],
+  "RootFS": {
+    "Layers": [
+      "sha256:1b349a3334531b575b01d409540dd8aca14ef29abddacd50f36643d7c949db4b",
+      "sha256:dfaaa230ea7ec28bca657204471dfca64a5da1aef23e18d61b55ca95567516da",
+      "sha256:322376317f0327aa291bb93f2279a4a9c1bc97a33b1d04d7f0bf680e24faecf0",
+      "sha256:c09933483a6057e9081db21587db3edb950d7db3a3f43ada3d2910cc4c593552",
+      "sha256:4e1ab83637930a985c0bc907a15d3cf4aea173b7ec64abe2634b839983cc58b9",
+      "sha256:f3882b1ae91b016df6e988cdb4513ddbfe127ba25582d6ca058b3cdfd4533f7e"
+    ],
+    "Type": "layers"
+  },
+  "Size": 20588773
+}

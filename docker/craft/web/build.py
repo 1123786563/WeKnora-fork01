@@ -64,7 +64,7 @@ EXTERNAL_URL_RE = re.compile(r"(https?:)?//[^\s\"'<>`]|://", re.IGNORECASE)
 ABSOLUTE_REF_RE = re.compile(r"""(?:src|href|action|poster)\s*=\s*["']?\s*(?:/[a-zA-Z]|[a-zA-Z][a-zA-Z0-9+.-]*:)""", re.IGNORECASE)
 ACTIVE_DATA_RE = re.compile(r"data:text/html|javascript:", re.IGNORECASE)
 CSS_FETCH_RE = re.compile(r"url\(|@import", re.IGNORECASE)
-EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form|script|meta)\b", re.IGNORECASE)
+EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form|script|meta|style|link)\b", re.IGNORECASE)
 # Active content: inline event handler attributes (onclick=, onload=, ...)
 # execute attacker script even when every URL check passes (for example the
 # classic <img src=x onerror=...>, whose src does not match the absolute
@@ -77,7 +77,7 @@ EVENT_ATTR_RE = re.compile(r"""<[a-zA-Z][^>]*?\son[a-z]+\s*=""", re.IGNORECASE)
 
 
 class _EventAttrScanner(HTMLParser):
-    """Structural on*-attribute scanner (the regex above stays as a cheap
+    """Structural on*/style-attribute scanner (the regex above stays as a cheap
     pre-filter). HTMLParser handles quoted attribute values containing ">",
     "/" as the tag/attribute separator (<img/onerror=...>) and entity
     decoding — exactly the shapes the regex misses."""
@@ -91,9 +91,12 @@ class _EventAttrScanner(HTMLParser):
             if name.lower().startswith("on"):
                 self.violation = "inline event handler attribute {!r}".format(name)
                 return
+            if name.lower() == "style":
+                self.violation = "inline style attribute"
+                return
 
 
-def fragment_has_event_attrs(fragment: str) -> bool:
+def fragment_violation(fragment: str) -> str:
     scanner = _EventAttrScanner()
     try:
         # The trailing ">" sentinel forces CPython's HTMLParser to emit a
@@ -104,8 +107,8 @@ def fragment_has_event_attrs(fragment: str) -> bool:
         scanner.close()
     except Exception:
         # Unparseable markup is refused by the structural scanner: fail closed.
-        return True
-    return bool(scanner.violation)
+        return "unparseable markup"
+    return scanner.violation
 
 
 class BuildError(Exception):
@@ -355,13 +358,14 @@ def render_html(heading: str, fragment: str) -> str:
             (ABSOLUTE_REF_RE, "absolute or scheme reference"),
             (ACTIVE_DATA_RE, "active data/javascript URI"),
             (CSS_FETCH_RE, "css url()/@import fetch"),
-            (EMBED_TAG_RE, "embedding/script/navigation tag"),
+            (EMBED_TAG_RE, "style/link/embedding/script/navigation tag"),
             (EVENT_ATTR_RE, "inline event handler attribute"),
         ):
             if pattern.search(candidate):
                 raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
-        if fragment_has_event_attrs(candidate):
-            raise BuildError(EXIT_CONTENT, "html section {!r} contains an {}: offline local assets only".format(heading, "inline event handler attribute"))
+        violation = fragment_violation(candidate)
+        if violation:
+            raise BuildError(EXIT_CONTENT, "html section {!r} contains an {}: offline local assets only".format(heading, violation))
     return "<h2>{}</h2>{}".format(html_mod.escape(heading), fragment)
 
 

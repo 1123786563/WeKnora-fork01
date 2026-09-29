@@ -1,0 +1,53 @@
+{
+  "action": "install-failure-baseline",
+  "helper": {
+    "image_id": "sha256:6ece2b481951b1069db834db6e1ea814f5a1e893f1f58b45d75daed54b705f86",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 17978617833,
+  "payload": {
+    "default_routes": [],
+    "interfaces": [
+      "lo"
+    ],
+    "netns": "net:[4026535734]",
+    "routes": {
+      "ipv4": [],
+      "ipv6": []
+    }
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 8674,
+      "path": "0003-container-inspect-after.json",
+      "sha256": "1c6e793f24c628d4f11519097dc7dd2bd33d7c6accede039e5713da45c946522"
+    },
+    "container_inspect_raw": {
+      "bytes": 8674,
+      "path": "0003-container-inspect-before.json",
+      "sha256": "1c6e793f24c628d4f11519097dc7dd2bd33d7c6accede039e5713da45c946522"
+    },
+    "raw_link_json": {
+      "bytes": 281,
+      "path": "0003-links.json",
+      "sha256": "a91b440b8d66bba7c817889e9e2ba13e3db843deb2b9a36fdacefe3a4115e9ae"
+    },
+    "raw_route_json": {
+      "bytes": 24,
+      "path": "0003-routes.json",
+      "sha256": "c17947defdbdf3bc32d801fdf75d3d3ad8796e8b5bc52c7f47fe18e2ec707426"
+    },
+    "raw_ruleset": {
+      "bytes": 119,
+      "path": "0003-nft-ruleset.json",
+      "sha256": "7be6ae8168b91af389f92984b66540c243addb40df33350407b6de9818d11ffd"
+    }
+  },
+  "sequence": 3,
+  "target": {
+    "container_id": "f45afdc644d1c8452330f6803533bd88521e1f918b9b96dbbb975217f4952eb2",
+    "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+    "container_pid": 962395,
+    "netns": "net:[4026535734]"
+  }
+}

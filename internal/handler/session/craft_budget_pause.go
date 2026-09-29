@@ -67,13 +67,15 @@ func NewCraftBudgetPauseHandler(svc CraftBudgetPauseAPI, access craft.TaskAccess
 	return &CraftBudgetPauseHandler{svc: svc, access: access}
 }
 
-// craftBudgetPauseBody is the frozen CraftBudgetPause wire: call counts
-// only, never Credits, balances or credential material.
+// craftBudgetPauseBody is the budget pause wire. The extension action is
+// projected only when the current caller may extend; it contains the exact
+// server-owned idempotency key and quantum required by the POST endpoint.
 type craftBudgetPauseBody struct {
-	RunID  string `json:"run_id"`
-	Reason string `json:"reason"`
-	Limit  int64  `json:"limit"`
-	Used   int64  `json:"used"`
+	RunID           string                       `json:"run_id"`
+	Reason          string                       `json:"reason"`
+	Limit           int64                        `json:"limit"`
+	Used            int64                        `json:"used"`
+	ExtensionAction *craft.BudgetExtensionAction `json:"extension_action"`
 }
 
 // GetCraftBudgetPause serves GET /api/v1/sessions/:id/craft/runs/:run_id/budget/pause.
@@ -100,18 +102,19 @@ func (h *CraftBudgetPauseHandler) GetCraftBudgetPause(c *gin.Context) {
 	// owner/billing-admin authority — a projection failure degrades to
 	// false (the contact-owner copy), never to a client-side guess.
 	canExtend := h.svc.MayExtendBudget(c.Request.Context(), scope) == nil
+	var extensionAction *craft.BudgetExtensionAction
+	if canExtend {
+		extensionAction = pause.ExtensionAction
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
-		"data":       craftBudgetPauseBody{RunID: pause.RunID, Reason: pause.Reason, Limit: pause.Limit, Used: pause.Used},
+		"data":       craftBudgetPauseBody{RunID: pause.RunID, Reason: pause.Reason, Limit: pause.Limit, Used: pause.Used, ExtensionAction: extensionAction},
 		"can_extend": canExtend,
 	})
 }
 
-// craftBudgetExtendRequest addresses one paused Run's extension. key is the
-// caller-chosen idempotency key of THIS extension decision (a retried
-// request replays the same key); extra_calls raises the grant's call cap
-// and extra_credits (micro-credits, the commercial reservation unit) raises
-// the task budget once per key.
+// craftBudgetExtendRequest echoes one pending server-owned pause action. A
+// retry must send the same key and exact call/credit quantum returned by GET.
 type craftBudgetExtendRequest struct {
 	Key          string `json:"key"`
 	ExtraCalls   int    `json:"extra_calls"`
@@ -139,7 +142,7 @@ func (h *CraftBudgetPauseHandler) PostCraftBudgetExtend(c *gin.Context) {
 	if !decodeCraftBody(c, &body) {
 		return
 	}
-	if body.Key == "" || body.ExtraCalls < 0 || body.ExtraCredits < 0 {
+	if body.Key == "" || body.ExtraCalls <= 0 || body.ExtraCredits <= 0 {
 		craftHTTPError(c, craft.ErrInvalidInput)
 		return
 	}

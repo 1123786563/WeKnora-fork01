@@ -15,17 +15,17 @@ Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 const { CraftRoutes } = await import('./routes.tsx');
 const { JSDOM } = await import('jsdom');
 
-const workspace = (sessionId: string) => ({
+const workspace = (sessionId: string, activeRun: unknown = null) => ({
   session_id: sessionId,
   workspace_id: `workspace-${sessionId}`,
   kind: 'web',
   title: `Task ${sessionId}`,
   engine_type: 'trpc',
   workspace: { id: `workspace-${sessionId}`, session_id: sessionId, user_id: 'owner', sandbox_id: 'sandbox', generation: '1', runtime_digest: 'digest', revision: 1 },
-  active_run_id: null,
+  active_run_id: activeRun === null ? null : (activeRun as { run_id: string }).run_id,
   pending_id: null,
   last_seq: 0,
-  active_run: null,
+  active_run: activeRun,
   current_version: null,
 });
 
@@ -55,6 +55,9 @@ async function harness(initialMembers: Array<{ user_id: string; role: string }>,
     run_id: `run-${calls.filter((call) => call.path.endsWith('/craft/runs')).length}`,
     session_id: input.path.split('/')[4]!, status: 'queued', wait_reason: '', revision: 1, epoch: 1, seq: 0, pending_id: null, budget_pause: null,
   } });
+  let activeRun: unknown = null;
+  let budgetPause: unknown = { success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 10, used: 10 }, can_extend: false };
+  let extensionHandler: FakeRequest = async () => ({ success: true });
   const client: { request: FakeRequest; knowledgeBases: { list(): Promise<unknown[]>; documents: { list(): Promise<{ data: unknown[] }> } } } = {
     request: async (input) => {
       calls.push(input);
@@ -66,6 +69,8 @@ async function harness(initialMembers: Array<{ user_id: string; role: string }>,
         return { success: true };
       }
       if (input.path.endsWith('/craft/inputs/decision') && input.method === 'POST') return decisionHandler(input);
+      if (input.path.endsWith('/budget/pause') && input.method === 'GET') return budgetPause;
+      if (input.path.endsWith('/budget/extend') && input.method === 'POST') return extensionHandler(input);
       if (input.path.endsWith('/craft/inputs') && input.method === 'POST') {
         inputCount += 1;
         return { success: true, data: {
@@ -82,7 +87,7 @@ async function harness(initialMembers: Array<{ user_id: string; role: string }>,
       if (input.path === '/api/v1/craft/sessions') return { success: true, data: [{ session_id: 'task-1', workspace_id: 'workspace-task-1', kind: 'web', title: 'Task one', engine_type: 'trpc', updated_at: '2026-09-23T00:00:00Z' }], next_cursor: null };
       if (/^\/api\/v1\/sessions\/[^/]+\/craft$/.test(input.path)) {
         const sessionId = input.path.split('/')[4]!;
-        return { success: true, data: workspace(sessionId) };
+        return { success: true, data: workspace(sessionId, activeRun) };
       }
       throw new Error(`Unexpected ${input.method} ${input.path}`);
     },
@@ -111,6 +116,9 @@ async function harness(initialMembers: Array<{ user_id: string; role: string }>,
     dom, container, root, props, client, calls, fetchCalls,
     setDecisionHandler(handler: FakeRequest) { decisionHandler = handler; },
     setSubmitHandler(handler: FakeRequest) { submitHandler = handler; },
+    setBudgetPause(value: unknown) { budgetPause = value; },
+    setActiveRun(value: unknown) { activeRun = value; },
+    setExtensionHandler(handler: FakeRequest) { extensionHandler = handler; },
     setUploadFails(value: boolean) { uploadFails = value; },
     async render() { await act(async () => { root.render(<CraftRoutes {...props} />); await Promise.resolve(); }); },
     async settle() { await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); }); },
@@ -165,6 +173,121 @@ test('Craft workbench mounts server-backed Task access, refreshes after grant an
     await view.settle();
     assert.doesNotMatch(access.textContent ?? '', /viewer: viewer/);
     assert.ok(view.calls.filter((call) => call.method === 'GET' && call.path.endsWith('/craft/access')).length >= 3, 'mount, grant, and revoke each refetch authoritative membership');
+  } finally { await view.cleanup(); }
+});
+
+test('server-authorized collaborator can request extension, and retry reuses its key while in flight is disabled', async () => {
+  const view = await harness([member('owner', 'owner'), member('collaborator', 'collaborator')], 'collaborator');
+  view.setActiveRun({ run_id: 'run-budget', session_id: 'task-1', status: 'waiting_user', wait_reason: 'budget_exhausted', revision: 1, epoch: 1, seq: 0, pending_id: null, budget_pause: null });
+  const action = { key: 'server-intent-run-budget', extra_calls: 17, extra_credits: 2345678 };
+  view.setBudgetPause({ success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 10, used: 10, extension_action: action }, can_extend: true });
+  const extensionBodies: Array<Record<string, unknown>> = [];
+  let rejectFirst!: (error: Error) => void;
+  let resolveSecond!: (value: unknown) => void;
+  let attempts = 0;
+  view.setExtensionHandler(async (input) => {
+    extensionBodies.push(input.body as Record<string, unknown>);
+    attempts += 1;
+    if (attempts === 1) return new Promise((_, reject) => { rejectFirst = reject; });
+    return new Promise((resolve) => { resolveSecond = resolve; });
+  });
+  try {
+    await view.render();
+    await view.settle();
+    const pause = view.container.querySelector('[data-testid="craft-budget-pause"]');
+    assert.ok(pause, 'budget pause notice is rendered');
+    const extend = [...pause.querySelectorAll('button')].find((button) => button.textContent === '申请增加预算') as HTMLButtonElement;
+    assert.ok(extend, 'a non-owner collaborator receives the server-authorized action');
+    assert.equal(extend.disabled, false);
+
+    await act(async () => { extend.click(); });
+    await view.settle();
+    assert.equal(extensionBodies.length, 1);
+    assert.deepEqual(extensionBodies[0], action, 'first request sends the server-owned key and quantum unchanged');
+    assert.equal(extend.disabled, true, 'the action is disabled while the request is in flight');
+    await act(async () => { rejectFirst(new Error('temporary connection failure')); });
+    await view.settle();
+    assert.equal(extend.disabled, false, 'a failed transient request can be retried');
+
+    await act(async () => { extend.click(); });
+    await view.settle();
+    assert.equal(extensionBodies.length, 2);
+    assert.equal(extensionBodies[1]?.key, extensionBodies[0]?.key, 'retry replays the same logical extension key');
+    assert.deepEqual(extensionBodies[1], action, 'retry replays the exact server-owned tuple');
+    assert.equal(extend.disabled, true, 'the retry is also guarded while in flight');
+    await act(async () => { resolveSecond({ success: true }); });
+    await view.settle();
+    assert.ok(view.calls.some((call) => call.path.endsWith('/budget/extend')));
+  } finally { await view.cleanup(); }
+});
+
+test('ambiguous extension retry reuses the server intent after CraftRoutes is recreated', async () => {
+  const members = [member('owner', 'owner'), member('collaborator', 'collaborator')];
+  const activeRun = { run_id: 'run-budget', session_id: 'task-1', status: 'waiting_user', wait_reason: 'budget_exhausted', revision: 1, epoch: 1, seq: 0, pending_id: null, budget_pause: null };
+  const action = { key: 'durable-server-intent', extra_calls: 10, extra_credits: 10000000 };
+  const first = await harness(members, 'collaborator');
+  first.setActiveRun(activeRun);
+  first.setBudgetPause({ success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 10, used: 10, extension_action: action }, can_extend: true });
+  let firstKey = '';
+  first.setExtensionHandler(async (input) => {
+    firstKey = String((input.body as Record<string, unknown>).key);
+    throw new Error('response lost after server may have resumed the Run');
+  });
+  try {
+    await first.render();
+    await first.settle();
+    const extend = [...first.container.querySelectorAll('[data-testid="craft-budget-pause"] button')][0] as HTMLButtonElement;
+    await act(async () => { extend.click(); });
+    await first.settle();
+  } finally { await first.cleanup(); }
+
+  const second = await harness(members, 'collaborator');
+  second.setActiveRun(activeRun);
+  second.setBudgetPause({ success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 10, used: 10, extension_action: action }, can_extend: true });
+  let retryKey = '';
+  second.setExtensionHandler(async (input) => {
+    retryKey = String((input.body as Record<string, unknown>).key);
+    return { success: true };
+  });
+  try {
+    await second.render();
+    await second.settle();
+    const extend = [...second.container.querySelectorAll('[data-testid="craft-budget-pause"] button')][0] as HTMLButtonElement;
+    await act(async () => { extend.click(); });
+    await second.settle();
+    assert.ok(second.calls.some((call) => call.method === 'GET' && call.path.endsWith('/budget/pause')), 'remount refetches the server-owned pending action');
+    assert.equal(retryKey, firstKey, 'new component instance replays the unresolved extension key');
+  } finally { await second.cleanup(); }
+
+  const laterPause = await harness(members, 'collaborator');
+  laterPause.setActiveRun(activeRun);
+  const nextAction = { key: 'next-server-intent', extra_calls: 12, extra_credits: 3456789 };
+  laterPause.setBudgetPause({ success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 20, used: 20, extension_action: nextAction }, can_extend: true });
+  let laterKey = '';
+  laterPause.setExtensionHandler(async (input) => {
+    laterKey = String((input.body as Record<string, unknown>).key);
+    return { success: true };
+  });
+  try {
+    await laterPause.render();
+    await laterPause.settle();
+    const extend = [...laterPause.container.querySelectorAll('[data-testid="craft-budget-pause"] button')][0] as HTMLButtonElement;
+    await act(async () => { extend.click(); });
+    await laterPause.settle();
+    assert.equal(laterKey, nextAction.key, 'a later pause uses the new server-owned extension key');
+  } finally { await laterPause.cleanup(); }
+});
+
+test('missing server extension action keeps the budget notice non-actionable', async () => {
+  const view = await harness([member('owner', 'owner')]);
+  view.setActiveRun({ run_id: 'run-budget', session_id: 'task-1', status: 'waiting_user', wait_reason: 'budget_exhausted', revision: 1, epoch: 1, seq: 0, pending_id: null, budget_pause: null });
+  view.setBudgetPause({ success: true, data: { run_id: 'run-budget', reason: 'budget_exhausted', limit: 10, used: 10, extension_action: null }, can_extend: true });
+  try {
+    await view.render();
+    await view.settle();
+    const pause = view.container.querySelector('[data-testid="craft-budget-pause"]');
+    assert.ok(pause);
+    assert.equal(pause.querySelector('button'), null, 'can_extend cannot invent a client action when the server returned no intent');
   } finally { await view.cleanup(); }
 });
 

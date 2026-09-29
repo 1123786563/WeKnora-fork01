@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -32,6 +33,7 @@ var _ craft.VersionStore = (*CraftVersionStore)(nil)
 // assembly type-asserts the version store to craft.VersionEvidenceStore and
 // the promotion pins evidence in the same commit as the version.
 var _ craft.VersionEvidenceStore = (*CraftVersionStore)(nil)
+var _ craft.DraftFencedVersionStore = (*CraftVersionStore)(nil)
 
 // NewCraftVersionStore constructs the craft.VersionStore implementation
 // backed by the migrated business database.
@@ -72,6 +74,10 @@ func prepareCraftVersion(in craft.Version) (craft.Version, string, error) {
 	if in.WorkspaceID == "" || in.RunID == "" || in.Kind == "" {
 		return craft.Version{}, "", fmt.Errorf("%w: version requires workspace, run and kind", craft.ErrInvalidInput)
 	}
+	// Persist and return one canonical order so an identical retry compares
+	// equal to the sorted rows reconstructed by loadCraftVersion.
+	in.Files = append([]craft.File(nil), in.Files...)
+	sort.Slice(in.Files, func(i, j int) bool { return in.Files[i].Path < in.Files[j].Path })
 	digest, err := craft.ManifestDigest(in.Files)
 	if err != nil {
 		return craft.Version{}, "", err
@@ -175,7 +181,11 @@ func sameCraftVersion(a, b craft.Version) bool {
 // and answers it with the same id; a different publish under the same
 // identity is a conflict.
 func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in craft.Version) (craft.Version, error) {
-	return s.publish(ctx, scope, in, nil)
+	return s.publish(ctx, scope, in, nil, nil)
+}
+
+func (s *CraftVersionStore) PublishWithDraftHead(ctx context.Context, scope craft.Scope, in craft.Version, expected craft.DraftHead, evidence *craft.VersionEvidence) (craft.Version, error) {
+	return s.publish(ctx, scope, in, evidence, &expected)
 }
 
 // publish is the shared transaction core of Publish and
@@ -183,7 +193,7 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 // legacy shape); otherwise the evidence row lands in the SAME transaction as
 // the version row and its files, so a visible version always carries the
 // evidence it was promoted with.
-func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in craft.Version, evidence *craft.VersionEvidence) (craft.Version, error) {
+func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in craft.Version, evidence *craft.VersionEvidence, expectedHead *craft.DraftHead) (craft.Version, error) {
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return craft.Version{}, fmt.Errorf("%w: incomplete version scope", craft.ErrInvalidInput)
 	}
@@ -234,6 +244,32 @@ func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in c
 		}
 		if ws.OwnerID != scope.UserID {
 			return fmt.Errorf("%w: workspace owned by %s", craft.ErrForbidden, ws.OwnerID)
+		}
+		if expectedHead != nil {
+			if expectedHead.WorkspaceID != in.WorkspaceID || expectedHead.State != craft.DraftHeadSelected || expectedHead.SourceRunID != in.RunID {
+				return fmt.Errorf("%w: invalid expected draft head for version %s", craft.ErrConflict, in.ID)
+			}
+			locked := tx.Model(&craftDraftHeadRow{}).
+				Where("workspace_id = ? AND tenant_id = ? AND revision = ? AND state = ? AND source_run_id = ? AND manifest_digest = ?",
+					in.WorkspaceID, scope.TenantID, expectedHead.Revision, string(craft.DraftHeadSelected), expectedHead.SourceRunID, expectedHead.ManifestDigest).
+				UpdateColumn("updated_at", gorm.Expr("updated_at"))
+			if locked.Error != nil {
+				return locked.Error
+			}
+			if locked.RowsAffected != 1 {
+				return fmt.Errorf("%w: workspace draft head changed before version publish", craft.ErrConflict)
+			}
+			var revision craftDraftRevisionRow
+			if err := tx.Where("workspace_id = ? AND tenant_id = ? AND revision = ? AND source_run_id = ? AND manifest_digest = ?",
+				in.WorkspaceID, scope.TenantID, expectedHead.Revision, expectedHead.SourceRunID, expectedHead.ManifestDigest).Take(&revision).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return fmt.Errorf("%w: immutable draft revision no longer matches promotion", craft.ErrConflict)
+				}
+				return err
+			}
+			if digest != expectedHead.ManifestDigest {
+				return fmt.Errorf("%w: published files do not match selected draft head manifest", craft.ErrConflict)
+			}
 		}
 
 		// created_at is written by the store, not the database default: the
@@ -396,7 +432,7 @@ func adoptCraftVersionEvidence(tx *gorm.DB, row craftVersionEvidenceRow) error {
 // stored rows and a different evidence under the same version id is a
 // conflict.
 func (s *CraftVersionStore) PublishWithEvidence(ctx context.Context, scope craft.Scope, v craft.Version, ev craft.VersionEvidence) (craft.Version, error) {
-	return s.publish(ctx, scope, v, &ev)
+	return s.publish(ctx, scope, v, &ev, nil)
 }
 
 // VersionEvidence returns the evidence pinned to one published version,

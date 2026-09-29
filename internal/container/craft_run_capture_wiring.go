@@ -212,7 +212,7 @@ func (r *CraftRunCaptureRunner) RecoverRun(ctx context.Context, fence runtime.Fe
 	}
 	// T20: the drain sealed this Run's output; attempt the four-check
 	// promotion of the sealed head (best-effort, idempotent, fail-closed).
-	r.promoter.promoteTerminalReceipts(ctx, craftPromotionScanLimit)
+	r.promoter.promoteReceiptsForRun(ctx, fence.TenantID, fence.RunID)
 }
 
 // RecoverTick drains one periodic-scan round (synthesis only every Nth

@@ -131,7 +131,8 @@ func TestCraftT04Journey(t *testing.T) {
 	// The log feeds the W01 evidence seam: build ran and exited 0, so the
 	// collected version's build check passes and the entry check passes on
 	// the really produced files.
-	evidence, err := CraftWebBuildEvidence(buildLog, pin)
+	exitCode := 0
+	evidence, err := CraftWebBuildEvidence(buildLog, pin, &exitCode)
 	require.NoError(t, err)
 	require.True(t, evidence.BuildRan)
 	require.Zero(t, evidence.BuildExitCode)
@@ -158,8 +159,7 @@ func TestCraftT04Journey(t *testing.T) {
 		return os.ReadFile(filepath.Join(outputDir, "build-log.json"))
 	}, pin)(context.Background(), task)
 	require.True(t, innerRan, "preview evidence source is still consulted")
-	require.True(t, merged.BuildRan)
-	require.Zero(t, merged.BuildExitCode)
+	require.False(t, merged.BuildRan, "sandbox-writable logs cannot establish execution evidence without a server receipt")
 	require.True(t, merged.PreviewRan && merged.PreviewPassed, "preview verdicts survive the merge")
 
 	// 2. Missing provisioned dependency: the build fails loudly, the log
@@ -179,7 +179,7 @@ func TestCraftT04Journey(t *testing.T) {
 	require.Equal(t, code, *failLog.ExitCode, "log records the real exit status")
 	require.NotEmpty(t, failLog.Error, "failure names its cause")
 	require.Contains(t, failureLog, "craft-web.css", "stderr names the missing dependency")
-	failEvidence, err := CraftWebBuildEvidence(failLog, pin)
+	failEvidence, err := CraftWebBuildEvidence(failLog, pin, &code)
 	require.NoError(t, err)
 	require.True(t, failEvidence.BuildRan)
 	require.Equal(t, code, failEvidence.BuildExitCode)
@@ -196,7 +196,7 @@ func TestCraftT04Journey(t *testing.T) {
 	//    stays not_run instead of being imported on trust.
 	foreignLog := buildLog
 	foreignLog.ToolchainDigest = strings.Repeat("0f", 32)
-	_, err = CraftWebBuildEvidence(foreignLog, pin)
+	_, err = CraftWebBuildEvidence(foreignLog, pin, &exitCode)
 	require.Error(t, err, "log pinned to a foreign toolchain must be refused")
 	ignored := craftWebBuildEvidenceSource(inner, func(context.Context, craft.Task) ([]byte, error) {
 		raw, _ := json.Marshal(foreignLog)
@@ -299,10 +299,10 @@ func TestCraftWebToolchainPinsMatchShippedFiles(t *testing.T) {
 	// The shipped lock pins every file digest and the derived digest.
 	lockBytes := readFile(t, filepath.Join(dir, "toolchain.lock.json"))
 	var lock struct {
-		Schema         int    `json:"schema"`
-		Name           string `json:"name"`
+		Schema          int    `json:"schema"`
+		Name            string `json:"name"`
 		ToolchainDigest string `json:"toolchain_digest"`
-		Template       struct {
+		Template        struct {
 			Name    string `json:"name"`
 			Version string `json:"version"`
 			SHA256  string `json:"sha256"`

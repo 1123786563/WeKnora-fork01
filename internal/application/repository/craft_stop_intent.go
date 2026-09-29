@@ -60,6 +60,12 @@ func (s *CraftStopIntentStore) PutStopIntent(ctx context.Context, scope craft.Sc
 	now := time.Now().UTC()
 	effective := intent
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Stop acceptance and fresh delegation preparation serialize on the
+		// same durable Run row. Keep this first in the transaction, before
+		// taking the intent-row lock, so the lock order is Run → intent.
+		if err := lockStopIntentRun(tx, scope, intent.RunID); err != nil {
+			return err
+		}
 		var current craftStopIntentRow
 		// FOR UPDATE (the craft_draft_head/craft_run_capture precedent): a
 		// replay racing the authoritative confirmation must base the
@@ -116,6 +122,25 @@ func (s *CraftStopIntentStore) PutStopIntent(ctx context.Context, scope craft.Sc
 	return effective, nil
 }
 
+// lockStopIntentRun takes the Run-row write lock used by PrepareTask's
+// lockToolRun before any stop-intent row is read or written. The no-op
+// revision update works on SQLite as well as PostgreSQL; requiring exactly
+// one matching owner/session identity keeps a stale or foreign scope from
+// accepting an intent for another Run.
+func lockStopIntentRun(tx *gorm.DB, scope craft.Scope, runID string) error {
+	locked := tx.Table("agent_runs").Where(
+		"tenant_id = ? AND session_id = ? AND owner_id = ? AND run_id = ?",
+		scope.TenantID, scope.SessionID, scope.UserID, runID,
+	).UpdateColumn("revision", gorm.Expr("revision"))
+	if locked.Error != nil {
+		return locked.Error
+	}
+	if locked.RowsAffected != 1 {
+		return fmt.Errorf("%w: Run %s for stop intent", craft.ErrNotFound, runID)
+	}
+	return nil
+}
+
 // GetStopIntent reads one Run's durable stop intent; a run without a stop
 // journey answers an error wrapping craft.ErrNotFound (never a fabricated
 // status).
@@ -126,9 +151,13 @@ func (s *CraftStopIntentStore) GetStopIntent(ctx context.Context, scope craft.Sc
 	if scope.TenantID == 0 || scope.SessionID == "" || runID == "" {
 		return craft.StopIntent{}, fmt.Errorf("%w: stop intent read requires the task scope and run id", craft.ErrInvalidInput)
 	}
+	return getStopIntent(s.db.WithContext(ctx), scope.TenantID, scope.SessionID, runID)
+}
+
+func getStopIntent(db *gorm.DB, tenantID uint64, sessionID, runID string) (craft.StopIntent, error) {
 	var row craftStopIntentRow
-	err := s.db.WithContext(ctx).Where("tenant_id = ? AND session_id = ? AND run_id = ?",
-		scope.TenantID, scope.SessionID, runID).Take(&row).Error
+	err := db.Where("tenant_id = ? AND session_id = ? AND run_id = ?",
+		tenantID, sessionID, runID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craft.StopIntent{}, fmt.Errorf("%w: no stop intent for run %s", craft.ErrNotFound, runID)
 	}

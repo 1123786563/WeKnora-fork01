@@ -107,11 +107,9 @@ func driveAdapterOnce(t *testing.T, status int, body string) CraftEgressAttemptR
 	return last
 }
 
-// TestAdapterParksOnlyOnActivityUnresolvedCode covers both directions of the
-// OCR high finding: a 502 whose body carries error.code=ACTIVITY_UNRESOLVED
-// parks (unknown outcome), while a 409 WITHOUT that code (an upstream
-// passthrough) resolves definitively — resolving the former would double-bill
-// the retry, parking the latter deadlocks it forever.
+// TestAdapterParksOnlyOnActivityUnresolvedCode covers the unresolved envelope
+// and preserves the non-5xx 409 upstream passthrough behavior. Any 5xx parks
+// because its JSON body cannot prove which hop produced the response.
 func TestAdapterParksOnlyOnActivityUnresolvedCode(t *testing.T) {
 	parked := driveAdapterOnce(t, http.StatusBadGateway, `{"error":{"code":"ACTIVITY_UNRESOLVED"}}`)
 	require.Equal(t, CraftEgressAttemptUnresolved, parked.State,
@@ -122,8 +120,8 @@ func TestAdapterParksOnlyOnActivityUnresolvedCode(t *testing.T) {
 		"a 409 without the ACTIVITY_UNRESOLVED code is a definitive upstream outcome")
 
 	plain502 := driveAdapterOnce(t, http.StatusBadGateway, `{"error":{"code":"UPSTREAM_ERROR"}}`)
-	require.Equal(t, CraftEgressAttemptResolved, plain502.State,
-		"round-4 contract: UPSTREAM_ERROR is emitted only on definitively-resolved paths (DefinitelyNotStarted/Started) — parking it deadlocks same-fingerprint retries on the gateway 409")
+	require.Equal(t, CraftEgressAttemptUnresolved, plain502.State,
+		"an appFail-shaped 502 cannot authenticate its origin and must keep the attempt parked")
 }
 
 var _ = context.Background

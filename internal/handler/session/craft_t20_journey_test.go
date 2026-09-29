@@ -198,10 +198,15 @@ func TestCraftT20Journey(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code, "pause body: %s", w.Body.String())
 	var pauseView struct {
 		Data struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason"`
-			Limit  int64  `json:"limit"`
-			Used   int64  `json:"used"`
+			RunID           string `json:"run_id"`
+			Reason          string `json:"reason"`
+			Limit           int64  `json:"limit"`
+			Used            int64  `json:"used"`
+			ExtensionAction *struct {
+				Key          string `json:"key"`
+				ExtraCalls   int    `json:"extra_calls"`
+				ExtraCredits int64  `json:"extra_credits"`
+			} `json:"extension_action"`
 		} `json:"data"`
 		CanExtend bool `json:"can_extend"`
 	}
@@ -209,23 +214,28 @@ func TestCraftT20Journey(t *testing.T) {
 	require.Equal(t, runB, pauseView.Data.RunID)
 	require.Equal(t, "exhausted", pauseView.Data.Reason)
 	require.True(t, pauseView.CanExtend)
+	require.NotNil(t, pauseView.Data.ExtensionAction)
+	require.NotEmpty(t, pauseView.Data.ExtensionAction.Key)
+	require.Equal(t, 10, pauseView.Data.ExtensionAction.ExtraCalls)
+	actionBody, err := json.Marshal(pauseView.Data.ExtensionAction)
+	require.NoError(t, err)
 
 	// Authorization legs on the same spine: the Task gate refuses a
 	// same-tenant non-member; the tenant fence stays 404 for the foreigner.
-	require.Equal(t, http.StatusForbidden, env.do(t, http.MethodGet, pausePath, "admin", "").Code)
+	require.Equal(t, http.StatusForbidden, env.do(t, http.MethodGet, pausePath, "nonmember", "").Code)
 	require.Equal(t, http.StatusNotFound, env.do(t, http.MethodGet, pausePath, "foreigntenant", "").Code)
 
 	// The unconfirmed dispatched effect is never replayed: extension refuses
 	// with the reconcile-pending conflict while the reservation is open.
 	require.Equal(t, http.StatusConflict, env.do(t, http.MethodPost, extendPath, "",
-		`{"key":"ext-t20-journey","extra_calls":2,"extra_credits":1000}`).Code)
+		string(actionBody)).Code)
 	require.NoError(t, env.db.Model(&repocommercial.ReservationRow{}).
 		Where("tenant_id = ?", uint64(1)).
 		Update("state", commercial.ReservationStateSettled).Error)
 
 	// The owner's extension resumes the Run durably; the pause view is gone.
 	require.Equal(t, http.StatusOK, env.do(t, http.MethodPost, extendPath, "",
-		`{"key":"ext-t20-journey","extra_calls":2,"extra_credits":1000}`).Code)
+		string(actionBody)).Code)
 	var resumed struct{ Status, WaitReason string }
 	require.NoError(t, env.db.Table("agent_runs").Select("status, wait_reason").
 		Where("tenant_id = ? AND run_id = ?", uint64(1), runB).Take(&resumed).Error)

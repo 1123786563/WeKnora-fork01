@@ -35,12 +35,12 @@ class BuildSanitizerTests(unittest.TestCase):
         # (CSS) to url(//evil.example). Raw bytes pass every literal scan;
         # the composed closure must refuse it.
         fragment = '<div style="&#92;75 rl&#40;&#92;2f&#92;2fevil&#46;example&#41;">x</div>'
-        with self.assertRaisesRegex(self.build.BuildError, "external URL|css url"):
+        with self.assertRaisesRegex(self.build.BuildError, "inline style attribute|external URL|css url"):
             self.build.render_html("实体CSS组合绕过", fragment)
 
     def test_literal_css_escape_smuggle_is_refused(self):
         fragment = '<div style="\\75 rl(\\2f\\2fevil.example)">x</div>'
-        with self.assertRaisesRegex(self.build.BuildError, "external URL|css url"):
+        with self.assertRaisesRegex(self.build.BuildError, "inline style attribute|external URL|css url"):
             self.build.render_html("CSS字面绕过", fragment)
 
     def test_benign_fragment_passes(self):
@@ -68,6 +68,20 @@ class BuildSanitizerTests(unittest.TestCase):
     def test_real_inline_handler_is_refused(self):
         with self.assertRaisesRegex(self.build.BuildError, "inline event handler"):
             self.build.render_html("真实内联", '<img src="x.png" onerror="alert(1)">')
+
+    def test_style_and_link_tags_are_refused(self):
+        for fragment in (
+            "<style>body { position: fixed; inset: 0 }</style>",
+            '<link rel="stylesheet" href="local.css">',
+            "<STYLE>body { display: none }</STYLE>",
+        ):
+            with self.subTest(fragment=fragment):
+                with self.assertRaisesRegex(self.build.BuildError, "style|link"):
+                    self.build.render_html("CSS标签", fragment)
+
+    def test_inline_style_attribute_is_refused(self):
+        with self.assertRaisesRegex(self.build.BuildError, "style attribute"):
+            self.build.render_html("CSS属性", '<div style="position:fixed;inset:0">x</div>')
 
     def test_cjk_headings_yield_unique_filter_and_table_ids(self):
         table_a = {"columns": ["列一"], "rows": [["a"]]}

@@ -206,6 +206,8 @@ func newCraftHTTPEnv(t *testing.T, gate service.CraftFeatureGate) *craftHTTPEnv 
 		switch identity {
 		case "viewer":
 			user = "u2"
+		case "nonmember":
+			user = "u3"
 		case "admin":
 			user, role = "u2", "admin"
 		case "foreigntenant":

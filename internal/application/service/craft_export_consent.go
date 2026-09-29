@@ -225,6 +225,11 @@ func (s *CraftExportConsentService) ExportConsentView(ctx context.Context, scope
 	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskRead); err != nil {
 		return CraftExportConsentView{}, err
 	}
+	caller := types.CallerFromContext(ctx)
+	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
+		s.auditExportConsentByCaller(ctx, scope, caller, versionID, craftExportDenyActionCallerIdentity, "denied", nil)
+		return CraftExportConsentView{}, craft.ErrForbidden
+	}
 	return s.view(ctx, scope, versionID)
 }
 
@@ -248,7 +253,7 @@ func (s *CraftExportConsentService) DecideExport(ctx context.Context, scope craf
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
-		s.auditExportConsent(ctx, scope, versionID, craftExportDenyActionCallerIdentity, "denied", map[string]string{"reason": "caller_identity_mismatch"})
+		s.auditExportConsentByCaller(ctx, scope, caller, versionID, craftExportDenyActionCallerIdentity, "denied", map[string]string{"reason": "caller_identity_mismatch"})
 		return CraftExportConsentView{}, craft.ErrForbidden
 	}
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
@@ -348,10 +353,16 @@ var craftExportConsentDeniedActionVocabulary = map[string]bool{
 // the write failure is logged, never propagated — authority was already
 // decided and must not flip on the audit sink.
 func (s *CraftExportConsentService) auditExportConsent(ctx context.Context, scope craft.Scope, versionID, action, outcome string, details map[string]string) {
+	s.auditExportConsentByCaller(ctx, scope, types.Caller{TenantID: scope.TenantID, UserID: scope.UserID}, versionID, action, outcome, details)
+}
+
+// auditExportConsentByCaller keeps the requested Task/version as the target
+// while attributing caller-identity denials to the authenticated actor.
+func (s *CraftExportConsentService) auditExportConsentByCaller(ctx context.Context, scope craft.Scope, caller types.Caller, versionID, action, outcome string, details map[string]string) {
 	if outcome == "denied" && !craftExportConsentDeniedActionVocabulary[action] {
 		return
 	}
-	actor, full := craftAuditActorUserID(scope.UserID)
+	actor, full := craftAuditActorUserID(caller.UserID)
 	if details == nil {
 		details = map[string]string{}
 	}
@@ -369,13 +380,13 @@ func (s *CraftExportConsentService) auditExportConsent(ctx context.Context, scop
 		var recent int64
 		if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
 			Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND scope_id = ? AND target_id = ? AND outcome = ? AND created_at > ?",
-				scope.TenantID, actor, action, scope.SessionID, versionID, "denied", since).
+				caller.TenantID, actor, action, scope.SessionID, versionID, "denied", since).
 			Count(&recent).Error; err == nil && recent > 0 {
 			return
 		}
 	}
 	if err := s.db.WithContext(ctx).Create(&craftAccessAudit{
-		TenantID: scope.TenantID, ActorUserID: actor, Action: action,
+		TenantID: caller.TenantID, ActorUserID: actor, Action: action,
 		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "artifact_version",
 		TargetID: versionID, Outcome: outcome,
 		Details: types.JSON(raw), CreatedAt: now,

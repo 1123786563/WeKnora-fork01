@@ -325,7 +325,11 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 		ID: versionID, WorkspaceID: candidate.WorkspaceID, RunID: candidate.RunID,
 		Kind: craft.KindWeb, Files: candidate.Files, Checks: craft.WebChecks(record),
 	}
-	var published craft.Version
+	fenced, ok := s.versions.(craft.DraftFencedVersionStore)
+	if !ok {
+		return craft.Version{}, fmt.Errorf("%w: the version store cannot atomically fence the Workspace draft head", craft.ErrUnsupported)
+	}
+	var pinnedEvidence *craft.VersionEvidence
 	if s.runEvidence != nil {
 		// T07 (#131): the promotion must be able to PROVE the evidence it
 		// pins. The Run's record is loaded and server-side bound here — a
@@ -334,17 +338,17 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 		// observation cannot promote at all. The pin never re-reads the
 		// Workspace or the current knowledge state: the record IS what the
 		// Run used.
-		published, err = s.publishWithEvidence(ctx, scope, versionOut, candidate.RunID)
-		if err != nil {
-			logger.Warnf(ctx, "[CraftArtifact] web promotion evidence pinning refused for run %s: %v", candidate.RunID, err)
-			return craft.Version{}, err
+		pinned, evidenceErr := s.promotionEvidence(ctx, scope, versionOut, candidate.RunID)
+		if evidenceErr != nil {
+			logger.Warnf(ctx, "[CraftArtifact] web promotion evidence pinning refused for run %s: %v", candidate.RunID, evidenceErr)
+			return craft.Version{}, evidenceErr
 		}
-	} else {
-		published, err = s.versions.Publish(ctx, scope, versionOut)
-		if err != nil {
-			logger.Warnf(ctx, "[CraftArtifact] web promotion publish failed for run %s: %v", candidate.RunID, err)
-			return craft.Version{}, err
-		}
+		pinnedEvidence = &pinned
+	}
+	published, err := fenced.PublishWithDraftHead(ctx, scope, versionOut, head, pinnedEvidence)
+	if err != nil {
+		logger.Warnf(ctx, "[CraftArtifact] web promotion publish failed for run %s: %v", candidate.RunID, err)
+		return craft.Version{}, err
 	}
 	// The store persists the four checks; the returned projection carries the
 	// same evidence derived from them so callers (and the DTO) never have to.
@@ -355,31 +359,21 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 	return out, nil
 }
 
-// publishWithEvidence loads the promoting Run's immutable record, binds it
-// server-side to this scope and run, and publishes the version WITH its
-// evidence member in one store transaction. A store that cannot pin
-// evidence fails closed: an assembly that wired the evidence port but not
-// the evidence-capable store promotes nothing.
-func (s *CraftArtifactService) publishWithEvidence(ctx context.Context, scope craft.Scope, v craft.Version, runID string) (craft.Version, error) {
-	store, ok := s.versions.(craft.VersionEvidenceStore)
-	if !ok {
-		return craft.Version{}, fmt.Errorf("%w: the version store cannot pin evidence", craft.ErrUnsupported)
+func (s *CraftArtifactService) promotionEvidence(ctx context.Context, scope craft.Scope, v craft.Version, runID string) (craft.VersionEvidence, error) {
+	if _, ok := s.versions.(craft.VersionEvidenceStore); !ok {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: the version store cannot pin evidence", craft.ErrUnsupported)
 	}
 	record, err := s.runEvidence.Load(ctx, scope, runID)
 	if err != nil {
-		return craft.Version{}, err
+		return craft.VersionEvidence{}, err
 	}
 	if record.Scope.TenantID != scope.TenantID || record.Scope.SessionID != scope.SessionID || record.RunID != runID {
-		return craft.Version{}, craft.ErrForbidden
+		return craft.VersionEvidence{}, craft.ErrForbidden
 	}
 	if record.PublicationState != craft.KnowledgePublicationPublished {
-		return craft.Version{}, fmt.Errorf("%w: run %s source observation is %q, not published", craft.ErrConflict, runID, record.PublicationState)
+		return craft.VersionEvidence{}, fmt.Errorf("%w: run %s source observation is %q, not published", craft.ErrConflict, runID, record.PublicationState)
 	}
-	evidence, err := craft.PinVersionEvidence(v.ID, record, time.Now().UTC())
-	if err != nil {
-		return craft.Version{}, err
-	}
-	return store.PublishWithEvidence(ctx, scope, v, evidence)
+	return craft.PinVersionEvidence(v.ID, record, time.Now().UTC())
 }
 
 // VersionEvidence returns the evidence pinned to one published version

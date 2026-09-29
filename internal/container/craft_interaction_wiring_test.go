@@ -13,6 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -186,4 +187,47 @@ func TestWireCraftInteractionRegistrarRegistersPendingInteractions(t *testing.T)
 	require.NoError(t, runtime.db.Table("agent_run_events").
 		Where("tenant_id = ? AND run_id = ?", fence.TenantID, fence.RunID).Count(&events).Error)
 	require.Equal(t, int64(2), events, "both emissions must append durable run events")
+}
+
+func TestNewCraftInteractionAssemblyInjectsCurrentTaskAccess(t *testing.T) {
+	db := wiringTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, db.Exec("INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s-wiring', 1, 'web')").Error)
+	require.NoError(t, db.Exec(`INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES
+		('u-wiring','u-wiring','u-wiring@example.test','x',1),
+		('collaborator','collaborator','collaborator@example.test','x',1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES
+		(1,'u-wiring','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+		(1,'collaborator','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
+	access := service.NewCraftAccessService(db)
+	ownerScope := craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"}
+	require.NoError(t, access.Grant(ctx, ownerScope, "collaborator", craft.TaskRoleCollaborator))
+	craftStore := repository.NewCraftStore(db)
+	_, err := craftStore.PutWorkspace(ctx, craft.Workspace{
+		Scope: ownerScope, SandboxID: "sandbox-wiring-access", Generation: "1",
+		OpenCodeSessionID: "opencode-wiring-access", RuntimeDigest: "runtime-wiring-access",
+	}, 0)
+	require.NoError(t, err)
+
+	runsRepo := repository.NewAgentRunStore(db)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "run-wiring-access"}
+	_, err = runsRepo.Admit(ctx, agentruntime.Admission{
+		Key: key, SessionID: ownerScope.SessionID, UserID: ownerScope.UserID, ActorUserID: "collaborator",
+		RequestID: "request-wiring-access", AssistantMessageID: "assistant-wiring-access",
+		RequestHash: "hash-wiring-access", Snapshot: json.RawMessage(`{"version":1,"craft_input_manifest":[]}`),
+		UserMessage:      json.RawMessage(`{"role":"user","content":"build"}`),
+		AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`),
+		Deadline:         time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	t.Setenv(craftOpenCodeBaseURLEnv, "")
+	assembly := newCraftInteractionAssembly(db, craftStore, &AgentRuntime{Runs: service.NewAgentRunService(runsRepo)})
+	status, err := assembly.Control.Stop(types.WithCaller(ctx, types.Caller{TenantID: 1, UserID: "collaborator"}), service.CraftStopRequest{
+		Scope: ownerScope, RunKey: key, TaskID: "missing-delegation",
+	})
+	require.NoError(t, err, "the production assembly must accept the initiating Collaborator's current TaskWrite")
+	require.Equal(t, "stopping", status.Phase)
+	_, err = repository.NewCraftStopIntentStore(db).GetStopIntent(ctx, ownerScope, key.RunID)
+	require.NoError(t, err, "accepted stop must use the durable stop-intent store")
 }

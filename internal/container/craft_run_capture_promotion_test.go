@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -74,6 +75,17 @@ func openCraftT20PromotionDB(t *testing.T) *gorm.DB {
 type t20ProbeStub struct {
 	reachable, loaded craft.CheckOutcome
 	calls             int
+}
+
+type t20BlockingProbe struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *t20BlockingProbe) ProbeWebPage(context.Context, craft.Scope, craft.Candidate) (craft.CheckOutcome, craft.CheckOutcome) {
+	close(p.started)
+	<-p.release
+	return craft.WebCheckPassed, craft.WebCheckPassed
 }
 
 func (p *t20ProbeStub) ProbeWebPage(context.Context, craft.Scope, craft.Candidate) (craft.CheckOutcome, craft.CheckOutcome) {
@@ -188,6 +200,174 @@ func TestCraftT20PostTerminalPromotionPublishesSealedWebHead(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1, "a replayed identical promotion adopts the published version")
 	require.Equal(t, 1, probe.calls)
+}
+
+func TestCraftT20PromotionRecoveryPagesPastOlderReceipts(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	probe := &t20ProbeStub{reachable: craft.WebCheckPassed, loaded: craft.WebCheckPassed}
+	promoter, versions := t20PromotionStack(t, db, probe)
+	scope, ws, candidate := seedT20TerminalWebRun(t, db, "run-page-newest", "<h1>newest</h1>")
+	for i := 0; i < craftPromotionScanLimit; i++ {
+		runID := fmt.Sprintf("run-page-old-%02d", i)
+		created := time.Now().Add(-time.Hour + time.Duration(i)*time.Second)
+		require.NoError(t, db.Exec(`INSERT INTO agent_runs
+			(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, status, wait_reason, deadline, created_at, updated_at)
+			VALUES (1, ?, 's1', 'u1', ?, ?, 'h', '{}', 'failed', '', ?, ?, ?)`,
+			runID, "req-"+runID, "am-"+runID, created.Add(time.Hour), created, created).Error)
+		require.NoError(t, db.Exec(`INSERT INTO craft_run_captures
+			(tenant_id, workspace_id, run_id, owner_id, session_id, generation, predecessor_revision, predecessor_state, predecessor_run_id, predecessor_digest, state, manifest_digest, draft_revision, created_at, updated_at)
+			VALUES (1, ?, ?, 'u1', 's1', ?, 0, 'empty', '', '', 'advanced', ?, 1, ?, ?)`,
+			ws, runID, "gen-"+runID, candidate.ManifestDigest, created, created).Error)
+	}
+	promoter.promoteTerminalReceipts(context.Background(), craftPromotionScanLimit)
+	// A new process has no shared Go cursor; durable cursor state must continue
+	// from the prior page and reach the newer receipt.
+	promoter, versions = t20PromotionStack(t, db, probe)
+	promoter.promoteTerminalReceipts(context.Background(), craftPromotionScanLimit)
+	_, err := versions.Get(context.Background(), scope, craft.VersionID(ws, candidate.RunID, candidate.ManifestDigest))
+	require.NoError(t, err, "bounded repeated scans must advance past old terminal receipts")
+}
+
+func TestCraftT20PromotionFailureCooldownIsBoundedAndRetryable(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	scope, _, candidate := seedT20TerminalWebRun(t, db, "run-cooldown", "<h1>retry</h1>")
+	captures := repository.NewCraftRunCaptureStore(db)
+	first, err := captures.ClaimPromotionForRun(context.Background(), scope.TenantID, candidate.RunID, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	second, err := captures.ClaimPromotionForRun(context.Background(), scope.TenantID, candidate.RunID, time.Minute)
+	require.NoError(t, err)
+	require.Empty(t, second, "a failed candidate stays out of immediate retry loops")
+	require.NoError(t, db.Exec(`UPDATE craft_run_capture_promotion_attempts SET retry_after = datetime('now', '-1 minute') WHERE tenant_id = ? AND workspace_id = ? AND run_id = ?`,
+		scope.TenantID, first[0].WorkspaceID, candidate.RunID).Error)
+	third, err := captures.ClaimPromotionForRun(context.Background(), scope.TenantID, candidate.RunID, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, third, 1, "an incomplete candidate becomes eligible after its cooldown")
+}
+
+func TestCraftT20FreshPromotionQuotaSurvivesOverdueBacklog(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	scope, workspaceID, candidate := seedT20TerminalWebRun(t, db, "run-fresh-after-due", "<h1>fresh</h1>")
+	captures := repository.NewCraftRunCaptureStore(db)
+	for i := 0; i < craftPromotionScanLimit+8; i++ {
+		runID := fmt.Sprintf("run-due-backlog-%02d", i)
+		created := time.Now().Add(-2*time.Hour + time.Duration(i)*time.Second)
+		require.NoError(t, db.Exec(`INSERT INTO agent_runs
+			(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, status, wait_reason, deadline, created_at, updated_at)
+			VALUES (1, ?, 's1', 'u1', ?, ?, 'h', '{}', 'failed', '', ?, ?, ?)`,
+			runID, "req-"+runID, "am-"+runID, created.Add(time.Hour), created, created).Error)
+		require.NoError(t, db.Exec(`INSERT INTO craft_run_captures
+			(tenant_id, workspace_id, run_id, owner_id, session_id, generation, predecessor_revision, predecessor_state, predecessor_run_id, predecessor_digest, state, manifest_digest, draft_revision, created_at, updated_at)
+			VALUES (1, ?, ?, 'u1', 's1', ?, 0, 'empty', '', '', 'advanced', ?, 1, ?, ?)`,
+			workspaceID, runID, "gen-"+runID, candidate.ManifestDigest, created, created).Error)
+		claimed, err := captures.ClaimPromotionForRun(context.Background(), scope.TenantID, runID, time.Minute)
+		require.NoError(t, err)
+		require.Len(t, claimed, 1)
+	}
+	// Simulate more than one page of failed receipts whose retry cooldowns
+	// have elapsed together.
+	require.NoError(t, db.Exec("UPDATE craft_run_capture_promotion_attempts SET retry_after = datetime('now', '-1 minute')").Error)
+	foundFresh := false
+	for tick := 0; tick < 8 && !foundFresh; tick++ {
+		batch, err := captures.ClaimPromotionBatch(context.Background(), craftPromotionScanLimit, 5*time.Minute)
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(batch), craftPromotionScanLimit)
+		for _, receipt := range batch {
+			foundFresh = foundFresh || receipt.RunID == candidate.RunID
+		}
+	}
+	require.True(t, foundFresh, "bounded fresh keyset pages keep advancing through an overdue backlog and eventually reach new work")
+}
+
+func TestCraftT20TargetedAndGlobalPromotionClaimsSerializeSQLite(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	scope, _, candidate := seedT20TerminalWebRun(t, db, "run-claim-race", "<h1>one claim</h1>")
+	globalStore := repository.NewCraftRunCaptureStore(db)
+	targetStore := repository.NewCraftRunCaptureStore(db)
+	start := make(chan struct{})
+	type claimResult struct {
+		rows []repository.CraftRunCapturePromotionCandidate
+		err  error
+	}
+	globalResult := make(chan claimResult, 1)
+	targetResult := make(chan claimResult, 1)
+	go func() {
+		<-start
+		rows, err := globalStore.ClaimPromotionBatch(context.Background(), craftPromotionScanLimit, time.Minute)
+		globalResult <- claimResult{rows: rows, err: err}
+	}()
+	go func() {
+		<-start
+		rows, err := targetStore.ClaimPromotionForRun(context.Background(), scope.TenantID, candidate.RunID, time.Minute)
+		targetResult <- claimResult{rows: rows, err: err}
+	}()
+	close(start)
+	global := <-globalResult
+	target := <-targetResult
+	require.NoError(t, global.err)
+	require.NoError(t, target.err)
+	require.Equal(t, 1, len(global.rows)+len(target.rows), "exactly one claim path reserves this receipt")
+}
+
+func TestCraftT20PerRunPromotionUsesIndependentBoundedContext(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	scope, ws, candidate := seedT20TerminalWebRun(t, db, "run-targeted", "<h1>targeted</h1>")
+	probe := &t20ProbeStub{reachable: craft.WebCheckPassed, loaded: craft.WebCheckPassed}
+	promoter, versions := t20PromotionStack(t, db, probe)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	promoter.promoteReceiptsForRun(ctx, scope.TenantID, candidate.RunID)
+	_, err := versions.Get(context.Background(), scope, craft.VersionID(ws, candidate.RunID, candidate.ManifestDigest))
+	require.NoError(t, err, "per-Run promotion receives its own bounded context after drain cancellation")
+	require.Equal(t, 1, probe.calls)
+}
+
+func TestCraftT20PromotionRejectsHeadAdvancedAfterValidationSQLite(t *testing.T) {
+	db := openCraftT20PromotionDB(t)
+	scope, workspaceID, candidate := seedT20TerminalWebRun(t, db, "run-fence-one", "<h1>revision 1</h1>")
+	probe := &t20BlockingProbe{started: make(chan struct{}), release: make(chan struct{})}
+	drafts := repository.NewCraftDraftHeadStore(db)
+	versions := repository.NewCraftVersionStore(db)
+	artifacts := service.NewCraftArtifactServiceWithCandidates(
+		closedCraftArtifactSource{}, newCaptureWiringFiles(t, db), versions,
+		repository.NewCraftCandidateStore(db), nil,
+		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir},
+	).WithWebPromotion(drafts, probe)
+	result := make(chan error, 1)
+	go func() {
+		_, err := artifacts.PromoteWebVersion(context.Background(), scope, craft.WebPromotionRequest{
+			WorkspaceID: workspaceID, RunID: candidate.RunID, CandidateID: candidate.ID, Revision: 1,
+		})
+		result <- err
+	}()
+	select {
+	case <-probe.started: // Revision 1 has already passed service validation.
+	case <-time.After(10 * time.Second):
+		t.Fatal("promotion did not reach the page probe after validating revision 1")
+	}
+
+	// Advance to revision 2 while revision 1 is between its service check and
+	// publish. The transaction's revision CAS must reject the older publish.
+	now := time.Now()
+	runID := "run-fence-two"
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs
+		(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, status, wait_reason, deadline, created_at, updated_at)
+		VALUES (1, ?, 's1', 'u1', ?, ?, 'h', '{}', 'succeeded', '', ?, ?, ?)`,
+		runID, "req-"+runID, "am-"+runID, now.Add(time.Hour), now, now).Error)
+	secondContent := "<h1>revision 2</h1>"
+	secondDigest := sha256.Sum256([]byte(secondContent))
+	secondFiles := []craft.File{{
+		Path: "index.html", Ref: "resource://t20-promotion/" + runID,
+		SHA256: hex.EncodeToString(secondDigest[:]),
+		MIME:   "text/html", Bytes: int64(len(secondContent)),
+	}}
+	_, err := drafts.Advance(context.Background(), scope, workspaceID, 1, runID, secondFiles)
+	require.NoError(t, err)
+	close(probe.release)
+	require.ErrorIs(t, <-result, craft.ErrConflict)
+	listed, err := versions.List(context.Background(), scope)
+	require.NoError(t, err)
+	require.Empty(t, listed, "revision 1 must not publish after revision 2 becomes current")
 }
 
 func TestCraftT20PostTerminalPromotionFailsClosedWithoutProbe(t *testing.T) {

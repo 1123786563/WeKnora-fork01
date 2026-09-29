@@ -322,6 +322,36 @@ func (s *CraftStore) PrepareTask(ctx context.Context, in craft.Task) (craft.Task
 			return fmt.Errorf("%w: tool call %s is %s", craft.ErrConflict, in.ToolCallID, call.Status)
 		}
 
+		// Preserve idempotent reuse/observation for a delegation that was
+		// already prepared before Stop. Only a fresh row is subject to the
+		// StopIntent fence below.
+		var existing craftDelegationRow
+		existingErr := tx.Where("tenant_id = ? AND run_id = ? AND tool_call_id = ?",
+			in.Fence.TenantID, in.Fence.RunID, in.ToolCallID).Take(&existing).Error
+		if existingErr == nil {
+			stored, err := existing.task()
+			if err != nil {
+				return err
+			}
+			if !sameDelegationRequest(stored, in) {
+				return fmt.Errorf("%w: tool call %s already prepared with a different request",
+					craft.ErrConflict, in.ToolCallID)
+			}
+			out = stored
+			return nil
+		}
+		if !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+			return existingErr
+		}
+
+		_, intentErr := getStopIntent(tx, in.Fence.TenantID, in.Scope.SessionID, in.Fence.RunID)
+		if intentErr == nil {
+			return fmt.Errorf("%w: Run %s has a durable stop intent", craft.ErrConflict, in.Fence.RunID)
+		}
+		if !errors.Is(intentErr, craft.ErrNotFound) {
+			return intentErr // fail closed: only typed absence permits fresh preparation
+		}
+
 		if in.ID == "" {
 			in.ID = uuid.NewString()
 		}
@@ -347,7 +377,7 @@ func (s *CraftStore) PrepareTask(ctx context.Context, in craft.Task) (craft.Task
 		}
 		// Lost a race for the (tenant, run, tool call) identity: only the
 		// identical request may adopt the stored delegation.
-		var existing craftDelegationRow
+		existing = craftDelegationRow{}
 		e = tx.Where("tenant_id = ? AND run_id = ? AND tool_call_id = ?",
 			in.Fence.TenantID, in.Fence.RunID, in.ToolCallID).Take(&existing).Error
 		if e != nil {

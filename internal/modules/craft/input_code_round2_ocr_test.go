@@ -148,3 +148,229 @@ func TestInputCodePolicyKeepsLegitimateShapesAllowed(t *testing.T) {
 		t.Fatalf("nice-wrapped generated code must stay allowed: %+v", niced)
 	}
 }
+
+func TestInputCodePolicyAllowsInterpreterLauncherFlags(t *testing.T) {
+	policy := newT03Policy(t)
+	cases := [][]string{
+		{"java", "-jar", "app.jar"},
+		{"java", "-cp", "lib", "Main"},
+		{"java", "-classpath", "lib", "Main"},
+		{"java", "-ea", "Main"},
+		{"pwsh", "-File", "gen.ps1"},
+		{"powershell", "-File", "gen.ps1"},
+		{"bash", "-e", "gen.sh"},
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if !decision.Allowed {
+			t.Errorf("standard interpreter launcher flag must be allowed: %v -> %+v", command, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensEveryJavaClasspathEntry(t *testing.T) {
+	policy := newT03Policy(t)
+	for _, flag := range []string{"-cp", "-classpath"} {
+		unsafe := policy.Review(InputExecutionRequest{
+			Command:    []string{"java", flag, "lib:/workspace/inputs/payload.jar", "Main"},
+			WorkingDir: "/workspace",
+		})
+		if unsafe.Allowed || unsafe.Reason != "interpreter_input" {
+			t.Errorf("classpath entry under inputs must be denied for %s: %+v", flag, unsafe)
+		}
+	}
+
+	for _, flag := range []string{"-cp", "-classpath"} {
+		decision := policy.Review(InputExecutionRequest{
+			Command:    []string{"java", flag, "lib:/workspace/generated", "Main"},
+			WorkingDir: "/workspace",
+		})
+		if !decision.Allowed {
+			t.Errorf("generated classpath entries must stay allowed for %s: %+v", flag, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyStillDeniesProgramTextFlags(t *testing.T) {
+	policy := newT03Policy(t)
+	cases := [][]string{
+		{"python3", "-c", "print(1)"},
+		{"node", "-e", "console.log(1)"},
+		{"php", "-r", "echo 1"},
+		{"ruby", "-e", "puts 1"},
+		{"python3", "-m", "some.module"},
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "interpreter_input" {
+			t.Errorf("program text flag must remain denied: %v -> %+v", command, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensLongJavaClasspathEntries(t *testing.T) {
+	policy := newT03Policy(t)
+	unsafe := []struct {
+		name string
+		argv []string
+	}{
+		{"separated value", []string{"java", "--class-path", "lib:/workspace/inputs/payload.jar", "Main"}},
+		{"attached value", []string{"java", "--class-path=lib:/workspace/inputs/payload.jar", "Main"}},
+	}
+	for _, tc := range unsafe {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := policy.Review(InputExecutionRequest{Command: tc.argv, WorkingDir: "/workspace"})
+			if decision.Allowed || decision.Reason != "interpreter_input" {
+				t.Fatalf("long Java classpath input entry must be denied: %v -> %+v", tc.argv, decision)
+			}
+		})
+	}
+	for _, argv := range [][]string{
+		{"java", "--class-path", "lib:/workspace/generated", "Main"},
+		{"java", "--class-path=lib:/workspace/generated", "Main"},
+	} {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if !decision.Allowed {
+			t.Errorf("generated long Java classpath must stay allowed: %v -> %+v", argv, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyUsesDetectedJavaInterpreterAfterWrappers(t *testing.T) {
+	policy := newT03Policy(t)
+	unsafe := [][]string{
+		{"timeout", "10", "java", "--class-path", "lib:/workspace/inputs/payload.jar", "Main"},
+		{"env", "MODE=test", "java", "--class-path=lib:/workspace/inputs/payload.jar", "Main"},
+	}
+	for _, argv := range unsafe {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "interpreter_input" {
+			t.Errorf("wrapped Java classpath input entry must be denied: %v -> %+v", argv, decision)
+		}
+	}
+
+	benign := [][]string{
+		{"timeout", "10", "java", "-ea:com.acme...", "-cp", "lib", "Main"},
+		{"env", "MODE=test", "java", "-ea:com.acme...", "-classpath", "lib", "Main"},
+	}
+	for _, argv := range benign {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if !decision.Allowed {
+			t.Errorf("documented Java assertion flag must be allowed after wrapper: %v -> %+v", argv, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensJavaModulePathEntries(t *testing.T) {
+	policy := newT03Policy(t)
+	unsafe := [][]string{
+		{"java", "--module-path", "lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"java", "--module-path=lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"java", "-p", "lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"java", "-p=lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"java", "--upgrade-module-path", "lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"java", "--upgrade-module-path=lib:/workspace/inputs/mod.jar", "-m", "app/main"},
+	}
+	for _, argv := range unsafe {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "interpreter_input" {
+			t.Errorf("Java module path input entry must be denied: %v -> %+v", argv, decision)
+		}
+	}
+
+	generated := [][]string{
+		{"java", "--module-path", "lib:/workspace/generated", "-m", "app/main"},
+		{"java", "--module-path=lib:/workspace/generated", "-m", "app/main"},
+		{"java", "-p", "lib:/workspace/generated", "-m", "app/main"},
+		{"java", "-p=lib:/workspace/generated", "-m", "app/main"},
+		{"java", "--upgrade-module-path", "lib:/workspace/generated", "-m", "app/main"},
+		{"java", "--upgrade-module-path=lib:/workspace/generated", "-m", "app/main"},
+	}
+	for _, argv := range generated {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if !decision.Allowed {
+			t.Errorf("generated Java module path must stay allowed: %v -> %+v", argv, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensJavaPatchModulePathEntries(t *testing.T) {
+	policy := newT03Policy(t)
+	unsafe := [][]string{
+		{"java", "--patch-module", "java.base=lib:/workspace/inputs/patch.jar", "-m", "app/main"},
+		{"java", "--patch-module=java.base=lib:/workspace/inputs/patch.jar", "-m", "app/main"},
+	}
+	for _, argv := range unsafe {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "interpreter_input" {
+			t.Errorf("Java patch-module input entry must be denied: %v -> %+v", argv, decision)
+		}
+	}
+
+	generated := [][]string{
+		{"java", "--patch-module", "java.base=lib:/workspace/generated", "-m", "app/main"},
+		{"java", "--patch-module=java.base=lib:/workspace/generated", "-m", "app/main"},
+	}
+	for _, argv := range generated {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if !decision.Allowed {
+			t.Errorf("generated Java patch-module path must stay allowed: %v -> %+v", argv, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensWrappedJavaModulePaths(t *testing.T) {
+	policy := newT03Policy(t)
+	for _, argv := range [][]string{
+		{"timeout", "10", "java", "--module-path", "/workspace/inputs/mod.jar", "-m", "app/main"},
+		{"env", "MODE=test", "java", "--patch-module=java.base=/workspace/inputs/patch.jar", "-m", "app/main"},
+	} {
+		decision := policy.Review(InputExecutionRequest{Command: argv, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "interpreter_input" {
+			t.Errorf("wrapped Java module input must be denied: %v -> %+v", argv, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyDeniesJavaArgFilesAndJDKOptions(t *testing.T) {
+	policy := newT03Policy(t)
+	unsafe := []struct {
+		name string
+		req  InputExecutionRequest
+	}{
+		{"absolute argv", InputExecutionRequest{Command: []string{"java", "@/workspace/inputs/launch.args"}, WorkingDir: "/workspace"}},
+		{"relative argv", InputExecutionRequest{Command: []string{"java", "@inputs/launch.args"}, WorkingDir: "/workspace"}},
+		{"timeout wrapper", InputExecutionRequest{Command: []string{"timeout", "10", "java", "@/workspace/inputs/launch.args"}, WorkingDir: "/workspace"}},
+		{"env wrapper assignment", InputExecutionRequest{Command: []string{"env", "JDK_JAVA_OPTIONS=@/workspace/inputs/launch.args", "java", "-jar", "app.jar"}, WorkingDir: "/workspace"}},
+		{"java environment", InputExecutionRequest{Command: []string{"java", "-jar", "app.jar"}, WorkingDir: "/workspace", Environment: map[string]string{"JDK_JAVA_OPTIONS": "@/workspace/inputs/launch.args"}}},
+		{"quoted shell token", InputExecutionRequest{Shell: true, CommandText: `env MODE=test java "@/workspace/inputs/launch.args"`, WorkingDir: "/workspace", ResolvedTargetPath: "/workspace/generated/main.class", TargetSHA256: "generated-digest"}},
+		{"shell JDK option assignment", InputExecutionRequest{Shell: true, CommandText: `env JDK_JAVA_OPTIONS='-Xmx1g' java -jar app.jar`, WorkingDir: "/workspace", ResolvedTargetPath: "/workspace/generated/main.class", TargetSHA256: "generated-digest"}},
+		{"shell generated JDK argfile environment", InputExecutionRequest{Shell: true, CommandText: `java -jar app.jar`, WorkingDir: "/workspace", Environment: map[string]string{"JDK_JAVA_OPTIONS": "@/workspace/generated/launch.args"}, ResolvedTargetPath: "/workspace/generated/main.class", TargetSHA256: "generated-digest"}},
+	}
+	for _, tc := range unsafe {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := policy.Review(tc.req)
+			if decision.Allowed || (decision.Reason != "interpreter_input" && decision.Reason != "input_target" && decision.Reason != "shell_input") {
+				t.Fatalf("Java argfile in inputs must be denied: %+v -> %+v", tc.req, decision)
+			}
+		})
+	}
+}
+
+func TestInputCodePolicyAllowsBenignJavaArgFilesAndLaunchers(t *testing.T) {
+	policy := newT03Policy(t)
+	forbiddenArgFile := policy.Review(InputExecutionRequest{Command: []string{"java", "@/workspace/generated/launch.args"}, WorkingDir: "/workspace"})
+	if forbiddenArgFile.Allowed {
+		t.Fatalf("uninspectable generated Java argfile must fail closed: %+v", forbiddenArgFile)
+	}
+	allowed := []InputExecutionRequest{
+		{Command: []string{"java", "-jar", "app.jar"}, WorkingDir: "/workspace"},
+		{Command: []string{"timeout", "10", "java", "--module-path", "/workspace/generated", "-m", "app/main"}, WorkingDir: "/workspace"},
+		{Shell: true, CommandText: `java -jar app.jar`, WorkingDir: "/workspace", ResolvedTargetPath: "/workspace/generated/main.class", TargetSHA256: "generated-digest"},
+	}
+	for _, req := range allowed {
+		if decision := policy.Review(req); !decision.Allowed {
+			t.Errorf("benign Java launcher input must remain allowed: %+v -> %+v", req, decision)
+		}
+	}
+}

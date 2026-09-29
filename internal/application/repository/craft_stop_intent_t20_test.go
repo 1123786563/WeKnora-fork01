@@ -21,7 +21,24 @@ func openStopIntentDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&craftStopIntentRow{}))
+	require.NoError(t, db.AutoMigrate(&agentRunRow{}))
 	return db
+}
+
+func openStopIntentRaceDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := "file:" + filepath.Join(t.TempDir(), "stop-intent-race.db") + "?_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&craftStopIntentRow{}, &agentRunRow{}))
+	return db
+}
+
+func seedStopIntentRun(t *testing.T, db *gorm.DB, scope craft.Scope, runID string) {
+	t.Helper()
+	require.NoError(t, db.Create(&agentRunRow{TenantID: scope.TenantID, RunID: runID,
+		SessionID: scope.SessionID, OwnerID: scope.UserID, ActorUserID: scope.UserID,
+		Status: "running"}).Error)
 }
 
 func TestCraftStopIntentStorePersistsAcrossReconstruction(t *testing.T) {
@@ -30,6 +47,7 @@ func TestCraftStopIntentStorePersistsAcrossReconstruction(t *testing.T) {
 	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s-t20stop"}
 	store := NewCraftStopIntentStore(db)
 	require.NotNil(t, store)
+	seedStopIntentRun(t, db, scope, "run-a")
 
 	// No stop journey yet answers the pinned sentinel — never a fabricated
 	// status.
@@ -78,6 +96,23 @@ func TestCraftStopIntentStorePersistsAcrossReconstruction(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCraftStopIntentStoreRequiresExactRunIdentityBeforeAcceptingIntent(t *testing.T) {
+	db := openStopIntentDB(t)
+	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s-exact-run"}
+	store := NewCraftStopIntentStore(db)
+	seedStopIntentRun(t, db, scope, "run-exact")
+
+	_, err := store.PutStopIntent(context.Background(), scope,
+		craft.StopIntent{RunID: "missing", Status: craft.StopRequested})
+	require.ErrorIs(t, err, craft.ErrNotFound)
+
+	wrongSession := scope
+	wrongSession.SessionID = "another-session"
+	_, err = store.PutStopIntent(context.Background(), wrongSession,
+		craft.StopIntent{RunID: "run-exact", Status: craft.StopRequested})
+	require.ErrorIs(t, err, craft.ErrNotFound)
+}
+
 // TestCraftStopIntentStoreConcurrentConfirmNeverDowngrades pins the OCR race
 // hardening: the no-downgrade guard must hold when a replay and the
 // authoritative confirmation race — including the insert race where BOTH
@@ -86,16 +121,13 @@ func TestCraftStopIntentStorePersistsAcrossReconstruction(t *testing.T) {
 // craft_writer_lease_test CAS recipe: racing transactions queue on the busy
 // timeout and the guard itself decides the outcome.
 func TestCraftStopIntentStoreConcurrentConfirmNeverDowngrades(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "craft-stop-intent-race.db")
-	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&craftStopIntentRow{}))
+	db := openStopIntentRaceDB(t)
 
 	ctx := context.Background()
 	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s-race"}
 	store := NewCraftStopIntentStore(db)
 	require.NotNil(t, store)
+	seedStopIntentRun(t, db, scope, "run-race")
 
 	const writers = 24
 	start := make(chan struct{})

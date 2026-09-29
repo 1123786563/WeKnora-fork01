@@ -237,7 +237,6 @@ func TestCraftWebBuildCommandGateRejectsHostInputsRootOverlap(t *testing.T) {
 	require.Contains(t, err.Error(), "inputs")
 }
 
-
 // TestCraftWebBuildCommandGateRejectsPathOverride is the round-2 medium
 // finding regression: argv[0] is a bare name resolved by the executor's
 // PATH, so a request carrying a PATH override (plus a writable-dir wrapper)
@@ -257,6 +256,59 @@ func TestCraftWebBuildCommandGateRejectsPathOverride(t *testing.T) {
 
 	clean := craftWebBuildRequest(craftWebPinnedBuildCommand(), map[string]string{"LC_ALL": "C"})
 	require.NoError(t, reviewer.Review(context.Background(), clean))
+}
+
+func TestCraftWebBuildCommandShapeRejectsUnconstrainedFlags(t *testing.T) {
+	base := craftWebPinnedBuildCommand()
+	valid := func(command []string) bool { return craftWebBuildCommandShapeOk(command, "") }
+	require.True(t, valid(base))
+
+	for name, mutate := range map[string]func([]string) []string{
+		"repeated input": func(command []string) []string {
+			return append(command, "--input", "/workspace/other")
+		},
+		"repeated output": func(command []string) []string {
+			return append(command, "--output", "/workspace/other")
+		},
+		"repeated runtime digest": func(command []string) []string {
+			return append(command, "--runtime-digest", "forged")
+		},
+		"input escape": func(command []string) []string {
+			changed := append([]string(nil), command...)
+			changed[5] = "/workspace/material/../outside"
+			return changed
+		},
+		"input backslash alias": func(command []string) []string {
+			changed := append([]string(nil), command...)
+			changed[5] = "/workspace/material\\..\\outside"
+			return changed
+		},
+		"input outside workspace": func(command []string) []string {
+			changed := append([]string(nil), command...)
+			changed[5] = "/tmp/content"
+			return changed
+		},
+		"output escape": func(command []string) []string {
+			changed := append([]string(nil), command...)
+			changed[7] = "/workspace/output/../tmp"
+			return changed
+		},
+		"output outside fixed destination": func(command []string) []string {
+			changed := append([]string(nil), command...)
+			changed[7] = "/tmp/output"
+			return changed
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.False(t, valid(mutate(append([]string(nil), base...))))
+		})
+	}
+}
+
+func TestCraftWebBuildCommandShapeRequiresPinnedRuntimeDigest(t *testing.T) {
+	command := craftWebPinnedBuildCommand()
+	require.True(t, craftWebBuildCommandShapeOk(command, "sha256:"+strings.Repeat("ab", 32)))
+	require.False(t, craftWebBuildCommandShapeOk(command, "sha256:"+strings.Repeat("cd", 32)))
 }
 
 // TestCraftWebBuildCommandGateNilReceiverRefusesNotPanics is the round-2

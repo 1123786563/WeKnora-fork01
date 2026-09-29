@@ -19,7 +19,7 @@
 //     wildcard files route (W03), the authorized sandbox terminal ticket,
 //     and the /auth/me identity used for the owner write gate.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CraftAccessMember, CraftGrantableAccessRole, CraftInputDecisionAction, CraftSubmitRunInput, WeKnoraClient } from '@weknora/api-client';
+import type { CraftAccessMember, CraftBudgetExtensionAction, CraftGrantableAccessRole, CraftInputDecisionAction, CraftSubmitRunInput, WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
 import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
 import type { CraftCapabilitiesView, CraftInputView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView, CraftWorkspaceView } from '@weknora/contracts';
@@ -484,7 +484,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
   // T20 (#139) budget-pause panel mount: when the workspace's active Run is
   // durably parked on the budget wait, the pause view is fetched ONCE per
   // run identity. Extension actors (owner/billing admin) get the server's
-  // can_extend projection; everyone else is refused server-side and the
+  // extension-action projection; everyone else is refused server-side and the
   // assembly keeps the contact-owner copy without any figures (the panel
   // renders no limit/used, so nothing is fabricated).
   const activeRun = workbenchInfo?.activeRun ?? null;
@@ -493,9 +493,12 @@ export function CraftRoutes(props: CraftRoutesProps) {
   // the contact-owner notice WITHOUT fabricating limit/used — unknown stays
   // unknown, never folded into zeros.
   const [budgetPauseView, setBudgetPauseView] = useState<
-    | { runId: string; viewed: true; canExtend: boolean; limit: number; used: number }
+    | { runId: string; viewed: true; extensionAction: CraftBudgetExtensionAction | null; limit: number; used: number }
     | { runId: string; viewed: false }
   | null>(null);
+  const [budgetExtensionBusy, setBudgetExtensionBusy] = useState(false);
+  const budgetExtensionAction = budgetPauseView?.viewed ? budgetPauseView.extensionAction : null;
+  const budgetExtensionInFlightRef = useRef(false);
   useEffect(() => {
     setBudgetPauseView(null);
     if (sessionId === null || activeRun === null || activeRun.waitReason !== 'budget_exhausted') return;
@@ -503,7 +506,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
     const runId = activeRun.id;
     void craftApi.budgetPause(sessionId, runId, scopeController.current().signal)
       .then((view) => {
-        if (!cancelled) setBudgetPauseView({ runId, viewed: true, canExtend: view.canExtend, limit: view.pause.limit, used: view.pause.used });
+        if (!cancelled) setBudgetPauseView({ runId, viewed: true, extensionAction: view.extensionAction, limit: view.pause.limit, used: view.pause.used });
       })
       .catch(() => {
         if (!cancelled) setBudgetPauseView({ runId, viewed: false });
@@ -534,26 +537,29 @@ export function CraftRoutes(props: CraftRoutesProps) {
     });
   }, [craftApi, scopeController]);
 
-  // The extension decision: one click = one idempotency key; the quantum is
-  // the deployment default (10 calls at the gateway's 1-credit-per-call
-  // upper bound). The server re-runs the owner/billing-admin check itself.
+  // The server owns the pending action tuple. Reuse this projected action on
+  // retries; a remount fetches the same pending intent from the server again.
+  // A ref also closes the rapid double-click gap before React commits busy.
   const requestBudgetExtension = useCallback(
-    async (runId: string): Promise<void> => {
-      if (sessionId === null) return;
-      await craftApi.extendBudget(sessionId, runId, {
-        key: 'extend-' + crypto.randomUUID(),
-        extra_calls: 10,
-        extra_credits: 10_000_000,
-      }, scopeController.current().signal);
-      // The Run left the pause durably: reload the authoritative projection
-      // (workspace view drives the panel away) and the controller state.
+    async (runId: string, action: CraftBudgetExtensionAction): Promise<void> => {
+      if (sessionId === null || budgetExtensionInFlightRef.current) return;
+      budgetExtensionInFlightRef.current = true;
+      setBudgetExtensionBusy(true);
       try {
-        await refreshWorkbench(sessionId);
-      } catch {
-        // The controller reload below still reflects the resumed state; the
-        // panel stays until the next workspace refresh.
+        await craftApi.extendBudget(sessionId, runId, action, scopeController.current().signal);
+        // The Run left the pause durably: reload the authoritative projection
+        // (workspace view drives the panel away) and the controller state.
+        try {
+          await refreshWorkbench(sessionId);
+        } catch {
+          // The controller reload below still reflects the resumed state; the
+          // panel stays until the next workspace refresh.
+        }
+        await controller.load(sessionId);
+      } finally {
+        budgetExtensionInFlightRef.current = false;
+        setBudgetExtensionBusy(false);
       }
-      await controller.load(sessionId);
     },
     [sessionId, craftApi, scopeController, controller, refreshWorkbench],
   );
@@ -1065,15 +1071,15 @@ export function CraftRoutes(props: CraftRoutesProps) {
         />
         {budgetPauseView !== null ? (
           budgetPauseView.viewed ? (
-          <CraftBudgetPauseNotice
-            pause={{ run_id: budgetPauseView.runId, reason: 'exhausted', limit: budgetPauseView.limit, used: budgetPauseView.used }}
-            canExtend={budgetPauseView.canExtend}
-            onRequestExtension={canWrite ? (runId) => {
-              void requestBudgetExtension(runId).catch((error: unknown) => {
-                setSyncError(error instanceof Error ? error.message : String(error));
-              });
-            } : undefined}
-          />
+            <CraftBudgetPauseNotice
+              pause={{ run_id: budgetPauseView.runId, reason: 'exhausted', limit: budgetPauseView.limit, used: budgetPauseView.used }}
+              canExtend={budgetExtensionAction !== null}
+              onRequestExtension={budgetExtensionAction !== null && !budgetExtensionBusy ? (runId) => {
+                void requestBudgetExtension(runId, budgetExtensionAction).catch((error: unknown) => {
+                  setSyncError(error instanceof Error ? error.message : String(error));
+                });
+              } : undefined}
+            />
           ) : (
             // Denied pause view: the same member-visible copy the panel
             // uses, WITHOUT the numeric pause object — nothing fabricated.

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "docker",
+    "exec",
+    "--user",
+    "10001:10001",
+    "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+    "readlink",
+    "/proc/self/ns/net"
+  ],
+  "container_id": "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+  "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+  "container_pid_after": 1256819,
+  "container_pid_before": 1256819,
+  "matches_expected": true,
+  "monotonic_ended_ns": 1739766625,
+  "monotonic_started_ns": 702307916,
+  "netns_inode": "net:[4026535519]",
+  "returncode": 0,
+  "source": "host-issued-docker-exec-readlink-proc-self-ns-net",
+  "stderr": "",
+  "stdout": "net:[4026535519]\n"
+}

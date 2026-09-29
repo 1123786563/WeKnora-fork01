@@ -128,6 +128,100 @@ func TestCraftVersionPublishRejectsMismatchedID(t *testing.T) {
 	}
 }
 
+func TestCraftVersionPublishWithDraftHeadRejectsChangedHeadAtomically(t *testing.T) {
+	db := openCraftDB(t)
+	store := NewCraftVersionStore(db)
+	fenced := store.(craft.DraftFencedVersionStore)
+	ws := putCraftWorkspace(t, NewCraftStore(db))
+	scope := craftTestScope()
+	files := []craft.File{craftTestFile(t, "index.html", "<h1>stale</h1>")}
+	digest := mustDigest(t, files)
+	_, err := fenced.PublishWithDraftHead(context.Background(), scope, craft.Version{
+		ID: craft.VersionID(ws.ID, "run-stale", digest), WorkspaceID: ws.ID,
+		RunID: "run-stale", Kind: craft.KindWeb, Files: files,
+	}, craft.DraftHead{WorkspaceID: ws.ID, Revision: 1, State: craft.DraftHeadSelected,
+		SourceRunID: "run-stale", ManifestDigest: digest}, nil)
+	require.ErrorIs(t, err, craft.ErrConflict, "a head that no longer matches the expected revision must block publish")
+	versions, err := store.List(context.Background(), scope)
+	require.NoError(t, err)
+	require.Empty(t, versions, "the rejected stale publish must leave no visible version")
+}
+
+func TestCraftVersionPublishWithDraftHeadRejectsManifestMismatchAtomically(t *testing.T) {
+	db := openCraftDB(t)
+	store := NewCraftVersionStore(db)
+	fenced := store.(craft.DraftFencedVersionStore)
+	ws := putCraftWorkspace(t, NewCraftStore(db))
+	scope := craftTestScope()
+	seedCraftRun(t, db, "run-manifest-fence", "call-manifest-fence")
+
+	selectedFiles := []craft.File{craftTestFile(t, "index.html", "<h1>selected head</h1>")}
+	headDigest := mustDigest(t, selectedFiles)
+	require.NoError(t, db.Model(&craftDraftHeadRow{}).Where("workspace_id = ? AND tenant_id = ?", ws.ID, scope.TenantID).Updates(map[string]any{
+		"revision": 1, "state": string(craft.DraftHeadSelected),
+		"source_run_id": "run-manifest-fence", "manifest_digest": headDigest,
+	}).Error)
+	require.NoError(t, db.Create(&craftDraftRevisionRow{
+		WorkspaceID: ws.ID, Revision: 1, TenantID: scope.TenantID,
+		SourceRunID: "run-manifest-fence", ManifestDigest: headDigest,
+	}).Error)
+
+	changedFiles := []craft.File{craftTestFile(t, "index.html", "<h1>changed after selection</h1>")}
+	changedDigest := mustDigest(t, changedFiles)
+	_, err := fenced.PublishWithDraftHead(context.Background(), scope, craft.Version{
+		ID: craft.VersionID(ws.ID, "run-manifest-fence", changedDigest), WorkspaceID: ws.ID,
+		RunID: "run-manifest-fence", Kind: craft.KindWeb, Files: changedFiles,
+	}, craft.DraftHead{WorkspaceID: ws.ID, Revision: 1, State: craft.DraftHeadSelected,
+		SourceRunID: "run-manifest-fence", ManifestDigest: headDigest}, nil)
+	require.ErrorIs(t, err, craft.ErrConflict, "the locked selected head's manifest must match published files")
+
+	var count int64
+	require.NoError(t, db.Model(&craftVersionRow{}).Where("workspace_id = ?", ws.ID).Count(&count).Error)
+	require.Zero(t, count, "a rejected manifest mismatch must commit no version row")
+}
+
+func TestCraftVersionPublishWithDraftHeadAcceptsCanonicalManifestOrdering(t *testing.T) {
+	db := openCraftDB(t)
+	store := NewCraftVersionStore(db)
+	fenced := store.(craft.DraftFencedVersionStore)
+	ws := putCraftWorkspace(t, NewCraftStore(db))
+	scope := craftTestScope()
+	seedCraftRun(t, db, "run-manifest-order", "call-manifest-order")
+
+	selectedFiles := []craft.File{
+		craftTestFile(t, "about.html", "<p>about</p>"),
+		craftTestFile(t, "index.html", "<h1>selected</h1>"),
+	}
+	digest := mustDigest(t, selectedFiles)
+	require.NoError(t, db.Model(&craftDraftHeadRow{}).Where("workspace_id = ? AND tenant_id = ?", ws.ID, scope.TenantID).Updates(map[string]any{
+		"revision": 1, "state": string(craft.DraftHeadSelected),
+		"source_run_id": "run-manifest-order", "manifest_digest": digest,
+	}).Error)
+	require.NoError(t, db.Create(&craftDraftRevisionRow{
+		WorkspaceID: ws.ID, Revision: 1, TenantID: scope.TenantID,
+		SourceRunID: "run-manifest-order", ManifestDigest: digest,
+	}).Error)
+
+	filesInDifferentOrder := []craft.File{selectedFiles[1], selectedFiles[0]}
+	version, err := fenced.PublishWithDraftHead(context.Background(), scope, craft.Version{
+		ID: craft.VersionID(ws.ID, "run-manifest-order", digest), WorkspaceID: ws.ID,
+		RunID: "run-manifest-order", Kind: craft.KindWeb, Files: filesInDifferentOrder,
+	}, craft.DraftHead{WorkspaceID: ws.ID, Revision: 1, State: craft.DraftHeadSelected,
+		SourceRunID: "run-manifest-order", ManifestDigest: digest}, nil)
+	require.NoError(t, err, "canonical digest equality is independent of input file ordering")
+	require.Equal(t, "run-manifest-order", version.RunID)
+
+	replayed, err := fenced.PublishWithDraftHead(context.Background(), scope, craft.Version{
+		ID: craft.VersionID(ws.ID, "run-manifest-order", digest), WorkspaceID: ws.ID,
+		RunID: "run-manifest-order", Kind: craft.KindWeb, Files: filesInDifferentOrder,
+	}, craft.DraftHead{WorkspaceID: ws.ID, Revision: 1, State: craft.DraftHeadSelected,
+		SourceRunID: "run-manifest-order", ManifestDigest: digest}, nil)
+	require.NoError(t, err, "retrying the identical reversed-order request must adopt the first publish")
+	require.Equal(t, version.ID, replayed.ID)
+	require.Equal(t, []craft.File{selectedFiles[0], selectedFiles[1]}, replayed.Files,
+		"published manifests are returned in canonical path order")
+}
+
 // TestCraftVersionScopeGuards pins the ACL: publishing requires the
 // workspace's own scope; cross-tenant, cross-session and foreign-owner reads
 // are rejected (invisible or forbidden, never leaked).

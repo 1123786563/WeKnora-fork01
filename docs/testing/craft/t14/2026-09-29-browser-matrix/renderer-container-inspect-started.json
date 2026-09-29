@@ -1,0 +1,218 @@
+[
+    {
+        "Id": "b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c",
+        "Created": "2026-09-29T00:15:51.401757563Z",
+        "Path": "/bin/sh",
+        "Args": [
+            "-c",
+            "set -eu\ntest -x /usr/bin/chromium\ntest -d /opt/craft-preview\nprintf \"Python path: \"; command -v python3\nprintf \"Chromium path: /usr/bin/chromium\\\\n\"\nprintf \"ChromeDriver path: \"; command -v chromedriver\npython3 -c \"import selenium; print(\\\"Selenium \\\" + selenium.__version__)\"\n/usr/bin/chromium --version\nchromedriver --version\nexec python3 /opt/probe.py"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 1364398,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-09-29T00:15:59.206117913Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:c115e66adc210e483f72525f62c544f17d8b5e9808acb1ad3e21da9b85650894",
+        "ResolvConfPath": "/var/lib/docker/containers/b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c/hostname",
+        "HostsPath": "/var/lib/docker/containers/b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c/hosts",
+        "LogPath": "/var/lib/docker/containers/b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c/b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c-json.log",
+        "Name": "/craft-t14-render-boundary-36672",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {
+                    "max-file": "5",
+                    "max-size": "20m"
+                }
+            },
+            "NetworkMode": "none",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": [
+                "ALL"
+            ],
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": true,
+            "SecurityOpt": [
+                "no-new-privileges:true"
+            ],
+            "Tmpfs": {
+                "/out": "rw,nosuid,nodev,noexec,uid=10001,gid=10001,mode=0700,size=16m",
+                "/tmp": "rw,nosuid,nodev,uid=10001,gid=10001,mode=0700,size=256m"
+            },
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 134217728,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 1610612736,
+            "NanoCpus": 2000000000,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 3221225472,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": 256,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "b0caf9a4494b",
+            "Domainname": "",
+            "User": "10001:10001",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "ExposedPorts": {
+                "4096/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "CRAFT_T14_RUN_NONCE=8515c649201aec2c5d11f2afe96f036ac162409bac612db9",
+                "HOME=/tmp",
+                "TMPDIR=/tmp",
+                "XDG_CONFIG_HOME=/tmp/.config",
+                "XDG_DATA_HOME=/tmp/.local/share",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "DEBIAN_FRONTEND=noninteractive",
+                "PYTHONUNBUFFERED=1"
+            ],
+            "Cmd": [
+                "-c",
+                "set -eu\ntest -x /usr/bin/chromium\ntest -d /opt/craft-preview\nprintf \"Python path: \"; command -v python3\nprintf \"Chromium path: /usr/bin/chromium\\\\n\"\nprintf \"ChromeDriver path: \"; command -v chromedriver\npython3 -c \"import selenium; print(\\\"Selenium \\\" + selenium.__version__)\"\n/usr/bin/chromium --version\nchromedriver --version\nexec python3 /opt/probe.py"
+            ],
+            "Image": "sha256:c115e66adc210e483f72525f62c544f17d8b5e9808acb1ad3e21da9b85650894",
+            "Volumes": null,
+            "WorkingDir": "/workspace/output",
+            "Entrypoint": [
+                "/bin/sh"
+            ],
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "SandboxID": "b0f97f0461c326c4e4ba52b31b2ba57ec8a2c97cb2c26ea7b6291065ec9ff744",
+            "SandboxKey": "/var/run/docker/netns/b0f97f0461c3",
+            "Ports": {},
+            "Networks": {
+                "none": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb",
+                    "EndpointID": "74ef8314d6ded1452bc35ce55af54d303ecb6638f3c03454cea6efe4a2e28cd6",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:c115e66adc210e483f72525f62c544f17d8b5e9808acb1ad3e21da9b85650894",
+            "size": 407,
+            "platform": {
+                "architecture": "arm64",
+                "os": "linux"
+            }
+        }
+    }
+]

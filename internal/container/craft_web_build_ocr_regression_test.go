@@ -71,8 +71,8 @@ func TestCraftWebBuildCategorizesMalformedInputs(t *testing.T) {
 	runtimeDigest := "sha256:" + strings.Repeat("ab", 32)
 
 	contentCases := map[string]string{
-		"invalid JSON":       `{"title":`,
-		"non-object payload": `["not", "an", "object"]`,
+		"invalid JSON":        `{"title":`,
+		"non-object payload":  `["not", "an", "object"]`,
 		"table not an object": `{"title":"t","sections":[{"heading":"h","table":"boom"}]}`,
 	}
 	for name, staged := range contentCases {
@@ -197,7 +197,7 @@ func TestCraftWebBuildEvidenceRejectsForeignTemplateVersion(t *testing.T) {
 		ExitCode: &foreignZero, Entry: "index.html",
 		Assets: []string{"assets/craft-web.css", "assets/craft-web.js"}, Egress: "denied",
 	}
-	_, err = CraftWebBuildEvidence(log, pin)
+	_, err = CraftWebBuildEvidence(log, pin, &foreignZero)
 	require.ErrorIs(t, err, craft.ErrConflict)
 	require.Contains(t, err.Error(), "template version")
 }
@@ -233,6 +233,34 @@ func TestCraftWebEvidenceKeepsUnobservedOnForeignLog(t *testing.T) {
 	got := source(context.Background(), craft.Task{})
 	require.True(t, got.PreviewRan, "inner evidence flows")
 	require.False(t, got.BuildRan, "a foreign-toolchain log never becomes build evidence")
+}
+
+// TestCraftWebEvidenceDoesNotTrustForgedWritableLog closes OCR F08: a fully
+// matching log is still sandbox-controlled and cannot prove the process ran.
+func TestCraftWebEvidenceDoesNotTrustForgedWritableLog(t *testing.T) {
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	pin.RuntimeDigest = "runtime-1"
+	exitCode := 0
+	log := CraftWebBuildLog{
+		Schema: 1, Kind: "web", RuntimeDigest: pin.RuntimeDigest,
+		ToolchainDigest: pin.ToolchainDigest, TemplateVersion: pin.TemplateVersion,
+		TemplateSHA256: pin.TemplateSHA256, ExitCode: &exitCode,
+		Entry: "index.html", Assets: []string{"assets/craft-web.css"}, Egress: "denied",
+	}
+
+	_, err = CraftWebBuildEvidence(log, pin, nil)
+	require.ErrorIs(t, err, craft.ErrConflict, "a matching sandbox-writable log is not an execution receipt")
+	require.Contains(t, err.Error(), "server-observed")
+
+	observedFailure := 3
+	_, err = CraftWebBuildEvidence(log, pin, &observedFailure)
+	require.ErrorIs(t, err, craft.ErrConflict, "a forged success must not override the server-observed failure")
+
+	got := craftWebBuildEvidenceSource(nil, func(context.Context, craft.Task) ([]byte, error) {
+		return mustJSON(t, log), nil
+	}, pin)(context.Background(), craft.Task{})
+	require.False(t, got.BuildRan, "the production log-only reader has no trusted outcome to bind")
 }
 
 type service_ArtifactEvidenceSource = func(context.Context, craft.Task) craft.ArtifactEvidence
@@ -320,7 +348,7 @@ func TestCraftWebEvidenceRejectsForeignRuntimeDigest(t *testing.T) {
 		ExitCode: &exit, Entry: "index.html",
 		Assets: []string{"assets/craft-web.css", "assets/craft-web.js"}, Egress: "denied",
 	}
-	_, err = CraftWebBuildEvidence(log, pin)
+	_, err = CraftWebBuildEvidence(log, pin, &exit)
 	require.ErrorIs(t, err, craft.ErrConflict)
 	require.Contains(t, err.Error(), "runtime")
 }

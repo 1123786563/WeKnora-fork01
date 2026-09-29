@@ -51,6 +51,13 @@ type VersionStore interface {
 	Get(ctx context.Context, scope Scope, id string) (Version, error)
 }
 
+// DraftFencedVersionStore publishes a promoted Version in the same database
+// transaction that locks and rechecks the selected Workspace draft head.
+// Promotion must fail closed when a store cannot provide this atomic fence.
+type DraftFencedVersionStore interface {
+	PublishWithDraftHead(ctx context.Context, scope Scope, v Version, expected DraftHead, evidence *VersionEvidence) (Version, error)
+}
+
 // Verification check names recorded on a version. Each name is one
 // independently reported fact; consumers (W02 preview, D01-D03 delivery)
 // match on these exact strings.

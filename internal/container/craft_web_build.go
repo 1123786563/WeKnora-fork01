@@ -25,11 +25,11 @@ import (
 // dependency set and the build program are pinned by digest in
 // docker/craft/web/toolchain.lock.json and represented in the runtime
 // identity (docker/craft/runtime-config.json's web_toolchain section — the
-// same file the sandbox probe hashes). The build program itself writes
-// output/build-log.json naming the runtime digest, the toolchain digest and
-// the REAL exit status; this file turns that log into the collector's W01
-// build evidence — and refuses to fabricate anything: a missing, malformed
-// or foreign-toolchain log leaves the build fact unobserved (not_run).
+// same file the sandbox probe hashes). The build program writes
+// output/build-log.json for diagnostics, but that file is sandbox-writable
+// and cannot prove that the pinned process ran. W01 build evidence therefore
+// requires a server-observed execution receipt; without one it remains
+// unobserved (not_run).
 
 // craftWebToolchainName mirrors build.py's TOOLCHAIN_NAME.
 const craftWebToolchainName = "craft-web-toolchain"
@@ -200,21 +200,21 @@ func LoadCraftWebToolchainPin(dir string) (CraftWebToolchainPin, error) {
 // the pinned build program. Unknown fields reject; every identity field must
 // be present and well-formed.
 type CraftWebBuildLog struct {
-	Schema          int      `json:"schema"`
-	Kind            string   `json:"kind"`
-	RuntimeDigest   string   `json:"runtime_digest"`
-	ToolchainDigest string   `json:"toolchain_digest"`
-	TemplateVersion string   `json:"template_version"`
-	TemplateSHA256  string   `json:"template_sha256"`
+	Schema          int    `json:"schema"`
+	Kind            string `json:"kind"`
+	RuntimeDigest   string `json:"runtime_digest"`
+	ToolchainDigest string `json:"toolchain_digest"`
+	TemplateVersion string `json:"template_version"`
+	TemplateSHA256  string `json:"template_sha256"`
 	// ExitCode is a pointer so a missing exit_code field (or an explicit
 	// null) is distinguishable from a genuine 0: the log is agent-writable
 	// untrusted input and a missing field must never decode as "build
 	// succeeded".
-	ExitCode        *int     `json:"exit_code"`
-	Entry           string   `json:"entry"`
-	Assets          []string `json:"assets"`
-	Egress          string   `json:"egress"`
-	Error           string   `json:"error"`
+	ExitCode *int     `json:"exit_code"`
+	Entry    string   `json:"entry"`
+	Assets   []string `json:"assets"`
+	Egress   string   `json:"egress"`
+	Error    string   `json:"error"`
 }
 
 // ParseCraftWebBuildLog decodes one build log under the strict contract:
@@ -288,11 +288,15 @@ func validCraftWebLocalAsset(asset string) error {
 	return nil
 }
 
-// CraftWebBuildEvidence folds one verified build log into the collector's
-// W01 evidence: the build ran and its REAL exit status is the fact. A log
-// pinned to a different toolchain or template than the one this deployment
-// loaded is refused whole — its exit status never becomes evidence.
-func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craft.ArtifactEvidence, error) {
+// CraftWebBuildEvidence cross-checks a build log against a server-observed
+// execution result before the result can become W01 evidence. The build log
+// lives in a sandbox-writable directory, so its own exit_code is never an
+// authority. A nil observedExitCode means no trusted execution receipt is
+// available and fails closed.
+func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin, observedExitCode *int) (craft.ArtifactEvidence, error) {
+	if observedExitCode == nil {
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: server-observed web build execution receipt is unavailable", craft.ErrConflict)
+	}
 	if log.ToolchainDigest != pin.ToolchainDigest {
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names toolchain %s, deployment pins %s", craft.ErrConflict, log.ToolchainDigest, pin.ToolchainDigest)
 	}
@@ -318,7 +322,10 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craf
 		// that constructed the struct directly must not panic here.
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log carries no exit code", craft.ErrConflict)
 	}
-	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *log.ExitCode}, nil
+	if *observedExitCode < 0 || *observedExitCode > 255 || *log.ExitCode != *observedExitCode {
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log exit code does not match the server-observed execution receipt", craft.ErrConflict)
+	}
+	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *observedExitCode}, nil
 }
 
 // craftWebBuildEvidenceSource wraps one preview evidence source with the
@@ -363,7 +370,11 @@ func craftWebBuildEvidenceSource(
 			logger.Warnf(ctx, "[CraftWebBuild] rejecting malformed build log for run %s: %v", task.Fence.RunID, err)
 			return evidence
 		}
-		build, err := CraftWebBuildEvidence(log, pin)
+		// The session artifact source exposes only sandbox-writable files and
+		// carries no trusted process outcome. Until the execution coordinator
+		// supplies a server-owned receipt, the log can be parsed for diagnostics
+		// but cannot establish BuildRan or its exit status.
+		build, err := CraftWebBuildEvidence(log, pin, nil)
 		if err != nil {
 			// A log naming a foreign toolchain is refused whole — and is
 			// precisely the alert-worthy case, so it is never silent.

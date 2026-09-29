@@ -1,0 +1,46 @@
+[
+    {
+        "Id": "sha256:c115e66adc210e483f72525f62c544f17d8b5e9808acb1ad3e21da9b85650894",
+        "RepoTags": [],
+        "RepoDigests": [],
+        "Comment": "Imported from -",
+        "Created": "2026-09-29T08:11:38.104586952+08:00",
+        "Config": {
+            "User": "10001:10001",
+            "ExposedPorts": {
+                "4096/tcp": {}
+            },
+            "Env": [
+                "PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/tmp/renderer-home",
+                "XDG_CONFIG_HOME=/home/craft/.config",
+                "XDG_DATA_HOME=/home/craft/.local/share",
+                "DEBIAN_FRONTEND=noninteractive",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PYTHONUNBUFFERED=1"
+            ],
+            "Entrypoint": [
+                "python",
+                "/opt/probe.py"
+            ],
+            "WorkingDir": "/workspace/output"
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 659133249,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:5ed270f88050d7f38fec4601912ba3a67f034dc9eefb5108f469bb74644d6a67"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-09-29T00:11:38.148047179Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:c115e66adc210e483f72525f62c544f17d8b5e9808acb1ad3e21da9b85650894",
+            "size": 407
+        }
+    }
+]

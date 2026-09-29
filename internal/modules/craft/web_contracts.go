@@ -153,15 +153,28 @@ func (o WriterAcquireOutcome) Validate() error {
 }
 
 type BudgetPause struct {
-	RunID  string `json:"run_id"`
-	Reason string `json:"reason"`
-	Limit  int64  `json:"limit"`
-	Used   int64  `json:"used"`
+	RunID           string                 `json:"run_id"`
+	Reason          string                 `json:"reason"`
+	Limit           int64                  `json:"limit"`
+	Used            int64                  `json:"used"`
+	ExtensionAction *BudgetExtensionAction `json:"extension_action"`
+}
+
+// BudgetExtensionAction is the server-owned action identity and quantum for
+// one paused Run. The client echoes these exact values when it requests an
+// extension; it cannot choose a new key or amount.
+type BudgetExtensionAction struct {
+	Key          string `json:"key"`
+	ExtraCalls   int    `json:"extra_calls"`
+	ExtraCredits int64  `json:"extra_credits"`
 }
 
 func (p BudgetPause) Validate() error {
 	if p.RunID == "" || p.Reason == "" || p.Limit < 0 || p.Used < 0 {
 		return fmt.Errorf("%w: invalid budget pause", ErrInvalidInput)
+	}
+	if a := p.ExtensionAction; a != nil && (a.Key == "" || a.ExtraCalls <= 0 || a.ExtraCredits <= 0) {
+		return fmt.Errorf("%w: invalid budget extension action", ErrInvalidInput)
 	}
 	return nil
 }

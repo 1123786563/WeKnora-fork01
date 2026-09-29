@@ -13,6 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 )
 
 // craftControlBudget bounds every durable control operation on a
@@ -162,6 +163,72 @@ type CraftControlService struct {
 	interactions CraftInteractionStore
 	reply        CraftOpenCodeReplier
 	stopIntents  atomic.Pointer[CraftStopIntentStore] // post-construction injection (T17)
+	taskAccess   atomic.Pointer[craft.TaskAccessChecker]
+}
+
+// SetTaskAccess installs the live Craft membership/role checker used by
+// Stop and DelegationStatus. A missing checker fails closed at authorization.
+func (s *CraftControlService) SetTaskAccess(checker craft.TaskAccessChecker) {
+	if s == nil || checker == nil {
+		return
+	}
+	s.taskAccess.Store(&checker)
+}
+
+func (s *CraftControlService) currentTaskAccess() craft.TaskAccessChecker {
+	if s == nil {
+		return nil
+	}
+	if held := s.taskAccess.Load(); held != nil {
+		return *held
+	}
+	return nil
+}
+
+// authorizeRunAccess combines the authenticated caller's current Task role
+// with durable Run ownership. Scope.UserID remains the Session storage owner;
+// it is not used as a substitute for the authenticated caller.
+func (s *CraftControlService) authorizeRunAccess(
+	ctx context.Context, scope craft.Scope, key agentruntime.RunKey, run agentruntime.Run, action craft.TaskAction,
+) (string, error) {
+	if scope.TenantID == 0 || scope.SessionID == "" || scope.UserID == "" || key.RunID == "" ||
+		key.TenantID != scope.TenantID || run.Key.TenantID != scope.TenantID ||
+		run.Key.RunID != key.RunID || run.SessionID != scope.SessionID || run.UserID != scope.UserID {
+		return "", fmt.Errorf("%w: Run is outside the Task scope", craft.ErrForbidden)
+	}
+	caller := types.CallerFromContext(ctx)
+	callerID := caller.UserID
+	if callerID == "" || caller.TenantID != scope.TenantID {
+		return "", craft.ErrForbidden
+	}
+	callerScope := scope
+	callerScope.UserID = callerID
+	if err := craft.RequireTaskAccess(ctx, s.currentTaskAccess(), callerScope, action); err != nil {
+		return "", err
+	}
+	if action == craft.TaskWrite && callerID != run.UserID && callerID != run.ActorUserID {
+		return "", fmt.Errorf("%w: collaborator may stop only a Run they initiated", craft.ErrForbidden)
+	}
+	return callerID, nil
+}
+
+// persistedRunScope validates the route scope against the tenant-scoped Run
+// key, then uses the Run's persisted owner for all Craft storage operations.
+// The caller remains independently available through CallerFromContext.
+func persistedRunScope(scope craft.Scope, key agentruntime.RunKey, run agentruntime.Run) (craft.Scope, error) {
+	if scope.TenantID == 0 || scope.SessionID == "" || scope.UserID == "" || key.RunID == "" ||
+		key.TenantID != scope.TenantID || run.Key != key || run.SessionID != scope.SessionID || run.UserID == "" {
+		return craft.Scope{}, fmt.Errorf("%w: Run is outside the Task scope", craft.ErrForbidden)
+	}
+	scope.UserID = run.UserID
+	return scope, nil
+}
+
+func validateControlTask(task craft.Task, scope craft.Scope, key agentruntime.RunKey, taskID string) error {
+	if task.ID != taskID || !craft.SameScope(task.Scope, scope) || task.Fence.RunKey != key {
+		return fmt.Errorf("%w: delegation is outside the addressed Run", craft.ErrForbidden)
+	}
+	return nil
 }
 
 // NewCraftControlService assembles the control service. A nil interaction
@@ -536,9 +603,25 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 	if err != nil {
 		return CraftStopStatus{}, err
 	}
-	if run.SessionID != req.Scope.SessionID || run.UserID != req.Scope.UserID {
-		return CraftStopStatus{}, fmt.Errorf("%w: run %s is not owned by this session user",
-			craft.ErrForbidden, req.RunKey.RunID)
+	req.Scope, err = persistedRunScope(req.Scope, req.RunKey, run)
+	if err != nil {
+		return CraftStopStatus{}, err
+	}
+	if _, err := s.authorizeRunAccess(detachCtx, req.Scope, req.RunKey, run, craft.TaskWrite); err != nil {
+		return CraftStopStatus{}, err
+	}
+	var task craft.Task
+	hasTask := false
+	if s.store != nil {
+		task, err = s.store.GetTask(detachCtx, req.Scope, req.TaskID)
+		if err == nil {
+			if err := validateControlTask(task, req.Scope, req.RunKey, req.TaskID); err != nil {
+				return CraftStopStatus{}, err
+			}
+			hasTask = true
+		} else if !errors.Is(err, craft.ErrNotFound) {
+			return CraftStopStatus{}, err
+		}
 	}
 	switch run.Status {
 	case "succeeded":
@@ -604,7 +687,7 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 	//    the executor's abort confirmation, NOT a pre-stop settlement (see
 	//    the abort-window branch below) — it must continue to the terminal
 	//    write so the stop converges.
-	if s.store != nil {
+	if s.store != nil && hasTask {
 		if result, err := s.store.GetResult(detachCtx, req.Scope, req.TaskID); err == nil && result.Status != "canceled" {
 			return CraftStopStatus{
 				Phase: stopPhaseForResult(result), Result: &result,
@@ -617,20 +700,12 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 	}
 
 	// 3. Abort the addressed sub-execution, then verify.
-	var task craft.Task
-	if s.store != nil {
-		stored, err := s.store.GetTask(detachCtx, req.Scope, req.TaskID)
-		if err != nil {
-			if errors.Is(err, craft.ErrNotFound) {
-				return CraftStopStatus{
-					Phase:   "stopping",
-					Note:    "cancel intent recorded; the delegation record is unavailable for abort",
-					Outcome: requestedOutcome(),
-				}, nil
-			}
-			return CraftStopStatus{}, err
-		}
-		task = stored
+	if s.store != nil && !hasTask {
+		return CraftStopStatus{
+			Phase:   "stopping",
+			Note:    "cancel intent recorded; the delegation record is unavailable for abort",
+			Outcome: requestedOutcome(),
+		}, nil
 	}
 	abortNote := ""
 	exec := s.currentExecutor()
@@ -784,9 +859,25 @@ func (s *CraftControlService) DelegationStatus(
 	if err != nil {
 		return CraftStopStatus{}, err
 	}
-	if run.SessionID != scope.SessionID || run.UserID != scope.UserID {
-		return CraftStopStatus{}, fmt.Errorf("%w: run %s is not owned by this session user",
-			craft.ErrForbidden, key.RunID)
+	scope, err = persistedRunScope(scope, key, run)
+	if err != nil {
+		return CraftStopStatus{}, err
+	}
+	if _, err := s.authorizeRunAccess(ctx, scope, key, run, craft.TaskRead); err != nil {
+		return CraftStopStatus{}, err
+	}
+	var task craft.Task
+	hasTask := false
+	if s.store != nil && taskID != "" {
+		task, err = s.store.GetTask(ctx, scope, taskID)
+		if err == nil {
+			if err := validateControlTask(task, scope, key, taskID); err != nil {
+				return CraftStopStatus{}, err
+			}
+			hasTask = true
+		} else if !errors.Is(err, craft.ErrNotFound) {
+			return CraftStopStatus{}, err
+		}
 	}
 	requested := run.Status == "canceled"
 	intentOnRecord := false
@@ -835,13 +926,12 @@ func (s *CraftControlService) DelegationStatus(
 		}
 		return s.durableStopOutcome(ctx, scope, key.RunID, fallback)
 	}
-	if s.store != nil && taskID != "" {
+	if s.store != nil && hasTask {
 		if result, err := s.store.GetResult(ctx, scope, taskID); err == nil {
 			return CraftStopStatus{Phase: stopPhaseForResult(result), Result: &result,
 				Outcome: projectOutcome(rowOutcome)}, nil
 		}
-		task, err := s.store.GetTask(ctx, scope, taskID)
-		if exec := s.currentExecutor(); err == nil && exec != nil {
+		if exec := s.currentExecutor(); exec != nil {
 			observation, oerr := exec.Observe(ctx, task)
 			if oerr != nil {
 				// The run row's own terminal fact overtakes a stale unknown:

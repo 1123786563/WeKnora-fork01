@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -126,7 +127,7 @@ func TestCraftT13Journey(t *testing.T) {
 
 	auditRows := func(action string) []map[string]any {
 		var rows []map[string]any
-		require.NoError(t, db.Raw("SELECT actor_user_id, target_id, details FROM audit_logs WHERE action = ?", action).Scan(&rows).Error)
+		require.NoError(t, db.Raw("SELECT tenant_id, actor_user_id, scope_id, target_id, details FROM audit_logs WHERE action = ?", action).Scan(&rows).Error)
 		return rows
 	}
 
@@ -140,6 +141,18 @@ func TestCraftT13Journey(t *testing.T) {
 	require.Equal(t, digest1, view.Manifest.ManifestDigest, "the view binds the exact export manifest digest")
 	require.Equal(t, craft.ExportConsentAwaiting, view.State)
 	require.Nil(t, view.Decision, "no decision exists yet")
+
+	// TaskRead authorizes the requested scope, while the service must still
+	// bind that scope to the authenticated caller before reading consent.
+	mismatchedCallerCtx := types.WithCaller(craftKnowledgeCtx(scope), types.Caller{TenantID: 7, UserID: "u-other"})
+	_, err = consentSvc.ExportConsentView(mismatchedCallerCtx, scope, v1.ID)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	callerDenials := auditRows("craft.export_denied:caller_identity")
+	require.Len(t, callerDenials, 1, "a caller identity mismatch is audited")
+	require.Equal(t, int64(7), callerDenials[0]["tenant_id"], "denial audit attributes the authenticated caller tenant")
+	require.Equal(t, "u-other", callerDenials[0]["actor_user_id"], "denial audit attributes the authenticated caller")
+	require.Equal(t, "s-t13", callerDenials[0]["scope_id"], "denial audit retains the requested Task as its target scope")
+	require.Equal(t, v1.ID, callerDenials[0]["target_id"])
 	require.ElementsMatch(t, []string{"index.html", "citations.json"}, view.RestrictedDerived,
 		"both members derive from the restricted source and are classified restricted derived")
 	for _, f := range view.Manifest.Files {
@@ -225,7 +238,8 @@ func TestCraftT13Journey(t *testing.T) {
 	require.Zero(t, count, "no decision row was persisted for the refused attempt")
 
 	// The caller identity must match the scope.
-	_, err = consentSvc.DecideExport(craftKnowledgeCtx(craft.Scope{TenantID: 1, UserID: "u-other", SessionID: scope.SessionID}), scope, v1.ID, craft.DecisionApproved, digest1)
+	decideMismatchCtx := types.WithCaller(craftKnowledgeCtx(scope), types.Caller{TenantID: 7, UserID: "u-other"})
+	_, err = consentSvc.DecideExport(decideMismatchCtx, scope, v1.ID, craft.DecisionApproved, digest1)
 	require.ErrorIs(t, err, craft.ErrForbidden)
 	require.Len(t, auditRows("craft.export_denied:caller_identity"), 1)
 

@@ -122,6 +122,23 @@ type CraftBudgetCallRow struct {
 
 func (CraftBudgetCallRow) TableName() string { return "craft_budget_calls" }
 
+// CraftBudgetExtensionIntentRow is the server-owned action offered for the
+// current paused Run. Its composite primary key lets a completed action be
+// replaced atomically only after the same Run enters a later pause cycle.
+type CraftBudgetExtensionIntentRow struct {
+	TenantID     uint64    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	SessionID    string    `gorm:"column:session_id;primaryKey"`
+	RunID        string    `gorm:"column:run_id;primaryKey"`
+	Key          string    `gorm:"column:intent_key;not null"`
+	ExtraCalls   int       `gorm:"column:extra_calls;not null"`
+	ExtraCredits int64     `gorm:"column:extra_credits;not null"`
+	Status       string    `gorm:"column:status;not null"`
+	CreatedAt    time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (CraftBudgetExtensionIntentRow) TableName() string { return "craft_budget_extension_intents" }
+
 // CraftChargeStartJournalRow is the durable authorization to begin one
 // chargeable external activity. Its identity and reservation are created in
 // the same committed transaction; unresolved rows must never be replayed.
@@ -603,6 +620,20 @@ func newCraftGrantID() (string, error) {
 		return "", err
 	}
 	return "grant_" + hex.EncodeToString(buf), nil
+}
+
+const (
+	craftBudgetExtensionExtraCalls    = 10
+	craftBudgetExtensionIntentPending = "pending"
+	craftBudgetExtensionIntentDone    = "completed"
+)
+
+func newCraftBudgetExtensionIntentKey() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return "budget-extension-" + hex.EncodeToString(buf), nil
 }
 
 // loadGrant resolves a grant identity to its durable row.
@@ -1270,14 +1301,12 @@ func (s *CraftBudgetService) pauseOnDenial(ctx context.Context, grant CraftBudge
 	return denial
 }
 
-// BudgetPause reads the frozen T00 fact from durable state. Limit and Used
-// are logical call counts, never Credits, account balance, or a secret.
+// BudgetPause projects the durable pause fact and one stable server-owned
+// extension action. Limit and Used are logical call counts; the action's
+// ExtraCredits is the configured extension quantum, never an account balance.
 func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope, runID string) (craft.BudgetPause, error) {
 	if scope.TenantID == 0 || scope.SessionID == "" || scope.UserID == "" || runID == "" {
 		return craft.BudgetPause{}, craft.ErrInvalidInput
-	}
-	if err := s.authorizeBudgetActor(ctx, scope); err != nil {
-		return craft.BudgetPause{}, err
 	}
 	var grant CraftBudgetGrantRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
@@ -1286,20 +1315,73 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 		}
 		return craft.BudgetPause{}, err
 	}
-	var run struct{ Status, WaitReason string }
-	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
-		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).Take(&run).Error
+	var intent CraftBudgetExtensionIntentRow
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Serialize GET-created intents with POST resume and any later pause on
+		// this exact Run. The same lock primitive works across PostgreSQL and
+		// SQLite deployments.
+		run, err := lockCraftRun(tx, ctx, grant)
+		if err != nil {
+			return err
+		}
+		if run.SessionID != scope.SessionID || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
+			return craft.ErrNotFound
+		}
+		err = tx.WithContext(ctx).Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).
+			Take(&intent).Error
+		if err == nil && intent.Status == craftBudgetExtensionIntentPending {
+			return nil
+		}
+		intentMissing := errors.Is(err, gorm.ErrRecordNotFound)
+		if err != nil && !intentMissing {
+			return err
+		}
+		key, err := newCraftBudgetExtensionIntentKey()
+		if err != nil {
+			return err
+		}
+		now := s.now()
+		action := CraftBudgetExtensionIntentRow{
+			TenantID: scope.TenantID, SessionID: scope.SessionID, RunID: runID,
+			Key: key, ExtraCalls: craftBudgetExtensionExtraCalls,
+			ExtraCredits: int64(s.policy.TaskLimit), Status: craftBudgetExtensionIntentPending,
+			CreatedAt: now, UpdatedAt: now,
+		}
+		if intentMissing {
+			if err := tx.WithContext(ctx).Create(&action).Error; err != nil {
+				return err
+			}
+			intent = action
+			return nil
+		}
+		if intent.Status != craftBudgetExtensionIntentDone {
+			return fmt.Errorf("%w: invalid budget extension intent state", craft.ErrConflict)
+		}
+		result := tx.WithContext(ctx).Model(&CraftBudgetExtensionIntentRow{}).
+			Where("tenant_id = ? AND session_id = ? AND run_id = ? AND status = ?", scope.TenantID, scope.SessionID, runID, craftBudgetExtensionIntentDone).
+			Updates(map[string]any{"intent_key": action.Key, "extra_calls": action.ExtraCalls,
+				"extra_credits": action.ExtraCredits, "status": action.Status,
+				"created_at": action.CreatedAt, "updated_at": action.UpdatedAt})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return craft.ErrConflict
+		}
+		intent = action
+		return nil
+	})
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craft.BudgetPause{}, craft.ErrNotFound
 	}
 	if err != nil {
 		return craft.BudgetPause{}, err
 	}
-	if run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
-		return craft.BudgetPause{}, craft.ErrNotFound
-	}
 	grantView := s.snapshot(ctx, grant)
-	return craft.BudgetPause{RunID: runID, Reason: "exhausted", Limit: int64(grantView.MaxCalls), Used: int64(grantView.UsedCalls)}, nil
+	return craft.BudgetPause{
+		RunID: runID, Reason: "exhausted", Limit: int64(grantView.MaxCalls), Used: int64(grantView.UsedCalls),
+		ExtensionAction: &craft.BudgetExtensionAction{Key: intent.Key, ExtraCalls: intent.ExtraCalls, ExtraCredits: intent.ExtraCredits},
+	}, nil
 }
 
 // authorizeBudgetActor is deliberately checked against current server rows,
@@ -1354,8 +1436,13 @@ func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Sc
 		}
 		return err
 	}
-	if _, err := s.BudgetPause(ctx, scope, runID); err != nil {
+	pause, err := s.BudgetPause(ctx, scope, runID)
+	if err != nil {
 		return err
+	}
+	action := pause.ExtensionAction
+	if action == nil || action.Key != key || action.ExtraCalls != extraCalls || action.ExtraCredits != int64(extraCredits) {
+		return fmt.Errorf("%w: extension request does not match the pending server action", craft.ErrConflict)
 	}
 	if err := s.Extend(ctx, grant.GrantID, key, extraCalls, extraCredits); err != nil {
 		return err
@@ -1371,6 +1458,17 @@ func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Sc
 		if run.SessionID != scope.SessionID || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
 			return craft.ErrConflict
 		}
+		var intent CraftBudgetExtensionIntentRow
+		if err := tx.WithContext(ctx).Where("tenant_id = ? AND session_id = ? AND run_id = ? AND intent_key = ? AND status = ?",
+			scope.TenantID, scope.SessionID, runID, key, craftBudgetExtensionIntentPending).Take(&intent).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return craft.ErrConflict
+			}
+			return err
+		}
+		if intent.ExtraCalls != extraCalls || intent.ExtraCredits != int64(extraCredits) {
+			return craft.ErrConflict
+		}
 		result := tx.Table("agent_runs").Where(
 			"tenant_id = ? AND session_id = ? AND run_id = ? AND status = ? AND wait_reason = ?",
 			scope.TenantID, scope.SessionID, runID, "waiting_user", craftBudgetWaitReason).
@@ -1379,6 +1477,16 @@ func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Sc
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
+			return craft.ErrConflict
+		}
+		completed := tx.WithContext(ctx).Model(&CraftBudgetExtensionIntentRow{}).
+			Where("tenant_id = ? AND session_id = ? AND run_id = ? AND intent_key = ? AND status = ?",
+				scope.TenantID, scope.SessionID, runID, key, craftBudgetExtensionIntentPending).
+			Updates(map[string]any{"status": craftBudgetExtensionIntentDone, "updated_at": s.now()})
+		if completed.Error != nil {
+			return completed.Error
+		}
+		if completed.RowsAffected != 1 {
 			return craft.ErrConflict
 		}
 		return nil

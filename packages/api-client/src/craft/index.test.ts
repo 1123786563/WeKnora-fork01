@@ -213,9 +213,8 @@ test('submitEdit resolves the whole run envelope and shares the submit request b
 });
 
 // Wrap-up OCR F01-F03: the consent endpoints answer a BARE flat body (no
-// success/data envelope) and budgetPause's can_extend rides the ENVELOPE
-// top level — unwrap-style reads would reject every successful response or
-// always answer canExtend=false.
+// success/data envelope); unwrap-style reads would reject every successful
+// consent response.
 test('export consent seams resolve the bare flat wire bodies', async () => {
   const consentBody = {
     version_id: 'v1', manifest_digest: 'sha256:m', state: 'awaiting',
@@ -234,15 +233,60 @@ test('export consent seams resolve the bare flat wire bodies', async () => {
   assert.equal((decided as Record<string, unknown>)['state'], 'consented', 'the decision body resolves after the server persisted it');
 });
 
-test('budgetPause reads can_extend off the envelope top level', async () => {
+test('budgetPause retains valid pause values when its optional extension action is malformed', async () => {
   const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
   const { request } = fakeRequest({
-    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: pause, can_extend: true },
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': {
+      success: true,
+      data: { ...pause, extension_action: { key: 'unsafe', extra_calls: Number.MAX_SAFE_INTEGER + 1, extra_credits: 10 } },
+      can_extend: true,
+    },
   });
   const api = createCraftApi(request);
   const view = await api.budgetPause('s1', 'r1');
-  assert.equal(view.canExtend, true, 'envelope-level can_extend projects (reading data-level would answer false)');
-  assert.equal(view.pause.run_id, 'r1');
-  assert.equal(view.pause.used, 10);
+  assert.deepEqual(view.pause, pause, 'the required pause remains available');
+  assert.equal(view.extensionAction, null, 'invalid optional action is withheld');
 });
 
+test('budgetPause represents missing and null extension actions as null', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  for (const body of [{ ...pause }, { ...pause, extension_action: null }]) {
+    const { request } = fakeRequest({
+      'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: body },
+    });
+    const view = await createCraftApi(request).budgetPause('s1', 'r1');
+    assert.deepEqual(view.pause, pause);
+    assert.equal(view.extensionAction, null);
+  }
+});
+
+test('budgetPause keeps required pause parsing strict when extension actions are optional', async () => {
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': {
+      success: true,
+      data: { run_id: 'r1', reason: 'budget_exhausted', limit: -1, used: 10, extension_action: null },
+    },
+  });
+  const api = createCraftApi(request);
+  await assert.rejects(() => api.budgetPause('s1', 'r1'), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, 'INVALID_RESPONSE');
+    return true;
+  });
+});
+
+test('budgetPause reads the server extension action from data and extend sends its exact tuple', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  const action = { key: 'server-intent-key', extra_calls: 17, extra_credits: 2345678 };
+  const { request, seen } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: { ...pause, extension_action: action }, can_extend: true },
+    'POST /api/v1/sessions/s1/craft/runs/r1/budget/extend': { success: true },
+  });
+  const api = createCraftApi(request);
+  const view = await api.budgetPause('s1', 'r1');
+  assert.equal(view.pause.run_id, 'r1');
+  assert.equal(view.pause.used, 10);
+  assert.deepEqual(view.extensionAction, action, 'the server action is returned without substituting a client key or quantum');
+  await api.extendBudget('s1', 'r1', view.extensionAction!);
+  assert.deepEqual(seen[1]?.body, action, 'the POST echoes the exact server-owned tuple');
+});

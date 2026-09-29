@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -15,6 +16,150 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type craftBudgetPauseIntentView struct {
+	ExtensionAction *struct {
+		Key          string `json:"key"`
+		ExtraCalls   int    `json:"extra_calls"`
+		ExtraCredits int64  `json:"extra_credits"`
+	} `json:"extension_action"`
+}
+
+func craftBudgetPauseIntent(t *testing.T, pause craft.BudgetPause) *struct {
+	Key          string `json:"key"`
+	ExtraCalls   int    `json:"extra_calls"`
+	ExtraCredits int64  `json:"extra_credits"`
+} {
+	t.Helper()
+	encoded, err := json.Marshal(pause)
+	require.NoError(t, err)
+	var view craftBudgetPauseIntentView
+	require.NoError(t, json.Unmarshal(encoded, &view))
+	require.NotNil(t, view.ExtensionAction, "paused Run exposes its durable server-owned extension action")
+	return view.ExtensionAction
+}
+
+func newPausedCraftBudgetIntentFixture(t *testing.T, tenant uint64, sessionID, runID string) (*gorm.DB, *CraftBudgetService, craft.Scope) {
+	t.Helper()
+	db := openCraftBudgetTestDB(t)
+	policy := craftBudgetPolicy()
+	policy.MaxCalls = 1
+	svc, err := NewCraftBudgetService(db, nil, policy)
+	require.NoError(t, err)
+	seedCraftFundedTenant(t, db, tenant, 100000)
+	seedCraftBudgetRun(t, db, tenant, runID, sessionID)
+	scope := craft.Scope{TenantID: tenant, UserID: "owner", SessionID: sessionID}
+	grant, err := svc.Admit(context.Background(), scope, runID)
+	require.NoError(t, err)
+	_, err = svc.AuthorizeBinding(context.Background(), grant.ID, CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform})
+	require.NoError(t, err)
+	_, err = svc.AuthorizeBinding(context.Background(), grant.ID, CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform})
+	require.ErrorIs(t, err, craft.ErrGrantExhausted)
+	return db, svc, scope
+}
+
+func TestCraftBudgetExtensionIntentPersistsAcrossResumeFailureAndRenews(t *testing.T) {
+	db, svc, scope := newPausedCraftBudgetIntentFixture(t, 119, "task-intent-journey", "run-intent-journey")
+	ctx := context.Background()
+	pause, err := svc.BudgetPause(ctx, scope, "run-intent-journey")
+	require.NoError(t, err)
+	first := craftBudgetPauseIntent(t, pause)
+	require.NotEmpty(t, first.Key)
+	require.Equal(t, 10, first.ExtraCalls)
+	require.Equal(t, int64(svc.policy.TaskLimit), first.ExtraCredits)
+
+	wrongAmount := commercial.Credits(first.ExtraCredits + 1)
+	require.ErrorIs(t, svc.ExtendAndResume(ctx, scope, "run-intent-journey", first.Key,
+		first.ExtraCalls, wrongAmount), craft.ErrConflict, "a caller cannot change the server-owned credit quantum")
+	require.ErrorIs(t, svc.ExtendAndResume(ctx, scope, "run-intent-journey", first.Key,
+		first.ExtraCalls+1, commercial.Credits(first.ExtraCredits)), craft.ErrConflict, "a caller cannot change the server-owned call quantum")
+
+	// Reconciliation is settled, then an injected resume write failure proves
+	// the already-applied extension remains attached to the same pending action.
+	require.NoError(t, db.Model(&repocommercial.ReservationRow{}).
+		Where("tenant_id = ? AND run_id = ?", scope.TenantID, "run-intent-journey").
+		Update("state", commercial.ReservationStateSettled).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER fail_budget_extension_resume BEFORE UPDATE OF status ON agent_runs
+		WHEN NEW.status = 'recovering' BEGIN SELECT RAISE(ABORT, 'injected budget resume failure'); END`).Error)
+	resumeErr := svc.ExtendAndResume(ctx, scope, "run-intent-journey", first.Key,
+		first.ExtraCalls, commercial.Credits(first.ExtraCredits))
+	require.ErrorContains(t, resumeErr, "injected budget resume failure")
+	// Model process/service restart after the commercial extension committed
+	// but the Run resume transaction failed. The next GET and POST must recover
+	// the pending action from the database, with no in-memory cache involved.
+	svc, err = NewCraftBudgetService(db, nil, svc.policy)
+	require.NoError(t, err)
+	refetched, err := svc.BudgetPause(ctx, scope, "run-intent-journey")
+	require.NoError(t, err)
+	second := craftBudgetPauseIntent(t, refetched)
+	require.Equal(t, first.Key, second.Key)
+	require.Equal(t, *first, *second)
+	var intentStatus string
+	require.NoError(t, db.Table("craft_budget_extension_intents").Select("status").
+		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, "run-intent-journey").Take(&intentStatus).Error)
+	require.Equal(t, "pending", intentStatus, "failed resume leaves the same action pending")
+	var taskBudget repocommercial.TaskBudgetRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", scope.TenantID, scope.SessionID).Take(&taskBudget).Error)
+	require.Equal(t, int64(5000)+first.ExtraCredits, taskBudget.LimitMicro)
+	require.NoError(t, db.Exec("DROP TRIGGER fail_budget_extension_resume").Error)
+
+	var grant CraftBudgetGrantRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", scope.TenantID, "run-intent-journey").Take(&grant).Error)
+	require.NoError(t, svc.ExtendAndResume(ctx, scope, "run-intent-journey", first.Key,
+		first.ExtraCalls, commercial.Credits(first.ExtraCredits)))
+	var run struct{ Status, WaitReason string }
+	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
+		Where("tenant_id = ? AND run_id = ?", scope.TenantID, "run-intent-journey").Take(&run).Error)
+	require.Equal(t, "recovering", run.Status)
+	require.Empty(t, run.WaitReason)
+	require.NoError(t, db.Table("craft_budget_extension_intents").Select("status").
+		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, "run-intent-journey").Take(&intentStatus).Error)
+	require.Equal(t, "completed", intentStatus, "action completes with the committed resume")
+	require.NoError(t, svc.PauseRunForBudget(ctx, grant.GrantID))
+	freshPause, err := svc.BudgetPause(ctx, scope, "run-intent-journey")
+	require.NoError(t, err)
+	fresh := craftBudgetPauseIntent(t, freshPause)
+	require.NotEqual(t, first.Key, fresh.Key, "a later pause gets a new server-owned action identity")
+}
+
+func TestCraftBudgetPauseConcurrentIntentCreationHasSingleWinner(t *testing.T) {
+	db, svc, scope := newPausedCraftBudgetIntentFixture(t, 120, "task-intent-race", "run-intent-race")
+	const callers = 8
+	start := make(chan struct{})
+	type result struct {
+		pause craft.BudgetPause
+		err   error
+	}
+	results := make(chan result, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			pause, err := svc.BudgetPause(context.Background(), scope, "run-intent-race")
+			results <- result{pause: pause, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	var winner string
+	for result := range results {
+		require.NoError(t, result.err)
+		intent := craftBudgetPauseIntent(t, result.pause)
+		if winner == "" {
+			winner = intent.Key
+		}
+		require.Equal(t, winner, intent.Key)
+	}
+	require.NotEmpty(t, winner)
+	var intents int64
+	require.NoError(t, db.Table("craft_budget_extension_intents").
+		Where("tenant_id = ? AND session_id = ? AND run_id = ? AND status = ?", scope.TenantID, scope.SessionID, "run-intent-race", "pending").
+		Count(&intents).Error)
+	require.EqualValues(t, 1, intents)
+}
 
 // TestCraftT19Journey exercises the durable budget boundary over the real
 // commercial reservation tables and the persisted main Run, including reload.
@@ -45,7 +190,21 @@ func TestCraftT19Journey(t *testing.T) {
 	require.NoError(t, err)
 	pause, err := reloaded.BudgetPause(ctx, scope, "run-t19")
 	require.NoError(t, err)
-	require.Equal(t, craft.BudgetPause{RunID: "run-t19", Reason: "exhausted", Limit: 1, Used: 1}, pause)
+	require.Equal(t, "run-t19", pause.RunID)
+	require.Equal(t, "exhausted", pause.Reason)
+	require.Equal(t, int64(1), pause.Limit)
+	require.Equal(t, int64(1), pause.Used)
+	action := craftBudgetPauseIntent(t, pause)
+	// TaskRead collaborators can learn why the Run paused; the HTTP handler
+	// separately projects whether this reader may extend the budget.
+	readerScope := craft.Scope{TenantID: 91, UserID: "member", SessionID: "craft107-t19"}
+	readerPause, err := reloaded.BudgetPause(ctx, readerScope, "run-t19")
+	require.NoError(t, err)
+	require.Equal(t, "run-t19", readerPause.RunID)
+	require.Equal(t, "exhausted", readerPause.Reason)
+	require.Equal(t, int64(1), readerPause.Limit)
+	require.Equal(t, int64(1), readerPause.Used)
+	require.Equal(t, action.Key, craftBudgetPauseIntent(t, readerPause).Key)
 	var run struct {
 		Status     string
 		WaitReason string
@@ -60,13 +219,14 @@ func TestCraftT19Journey(t *testing.T) {
 
 	// A member cannot purchase an extension. The owner can extend, but an
 	// unconfirmed dispatched call is never blindly replayed on resume.
-	require.ErrorIs(t, reloaded.ExtendAndResume(ctx, craft.Scope{TenantID: 91, UserID: "member", SessionID: "craft107-t19"}, "run-t19", "ext-t19", 1, commercial.Credits(500)), craft.ErrForbidden)
-	require.ErrorIs(t, reloaded.ExtendAndResume(ctx, scope, "run-t19", "ext-t19", 1, commercial.Credits(500)), craft.ErrReconcilePending)
+	require.ErrorIs(t, reloaded.ExtendAndResume(ctx, readerScope, "run-t19", action.Key, action.ExtraCalls, commercial.Credits(action.ExtraCredits)), craft.ErrForbidden)
+	require.ErrorIs(t, reloaded.ExtendAndResume(ctx, scope, "run-t19", action.Key, action.ExtraCalls, commercial.Credits(action.ExtraCredits)), craft.ErrReconcilePending)
 	pause, err = reloaded.BudgetPause(ctx, scope, "run-t19")
 	require.NoError(t, err)
 	require.Equal(t, "exhausted", pause.Reason)
+	require.Equal(t, action.Key, craftBudgetPauseIntent(t, pause).Key)
 	require.NoError(t, db.Model(&repocommercial.ReservationRow{}).Where("tenant_id = ? AND run_id = ?", 91, "run-t19").Update("state", commercial.ReservationStateSettled).Error)
-	require.NoError(t, reloaded.ExtendAndResume(ctx, scope, "run-t19", "ext-t19", 1, commercial.Credits(500)))
+	require.NoError(t, reloaded.ExtendAndResume(ctx, scope, "run-t19", action.Key, action.ExtraCalls, commercial.Credits(action.ExtraCredits)))
 	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").Where("tenant_id = ? AND run_id = ?", 91, "run-t19").Take(&run).Error)
 	require.Equal(t, "recovering", run.Status)
 	require.Empty(t, run.WaitReason)

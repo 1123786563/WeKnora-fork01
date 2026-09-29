@@ -4,8 +4,8 @@ package session
 // budget-exhausted Run parks durably (status waiting_user, wait_reason
 // budget_exhausted); the workbench must be able to READ that pause and the
 // Task owner / tenant billing admin must be able to EXTEND and safely resume
-// through the authenticated sessions tree — exactly the seams the frozen
-// CraftBudgetPause wire ({run_id, reason, limit, used}) and the service's
+// through the authenticated sessions tree — exactly the seams the pause wire
+// ({run_id, reason, limit, used, extension_action}) and the service's
 // ExtendAndResume contract define. The journey below runs the real service
 // over the migrated HTTP database: pause projection, member-visible
 // refusal, owner extension and the unknown-reconcile refusal.
@@ -129,10 +129,15 @@ func TestCraftT20BudgetPauseHTTPJourney(t *testing.T) {
 	require.Equal(t, http.StatusOK, ownerPause.Code, ownerPause.Body.String())
 	var ownerView struct {
 		Data struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason"`
-			Limit  int64  `json:"limit"`
-			Used   int64  `json:"used"`
+			RunID           string `json:"run_id"`
+			Reason          string `json:"reason"`
+			Limit           int64  `json:"limit"`
+			Used            int64  `json:"used"`
+			ExtensionAction *struct {
+				Key          string `json:"key"`
+				ExtraCalls   int    `json:"extra_calls"`
+				ExtraCredits int64  `json:"extra_credits"`
+			} `json:"extension_action"`
 		} `json:"data"`
 		CanExtend bool `json:"can_extend"`
 	}
@@ -142,32 +147,71 @@ func TestCraftT20BudgetPauseHTTPJourney(t *testing.T) {
 	require.Equal(t, int64(1), ownerView.Data.Limit)
 	require.Equal(t, int64(1), ownerView.Data.Used)
 	require.True(t, ownerView.CanExtend, "the session owner may extend")
+	require.NotNil(t, ownerView.Data.ExtensionAction)
+	require.NotEmpty(t, ownerView.Data.ExtensionAction.Key)
+	require.Equal(t, 10, ownerView.Data.ExtensionAction.ExtraCalls)
+	require.Equal(t, int64(policy.TaskLimit), ownerView.Data.ExtensionAction.ExtraCredits)
+	extensionBody, err := json.Marshal(ownerView.Data.ExtensionAction)
+	require.NoError(t, err)
 
-	// The pause view itself is extension-actor-only (the T19 service seam's
-	// own authorizeBudgetActor): a Task viewer is refused server-side — the
-	// workbench renders the contact-owner copy from the run's wait_reason
-	// without this view, so no client-side role derivation exists.
+	// A Task viewer can read the pause fact but cannot extend the budget.
 	viewerPause := env.do(t, http.MethodGet, pausePath, "viewer", "")
-	require.Equal(t, http.StatusForbidden, viewerPause.Code, viewerPause.Body.String())
+	require.Equal(t, http.StatusOK, viewerPause.Code, viewerPause.Body.String())
+	var viewerView struct {
+		Data struct {
+			RunID           string `json:"run_id"`
+			Reason          string `json:"reason"`
+			Limit           int64  `json:"limit"`
+			Used            int64  `json:"used"`
+			ExtensionAction *struct {
+				Key          string `json:"key"`
+				ExtraCalls   int    `json:"extra_calls"`
+				ExtraCredits int64  `json:"extra_credits"`
+			} `json:"extension_action"`
+		} `json:"data"`
+		CanExtend bool `json:"can_extend"`
+	}
+	require.NoError(t, json.Unmarshal(viewerPause.Body.Bytes(), &viewerView))
+	require.Equal(t, runID, viewerView.Data.RunID)
+	require.Equal(t, "exhausted", viewerView.Data.Reason)
+	require.Equal(t, int64(1), viewerView.Data.Limit)
+	require.Equal(t, int64(1), viewerView.Data.Used)
+	require.False(t, viewerView.CanExtend, "a Task viewer cannot extend the budget")
+	require.Nil(t, viewerView.Data.ExtensionAction, "non-authorized readers do not receive an actionable intent")
 
 	// A same-tenant non-member is refused at the Task gate, and an unknown
 	// Run answers 404 without leaking the pause.
-	require.Equal(t, http.StatusForbidden, env.do(t, http.MethodGet, pausePath, "admin", "").Code)
+	require.Equal(t, http.StatusForbidden, env.do(t, http.MethodGet, pausePath, "nonmember", "").Code)
 	require.Equal(t, http.StatusNotFound, env.do(t, http.MethodGet,
 		"/api/v1/sessions/"+sessionID+"/craft/runs/run-never/budget/pause", "", "").Code)
 
 	// The viewer's extension attempt is denied by the server's own actor
 	// check (403), not by hiding the entrance.
 	viewerExtend := env.do(t, http.MethodPost, extendPath, "viewer",
-		`{"key":"ext-t20","extra_calls":2,"extra_credits":1000}`)
+		string(extensionBody))
 	require.Equal(t, http.StatusForbidden, viewerExtend.Code, viewerExtend.Body.String())
 
 	// While the dispatched reservation is still unsettled, the owner's
 	// extension is refused with the reconcile-pending conflict: an unknown
 	// dispatched effect is never blindly replayed on resume.
 	ownerPending := env.do(t, http.MethodPost, extendPath, "",
-		`{"key":"ext-t20","extra_calls":2,"extra_credits":1000}`)
+		string(extensionBody))
 	require.Equal(t, http.StatusConflict, ownerPending.Code, ownerPending.Body.String())
+	refetchedPause := env.do(t, http.MethodGet, pausePath, "", "")
+	require.Equal(t, http.StatusOK, refetchedPause.Code, refetchedPause.Body.String())
+	var refetchedView struct {
+		Data struct {
+			ExtensionAction *struct {
+				Key          string `json:"key"`
+				ExtraCalls   int    `json:"extra_calls"`
+				ExtraCredits int64  `json:"extra_credits"`
+			} `json:"extension_action"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(refetchedPause.Body.Bytes(), &refetchedView))
+	require.Equal(t, ownerView.Data.ExtensionAction, refetchedView.Data.ExtensionAction)
+	extensionBody, err = json.Marshal(refetchedView.Data.ExtensionAction)
+	require.NoError(t, err)
 
 	// Settle the reservation: the same owner request now extends once and
 	// resumes the Run durably (status recovering, wait reason cleared).
@@ -175,7 +219,7 @@ func TestCraftT20BudgetPauseHTTPJourney(t *testing.T) {
 		Where("tenant_id = ?", uint64(1)).
 		Update("state", commercial.ReservationStateSettled).Error)
 	ownerExtend := env.do(t, http.MethodPost, extendPath, "",
-		`{"key":"ext-t20","extra_calls":2,"extra_credits":1000}`)
+		string(extensionBody))
 	require.Equal(t, http.StatusOK, ownerExtend.Code, ownerExtend.Body.String())
 	var run struct {
 		Status     string
@@ -193,7 +237,7 @@ func TestCraftT20BudgetPauseHTTPJourney(t *testing.T) {
 	// the Run is no longer budget-paused, so there is nothing to extend
 	// (404, not a phantom second extension and not a silent success).
 	replay := env.do(t, http.MethodPost, extendPath, "",
-		`{"key":"ext-t20","extra_calls":2,"extra_credits":1000}`)
+		string(extensionBody))
 	require.Equal(t, http.StatusNotFound, replay.Code, "a resumed Run no longer matches the paused extension precondition")
 
 	// A malformed body never reaches the service.
