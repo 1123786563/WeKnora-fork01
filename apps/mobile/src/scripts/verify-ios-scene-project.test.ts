@@ -43,6 +43,17 @@ test('generated SDK57 project contract accepts scene, factory, URL and deploymen
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 scene checker rejects nested elements in unrelated plist scalars', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const plistPath = join(root, 'WeKnora', 'Info.plist');
+    const source = readFileSync(plistPath, 'utf8');
+    writeFileSync(plistPath, source.replace('<key>UIApplicationSceneManifest</key>', '<key>Bad</key><string><true/></string><key>UIApplicationSceneManifest</key>'));
+    assert.notDeepEqual(verifyIosSceneProject(root), []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 scene checker parses valid empty and unrelated plist scalar values', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {

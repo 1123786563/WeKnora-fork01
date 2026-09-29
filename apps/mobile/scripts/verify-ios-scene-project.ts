@@ -127,7 +127,11 @@ function parsePlist(xml: string): unknown {
     if (token === '<string>' || token === '<integer>' || token === '<real>' || token === '<date>' || token === '<data>') {
       const closing = `</${token.slice(1, -1)}>`;
       let value = '';
-      if (tokens[index]?.trim() !== closing) value = tokens[index++]?.trim() ?? '';
+      const next = tokens[index]?.trim();
+      if (next !== closing) {
+        if (next?.startsWith('<')) throw new Error('Malformed plist scalar content');
+        value = tokens[index++]?.trim() ?? '';
+      }
       if (tokens[index++]?.trim() !== closing) throw new Error('Malformed plist scalar closing element');
       return value;
     }
