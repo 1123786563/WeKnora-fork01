@@ -461,20 +461,22 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
   const close = () => { setOpen(false); move?.onBack(); };
   // Vue DocumentActionMenu 菜单项（.doc-action-menu-item + t-icon .icon）。
   const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => (
-    <div
+    <button
+      type="button"
       className={'doc-action-menu-item' + (danger ? ' danger' : '')}
       role="menuitem"
       onClick={(event) => { event.stopPropagation(); close(); handler(); }}
-    >{icon}<span>{label}</span></div>
+    >{icon}<span>{label}</span></button>
   );
   // Vue handleAction keeps the popup open for the move sub-flow (and its
   // folder-picker sibling); everything else closes the menu.
   const menuItemKeepOpen = (label: string, icon: ReactNode, handler: () => void) => (
-    <div
+    <button
+      type="button"
       className="doc-action-menu-item"
       role="menuitem"
       onClick={(event) => { event.stopPropagation(); handler(); }}
-    >{icon}<span>{label}</span></div>
+    >{icon}<span>{label}</span></button>
   );
   const icons: Record<DocumentMenuAction, ReactNode> = {
     download: <TIcon className="icon" name="download" />,
@@ -589,16 +591,15 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
           <TIcon name="more" size="16px" />
         </button>
       ) : (
-        <div
+        <button
+          type="button"
           className={'more-wrap' + (open ? ' active-more' : '')}
           aria-label={t("knowledgeBase.documents.title")}
           title={t("knowledgeBase.documents.title")}
-          role="button"
-          tabIndex={0}
           onClick={(event) => { event.stopPropagation(); setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; }); }}
         >
           <img className="more-icon" src={MORE_PNG} alt="" />
-        </div>
+        </button>
       )}
     </Popup>
   );

@@ -104,7 +104,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
   return (
     <div className="document-title-row">
       <h2 className="document-breadcrumb">
-        <button type="button" className="breadcrumb-link" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
+        <a href={documentsKBListPath} className="breadcrumb-link">{t('menu.knowledgeBase')}</a>
         <TIcon name="chevron-right" className="breadcrumb-separator" />
         {kbList.length ? (
           <Popup
@@ -151,20 +151,18 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
                 {index > 0 ? <span className="breadcrumb-tab-sep" aria-hidden="true">/</span> : null}
                 {tab.title ? (
                   <Tooltip content={tab.title} placement="bottom">
-                    <span
+                    <a
+                      href={tab.href}
                       className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => onNavigate(tab.href)}
-                    >{tab.label}</span>
+                      aria-current={tab.active ? 'page' : undefined}
+                    >{tab.label}</a>
                   </Tooltip>
                 ) : (
-                  <span
+                  <a
+                    href={tab.href}
                     className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => onNavigate(tab.href)}
-                  >{tab.label}</span>
+                    aria-current={tab.active ? 'page' : undefined}
+                  >{tab.label}</a>
                 )}
               </Fragment>
             ))}

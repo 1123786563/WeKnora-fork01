@@ -31,6 +31,7 @@
 
 /* Breadcrumb tab switch (文档/Wiki/图谱 in breadcrumb) */
 .knowledge-layout .breadcrumb-tab {
+  text-decoration: none;
   cursor: pointer;
   color: var(--td-text-color-placeholder);
   font-weight: 400;
@@ -1354,6 +1355,10 @@
 }
 
 .knowledge-card .more-wrap {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
   flex-shrink: 0;
   display: flex;
   width: 25px;
@@ -2498,6 +2503,12 @@
 
 /* ============ DocumentActionMenu.vue scoped（popup portal，unscoped 平移） ============ */
 .doc-action-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
   display: flex;
   align-items: center;
   gap: 10px;
