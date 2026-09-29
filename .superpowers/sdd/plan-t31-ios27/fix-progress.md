@@ -56,6 +56,14 @@
 - Round-3 brief `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-brief.md` limited changes to integration fixtures and the report. Implementation commits `1818cd5a5` / `196f85d02`; focused 13/13, full suite 311 total / 297 pass / 14 opt-in skips, typecheck, Expo check and diff-check pass per report. No native rebuild or evidence change.
 - Round-3 review `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-review.md`: Spec PASS / Quality PASS; R4-R2-1 resolved by real sibling executable and sibling symlink fixtures. Scoped review covered `10c05c1e7..196f85d02`. R4 repair task is verified; T31 final integrated review remains pending.
 
+## T31 final integrated review
+
+- Exact review slice: base `1e9315773a971dd72fe621c94e308f45a0ca4692`, head `894d456cbf1c3506563204b4e018de02ce4e6700` (T31 only; earlier T55 work excluded). Report: `.superpowers/sdd/plan-t31-ios27/final-review.md`.
+- Verdict: Spec Partial / Code Quality Changes Requested. T31-F1 Medium: production framework verifier silently ignores unresolved `@loader_path` and `@executable_path` framework loads; disposable production-checker fixture reproduced exit 0 + `FRAMEWORK_CLOSURE_OK`. Retained app itself currently passes and launches.
+- T31-F2 Medium: cited current plan `docs/plans/issue30-sweep/plans/plan-t31-ios27.md` is absent. T31-F3 Low: device acceptance heading still calls JS startup unresolved despite later local Release login/safe-area evidence.
+- Repair plan: `docs/plans/issue30-sweep/plans/2026-09-29-t31-final-review-repairs.md`, exact starting HEAD `894d456cbf1c3506563204b4e018de02ce4e6700`; FR1, DOC1 and DOC2 are independent and status pending.
+- Final review verified local iOS27 Release startup and safe-area screenshot; staging password/OIDC, real Deployment capability and Android hardware acceptance remain external pending work and do not block these local checker/document repairs.
+
 ## Task R1+R3 integration verification addendum
 - Agent initial report noted `expo-build-properties` resolution failure under stale Expo 55 worktree modules. Ruling: run `pnpm install --frozen-lockfile` in the integration worktree before prebuild because its tracked SDK57 manifest/lock were integrated while ignored node_modules links remained from SDK55; risk is no source changes, only worktree dependency alignment.
 - Re-ran clean SDK57 prebuild successfully; contract check passed. Added `apps/mobile/ios/STALE_SDK55_SENTINEL`, repeated `--clean` prebuild, confirmed sentinel removal, then contract passed. Xcode generated output is ignored. See Task 1 report addendum.

@@ -131,6 +131,13 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 - Round 3 implementation commits `1818cd5a5` / `196f85d02` corrected the plist path to a real `Beta.framework/Alpha` executable and added a framework-local symlink to that same file. Focused 13/13; full suite 311 total / 297 pass / 14 opt-in skips; typecheck, Expo check and diff-check pass per report. No native build/evidence changes.
 - Round 3 independent review `.superpowers/sdd/plan-t31-ios27/fix-task-4-r3-review.md`: Spec PASS / Quality PASS, no findings. R4 repair task verified; T31 integrated final review remains next.
 
+### T31 integrated final review findings
+
+- Exact final review slice is `1e9315773a971dd72fe621c94e308f45a0ca4692..894d456cbf1c3506563204b4e018de02ce4e6700`; read-only report `.superpowers/sdd/plan-t31-ios27/final-review.md`.
+- Spec Partial / Code Quality Changes Requested. T31-F1 Medium: production framework gate skips unresolved `@loader_path` and `@executable_path` framework load commands; disposable fixture reproduced a false pass. The retained Release app itself has no observed missing dependency and still launches.
+- T31-F2 Medium: `docs/plans/issue30-sweep/plans/plan-t31-ios27.md` is cited as current authority but absent. T31-F3 Low: device acceptance summary has stale “JS startup unresolved” heading despite later launch evidence.
+- Follow-up plan: `docs/plans/issue30-sweep/plans/2026-09-29-t31-final-review-repairs.md`, base `894d456cbf1c3506563204b4e018de02ce4e6700`. FR1/DOC1/DOC2 are independent; T31 cannot be released to dependent #32 until each is verified, scoped-reviewed, integrated and final T31 review passes.
+
 ## Task R3-F1: Tighten effective generated-project checks (review repair round 1)
 
 **Finding:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-review.md` F1 Medium. Current checker can accept wrong effective `UISceneDelegateClassName`, URL markers in the wrong callback, and a single changed target configuration.
