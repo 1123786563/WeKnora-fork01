@@ -1,14 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { router } from 'expo-router';
 import { Text } from 'react-native';
-import type { Deployment, MobileRuntime, RuntimeSnapshot, ScopeLease, TaskCard, TaskListPage } from '@weknora/mobile-core';
+import type { Deployment, MobileRuntime, RuntimeSnapshot, ScopeLease } from '@weknora/mobile-core';
 import { activeMobileRuntime, activeTaskOffice, deploymentScopeKey } from '../composition.ts';
 import { createAuthorizedTaskEntry, detectNativeTaskCapabilities } from '../task-office/native-boundary/task-entry.ts';
 import { TaskEntryScreen, type ExistingTaskRow } from '../task-office/native-boundary/TaskEntryScreen.tsx';
-
-function taskRow(card: TaskCard): ExistingTaskRow {
-  return { taskId: card.taskId, runId: card.runId, title: card.title, runStatus: card.runStatus, updatedAt: card.updatedAt };
-}
+import { createTaskOfficeListController, taskOfficeLifecycleKey } from './task-office-state.ts';
 
 type AuthorizedRuntimeSnapshot = RuntimeSnapshot & { deployment: Deployment; identity: { userId: string; activeTenantId: string } };
 
@@ -26,34 +23,25 @@ export function TaskOfficeEntryLifecycle({ runtime, origin, tenantId, openingLea
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  const loadExisting = async (isCurrent: () => boolean = () => true): Promise<void> => {
-    setLoading(true);
-    setError(undefined);
+  const [controller] = useState(() => createTaskOfficeListController({
+    openingLease,
+    publish: (next) => { setTasks(next.tasks); setLoading(next.loading); setError(next.error); },
+    read: async () => {
     const entry = createAuthorizedTaskEntry({ current: () => {
       const snapshot = runtime.snapshot();
       const lease = runtime.scopeLease();
       return { surface: snapshot.surface, hasScopeLease: lease !== undefined && lease === openingLease, office: activeTaskOffice() };
     } });
-    try {
-      const page: TaskListPage = await entry.listExisting();
-      if (!isCurrent() || runtime.scopeLease() !== openingLease) return;
-      setTasks(page.items.map(taskRow));
-    } catch (failure) {
-      if (!isCurrent() || runtime.scopeLease() !== openingLease) return;
-      setTasks([]);
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      if (isCurrent() && runtime.scopeLease() === openingLease) setLoading(false);
-    }
-  };
+      return entry.listExisting();
+    },
+  }));
 
   useEffect(() => {
-    let cancelled = false;
-    void loadExisting(() => !cancelled);
-    return () => { cancelled = true; };
-    // The parent keys this route by deployment + tenant and supplies a new lease when Runtime rotates it.
+    void controller.load();
+    return () => controller.dispose();
+    // The parent keys this route by deployment, tenant, user, and lease.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runtime, origin, tenantId, openingLease]);
+  }, [controller]);
 
   const openTask = (task: ExistingTaskRow): void => {
     const snapshot = runtime.snapshot();
@@ -65,7 +53,7 @@ export function TaskOfficeEntryLifecycle({ runtime, origin, tenantId, openingLea
     router.push({ pathname: '/tasks/detail', params: { taskId: task.taskId, runId: task.runId } });
   };
 
-  return <TaskEntryScreen loading={loading} tasks={tasks} error={error} capabilities={detectNativeTaskCapabilities()} onRefresh={() => { void loadExisting(); }} onOpenTask={openTask} />;
+  return <TaskEntryScreen loading={loading} tasks={tasks} error={error} capabilities={detectNativeTaskCapabilities()} onRefresh={() => { void controller.load(); }} onOpenTask={openTask} />;
 }
 
 /** Authenticated existing-Task entry. Runtime changes remount it by deployment origin and tenant. */
@@ -78,5 +66,6 @@ export default function TaskOfficeEntryRoute() {
   }
   const origin = snapshot.deployment.origin;
   const tenantId = snapshot.identity.activeTenantId;
-  return <TaskOfficeEntryLifecycle key={deploymentScopeKey(origin, tenantId)} runtime={runtime} origin={origin} tenantId={tenantId} openingLease={openingLease} />;
+  const userId = snapshot.identity.userId;
+  return <TaskOfficeEntryLifecycle key={taskOfficeLifecycleKey(origin, tenantId, userId, openingLease)} runtime={runtime} origin={origin} tenantId={tenantId} openingLease={openingLease} />;
 }
