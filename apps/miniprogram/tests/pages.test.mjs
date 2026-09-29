@@ -97,35 +97,33 @@ test('render: anonymous users see the login gate, not the workbench (HomePage/Sc
   view.unmount();
 });
 
-test('render: LoginPage gates on consent, logs in through the real client, and surfaces a wrong password', async () => {
+test('render: LoginPage silently logs in with the WeChat code and retries after failure', async () => {
   stub.reset(); runtime.auth.clear();
   let attempts = 0;
   backend({
-    'POST /api/v1/auth/login': call => {
+    'POST /api/v1/auth/wechat/login': call => {
       attempts++;
-      if (attempts === 1) { stub.succeed(call, { statusCode: 401, data: { success: false, message: '账号或密码不正确' } }); return; }
+      if (attempts === 1) { stub.succeed(call, { statusCode: 401, data: { success: false, message: '微信身份未绑定平台账号' } }); return; }
       stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } });
     },
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: meFixture() }),
   });
   const view = await render(createElement(authPages.LoginPage));
-  const loginAction = view.byClassName('wk-button').find(button => buttonText(view, button) === '登录并继续');
-  assert.ok(loginAction, 'submit action rendered');
-  assert.equal(loginAction.props.disabled, true, 'submit disabled before consent');
+  await view.settle();
+  const wxCalls = stub.state.calls.filter(call => new URL(call.options.url).pathname === '/api/v1/auth/wechat/login');
+  assert.equal(wxCalls.length, 1, 'mounting the page fires exactly one silent wx login');
+  assert.equal(wxCalls[0].options.method, 'POST');
+  assert.deepEqual(postedBody(wxCalls[0]), { code: 'CODE' }, 'the wx.login code reaches the wire');
+  assert.equal(view.hasText('邮箱'), false, 'the credential form is gone');
+  assert.equal(view.hasText('密码'), false, 'no password field either');
+  assert.ok(view.byClassName('wk-notice--danger').length >= 1, 'the 401 surfaces a danger notice');
+  assert.equal(runtime.auth.snapshot().phase, 'anonymous', 'failed silent login keeps the session anonymous');
 
-  await view.type('邮箱', 'lin@example.test');
-  await view.type('密码', 'pw');
-  await view.pressCheckboxGroup(['consent']);
-  const ready = view.byClassName('wk-button').find(button => buttonText(view, button) === '登录并继续');
-  assert.equal(ready.props.disabled, false, 'submit enabled after consent + credentials');
-
-  ready.props.onClick();
+  const retry = view.byClassName('wk-button').find(button => buttonText(view, button) === '立即登录');
+  assert.ok(retry, 'retry action rendered');
+  retry.props.onClick();
   await view.settle(); await view.settle();
-  assert.ok(view.byClassName('wk-notice--danger').length >= 1, 'wrong password surfaces a danger notice');
-  assert.equal(runtime.auth.snapshot().phase, 'anonymous', 'failed login keeps the session anonymous');
-
-  ready.props.onClick();
-  await view.settle(); await view.settle();
+  assert.equal(attempts, 2, 'retry re-sends the wx login');
   assert.equal(runtime.auth.snapshot().phase, 'ready');
   assert.deepEqual(navigated('navigateTo'), ['/subpackages/auth/workspace/index'], 'success navigates to workspace selection');
   view.unmount();

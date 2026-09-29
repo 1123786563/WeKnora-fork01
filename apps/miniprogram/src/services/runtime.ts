@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { createWeKnoraClient, createExecutionsApi, createServerSentEventParser, parseChatEvent, buildChatStreamRequest } from '@weknora/api-client';
 import type { HttpRequest, HttpResult, NativeMultipartFileRequest } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
-import { AuthCoordinator, normalizeApiOrigin } from '../core/auth.ts';
+import { AuthCoordinator, normalizeApiOrigin, type AuthPort } from '../core/auth.ts';
 import { storage, clearPrivateCache } from '../platform/storage.ts';
 import { createWeappTransport, type WeappNetwork } from '../platform/transport.ts';
 // baseURL、可信来源校验、auth 存储 key 必须使用同一个 host 大小写归一化后的 origin，
@@ -22,7 +22,10 @@ function authenticated<T extends HttpRequest>(request:T):T{
   return {...request,headers:{...request.headers,...(credential?.kind==='bearer'?{Authorization:`Bearer ${credential.accessToken}`}:{})}};
 }
 const raw=createWeKnoraClient({baseURL:origin,transport:{send:r=>native.send(authenticated(r))}});
-coordinator=new AuthCoordinator(origin,storage,raw.auth);
+// wxLogin 薄适配：这里取 wx.login code 并转发 api-client 的 wechatLogin，
+// 使 core/auth（AuthPort 消费方）保持无 Taro 依赖、纯 Node 可测。
+const authApi:AuthPort={...raw.auth,wxLogin:async()=>raw.auth.wechatLogin((await Taro.login()).code)};
+coordinator=new AuthCoordinator(origin,storage,authApi);
 export const auth=coordinator;
 async function scoped<T extends HttpRequest>(input:T,send:(request:T)=>Promise<HttpResult>):Promise<HttpResult>{
   if(auth.snapshot().phase!=='ready')throw new Error('AUTH_REQUIRED');

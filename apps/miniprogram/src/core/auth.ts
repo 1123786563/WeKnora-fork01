@@ -3,6 +3,8 @@ import { ScopeGuard, type ScopeStamp } from './scope.ts';
 import type { ValueStore } from './intent.ts';
 export interface AuthPort {
   login(input:{email:string;password:string}):Promise<AuthSession>;
+  /** 微信静默登录：code 的获取（wx.login）由适配层完成，core 保持纯 Node 可测。 */
+  wxLogin():Promise<AuthSession>;
   me():Promise<AuthMe>;
   refresh(token:string):Promise<{access_token:string;refresh_token:string}>;
   switchTenant(id:number,refreshToken?:string):Promise<AuthSession>;
@@ -95,6 +97,18 @@ export class AuthCoordinator {
     this.publish({...anonymous(),phase:'loading'});
     try{
       const session=await this.api.login({email:email.trim(),password});
+      if(operation!==this.transition)throw new Error('Stale auth transition');
+      await this.accept(session,operation);
+    }catch(error){if(operation===this.transition)this.clear();throw error}
+  }
+  /** 微信静默登录：适配层以 wx.login code 换平台会话，成功尾部与账密登录完全一致
+   *  （accept 完成 credential 持久化与 session 视图切换，身份仍以 me() 为准）。 */
+  async wxLogin():Promise<void>{
+    if(this.value.phase==='loading'||this.value.phase==='switching')throw new Error('正在处理登录状态');
+    const operation=++this.transition;
+    this.publish({...anonymous(),phase:'loading'});
+    try{
+      const session=await this.api.wxLogin();
       if(operation!==this.transition)throw new Error('Stale auth transition');
       await this.accept(session,operation);
     }catch(error){if(operation===this.transition)this.clear();throw error}

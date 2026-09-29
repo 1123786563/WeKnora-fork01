@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { View, Text, Checkbox, CheckboxGroup } from '@tarojs/components';
-import { Screen, Card, Action, Field, Notice, Empty, Badge, useSession, useAction, confirmAction } from '../../components/ui.tsx';
+import { useEffect, useState } from 'react';
+import { View, Text } from '@tarojs/components';
+import { Screen, Card, Action, Notice, Empty, Badge, useSession, useAction, confirmAction } from '../../components/ui.tsx';
 import { auth } from '../../services/runtime.ts';
 import { navigate } from '../../platform/navigation.ts';
 import { memberSpaces } from '../../services/views.ts';
+// 静默登录页：进入即 wx.login 换平台会话，失败保留“立即登录”重试，不再渲染账密表单。
 export function LoginPage(){
- const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[consent,setConsent]=useState(false);const action=useAction();
- return <Screen title='WeKnora' publicPage><View className='wk-login-hero'><View className='wk-orbit'/><Text className='wk-eyebrow'>WORK, WITH A LITTLE MORE SPACE</Text><Text className='wk-display'>你的随身{ '\n' }AI 工作台</Text><Text className='wk-muted'>同一账号，同一空间。在微信里，让工作继续向前。</Text></View><Card><Text className='wk-h2'>使用已有平台账号</Text><Field label='邮箱' value={email} onChange={setEmail} placeholder='请输入账号邮箱'/><Field label='密码' value={password} onChange={setPassword} password placeholder='请输入密码'/><CheckboxGroup onChange={e=>setConsent(e.detail.value.includes('consent'))}><View className='wk-consent'><Checkbox value='consent' checked={consent} color='#183E33'/><Text>我已了解平台的数据使用与服务说明</Text></View></CheckboxGroup><Action disabled={!consent||!email||!password} loading={action.busy} onClick={()=>void action.run(async()=>{await auth.login(email,password);setPassword('');await navigate('workspace')})}>登录并继续</Action>{action.error&&<Notice tone='danger'>{action.error}</Notice>}</Card><Notice>微信快捷登录与双侧账号绑定的后端桥接尚未接入，本版本不会把微信 code 当作平台登录凭证。</Notice><Action secondary onClick={()=>void navigate('states',{kind:'privacy'})}>隐私与数据使用说明</Action></Screen>;
+ const action=useAction();const start=()=>void action.run(async()=>{await auth.wxLogin();await navigate('workspace')});
+ useEffect(()=>{start()},[]);
+ return <Screen title='WeKnora' publicPage><View className='wk-login-hero'><View className='wk-orbit'/><Text className='wk-eyebrow'>WORK, WITH A LITTLE MORE SPACE</Text><Text className='wk-display'>你的随身{ '\n' }AI 工作台</Text><Text className='wk-muted'>将使用你的微信身份自动登录平台账号</Text></View><Card><Text className='wk-h2'>微信快捷登录</Text><Text className='wk-muted'>同一账号，同一空间。登录即表示同意平台的数据使用与服务说明。</Text><Action loading={action.busy} onClick={start}>立即登录</Action>{action.error&&<Notice tone='danger'>{action.error}</Notice>}</Card><Action secondary onClick={()=>void navigate('states',{kind:'privacy'})}>隐私与数据使用说明</Action></Screen>;
 }
 export function WorkspacePage(){
  const session=useSession(),action=useAction();const choices=memberSpaces(session.memberships);const [selected,select]=useState(session.tenantId??'');

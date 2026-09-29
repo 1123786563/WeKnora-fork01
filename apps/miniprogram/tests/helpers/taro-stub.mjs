@@ -67,6 +67,8 @@ const Taro = {
   getMenuButtonBoundingClientRect() { return { ...state.capsule }; },
   getCurrentPages() { return state.pageStack.map(page => ({ ...page })); },
   getCurrentInstance() { return { router: { params: { ...state.routerParams } } }; },
+  // wx.login 契约替身：静默登录链路（services/runtime 的 AuthPort 适配）固定换回 CODE。
+  login() { return Promise.resolve({ code: 'CODE' }); },
   navigateTo(options) { return nav('navigateTo', options); },
   switchTab(options) { return nav('switchTab', options); },
   navigateBack(options) { return nav('navigateBack', options); },

@@ -101,6 +101,11 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
     async login(input: LoginInput): Promise<AuthSession> {
       return parseSession(await request({ method: 'POST', path: '/api/v1/auth/login', body: input }));
     },
+    /** Miniprogram silent login: exchanges the wx.login code for a session on
+     *  POST /auth/wechat/login; the response envelope matches /auth/login. */
+    async wechatLogin(code: string): Promise<AuthSession> {
+      return parseSession(await request({ method: 'POST', path: '/api/v1/auth/wechat/login', body: { code } }));
+    },
     async register(input: RegisterInput): Promise<RegistrationResult> {
       const root = successEnvelope(await request({ method: 'POST', path: '/api/v1/auth/register', body: input }));
       return {

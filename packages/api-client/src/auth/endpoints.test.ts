@@ -133,3 +133,18 @@ test('oidcConfig surfaces sso_only as ssoOnly', async () => {
   assert.equal(cfg.ssoOnly, true);
   assert.deepEqual(calls[0], { method: 'GET', path: '/api/v1/auth/oidc/config' });
 });
+
+// wechatLogin (小程序静默登录): the miniprogram exchanges its wx.login code for
+// a platform session on POST /auth/wechat/login. The response envelope is the
+// same shape as /auth/login, so it parses through the shared parseSession.
+test('wechatLogin posts the wx code to the wechat login endpoint', async () => {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const auth = createAuthApi(async (request) => {
+    calls.push(request);
+    return { success: true, token: 'wx-access', refresh_token: 'wx-refresh', user: { id: 'u-1' }, memberships: [] };
+  });
+  assert.deepEqual(await auth.wechatLogin('CODE'), {
+    token: 'wx-access', refreshToken: 'wx-refresh', user: { id: 'u-1' }, tenant: undefined, memberships: [],
+  });
+  assert.deepEqual(calls[0], { method: 'POST', path: '/api/v1/auth/wechat/login', body: { code: 'CODE' } });
+});
