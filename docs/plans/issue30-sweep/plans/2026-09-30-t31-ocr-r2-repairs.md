@@ -2,7 +2,7 @@
 
 **Goal:** Resolve substantiated OCR review gaps in Issue #31's iOS 27 shell and native validation guards; adjudicate false positives and non-blocking Low suggestions with durable evidence.
 
-**Base:** `860b84016c8c6c94edd8c8adcd1ca672132efd17` (after integrated T31 review and first OCR round). **T31 source review range:** `1e9315773a971dd72fe621c94e308f45a0ca4692..860b84016c8c6c94edd8c8adcd1ca672132efd17`.
+**T31 source review range:** `1e9315773a971dd72fe621c94e308f45a0ca4692..860b84016c8c6c94edd8c8adcd1ca672132efd17`.
 
 **Spec:** `docs/specs/2026-09-20-mobile-ai-office-design.md`; ADR `docs/adr/0005-weknora-native-mobile-client.md`; Issue #31 snapshot `docs/plans/issue30-sweep/issues/issue-31.md`; current T31 plan `docs/plans/issue30-sweep/plans/plan-t31-ios27.md`; OCR outputs and adjudications in `.superpowers/sdd/plan-t31-ios27/`.
 
@@ -59,4 +59,4 @@ The OCR cancellation notice names a combined `_layout.tsx`/`app-smoke.test.tsx` 
 
 ## Integration and completion
 
-The tasks have disjoint ownership and may run in separate worktrees from the same BASE. Integrate in task ID order only after each scoped review passes. Run the existing targeted/full mobile verification appropriate to both slices, then re-run OCR for the complete supported T31 code/test range with the test include rule and inspect its session manifest. Independently review DOC3 and T31 records because OCR rejects Markdown and binary evidence. The final integrated T31 review and OCR scope must include the resulting repair commits. Do not release #32 until valid C/H/M findings are resolved and the documented OCR coverage limitation is adjudicated.
+The tasks have disjoint ownership and run in separate worktrees from task BASE `1df6f5cb2cdfd4253941abc5b113e778248cd189` (planning/evidence commit atop source-review HEAD `860b84016c8c6c94edd8c8adcd1ca672132efd17`). Integrate in task ID order only after each scoped review passes. Run the existing targeted/full mobile verification appropriate to both slices, then re-run OCR for the complete supported T31 code/test range with the test include rule and inspect its session manifest. Independently review DOC3 and T31 records because OCR rejects Markdown and binary evidence. The final integrated T31 review and OCR scope must include the resulting repair commits. Do not release #32 until valid C/H/M findings are resolved and the documented OCR coverage limitation is adjudicated.
