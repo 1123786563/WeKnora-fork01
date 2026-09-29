@@ -70,3 +70,24 @@
 - [ ] Commit owned backend paths and report exact verification evidence.
 
 **Acceptance:** Confirmed internship company facts reach downstream model consumers; unconfirmed or unapproved data remains excluded.
+
+## Task 29: Complete CareerPage deletion and manual-entry behavior evidence
+
+**Dependency:** Task27 commit `6bf56e0bebadd065d8ca62f4e9fa07f138a3b310`; unresolved T5-3 evidence gap and parent deletion reload-failure gap documented in `/tmp/issue140-task27-report.md`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Owned files:** `apps/web/src/career/CareerPage.tsx`, `CareerPage.test.tsx`, and if needed only the narrow Career child props/tests touched by Task27. Preserve the separate Task28 Go changes.
+
+**Consumes / produces:** CareerPage's confirmed deleted receipt callback must synchronously clear parent facts, proposals, source names and upload/action state, increment `deletionGeneration`, and fence all old async callbacks before starting `load()`. A failed reload must not restore private state. Manual fields must be submitted through the same `doAction` behavior users invoke, with exact key, value, and user confirmation source.
+
+**Steps:**
+
+- [ ] Reproduce the current Task27 manual-entry test failure and inspect the rendered DOM plus CareerDesk load/validation path to identify why no manual form exists before interaction; do not weaken the test to pass by removing the submission assertion.
+- [ ] Add a controlled parent integration test that begins with confirmed facts and named sources, drives the actual confirmed deletion receipt callback, makes the subsequent `open/list/sources` refresh fail, and asserts facts/proposals/source names and upload controls stay cleared while the deletion receipt remains visible.
+- [ ] Repair the manual-entry test setup or production defect at its root; select and submit project, internship and skill values and assert exact action/key/value/source for each.
+- [ ] Run those tests RED before a production behavior fix when the failure is behavioral; implement the smallest correction and retain all Task27 race/purge tests.
+- [ ] Run all CareerPage, InboxPage and ExportDeletionPage focused suites, Web TypeScript check and `git diff --check`; expected all focused tests pass.
+- [ ] Commit Task29 and append actual commands/results to `/tmp/issue140-task27-report.md`.
+
+**Acceptance:** Task27's existing 37 passing cases remain green; manual project/internship/skill actions are proven end to end; failed reload after confirmed deletion leaves no private parent or child UI data and retains the deletion receipt.
