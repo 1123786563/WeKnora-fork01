@@ -467,21 +467,41 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	logger.SetOutput(&env.logs)
 	defer logger.SetOutput(os.Stdout)
 	env.github.mu.Lock()
-	env.github.failPRCreations = 1
+	env.github.failPRTransport = true
 	env.github.mu.Unlock()
 	deliveryID := env.seedApprovedDelivery(t)
 
 	// e.do records every HTTP response, including baseline materialization,
 	// delivery preparation and the real A03 approval response from seeding.
-	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", "")
-	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch", "")
-	env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", "")
-	env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
+	code, dispatched := env.dispatchState(t, deliveryID)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "unknown", dispatched.State, "the provider committed the PR but its response was lost")
+	code, _ = env.dispatchState(t, deliveryID)
+	require.Equal(t, http.StatusConflict, code, "an unknown delivery cannot be blindly dispatched again")
+	read := env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", "")
+	require.Equal(t, http.StatusOK, read.Code)
+	var readView struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(read.Body.Bytes(), &readView))
+	require.Equal(t, "unknown", readView.Data.Delivery.State)
+	resolved := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/resolve", "")
+	require.Equal(t, http.StatusOK, resolved.Code)
+	var resolvedView struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(resolved.Body.Bytes(), &resolvedView))
+	require.Equal(t, "delivered", resolvedView.Data.Delivery.State, "remote facts reconcile the committed PR")
 	require.GreaterOrEqual(t, len(env.responses), 7, "credential scan must cover baseline, prepare, approval and later delivery responses")
 
 	for i, response := range env.responses {
 		require.NotContains(t, response.body, t25ProbeToken, "response %d body must not carry credential material", i)
 		for key, values := range response.headers {
+			require.NotContains(t, key, t25ProbeToken, "response %d header name must not carry credential material", i)
 			for _, value := range values {
 				require.NotContains(t, value, t25ProbeToken, "response %d header %q must not carry credential material", i, key)
 			}
