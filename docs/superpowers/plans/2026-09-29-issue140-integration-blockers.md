@@ -62,7 +62,7 @@
 
 - [ ] Add a real dig graph test requiring grants, research, legacy-list and compliance handlers (not optional fields); add a focused assertion that deletion guard installation delegates to the same compliance service.
 - [ ] Run the graph tests and confirm the missing provider/type errors reproduce before implementation; retain current compile errors from unrelated missing DI symbols separately.
-- [ ] Implement providers by adapting existing repository, service and handler constructors. Authorize a research source with `GetKnowledgeBaseByIDAndTenant`; normalize lookup failure to out-of-scope. Build the task-grant service inline for research and grants handlers. Keep the task-grant repository explicitly provided.
+- [ ] Implement providers by adapting existing repository, service and handler constructors. Authorize a research source with `GetKnowledgeBaseByIDAndTenant`; map only `repository.ErrKnowledgeBaseNotFound` (including a cross-tenant miss) to `session.ErrResearchSourceOutOfScope`, and return every infrastructure error unchanged so the handler emits its specified 500. Build the task-grant service inline for research and grants handlers. Keep the task-grant repository explicitly provided.
 - [ ] Register all providers in `BuildContainer`. Keep compliance audit required and install the deletion guard through `container.Invoke`.
 - [ ] Update the interaction provider to use the durable `AgentRunStore` cancel port and the existing admission coordinator restart port; remove stale `storeDB` use from cancel wiring.
 - [ ] Run `go test -count=1 ./internal/container -run 'Test(TaskGrantsAndResearchHandlersBuildable|TaskComplianceWiringRegistered|WorkbenchProviderGraph)$'` and `git diff --check`. Expected: focused tests pass. Run the full package after the other DI providers in this task resolve the package build.
@@ -87,16 +87,20 @@
 - Modify: `internal/modules/codedelivery/service_prepare_test.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next_test.go`
+- Modify: `internal/modules/agentruntime/module.go`
+- Modify: `internal/modules/agentruntime/agent/runtime/contracts.go`
 - Modify: `internal/container/code_delivery.go`
 - Add: `internal/modules/codedelivery/contracts.go`
 - Add: `internal/modules/codedelivery/contracts_test.go`
 
 **Interfaces:**
-- `codedelivery` owns the narrow provider, credential, action snapshot/outcome and run-session identity contracts it consumes; `internal/container/code_delivery.go` owns adapters from appconnector persistence/service types to those contracts.
-- The service must preserve the observable behavior of `errors.Is` checks for dispatch-not-started/unknown outcomes and run not-found/conflict outcomes.
-- Workbench command queue owns its command/run outcome mapping or consumes an agentruntime module-root public error contract; it must not import `agentruntime/agent/runtime`.
+- `codedelivery` owns these narrow contracts: `ActionLifecycle` (`Prepare(ctx, appconnector.Action) (string,error)`, `Execute(ctx,string) error`, `ResolveUnknown(ctx,string) error`); `RunReader` returning `RunIdentity{SessionID string}`; `ProviderSource` returning `ProviderInstallation{AppID string}`; `ActionStoreSource.FindAction(ctx,id) (ActionRecord,error)` where `ActionRecord` carries exactly `ID, TenantID, ActorID, ConnectionID, AppVersion, Target, Risk, ArgsDigest, State, Fence, ArgsSnapshot, AuthVersion, DigestVersion, ProviderResult`; `CredentialResolver.Resolve(ctx,connectionID,expectedVersion) ([]byte,error)`; and `A02Guard.Check(ctx, appconnector.OCSubject, connectionID, expectedVersion) error`.
+- `DeliveryDispatcher` uses codedelivery-owned `ActionSnapshot{ID,TenantID,ActorID,ConnectionID,Target,AuthVersion,Args}` and `DispatchOutcome{Status,ProviderResult}`. `internal/container/code_delivery.go` owns adapters mapping appconnector action snapshots/outcomes/errors, ActionStore rows, AgentRunStore session identity, and InstallationStore AppID to/from those contracts.
+- Define module-root `agentruntime.ErrNotFound` and `agentruntime.ErrConflict` in `internal/modules/agentruntime/module.go`; alias the existing `agent/runtime.ErrNotFound` and `ErrConflict` to those same values in `contracts.go`, so `errors.Is` identity remains exact.
+- Map codedelivery's `ErrDispatchNotStarted` and `ErrDispatchUnknown` to `appconnectorsvc.ErrDispatchNotStarted` / `ErrDispatchUnknown` in the composition adapter with `%w`, preserving both module-local and action-lifecycle classifications.
+- Workbench command queue consumes `internal/modules/agentruntime` root sentinels and retains existing output/status mapping; it must not import `agentruntime/agent/runtime`.
 
-- [ ] Add contract tests proving adapter mapping preserves action/connection identity, dispatch result state, unknown vs not-started errors, and owner-scoped run session identity; add `errors.Is` tests for queue not-found/conflict mapping.
+- [ ] Add contract tests proving adapter mapping preserves action/connection identity, dispatch result state, unknown vs not-started errors, and owner-scoped run session identity; add `errors.Is` tests proving the root/runtime sentinels are identical and the queue keeps its not-found/conflict mapping.
 - [ ] Run `go test -count=1 ./internal/modules/codedelivery/... ./internal/modules/workbench/...` and record the current Architecture Guard import findings before code changes.
 - [ ] Move only the values/interfaces required by codedelivery behind its own contracts; implement concrete appconnector adapters in the composition root. Do not expose appconnector repository or service implementations through a new façade.
 - [ ] Replace agentruntime internal error imports with a stable module-root error contract or a workbench-owned mapping while retaining `errors.Is` behavior and HTTP/API result mapping.
@@ -112,8 +116,8 @@
 **Role:** `mechanical_worker`; validator `backend_validator`; reviewer `reviewer`.
 
 **Files:**
-- Rename and update all 19 #140 SQLite migration up/down pairs under `internal/database/migrations/sqlite/`: keep relative dependency order, assign `000124`–`000142`, and retain the migration names.
-- Rename and update all 19 #140 versioned/PostgreSQL migration up/down pairs under `internal/database/migrations/versioned/`: same relative order, assign `000203`–`000221`.
+- Rename and update all 19 #140 SQLite migration up/down pairs under repository-root `migrations/sqlite/`: sort by their existing numeric prefixes `000112`–`000130`, preserve that order, assign `000124`–`000142`, and retain each migration name.
+- Rename and update all 19 #140 versioned/PostgreSQL migration up/down pairs under repository-root `migrations/versioned/`: sort by existing numeric prefixes `000191`–`000209`, preserve that order, assign `000203`–`000221`.
 - Modify: `internal/database/career_migration_test.go`
 - Modify: `internal/database/workbench_migration_test.go`
 - Modify: `internal/database/semantic_migration_test.go`
@@ -123,7 +127,7 @@
 - Keep issue30-owned SQLite `000112`–`000123`, versioned `000191`–`000202`, and the exact SQLite `000114_public_agent_marketplace` filename/version unchanged.
 - The new #140 SQLite track ends at `000142`; the new versioned/PostgreSQL track ends at `000221`.
 
-- [ ] Enumerate migration up/down filenames from checkpoint `e05ce86b8` and source branch diffs; map the 19 #140 pairs in their existing dependency order before renaming.
+- [ ] Enumerate root `migrations/sqlite/` and `migrations/versioned/` up/down filenames from checkpoint `e05ce86b8`, issue30 `db234c5e` and #140 source `9bc0d9368`; identify #140 files by old prefixes, map ascending old-prefix order to the new ranges, and record the complete old→new map before renaming.
 - [ ] Add a uniqueness/order assertion proving all filenames load once, issue30 files are unchanged, and #140 files occupy SQLite 124–142 and versioned 203–221.
 - [ ] Rename only the identified #140 migration pairs and update every direct filename/version reference found by `rg`.
 - [ ] Keep `migration.go` special handling for `000114_public_agent_marketplace` unchanged.
