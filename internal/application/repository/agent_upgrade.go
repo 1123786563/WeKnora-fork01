@@ -153,14 +153,36 @@ func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantI
 				}
 				return err
 			}
-			var adoption types.AgentAdoptionEntity
-			if err := tx.Where("tenant_id = ? AND id = ? AND listing_id = ?", tenantID, proposal.AdoptionID, proposal.ListingID).First(&adoption).Error; err != nil {
-				return ErrAgentUpgradeProposalTransition
-			}
+			// Lock in the same listing -> release -> adoption order as adoption
+			// creation/reconciliation. Keep all guards in the CAS transaction.
 			if err := requireListedListing(tx, tenantID, proposal.ListingID); err != nil {
-				return ErrAgentUpgradeProposalTransition
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
 			}
 			if err := requireActiveRelease(tx, tenantID, proposal.ToReleaseID, proposal.ListingID); err != nil {
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			// This final source check runs after the service has created its
+			// intentionally separate draft Variant.
+			if err := lockAdoptionState(tx, tenantID, proposal.AdoptionID, "active"); err != nil {
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			var adoption types.AgentAdoptionEntity
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, proposal.AdoptionID).First(&adoption).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			if adoption.State != "active" || adoption.ListingID != proposal.ListingID || adoption.AcceptedReleaseID != proposal.FromReleaseID {
 				return ErrAgentUpgradeProposalTransition
 			}
 		}
@@ -193,4 +215,13 @@ func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantI
 		return nil
 	})
 	return updated, err
+}
+
+func isUpgradeLifecycleConflict(err error) bool {
+	return errors.Is(err, ErrAgentAdoptionNotFound) ||
+		errors.Is(err, ErrAgentAdoptionTransition) ||
+		errors.Is(err, ErrAgentMarketplaceNotFound) ||
+		errors.Is(err, ErrAgentMarketplaceListingTransition) ||
+		errors.Is(err, ErrAgentMarketplaceListingUnavailable) ||
+		errors.Is(err, ErrAgentMarketplaceReleaseDeprecated)
 }
