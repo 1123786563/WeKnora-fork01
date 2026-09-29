@@ -44,6 +44,25 @@ function formatCheckTime(timestamp: string): string {
 function historyKey(userId: string | null, tenantId: string | null): string {
  return `weknora:career:search-history:${userId ?? ''}:${tenantId ?? ''}`
 }
+function pendingSearchKey(userId: string | null, tenantId: string | null): string {
+ return `weknora:career:pending-search:${userId ?? ''}:${tenantId ?? ''}`
+}
+function readPendingSearch(storage: Storage | undefined, key: string): Attempt | undefined {
+ if (!storage) return undefined
+ try {
+  const value: unknown = JSON.parse(storage.getItem(key) ?? 'null')
+  const item = value as Partial<Attempt> | null
+  return item && typeof item.requestId === 'string' && item.requestId.trim() && typeof item.query === 'string' && item.query.trim() && Number.isSafeInteger(item.expectedRevision) && (item.expectedRevision ?? -1) >= 0
+   ? { requestId: item.requestId, query: item.query, expectedRevision: item.expectedRevision! } : undefined
+ } catch { return undefined }
+}
+function writePendingSearch(storage: Storage | undefined, key: string, attempt: Attempt): boolean {
+ if (!storage) return false
+ try { storage.setItem(key, JSON.stringify(attempt)); return true } catch { return false }
+}
+function clearPendingSearch(storage: Storage | undefined, key: string): void {
+ try { storage?.removeItem(key) } catch { /* retain safely if browser storage is unavailable */ }
+}
 function readHistory(storage: Storage | undefined, key: string): HistoryEntry[] {
  if (!storage) return []
  try {
@@ -84,6 +103,17 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
  const historyAutoLoaded = useRef(false)
  const pendingImports = useRef(new Set<string>())
 
+ const acceptReceipt = useCallback((next: SearchOnceReceipt, storageKey: string): void => {
+  setReceipt(next); setPhase('terminal'); setError(undefined); setNotice('')
+  usage.reload()
+  setHistoryEntries((current) => {
+   const entry: HistoryEntry = { searchId: next.searchId, requestId: next.requestId, query: next.query, status: next.status, checkedAt: next.checkedAt }
+   const merged = [entry, ...current.filter((item) => item.searchId !== next.searchId)].slice(0, 8)
+   writeHistory(typeof window === 'undefined' ? undefined : window.localStorage, storageKey, merged)
+   return merged
+  })
+ }, [usage.reload])
+
  const clearForScopeChange = useCallback((message: string): void => {
   setDraft(''); setAttempt(undefined); setReceipt(undefined); setPhase('idle'); setNotice(message); setError(undefined)
   setHistoryEntries([]); setImports({}); pendingImports.current.clear()
@@ -99,6 +129,25 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
    setRevision(view.revision)
    setViewPhase('ready')
    const storage = typeof window === 'undefined' ? undefined : window.localStorage
+   const pendingKey = pendingSearchKey(requestScope.scope.userId, requestScope.scope.tenantId)
+   const pending = readPendingSearch(storage, pendingKey)
+   if (pending) {
+    setAttempt(pending); setPhase('unknown'); setNotice('正在核对上次找岗回执…')
+    try {
+     const stored = await client.career.searchReceipt(pending.requestId, requestScope.signal)
+     if (!scopeController.isCurrent(requestScope.scope)) return
+     if (stored.requestId !== pending.requestId || stored.query !== pending.query) throw Object.assign(new Error('stored search receipt does not match pending request'), { code: 'invalid_response' })
+     clearPendingSearch(storage, pendingKey)
+     setDraft(pending.query)
+     acceptReceipt(stored, historyKey(requestScope.scope.userId, requestScope.scope.tenantId))
+    } catch (cause) {
+     if (!scopeController.isCurrent(requestScope.scope)) return
+     const parsed = errorDetails(cause)
+     if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除本次找岗状态。'); return }
+     setPhase('unknown'); setNotice(parsed.code === 'not_found' ? '暂未找到回执；保留原指令与请求编号，可用同一请求编号重试。' : `查询回执未成功：${parsed.text}。保留原指令与请求编号。`)
+    }
+    return
+   }
    const entries = readHistory(storage, historyKey(requestScope.scope.userId, requestScope.scope.tenantId))
    setHistoryEntries(entries)
    if (!historyAutoLoaded.current && entries[0]) {
@@ -123,7 +172,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
    if (parsed.code === 'forbidden') { setViewPhase('forbidden'); setViewError(parsed); return }
    setViewPhase('error'); setViewError(parsed)
   }
- }, [client, scopeController])
+ }, [acceptReceipt, clearForScopeChange, client, scopeController])
 
  useEffect(() => {
   historyAutoLoaded.current = false
@@ -139,33 +188,26 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   return () => activeScope.signal?.removeEventListener('abort', clear)
  }, [clearForScopeChange, scopeController, scope.generation])
 
- const acceptReceipt = useCallback((next: SearchOnceReceipt, storageKey: string): void => {
-  setReceipt(next); setPhase('terminal'); setError(undefined); setNotice('')
-  // A terminal charged run moved the ledger; the estimate panel must never
-  // show a stale balance afterwards.
-  usage.reload()
-  setHistoryEntries((current) => {
-   const entry: HistoryEntry = { searchId: next.searchId, requestId: next.requestId, query: next.query, status: next.status, checkedAt: next.checkedAt }
-   const merged = [entry, ...current.filter((item) => item.searchId !== next.searchId)].slice(0, 8)
-   writeHistory(typeof window === 'undefined' ? undefined : window.localStorage, storageKey, merged)
-   return merged
-  })
- }, [usage.reload])
-
  const send = useCallback(async (next: Attempt): Promise<void> => {
   const requestScope = scopeController.current()
   const storageKey = historyKey(requestScope.scope.userId, requestScope.scope.tenantId)
+  const pendingKey = pendingSearchKey(requestScope.scope.userId, requestScope.scope.tenantId)
+  if (!writePendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey, next)) {
+   setPhase('idle'); setError({ code: 'storage_unavailable', text: '无法安全保存本次请求编号，未发送找岗。请启用浏览器本地存储后重试。' }); setNotice(''); return
+  }
   setPhase('busy'); setError(undefined); setNotice('正在执行一次性找岗…')
   try {
    const result = await client.career.searchOnce(next, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次找岗不匹配，已放弃本次结果。请开始一次新的找岗。' }); setPhase('idle'); setAttempt(undefined); return }
+   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次找岗不匹配；为避免重复收费，保留原请求并继续核对回执。' }); setPhase('unknown'); setNotice(''); return }
+   clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey)
    acceptReceipt(result, storageKey)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除本次找岗状态。'); return }
    if (parsed.code === 'revision_conflict') {
+    clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey)
     setError(parsed); setPhase('idle'); setNotice('')
     // The caller's observed revision is stale; re-read it so the retry under
     // the original request ID pins the fresh view.
@@ -175,8 +217,9 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
     } catch { /* the conflict panel keeps the server-reported currentRevision */ }
     return
    }
-   if (parsed.code === 'search_quota_refused') { setError(parsed); setPhase('idle'); setNotice(''); usage.reload(); return }
+   if (parsed.code === 'search_quota_refused') { clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey); setError(parsed); setPhase('idle'); setNotice(''); usage.reload(); return }
    if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
+    clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingKey)
     setError(parsed); setPhase('idle'); setAttempt(undefined); setNotice(parsed.code === 'invalid_request' ? '指令未被接受，请调整后重新发起一次找岗。' : '本次请求与已保存的找岗内容不一致，已放弃；请开始一次新的找岗。')
     return
    }
@@ -189,6 +232,10 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   event.preventDefault()
   if (attempt || !draft.trim() || revision === undefined) return
   const next: Attempt = { requestId: makeId(), query: draft.trim(), expectedRevision: revision }
+  const requestScope = scopeController.current()
+  if (!writePendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingSearchKey(requestScope.scope.userId, requestScope.scope.tenantId), next)) {
+   setError({ code: 'storage_unavailable', text: '无法安全保存本次请求编号，未发送找岗。请启用浏览器本地存储后重试。' }); return
+  }
   setAttempt(next)
   void send(next)
  }
@@ -207,8 +254,9 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   try {
    const stored = await client.career.searchReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次找岗不匹配，已放弃本次结果。请开始一次新的找岗。' }); setPhase('idle'); setAttempt(undefined); setNotice(''); return }
+   if (stored.requestId !== attempt.requestId || stored.query !== attempt.query) { setError({ code: 'invalid_response', text: '服务返回的回执与原请求不匹配；为避免重复收费，保留原请求并继续核对。' }); setPhase('unknown'); setNotice(''); return }
    acceptReceipt(stored, storageKey)
+   clearPendingSearch(typeof window === 'undefined' ? undefined : window.localStorage, pendingSearchKey(requestScope.scope.userId, requestScope.scope.tenantId))
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
@@ -218,6 +266,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   }
  }
  const startNewSearch = (): void => {
+  if (attempt && phase === 'unknown') return
   setDraft(''); setAttempt(undefined); setReceipt(undefined); setPhase('idle'); setNotice(''); setError(undefined)
  }
  const openHistoryEntry = async (entry: HistoryEntry): Promise<void> => {

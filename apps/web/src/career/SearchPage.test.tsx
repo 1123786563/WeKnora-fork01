@@ -170,7 +170,59 @@ test('recovers an unknown outcome through the original request ID without duplic
   assert.ok(container.querySelector('[aria-label="找岗结果"]')!.querySelector('a[href="https://jobs.example.test/1"]'))
 })
 
-test('a mismatched stored receipt clears the attempt and surfaces an invalid response', async () => {
+test('reload reconciles a persisted unknown search by receipt before permitting another charged search', async () => {
+  const searches: SearchCall[] = []
+  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })
+  const first = await mountSearch({
+    open: async () => view(8),
+    searchOnce: async (input: SearchCall) => { searches.push(input); throw Object.assign(new Error('gateway timeout'), { code: 'outcome_unknown' }) },
+  }, scopeController)
+  await submitQuery(first.container, '保留原始指令')
+  const original = searches[0]!
+  await act(async () => { root?.unmount(); await settle() })
+  document.body.replaceChildren()
+
+  const receiptReads: string[] = []
+  const reloaded = await mountSearch({
+    open: async () => view(9),
+    searchReceipt: async (requestId: string) => { receiptReads.push(requestId); return { ...completedReceipt, requestId, query: original.query } },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+  }, scopeController)
+  assert.deepEqual(receiptReads, [original.requestId])
+  assert.deepEqual(searches, [original])
+  assert.ok(reloaded.container.querySelector('[aria-label="找岗结果"]'))
+  await act(async () => { setInput(reloaded.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗指令"]')!, '不能重复收费'); await settle() })
+  await act(async () => { submitControl(reloaded.container).click(); await settle() })
+  assert.deepEqual(searches, [original])
+})
+
+test('reload keeps a not-found search unknown and blocks a second request ID', async () => {
+  const searches: SearchCall[] = []
+  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })
+  const first = await mountSearch({
+    open: async () => view(8),
+    searchOnce: async (input: SearchCall) => { searches.push(input); throw Object.assign(new Error('gateway timeout'), { code: 'outcome_unknown' }) },
+  }, scopeController)
+  await submitQuery(first.container, '保留原始指令')
+  const original = searches[0]!
+  await act(async () => { root?.unmount(); await settle() })
+  document.body.replaceChildren()
+
+  const receiptReads: string[] = []
+  const reloaded = await mountSearch({
+    open: async () => view(9),
+    searchReceipt: async (requestId: string) => { receiptReads.push(requestId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+  }, scopeController)
+  assert.deepEqual(receiptReads, [original.requestId])
+  assert.match(reloaded.container.textContent ?? '', /暂未找到回执/)
+  await act(async () => { setInput(reloaded.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗指令"]')!, '不能重复收费'); await settle() })
+  await act(async () => { submitControl(reloaded.container).click(); await settle() })
+  assert.deepEqual(searches, [original])
+  assert.match(reloaded.container.querySelector('[role="status"]')?.textContent ?? '', new RegExp(original.requestId))
+})
+
+test('a mismatched receipt stays safely unknown and preserves the original request', async () => {
  const { container } = await mountSearch({
   open: async () => view(2),
   searchOnce: async (input: SearchCall) => { throw Object.assign(new Error('unknown'), { code: 'outcome_unknown', requestId: input.requestId }) },
@@ -178,9 +230,9 @@ test('a mismatched stored receipt clears the attempt and surfaces an invalid res
  })
  await submitQuery(container, '上海 前端 实习')
  await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle() })
- assert.match(container.textContent ?? '', /请求编号与本次找岗不匹配/)
- assert.equal(byLabelOrNull(container, 'button', '查询回执'), undefined)
- assert.equal(byLabelOrNull(container, 'button', '用原请求编号重试'), undefined)
+ assert.match(container.textContent ?? '', /回执与原请求不匹配/)
+ assert.ok(byLabelOrNull(container, 'button', '查询回执'))
+ assert.ok(byLabelOrNull(container, 'button', '用原请求编号重试'))
 })
 
 test('a terminal search is never duplicated; a fresh attempt gets a fresh request ID', async () => {
