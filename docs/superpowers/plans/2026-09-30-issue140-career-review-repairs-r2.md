@@ -359,18 +359,37 @@
 
 **Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
 
-**Files:** `apps/web/src/career/ProgressPage.tsx` and its focused tests only; reuse the existing `SubmissionPage` contract.
+**Files:** `apps/web/src/career/ApplicationPage.tsx`, `apps/web/src/career/ProgressPage.tsx`, and focused tests for the progress entry. Reuse the existing `SubmissionPage` contract; do not modify its export eligibility behavior.
 
-**Consumes / produces:** Resolve the current application detail's material ID from the already loaded application data and pass it into `SubmissionPage`, or navigate through the existing `ApplicationPage` confirmation seam that already supplies that ID. Keep export eligibility, revoked-version and explicit-unknown handling in `SubmissionPage`; do not synthesize a material ID or latest version.
+**Consumes / produces:** `ApplicationPage` already holds the loaded `careerMaterialId`; pass that current value as a prop to `ProgressPage`, then into `SubmissionPage`. Keep export eligibility, revoked-version and explicit-unknown handling in `SubmissionPage`; do not synthesize a material ID or latest version. If the material is not yet loaded, preserve an honest loading/unavailable state and do not silently fall back to a different version.
 
 **Steps:**
 
-- [ ] Add a test for the confirmation entry from ProgressPage where the application has a known submittable export; assert that export appears and its exact ID/version is submitted.
+- [ ] Add a test for the ApplicationPage→ProgressPage→SubmissionPage path where the application has a known submittable export; assert the already loaded material ID reaches the page and its exact export ID/version is submitted.
 - [ ] Add a case for absent material/export that still offers only an explicit unknown version or a clear unavailable state.
 - [ ] Run tests RED, pass the real application material ID through the entry seam, and preserve the existing scope/revision behavior.
 - [ ] Run focused ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only owned Web file/test changes.
 
 **Acceptance:** A user confirming from the progress timeline can bind the actual exported material version when known, while unknown or unavailable versions remain explicit and honest.
+
+## Task 24: Keep direct search receipts bound to the persisted query
+
+**Dependency:** Task 6 commit `c2ab52569be088c606dfb050f1679667a9a12441`; review finding SEARCH-R2-1 in `/tmp/issue140-r2-task6-review.md`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/career/SearchPage.tsx` and focused SearchPage tests only.
+
+**Consumes / produces:** Reuse the persisted `{requestId, query, expectedRevision}` identity. A direct `searchOnce` result is accepted only when both `requestId` and normalized submitted query match the persisted attempt. A same-ID/different-query response must preserve the original pending attempt as unknown, keep new searches locked, and reconcile only through the original request receipt.
+
+**Steps:**
+
+- [ ] Add a RED direct-response test with matching request ID and mismatched query; assert result is not shown, pending identity remains, and a second charged search is blocked.
+- [ ] Add remount coverage proving the original query/request ID is looked up and cannot be overwritten by the mismatched response.
+- [ ] Compare both request ID and query in the direct completion path, retain unknown state on mismatch, and keep safe receipt recovery available.
+- [ ] Run focused SearchPage tests, Web typecheck and `git diff --check`; commit only SearchPage source/tests and report both interleavings.
+
+**Acceptance:** No charged-search result can clear a durable attempt unless request ID and query identify the same submitted operation.
 
 ## Task 4: Bind submitted progress to an actual submission record
 
