@@ -26,7 +26,7 @@ Migration files are ignored by the repository-wide `migrations/` ignore pattern 
 
 ## Commit
 
-`e4da2dc0c405eec92bcc99075456d2991f9ebc00` — reviewed checkpoint on `codex/issue30-b6-t63-cont`; includes the code changes, report, and commit `6738feadc108e83b59baffcb0e113e0bb8a05281` (code-only sibling checkpoint).
+Reviewed checkpoint: `e4da2dc0c405eec92bcc99075456d2991f9ebc00` — the checked-out commit containing the implementation and this report. `6738feadc108e83b59baffcb0e113e0bb8a05281` is a code-only sibling commit with identical implementation changes; it is not an ancestor of the reviewed checkpoint.
 
 ## Notes / risks
 
