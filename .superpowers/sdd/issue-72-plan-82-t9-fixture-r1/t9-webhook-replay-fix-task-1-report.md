@@ -28,5 +28,5 @@ Focused build-tag-free selector had no tests to run because the helper lives in 
 
 - Go integration test SHA-256: `153b9a2729f695dbe5dea3a8e6e323d4594948a89400baee059a661a0b5e5f02`
 - T9 prep script SHA-256: `916df717b75bb6318c0dfd0803830e85c0cd7466c44979f6bfa869e9db8090ee`
-- Commit: `TO_BE_FILLED`
+- Implementation commit: `b7751ee51`
 - The replay assertion was **not run live**. AC3/T9 live acceptance and AC4 real Alipay sandbox evidence remain OPEN; compile-only is not live evidence.
