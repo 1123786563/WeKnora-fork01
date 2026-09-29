@@ -243,8 +243,9 @@
 **Steps:**
 
 - [ ] Add tests for malformed subscribed receipt followed by the visible sync action; assert no second POST until a verified profile refresh clears the guard.
+- [ ] Add the combined-state test: a subscribed intent is pending, opt-out receives a malformed success receipt, and the retry action is attempted; assert the retry seam and control cannot send while profile reconciliation is required.
 - [ ] Add an opt-out action test where the server may have committed but its 200 receipt is malformed; assert the old accepted marker is already invalidated and a later subscribe requires a fresh native prompt.
-- [ ] Run both tests RED against Task 16, then enforce the invalid-receipt lock in the shared persistence seam and invalidate authorization at opt-out intent time while retaining uncertainty messaging.
+- [ ] Run the tests RED against Task 16, then enforce the invalid-receipt lock in every shared persistence/retry seam and disable all retry/sync controls while reconciliation is required; invalidate authorization at opt-out intent time while retaining uncertainty messaging.
 - [ ] Run focused reminder tests, Mini Program typecheck where executable, and `git diff --check`; separate existing account-page type errors from task diagnostics.
 - [ ] Commit only owned Mini Program files and report the exact recovery timeline and tests.
 
