@@ -1,0 +1,16 @@
+# FR1 repair round 3 — independent scoped review
+
+- **Exact range:** `221959432..d9482bb7cea307b0d8696cb1404e5f0ffbd126da` in `/Users/wuyongjun/.paseo/worktrees/144ixsa6/t31-fr1-framework-closure` (implementation `362b474e8`, report `d9482bb7c`; reviewed HEAD `d9482bb7cea307b0d8696cb1404e5f0ffbd126da`).
+- **Spec compliance: PASS for this repair.** The framework-only checker now recognizes `<name>.framework` as a complete path component. It ignores valid non-framework dylib names containing that text, while malformed/unsupported framework paths remain fail-closed.
+- **Code quality: PASS.** No open finding in the reviewed range. The universal fake-`otool` output now places a dependency row after each exact arm64 and x86_64 header; the parser retains both rows and the missing path-prefix load remains a negative case.
+
+## Finding disposition and evidence
+
+- **FR1-R2-1 Low — resolved.** `verify-ios-framework-closure.py:83–92` uses `(?:^|/)[^/]+\.framework(?:/|$)` to recognize a complete framework component. It no longer classifies `@rpath/Foo.framework.dylib` as a framework. The new production-checker integration case at `ios-framework-closure.test.ts:153–163` expects both `@rpath/Foo.framework.dylib` and `@rpath/libFoo.dylib` to pass this framework-only gate.
+- The prior malformed `@rpath/Missing.framework` and trailing-slash cases, unsupported unknown/absolute framework paths, missing `@rpath`/`@loader_path`/`@executable_path` loads, bundle/symlink containment, versioned paths, mode properties, system-framework ignore, and `otool` failure cases remain in the test file. The complete-component fallback still rejects malformed names ending at `.framework` or `.framework/` and unknown/absolute names with a framework component.
+- The revised fake `otool` at test lines 36–40 emits each architecture header followed by its own dependency rows. The existing path-prefix negative fixture still asserts nonzero exit and `UNSUPPORTED_FRAMEWORK_LOAD_PATH`; exact-header filtering in the production checker was unchanged. This closes the prior multi-arch test-layout limit without introducing architecture-specific parser state.
+- The range changes only `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, and `.superpowers/sdd/plan-t31-ios27/fr1-report.md`; `git diff --check` returned no errors. The report records focused tests 21/21, full mobile suite 319 total / 305 pass / 14 gated skips, typecheck pass, Expo alignment pass after a transient `ECONNRESET` retry, and unchanged retained executable SHA-256 `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`. These are implementation-reported checks; I did not rerun tests or native build.
+
+## Review commands and limits
+
+Read-only commands: `git rev-parse HEAD`, `git status --short`, `git diff --stat/--check/-- apps/mobile/scripts/verify-ios-framework-closure.py apps/mobile/src/ios-framework-closure.test.ts .superpowers/sdd/plan-t31-ios27/fr1-report.md 221959432..d9482bb7cea307b0d8696cb1404e5f0ffbd126da`, and `cat` of the round-3 brief and FR1 report. No OCR, test, build, production/test edit, retained-evidence edit, or controller plan/ledger edit was performed.

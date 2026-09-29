@@ -34,7 +34,7 @@
 |---|---|---|---|---|---|---|---|
 | FR1 | T31-F1 | none | frontend_implementer | reviewer | `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `.superpowers/sdd/plan-t31-ios27/fix-task-4-report.md` | Resolve supported bundled loader forms; malformed loads and unresolved dependencies fail closed; exact multi-arch headers are skipped without hiding path-prefix dependencies; valid fixtures and retained app pass | verified and integrated through FR1 round 3 (`d86bc885b`); integrated focused suite 21/21 and retained checker pass |
 | DOC1 | T31-F2 | none | mechanical_worker | reviewer | `docs/plans/issue30-sweep/plans/plan-t31-ios27.md`, `.superpowers/sdd/plan-t31-ios27/doc1-report.md` | Restore a durable complete execution plan at cited path, with original task coverage and the approved 16.4 amendment; check every citation resolves | implemented `d02b244fb`, scoped review PASS; integrated |
-| DOC2 | T31-F3 | none | mechanical_worker | reviewer | `docs/testing/mobile-runtime-login-device-acceptance.md`, `.superpowers/sdd/plan-t31-ios27/doc2-report.md` | Update current iOS simulator status/evidence links to post-repair Release startup and safe-area proof; keep external auth/OIDC and Android checks pending | implementation and scoped review PASS; waiting integration after DOC1 |
+| DOC2 | T31-F3 | none | mechanical_worker | reviewer | `docs/testing/mobile-runtime-login-device-acceptance.md`, `.superpowers/sdd/plan-t31-ios27/doc2-report.md` | Update current iOS simulator status/evidence links to post-repair Release startup and safe-area proof; keep external auth/OIDC and Android checks pending | implemented `70c8efd92`, scoped review PASS; integrated |
 
 Tasks have disjoint source/document ownership and no produced-code dependencies. Integrate verified checkpoints into the current execution worktree in task ID order before the integrated T31 review.
 
@@ -100,4 +100,4 @@ Tasks have disjoint source/document ownership and no produced-code dependencies.
 - Map findings T31-F1, T31-F2, and T31-F3 one-to-one to FR1, DOC1, DOC2; no unrelated branch changes.
 - FR1's new fixtures prove previously ignored inputs fail, not only that string patterns are present; valid runtime layouts still pass.
 - DOC1 cites original approved inputs and actual amendment evidence; DOC2 cannot overstate what the bounded simulator capture proves.
-- After all task commits are integrated, obtain an independent final review of the complete T31 slice from `1e9315773a971dd72fe621c94e308f45a0ca4692` through integrated HEAD. Only then mark T31 locally verified and release dependent #32.
+- FR1, DOC1, DOC2 implementation and scoped-review checkpoints are integrated into the current serial worktree. Obtain an independent final review of the complete T31 slice from `1e9315773a971dd72fe621c94e308f45a0ca4692` through integrated HEAD. Only then mark T31 locally verified and release dependent #32.

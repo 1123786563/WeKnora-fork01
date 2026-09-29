@@ -71,6 +71,7 @@
 - FR1 round-3 commits `362b474e8` / `d9482bb7c` were reviewed in `.superpowers/sdd/plan-t31-ios27/fr1-r3-review.md`: Spec PASS / Quality PASS, no findings. Focused 21/21, full 319 total / 305 pass / 14 skips, typecheck and Expo check pass; retained checker passes and SHA unchanged. FR1 commits through `d86bc885b` are integrated; focused tests rerun in integration 21/21 and retained checker/hash pass. No build/evidence changes.
 - DOC1 `d85de58a00bdbbd64bb4ea7f96a9cf4fd8513eaa` and DOC2 `0792167e6a9fe97e59b40b74c7fcd9ab609b62b3` implementation commits are locally verified; independent DOC1/DOC2 reviews both PASS.
 - DOC1 is now integrated as `d02b244fb`; independent review verdict PASS, no findings. DOC2 implementation/review is verified and next in integration order.
+- DOC2 commit `70c8efd92` is now integrated after DOC1; its scoped review `.superpowers/sdd/plan-t31-ios27/doc2-review.md` is PASS with no findings. FR1/DOC1/DOC2 task commits are integrated; T31 remains pending a fresh integrated final review.
 
 ## Task R1+R3 integration verification addendum
 - Agent initial report noted `expo-build-properties` resolution failure under stale Expo 55 worktree modules. Ruling: run `pnpm install --frozen-lockfile` in the integration worktree before prebuild because its tracked SDK57 manifest/lock were integrated while ignored node_modules links remained from SDK55; risk is no source changes, only worktree dependency alignment.
