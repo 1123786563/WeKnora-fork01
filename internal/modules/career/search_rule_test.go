@@ -100,6 +100,62 @@ func TestSetRuleStoresRuleAndReplayIsIdempotent(t *testing.T) {
 	require.Nil(t, view.NextDueAt)
 }
 
+func TestListRulesReturnsScopedBoundedSummariesInStableOrder(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	a, err := o.SetRule(ctx, ruleInput("list-rule-a", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	bInput := ruleInput("list-rule-b", 120, RuleStatusPaused)
+	bInput.Query = "platform engineer"
+	b, err := o.SetRule(ctx, bInput)
+	require.NoError(t, err)
+	// Force equal timestamps to exercise the deterministic ID tie-breaker.
+	equal := searchRuleClockBase.Add(-time.Minute)
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("id IN ?", []string{a.RuleID, b.RuleID}).Update("updated_at", equal).Error)
+	rules, err := o.ListRules(ctx)
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	require.Less(t, rules[0].RuleID, rules[1].RuleID)
+	require.True(t, (rules[0].RuleID == a.RuleID && rules[0].Query == searchFixtureQuery) || (rules[0].RuleID == b.RuleID && rules[0].Query == "platform engineer"))
+	require.Equal(t, equal, rules[0].UpdatedAt)
+	encoded, err := json.Marshal(rules[0])
+	require.NoError(t, err)
+	if rules[0].RuleID == b.RuleID {
+		require.JSONEq(t, `{"ruleId":"`+b.RuleID+`","query":"platform engineer","intervalMinutes":120,"status":"paused","revision":1,"nextDueAt":null,"estimate":{"triggersPerDay":12,"sourcesPerTrigger":1,"estimatedSearchesPerDay":12,"basis":"`+ruleEstimateBasis+`"},"createdAt":"`+rules[0].CreatedAt.Format(time.RFC3339Nano)+`","updatedAt":"`+equal.Format(time.RFC3339Nano)+`"}`, string(encoded))
+	} else {
+		require.JSONEq(t, `{"ruleId":"`+a.RuleID+`","query":"`+searchFixtureQuery+`","intervalMinutes":60,"status":"enabled","revision":1,"nextDueAt":"`+a.NextDueAt.Format(time.RFC3339Nano)+`","estimate":{"triggersPerDay":24,"sourcesPerTrigger":1,"estimatedSearchesPerDay":24,"basis":"`+ruleEstimateBasis+`"},"createdAt":"`+rules[0].CreatedAt.Format(time.RFC3339Nano)+`","updatedAt":"`+equal.Format(time.RFC3339Nano)+`"}`, string(encoded))
+	}
+	neighbor := WithScope(ctx, Scope{UserID: "neighbor", TenantID: 97})
+	require.NoError(t, o.ClaimSpace(neighbor))
+	got, err := o.ListRules(neighbor)
+	require.NoError(t, err)
+	require.Empty(t, got)
+	emptyOffice, _, _, emptyCtx := newSearchRuleOffice(t)
+	empty, err := emptyOffice.ListRules(emptyCtx)
+	require.NoError(t, err)
+	require.NotNil(t, empty)
+	require.Empty(t, empty)
+}
+
+func TestDueRuleRevalidatedAfterQuotaAdmissionBeforeSearch(t *testing.T) {
+	o, transport, gate, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("revalidate-rule-1", 1, RuleStatusEnabled))
+	require.NoError(t, err)
+	gate.onAdmit = func() {
+		var row searchRuleRecord
+		require.NoError(t, o.db.Where("id=?", created.RuleID).First(&row).Error)
+		row.Status = RuleStatusPaused
+		row.Query = "edited query"
+		row.Revision++
+		require.NoError(t, o.db.Save(&row).Error)
+	}
+	outcomes, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Minute))
+	require.NoError(t, err)
+	require.Empty(t, outcomes)
+	require.Equal(t, 1, gate.calls)
+	require.Empty(t, transport.calls, "the committed pause/edit must prevent external search")
+	require.Zero(t, countRows(t, o, &searchRecord{}))
+}
+
 // ---- 2. disabled rules never trigger or enqueue -----------------------------
 
 func TestDisabledRuleNeverTriggersOrEnqueues(t *testing.T) {
