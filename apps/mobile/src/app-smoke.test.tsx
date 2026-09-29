@@ -90,9 +90,15 @@ test('root router stack is wrapped in provider and top/bottom safe-area containe
 
   assert.ok(provider, 'SafeAreaProvider wraps routed content');
   assert.ok(safeView, 'SafeAreaView contains routed content');
+  assert.equal(
+    (provider.props.children as { type?: unknown } | undefined)?.type,
+    safeView.type,
+    'SafeAreaProvider must directly contain SafeAreaView',
+  );
   assert.deepEqual(safeView.props.edges, ['top', 'bottom']);
-  assert.equal((safeView.props.children as { type?: unknown } | undefined)?.type, stack?.type);
-  assert.deepEqual(stack?.props.screenOptions, { headerShown: false });
+  assert.ok(stack, 'RootLayout must render an Expo Router Stack');
+  assert.equal((safeView.props.children as { type?: unknown } | undefined)?.type, stack.type);
+  assert.deepEqual(stack.props.screenOptions, { headerShown: false });
 });
 
 test('OIDC callback route forwards the untouched deep link before returning to the app root', async () => {
