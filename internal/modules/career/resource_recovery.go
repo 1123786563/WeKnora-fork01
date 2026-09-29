@@ -63,7 +63,7 @@ func (o *Office) candidateHasForeignOwner(ctx context.Context, resourceID, sourc
 	return count != 0, err
 }
 
-func (h *Handler) recoverCatalogRef(ctx context.Context, sourceID, token, requestID string) (string, error) {
+func (h *Handler) recoverCatalogRef(ctx context.Context, sourceID, token, requestID, ownerToken string) (string, error) {
 	row, candidates, err := h.office.catalogCandidates(ctx, sourceID)
 	if err != nil {
 		return "", &OutcomeUnknownError{RequestID: requestID}
@@ -86,7 +86,7 @@ func (h *Handler) recoverCatalogRef(ctx context.Context, sourceID, token, reques
 		if err = h.upload.catalog.Bind(ctx, ref, careerSourceOwner, sourceID, types.ResourceRelationSourceFile); err != nil {
 			return "", &OutcomeUnknownError{RequestID: requestID}
 		}
-		if err = h.office.PersistUploadResource(ctx, sourceID, token, ref); err != nil {
+		if err = h.office.PersistUploadResourceOwned(ctx, sourceID, token, ownerToken, ref); err != nil {
 			return "", &OutcomeUnknownError{RequestID: requestID}
 		}
 		return ref, nil

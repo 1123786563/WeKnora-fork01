@@ -93,4 +93,16 @@ func TestMigrationVersionsUniquePerTrack(t *testing.T) {
 			}
 		}
 	}
+	for _, item := range []struct {
+		track, up, down string
+	}{
+		{"sqlite", "000143_career_lifecycle_gate.up.sql", "000143_career_lifecycle_gate.down.sql"},
+		{"sqlite", "000144_career_lifecycle_owner.up.sql", "000144_career_lifecycle_owner.down.sql"},
+		{"versioned", "000222_career_lifecycle_gate.up.sql", "000222_career_lifecycle_gate.down.sql"},
+		{"versioned", "000223_career_lifecycle_owner.up.sql", "000223_career_lifecycle_owner.down.sql"},
+	} {
+		for _, name := range []string{item.up, item.down} {
+			require.FileExistsf(t, filepath.Join(root, "migrations", item.track, name), "lifecycle gate migration identity/version must remain paired: %s", name)
+		}
+	}
 }

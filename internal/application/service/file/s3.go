@@ -329,6 +329,9 @@ func (s *s3FileService) SaveBytes(ctx context.Context, data []byte, tenantID uin
 	}
 	ext := filepath.Ext(safeName)
 	objectName := fmt.Sprintf("%s%d/exports/%s%s", s.pathPrefix, tenantID, uuid.New().String(), ext)
+	if strings.HasPrefix(safeName, "career_export_") || strings.HasPrefix(safeName, "career_source_") {
+		objectName = fmt.Sprintf("%s%d/exports/%s", s.pathPrefix, tenantID, safeName)
+	}
 
 	// Upload bytes to S3
 	reader := bytes.NewReader(data)

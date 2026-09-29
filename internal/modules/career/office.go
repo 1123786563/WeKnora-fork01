@@ -85,6 +85,7 @@ type lifecycleClaim struct {
 	Operation   string    `gorm:"primaryKey;size:32"`
 	RequestID   string    `gorm:"primaryKey;size:128"`
 	Fingerprint string    `gorm:"size:64;not null;default:''"`
+	OwnerToken  string    `gorm:"size:36;not null;default:''"`
 	CreatedAt   time.Time `gorm:"not null"`
 }
 

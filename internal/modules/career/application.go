@@ -344,14 +344,24 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	if receipt.LinkState != ApplicationLinkStateLinking || receipt.ApplicationID == "" {
 		// Exact replay of an already-linked (or failed) application: the stored
 		// state is final for this request ID.
-		if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", input.RequestID); releaseErr != nil {
-			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		var existing lifecycleClaim
+		if lookup := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", scope.TenantID, scope.UserID, "application_link", input.RequestID).First(&existing).Error; lookup == nil {
+			ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, scope, "application_link", input.RequestID, fingerprint)
+			if claimErr != nil {
+				return ApplicationReceipt{}, claimErr
+			}
+			defer unlockAttempt()
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", input.RequestID, ownerToken); releaseErr != nil {
+				return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+			}
 		}
 		return receipt, nil
 	}
-	if err = o.admitLifecycleClaim(ctx, scope, "application_link", input.RequestID, fingerprint); err != nil {
-		return ApplicationReceipt{}, err
+	ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, scope, "application_link", input.RequestID, fingerprint)
+	if claimErr != nil {
+		return ApplicationReceipt{}, claimErr
 	}
+	defer unlockAttempt()
 
 	// External call happens strictly after the Career commit and always with
 	// the original request ID; an unknown outcome keeps the linking state.
@@ -363,7 +373,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	if ensureErr == nil {
 		updated, updateErr := o.updateApplicationLink(ctx, scope, input.RequestID, ApplicationLinkStateReady, link)
 		if updateErr == nil {
-			if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", input.RequestID); releaseErr != nil {
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", input.RequestID, ownerToken); releaseErr != nil {
 				return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 			}
 			return updated, nil
@@ -372,7 +382,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	}
 	if errors.Is(ensureErr, interfaces.ErrCareerApplicationTaskConflict) {
 		if _, failErr := o.updateApplicationLink(ctx, scope, input.RequestID, ApplicationLinkStateFailed, interfaces.CareerApplicationTaskLink{}); failErr == nil {
-			if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", input.RequestID); releaseErr != nil {
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", input.RequestID, ownerToken); releaseErr != nil {
 				return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 			}
 			return ApplicationReceipt{}, fmt.Errorf("%w: workbench rejected the task link: %v", ErrApplicationConflict, ensureErr)
@@ -384,7 +394,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		// ever will be) created for this intent, so the link is terminally
 		// failed and the client sees an invalid request, not a conflict.
 		if _, failErr := o.updateApplicationLink(ctx, scope, input.RequestID, ApplicationLinkStateFailed, interfaces.CareerApplicationTaskLink{}); failErr == nil {
-			if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", input.RequestID); releaseErr != nil {
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", input.RequestID, ownerToken); releaseErr != nil {
 				return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 			}
 			return ApplicationReceipt{}, fmt.Errorf("%w: workbench rejected the task link: %v", ErrInvalidRequest, ensureErr)
@@ -430,14 +440,24 @@ func (o *Office) ReconcileApplicationLink(ctx context.Context, requestID string)
 		// link_failed is a definite rejection: reconcile never re-opens a
 		// terminally failed link, and never re-associates the request ID
 		// with whatever durable task a concurrent twin may have created.
-		if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", requestID); releaseErr != nil {
-			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
+		var existing lifecycleClaim
+		if lookup := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", scope.TenantID, scope.UserID, "application_link", requestID).First(&existing).Error; lookup == nil {
+			ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, scope, "application_link", requestID, row.Fingerprint)
+			if claimErr != nil {
+				return ApplicationReceipt{}, claimErr
+			}
+			defer unlockAttempt()
+			if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", requestID, ownerToken); releaseErr != nil {
+				return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
+			}
 		}
 		return receipt, nil
 	}
-	if err = o.admitLifecycleClaim(ctx, scope, "application_link", requestID, row.Fingerprint); err != nil {
-		return ApplicationReceipt{}, err
+	ownerToken, unlockAttempt, claimErr := o.acquireLifecycleClaim(ctx, scope, "application_link", requestID, row.Fingerprint)
+	if claimErr != nil {
+		return ApplicationReceipt{}, claimErr
 	}
+	defer unlockAttempt()
 	link, findErr := o.linker.FindCareerApplicationTask(ctx, scope.TenantID, scope.UserID, requestID)
 	if findErr == nil {
 		if link.ApplicationID != "" && link.ApplicationID != row.ID {
@@ -445,7 +465,7 @@ func (o *Office) ReconcileApplicationLink(ctx context.Context, requestID string)
 			// different application: the request ID is bound to foreign
 			// content, which is a definite rejection for this row.
 			if _, failErr := o.updateApplicationLink(ctx, scope, requestID, ApplicationLinkStateFailed, interfaces.CareerApplicationTaskLink{}); failErr == nil {
-				if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", requestID); releaseErr != nil {
+				if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", requestID, ownerToken); releaseErr != nil {
 					return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
 				}
 				return ApplicationReceipt{}, fmt.Errorf(
@@ -459,12 +479,15 @@ func (o *Office) ReconcileApplicationLink(ctx context.Context, requestID string)
 		if updateErr != nil {
 			return ApplicationReceipt{}, updateErr
 		}
-		if releaseErr := o.resolveLifecycleClaim(context.Background(), scope, "application_link", requestID); releaseErr != nil {
+		if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", requestID, ownerToken); releaseErr != nil {
 			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
 		}
 		return updated, nil
 	}
 	if errors.Is(findErr, interfaces.ErrCareerApplicationTaskNotFound) {
+		if releaseErr := o.resolveLifecycleClaimOwned(context.Background(), scope, "application_link", requestID, ownerToken); releaseErr != nil {
+			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
+		}
 		return receipt, nil
 	}
 	return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
