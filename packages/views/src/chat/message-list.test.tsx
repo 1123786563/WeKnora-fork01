@@ -4,6 +4,7 @@ import test from 'node:test';
 import { assistantTimelineItems, isBookmarkActionAvailable, isFeedbackAvailable, MessageList, writeClipboardText } from './message-list.tsx';
 import type { ChatMessage } from '@weknora/contracts';
 import React from 'react';
+import { resolveChatCopy } from './chat-copy.ts';
 const { renderToStaticMarkup } = await import('../../../../apps/web/node_modules/react-dom/server.js');
 
 // Rendering assertions for MessageList (separators, timestamps, copy button,
@@ -75,17 +76,27 @@ test('reasoning-only assistant data renders no timeline at all like the Vue main
 
 test('underfilled history still exposes an accessible load-older action', () => {
   const markup = renderToStaticMarkup(React.createElement(MessageList, {
-    messages: [], hasMore: true, loadingOlder: false, onLoadOlder() {},
+    copy: resolveChatCopy('en'),
+    messages: [{ id: 'history-1', session_id: 's1', role: 'user', content: 'first history page', is_completed: true } as ChatMessage],
+    hasMore: true, loadingOlder: false, onLoadOlder() {},
   }));
+  assert.match(markup, /first history page/);
   assert.match(markup, /<button[^>]*aria-label="Load more"/);
 });
 
 test('load-older action reflects loading state and is unavailable without more history', () => {
   const loading = renderToStaticMarkup(React.createElement(MessageList, {
-    messages: [], hasMore: true, loadingOlder: true, onLoadOlder() {},
+    copy: resolveChatCopy('en'),
+    messages: [{ id: 'history-1', session_id: 's1', role: 'user', content: 'first history page', is_completed: true } as ChatMessage],
+    hasMore: true, loadingOlder: true, onLoadOlder() {},
   }));
   assert.match(loading, /Loading/);
   assert.match(loading, /disabled=""/);
-  const exhausted = renderToStaticMarkup(React.createElement(MessageList, { messages: [], hasMore: false, onLoadOlder() {} }));
+  const exhausted = renderToStaticMarkup(React.createElement(MessageList, {
+    copy: resolveChatCopy('en'),
+    messages: [{ id: 'history-1', session_id: 's1', role: 'user', content: 'first history page', is_completed: true } as ChatMessage],
+    hasMore: false, onLoadOlder() {},
+  }));
+  assert.match(exhausted, /first history page/);
   assert.doesNotMatch(exhausted, /Load more/);
 });

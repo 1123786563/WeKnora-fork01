@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { renderChatMarkdown } from './markdown.ts';
 import { messageArtifactItems, renderMessageHtml } from './message-list.tsx';
+import { resolveChatCopy } from './chat-copy.ts';
 
 test('renders Markdown structures used by assistant answers', () => {
   const html = renderChatMarkdown([
