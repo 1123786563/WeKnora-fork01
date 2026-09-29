@@ -39,3 +39,18 @@ The supported `expo-build-properties` options now explicitly set `buildReactNati
 
 - Simulator emitted existing warnings for missing background fetch/remote notification UIBackgroundModes and duplicate accessibility classes in the iOS 27 simulator runtime; neither prevented launch or affected loader closure.
 - Independent frontend-validator and reviewer reports remain parent-coordinated.
+
+## Review repair round 1 addendum
+
+Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r1-brief.md`; repaired findings 2–4 from `fix-task-4-review.md`. Per controller ruling in the brief, source-linked React is accepted when the actual Release load graph is closed and the app launches. No separate embedded `React.framework` claim is made. No native build was run in this round; the existing Release artifact was checked and launched unchanged.
+
+- Replaced inline Python and disconnected TypeScript helper with `apps/mobile/scripts/verify-ios-framework-closure.py`, invoked by the production release script and exercised directly by integration tests.
+- Checker parses app/framework `Info.plist` via standard `plistlib`, inspects the app executable and each framework's `CFBundleExecutable` with `otool -L`, checks requested binary names match declared executables, resolves targets within the app bundle, and fails closed on missing executable, missing `otool`, inspection failure, or unresolved framework loads.
+- Focused command `node --import tsx --test src/ios-framework-closure.test.ts src/scripts/ios-acceptance-scripts.test.ts` (from `apps/mobile`): 8/8 passed. Cases cover complete closure, missing app direct load, missing framework binary despite directory, escaping symlink, and `otool` nonzero exit.
+- Production check on retained artifact: `python3 apps/mobile/scripts/verify-ios-framework-closure.py apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app` → `FRAMEWORK_MODE=source-expo-modules`, `FRAMEWORK_CLOSURE_OK`.
+- Unchanged app executable SHA-256: `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
+- Fresh install and launch output is captured in tracked `simctl-install-launch.txt` and `simctl-launch-r1.txt` (not a summary). Launch output includes `ReactInstance: evaluateJavaScript() with JS bundle`, PID, and no dyld error. The console command was bounded with `timeout 15s`, therefore wrapper exit 124 indicates expected termination of the still-attached console stream, while the app remained running.
+- Fresh screenshot `ios27-release-launch-r1.png`, SHA-256 `6982dfa2728819aec625a1c85785a14271431e7d3135957d42fb2caab48cbd73`, inspected: sign-in content is visible below the status bar.
+- Full outer Release log is persisted as tracked `xcodebuild-release-final.log.gz`; uncompressed SHA-256 `46f47407fb270ca1f8361a0442d32c5cbe184eaf7b1ed928420aa8afd1b3de83`, compressed SHA-256 `4d182b68807f739504742a13bb1dfb3c62208f0629d36eb6184da41ce8fa435d`. Original T39 tracked log remains SHA-256 `12a27ed4f698074356c5e1d7722b5d7af78b2d60b5cdf9e9856e44e37b7bb71e`.
+- Full mobile suite `pnpm --filter @weknora/mobile test`: 306 total, 292 pass, 14 opt-in skips, 0 failures. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
+- Repair commit: pending local commit.
