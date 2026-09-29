@@ -391,6 +391,24 @@
 
 **Acceptance:** No charged-search result can clear a durable attempt unless request ID and query identify the same submitted operation.
 
+## Task 25: Exercise material ID propagation from ApplicationPage
+
+**Dependency:** Task23 commit `9fc83ceec3216c9e692f63d90bebda272bf48911`; low finding T23-1 in `/tmp/issue140-r2-task23-review.md`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/career/ApplicationPage.test.tsx` and only the narrow ApplicationPage/ProgressPage test seam if required.
+
+**Consumes / produces:** Keep Task23 production code unchanged unless the integration test demonstrates a real wiring defect. Mount `ApplicationPage` with its material loader resolving the known current material ID, open the progress submission confirmation, and assert that the exact material ID reaches export lookup and the selected export is sent.
+
+**Steps:**
+
+- [ ] Add an ApplicationPage-level regression for the full owner→child material ID prop handoff using the existing MaterialPage/application seam.
+- [ ] Run RED if the integration currently drops the ID; otherwise document that the behavioral path is already correct and the test closes the coverage gap.
+- [ ] Run focused ApplicationPage/ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only test changes unless RED proves a production wiring correction is needed.
+
+**Acceptance:** The test exercises actual parent state propagation and proves a known export remains selectable and bound through the user-facing confirmation path.
+
 ## Task 4: Bind submitted progress to an actual submission record
 
 **Dependency:** None; backend file ownership is disjoint from Tasks 1–3.
