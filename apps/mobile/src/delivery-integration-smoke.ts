@@ -103,6 +103,10 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
         evidence.approver = record.approver;
         evidence.remoteLogin = record.remoteLogin;
         if (config.recover) {
+          if (record.state === 'delivered') {
+            evidence.recovery = 'not-needed';
+            return evidence;
+          }
           const recovery = createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() });
           try {
             const recovered = await recovery.recover({ runId: item.runId, deliveryId: record.id });

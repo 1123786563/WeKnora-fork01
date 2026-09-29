@@ -137,6 +137,19 @@ test('runDeliveryIntegration uses the exact run and delivery IDs and dispatches 
   } finally { fake.restore(); }
 });
 
+test('runDeliveryIntegration reports an already-delivered record as not-needed without recovery calls', async () => {
+  const fake = installDeliveryFetch({ initialState: 'delivered' });
+  try {
+    const evidence = await runDeliveryIntegration(integrationConfig(true));
+    assert.equal(evidence.deliveryRead, 'read');
+    assert.equal(evidence.deliveryState, 'delivered');
+    assert.equal(evidence.recovery, 'not-needed');
+    assert.equal(evidence.recoveryState, undefined);
+    assert.equal(evidence.failure, undefined);
+    assert.deepEqual(actionRequests(fake.calls), []);
+  } finally { fake.restore(); }
+});
+
 test('runDeliveryIntegration resolves unknown state and records state conflicts as not-needed', async () => {
   const unknown = installDeliveryFetch({ initialState: 'unknown' });
   try {
