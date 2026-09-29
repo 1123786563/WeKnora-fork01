@@ -49,3 +49,5 @@ Implemented the assigned Task 6 scope from `task-6-brief.md`: composition wiring
 The initial full-suite run had **292 total tests: 278 passed, 14 skipped, 0 failed** (the 278 figure is passed tests, not total tests). After repair round 1 added four route regression tests, the full suite had **296 total: 282 passed, 14 skipped, 0 failed**. Repair checkpoint, package hash, and exact verification commands are recorded in `task-6-fix-r1-report.md`.
 
 Repair round 2 added the mounted runtime-scope lifecycle test. Latest full-suite result: **297 total: 283 passed, 14 skipped, 0 failed**. Round 2 checkpoint, package hash, and test details are in `task-6-fix-r2-report.md`.
+
+Repair round 3 routes stale-scope failures through the current Task Detail general error state, including after sign-out when no receipt section renders. The mounted test asserts visible current-route errors and no old receipt after sign-out, tenant change, and same-origin/tenant reauthentication. Full suite remains **297 total: 283 passed, 14 skipped, 0 failed**. Details are in `task-6-fix-r3-report.md`.
