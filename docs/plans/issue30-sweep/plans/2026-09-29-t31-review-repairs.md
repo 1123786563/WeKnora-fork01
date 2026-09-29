@@ -136,3 +136,13 @@ Task R2 is independent of R1/R3 and can be reviewed in the same repair round aft
 **Verification:** prove new fixture fails on previous helper; focused/full mobile tests, typecheck, actual generated SDK57 project checker, source diff-check; update report/hash and commit; scoped re-review required before Task R2.
 
 **Status:** pending.
+
+## Task R3-F2: Ignore Swift comments when checking URL forwarding (repair round 4)
+
+**Source:** `.superpowers/sdd/plan-t31-ios27/fix-task-1-r3-review.md` F2 Medium. Callback checks can match `RCTLinkingManager.application` in a Swift comment while the actual call is absent.
+
+**Files:** `apps/mobile/scripts/verify-ios-scene-project.ts`, `apps/mobile/src/plugins/ios-xcode27.test.ts`, report/ledger.
+
+**Acceptance:** Strip Swift line/block comments (preserving quoted string content enough to avoid deleting protocol URL strings) before testing each independently extracted callback body. Add two negative fixtures: open-URL contains only commented forwarding, universal-link contains only commented forwarding while open-URL remains valid. Existing valid fixture and actual generated tree pass.
+
+**Verification:** RED/GREEN focused native contract tests; full mobile suite; typecheck; actual generated SDK57 checker; source diff-check. Commit and send high-reasoning independent review. Status pending.

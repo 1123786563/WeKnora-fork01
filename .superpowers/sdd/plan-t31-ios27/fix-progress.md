@@ -60,3 +60,8 @@
 - Verification: focused iOS project contract tests 5/5 pass; full mobile tests 296 total, 282 pass, 14 credential/environment-gated skips, 0 fail; mobile typecheck passes; generated SDK57 `ios` project contract passes; `git diff --check` passes.
 - Source patch SHA-256: `138797e6d8104b18d851aab461e02641aa812af0e775c4c29f1072d9844d5251` (before report/ledger documentation edits).
 - Status: implementation verified; local commit pending.
+
+## Review repair round 4: Swift-comment URL forwarding false positive
+- Review `.superpowers/sdd/plan-t31-ios27/fix-task-1-r3-review.md`: PBX comment finding resolved; new Medium F2 says callback body substring search can accept commented-out RCT forwarder.
+- Ruling: strip Swift comments before per-method assertion and pin both callback cases. The finding is valid because release gate must prove executable URL handoff; cost if wrong is parser sensitivity to Swift comments/strings, mitigated by focused tests.
+- Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r4-brief.md`; status pending → running.
