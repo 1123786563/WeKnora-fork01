@@ -107,10 +107,18 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
             evidence.recovery = 'not-needed';
             return evidence;
           }
-          const recovery = createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() });
+          let actionInvoked = false;
+          const recovery = createDeliveryRecovery({
+            remote: {
+              ...remote,
+              dispatchDelivery(input) { actionInvoked = true; return remote.dispatchDelivery(input); },
+              resolveDelivery(input) { actionInvoked = true; return remote.resolveDelivery(input); },
+            },
+            lease: () => runtime.scopeLease(),
+          });
           try {
             const recovered = await recovery.recover({ runId: item.runId, deliveryId: record.id });
-            Object.assign(evidence, deliveryRecoveryEvidenceOf(recovered));
+            Object.assign(evidence, actionInvoked ? deliveryRecoveryEvidenceOf(recovered) : { recovery: 'not-needed' });
           } catch (error) {
             if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
               Object.assign(evidence, deliveryRecoveryEvidenceOf(undefined, error));

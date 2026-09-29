@@ -61,6 +61,7 @@ const deliveryWire = (state: string) => ({
 function installDeliveryFetch(options: {
   tasks?: Array<{ run_id: string; session_id: string; status: string; created_at: string; updated_at: string }>;
   deliveryReads?: Array<'read' | 'absent'>;
+  deliveryStates?: string[];
   initialState?: string;
   actionStatus?: number;
   actionBody?: unknown;
@@ -84,9 +85,11 @@ function installDeliveryFetch(options: {
     if (path === '/api/v1/system/capabilities') return response(200, { code: 0, data: { protocol_minimum: 3, protocol_maximum: 3 } });
     if (path === '/api/v1/workbench/executions') return response(200, { success: true, data: { items: options.tasks ?? [{ run_id: runId, session_id: 'task-1', status: 'succeeded', created_at: '2026-09-24T00:00:00Z', updated_at: '2026-09-24T00:00:30Z' }] } });
     if (path === `/api/v1/workbench/executions/${runId}/delivery`) {
-      const read = options.deliveryReads?.[deliveryReadIndex++] ?? 'read';
+      const readIndex = deliveryReadIndex++;
+      const read = options.deliveryReads?.[readIndex] ?? 'read';
       if (read === 'absent') return response(404, { code: 'code_delivery_not_found' });
-      return response(200, { success: true, data: { delivery: deliveryWire(options.initialState ?? 'pushed') } });
+      const state = options.deliveryStates?.[readIndex] ?? options.initialState ?? 'pushed';
+      return response(200, { success: true, data: { delivery: deliveryWire(state) } });
     }
     if (path.includes('/delivery/') && (path.endsWith('/dispatch') || path.endsWith('/resolve'))) {
       if (options.actionStatus !== undefined && options.actionStatus >= 400) {
@@ -146,6 +149,20 @@ test('runDeliveryIntegration reports an already-delivered record as not-needed w
     assert.equal(evidence.recovery, 'not-needed');
     assert.equal(evidence.recoveryState, undefined);
     assert.equal(evidence.failure, undefined);
+    assert.deepEqual(actionRequests(fake.calls), []);
+  } finally { fake.restore(); }
+});
+
+test('runDeliveryIntegration reports a recovery read that converges to delivered as not-needed', async () => {
+  const fake = installDeliveryFetch({ deliveryStates: ['pushed', 'delivered'], deliveryReads: ['read', 'read'] });
+  try {
+    const evidence = await runDeliveryIntegration(integrationConfig(true));
+    assert.equal(evidence.deliveryRead, 'read');
+    assert.equal(evidence.deliveryState, 'pushed');
+    assert.equal(evidence.recovery, 'not-needed');
+    assert.equal(evidence.recoveryState, undefined);
+    assert.equal(evidence.failure, undefined);
+    assert.equal(fake.calls.filter(({ url }) => new URL(url).pathname.endsWith(`/executions/${runId}/delivery`)).length, 2);
     assert.deepEqual(actionRequests(fake.calls), []);
   } finally { fake.restore(); }
 });
