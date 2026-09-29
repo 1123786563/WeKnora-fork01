@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference ──> T11 clarify evidence path base and mapping provenance
 ```
 
-These ten documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference. No application implementation Task is ready under the current #86/#87 gates.
+These eleven documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference; Task 11 clarifies only the path base and evidence provenance wording. No application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -218,10 +218,10 @@ These ten documentation Tasks are in scope. Task 7 addresses the five findings i
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, and Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps, and Task 11 clarifies the refresh-worktree-root path base and separates direct session-to-Issue attachment evidence from inferred PID/session pairing.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: ten documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, and Task 10 makes the two evidence-strength corrections. No production tests are relevant.
+- Proportion: eleven documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, Task 10 makes the two evidence-strength corrections, and Task 11 tightens only path-base and provenance wording. No production tests are relevant.
 
 ### Task 7: Correct partial OCR documentation findings
 
@@ -289,7 +289,7 @@ These ten documentation Tasks are in scope. Task 7 addresses the five findings i
 
 **Owned files:** Modify only this plan, `docs/plans/issue-72-parallel-refresh-2026-09-29.md`, and `docs/plans/issue-72-execution-ledger.md`.
 
-**Consumes:** Verified rollout-goal attachments: TTY001 PID 78779/session `01a0ebb7-72be-7cb2-a48e-bddb059ec1a5` → Issue #30 (attachment `b10249b8...`); TTY002 PID 81039/session `01a0ebb8-01aa-7201-9632-1cbe61427b36` → Issue #72 (`f247...`); TTY003 PID 84486/session `01a0ebbb-3fa1-7b30-9be0-85351aeb9463` → Issue #140 (`6c1...`); TTY004 PID 88833/session `01a0ebbb-eb35-7453-b985-f9c0ceaef7b7` → Craft #107, supported by its rollout goal and T14 answer.
+**Consumes:** Verified rollout-goal attachments directly map sessions to Issue goals: session `01a0ebb7-72be-7cb2-a48e-bddb059ec1a5` → Issue #30 (attachment `b10249b8...`); session `01a0ebb8-01aa-7201-9632-1cbe61427b36` → Issue #72 (`f247...`); session `01a0ebbb-3fa1-7b30-9be0-85351aeb9463` → Issue #140 (`6c1...`); session `01a0ebbb-eb35-7453-b985-f9c0ceaef7b7` → Craft #107, supported by its rollout goal and T14 answer. Separately, PID/session pairings (TTY001/PID 78779, TTY002/PID 81039, TTY003/PID 84486, TTY004/PID 88833) are inferred by comparing process and session timestamps; attachments do not establish those pairings.
 
 **Produces:** The audit note and Ledger carry direct session-to-issue goal mappings and remove the claim that two #72 shells share the same goal. PID/session pairs remain timestamp-inferred. They retain that all four processes have repository-root cwd and branch `main`, no child/task or dedicated worktree mapping is established, the inferred #72 TTY002 remains live so no lane release is inferred, and no shell was acted on.
 
@@ -325,6 +325,32 @@ These ten documentation Tasks are in scope. Task 7 addresses the five findings i
 - [ ] Record full-branch review findings: Medium R7 sibling files not committed, Low PID/session inference; reviewer Spec pass / quality fail pending these corrections.
 - [ ] Verify sibling hashes and staged state read-only, run `git diff --check`, confirm only these three documents changed, and commit as `docs(issue-72): qualify provisional evidence and TTY correlation`.
 
-**Verification:** Supplied sibling file SHA-256 values match and Git reports both as staged additions outside HEAD `8329...`; the changed paths are exactly the plan, audit note, and Ledger; `git diff --check` passes. No tests apply.
+**Verification:** The recorded paths `../lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/probe-results-r7-wallet-consumption.json` and `../lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/README.md` are relative to the refresh worktree root; supplied sibling file SHA-256 values match and Git reports both as staged additions outside HEAD `8329...`; the changed paths are exactly the plan, audit note, and Ledger; `git diff --check` passes. No tests apply.
 
 **Failure handling:** If either sibling file status/hash differs, record the observed discrepancy and do not claim durable source evidence. Do not change R7 semantics, act on shells, or infer task/worktree ownership.
+
+### Task 11: Clarify evidence path base and mapping provenance
+
+**Dependencies:** Tasks 1–10 are recorded; review found that Task 10's path wording should name the base for the recorded sibling-worktree-relative paths, and Task 9 should distinguish direct attachment mapping from inferred process/session correlation.
+
+**Owner role:** `mechanical_worker` for bounded plan-only wording corrections.
+
+**Validator role:** `reviewer` for path-base and provenance precision.
+
+**Owned files:** Modify only this plan at `docs/plans/issue-72-parallel-refresh-2026-09-29-plan.md`.
+
+**Consumes:** Task 10's recorded R7 paths `../lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/probe-results-r7-wallet-consumption.json` and `../lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/README.md`, interpreted relative to the refresh worktree root; Task 9's direct rollout-goal attachment/session-to-Issue evidence and timestamp-inferred PID/session pairs.
+
+**Produces:** Task 10 verification explicitly states that each `../lago-int/...` path is relative to the refresh worktree root. Task 9 Consumes explicitly separates direct session-to-Issue evidence from inferred PID/session pairing using process/session timestamps. The DAG and self-check account for Tasks 1–11.
+
+**Implementation steps:**
+
+- [ ] State the refresh worktree root as the base for Task 10's `../lago-int/...` R7 paths.
+- [ ] Clarify in Task 9 Consumes that rollout attachments directly map sessions to Issue goals, while PID/session pairings are inferred from process/session timestamps.
+- [ ] Add this Task 11 record and update the DAG, task count, and self-check.
+- [ ] Run `git diff --check` and verify only this plan changed.
+- [ ] Commit only this plan with `docs(issue-72): clarify evidence path base`.
+
+**Verification:** Task 10 names the refresh worktree root as the base for both sibling paths; Task 9 distinguishes direct attachment/session-to-Issue evidence from inferred PID/session pairing; the DAG/self-check list eleven documentation tasks; `git diff --check` passes and only this plan is changed.
+
+**Failure handling:** If either recorded path is not relative to the refresh worktree root or the cited evidence supports a different relationship, preserve the discrepancy and stop before strengthening the wording.
