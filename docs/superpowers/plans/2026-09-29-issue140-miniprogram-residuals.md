@@ -106,13 +106,13 @@
 - `apps/miniprogram/src/services/career.ts`
 - `apps/miniprogram/tests/export-deletion.test.mjs`
 
-**Consumes / produces:** Preserve the request ID and key captured for the original deletion. If a retry receives a completed server receipt, remove that captured key even if active scope changes after the response. Never read, expose, or remove the other scope's intent. Ambiguous transport failures retain the old intent.
+**Consumes / produces:** Preserve the request ID and key captured for the original deletion. If a retry receives a completed server receipt, remove that captured key even if active scope changes after the response. Never read, expose, or remove the other scope's intent. Ambiguous transport failures retain the old intent. First establish that the test actually responds to the intended native POST; do not change production recovery code unless traces show a product defect after the fixture is deterministic.
 
 **Steps:**
 
-- [ ] Reproduce both N9 deletion tests with per-request traces for `/auth/me`, POST dispatch, scope transition, completion receipt, and storage key mutation.
+- [ ] Reproduce both N9 deletion tests with per-request traces for `/auth/me`, POST dispatch, scope transition, completion receipt, and storage key mutation. The current fixtures call `stub.succeed(stub.lastCall('request'), ...)` immediately after starting an async service call; check that this identifies the deletion POST rather than a prior request.
 - [ ] Add assertions for the captured scope key, current scope key, request count, completed receipt, and ambiguous timeout behavior.
-- [ ] Fix the deletion recovery boundary so it consumes the captured scope result safely without widening access to another scope.
+- [ ] If a fixture responds to the wrong request, add a bounded wait for the intended deletion POST and retain the captured-key assertions. If the deterministic response still exposes a production defect, fix the deletion recovery boundary so it consumes the captured-scope result safely without widening access to another scope.
 - [ ] Run the two N9 tests plus existing deletion idempotency, partial receipt, ambiguous retry, and abandon-while-busy tests; run `git diff --check`.
 - [ ] Commit and report focused evidence.
 
