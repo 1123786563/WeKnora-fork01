@@ -1249,6 +1249,28 @@ func (h *CommercialHandler) AdminResolvePaymentAnomaly(c *gin.Context) {
 	}
 }
 
+// AdminListFulfillmentAttentions serves the sanitized platform-only queue.
+func (h *CommercialHandler) AdminListFulfillmentAttentions(c *gin.Context) {
+	var rows []commercialsvc.FulfillmentExceptionRow
+	if h == nil || h.db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "fulfillment attention unavailable"})
+		return
+	}
+	if err := h.db.WithContext(c.Request.Context()).Order("created_at ASC, id ASC").Find(&rows).Error; err != nil {
+		log.Printf("commercial: fulfillment attention list failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "internal_error"})
+		return
+	}
+	data := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, gin.H{"id": row.ID, "order_id": row.OrderID, "tenant_id": row.TenantID,
+			"kind": row.Kind, "reason": row.Reason, "state": row.State,
+			"created_at": row.CreatedAt.UTC().Format(time.RFC3339), "updated_at": row.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
 // ---- T07 (#79): platform plan-version admin surface ----
 
 // PlatformPlanPublisherCapability is the explicit grant (a row in

@@ -56,6 +56,23 @@ type FulfillmentRecord struct {
 	LeaseUntil  time.Time `gorm:"column:lease_until;not null;default:CURRENT_TIMESTAMP"`
 }
 
+// FulfillmentExceptionRow is a sanitized, durable operator attention item.
+// The outbox identity is an internal storage key and is never exposed by APIs.
+type FulfillmentExceptionRow struct {
+	EventKey   string     `gorm:"primaryKey;column:event_key" json:"-"`
+	ID         string     `gorm:"column:id;not null;uniqueIndex"`
+	TenantID   uint64     `gorm:"column:tenant_id;not null;index"`
+	OrderID    string     `gorm:"column:order_id;not null;index"`
+	Kind       string     `gorm:"column:kind;not null"`
+	Reason     string     `gorm:"column:reason;not null"`
+	State      string     `gorm:"column:state;not null;index"`
+	CreatedAt  time.Time  `gorm:"column:created_at;not null"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at;not null"`
+	ResolvedAt *time.Time `gorm:"column:resolved_at"`
+}
+
+func (FulfillmentExceptionRow) TableName() string { return "commercial_fulfillment_exceptions" }
+
 func (FulfillmentRecord) TableName() string { return "commercial_fulfillment_records" }
 
 // FulfillmentLine is one benefit line of an order as derived by the pricing
@@ -155,7 +172,7 @@ func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, purcha
 	if gateway == nil {
 		return nil, ErrFulfillmentGatewayMissing
 	}
-	if err := db.AutoMigrate(&FulfillmentRecord{}); err != nil {
+	if err := db.AutoMigrate(&FulfillmentRecord{}, &FulfillmentExceptionRow{}); err != nil {
 		return nil, err
 	}
 	return &FulfillmentService{
@@ -191,7 +208,7 @@ func (s *FulfillmentService) Recover(ctx context.Context) error {
 			continue
 		}
 		if err := s.fulfillEvent(ctx, ev, now); err != nil {
-			return fmt.Errorf("fulfill event %s: %w", ev.EventKey, err)
+			return fmt.Errorf("fulfillment event processing failed: %w", err)
 		}
 	}
 	return nil
@@ -318,7 +335,7 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		_, winnerErr := winningPaymentTransaction(ctx, s.db, order, payload)
 		if errors.Is(winnerErr, errInvalidWinningAttempt) || errors.Is(winnerErr, gorm.ErrRecordNotFound) {
 			if row.QuoteID == "" {
-				return s.quarantineFulfillEvent(ctx, ev, "invalid_winning_payment")
+				return s.retainInvalidWinner(ctx, ev, row, now)
 			}
 			if err := persistPurchaseActivationState(ctx, s.db, s.now(), order.ID, order.TenantID, domain.FulfillmentStateAttention); err != nil {
 				return err
@@ -397,10 +414,74 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		// next pass reconciles it via FindBenefit.
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
-	if err := s.orders.MarkFulfilled(ctx, order.ID); err != nil {
-		return err
+	return s.completeFulfilledEvent(ctx, ev, order.ID)
+}
+
+func (s *FulfillmentService) retainInvalidWinner(ctx context.Context, ev repocommercial.OutboxEvent, row repocommercial.OrderRow, now time.Time) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing FulfillmentExceptionRow
+		err := tx.Where("event_key = ?", ev.EventKey).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			existing = FulfillmentExceptionRow{EventKey: ev.EventKey, ID: newLeaseToken(), TenantID: row.TenantID,
+				OrderID: row.ID, Kind: "top_up", Reason: "invalid_winning_payment", State: "open", CreatedAt: now, UpdatedAt: now}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&existing).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else if existing.TenantID != row.TenantID || existing.OrderID != row.ID || existing.Kind != "top_up" || existing.Reason != "invalid_winning_payment" {
+			return fmt.Errorf("fulfillment exception identity mismatch")
+		}
+		eventUpdate := tx.Model(&repocommercial.OutboxEvent{}).
+			Where("event_key = ? AND lease_token = ?", ev.EventKey, ev.LeaseToken).
+			Updates(map[string]interface{}{"state": repocommercial.OutboxStatePending, "lease_until": now})
+		if eventUpdate.Error != nil {
+			return eventUpdate.Error
+		}
+		if eventUpdate.RowsAffected != 1 {
+			return fmt.Errorf("fulfillment event lease lost")
+		}
+		return nil
+	})
+	if err != nil {
+		// Do not include the internal event key or SQL arguments in logs.
+		return fmt.Errorf("invalid winner attention persistence failed")
 	}
-	return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+	return nil
+}
+
+func (s *FulfillmentService) completeFulfilledEvent(ctx context.Context, ev repocommercial.OutboxEvent, orderID string) error {
+	now := s.now()
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		orderUpdate := tx.Model(&repocommercial.OrderRow{}).Where("id = ? AND state = ?", orderID, domain.OrderStatePaid).
+			Updates(map[string]interface{}{"state": domain.OrderStateFulfilled, "version": gorm.Expr("version + 1")})
+		if orderUpdate.Error != nil {
+			return orderUpdate.Error
+		}
+		if orderUpdate.RowsAffected == 0 {
+			var order repocommercial.OrderRow
+			if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
+				return err
+			}
+			if order.State != domain.OrderStateFulfilled {
+				return fmt.Errorf("order %s cannot complete fulfillment from state %s", orderID, order.State)
+			}
+		}
+		if err := tx.Model(&FulfillmentExceptionRow{}).Where("event_key = ? AND state = ?", ev.EventKey, "open").
+			Updates(map[string]interface{}{"state": "resolved", "updated_at": now, "resolved_at": now}).Error; err != nil {
+			return err
+		}
+		eventUpdate := tx.Model(&repocommercial.OutboxEvent{}).
+			Where("event_key = ? AND lease_token = ?", ev.EventKey, ev.LeaseToken).
+			Updates(map[string]interface{}{"state": repocommercial.OutboxStateSent, "lease_until": now})
+		if eventUpdate.Error != nil {
+			return eventUpdate.Error
+		}
+		if eventUpdate.RowsAffected != 1 {
+			return fmt.Errorf("fulfillment event lease lost")
+		}
+		return nil
+	})
 }
 
 // overPaymentPayload mirrors the over_payment outbox payload written by
@@ -566,7 +647,7 @@ func (s *FulfillmentService) subscriptionPurchase(ctx context.Context, row repoc
 }
 
 func (s *FulfillmentService) quarantineFulfillEvent(ctx context.Context, ev repocommercial.OutboxEvent, reason string) error {
-	logger.Warnf(ctx, "[CommercialFulfillment] quarantining event %s: %s", ev.EventKey, reason)
+	logger.Warnf(ctx, "[CommercialFulfillment] quarantining fulfillment event: %s", reason)
 	return s.completeEvent(ctx, ev, repocommercial.OutboxStateDead)
 }
 
