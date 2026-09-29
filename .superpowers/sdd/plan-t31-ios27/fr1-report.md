@@ -56,4 +56,4 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fr1-r3-brief.md`; base `22195943262b
 - `pnpm --filter @weknora/mobile exec expo install --check`: first invocation failed transiently with `read ECONNRESET`; separate retry exited 0 with `Dependencies are up to date`.
 - Retained production checker printed `FRAMEWORK_MODE=source-expo-modules` and `FRAMEWORK_CLOSURE_OK`; executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
 - `git diff --check`: pass. No native build or evidence changes.
-- Round-3 implementation commit: pending.
+- Round-3 implementation commit: `362b474e84acaa07bb89f790cd3169f8888f7333`.
