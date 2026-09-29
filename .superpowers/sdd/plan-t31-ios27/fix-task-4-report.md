@@ -66,4 +66,4 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r2-brief.md`; addresses f
 - Retained app check: `python3 apps/mobile/scripts/verify-ios-framework-closure.py apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app apps/mobile/ios/Podfile.properties.json` → `FRAMEWORK_MODE=source-expo-modules`, `FRAMEWORK_CLOSURE_OK`. The executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
 - Full suite: `pnpm --filter @weknora/mobile test` — 310 total, 296 pass, 14 opt-in skips, 0 fail. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
 - The additional `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` change asserts the Release script passes both the `.app` and generated Podfile properties to the checked-in production checker.
-- Repair commit: pending.
+- Round-2 repair commit: `0311f57e1f03ee54c7e1b967ba16dda92a92c603`.
