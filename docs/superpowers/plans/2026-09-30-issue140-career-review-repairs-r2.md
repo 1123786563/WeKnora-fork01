@@ -157,18 +157,18 @@
 
 **Files:** Career persistence/model/migration and repository seams, `internal/modules/career` operation admission and deletion paths, focused Career tests, and narrow Workbench/storage adapters only if fencing tokens are required.
 
-**Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, and export storage writes/removals. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Keep database transactions short; never hold one across rendering, object storage, or Workbench calls.
+**Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, export storage writes/removals, and due-rule dispatch claims. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Application linking, material publication and rule-period claims must be admitted by the gate before external Workbench/storage/search effects; rule period persistence and its lifecycle claim must commit atomically so deletion cannot slip between them. Keep database transactions short; never hold one across rendering, object storage, Workbench or search network calls.
 
 **Steps:**
 
-- [ ] Add deterministic two-Office tests with a shared database/storage/linker: pause an application linker and material writer after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while either admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
+- [ ] Add deterministic two-Office tests with a shared database/storage/linker/search seam: pause an application linker, material writer and rule search after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while any admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
 - [ ] Run the regressions and record the current cross-instance leak/order failure.
-- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
+- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Integrate rule-period claim creation and lifecycle admission in the same transaction. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
 - [ ] Ensure SQLite and PostgreSQL transitions serialize on the same durable row with conditional updates/row locks, and that failure or process restart leaves a retryable, non-terminal state.
 - [ ] Run focused race and recovery tests, relevant Career/Workbench/container suites, migration tests, and `git diff --check`; expected: two Offices observe one ordering and no effect can appear after a successful deletion receipt.
 - [ ] Commit owned paths and report schema IDs, claim recovery behavior, and exact test evidence.
 
-**Acceptance:** Across separately constructed handlers/processes, every application link or material object effect is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
+**Acceptance:** Across separately constructed handlers/processes, every application link, material object effect and paid rule-period dispatch is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
 
 ## Task 14: Correctly report saved preparation edits when follow-up reads fail
 
@@ -229,6 +229,45 @@
 - [ ] Commit only the owned Mini Program files and report exact scope-switch, consent, malformed-receipt, and post-commit-cleanup evidence.
 
 **Acceptance:** Authorization cannot cross account scope or survive explicit opt-out as an implicit new consent; malformed receipts stop safely; once an edit receipt is committed, cleanup/readback failure cannot label the edit unsubmitted.
+
+## Task 17: Preserve rule edits across active runs and serialize dispatch safely with deletion
+
+**Dependency:** Task 11 implementation and Task 13 lifecycle gate contract. Use Task 13's transaction-scoped lifecycle-admission seam; do not integrate before Task 13's appended gate migration and API are verified.
+
+**Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
+
+**Files:** `internal/modules/career/search_rule.go` and tests, lifecycle-gate integration at the rule claim transaction, `internal/database/career_migration_test.go`, and paired page-index migration files at SQLite 144 / versioned 223 (Task 13 owns SQLite 143 / versioned 222). Do not renumber existing migration IDs.
+
+**Consumes / produces:** Preserve the durable `started` run and same-request recovery from Task 11. Advance `last_period` and the next scheduled instant atomically with the rule-period claim; terminalization must write only run/todo results and may not change a later edit's `next_due_at`, revision or `updated_at`. Acquire rows in the same profile→rule lock order as `SetRule`; SQLite must establish a writer/CAS point on `(scope,rule,revision,status,last_period,next_due_at)` and fail/re-read on busy/stale outcomes. Create the lifecycle claim in that same transaction, and keep it until durable run terminalization; deletion then cannot race a newly committed due search. Bound list reads to 50 summaries, select only summary columns, version the owner-bound cursor, and add index `(tenant_id,user_id,updated_at DESC,id ASC)` through migration 144/223.
+
+**Steps:**
+
+- [ ] Add a controlled claim→enabled edit→run completion test; assert exact edited schedule/revision/updatedAt survive. Add lock-order/concurrent pause-vs-claim test and deletion-vs-rule-claim test using two Office instances/shared DB. Add query-plan or schema assertion for the keyset index and reject unknown cursor versions.
+- [ ] Preserve existing production usage evidence: `usageReservationRecord` is unique by `(tenant,user,requestId)`, `admitSearchUsage` returns success for an existing reserved/settled request, and `TestUsageSearchOnceReservationSettlesAndReplayIsIdempotent` asserts two admissions for one request retain one unit. Finding F3 from `/tmp/issue140-r2-task11-review.md` is ruled out for the production gate by this evidence; no new gate architecture is needed for it.
+- [ ] Run tests RED, then move period/schedule advancement into the claim transaction; ensure both PostgreSQL lock order and SQLite conditional write serialize with `SetRule`; use the transaction-scoped deletion-gate claim. Make terminalization update only run/todos. Add page index migration 144/223 and versioned cursor/summary-only query.
+- [ ] Run `go test -count=1 ./internal/modules/career`, `go test -count=1 ./internal/database` including migration 143/144 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
+- [ ] Commit only owned backend/schema files and report race timelines, lock order, lifecycle-claim ordering, index migration and quota-idempotency ruling.
+
+**Acceptance:** A committed edit is never overwritten by a running period; pause/edit and dispatch claim share a deadlock-safe linearization order across PostgreSQL and SQLite; deletion is ordered against rule dispatch; list pagination is indexed, summary-only and cursor-versioned. Existing quota idempotency remains covered by the current ledger test.
+
+## Task 18: Decode nullable schedule fields consistently across rule list, detail and receipts
+
+**Dependency:** Task 17's backend serialization contract; can be implemented in a separate API-client worktree after Task 12 is integrated to avoid overlapping file ownership.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/api-client/src/career.ts` and `career.test.ts`; narrowly scoped RulePage expectations only if a TypeScript nullable type requires it.
+
+**Consumes / produces:** `RuleSummary`, `RuleView` and `SetRuleReceipt` all contain required `nextDueAt: string | null`. Enabled rules require a valid timestamp; paused/disabled rules require null. Reject missing, malformed timestamp, and null for enabled responses. Keep pagination cursors and owner scope checks unchanged.
+
+**Steps:**
+
+- [ ] Add contract tests for enabled, paused and disabled list, detail and write receipt JSON; run RED against the current optional-string detail/receipt types.
+- [ ] Update client types and strict decoders for required nullable fields; preserve the valid Task 12 list behavior and fail closed on inconsistent status/time pairs.
+- [ ] Run Career API-client tests, RulePage tests, Web typecheck and `git diff --check`.
+- [ ] Commit only owned API/client test files and report exact JSON fixtures and command results.
+
+**Acceptance:** Every rule read/write surface has the same explicit timestamp-or-null schedule field and validates its status relationship.
 
 ## Task 4: Bind submitted progress to an actual submission record
 
