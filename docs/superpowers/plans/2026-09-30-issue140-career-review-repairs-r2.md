@@ -334,7 +334,7 @@
 
 ## Task 22: Project each recorded submission into the authoritative progress timeline
 
-**Dependency:** Task 4 commit `04f08470cdd2862268abf911b04715c3685ab79f`; review finding T4-1 in `/tmp/issue140-r2-task4-review.md`. Preserve the generic-submission guard. Sequence any migration after Task21's final migration decision; do not allocate the same migration pair concurrently.
+**Dependency:** Task 4 commit `04f08470cdd2862268abf911b04715c3685ab79f`; review finding T4-1 in `/tmp/issue140-r2-task4-review.md`; Task21/26/30/32 lifecycle gate is verified and integrated. Preserve the generic-submission guard. Task17 is assigned SQLite145/versioned224; if this task requires a new persisted link column, reserve SQLite146/versioned225 and use a dedicated submission migration test file so Task17's `career_migration_test.go` remains disjoint.
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
@@ -347,7 +347,7 @@
 - [ ] Add RED tests that record both a known-export and explicit-unknown submission, read `ApplicationProgress`, and assert one linked submitted event, correct stage, channel/time/version facts and stable replay without duplicate events.
 - [ ] Test transaction rollback so a failed progress-event write leaves neither a submission nor a timeline event.
 - [ ] Implement an atomic link or deterministic projection from the submission record; reject generic submitted/resubmitted events as Task4 already requires.
-- [ ] Append migration IDs after the final Task21 pair if a `submission_id` link column is necessary; test up/down and uniqueness without renumbering existing IDs.
+- [ ] If a `submission_id` link column is necessary, append SQLite146/versioned225 after Task17's 145/224, add up/down and uniqueness coverage in the task-owned submission migration test file, and do not modify `career_migration_test.go`.
 - [ ] Run focused submission/progress tests, Career package and database migrations, and `git diff --check`; run PostgreSQL transactional test when configured, otherwise report the limitation.
 - [ ] Commit only backend event/link/test/schema files and document replay, ordering and correction semantics.
 
