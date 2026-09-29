@@ -24,3 +24,13 @@
 
 ## Remaining risk
 The fixture contract and script ordering are covered, but a successful clean SDK57 prebuild and stale-tree sentinel removal remain unverified until this worktree can resolve the declared SDK57 plugin dependencies. Independent review remains pending.
+
+## Primary integration-worktree verification addendum (2026-09-29)
+The implementation agent's first prebuild attempt ran before the shared integration worktree's ignored `node_modules` links were refreshed and resolved Expo 55. The primary then ran `pnpm install --frozen-lockfile` in this worktree; package inspection confirmed Expo `57.0.26` and `expo-build-properties 57.0.22`. Re-run evidence on the exact committed code:
+
+- `pnpm --filter @weknora/mobile exec expo prebuild -p ios --clean --no-install` — PASS, generated SDK57 iOS project.
+- `pnpm --filter @weknora/mobile exec tsx scripts/verify-ios-scene-project.ts ios` — PASS.
+- Added ignored `apps/mobile/ios/STALE_SDK55_SENTINEL`, reran the clean prebuild command, verified the sentinel was removed, then reran the generated project contract — PASS. Generated output remains ignored/untracked.
+- Direct generated output inspection confirmed `EXExpoAppSceneDelegate`, `ExpoReactNativeFactoryProvider`, `RCTLinkingManager` app URL/continue-user-activity forwarding and Xcode/Pod deployment target `16.4`.
+
+The earlier prebuild failure is superseded by this successful re-run; no CocoaPods install or full canonical Release script was repeated because this check's purpose was clean regeneration/contract and prior Release build evidence exists on the implementation snapshot.

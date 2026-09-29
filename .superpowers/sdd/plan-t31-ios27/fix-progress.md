@@ -22,3 +22,8 @@
 - Status: implementation complete; clean SDK57 output validation pending environment dependency repair; independent task review pending.
 - Ruling: copied the read-only review into the integration workspace and corrected ADR pointer to `docs/adr/0005-weknora-native-mobile-client.md`; added `apps/mobile/scripts/verify-ios-scene-project.ts` as explicit owned helper to keep validation reusable/testable. Cost if wrong: small task-scope expansion, bounded to the exact generated native project contract requested by R3.
 - Updated brief correction committed `3bf8d0082`; implementation agent resumed with frontend_implementer role.
+
+## Task R1+R3 integration verification addendum
+- Agent initial report noted `expo-build-properties` resolution failure under stale Expo 55 worktree modules. Ruling: run `pnpm install --frozen-lockfile` in the integration worktree before prebuild because its tracked SDK57 manifest/lock were integrated while ignored node_modules links remained from SDK55; risk is no source changes, only worktree dependency alignment.
+- Re-ran clean SDK57 prebuild successfully; contract check passed. Added `apps/mobile/ios/STALE_SDK55_SENTINEL`, repeated `--clean` prebuild, confirmed sentinel removal, then contract passed. Xcode generated output is ignored. See Task 1 report addendum.
+- Task R1+R3: running review; implementation commit `a74d4280588009fcb481afda6e8414548a9c63b6`.
