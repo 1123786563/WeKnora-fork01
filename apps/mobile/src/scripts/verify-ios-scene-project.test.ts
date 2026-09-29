@@ -113,6 +113,30 @@ test('generated SDK57 scene checker rejects an unclosed final callback before Ap
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 scene checker ignores matching callbacks outside AppDelegate', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const helper = `class HelperDelegate {
+    override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+      return RCTLinkingManager.application(app, open: url, options: options)
+    }
+    override func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+      return RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    }
+  }
+`;
+    const withoutCallbacks = source.replace(/    override func application\(_ app[\s\S]*?    \}\n    override func application\(_ application[\s\S]*?    \}\n/, '');
+    assert.notEqual(withoutCallbacks, source);
+    writeFileSync(appDelegate, `${helper}${withoutCallbacks}`);
+    const messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /open-URL callback must forward/);
+    assert.match(messages, /universal-link callback must forward/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 scene checker rejects unknown nested markup in plist scalars', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {

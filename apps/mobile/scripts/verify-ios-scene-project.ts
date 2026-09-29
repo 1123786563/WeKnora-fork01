@@ -38,18 +38,18 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
       if (!swiftCode.includes('ExpoReactNativeFactoryProvider')) {
         issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
       }
-      const classBoundary = swiftTypeBodyBoundary(swiftCode, 'AppDelegate');
-      const openUrlBody = classBoundary === undefined
+      const classRange = swiftTypeBodyRange(swiftCode, 'AppDelegate');
+      const openUrlBody = classRange === undefined
         ? { kind: 'malformed' as const }
-        : swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/, classBoundary);
+        : swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/, classRange);
       if (openUrlBody.kind === 'malformed') {
         issues.push('AppDelegate.swift callback structure could not be analyzed (open-URL)');
       } else if (openUrlBody.kind === 'absent' || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(openUrlBody.body)) {
         issues.push('AppDelegate open-URL callback must forward to RCTLinkingManager.application');
       }
-      const universalLinkBody = classBoundary === undefined
+      const universalLinkBody = classRange === undefined
         ? { kind: 'malformed' as const }
-        : swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/, classBoundary);
+        : swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*continue\s+\w+\s*:\s*NSUserActivity\b/, classRange);
       if (universalLinkBody.kind === 'malformed') {
         issues.push('AppDelegate.swift callback structure could not be analyzed (universal-link)');
       } else if (universalLinkBody.kind === 'absent' || !/\bRCTLinkingManager\s*\.\s*application\s*\(/.test(universalLinkBody.body)) {
@@ -242,37 +242,40 @@ type SwiftMethodBodyResult =
   | { kind: 'extracted'; body: string }
   | { kind: 'malformed' };
 
-function swiftTypeBodyBoundary(source: string, typeName: string): number | undefined {
+type SwiftTypeBodyRange = { start: number; end: number };
+
+function swiftTypeBodyRange(source: string, typeName: string): SwiftTypeBodyRange | undefined {
   const declarations = [...source.matchAll(new RegExp(`\\bclass\\s+${typeName}\\b[^\\{]*\\{`, 'g'))];
   if (declarations.length !== 1) return undefined;
   const declaration = declarations[0];
-  const open = declaration.index! + declaration[0].lastIndexOf('{');
+  const start = declaration.index! + declaration[0].lastIndexOf('{');
   let depth = 1;
-  for (let index = open + 1; index < source.length; index++) {
+  for (let index = start + 1; index < source.length; index++) {
     if (source[index] === '{') depth++;
-    if (source[index] === '}') { depth--; if (depth === 0) return index; }
+    if (source[index] === '}') { depth--; if (depth === 0) return { start, end: index }; }
   }
   return undefined;
 }
 
-function swiftMethodBody(source: string, signature: RegExp, boundary: number): SwiftMethodBodyResult {
-  const match = signature.exec(source);
+function swiftMethodBody(source: string, signature: RegExp, range: SwiftTypeBodyRange): SwiftMethodBodyResult {
+  const scopedSource = source.slice(range.start + 1, range.end);
+  const match = signature.exec(scopedSource);
   if (!match) return { kind: 'absent' };
-  if (match.index >= boundary) return { kind: 'malformed' };
-  const openParameters = source.indexOf('(', match.index);
+  const matchIndex = match.index + range.start + 1;
+  const openParameters = source.indexOf('(', matchIndex);
   let parentheses = 0;
   let closeParameters = -1;
-  for (let index = openParameters; index < boundary; index++) {
+  for (let index = openParameters; index < range.end; index++) {
     if (source[index] === '(') parentheses++;
     else if (source[index] === ')' && --parentheses === 0) { closeParameters = index; break; }
     else if (source[index] === '{' || source[index] === '}') return { kind: 'malformed' };
   }
-  if (closeParameters < 0 || closeParameters >= boundary) return { kind: 'malformed' };
+  if (closeParameters < 0 || closeParameters >= range.end) return { kind: 'malformed' };
   const opening = /^\s*->\s*Bool\s*\{/.exec(source.slice(closeParameters + 1));
   if (!opening) return { kind: 'malformed' };
   const open = closeParameters + 1 + opening[0].length - 1;
   let depth = 1;
-  for (let index = open + 1; index < boundary; index++) {
+  for (let index = open + 1; index < range.end; index++) {
     if (source[index] === '{') depth++;
     if (source[index] === '}') { depth--; if (depth === 0) return { kind: 'extracted', body: source.slice(open + 1, index) }; }
     if (source.startsWith('override func ', index) && source.slice(Math.max(0, index - 8), index).includes('\n')) return { kind: 'malformed' };
