@@ -298,12 +298,18 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
   const expiredBody = JSON.stringify({ success: false, code: 'artifact_grant_expired' });
   await freshLogin();
   stub.use(call => {
-    if (call.kind === 'request' && new URL(call.options.url).pathname.endsWith('/signed-url')) {
-      grants++;
-      stub.succeed(call, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=${grants}`, expires_at: '2026-09-24T00:15:00Z' } } });
+    if (call.kind === 'request') {
+      const path = new URL(call.options.url).pathname;
+      if (path === '/api/v1/auth/me') { stub.succeed(call, { data: me() }); return; }
+      if (path.endsWith('/signed-url')) {
+        grants++;
+        stub.succeed(call, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=${grants}`, expires_at: '2026-09-24T00:15:00Z' } } });
+        return;
+      }
+      call.options.fail({ errMsg: `unexpected request ${path}` });
       return;
     }
-    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: 'unexpected request' }); return; }
+    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: `unexpected ${call.kind}` }); return; }
     downloads++;
     if (downloads === 1) {
       stub.state.fileContents.set('/tmp/expired.json', expiredBody);
@@ -348,6 +354,11 @@ test('assembly: invalid signed-download 401 is an authorization failure rather t
   await freshLogin();
   const invalidBody = JSON.stringify({ success: false, code: 'artifact_grant_invalid' });
   stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/me') {
+      stub.succeed(call, { data: me() });
+      return;
+    }
+    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: `unexpected ${call.kind}` }); return; }
     stub.state.fileContents.set('/tmp/invalid-grant.json', invalidBody);
     stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/invalid-grant.json' });
   });
@@ -370,6 +381,11 @@ test('assembly: unknown signed-download 401 body defaults to denial without app-
   await freshLogin();
   const unknownBody = JSON.stringify({ success: false, code: 'different_auth_failure', detail: 'x'.repeat(5000) });
   stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/me') {
+      stub.succeed(call, { data: me() });
+      return;
+    }
+    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: `unexpected ${call.kind}` }); return; }
     stub.state.fileContents.set('/tmp/unknown-grant.json', unknownBody);
     stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/unknown-grant.json' });
   });
@@ -387,13 +403,21 @@ test('assembly: unknown signed-download 401 body defaults to denial without app-
 test('assembly: a scope switch during transfer prevents opening and any private copy', async () => {
   await freshLogin();
   stub.use(call => {
-    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/logout') {
-      stub.succeed(call, { data: { success: true } });
+    if (call.kind === 'request') {
+      const path = new URL(call.options.url).pathname;
+      if (path === '/api/v1/auth/me') { stub.succeed(call, { data: me() }); return; }
+      if (path === '/api/v1/auth/logout') { stub.succeed(call, { data: { success: true } }); return; }
+      call.options.fail({ errMsg: `unexpected request ${path}` });
+      return;
     }
   });
   const files = await import('../src/platform/files.ts');
   const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=old', 'report.pdf');
-  await new Promise(resolve => setImmediate(resolve));
+  const downloadDeadline = Date.now() + 1500;
+  while (!stub.state.calls.some(call => call.kind === 'downloadFile') && Date.now() < downloadDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(stub.state.calls.some(call => call.kind === 'downloadFile'), 'timed out waiting for the native download call');
   const download = stub.lastCall('downloadFile');
   const logout = runtime.auth.logout();
   stub.succeed(download, { tempFilePath: '/tmp/old-scope.pdf' });
