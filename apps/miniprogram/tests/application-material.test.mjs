@@ -76,6 +76,7 @@ async function freshLogin(extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     'GET /api/v1/career/open': open3,
     ...extraRoutes,
   });
@@ -102,7 +103,7 @@ test('A1: evaluation posts the frozen contract and returns the same receipt the 
   assert.equal(receipt.profileRevision, 3);
   const body = careerCall('/evaluations')[0].options.data;
   assert.deepEqual(Object.keys(body).sort(), ['opportunityId', 'requestId', 'snapshotId'], 'body must match the frozen evaluation contract (DisallowUnknownFields)');
-  assert.equal(careerCall('/evaluations')[0].options.header.Authorization, 'Bearer t1', 'identity flows through the authenticated client');
+  assert.equal(careerCall('/evaluations')[0].options.header.Authorization ?? careerCall('/evaluations')[0].options.header.authorization, 'Bearer t1', 'identity flows through the authenticated client');
 });
 
 test('A2: application creation posts the frozen CreateApplicationInput against the same backend as web', async () => {
@@ -118,7 +119,7 @@ test('A2: application creation posts the frozen CreateApplicationInput against t
   assert.equal(new URL(call.options.url).pathname, '/api/v1/career/applications');
   assert.deepEqual(Object.keys(call.options.data).sort(), ['batchIdentity', 'continueDespiteHardFailure', 'evaluationId', 'expectedRevision', 'opportunityId', 'requestId', 'snapshotId'], 'the body must match the frozen contract (DisallowUnknownFields)');
   assert.equal(call.options.data.expectedRevision, 3, 'expected revision comes from the shared desk snapshot');
-  assert.equal(call.options.header.Authorization, 'Bearer t1');
+  assert.equal(call.options.header.Authorization ?? call.options.header.authorization, 'Bearer t1');
 });
 
 test('UI gate: hard-ineligible applications require acknowledgement before enabling or submitting', async () => {
@@ -278,7 +279,7 @@ test('E1: a scope change invalidates an in-flight application write — nothing 
   });
   await career.loadCareer();
   const pending = career.createApplication({ opportunityId: 'opp-1', snapshotId: 'snap-1', evaluationId: 'ev-1', batchIdentity: '批', continueDespiteHardFailure: false });
-  await runtime.auth.clear(); // logout invalidates the scope
+  await runtime.auth.logout(); // logout invalidates the scope
   stub.succeed(stub.lastCall('request'), { data: application() });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(career.pendingApplication(), null, 'a stale response must not persist a recovery intent for the wrong scope');
@@ -300,7 +301,7 @@ test('F1: a download redeems the grant authenticated, verifies the digest, opens
   assert.deepEqual(Object.keys(grantCall.options.data).sort(), ['format', 'ttlSeconds'], 'the signed-url body stays frozen');
   const download = stub.state.calls.find(c => c.kind === 'downloadFile');
   assert.ok(download, 'native downloadFile used');
-  assert.equal(download.options.header.Authorization, 'Bearer t1', 'the redemption carries the auth header');
+  assert.equal(download.options.header.Authorization ?? download.options.header.authorization, 'Bearer t1', 'the redemption carries the auth header');
   assert.equal(new URL(download.options.url).pathname, '/api/v1/career/materials/mat-1/exports/exp-1/download');
   assert.equal(new URL(download.options.url).searchParams.get('format'), 'pdf');
   assert.equal(new URL(download.options.url).searchParams.get('signature'), 'sig-1');
@@ -599,7 +600,7 @@ test('OCR3-002 F4: logout during the redemption download aborts it — no copy, 
   await career.loadCareer();
   const pending = career.openMaterialExport('mat-1', 'exp-1', 'pdf');
   await waitForDownloadCall();
-  await runtime.auth.clear(); // 登出 → scope.switchTo → abortAll → 在途下载被中断
+  await runtime.auth.logout(); // 登出 → scope.switchTo → abortAll → 在途下载被中断
   await assert.rejects(pending, error => /下载失败|SCOPE_CHANGED|abort/i.test(`${error.message} ${error.cause?.errMsg ?? ''}`));
   assert.equal(stub.state.copies.length, 0, 'the aborted download never materializes a private copy');
   assert.equal(stub.state.openedDocuments.length, 0, 'the old account document is never opened');
@@ -614,7 +615,7 @@ test('OCR3-002 F5: a download that lands after logout is SCOPE_CHANGED — the s
   await career.loadCareer();
   const pending = career.openMaterialExport('mat-1', 'exp-1', 'pdf');
   await waitForDownloadCall();
-  await runtime.auth.clear(); // 旧空间的兑付响应在途到达
+  await runtime.auth.logout(); // 旧空间的兑付响应在途到达
   stub.state.fileContents.set('http://tmp/dl.pdf', PDF_BYTES);
   stub.succeed(stub.lastCall('downloadFile'), { statusCode: 200, tempFilePath: 'http://tmp/dl.pdf' });
   await assert.rejects(pending, error => /SCOPE_CHANGED/i.test(error.message));

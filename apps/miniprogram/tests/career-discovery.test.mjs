@@ -51,6 +51,7 @@ async function freshLogin(extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     ...extraRoutes,
   });
   await runtime.auth.login('u@example.test', 'pw');
@@ -71,7 +72,7 @@ test('A1: opening the desk reads the same server-side profile and never mints a 
   assert.equal(career.needsOnboarding(view), false);
   const open = careerCall('/career/open')[0];
   assert.ok(open, 'open request recorded');
-  assert.equal(open.options.header.Authorization, 'Bearer t1', 'identity flows through the authenticated client');
+  assert.equal(open.options.header.Authorization ?? open.options.header.authorization, 'Bearer t1', 'identity flows through the authenticated client');
   const paths = stub.paths();
   assert.ok(!paths.some(p => p.includes('/auth/register')), 'the miniprogram never registers a new identity');
   assert.ok(!paths.some(p => /POST .*\/career/.test(p)), 'loading performs no career writes — linkage only');
@@ -152,7 +153,7 @@ test('C3: a scope change invalidates in-flight career reads — stale responses 
     'GET /api/v1/career/open': () => {/* hangs until the test answers */},
   });
   const pending = career.loadCareer();
-  await runtime.auth.clear(); // logout invalidates the scope
+  await runtime.auth.logout(); // logout invalidates the scope
   stub.succeed(stub.lastCall('request'), { data: { revision: 3, facts: [fact('城市', '上海')], proposals: [] } });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(career.careerDesk().snapshot, undefined, 'the stale response must not be applied');
@@ -302,7 +303,7 @@ test('D8: a scope change mid-search mints no recovery intent under any scope (se
   });
   await career.loadCareer();
   const pending = career.searchOnce('Go 工程师');
-  await runtime.auth.clear(); // 登出使作用域失效（此处刻意不清 wk:career:* 存储）
+  await runtime.auth.logout(); // 登出使作用域失效（此处刻意不清 wk:career:* 存储）
   stub.succeed(stub.lastCall('request'), { data: searchReceipt() });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(career.pendingSearch(), null, 'the new scope reads no intent');

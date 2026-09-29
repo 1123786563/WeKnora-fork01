@@ -80,6 +80,7 @@ async function freshLogin(extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: meA() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     'GET /api/v1/career/open': open3,
     ...extraRoutes,
   });
@@ -104,7 +105,7 @@ test('A1: saving a rule posts the frozen T13 contract and persists the rule refe
   const body = ruleWrites()[0].options.data;
   assert.deepEqual(Object.keys(body).sort(), ['expectedRevision', 'intervalMinutes', 'query', 'requestId', 'status'], 'the body must match the frozen SetRuleInput (DisallowUnknownFields)');
   assert.equal(body.expectedRevision, 3, 'the rule CAS houses against the profile head revision — same domain as the web RulePage');
-  assert.equal(ruleWrites()[0].options.header.Authorization, 'Bearer t1');
+  assert.equal(ruleWrites()[0].options.header.Authorization ?? ruleWrites()[0].options.header.authorization, 'Bearer t1');
   assert.equal(platform.readStoredRuleId(), 'rule-1', 'the saved rule id is kept so a later entry re-opens the same rule');
 });
 
@@ -186,7 +187,7 @@ test('A5: a scope change invalidates an in-flight rule write — nothing is appl
   });
   await career.loadCareer();
   const pending = platform.saveRule({ query: '上海 前端开发 实习', intervalMinutes: 1440, status: 'enabled', expectedRevision: 3 });
-  await runtime.auth.clear(); // logout invalidates the scope
+  await runtime.auth.logout(); // logout invalidates the scope
   stub.succeed(stub.lastCall('request'), { data: ruleReceipt() });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(platform.pendingRuleWrite(), null, 'a stale response must not persist a recovery intent for the wrong scope');

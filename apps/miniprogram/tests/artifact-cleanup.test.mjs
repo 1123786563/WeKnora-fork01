@@ -30,6 +30,7 @@ function freshLogin() {
       const path = new URL(call.options.url).pathname;
       if (path === '/api/v1/auth/login') { stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }); return; }
       if (path === '/api/v1/auth/me') { stub.succeed(call, { data: me() }); return; }
+      if (path === '/api/v1/system/capabilities') { stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }); return; }
       call.options.fail({ errMsg: `no route for ${path}` });
       return;
     }
@@ -80,6 +81,7 @@ test('D3: 授权过期（401）的下载不产生任何私有副本，也没有�
       const path = new URL(call.options.url).pathname;
       if (path === '/api/v1/auth/login') { stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }); return; }
       if (path === '/api/v1/auth/me') { stub.succeed(call, { data: me() }); return; }
+      if (path === '/api/v1/system/capabilities') { stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }); return; }
       call.options.fail({ errMsg: `no route for ${path}` });
       return;
     }

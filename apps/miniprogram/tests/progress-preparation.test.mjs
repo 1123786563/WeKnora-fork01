@@ -74,6 +74,7 @@ async function freshLogin(me = meA, extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     'GET /api/v1/career/open': open3,
     ...extraRoutes,
   });
@@ -83,7 +84,7 @@ async function freshLogin(me = meA, extraRoutes = {}) {
 const careerCall = suffix => stub.state.calls.filter(c => new URL(c.options.url).pathname.startsWith('/api/v1/career') && (!suffix || new URL(c.options.url).pathname.includes(suffix)));
 const errorCode = error => error?.code;
 const progressWrites = () => stub.state.calls.filter(c => /\/progress(\/correct)?$/.test(new URL(c.options.url).pathname) && (c.options.method ?? 'GET') === 'POST');
-const logoutLikeRuntime = async () => { runtime.auth.clear(); clearPrivateCache(); career.resetCareerDesk(); };
+const logoutLikeRuntime = async () => { await runtime.auth.logout(); clearPrivateCache(); career.resetCareerDesk(); };
 
 // ---- A 组：时间线权威顺序 + 跨端更正并见 ----
 
@@ -113,7 +114,7 @@ test('A1: the timeline renders in the server-authoritative order and a cross-cli
   assert.equal(correction.kind, 'progress_corrected');
   assert.equal(correction.correctsEventId, 'evt-1');
   assert.equal(refreshed.revision, 3);
-  assert.equal(careerCall('/progress')[0].options.header.Authorization, 'Bearer t1');
+  assert.equal(careerCall('/progress')[0].options.header.Authorization ?? careerCall('/progress')[0].options.header.authorization, 'Bearer t1');
 });
 
 test('A2: appending posts the frozen progress contract with the manual source and the per-application revision', async () => {
@@ -221,7 +222,7 @@ test('B1: generating posts the frozen preparation contract and returns the submi
   const call = careerCall('/preparations')[0];
   assert.deepEqual(Object.keys(call.options.data).sort(), ['applicationId', 'expectedRevision', 'focus', 'requestId'], 'the body must match the frozen GeneratePreparationInput');
   assert.equal(call.options.data.expectedRevision, 3, 'the preparation CAS houses against the profile head revision');
-  assert.equal(call.options.header.Authorization, 'Bearer t1');
+  assert.equal(call.options.header.Authorization ?? call.options.header.authorization, 'Bearer t1');
 });
 
 test('B2: an unconfirmed submitted version answers the typed prompt state — never a silent latest-version fallback', async () => {
@@ -355,7 +356,7 @@ test('E1: a scope change invalidates an in-flight progress write — nothing is 
     'POST /api/v1/career/applications/app-1/progress': () => {/* hangs until the test answers */},
   });
   const pending = career.appendProgressEvent({ applicationId: 'app-1', eventType: 'submitted' }, 0);
-  await runtime.auth.clear(); // logout invalidates the scope
+  await runtime.auth.logout(); // logout invalidates the scope
   stub.succeed(stub.lastCall('request'), { data: prReceipt() });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(career.pendingProgressWrite(), null, 'a stale response must not persist a recovery intent for the wrong scope');

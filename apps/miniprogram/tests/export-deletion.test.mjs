@@ -96,6 +96,7 @@ async function freshLogin(extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     'GET /api/v1/career/open': open3,
     ...extraRoutes,
   });
@@ -119,7 +120,7 @@ test('A1: whole-space export posts the frozen two-field contract and returns the
   const call = careerCall('/exports').find(c => (c.options.method ?? 'GET') === 'POST');
   assert.deepEqual(Object.keys(call.options.data).sort(), ['expectedRevision', 'requestId'], 'body must match the frozen CareerExportInput (DisallowUnknownFields)');
   assert.equal(call.options.data.expectedRevision, 3, 'the pinned desk revision travels in the intent');
-  assert.equal(call.options.header.Authorization, 'Bearer t1', 'identity flows through the authenticated client');
+  assert.equal(call.options.header.Authorization ?? call.options.header.authorization, 'Bearer t1', 'identity flows through the authenticated client');
 });
 
 test('A2: the export archive carries all six segments the web inventory renders', async () => {
@@ -443,7 +444,7 @@ test('E1: a scope change discards a stale deletion response and persists no inte
   });
   await career.loadCareer();
   const pending = career.deleteWholeSpace();
-  await runtime.auth.clear(); // logout invalidates the scope
+  await runtime.auth.logout(); // logout invalidates the scope
   stub.succeed(stub.lastCall('request'), { data: deletedReceipt() });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(career.pendingSpaceDeletion(), null, 'a stale response must not persist a recovery intent for the wrong scope');

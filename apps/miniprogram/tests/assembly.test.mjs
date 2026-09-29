@@ -44,6 +44,7 @@ function freshLogin(extraRoutes = {}) {
   backend({
     'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: { code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } } }),
     ...extraRoutes,
   });
   return runtime.auth.login('u@example.test', 'pw');
@@ -105,7 +106,7 @@ test('assembly: a response landing after a scope change is discarded (SCOPE_CHAN
     'GET /api/v1/execution-targets': () => {/* 挂起：等切换后再响应 */}
   });
   const pending = runtime.client.request({ method: 'GET', path: '/api/v1/execution-targets' });
-  runtime.auth.clear(); // 注销/切空间使旧 scope 失效
+  runtime.auth.logout(); // 注销/切空间使旧 scope 失效
   const call = stub.lastCall('request');
   stub.succeed(call, { data: { success: true, data: [{ id: 'x', kind: 'platform', state: 'active' }] } });
   // 中止先于响应到达：表现为 CANCELLED（已中止）或 SCOPE_CHANGED（丢弃），都证明旧数据未回写。
@@ -281,7 +282,9 @@ test('assembly: scope switch during refresh rejects before downloading protected
   });
   const files = await import('../src/platform/files.ts');
   const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=scope', 'report.pdf');
-  while (!releaseMe) await new Promise(resolve => setImmediate(resolve));
+  const releaseDeadline = Date.now() + 1500;
+  while (!releaseMe && Date.now() < releaseDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.ok(releaseMe, 'timed out waiting for the /auth/me refresh request');
   runtime.auth.scope.switchTo({ origin: ORIGIN, userId: 'u1', tenantId: '2' });
   releaseMe();
   await assert.rejects(pending, /SCOPE_CHANGED/);
@@ -387,7 +390,7 @@ test('assembly: a scope switch during transfer prevents opening and any private 
   const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=old', 'report.pdf');
   await new Promise(resolve => setImmediate(resolve));
   const download = stub.lastCall('downloadFile');
-  runtime.auth.clear();
+  runtime.auth.logout();
   stub.succeed(download, { tempFilePath: '/tmp/old-scope.pdf' });
   await assert.rejects(pending, /SCOPE_CHANGED/);
   assert.equal(stub.state.openedDocuments.length, 0);
@@ -400,7 +403,7 @@ test('assembly: scope change while obtaining a grant prevents an old-scope downl
   const pending = workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 });
   await new Promise(resolve => setImmediate(resolve));
   const grant = stub.lastCall('request');
-  runtime.auth.clear();
+  runtime.auth.logout();
   stub.succeed(grant, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=old`, expires_at: '2026-09-24T00:15:00Z' } } });
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(stub.state.calls.some(call => call.kind === 'downloadFile'), false);
