@@ -137,6 +137,32 @@ test('generated SDK57 scene checker ignores matching callbacks outside AppDelega
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('generated SDK57 scene checker ignores callbacks in a nested helper type', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
+  try {
+    fixture(root);
+    const appDelegate = join(root, 'WeKnora', 'AppDelegate.swift');
+    const source = readFileSync(appDelegate, 'utf8');
+    const nestedHelper = `    class HelperDelegate: ExpoAppDelegate {
+      override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        return RCTLinkingManager.application(app, open: url, options: options)
+      }
+      override func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        return RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+      }
+    }
+`;
+    const withoutCallbacks = source.replace(/    override func application\(_ app[\s\S]*?    \}\n    override func application\(_ application[\s\S]*?    \}\n/, '');
+    assert.notEqual(withoutCallbacks, source);
+    const nestedSource = withoutCallbacks.replace('class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {', 'class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {\n' + nestedHelper);
+    assert.notEqual(nestedSource, withoutCallbacks);
+    writeFileSync(appDelegate, nestedSource);
+    const messages = verifyIosSceneProject(root).join('\n');
+    assert.match(messages, /open-URL callback must forward/);
+    assert.match(messages, /universal-link callback must forward/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('generated SDK57 scene checker rejects unknown nested markup in plist scalars', () => {
   const root = mkdtempSync(join(tmpdir(), 'ios-scene-contract-'));
   try {

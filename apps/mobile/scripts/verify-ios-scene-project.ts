@@ -38,7 +38,8 @@ export function verifyIosSceneProject(iosDirectory: string): string[] {
       if (!swiftCode.includes('ExpoReactNativeFactoryProvider')) {
         issues.push('AppDelegate must conform to ExpoReactNativeFactoryProvider');
       }
-      const classRange = swiftTypeBodyRange(swiftCode, 'AppDelegate');
+      const classBodyRange = swiftTypeBodyRange(swiftCode, 'AppDelegate');
+      const classRange = classBodyRange && { ...classBodyRange, directMemberDepth: 1 };
       const openUrlBody = classRange === undefined
         ? { kind: 'malformed' as const }
         : swiftMethodBody(swiftCode, /\boverride\s+func\s+application\s*\(\s*_?\s*\w+\s*:\s*UIApplication\s*,\s*open\s+\w+\s*:\s*URL\b/, classRange);
@@ -243,6 +244,7 @@ type SwiftMethodBodyResult =
   | { kind: 'malformed' };
 
 type SwiftTypeBodyRange = { start: number; end: number };
+type SwiftTypeMemberRange = SwiftTypeBodyRange & { directMemberDepth: number };
 
 function swiftTypeBodyRange(source: string, typeName: string): SwiftTypeBodyRange | undefined {
   const declarations = [...source.matchAll(new RegExp(`\\bclass\\s+${typeName}\\b[^\\{]*\\{`, 'g'))];
@@ -257,11 +259,20 @@ function swiftTypeBodyRange(source: string, typeName: string): SwiftTypeBodyRang
   return undefined;
 }
 
-function swiftMethodBody(source: string, signature: RegExp, range: SwiftTypeBodyRange): SwiftMethodBodyResult {
+function swiftMethodBody(source: string, signature: RegExp, range: SwiftTypeMemberRange): SwiftMethodBodyResult {
   const scopedSource = source.slice(range.start + 1, range.end);
-  const match = signature.exec(scopedSource);
+  const matches = [...scopedSource.matchAll(new RegExp(signature.source, signature.flags.includes('g') ? signature.flags : `${signature.flags}g`))];
+  const match = matches.find((candidate) => {
+    const absoluteIndex = candidate.index! + range.start + 1;
+    let depth = 1;
+    for (let index = range.start + 1; index < absoluteIndex; index++) {
+      if (source[index] === '{') depth++;
+      else if (source[index] === '}') depth--;
+    }
+    return depth === range.directMemberDepth;
+  });
   if (!match) return { kind: 'absent' };
-  const matchIndex = match.index + range.start + 1;
+  const matchIndex = match.index! + range.start + 1;
   const openParameters = source.indexOf('(', matchIndex);
   let parentheses = 0;
   let closeParameters = -1;
