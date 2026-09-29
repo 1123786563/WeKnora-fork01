@@ -18,7 +18,7 @@
 ## Patch and commit
 
 - Exact patch SHA256 (pre-report source/test patch): `ebfdd71646815aa8c305dfcc4c62447f29ad719688adb64cda80f708dda2f4a5`.
-- Commit: recorded in the final report update after commit creation.
+- Commit: `9937fa095af4ac5ec68dde959b30e9aa60cbd2a7` (`fix(mobile): ignore Swift comments in URL contract checks`).
 
 ## Risks / limits
 
