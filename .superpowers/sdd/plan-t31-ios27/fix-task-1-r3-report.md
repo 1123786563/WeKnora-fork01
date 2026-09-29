@@ -14,8 +14,8 @@ Added a Staging fixture whose only occurrence of `IPHONEOS_DEPLOYMENT_TARGET = 1
 - `pnpm --filter @weknora/mobile exec tsx scripts/verify-ios-scene-project.ts ios` — pass against the generated SDK57 iOS project.
 - `git diff --check` — pass.
 
-Source-only patch SHA-256 before this report/ledger update: `138797e6d8104b18d851aab461e02641aa812af0e775c4c29f1072d9844d5251`.
+Source-only patch SHA-256 before this report/ledger update: `138797e6d8104b18d851aab461e02641aa812af0e775c4c29f1072d9844d5251`. Full implementation commit patch SHA-256: `78d6f86ba62c30ae0f9d6af525337870bae38a7c2545499e546ba54ad7df2483`.
 
 ## Scope and limitations
 
-Changed only the verifier, its generated-project contract test, and this repair's progress/report records. No dependency or generated output was added. Local commit is the only remaining step; no push, release, or Issue mutation was performed.
+Changed only the verifier, its generated-project contract test, and this repair's progress/report records. No dependency or generated output was added. Local commit: `c69c53c8e` (`fix(mobile): require explicit deployment settings`). No push, release, or Issue mutation was performed.
