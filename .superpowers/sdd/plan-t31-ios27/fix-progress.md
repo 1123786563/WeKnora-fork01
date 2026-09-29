@@ -76,3 +76,10 @@
 - Ruling: mask literals and comments before signature/call matching; add both counterexamples. This final plan round has one high-reasoning reviewer; if any residual finding remains, adjudicate accurately rather than exceed the five-round limit.
 - Model/role upgrade: earlier fixed frontend implementer (gpt-6-luna) repeatedly fixed the specific false-pass classes but the latest adversarial review exposed lexical parsing limitations. Assign default + explicit gpt-6-sol/high with strict frontend-only file ownership to meet round 5 upgrade and model-task boundary.
 - Brief `.superpowers/sdd/plan-t31-ios27/fix-task-1-r5-brief.md`; status pending → running.
+
+## Review repair round 5 implementation checkpoint
+- RED: two new fixtures exposed string-only forwarding and a commented open-URL signature (focused suite 6 pass / 2 fail before checker edit).
+- The checker now uses a positional Swift lexical mask for signature, brace, and call matching, with balanced declaration parameters and required `-> Bool {` binding. String/comment markers cannot satisfy callback forwarding.
+- GREEN: focused 9/9; full mobile 300 total, 286 pass, 14 opt-in skips, 0 fail; typecheck passed; actual generated SDK57 project checker passed; source diff-check passed.
+- Source/test patch SHA256 `82fd31a20f95192bae15fc194ea8dcc41e086f11d64c7bde3098c1a2f3fd8d0f`; local implementation commit `3060a67a952959561b4e453e21dbe2d1feb18d55`.
+- Report `.superpowers/sdd/plan-t31-ios27/fix-task-1-r5-report.md`; status implementation verified, independent final round review pending.
