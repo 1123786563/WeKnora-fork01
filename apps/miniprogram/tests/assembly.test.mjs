@@ -127,23 +127,13 @@ test('assembly: chatStream assembles SSE frames end-to-end through the native ch
   assert.equal(events[0].content, '你好😀');
 });
 
-test('assembly: watchExecution installs the snapshot then appends streamed events from the watermark', async () => {
-  await freshLogin({
-    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, incomplete: false, confirmed_watermark: 5, events: [execEvent(5)] } } }),
-    'GET /api/v1/workbench/executions/run-1/events': call => {
-      assert.equal(call.options.header['Last-Event-ID'], '5', 'resume must continue from the snapshot watermark');
-      stub.emitHeaders(call, { 'Content-Type': 'text/event-stream' });
-      stub.emitChunk(call, new TextEncoder().encode(`data: ${JSON.stringify(execEvent(6))}\n\n`).buffer);
-      stub.succeed(call, { statusCode: 200, header: { 'Content-Type': 'text/event-stream' }, data: '' });
-    },
-  });
-  const updates = [];
-  await workbench.watchExecution('run-1', new AbortController().signal, value => updates.push(value));
-  assert.equal(updates.length, 2, 'snapshot projection then streamed append');
-  assert.equal(updates[0].cursor, 5);
-  assert.equal(updates[1].cursor, 6);
-  assert.equal(updates[1].events.at(-1).seq, 6);
-  assert.deepEqual(workbench.recentRuns().slice(0, 1), ['run-1'], 'watched run is remembered per scope');
+test('assembly: Task office and auth session are supplied by their dedicated services', async () => {
+  await freshLogin();
+  const office = await import('../src/services/mobile-office.ts');
+  assert.equal(typeof office.activeTaskOffice, 'function');
+  assert.equal(typeof runtime.auth.switchTenant, 'function');
+  assert.equal(workbench.startTask, undefined);
+  assert.equal(workbench.watchExecution, undefined);
 });
 
 test('assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action', async () => {
@@ -201,6 +191,26 @@ test('assembly: protected DOCX opens with the user menu and removes its private 
   await files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=docx', 'resume.docx', true);
   assert.deepEqual(stub.state.openedDocuments, [{ filePath: stub.state.copies[0].destPath, showMenu: true }]);
   assert.deepEqual(stub.state.removedFiles, [stub.state.copies[0].destPath]);
+});
+
+test('assembly: scope switch during refresh rejects before downloading protected content', async () => {
+  await freshLogin();
+  let releaseMe;
+  stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/me') {
+      releaseMe = () => stub.succeed(call, { data: me() });
+      return;
+    }
+    call.options.fail({ errMsg: `unexpected ${call.kind}` });
+  });
+  const files = await import('../src/platform/files.ts');
+  const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=scope', 'report.pdf');
+  while (!releaseMe) await new Promise(resolve => setImmediate(resolve));
+  runtime.auth.scope.switchTo({ origin: ORIGIN, userId: 'u1', tenantId: '2' });
+  releaseMe();
+  await assert.rejects(pending, /SCOPE_CHANGED/);
+  assert.equal(stub.state.calls.filter(call => call.kind === 'downloadFile').length, 0, 'stale refresh cannot authorize a file request');
+  assert.deepEqual(stub.state.copies, [], 'no private copy is created for a stale scope');
 });
 
 test('assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds', async () => {
@@ -351,92 +361,6 @@ test('assembly: file-info failure happens before any private copy exists', async
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=file-info', 'report.pdf'), /file info failed/);
   assert.deepEqual(stub.state.copies, []);
   assert.deepEqual(stub.state.removedFiles, []);
-});
-
-test('assembly: startTask unknown after a lost response resubmits the SAME request id (D5)', async () => {
-  let startCalls = [];
-  const admit = call => {
-    startCalls.push(call);
-    const requestId = call.options.data.request_id;
-    stub.succeed(call, { statusCode: 202, data: { success: true, data: { run_id: 'run-9', request_id: requestId, status: 'admitted' } } });
-  };
-  await freshLogin({
-    'POST /api/v1/workbench/executions': call => {
-      if (startCalls.length === 0) { startCalls.push(call); call.options.fail({ errMsg: 'request lost' }); return; }
-      admit(call);
-    },
-    'GET /api/v1/workbench/executions/requests/': () => {},
-  });
-  const input = { session_id: 's-1', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '做点事', budget_upper: 100 };
-  await assert.rejects(workbench.startTask(input), /NETWORK_ERROR/);
-  assert.equal(startCalls.length, 1);
-  // 服务端明确查询结果：unknown（无持久记录，见 admission.go LookupRequest 的 ErrRecordNotFound 分支）
-  stub.use(call => {
-    const path = new URL(call.options.url).pathname;
-    if (path.startsWith('/api/v1/workbench/executions/requests/')) {
-      stub.succeed(call, { data: { success: true, data: { state: 'unknown' } } }); return;
-    }
-    if (path === '/api/v1/workbench/executions' && call.options.method === 'POST') { admit(call); return; }
-    call.options.fail({ errMsg: `unexpected ${call.options.method} ${path}` });
-  });
-  const runId = await workbench.startTask(input);
-  assert.equal(runId, 'run-9');
-  assert.equal(startCalls.length, 2, 'unknown lookup must allow resubmission');
-  assert.equal(startCalls[1].options.data.request_id, startCalls[0].options.data.request_id, 'the SAME intent keeps the SAME request_id');
-  assert.equal(workbench.pendingIntent().current(), null, 'admitted intent is acknowledged');
-});
-
-test('assembly: duplicate taps while a submission is unresolved never create a second intent', async () => {
-  let started = 0;
-  await freshLogin({
-    'GET /api/v1/workbench/executions/requests/': call => stub.succeed(call, { data: { success: true, data: { state: 'pending' } } }),
-    'POST /api/v1/workbench/executions': call => { started++; call.options.fail({ errMsg: 'lost' }); },
-  });
-  const input = { session_id: 's-1', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '任务', budget_upper: 100 };
-  await assert.rejects(workbench.startTask(input), /NETWORK_ERROR/);
-  const second = workbench.startTask(input);
-  await assert.rejects(second, /前一次任务仍待确认|原请求/);
-  assert.equal(started, 1, 'second tap must not issue another POST');
-  const pending = workbench.pendingIntent().current();
-  assert.ok(pending && pending.requestId, 'the original intent stays durable');
-});
-
-test('assembly: wire paths used by the miniprogram match the Go route table', async () => {
-  stub.reset();
-  backend({
-    'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
-    'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
-    'GET /api/v1/execution-targets': call => stub.succeed(call, { data: { success: true, data: [] } }),
-    'GET /api/v1/workbench/executions/run-1': call => stub.succeed(call, { data: { success: true, data: execDto(5) } }),
-    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, incomplete: false, confirmed_watermark: 5, events: [] } } }),
-    'GET /api/v1/workbench/executions/run-1/events': () => {},
-    'GET /api/v1/workbench/executions/requests/req-1': call => stub.succeed(call, { data: { success: true, data: { state: 'unknown' } } }),
-    'GET /api/v1/workbench/executions/run-1/interactions': call => stub.succeed(call, { data: { success: true, data: [{ id: 'i-1', kind: 'tool_approval', args_hash: 'h', expected_revision: 2, decision_id: '', action: '' }] } }),
-    'POST /api/v1/workbench/executions/interactions/i-1/decisions': call => stub.succeed(call, { data: { success: true, data: { id: 'i-1' } } }),
-    'POST /api/v1/workbench/executions/run-1/commands': call => stub.succeed(call, { data: { success: true, data: { run_id: 'run-1', action: 'cancel' } } }),
-    'POST /api/v1/auth/logout': call => stub.succeed(call, { data: { success: true } }),
-  });
-  await runtime.auth.login('u', 'pw');
-  await workbench.targets();
-  await runtime.executions.get('run-1');
-  await runtime.executions.snapshot('run-1');
-  runtime.executions.lookup('req-1');
-  await workbench.interactions('run-1');
-  await workbench.rejectInteraction({ id: 'i-1', kind: 'tool_approval', argsHash: 'h', revision: 2, decisionId: '', action: '' });
-  await runtime.executions.command('run-1', { action: 'cancel', expected_revision: 3 });
-  await runtime.logout();
-  const seen = [...new Set(stub.paths())];
-  // 与 internal/router/routes_workbench.go / routes_auth*.go 逐条对应；
-  // GET /workbench/executions 列表在 Go 侧尚未注册（not-implemented），不在此出现。
-  const expected = [
-    'POST /api/v1/auth/login', 'GET /api/v1/auth/me', 'GET /api/v1/execution-targets',
-    'GET /api/v1/workbench/executions/run-1', 'GET /api/v1/workbench/executions/run-1/snapshot',
-    'GET /api/v1/workbench/executions/run-1/events', 'GET /api/v1/workbench/executions/requests/req-1',
-    'GET /api/v1/workbench/executions/run-1/interactions', 'POST /api/v1/workbench/executions/interactions/i-1/decisions',
-    'POST /api/v1/workbench/executions/run-1/commands', 'POST /api/v1/auth/logout',
-  ];
-  for (const path of seen) assert.ok(expected.includes(path), `unexpected wire path: ${path}`);
-  for (const path of expected.slice(0, 5).concat(expected.slice(6))) assert.ok(seen.includes(path), `missing expected wire path: ${path}`);
 });
 
 test('assembly: logout clears credentials and private cache but keeps the flow silent on network errors', async () => {

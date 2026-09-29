@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro';
 import type { NativeFileSource } from '@weknora/api-client';
-import { auth, apiOrigin } from '../services/runtime.ts';
+import { auth, apiOrigin, currentBearerToken } from '../services/runtime.ts';
 import type { ScopeStamp } from '../core/scope.ts';
 const MAX_BYTES=20*1024*1024; // Conservative client memory/transfer guard; server may impose a lower bound.
 const MAX_DOWNLOAD_ERROR_BYTES=4096;
@@ -51,13 +51,16 @@ export async function chooseDocument():Promise<NativeFileSource>{
 export async function openProtectedDocument(path:string,name:string,showMenu=false,expectedScope?:Readonly<ScopeStamp>):Promise<void>{
  if(!path.startsWith('/api/v1/')||path.includes('://')||path.includes('..'))throw new Error('不可信下载路径');
  const extension=name.split('.').pop()?.toLowerCase();if(!extension||!['pdf','doc','docx','xls','xlsx','ppt','pptx'].includes(extension))throw new Error('此格式请使用授权 Web 工作台查看');
- const credential=auth.credential();if(credential.kind!=='bearer')throw new Error('AUTH_REQUIRED');
- const stamp=expectedScope??auth.scope.capture();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');const controller=auth.scope.controller();
+ const stamp=expectedScope??auth.scope.capture();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
+ // Refresh once through the shared authorized transport. Capture scope before this await so
+ // a response for the prior identity can never authorize a download in the newly active scope.
+ const accessToken=await currentBearerToken();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
+ const controller=auth.scope.controller();
  const fs=Taro.getFileSystemManager();
  let userCopy='';let failure:{failed:boolean;error:unknown}={failed:false,error:undefined};
  try{
   const tempFilePath=await new Promise<string>((resolve,reject)=>{
-    const task=Taro.downloadFile({url:apiOrigin+path,header:{Authorization:`Bearer ${credential.accessToken}`},timeout:60000,
+    const task=Taro.downloadFile({url:apiOrigin+path,header:{Authorization:`Bearer ${accessToken}`},timeout:60000,
     success:r=>{
      // Completed HTTP responses can still materialize an error body locally. Own it before
      // validating status so the failure path reads its error code like a success path would.
@@ -80,6 +83,7 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
   if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
   userCopy=toUserCopyPath(name);
   await copyFile(fs,tempFilePath,userCopy);
+  if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
   await Taro.openDocument({filePath:userCopy,showMenu});
  }catch(e){failure={failed:true,error:e}}
  finally{
