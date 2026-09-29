@@ -202,13 +202,38 @@ test('a hydrated handle drops stream events after its opening lease is replaced'
   const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store: createInMemoryTaskProjectionStore() });
   const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
   await handle.hydrate();
-  const views: TaskDetailView[] = [];
+  const views: Array<TaskDetailView | undefined> = [];
   handle.updates((view) => views.push(view));
   leaseRef.lease = leased().lease;
   emit!(event$(3));
   await settle();
   assert.equal(handle.view(), undefined);
-  assert.deepEqual(views, []);
+  assert.deepEqual(views, [undefined], 'replacement immediately clears subscribed projections');
+});
+
+test('close and interruption skip a pending projection flush after lease replacement', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const saves: Array<{ cursor: number; taskId: string }> = [];
+  const store: TaskProjectionStore = {
+    load: async () => undefined,
+    save: async (projection) => { saves.push({ cursor: projection.cursor, taskId: projection.taskId }); },
+  };
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => { emit = onEvent; signal.addEventListener('abort', () => resolve()); }),
+  };
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const baseline = saves.length;
+  emit!(event$(3)); // below stride: memory cursor advances but no save has started
+  await settle();
+  assert.equal(saves.length, baseline);
+  leaseRef.lease = leased().lease; // old lease remains active; only exact-current comparison detects replacement
+  handle.close('tenant-switch');
+  await settle();
+  assert.equal(saves.length, baseline, 'close must not flush the old projection through a store using the new lease');
 });
 
 test('live events append serially, duplicates are idempotent and observable', async () => {
@@ -491,11 +516,11 @@ test('a revoked lease after hydration stops notifications and rejects resync', a
   const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
   const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
   await handle.hydrate();
-  const views: number[] = [];
-  handle.updates(() => views.push(1));
+  const views: Array<number | undefined> = [];
+  handle.updates((view) => views.push(view === undefined ? undefined : 1));
   revocable.revoke();
   await settle();
-  assert.deepEqual(views, [], 'no notifications after the scope died');
+  assert.deepEqual(views, [undefined], 'scope revocation publishes immediate projection clearing');
   await assert.rejects(handle.resync(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
   handle.close();
 });
@@ -1003,6 +1028,26 @@ test('a command landing while the lease died is rejected, never silently recorde
   handle.close('done');
 });
 
+test('act acknowledgement from a replaced but still active opening lease is rejected', async () => {
+  let release: (() => void) | undefined;
+  const slowPort: TaskCommandPort = { command: (input) => new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: input.action }); }) };
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const { backend, store } = (() => {
+    const detailBackend = createScenarioTaskDetailBackend({ detail: async () => interventionDetail({ runStatus: 'running', revision: 9 }) });
+    const sharedStore = createInMemoryTaskProjectionStore();
+    return { backend: detailBackend, store: sharedStore };
+  })();
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: backend, store, commands: slowPort });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const pending = handle.act({ kind: 'stop' });
+  leaseRef.lease = leased().lease;
+  release!();
+  await assert.rejects(pending, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view(), undefined);
+  handle.close();
+});
+
 test('a flush racing a dead scope lease is rejected, never silently recorded (§5.3)', async () => {
   // 与 act() 同一竞态同一处理：flush 的 queue_next 在 lease 死亡后，迟到 ack 绝不记 accepted 回执。
   let release: (() => void) | undefined;
@@ -1026,6 +1071,30 @@ test('a flush racing a dead scope lease is rejected, never silently recorded (§
   await assert.rejects(() => flushing, /TASK_OFFICE_SCOPE_CHANGED/);
   assert.equal(handle.view(), undefined, 'scope loss invalidates the cached view, including parked receipts');
   handle.close('done');
+});
+
+test('queued command acknowledgement requires the exact opening lease', async () => {
+  let release: (() => void) | undefined;
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const commands: TaskCommandPort = { command: (input) => new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: input.action }); }) };
+  let currentDetail = interventionDetail({ runStatus: 'running', revision: 5 });
+  const handle = createTaskDetail({ taskId: 'task-1', runId: 'run-1' }, {
+    lease: () => leaseRef.lease,
+    store: createInMemoryTaskProjectionStore(),
+    commands,
+    backend: { detail: async () => currentDetail, stream: () => new Promise<void>(() => undefined) },
+  });
+  await handle.hydrate();
+  await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  currentDetail = interventionDetail({ runStatus: 'succeeded', revision: 5 });
+  await handle.resync();
+  await settle(); // terminal hydration starts the queued flush asynchronously
+  const pendingFlush = handle.flushQueuedIntents();
+  leaseRef.lease = leased().lease;
+  release!();
+  await assert.rejects(pendingFlush, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view(), undefined);
+  handle.close();
 });
 
 test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', async () => {

@@ -43,7 +43,12 @@ export function createTaskDetailController(handle: TaskHandle): TaskDetailContro
     state = next;
     for (const listener of [...listeners]) listener(state);
   };
-  const unsubscribe = handle.updates((view) => { if (!disposed) publish({ view, loading: false }); });
+  const unsubscribe = handle.updates((view) => {
+    if (disposed) return;
+    publish(view === undefined
+      ? { loading: false, error: TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED }
+      : { view, loading: false });
+  });
   const tail: Promise<void> = handle.hydrate().then(
     (view) => { if (!disposed) publish({ view, loading: false }); },
     (failure: unknown) => {

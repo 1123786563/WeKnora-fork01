@@ -12,13 +12,14 @@ const view$ = (connection: TaskDetailView['connection'], seqs: number[] = [1]): 
   duplicateSeqs: [],
 });
 
-function handleFake(views: TaskDetailView[], options: { actError?: TaskOfficeError } = {}): TaskHandle & { resyncCount(): number; push(view: TaskDetailView): void; acts: TaskIntent[] } {
+function handleFake(views: TaskDetailView[], options: { actError?: TaskOfficeError } = {}): TaskHandle & { resyncCount(): number; push(view: TaskDetailView): void; clear(): void; acts: TaskIntent[] } {
   let index = 0;
   let resyncs = 0;
-  let listener: ((view: TaskDetailView) => void) | undefined;
+  let listener: ((view: TaskDetailView | undefined) => void) | undefined;
   const acts: TaskIntent[] = [];
   return {
     push(view: TaskDetailView) { listener?.(view); },
+    clear() { listener?.(undefined); },
     resyncCount: () => resyncs,
     acts,
     async hydrate() { return views[index++] ?? views[views.length - 1]!; },
@@ -46,6 +47,17 @@ test('the controller publishes the hydrated view, streams updates and refresh re
   await controller.refresh();
   assert.equal(controller.state().view?.connection, 'drained');
   assert.equal(fake.resyncCount(), 1);
+  controller.dispose();
+});
+
+test('scope loss immediately clears the mounted controller view and exposes re-entry guidance', async () => {
+  const fake = handleFake([view$('live')]);
+  const controller = createTaskDetailController(fake);
+  await controller.whenSettled();
+  assert.equal(controller.state().view?.title, '报告');
+  fake.clear();
+  assert.equal(controller.state().view, undefined);
+  assert.equal(controller.state().error, TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED);
   controller.dispose();
 });
 

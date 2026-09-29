@@ -91,7 +91,7 @@ export interface TaskCommandPort {
 export interface TaskHandle {
   hydrate(): Promise<TaskDetailView>;
   view(): TaskDetailView | undefined;
-  updates(listener: (view: TaskDetailView) => void): () => void;
+  updates(listener: (view: TaskDetailView | undefined) => void): () => void;
   resync(): Promise<TaskDetailView>;
   /** T07：受控干预（steer / queue-next / stop）；返回诚实回执，绝不编造服务端准入。 */
   act(intent: TaskIntent): Promise<InterventionReceipt>;
@@ -134,7 +134,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   let chainDepth = 0;
   let persistedCursor = 0; // 最近一次成功落盘的游标（stride 合并的基准）
   let autoResyncs = 0;
-  const listeners = new Set<(view: TaskDetailView) => void>();
+  const listeners = new Set<(view: TaskDetailView | undefined) => void>();
   // —— T07（#37）干预状态：三态停止、unknown 门、parked queue-next、诚实回执 ——
   let stopState: TaskDetailView['stop'];
   let unknownGate: { revision: number } | undefined;
@@ -180,10 +180,14 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   };
   const leaseMatchesOpening = (): boolean => Boolean(openingLease && ports.lease() === openingLease && leaseActive(openingLease));
   const invalidateForLeaseLoss = (): void => {
+    if (current === undefined && detail === undefined) return;
     current = undefined;
     detail = undefined;
     events = [];
     abortStream();
+    for (const listener of [...listeners]) {
+      try { listener(undefined); } catch { /* one observer cannot block scope clearing for others */ }
+    }
   };
   const ensureOpeningLease = (): void => {
     if (!leaseMatchesOpening()) {
@@ -255,6 +259,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     controller?.abort();
     controller = undefined;
   };
+  const unsubscribeRevocation = openingLease?.onRevoke?.(invalidateForLeaseLoss);
   // 新增可选字段自动随行进离线快照（R1-F6）：手工逐字段拷贝会把未来字段静默排除。
   // 与 task-detail.test.ts 的既有同款解构惯例一致。
   const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
@@ -266,9 +271,10 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   };
   /** best-effort 强制 flush（终态/中断/close 前）：只补落未落盘的跨度，失败不抛——失败可见性由 interruption 表达。 */
   const flushPersisted = async (): Promise<void> => {
-    if (committedCursor === persistedCursor || detail === undefined) return;
+    if (committedCursor === persistedCursor || detail === undefined || !leaseMatchesOpening()) return;
     try {
       await persist(committedCursor, events);
+      if (!leaseMatchesOpening()) { invalidateForLeaseLoss(); return; }
       persistedCursor = committedCursor;
     } catch {
       /* best-effort：内存投影仍正确，重启后由 hydrate 兜底 */
@@ -281,10 +287,11 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       const dispatch = { runId: input.runId, action: 'queue_next' as const, text: next.text, expectedRevision: commandRevision(), intentId: next.intentId };
       try {
         const ack = await wrapCommand(() => ports.commands!.command(dispatch));
-        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 迟到结果拒绝（§5.3，与 act() 同一竞态同一处理）
+        if (!leaseMatchesOpening() || lease !== openingLease) { invalidateForLeaseLoss(); throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); } // exact opening lease required
         queuedNext.shift();
         interventions.push({ intent: { kind: 'queue-next', text: next.text, intentId: next.intentId }, outcome: 'accepted', boundRunId: input.runId, revision: dispatch.expectedRevision, ...(ack.nextRunId === undefined ? {} : { nextRunId: ack.nextRunId }), at: new Date().toISOString() });
       } catch (error) {
+        if (!leaseMatchesOpening()) { invalidateForLeaseLoss(); throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); }
         if (error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED') throw error; // scope 死亡：不 shift、不记回执，flush 整体如实拒绝
         // one-shot：一次失败的 flush 不重试、不静默丢弃——以回执如实呈现后移除。
         queuedNext.shift();
@@ -543,7 +550,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
           : { runId: input.runId, action: 'queue_next' as const, text, expectedRevision: revision, ...(intentId === undefined ? {} : { intentId }) };
       try {
         const ack = await wrapCommand(() => commands.command(dispatch));
-        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 迟到结果拒绝（§5.3）
+        if (!leaseMatchesOpening() || lease !== openingLease) { invalidateForLeaseLoss(); throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); } // exact opening lease required
         if (dispatch.action === 'steer' || dispatch.action === 'cancel') revisionFloor = revision + 1; // 服务端 CAS 证明
         if (dispatch.action === 'cancel') stopState = { phase: 'requested', since: at };
         if (dispatch.action === 'queue_next') {
@@ -558,6 +565,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
         void hydrate().catch(() => undefined); // 重观察（一次；失败由流/下次 hydrate 兜底）
         return receipt;
       } catch (error) {
+        if (!leaseMatchesOpening()) { invalidateForLeaseLoss(); throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); }
         if (error instanceof TaskOfficeError) throw error;
         const code = (error as { code?: unknown } | null)?.code;
         if (code === 'TASK_COMMAND_CONFLICT') {
@@ -585,6 +593,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     },
     close(reason?: string) {
       closed = true;
+      unsubscribeRevocation?.();
       abortStream();
       void flushPersisted(); // close 强制落盘未持久跨度（best-effort，R1-F23）
       listeners.clear();
