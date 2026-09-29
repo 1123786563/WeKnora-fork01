@@ -163,7 +163,8 @@ export function documentOpenUrl(row: MemoryRow): string | null {
   const knowledgeBaseId = typeof row.knowledge_base_id === 'string' ? row.knowledge_base_id : '';
   if (!knowledgeBaseId) return null;
   const knowledgeId = typeof row.knowledge_id === 'string' ? row.knowledge_id : '';
-  return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId) + (knowledgeId ? '?knowledge_id=' + encodeURIComponent(knowledgeId) : '');
+  // KBL-R1：KB 详情统一 platform 族路径，knowledge_id 即文档抽屉就地打开深链。
+  return '/platform/knowledge-bases/' + encodeURIComponent(knowledgeBaseId) + (knowledgeId ? '?knowledge_id=' + encodeURIComponent(knowledgeId) : '');
 }
 
 // Close an open overlay on outside pointerdown or Escape (Vue popups close on

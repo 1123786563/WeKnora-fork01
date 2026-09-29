@@ -4,7 +4,7 @@ import { shouldOpenWiki, wikiEntryPath } from "./wiki-route.ts";
 
 test("disabled Wiki capability falls back to the Vue documents entry", () => {
   assert.equal(shouldOpenWiki({ indexing_strategy: { wiki_enabled: false } }), false);
-  assert.equal(wikiEntryPath("kb/a"), "/knowledgeBase/kb%2Fa");
+  assert.equal(wikiEntryPath("kb/a"), "/platform/knowledge-bases/kb%2Fa");
 });
 
 test("Wiki entry remains available only for an explicitly enabled capability", () => {

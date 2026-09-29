@@ -309,7 +309,7 @@
                             <t-icon name="info-circle" size="16px" />
                           </button>
                           <template #content>
-                            <div class="permissions-compact permissions-compact--popover">
+                            <div class="permissions-compact permissions-compact--popover" role="dialog" :aria-label="$t('organization.editor.permissionsTitle')">
                               <div class="permissions-compact-header">
                                 <span class="permissions-compact-title">{{ $t('organization.editor.permissionsTitle') }}</span>
                                 <span class="permissions-compact-desc">{{ $t('organization.editor.permissionsDesc') }}</span>

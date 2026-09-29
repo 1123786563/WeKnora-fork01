@@ -8,6 +8,8 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import i18n from '@/i18n'
 import { normalizeSettingsSection } from '@/config/settingsRoute'
 import { redeemLoginInviteForLoggedInVisitor } from './loginInvite'
+import { resolveJoinRedirect } from './joinRedirect'
+import { resolveChatIndexRedirect } from './chatIndexRedirect'
 
 /** Lite /桌面 WebView 硬刷新时可能只打开 `/`，用 session 记住上次页面以便恢复 */
 const LITE_LAST_PATH_KEY = 'weknora_lite_last_path'
@@ -78,14 +80,11 @@ const router = createRouter({
     {
       path: "/join",
       name: "joinOrganization",
-      // 重定向到组织列表页，并将 code 参数转换为 invite_code
-      redirect: (to) => {
-        const code = to.query.code as string
-        return {
-          path: '/platform/organizations',
-          query: code ? { invite_code: code } : {}
-        }
-      },
+      // 语义对齐 React joinRoute beforeLoad：带 token 的邀请分享链接一律
+      // 转发 /register?token=…（已登录兑换进应用 / 匿名保留 token 并在
+      // 校验失败时横幅报错），无 token 才落组织列表并把 code 转为
+      // invite_code。纯函数抽到 joinRedirect.ts 便于 node 单测。
+      redirect: (to) => resolveJoinRedirect(to.query),
       meta: { requiresInit: true, requiresAuth: true }
     },
     {
@@ -167,6 +166,15 @@ const router = createRouter({
           path: "knowledge-bases/:kbId/creatChat",
           name: "kbCreatChat",
           component: () => import("../views/creatChat/creatChat.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
+          // AGT-13 — 裸 /platform/chat（无 chatid）：React 渲染完整聊天工作区，
+          // Vue 原本空白。最小对齐：重定向全局聊天入口 creatChat（同一组件），
+          // 纯函数抽到 chatIndexRedirect.ts 便于 node 单测。
+          path: "chat",
+          name: "chatIndex",
+          redirect: (to) => resolveChatIndexRedirect(to.query),
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
@@ -380,13 +388,14 @@ router.beforeEach(async (to, from, next) => {
 
   // 如果访问的是登录页面或初始化页面，直接放行
   if (to.meta.requiresAuth === false || to.meta.requiresInit === false) {
-    if (to.path === '/login') {
-      // 已登录访客带邀请链接（/login?token=xxx）：先用 token 兑换邀请再
-      // 进入应用，无论兑换成败都进首页（对齐 React router.tsx
-      // loginBeforeLoad 的 token 分支：失败静默 + 无条件进入
-      // /platform/knowledge-bases）。刷新加载时 store 的 token 尚未回填，
-      // helper 会先用存储 token 恢复会话；未登录时返回 ''，落到下方
-      // 既有弹回 / 放行逻辑（匿名邀请注册流由 Login.vue 处理）。
+    if (to.path === '/login' || to.path === '/register') {
+      // 已登录访客带邀请链接（/login|/register?token=xxx，含 /join?token=
+      // 转发而来）：先用 token 兑换邀请再进入应用，无论兑换成败都进首页
+      // （对齐 React router.tsx loginBeforeLoad 的 token 分支：失败静默 +
+      // 无条件进入 /platform/knowledge-bases；/register 与 /login 共用同
+      // 一 beforeLoad，故 Vue 双入口同样共用此分支）。刷新加载时 store 的
+      // token 尚未回填，helper 会先用存储 token 恢复会话；未登录时返回
+      // ''，落到下方既有弹回 / 放行逻辑（匿名邀请注册流由 Login.vue 处理）。
       const inviteRedirect = await redeemLoginInviteForLoggedInVisitor(to.query.token, {
         isLoggedIn: () => authStore.isLoggedIn,
         hasStoredToken: () => !!localStorage.getItem('weknora_token'),
@@ -397,7 +406,8 @@ router.beforeEach(async (to, from, next) => {
         next(inviteRedirect)
         return
       }
-      // 如果已登录用户访问登录页面，重定向到知识库列表页面
+      // 如果已登录用户访问登录/注册页，重定向到知识库列表页面（React
+      // loginBeforeLoad 无 token 分支对 bearer 会话同样无条件弹回应用）
       if (authStore.isLoggedIn) {
         next(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
         return

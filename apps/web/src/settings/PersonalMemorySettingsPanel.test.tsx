@@ -248,8 +248,8 @@ test('documents tab builds the Vue knowledgeBase deep link and stop-tracking con
   // Vue handleOpenDocument navigation target, asserted on the pure helper
   // (JSDOM cannot intercept location.assign without leaking across tests).
   const doc = memoryDoc();
-  assert.equal(documentOpenUrl(doc), '/knowledgeBase/kb-1?knowledge_id=kb-doc-1');
-  assert.equal(documentOpenUrl({ knowledge_base_id: 'kb 1', knowledge_id: 'd/1' }), '/knowledgeBase/kb%201?knowledge_id=d%2F1');
+  assert.equal(documentOpenUrl(doc), '/platform/knowledge-bases/kb-1?knowledge_id=kb-doc-1');
+  assert.equal(documentOpenUrl({ knowledge_base_id: 'kb 1', knowledge_id: 'd/1' }), '/platform/knowledge-bases/kb%201?knowledge_id=d%2F1');
   assert.equal(documentOpenUrl({ knowledge_base_id: '' }), null, 'no kb id → helper refuses');
   const openButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.openDocument'))) as HTMLButtonElement;
   assert.ok(openButton);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { KnowledgeDocumentListParams } from '@weknora/api-client';
 
-import { loadKnowledgeDocuments } from './list.ts';
+import { documentListPageSize, loadKnowledgeDocuments, mergeDocumentListState } from './list.ts';
 
 test('loads documents through the api-client seam without fallback data', async () => {
   const result = await loadKnowledgeDocuments({
@@ -106,4 +106,35 @@ test('uses the caller locale fallback when the document API is unavailable or re
     failed: '文档加载失败',
   });
   assert.deepEqual(failed, { status: 'error', message: '文档加载失败' });
+});
+
+test('documentListPageSize mirrors the Vue viewport-adaptive getPageSize (KnowledgeBase.vue L810-816)', () => {
+  assert.equal(documentListPageSize(900), Math.max(35, Math.floor(900 / 148) * 5));
+  assert.equal(documentListPageSize(768), 35);  // floor(768/148)=5 -> 25, floored at 35
+  assert.equal(documentListPageSize(2000), Math.floor(2000 / 148) * 5);
+});
+
+test('mergeDocumentListState replaces on page 1 and appends on scroll pages', () => {
+  const first = { status: 'success' as const, page: { items: [{ id: 'a' }, { id: 'b' }], total: 5, page: 1, pageSize: 2 } };
+  const second = { status: 'success' as const, page: { items: [{ id: 'c' }, { id: 'd' }], total: 5, page: 2, pageSize: 2 } };
+
+  assert.deepEqual(mergeDocumentListState({ status: 'loading' }, second, 1), second);
+  assert.deepEqual(mergeDocumentListState(first, second, 1), second);
+  assert.deepEqual(mergeDocumentListState(first, second, 2), {
+    status: 'success',
+    page: { items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], total: 5, page: 2, pageSize: 2 },
+  });
+});
+
+test('mergeDocumentListState dedupes re-delivered rows and keeps the list on a failed scroll load', () => {
+  const first = { status: 'success' as const, page: { items: [{ id: 'a' }], total: 3, page: 1, pageSize: 1 } };
+  const overlap = { status: 'success' as const, page: { items: [{ id: 'a' }, { id: 'b' }], total: 3, page: 2, pageSize: 1 } };
+  assert.deepEqual(mergeDocumentListState(first, overlap, 2), {
+    status: 'success',
+    page: { items: [{ id: 'a' }, { id: 'b' }], total: 3, page: 2, pageSize: 1 },
+  });
+
+  const failed = { status: 'error' as const, message: 'boom' };
+  assert.equal(mergeDocumentListState(first, failed, 2), first);
+  assert.deepEqual(mergeDocumentListState({ status: 'loading' }, failed, 1), failed);
 });

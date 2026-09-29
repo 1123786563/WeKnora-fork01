@@ -31,6 +31,9 @@ export interface SessionGroupView {
 export interface SessionSourceOption {
   value: string;
   label: string;
+  /** Vue SessionSourceFilter SourceItem.logo：渠道平台 logo（feishu/wechat/slack
+   *  等经 platformLogo 注入的 <img> src）；缺省回落 t-icon。 */
+  logo?: string;
 }
 
 export interface SessionSidebarProps {
@@ -124,6 +127,73 @@ export function isShareActionAvailable(onShareSession?: SessionSidebarListProps[
  * keeps semantic hooks the tests rely on: role/aria anchors, the <details>
  * ⋯ menu, and the wk-* hook classes; the package stays css-import-free.
  */
+/*
+ * Vue SessionSourceFilter.vue（CHAT-10 对齐）：会话来源筛选为自定义
+ * trigger + 弹出面板 + 平台 logo 形态（原生 <select> 已移除）。views 包无
+ * react-dom（composer mention 菜单同款 in-tree 先例），弹层以 position:fixed
+ * 视口锚定达到 Teleport 到 body 的同一几何/层叠；inline 触发器右对齐、
+ * hover 高亮由宿主样式承载（views-chat-u.css §session-source-filter）。
+ */
+export function SessionSourceFilterFace(props: {
+  copy: ChatCopyTable;
+  options: readonly SessionSourceOption[];
+  current: string;
+  onSelect(value: string): void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<Record<string, string>>({});
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (event: MouseEvent): void => {
+      if (rootRef.current && event.target instanceof Node && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const onReposition = (): void => setOpen(false);
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [open]);
+  const currentOption = props.options.find((option) => option.value === props.current) ?? props.options[0];
+  const emphasized = currentOption !== undefined && currentOption.value !== (props.options[0]?.value ?? '');
+  function toggleOpen(): void {
+    if (open) { setOpen(false); return; }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPanelStyle({
+        position: 'fixed',
+        top: `${rect.bottom + 4}px`,
+        right: `${Math.max(8, window.innerWidth - rect.right)}px`,
+        left: 'auto',
+      });
+    }
+    setOpen(true);
+  }
+  return <div ref={rootRef} className={'session-source-filter session-source-filter--inline' + (emphasized ? ' session-source-filter--emphasized' : '')}>
+    <button ref={triggerRef} type="button" className="session-source-filter__trigger" aria-haspopup="listbox" aria-expanded={open} aria-label={props.copy.sourceSelectLabel} onClick={(event) => { event.stopPropagation(); toggleOpen(); }}>
+      <span className="session-source-filter__leading">
+        {currentOption?.logo ? <img src={currentOption.logo} alt={currentOption.label} className="session-source-filter__logo" /> : <svg className="t-icon session-source-filter__icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-chat" /></svg>}
+        <span className="session-source-filter__label" title={currentOption?.label}>{currentOption?.label}</span>
+      </span>
+      <svg className={'t-icon session-source-filter__chevron' + (open ? ' session-source-filter__chevron--open' : '')} viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-chevron-down" /></svg>
+    </button>
+    {open ? <div className="session-source-filter__panel" role="listbox" aria-label={props.copy.sourceSelectLabel} style={panelStyle} onClick={(event) => event.stopPropagation()}>
+      {props.options.map((option) => <button key={option.value} type="button" className={'session-source-filter__option' + (option.value === props.current ? ' session-source-filter__option--active' : '')} role="option" aria-selected={option.value === props.current} onClick={() => { setOpen(false); if (option.value !== props.current) props.onSelect(option.value); }}>
+        <span className="session-source-filter__option-leading">
+          {option.logo ? <img src={option.logo} alt={option.label} className="session-source-filter__logo" /> : <svg className="t-icon session-source-filter__icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-chat" /></svg>}
+          <span className="session-source-filter__option-label" title={option.label}>{option.label}</span>
+        </span>
+        <svg className={'t-icon session-source-filter__check' + (option.value === props.current ? ' session-source-filter__check--visible' : '')} viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-check" /></svg>
+      </button>)}
+    </div> : null}
+  </div>;
+}
+
 export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, onShareSession, onBatchDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -133,6 +203,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchDeleteConfirmCount, setBatchDeleteConfirmCount] = useState<number | null>(null);
   const [sessionDangerAction, setSessionDangerAction] = useState<{ type: 'clear' | 'delete'; sessionId: string } | null>(null);
   const [sessionDangerBusy, setSessionDangerBusy] = useState(false);
   const [sessionDangerError, setSessionDangerError] = useState<string | null>(null);
@@ -197,19 +268,33 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     });
   };
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
-  const submitBatchDelete = async () => {
+  /*
+   * Vue menu.vue handleInlineBatchDelete：DialogPlugin.confirm 风格化二次确认
+   * （删除对话 / 确定要删除选中的 {count} 条对话吗？删除后无法恢复。，
+   * 取消/删除对话）——不落原生 window.confirm。
+   */
+  const requestBatchDelete = () => {
     if (!onBatchDelete || selectedIds.size === 0 || batchBusy) return;
+    setBatchDeleteConfirmCount(selectedIds.size);
+  };
+  const cancelBatchDelete = () => {
+    if (batchBusy) return;
+    setBatchDeleteConfirmCount(null);
+  };
+  const confirmBatchDelete = async () => {
+    if (!onBatchDelete || selectedIds.size === 0 || batchBusy || batchDeleteConfirmCount === null) return;
     const ids = [...selectedIds];
-    if (!window.confirm(formatChatCopy(t, 'batchDeleteConfirm', { count: ids.length }))) return;
     setBatchBusy(true);
     setBatchError(null);
     try {
       const result = await onBatchDelete(ids);
+      setBatchDeleteConfirmCount(null);
       if (result !== false) {
         setSelectedIds(new Set());
         setBatchMode(false);
       }
     } catch (error) {
+      setBatchDeleteConfirmCount(null);
       setBatchError(error instanceof Error ? error.message : '批量删除失败');
     } finally {
       setBatchBusy(false);
@@ -236,17 +321,33 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
    * 语义钩点：role/aria 锚点、details ⋯ 菜单、wk-* hook 类、input aria-label。
    */
   return <>
-    {!batchMode && sourceOptions && onSourceChange ? <label className="wk-vc-session-sidebar-1">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="wk-vc-session-sidebar-2" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onBatchDelete && batchMode ? <div className="wk-vc-session-sidebar-3" role="toolbar" aria-label={formatChatCopy(t, 'batchManage')}>
+    {!batchMode && sourceOptions && onSourceChange ? <div className="session-list-scope-header wk-vc-session-sidebar-1">
+      <SessionSourceFilterFace copy={t} options={sourceOptions} current={source ?? sourceOptions[0]?.value ?? ''} onSelect={onSourceChange} />
+    </div> : null}
+    {/* Vue menu.vue .batch-inline-footer（CHAT-5 对齐）：左 .batch-footer-left
+        全选 checkbox，右 .batch-footer-right 取消 + 删除对话(N)——顺序与文案
+        与 Vue 一致（全选 → 取消 → 删除对话）。 */}
+    {onBatchDelete && batchMode ? <div className="wk-vc-session-sidebar-3 batch-inline-footer" role="toolbar" aria-label={formatChatCopy(t, 'batchManage')}>
       <>
-        <button type="button" aria-label={formatChatCopy(t, 'batchCancel')} className="wk-vc-session-sidebar-4" onClick={toggleBatchMode} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
-        <label className="wk-vc-session-sidebar-5">
+        <label className="wk-vc-session-sidebar-5 batch-footer-left">
           <input ref={selectAllRef} type="checkbox" aria-label={formatChatCopy(t, 'batchSelectAll')} checked={allSelected} onChange={toggleAll} disabled={batchBusy || totalItems === 0} />{formatChatCopy(t, 'batchSelectAll')}
         </label>
-        <button type="button" aria-label={formatChatCopy(t, 'batchDelete', { count: selectedIds.size })} className="wk-vc-session-sidebar-6" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? formatChatCopy(t, 'batchDeleteBusy') : formatChatCopy(t, 'batchDelete', { count: selectedIds.size })}</button>
+        <div className="batch-footer-right">
+          <button type="button" aria-label={formatChatCopy(t, 'batchCancel')} className="wk-vc-session-sidebar-4" onClick={toggleBatchMode} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
+          {/* Vue menu.vue:187：`删除对话${count > 0 ? `(${count})` : ''}`——零选中不带 (N)。 */}
+          <button type="button" aria-label={selectedIds.size > 0 ? formatChatCopy(t, 'batchDelete', { count: selectedIds.size }) : t.batchDeleteConfirmAction} className="wk-vc-session-sidebar-6" onClick={requestBatchDelete} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? formatChatCopy(t, 'batchDeleteBusy') : selectedIds.size > 0 ? formatChatCopy(t, 'batchDelete', { count: selectedIds.size }) : t.batchDeleteConfirmAction}</button>
+        </div>
       </>
     </div> : null}
-    {batchError ? <p role="alert" className="wk-vc-session-sidebar-7">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label={formatChatCopy(t, 'batchRetry')} className="wk-vc-session-sidebar-8" onClick={() => void submitBatchDelete()} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
+    {onBatchDelete && batchMode && batchDeleteConfirmCount !== null ? <div className="session-action-confirm wk-chat-session-confirm" role="dialog" aria-label={t.batchDeleteConfirmTitle}>
+      <div className="session-action-confirm__title">{t.batchDeleteConfirmTitle}</div>
+      <div className="session-action-confirm__body">{formatChatCopy(t, 'batchDeleteConfirm', { count: batchDeleteConfirmCount })}</div>
+      <div className="session-action-confirm__footer">
+        <button type="button" className="session-action-confirm__btn" onClick={cancelBatchDelete} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
+        <button type="button" className="session-action-confirm__btn is-danger" onClick={() => void confirmBatchDelete()} disabled={batchBusy}>{t.batchDeleteConfirmAction}</button>
+      </div>
+    </div> : null}
+    {batchError ? <p role="alert" className="wk-vc-session-sidebar-7">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label={formatChatCopy(t, 'batchRetry')} className="wk-vc-session-sidebar-8" onClick={requestBatchDelete} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
     {/* Vue menu.vue:113-131 renders four gradient skeleton rows while the
         first bucket loads (never a text "Loading..." label); menu.vue:162-167
         shows a small spinner below the rows while a later page streams in.

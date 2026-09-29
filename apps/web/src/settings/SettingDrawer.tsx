@@ -151,6 +151,26 @@ export function SettingDrawer(props: SettingDrawerProps) {
     document.body.style.userSelect = 'none';
   };
 
+  const drawerResizingRef = useRef(false);
+  useEffect(() => { drawerResizingRef.current = drawerResizing; }, [drawerResizing]);
+
+  /* CHAT-9 对齐 —— Vue SettingDrawer.vue 底层 t-drawer 默认
+   * closeOnEscKeydown=true，Esc 直接关闭；React 侧 TDrawer 的 Esc 路径
+   * 依赖内部焦点管理，抽屉内聚焦控件时实测无效，这里显式挂
+   * document keydown 兜底（与遮罩关闭/滑出同语义，不触发 onCancel 回调）。 */
+  useEffect(() => {
+    if (!visible) return;
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (drawerResizingRef.current) return;
+      blurActiveElementBeforeClose();
+      onVisibleChange(false);
+    };
+    document.addEventListener('keydown', onKeydown);
+    return () => document.removeEventListener('keydown', onKeydown);
+  }, [visible, onVisibleChange]);
+
   const handleConfirm = () => onConfirm?.();
   const handleCancel = () => {
     blurActiveElementBeforeClose();

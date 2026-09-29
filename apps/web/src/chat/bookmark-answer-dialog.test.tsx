@@ -286,3 +286,37 @@ test('publish action posts status publish and reports the publish status', async
   assert.deepEqual(statuses, ['publish'], 'host toast hook receives the publish status');
   unmount();
 });
+
+/*
+ * CHAT-9 对齐 —— Vue t-drawer 默认 closeOnEscKeydown：Esc 直接关闭
+ * 「添加到知识库」抽屉（Vue afterEsc 中 setting-drawer 消失）。
+ */
+test('Escape closes the add-to-knowledge drawer', async () => {
+  const { client } = makeClient();
+  let closed = 0;
+  document.body.replaceChildren();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: { render: (node: React.ReactNode) => void; unmount: () => void } | null = null;
+  act(() => { root = createRoot(host); });
+  const current = root!;
+  act(() => {
+    current.render(React.createElement(BookmarkAnswerDialog, {
+      client: client as never,
+      copy,
+      open: true,
+      initialTitle: '标题',
+      initialContent: '内容',
+      onClose: () => { closed += 1; },
+      onSaved: () => {},
+    }));
+  });
+  await act(async () => { await Promise.resolve(); await new Promise((resolve) => setTimeout(resolve, 30)); });
+  assert.ok(document.querySelector('.setting-drawer'), 'drawer mounted');
+  await act(async () => {
+    document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  assert.equal(closed, 1, 'Escape invokes onClose exactly once');
+  act(() => current.unmount());
+  document.body.replaceChildren();
+});

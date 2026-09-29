@@ -248,7 +248,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   const [debugOpen, setDebugOpen] = useState(false);
   // Per-field blur validation (ModelEditorDialog.vue rules, lines 907-946).
   const [nameError, setNameError] = useState<string | null>(null);
-  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
   // Ollama combobox dropdown state (ModelEditorDialog.vue filterable select).
   const [ollamaOpen, setOllamaOpen] = useState(false);
   const [ollamaHighlight, setOllamaHighlight] = useState(0);
@@ -401,7 +400,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     }
     preservedDraftRef.current = null;
     setNameError(null);
-    setBaseUrlError(null);
     setOllamaOpen(false);
   }
   function openEdit(model: ModelConfiguration) {
@@ -413,7 +411,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     resetEditorFeedback();
     preservedDraftRef.current = null;
     setNameError(null);
-    setBaseUrlError(null);
     setOllamaOpen(false);
     setDraft(modelDraftFromRecord(model));
   }
@@ -435,7 +432,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     setDimensionMessage(null);
     setThinkingManual(false);
     setNameError(null);
-    setBaseUrlError(null);
     setOllamaOpen(false);
     preservedDraftRef.current = null;
   }
@@ -910,17 +906,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       setNameError(key ? t(key) : null);
     }
   }
-  function blurBaseUrl() {
-    if (!draft) return;
-    const key = modelFieldErrorKey("baseUrl", draft);
-    setBaseUrlError(key ? t(key) : null);
-  }
   function changeBaseUrl(value: string) {
     updateDraft("baseUrl", value);
-    if (baseUrlError && draft) {
-      const key = modelFieldErrorKey("baseUrl", { ...draft, baseUrl: value });
-      setBaseUrlError(key ? t(key) : null);
-    }
   }
 
   /* Ollama combobox: inventory filtered by the typed keyword, keyboard
@@ -1430,14 +1417,15 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 <>
               <div className="form-item">
                 <label className="form-label required">{t("model.editor.baseUrlLabel")}</label>
+                {/* Vue t-input 无 type（默认 text），new URL() 校验只在保存时
+                    触发（ModelEditorDialog.vue:233/1542-1547；rules 未接线到
+                    自定义 .form-item，blur 即时校验实际不可达）——对齐为
+                    text 输入 + 保存时校验（SETSYS-N8）。 */}
                 <TInput
-                  type="url"
                   placeholder={t(baseUrlPlaceholderKey(draft.type))}
                   value={draft.baseUrl}
                   onChange={(value) => changeBaseUrl(String(value))}
-                  onBlur={blurBaseUrl}
                 />
-                {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
               </div>
                 {draft.id ? (
                   <div className="form-item">

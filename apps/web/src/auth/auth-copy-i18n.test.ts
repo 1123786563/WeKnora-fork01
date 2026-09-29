@@ -28,6 +28,17 @@ const keys = [
   'auth.join.creatingAccount',
   'auth.join.createAccountAndJoin',
   'auth.join.invitationRegistrationFailed',
+  // AUTH-3 — MyInvitationsDialog 富卡片字段（verbatim from Vue locales）
+  'tenantInvitation.myInbox.title',
+  'tenantInvitation.myInbox.description',
+  'tenantInvitation.myInbox.from',
+  'tenantInvitation.myInbox.tenantLabel',
+  'tenantInvitation.myInbox.expiresIn',
+  'tenantInvitation.myInbox.messageLabel',
+  'tenantMember.role.owner',
+  'tenantMember.role.admin',
+  'tenantMember.role.contributor',
+  'tenantMember.role.viewer',
 ];
 
 test('join and onboarding copy keys resolve for zh-CN and en-US (S00 N-4)', () => {

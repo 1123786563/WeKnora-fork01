@@ -24,10 +24,12 @@ export type { ArtifactPreviewKind, ArtifactPreviewModel, ArtifactPreviewPayload,
 export { hydrateMermaidBlocks, hydrateMermaidBlocksWithBrowserDefaults, MERMAID_RENDER_CONFIG } from './chat/mermaid.ts';
 export type { MermaidEngine } from './chat/mermaid.ts';
 export { SessionSidebar, SessionSidebarList, SessionSidebarShellContext } from './chat/session-sidebar.tsx';
+export { SessionSourceFilterFace } from './chat/session-sidebar.tsx';
 export type { SessionGroupView, SessionSidebarListProps, SessionSidebarProps, SessionSourceOption } from './chat/session-sidebar.tsx';
 export { ChatPage } from './chat/page.tsx';
 export type { ChatAgentOption, ChatOAuthApprovalPrompt, ChatPageProps, ChatStreamPresentation, ChatTerminalView, ChatToolApprovalPrompt, ChatToolCallView } from './chat/page.tsx';
 export { ReferenceList, referenceSections } from './chat/reference-list.tsx';
+export { RagPipelineProgressFace } from './chat/message-face.tsx';
 export type { ReferenceListProps, ReferenceSection } from './chat/reference-list.tsx';
 export { ToolResultView, toolResultPresentation } from './chat/tool-result.tsx';
 export type { ToolResultPresentation, ToolResultViewInput } from './chat/tool-result.tsx';

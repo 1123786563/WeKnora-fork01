@@ -24,13 +24,23 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { createRootRoute, createRoute, createRouter, notFound, Outlet, useParams, useLocation, type RouterHistory } from '@tanstack/react-router';
 import { createWeKnoraClient, type AuthSession } from '@weknora/api-client';
+
+// F7 —— Vue router/index.ts:15 parity：Lite 会话内最后访问路径的 sessionStorage 键。
+const LITE_LAST_PATH_KEY = 'weknora_lite_last_path';
+import { formatMessage } from '@weknora/i18n';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import type { LegacyPlatformSession } from './platform/legacy-session.ts';
 import { navigate } from './platform/navigation.ts';
 import { guardRoute, organizationInviteCode, type RouteGuardContext, type RouteGuardDecision } from './routes.tsx';
-import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
-import { createWikiSourceDocOpener } from './wiki/source-doc-open.ts';
+import { shouldOpenWiki } from './knowledge/wiki-route.ts';
+// AGT-4 — agents 路由能力守卫（Vue router meta.requiredCapability:'agents'）。
+import {
+  isPaletteCapabilitySupported,
+  loadPaletteDeploymentCapabilities,
+  type PaletteDeploymentCapabilities,
+} from './platform/deployment-capabilities.ts';
+import { readStoredLocale } from './i18n.ts';
 
 // Craft mounts through the shared @weknora/views/craft assembly, which pulls
 // in packages/ui 旧栈 (theme.css) — keep it lazy so the router module stays
@@ -150,6 +160,63 @@ async function navigationTakesOver(abortSignal: AbortSignal | undefined): Promis
   throw new Error('unreachable');
 }
 
+// ── KBL-R1：library 族 KB 详情 URL 收编到 platform 族 ──────────────────
+//
+// Vue 基准只在 platform 族下渲染 KB 详情（/platform/knowledge-bases/:kbId）：
+// tab 用 ?tab= 表达，文档抽屉与 KB 设置全部就地（无子路由）。React 历史上
+// 的 library 族 /knowledgeBase/:id/{wiki,faq,settings,documents/:docId} 是
+// 独立壳层入口，地址栏与左侧导航会逃出 platform 壳层语境。这里把 library
+// 族全量改为 SPA replace 重定向（沿用守卫的 navigationTakesOver 机制，
+// 不引入动态 redirect()），映射表：
+//
+//   /knowledgeBase                       → /platform/knowledge-bases
+//   /knowledgeBase/:id                   → /platform/knowledge-bases/:id（query 原样保留）
+//   /knowledgeBase/:id/wiki              → /platform/knowledge-bases/:id?tab=wiki（其余 query 合并保留）
+//   /knowledgeBase/:id/documents/:docId  → /platform/knowledge-bases/:id?knowledge_id=:docId
+//   /knowledgeBase/:id/faq               → /platform/knowledge-bases/:id
+//   /knowledgeBase/:id/settings          → /platform/knowledge-bases/:id
+//
+// 说明：platform 族没有文档子路由——knowledge_id 是文档抽屉就地打开深链
+// （KnowledgeBaseView → KnowledgeDocumentsPage.initialDocumentId，对齐 Vue
+// isCardDetails）。FAQ 不是路由而是 kb.type 分流（platform 详情按类型就地
+// 渲染 FAQPage，Vue 语义）。KB 设置是各 surface 就地 ⚙ Dialog（Vue
+// uiStore.openKBSettings，无 URL），重定向落到文档面即可见齿轮入口。
+// 未知子路径不重定向，交给 library 布局的 404。
+function libraryKBSegment(segment: string): string {
+  // beforeLoad 的 pathname 编码形态不保证（原始/已解码皆可能出现）；
+  // decode→encode 在两种输入下都产出正确的编码段，畸形百分号原样保留。
+  try { return encodeURIComponent(decodeURIComponent(segment)); } catch { return segment; }
+}
+
+/** URLSearchParams 写入 query 值前只解码——toString 会再编码一次。 */
+function libraryKBQueryValue(segment: string): string {
+  try { return decodeURIComponent(segment); } catch { return segment; }
+}
+
+function libraryKBRedirectTarget(pathname: string, query: string): string | undefined {
+  const rest = pathname.slice('/knowledgeBase'.length);
+  if (rest === '' || rest === '/') return '/platform/knowledge-bases';
+  const segments = rest.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
+  const kbSegment = segments[0];
+  if (!kbSegment) return undefined;
+  const sub = segments[1];
+  const params = new URLSearchParams(query);
+  if (sub === undefined) {
+    // 详情：query 原样保留（tab/slug/knowledge_id 语义与 platform 族一致）。
+  } else if (sub === 'wiki' && segments.length === 2) {
+    params.set('tab', 'wiki');
+  } else if (sub === 'documents' && segments.length === 3 && segments[2] !== '') {
+    params.delete('tab');
+    params.set('knowledge_id', libraryKBQueryValue(segments[2]!));
+  } else if ((sub === 'faq' || sub === 'settings') && segments.length === 2) {
+    // 见上方映射表：就地形态承载，无对应深链。
+  } else {
+    return undefined;
+  }
+  const suffix = params.toString();
+  return `/platform/knowledge-bases/${libraryKBSegment(kbSegment)}${suffix ? `?${suffix}` : ''}`;
+}
+
 // Wiki documents/wikis share the wiki entry gate: a library without the wiki
 // capability falls back to the documents page at the wiki URL (parity with
 // the pre-router WikiEntry and Vue KnowledgeBase.vue's `!isWiki` documents
@@ -164,43 +231,67 @@ export function WikiEntry(props: {
 }): ReactNode {
   const { client } = props;
   const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
+  const [kbType, setKbType] = useState<string | null>(null);
+  // KBW-3：Vue openSourceDoc（KnowledgeBase.vue L1494 → isCardDetails）就地
+  // 打开右侧文档抽屉，URL 保持 ?tab=wiki。React 复用 documents/:docId 路由
+  // 渲染的同一个 KnowledgeDocumentDetailPage（根节点即 WkSheet 右侧抽屉）作
+  // wiki 视图内弹层，不动路由族。State 声明保持在所有早退 return 之前。
+  const [sourceDocId, setSourceDocId] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     void client.knowledgeBases.settings.get(props.knowledgeBaseId).then((kb) => {
-      if (active) setWikiEnabled(shouldOpenWiki(kb));
+      if (!active) return;
+      setWikiEnabled(shouldOpenWiki(kb));
+      const type = (kb as { type?: unknown }).type;
+      setKbType(typeof type === 'string' ? type : null);
     }).catch(() => {
       // Preserve the existing Wiki error surface when capability lookup is unavailable.
       if (active) setWikiEnabled(true);
     });
     return () => { active = false; };
   }, [client, props.knowledgeBaseId]);
-  // The address-bar cleanup runs after commit, never during render: both the
-  // navigation observer (platform/navigation.ts syncRouter) and @tanstack's
-  // browser history patch window.history.replaceState to notify the router
-  // synchronously, so a render-phase call would setState on the router while
-  // WikiEntry is still rendering (render crash on wiki-disabled libraries).
-  useEffect(() => {
-    if (wikiEnabled === false) window.history.replaceState({}, document.title, wikiEntryPath(props.knowledgeBaseId));
-  }, [wikiEnabled, props.knowledgeBaseId]);
+  // KBW-7：无 wiki 能力的 KB 访问 ?tab=wiki 时 Vue 就地切换视图且 URL 原样
+  // 保留（KnowledgeBase.vue L2481 `activeKbTab === 'documents' || !isWiki`
+  // 分支从不改写地址栏）。这里不再 replaceState 清理 tab 参数——旧实现会把
+  // platform 壳层 URL 改写成 /knowledgeBase/:id，逃出壳层。FAQ 类型按
+  // R492 D3 同款分流就地渲染 FAQPage：若落到 KnowledgeDocumentsPage，其内置
+  // FAQ 分流（kbTypeRedirectPath → /knowledgeBase/:id/faq）同样会逃出壳层。
+  // 历史教训保留：任何地址栏写入都必须在 commit 后进行（渲染期
+  // replaceState 会同步通知 router，曾导致 wiki-disabled 库渲染崩溃回环，
+  // router.wiki-entry.test.tsx 仍在守护）。
   if (wikiEnabled === false) {
+    if (kbType !== null && kbType.toLowerCase() === 'faq') {
+      return <FAQPage client={client} knowledgeBaseId={props.knowledgeBaseId} />;
+    }
     return (
       <KnowledgeDocumentsPage
         client={client}
         knowledgeBaseId={props.knowledgeBaseId}
         initialDocumentId={props.initialDocumentId}
-        onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(props.knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)}
+        onOpenDocument={(document) => navigate(`/platform/knowledge-bases/${encodeURIComponent(props.knowledgeBaseId)}?knowledge_id=${encodeURIComponent(document.id)}`)}
       />
     );
   }
   if (wikiEnabled === null) return <p role="status">加载中…</p>;
   return (
-    <WikiPage
-      client={client}
-      knowledgeBaseId={props.knowledgeBaseId}
-      initialSlug={props.initialSlug}
-      canContribute={props.canContribute}
-      onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId: props.knowledgeBaseId, navigate })}
-    />
+    <>
+      <WikiPage
+        client={client}
+        knowledgeBaseId={props.knowledgeBaseId}
+        initialSlug={props.initialSlug}
+        canContribute={props.canContribute}
+        onOpenSourceDoc={(documentId) => setSourceDocId(documentId)}
+      />
+      {sourceDocId !== null ? (
+        <Suspense fallback={null}>
+          <KnowledgeDocumentDetailPage
+            client={client}
+            documentId={sourceDocId}
+            onBack={() => setSourceDocId(null)}
+          />
+        </Suspense>
+      ) : null}
+    </>
   );
 }
 
@@ -497,7 +588,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
         client={client}
         knowledgeBaseId={props.knowledgeBaseId}
         initialDocumentId={initialDocumentId}
-        onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(props.knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)}
+        onOpenDocument={(document) => navigate(`/platform/knowledge-bases/${encodeURIComponent(props.knowledgeBaseId)}?knowledge_id=${encodeURIComponent(document.id)}`)}
       />
     );
   }
@@ -595,9 +686,45 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     component: (): ReactNode => <ChatPageSuspensed />,
   });
 
+  // AGT-4 — Vue router/index.ts:139,453-458：agents 路由 meta
+  // requiredCapability:'agents' 守卫——不支持时 MessagePlugin.warning
+  // (settings.capabilityUnavailable) 并重定向 /platform/knowledge-bases。
+  // 能力探测 fail-open（无 administration 命名空间/探测失败均放行，后端
+  // 仍为权威边界），每个 router 实例只探测一次（Vue
+  // deploymentCapabilities.ensureLoaded 的缓存语义）。
+  let agentsCapabilityProbe: Promise<boolean> | null = null;
+  const probeAgentsCapability = (): Promise<boolean> => {
+    if (!agentsCapabilityProbe) {
+      agentsCapabilityProbe = (async () => {
+        const adminApi = (client as unknown as {
+          administration?: { capabilities?: (signal?: AbortSignal) => Promise<PaletteDeploymentCapabilities> };
+        }).administration;
+        const fetcher = adminApi?.capabilities?.bind(adminApi);
+        if (!fetcher) return true;
+        const probed = await loadPaletteDeploymentCapabilities(fetcher);
+        return isPaletteCapabilitySupported(probed, 'agents');
+      })();
+      agentsCapabilityProbe.catch(() => { agentsCapabilityProbe = null; });
+    }
+    return agentsCapabilityProbe;
+  };
+
   const agentsRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'agents',
+    beforeLoad: async ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
+      void location;
+      if (await probeAgentsCapability()) return;
+      // 动态引入保持 router 模块 node 测试可导入（tdesign-react 仅在守卫
+      // 命中时加载；MessagePlugin 的 render-19-adapter 由 main.tsx 接线。
+      // headless/测试环境加载失败仅吞掉——重定向本身仍生效）。
+      void import('tdesign-react').then(({ MessagePlugin }) => {
+        void MessagePlugin.warning(formatMessage(readStoredLocale(), 'settings.capabilityUnavailable'));
+      }).catch(() => { /* headless: no tdesign runtime, the redirect still lands */ });
+      window.history.replaceState({}, document.title, '/platform/knowledge-bases');
+      await navigationTakesOver(abortSignal);
+      throw new Error('unreachable');
+    },
     // Real agents list (parity with Vue AgentList.vue); the consolidated
     // configuration surface stays reachable at /platform/configuration.
     component: (): ReactNode => (
@@ -812,10 +939,23 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     },
   });
 
+  // KBL-R1：library 族布局先走认证守卫，再把已识别的 library 路径 SPA
+  // replace 到 platform 族等价形态（映射表见 libraryKBRedirectTarget）；
+  // 未知子路径放行给布局的 notFoundComponent。
+  const knowledgeBaseLayoutBeforeLoad = async ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
+    await protectBeforeLoad({ location, abortSignal });
+    const target = libraryKBRedirectTarget(location.pathname, searchOf(locationPathWithQuery(location)));
+    if (target !== undefined) {
+      window.history.replaceState({}, document.title, target);
+      await navigationTakesOver(abortSignal);
+      throw new Error('unreachable');
+    }
+  };
+
   const knowledgeBaseLayout = createRoute({
     getParentRoute: () => rootRoute,
     path: '/knowledgeBase',
-    beforeLoad: protectBeforeLoad,
+    beforeLoad: knowledgeBaseLayoutBeforeLoad,
     component: (): ReactNode => shellPage(<Outlet />),
     notFoundComponent: () => (
       <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
@@ -860,7 +1000,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
           <KnowledgeDocumentDetailPage
             client={client}
             documentId={decodeURIComponent(docId ?? '')}
-            onBack={() => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`)}
+            onBack={() => navigate(`/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`)}
           />
         </Suspense>
       );
@@ -960,6 +1100,28 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     defaultPreload: false,
     ...(options.history ? { history: options.history } : {}),
   });
+
+  // F7 —— Vue router/index.ts:359-369,486-490 parity：Lite 深链恢复 + 路径记录。
+  const isLiteEdition = () => localStorage.getItem('weknora_lite_mode') === 'true';
+  const isSafeLiteRestoreTarget = (path: string) =>
+    path.startsWith('/platform/') && !path.startsWith('/platform/organizations');
+  const isLiteSpaDefaultEntry = (pathname: string) =>
+    pathname === '/' || pathname === '/platform' || pathname === '/platform/knowledge-bases';
+  let liteRestoreDone = false;
+  router.subscribe('onResolved', ({ toLocation }) => {
+    const pathname = toLocation.pathname;
+    if (!liteRestoreDone && isLiteEdition() && isLiteSpaDefaultEntry(pathname)) {
+      liteRestoreDone = true;
+      const saved = sessionStorage.getItem(LITE_LAST_PATH_KEY);
+      if (saved && isSafeLiteRestoreTarget(saved) && saved !== pathname + toLocation.search) {
+        void router.navigate({ to: saved });
+        return;
+      }
+    }
+    if (!isLiteEdition() || pathname === '/login' || !pathname.startsWith('/platform')) return;
+    sessionStorage.setItem(LITE_LAST_PATH_KEY, pathname + toLocation.search);
+  });
+
   return router;
 }
 

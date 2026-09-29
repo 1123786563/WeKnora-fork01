@@ -26,6 +26,18 @@ Object.assign(globalThis, {
   CustomEvent: dom.window.CustomEvent,
   PointerEvent: dom.window.PointerEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
+  // tdesign 弹层（Popup trigger=click）绑定监听前做 `element instanceof Element`
+  // 域校验，CSSTransition 打开期读 getComputedStyle/MutationObserver；首个
+  // harness import 已把这些全局钉在另一个 jsdom 实例上，跨实例 instanceof 恒
+  // false 会让触发器监听静默不挂、弹层打不开。这里钉回本文件的 dom 实例
+  // （与 window/document 同域）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  DocumentFragment: dom.window.DocumentFragment,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'en-US' });
@@ -189,14 +201,53 @@ test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract'
   assert.equal(line.getAttribute('marker-start'), 'url(#wk-graph-arrow-start)');
 });
 
+test('ZZ bare popup probe', async () => {
+  const { Popup } = await import('tdesign-react');
+  const host = document.createElement('div');
+  document.body.append(host);
+  const r = createRoot(host);
+  await act(async () => {
+    r.render(React.createElement(Popup, {
+      trigger: 'click', placement: 'bottom-right', showArrow: true,
+      overlayClassName: 'wiki-graph-help-popup',
+      overlayStyle: { padding: 0 }, overlayInnerStyle: { padding: 0 },
+      content: React.createElement('div', { className: 'wk-kg-25' }, 'HELP-CONTENT'),
+    }, React.createElement('button', { type: 'button', 'aria-label': '操作帮助' }, '?')));
+  });
+  const trig = host.querySelector('button[aria-label="操作帮助"]') as HTMLElement;
+  await act(async () => {
+    trig.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  console.error('ZZ-OPEN-CLASS:', trig.className, 'ZZ-POPUP:', !!document.querySelector('.wiki-graph-help-popup'));
+  await act(async () => { r.unmount(); });
+  host.remove();
+});
+
 test('graph help lists every canvas gesture documented by Vue', async () => {
   const container = await mount();
-  const help = container.querySelector('details');
-  assert.ok(help);
+  // KBW-6：容器形态对齐 Vue t-popup——弃用 details/summary 就地折叠，改为
+  // 点击触发的弹层面板（overlayClassName=wiki-graph-help-popup，portal 到 body）。
+  assert.equal(container.querySelector('details'), null, 'the native details disclosure is gone');
+  assert.equal(container.querySelector('summary'), null);
+  // 弹层内容懒渲染：静态标记只有触发器。
+  assert.equal(document.querySelector('.wiki-graph-help-popup'), null, 'help popup content is lazy like Vue t-popup');
+  const trigger = container.querySelector<HTMLElement>('button[aria-label="操作帮助"]');
+  assert.ok(trigger, 'help trigger button is mounted');
+  console.error('P1:before-click');
+  await act(async () => {
+    trigger.click();
+    console.error('P2:clicked');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    console.error('P3:settled');
+  });
+  console.error('P4:after-act');
+  const popup = document.querySelector('.wiki-graph-help-popup');
+  assert.ok(popup, 'clicking the trigger opens the popup overlay');
 
-  const heading = help.querySelector('dl > div:not(.wk-kg-28)');
+  const heading = popup.querySelector('dl > div:not(.wk-kg-28)');
   assert.equal(heading?.textContent?.trim(), '画布操作');
-  const rows = [...help.querySelectorAll('dl div.wk-kg-28')].map((row) => row.textContent?.trim());
+  const rows = [...popup.querySelectorAll('dl div.wk-kg-28')].map((row) => row.textContent?.trim());
   assert.deepEqual(rows, [
     '单击打开节点详情',
     '双击以该节点为中心聚焦',
@@ -206,6 +257,16 @@ test('graph help lists every canvas gesture documented by Vue', async () => {
     '拖拽空白平移画布',
     '滚轮缩放画布',
   ]);
+  // 点击触发器关闭弹层（t-popup trigger="click" 切换语义）。
+  console.error('P5:before-close');
+  await act(async () => {
+    trigger.click();
+    console.error('P6:close-clicked');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    console.error('P7:close-settled');
+  });
+  console.error('P8:after-close-act');
+  assert.equal(document.querySelector('.wiki-graph-help-popup .wk-kg-28'), null, 'second click closes the popup');
 });
 
 test('graph keeps Vue canvas overlays and familiar-node ring semantics', async () => {
@@ -333,8 +394,8 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
   // Crumb 3: the 文档 / Wiki / 图谱 tab row (Vue isWiki breadcrumb-tabs);
   // the active graph tab is brand-green, aria-current, and carries the
   // tabGraphTip concept-clarification tooltip. Hrefs reuse the canonical
-  // KB route form (/knowledgeBase/<id>?tab=…) — the same URLs the documents
-  // page nav links to; no new routes.
+  // KB route form (/platform/knowledge-bases/<id>?tab=…, KBL-R1) — the
+  // same URLs the documents page nav links to; no new routes.
   // tdesign 平移：Vue breadcrumb-tab 是 span（点击 onNavigate，无 href）；
   // 激活态品牌绿由 documents.td.css .breadcrumb-tab.active 承载。
   const tabLabels = [...breadcrumb.querySelectorAll('.breadcrumb-tab')].map((tab) => tab.textContent?.trim());

@@ -7,15 +7,18 @@ test('selected agent switches the web chat stream to agent mode with an explicit
   assert.deepEqual(buildWebChatStreamOptions('session/1', '  Summarize this  ', 'agent/1'), {
     sessionId: 'session/1',
     mode: 'agent',
-    body: { query: '  Summarize this  ', agent_enabled: true, agent_id: 'agent/1', channel: 'web' },
+    // CHAT-13：web_search_enabled 恒显式（关闭为 false），对齐 Vue streame.ts。
+    body: { query: '  Summarize this  ', agent_enabled: true, agent_id: 'agent/1', channel: 'web', web_search_enabled: false },
   });
 });
 
 test('no selected agent keeps the web chat stream on knowledge mode', () => {
+  // CHAT-13：快速问答体显式带 agent_enabled:false / agent_id:'' / web_search_enabled:false
+  // （Vue 观察到的 6 键：query/agent_enabled/agent_id/web_search_enabled/summary_model_id/channel）。
   assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', ''), {
     sessionId: 'session-1',
     mode: 'knowledge',
-    body: { query: 'Question', channel: 'web' },
+    body: { query: 'Question', agent_enabled: false, agent_id: 'builtin-quick-answer', channel: 'web', web_search_enabled: false },
   });
 });
 
@@ -28,7 +31,7 @@ test('keeps a knowledge-base chat deep-link scoped to its knowledge base', () =>
   assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', 'kb-1'), {
     sessionId: 'session-1',
     mode: 'knowledge',
-    body: { query: 'Question', channel: 'web', knowledge_base_ids: ['kb-1'] },
+    body: { query: 'Question', agent_enabled: false, agent_id: 'builtin-quick-answer', channel: 'web', knowledge_base_ids: ['kb-1'], web_search_enabled: false },
   });
 });
 
@@ -36,7 +39,7 @@ test('includes only uploaded attachment ids in the stream body', () => {
   assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', undefined, ['att-1', 'att-2']), {
     sessionId: 'session-1',
     mode: 'knowledge',
-    body: { query: 'Question', channel: 'web', attachment_ids: ['att-1', 'att-2'] },
+    body: { query: 'Question', agent_enabled: false, agent_id: 'builtin-quick-answer', channel: 'web', attachment_ids: ['att-1', 'att-2'], web_search_enabled: false },
   });
 });
 
@@ -124,6 +127,7 @@ test('webSearchEnabled=true injects web_search_enabled on both stream modes (D15
 });
 
 test('web search stays disabled by default in the stream body (D15)', () => {
-  assert.equal('web_search_enabled' in buildWebChatStreamOptions('session-1', 'Question', '').body, false);
-  assert.equal('web_search_enabled' in buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, undefined, false).body, false);
+  // CHAT-13 —— Vue 显式发送 web_search_enabled:false（不再省略键）。
+  assert.equal(buildWebChatStreamOptions('session-1', 'Question', '').body.web_search_enabled, false);
+  assert.equal(buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, undefined, false).body.web_search_enabled, false);
 });

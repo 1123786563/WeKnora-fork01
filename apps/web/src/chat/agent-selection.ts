@@ -105,10 +105,14 @@ export function buildWebChatStreamOptions(sessionId: string, content: string, ag
     ...(mentionSkillNames.length > 0 ? { skill_names: [...new Set(mentionSkillNames)] } : {}),
   };
   const modelBody = modelId?.trim() ? { summary_model_id: modelId.trim() } : {};
-  // R484 D15 — Vue chat/index.vue:1255,1295: the settings-store toggle rides
-  // along on both stream modes as web_search_enabled (omitted when off).
-  const webSearchBody = webSearchEnabled === true ? { web_search_enabled: true } : {};
-  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...modelBody, ...webSearchBody } };
+  // CHAT-13 对齐 —— Vue streame.ts startStream：web_search_enabled 只要在
+  // 参数里就随请求发送（调用方恒传 boolean，关闭时显式 false），不再省略。
+  const webSearchBody = { web_search_enabled: webSearchEnabled === true };
+  // CHAT-13 对齐 —— Vue 快问答模式 postBody 同样带 agent_enabled:false 与
+  // agent_id（Vue settings.selectedAgentId 缺省即 BUILTIN_QUICK_ANSWER_ID，
+  // 观察到的请求体 6 键：query/agent_enabled/agent_id/web_search_enabled/
+  // summary_model_id/channel，agent_id 值为 'builtin-quick-answer'）。
+  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, agent_enabled: false, agent_id: 'builtin-quick-answer', channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...modelBody, ...webSearchBody } };
   return {
     sessionId,
     mode: 'agent',

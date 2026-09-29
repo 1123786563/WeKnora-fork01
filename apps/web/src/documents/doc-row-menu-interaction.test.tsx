@@ -16,15 +16,28 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge/kb-1/documents' });
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' });
+// 覆盖集必须完整（同 test-tdom-harness.ts）：tdesign useTrigger 的
+// getTriggerElement 用 `element instanceof Element` 解析触发器 DOM，若 Element
+// 仍指向 harness 的首个 JSDOM window，本文件的第二个 document 元素全部判假，
+// Popup 原生 click 监听不挂载——菜单只能靠组件内 React onClick 打开（与真实
+// 浏览器行为相悖的双翻转正是 KBL-3 根因，组件已改为 Popup 驱动）。
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
   MouseEvent: dom.window.MouseEvent,
   CustomEvent: dom.window.CustomEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 
 const { createRoot } = await import('react-dom/client');

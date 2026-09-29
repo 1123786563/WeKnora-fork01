@@ -1663,7 +1663,10 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
     t('integrations.api.requestExampleAgentChat'),
     `curl -N -X POST ${apiBaseDisplay}/agent-chat/<session_id> \\`,
     commonHeaders,
-    `  -d '{"query":"hello","agent_enabled":true,"agent_id":"agent-smart-reasoning","channel":"api"}'`,
+    // Vue 示例口径：playground.agent_id || BUILTIN_SMART_REASONING_ID，回退值
+    // 为真实内置智能体 'builtin-smart-reasoning'（ApiIntegrationSettings.vue
+    // L1092/L1111）；React 无 playground agent 选择态，直接用回退值（SETSYS-N5）。
+    `  -d '{"query":"hello","agent_enabled":true,"agent_id":"builtin-smart-reasoning","channel":"api"}'`,
   ].join('\n');
   const openApiDoc = () => { window.open('https://github.com/Tencent/WeKnora/blob/main/docs/api/README.md', '_blank', 'noopener'); };
   return <div className="api-settings wk-vi-51">

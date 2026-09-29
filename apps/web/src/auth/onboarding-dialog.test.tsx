@@ -81,7 +81,9 @@ function invitationDeps(): { client: Record<string, unknown>; scopeRuntime: Reco
         tenants: {
           invitations: {
             pendingCount: async () => ({ pendingCount: 1 }),
-            listMine: async () => ({ items: [{ id: 7, tenant_id: 12, tenant_name: '研发空间', role: 'member', status: 'pending' }] }),
+            // AUTH-3 — 后端全量字段（id/role/message/expires_at/inviter_name），
+            // 与 evidence raw-s4b mock 同形态。
+            listMine: async () => ({ items: [{ id: 7, tenant_id: 12, tenant_name: '研发空间', role: 'contributor', status: 'pending', inviter_name: 'wuyj', expires_at: '2026-10-31T08:00:00Z', message: '欢迎加入' }] }),
           },
         },
       },
@@ -170,6 +172,13 @@ test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 
   assert.match(dialog.textContent || '', /创建新空间/);
   assert.match(dialog.textContent || '', /你将自动成为新空间的所有者/);
 
+  // AUTH-7 — Vue t-dialog footer order 取消|创建 (cancelBtn before
+  // confirmBtn) and no header × close button.
+  const dialogButtons = [...dialog.querySelectorAll('button')].map((n) => (n.textContent || '').trim());
+  assert.ok(dialogButtons.indexOf('取消') >= 0 && dialogButtons.indexOf('创建') >= 0, 'both footer actions render');
+  assert.ok(dialogButtons.indexOf('取消') < dialogButtons.indexOf('创建'), 'footer order matches Vue: 取消 before 创建');
+  assert.equal(dialog.querySelector('.wk-dialog-close'), null, 'Vue create-workspace dialog renders no header × close');
+
   // Vue: description is a textarea with the Vue placeholder.
   const description = dialog.querySelector('textarea') as HTMLTextAreaElement | null;
   assert.ok(description, 'expected the description field to be a textarea like Vue t-textarea');
@@ -203,9 +212,49 @@ test('my invitations renders in a modal dialog like Vue WorkspaceOnboarding', as
   const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
   assert.ok(dialog, 'expected invitations to open in a modal dialog');
   assert.equal(dialog.getAttribute('aria-modal'), 'true');
-  assert.match(dialog.textContent || '', /查看邀请/);
+  assert.match(dialog.textContent || '', /我的邀请/);
   assert.match(dialog.textContent || '', /研发空间/);
   assert.equal(document.querySelector('[role="dialog"]')?.closest('.wk-card') ?? null, null);
+});
+
+// AUTH-3 — Vue MyInvitationsDialog 富卡片对齐：标题「我的邀请」+ 说明行 +
+// 卡片（租户名 + 角色本地化 contributor→编辑 + 邀请人 + 到期 + 留言）；
+// Vue :footer="false"，无底部「关闭」按钮（仅头部 ×）。
+test('my invitations dialog renders the Vue rich invitation card (AUTH-3)', async () => {
+  const { client, scopeRuntime } = invitationDeps();
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, {
+      client: client as never,
+      scopeRuntime: scopeRuntime as never,
+      onLogout: async () => {},
+    }));
+  });
+  await settle(20);
+
+  const invitationsEntry = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').startsWith('查看邀请'));
+  await act(async () => { invitationsEntry!.click(); await settle(10); });
+
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+  const text = dialog.textContent || '';
+  // 标题与说明行（Vue tenantInvitation.myInbox.title/description）
+  assert.match(text, /我的邀请/);
+  assert.match(text, /其他空间发给您的加入邀请/);
+  // 角色本地化：contributor → 编辑，不出现裸角色字符串
+  assert.match(text, /编辑/);
+  assert.ok(!/contributor/.test(text), 'role must be localized, not the raw contributor string');
+  // 邀请人 / 到期 / 留言 三行 meta
+  assert.match(text, /邀请人：wuyj/);
+  assert.match(text, /到期：/);
+  assert.match(text, /留言：欢迎加入/);
+  // 接受/拒绝仍在卡片上；Vue 弹窗无底部 footer「关闭」按钮
+  const dialogButtons = [...dialog.querySelectorAll('button')].map((n) => (n.textContent || '').trim());
+  assert.ok(dialogButtons.includes('接受') && dialogButtons.includes('拒绝'), 'card actions render');
+  assert.ok(!dialogButtons.includes('关闭'), 'Vue dialog has no footer close button');
+  // 卡片结构存在
+  assert.ok(dialog.querySelector('.wk-onb-inv-card'), 'invitation card structure renders');
 });
 
 test('workspace onboarding keeps the Vue workspace mark before the heading', async () => {

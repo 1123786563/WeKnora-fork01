@@ -290,6 +290,74 @@ export interface DocumentMarkdownBodyProps {
   loader?: DocumentMermaidLoader;
 }
 
+const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
+const FENCE_LINE_PATTERN = /^ {0,3}(`{3,}|~{3,})/;
+const CODE_SPAN_PATTERN = /(`+)[\s\S]*?\1/g;
+
+function stripComments(piece: string): string {
+  return piece.replace(HTML_COMMENT_PATTERN, '');
+}
+
+function stripCommentsOutsideCodeSpans(text: string): string {
+  // Vue keeps a comment's literal text when it sits inside an inline code
+  // span (marked escapes the span content, DOMPurify keeps the text), so
+  // only the prose between spans may be stripped.
+  let result = '';
+  let last = 0;
+  for (const match of text.matchAll(CODE_SPAN_PATTERN)) {
+    const start = match.index ?? 0;
+    result += stripComments(text.slice(last, start)) + match[0];
+    last = start + match[0].length;
+  }
+  return result + stripComments(text.slice(last));
+}
+
+/**
+ * Vue processMarkdown (doc-content.vue L898-940) lets marked pass raw HTML
+ * through and sanitizeHTML/DOMPurify then drops comment nodes, so
+ * `<!-- … -->` never reaches the Vue DOM (e.g. PPTX conversion markers
+ * `<!-- Slide number: N -->`). The shared chat markdown engine instead
+ * escapes raw HTML as visible text, which made those comments render as
+ * body copy (KBL-9). Strip comments from the markdown source before
+ * rendering; fenced code blocks and inline code spans keep their literal
+ * text verbatim (Vue shows escaped comments there).
+ */
+export function stripMarkdownHtmlComments(markdown: string): string {
+  if (!markdown || !markdown.includes('<!--')) return markdown;
+  const lines = markdown.split('\n');
+  const parts: string[] = [];
+  let textBuffer: string[] = [];
+  let fenceMarker = '';
+  let fenceLength = 0;
+  let inFence = false;
+  const flushText = () => {
+    if (textBuffer.length === 0) return;
+    parts.push(stripCommentsOutsideCodeSpans(textBuffer.join('\n')));
+    textBuffer = [];
+  };
+  for (const line of lines) {
+    const fence = FENCE_LINE_PATTERN.exec(line);
+    if (inFence) {
+      parts.push(line);
+      if (fence && fence[1][0] === fenceMarker && fence[1].length >= fenceLength) inFence = false;
+      continue;
+    }
+    if (fence) {
+      flushText();
+      parts.push(line);
+      fenceMarker = fence[1][0];
+      fenceLength = fence[1].length;
+      inFence = true;
+      continue;
+    }
+    textBuffer.push(line);
+  }
+  // An unclosed fence runs to the end of the document (CommonMark); its
+  // content was already pushed verbatim, only trailing prose remains.
+  flushText();
+  return parts.join('\n');
+}
+
 /** Vue bindMermaidClickEvents: rendered diagrams become click-to-fullscreen. */
 function bindDocumentMermaidClicks(root: HTMLElement, labels: DocumentMermaidLabels): void {
   root.querySelectorAll<HTMLElement>('.wk-chat-mermaid').forEach((figure) => {
@@ -314,7 +382,9 @@ function bindDocumentMermaidClicks(root: HTMLElement, labels: DocumentMermaidLab
  */
 export function DocumentMarkdownBody({ markdown, className, labels, loader = hydrateMermaidBlocksWithBrowserDefaults }: DocumentMarkdownBodyProps): ReactElement {
   const root = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => renderChatMarkdown(markdown), [markdown]);
+  // KBL-9: HTML comments are stripped up front — see stripMarkdownHtmlComments
+  // (Vue sanitizeHTML parity; the chat engine would escape them into text).
+  const html = useMemo(() => renderChatMarkdown(stripMarkdownHtmlComments(markdown)), [markdown]);
   useEffect(() => {
     const host = root.current;
     if (!host || typeof document === 'undefined') return;

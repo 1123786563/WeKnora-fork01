@@ -89,6 +89,13 @@ test('agent edit deep links parse the Vue query contract and ignore empty values
   assert.equal(parseAgentEditDeepLink('?edit=a-1&highlight=allowed_tools')?.section, 'tools');
   assert.equal(parseAgentEditDeepLink('?edit=a-1&highlight=unknown')?.section, 'basic');
   assert.equal(parseAgentEditDeepLink('?section=tools'), null);
+  // AGT-9 — Vue AgentList.vue:1163 passes the requested section through
+  // unfiltered; share (and every other editor nav id) must reach the modal,
+  // which sanitizes unknown ids itself (AgentEditorModal falls back to basic).
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&section=share')?.section, 'share');
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&section=personalization')?.section, 'personalization');
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&section=sandbox')?.section, 'skills');
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&section=integration-im')?.section, 'integration-im');
 });
 
 test('agent edit deep links resolve own agents first and shared agents by source tenant', () => {

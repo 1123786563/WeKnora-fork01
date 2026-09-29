@@ -164,6 +164,9 @@ export interface ChatComposerProps {
   /** R490 B1 — Vue mentionEmptyHint: agent-compatibility empty state, shown
    *  instead of mentionNoAvailable when the filter emptied the list. */
   mentionEmptyHint?: string;
+  /** Vue MentionSelector groupCounts：分组入口展示用服务端总数（如文件搜索
+   *  total），避免仅用首屏已加载条数（CHAT-1 对齐）。 */
+  mentionGroupCounts?: Partial<Record<ChatMentionView['type'], number>>;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -228,7 +231,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, mentionEmptyHint, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, onModelAdd, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, mentionEmptyHint, mentionGroupCounts, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, onModelAdd, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -340,6 +343,44 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const imageAttachmentCount = attachments.filter((attachment) => /\.(jpe?g|png|gif|webp|bmp|tiff)$/i.test(attachment.name)).length;
 
   const filteredMentionOptions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
+  /*
+   * Vue MentionSelector.vue 两级结构：无筛选词时首屏只渲染分组入口
+   * （mention-group-entry：图标 + label + count + chevron-right），点入
+   * 二级才展开该组条目，顶部带 mention-back-row 返回行；query 非空时
+   * （isFlatMode）退化为原来的平铺匹配列表。React 侧无 groupCounts 服务端
+   * 总数，count 用已加载条数（Vue formatGroupCount 的 loadedCount 分支）。
+   */
+  const mentionIsFlat = mentionQuery.trim().length > 0;
+  const mentionGroupRows = ([
+    { type: 'kb' as const, label: t.mentionKnowledge, icon: 'folder' },
+    { type: 'tag' as const, label: t.mentionGroupTag, icon: 'tag' },
+    { type: 'mcp' as const, label: t.mentionGroupMcp, icon: 'tools' },
+    { type: 'skill' as const, label: t.mentionGroupSkill, icon: 'system-code' },
+    { type: 'file' as const, label: t.mentionGroupFile, icon: 'file' },
+  ])
+    // Vue mentionGroups/formatGroupCount：count 优先服务端 groupCounts（文件
+    // 搜索 total），缺省回落已加载条数；入口可见性仍按已加载条数判定。
+    .map((def) => ({ ...def, items: filteredMentionOptions.filter((item) => item.type === def.type), count: mentionGroupCounts?.[def.type] }))
+    .filter((group) => group.items.length > 0);
+  // Vue currentGroupType / groupActiveIndex；query 变化触发 isFlatMode watch
+  // 复位（MentionSelector.vue watch(isFlatMode) → currentGroupType = null）。
+  const [mentionGroupType, setMentionGroupType] = useState<ChatMentionView['type'] | null>(null);
+  const [mentionGroupActiveIndex, setMentionGroupActiveIndex] = useState(0);
+  useEffect(() => {
+    if (mentionQuery.trim().length > 0) setMentionGroupType(null);
+  }, [mentionQuery]);
+  const mentionGroupItems = mentionGroupType ? (mentionGroupRows.find((group) => group.type === mentionGroupType)?.items ?? []) : [];
+  function enterMentionGroup(type: ChatMentionView['type']): void {
+    const group = mentionGroupRows.find((item) => item.type === type);
+    if (!group) return;
+    setMentionGroupType(type);
+    setActiveMentionIndex(0);
+    setMentionGroupActiveIndex(mentionGroupRows.findIndex((item) => item.type === type));
+  }
+  function leaveMentionGroup(): void {
+    setMentionGroupType(null);
+    setActiveMentionIndex(0);
+  }
   function toggleMentions(): void {
     if (disabled) return;
     const next = !mentionOpen;
@@ -347,6 +388,8 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
     if (next) {
       setMentionQuery('');
       setActiveMentionIndex(0);
+      setMentionGroupType(null);
+      setMentionGroupActiveIndex(0);
       onMentionOpen?.();
       // Vue triggerMention：锚定 textarea 左缘，优先上方（8px 间距）。
       const textarea = draftRef.current;
@@ -375,19 +418,56 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
       closeMentions();
       return;
     }
-    if (event.key === 'ArrowDown' && filteredMentionOptions.length > 0) {
-      event.preventDefault();
-      setActiveMentionIndex((current) => Math.min(current + 1, filteredMentionOptions.length - 1));
+    // Vue MentionSelector moveActive：平铺模式跨全列表；首屏在分组入口行间
+    // 移动（Enter = enterGroup）；二级在组内条目间移动（Enter = select）。
+    if (mentionIsFlat) {
+      if (event.key === 'ArrowDown' && filteredMentionOptions.length > 0) {
+        event.preventDefault();
+        setActiveMentionIndex((current) => Math.min(current + 1, filteredMentionOptions.length - 1));
+        return;
+      }
+      if (event.key === 'ArrowUp' && filteredMentionOptions.length > 0) {
+        event.preventDefault();
+        setActiveMentionIndex((current) => Math.max(current - 1, 0));
+        return;
+      }
+      if (event.key === 'Enter' && filteredMentionOptions.length > 0) {
+        event.preventDefault();
+        onMentionSelect?.(filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)]);
+        closeMentions();
+      }
       return;
     }
-    if (event.key === 'ArrowUp' && filteredMentionOptions.length > 0) {
+    if (!mentionGroupType) {
+      if (event.key === 'ArrowDown' && mentionGroupRows.length > 0) {
+        event.preventDefault();
+        setMentionGroupActiveIndex((current) => Math.min(current + 1, mentionGroupRows.length - 1));
+        return;
+      }
+      if (event.key === 'ArrowUp' && mentionGroupRows.length > 0) {
+        event.preventDefault();
+        setMentionGroupActiveIndex((current) => Math.max(current - 1, 0));
+        return;
+      }
+      if (event.key === 'Enter' && mentionGroupRows.length > 0) {
+        event.preventDefault();
+        enterMentionGroup(mentionGroupRows[mentionGroupActiveIndex]!.type);
+      }
+      return;
+    }
+    if (event.key === 'ArrowDown' && mentionGroupItems.length > 0) {
+      event.preventDefault();
+      setActiveMentionIndex((current) => Math.min(current + 1, mentionGroupItems.length - 1));
+      return;
+    }
+    if (event.key === 'ArrowUp' && mentionGroupItems.length > 0) {
       event.preventDefault();
       setActiveMentionIndex((current) => Math.max(current - 1, 0));
       return;
     }
-    if (event.key === 'Enter' && filteredMentionOptions.length > 0) {
+    if (event.key === 'Enter' && mentionGroupItems.length > 0) {
       event.preventDefault();
-      onMentionSelect?.(filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)]);
+      onMentionSelect?.(mentionGroupItems[Math.min(activeMentionIndex, mentionGroupItems.length - 1)]);
       closeMentions();
     }
   }
@@ -583,34 +663,56 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                   <div className="empty" role="status">{t.loadingMessages}</div>
                 ) : mentionError ? (
                   <div className="empty" role="alert">{mentionError}</div>
-                ) : filteredMentionOptions.length > 0 ? (
-                  <div className="mention-group" data-group-type="kb" id="wk-chat-mention-options">
-                    {filteredMentionOptions.map((item, index) => (
-                      <div
-                        key={item.id}
-                        id={`wk-chat-mention-option-${item.id}`}
-                        role="option"
-                        aria-selected={index === activeMentionIndex}
-                        data-mention-id={item.id}
-                        data-mention-type={item.type}
-                        className={'mention-item wk-chat-mention-item' + (index === activeMentionIndex ? ' active' : '')}
-                        onMouseEnter={() => setActiveMentionIndex(index)}
-                        onClick={() => { onMentionSelect?.(item); closeMentions(); }}
-                      >
-                        <div className="icon-wrap">
-                          <div className={'icon ' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'faq-icon' : 'kb-icon') : `${item.type}-icon`)}>
-                            <svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href={'#t-icon-' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'chat-bubble-help' : 'folder') : item.type === 'file' ? 'file' : 'tools')} /></svg>
+                ) : !mentionIsFlat && !mentionGroupType ? (
+                  mentionGroupRows.length > 0 ? mentionGroupRows.map((group, index) => (
+                    <button
+                      key={group.type}
+                      type="button"
+                      data-group-type={group.type}
+                      className={'mention-group-entry' + (index === mentionGroupActiveIndex ? ' active' : '')}
+                      onMouseEnter={() => setMentionGroupActiveIndex(index)}
+                      onClick={() => enterMentionGroup(group.type)}
+                    >
+                      <span className="mention-group-entry__icon"><svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href={'#t-icon-' + group.icon} /></svg></span>
+                      <span className="mention-group-entry__label">{group.label}</span>
+                      <span className="mention-group-entry__count">{group.count ?? group.items.length}</span>
+                      <svg className="t-icon mention-group-entry__arrow" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-chevron-right" /></svg>
+                    </button>
+                  )) : (
+                    <div className="empty">{mentionEmptyHint || t.noResult}</div>
+                  )
+                ) : (
+                  <>
+                    {!mentionIsFlat ? <button type="button" className="mention-back-row" onClick={leaveMentionGroup}>
+                      <svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-chevron-left" /></svg>
+                      <span>{mentionGroupRows.find((group) => group.type === mentionGroupType)?.label}</span>
+                    </button> : null}
+                    <div className="mention-group" data-group-type={mentionGroupType ?? 'kb'} id="wk-chat-mention-options">
+                      {(mentionIsFlat ? filteredMentionOptions : mentionGroupItems).map((item, index) => (
+                        <div
+                          key={item.id}
+                          id={`wk-chat-mention-option-${item.id}`}
+                          role="option"
+                          aria-selected={index === activeMentionIndex}
+                          data-mention-id={item.id}
+                          data-mention-type={item.type}
+                          className={'mention-item wk-chat-mention-item' + (index === activeMentionIndex ? ' active' : '')}
+                          onMouseEnter={() => setActiveMentionIndex(index)}
+                          onClick={() => { onMentionSelect?.(item); closeMentions(); }}
+                        >
+                          <div className="icon-wrap">
+                            <div className={'icon ' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'faq-icon' : 'kb-icon') : `${item.type}-icon`)}>
+                              <svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href={'#t-icon-' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'chat-bubble-help' : 'folder') : item.type === 'file' ? 'file' : 'tools')} /></svg>
+                            </div>
+                          </div>
+                          <div className="item-main">
+                            <span className="name">{item.name}</span>
+                            {item.type === 'kb' || item.type === 'mcp' ? <span className="count">{item.toolCount ?? 0}</span> : null}
                           </div>
                         </div>
-                        <div className="item-main">
-                          <span className="name">{item.name}</span>
-                          {item.type === 'kb' || item.type === 'mcp' ? <span className="count">{item.toolCount ?? 0}</span> : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty">{mentionEmptyHint || t.noResult}</div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             </div>

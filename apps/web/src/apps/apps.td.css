@@ -117,3 +117,157 @@
 .connections-view .connections-view__error {
   margin-top: 0;
 }
+
+/* ============================================================================
+ * 3. AuthorizationView.vue（scoped → 根类前缀 .authorization-view，APP-1）
+ * ========================================================================== */
+
+.authorization-view {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  align-items: flex-start;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.authorization-view .authorization-view__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.authorization-view .authorization-view__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.authorization-view .authorization-view__desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.authorization-view .authorization-view__card {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.authorization-view .authorization-view__mono {
+  font-family: var(--td-font-family-code, monospace);
+}
+
+.authorization-view .authorization-view__hint {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+}
+
+.authorization-view .authorization-view__hint--ok {
+  color: var(--td-success-color);
+}
+
+.authorization-view .authorization-view__alert {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* ============================================================================
+ * 4. ActionView.vue（scoped → 根类前缀 .action-view，APP-1）
+ * ========================================================================== */
+
+.action-view {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  align-items: flex-start;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.action-view .action-view__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.action-view .action-view__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.action-view .action-view__desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.action-view .action-view__card {
+  width: 100%;
+  max-width: 720px;
+}
+
+.action-view .action-view__mono {
+  font-family: var(--td-font-family-code, monospace);
+}
+
+.action-view .action-view__risk-missing {
+  color: var(--td-text-color-placeholder);
+}
+
+.action-view .action-view__args {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--td-bg-color-page);
+  border-radius: var(--td-radius-medium, 6px);
+  padding: 10px 12px;
+  font-family: var(--td-font-family-code, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.action-view .action-view__controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-view .action-view__controls p {
+  margin: 0;
+  color: var(--td-warning-color);
+  font-size: 13px;
+}
+
+.action-view .action-view__hint {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+}
+
+.action-view .action-view__alert {
+  width: 100%;
+  max-width: 720px;
+}

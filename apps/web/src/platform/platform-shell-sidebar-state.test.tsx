@@ -18,7 +18,7 @@ import type { Root } from 'react-dom/client';
 
 // PlatformShell imports .css/.png assets; treat them as empty modules.
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
-const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png')
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png') || specifier.endsWith('.svg')
   ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
   : nextResolve(specifier, context);
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
@@ -40,6 +40,16 @@ Object.assign(globalThis, {
 const jsdomNavigator = dom.window.navigator;
 try { Object.defineProperty(jsdomNavigator, 'language', { value: 'zh-CN', configurable: true }); } catch { /* keep default locale */ }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: jsdomNavigator });
+/* F6 — 折叠态 rail 项改为 tdesign Tooltip（样式化浮层）：Popup 动画帧需要
+ * rAF（jsdom 可能缺省，按 shell-session-list.test.tsx 同款 shim）。 */
+const w = dom.window as unknown as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+w.requestAnimationFrame = w.requestAnimationFrame ?? ((cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 16));
+w.cancelAnimationFrame = w.cancelAnimationFrame ?? clearTimeout;
+(globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame
+  = (globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame ?? w.requestAnimationFrame;
+(globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+  = (globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ?? w.cancelAnimationFrame;
+
 
 const { createRoot } = await import('react-dom/client');
 const { PlatformShell } = await import('./PlatformShell.tsx');

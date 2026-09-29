@@ -466,7 +466,9 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                   {hasOverride(item) ? <Tag theme="success" variant="light" size="small" className="setting-badge" title={t('system.globalSettings.badgeOverrideTooltip')}>{t('system.globalSettings.badgeOverride')}</Tag> : null}
                 </div>
                 {keyDescription(item) ? <p className="desc">{keyDescription(item)}</p> : null}
-                {modifiedMeta(item) ? <div className="setting-meta">{t('system.globalSettings.modifiedAt', { value: modifiedMeta(item) })}</div> : null}
+                {/* modifiedMeta 已含 t(modifiedAt) 标签，这里不可再包一层，
+                    否则渲染成「上次修改：上次修改：…」（SETSYS-N4）。 */}
+                {modifiedMeta(item) ? <div className="setting-meta">{modifiedMeta(item)}</div> : null}
               </div>
               <div className="setting-control">
                 <div className="setting-control-row">

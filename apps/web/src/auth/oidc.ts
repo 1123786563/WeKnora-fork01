@@ -47,7 +47,10 @@ export function parseOIDCCallbackHash(hash: string): OIDCCallbackResult | null {
   if (!encoded) return null;
   try {
     return { kind: 'success', session: parseSuccess(encoded) };
-  } catch {
-    return { kind: 'error', code: 'invalid_callback', message: 'The OIDC callback payload is invalid.' };
+  } catch (error) {
+    // AUTH-5 — Vue App.vue 的 catch 直出 error.message（JSON.parse/atob 的
+    // 原始错误，如 `Unexpected token 'o', "foo" is not valid JSON`）；
+    // 对齐直出原文，不再吞成固定英文文案。
+    return { kind: 'error', code: 'invalid_callback', message: error instanceof Error ? error.message : 'The OIDC callback payload is invalid.' };
   }
 }

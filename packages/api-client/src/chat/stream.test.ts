@@ -17,7 +17,8 @@ test('builds knowledge and agent stream paths with resumable event id', () => {
   assert.deepEqual(buildChatStreamRequest({ sessionId: 'session/a', body: { query: 'hi' }, lastEventId: 'evt-3' }), {
     method: 'POST',
     path: '/api/v1/knowledge-chat/session%2Fa',
-    headers: { accept: 'text/event-stream', 'Last-Event-ID': 'evt-3' },
+    // CHAT-13 —— 显式 application/json（Vue streame.ts），不再落浏览器 text/plain 默认。
+    headers: { accept: 'text/event-stream', 'content-type': 'application/json', 'Last-Event-ID': 'evt-3' },
     body: { query: 'hi' },
   });
   assert.equal(buildChatStreamRequest({ sessionId: 's-1', mode: 'agent', body: {} }).path, '/api/v1/agent-chat/s-1');

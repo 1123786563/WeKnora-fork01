@@ -418,6 +418,23 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
     setDrawerWidth(initialDrawerWidth());
   }, [open, initialTitle, initialContent]);
 
+  /* CHAT-9 对齐 —— Vue t-drawer 默认 closeOnEscKeydown，Esc 直接关闭
+   * 「添加到知识库」抽屉（tdesign-react Drawer 的 Esc 处理不覆盖抽屉内
+   * 聚焦控件的场景，实测无效），这里挂 document keydown 显式关闭。
+   * 保存中与拖宽中不响应，避免误触。 */
+  useEffect(() => {
+    if (!open) return;
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (saving || resizingRef.current) return;
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeydown);
+    return () => document.removeEventListener('keydown', onKeydown);
+  }, [open, saving, onClose]);
+
   useEffect(() => {
     if (!open) return;
     let active = true;

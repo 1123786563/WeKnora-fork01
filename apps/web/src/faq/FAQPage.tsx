@@ -30,6 +30,8 @@ import { navigate as clientNavigate } from '../platform/navigation.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { KBInfoPopover, type KBInfoPopoverKB } from '../documents/KBInfoPopover.tsx';
 import { findSharedKBGrant } from '../wiki/edit-permission.ts';
+import { WkDialog as KBSettingsDialog } from '../shared/wk-legacy.tsx';
+import { KnowledgeSettingsPage } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
 import { normalizeFAQPayload, parseExcelFile, parseFAQImportText, serializeFAQEntries } from './import-export.ts';
 import './faq.td.css';
 
@@ -428,13 +430,13 @@ export interface FAQKBMeta { type?: string; description?: string; createdAt?: st
 
 /** Vue: handleNavigateToKbList → /platform/knowledge-bases. */
 export const faqKBListPath = '/platform/knowledge-bases';
-/** Vue: gear opens the KB editor; React's destination is the KB settings route. */
-export function faqKBSettingsPath(knowledgeBaseId: string): string {
-  return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId) + '/settings';
-}
-/** Vue: KBSwitcherDropdown select → KB detail route (FAQ KBs land on /faq). */
+/**
+ * KBL-R1：KB 详情统一 platform 族路径。FAQ 不是路由而是 kb.type 分流，
+ * platform 详情按类型就地渲染 FAQPage（Vue 语义；KB 设置是就地 ⚙ Dialog，
+ * 对齐 uiStore.openKBSettings，无 URL）。
+ */
 export function faqKBDetailPath(knowledgeBaseId: string): string {
-  return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId);
+  return '/platform/knowledge-bases/' + encodeURIComponent(knowledgeBaseId);
 }
 
 function defaultNavigate(path: string): void { clientNavigate(path); }
@@ -564,7 +566,7 @@ export function FAQBreadcrumb(props: FAQBreadcrumbProps = {}) {
         ) : null}
         {canManage ? (
           <Tooltip content={t('knowledgeBase.settings')} placement="top">
-            <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenKBSettings) onOpenKBSettings(); else onNavigate(faqKBSettingsPath(knowledgeBaseId)); }}>
+            <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenKBSettings) onOpenKBSettings(); else onNavigate(faqKBDetailPath(knowledgeBaseId)); }}>
               <TIcon name="setting" size="16px" />
             </button>
           </Tooltip>
@@ -2169,6 +2171,10 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }, [importTask?.status]);
   const [canContribute, setCanContribute] = useState(false);
   const [canManage, setCanManage] = useState(false);
+  // KBL-R1：Vue ⚙ → uiStore.openKBSettings 覆盖层（无 URL）。library 族
+  // /knowledgeBase/:id/settings 已收编重定向，FAQ 面就地 Dialog 承载同一
+  // 设置面（与 documents/wiki/graph 面同款形态）。
+  const [kbSettingsOpen, setKbSettingsOpen] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
   const navigate = useCallback((path: string) => { clientNavigate(path); }, []);
   // Vue MessagePlugin 语义：message 状态变化即 toast（页面 DOM 无内联错误块）。
@@ -2501,6 +2507,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onBatchDisable={() => { setBatchStatusAction('disable'); void updateSelection({ is_enabled: false }).finally(() => setBatchStatusAction(null)); }}
       onClearSelection={() => setSelected(new Set())}
       onNavigate={navigate}
+      onOpenKBSettings={() => setKbSettingsOpen(true)}
       batchTagOpen={batchTagOpen}
       batchTagValue={batchTagValue}
       batchTagBusy={batchTagBusy}
@@ -2545,6 +2552,17 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onSearchTestSubmit={() => void runSearchTest()}
       />
       <FAQTagManageDialog client={client} knowledgeBaseId={knowledgeBaseId} tags={tags} open={tagManageOpen} onClose={() => setTagManageOpen(false)} onChanged={reloadAfterTagChange} t={t} />
+      {kbSettingsOpen ? (
+        <KBSettingsDialog
+          open
+          title={t('knowledgeBase.settings')}
+          closeLabel={t('common.close')}
+          onClose={() => setKbSettingsOpen(false)}
+          className="wk-faq-kb-settings-dialog"
+        >
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} onClose={() => setKbSettingsOpen(false)} />
+        </KBSettingsDialog>
+      ) : null}
     </>
   );
 }

@@ -120,40 +120,82 @@ export function usePaletteLiveSearch(options: UsePaletteLiveSearchOptions): Pale
     const timer = setTimeout(() => {
       const seq = ++seqRef.current;
       setState((current) => ({ ...current, loading: true, hasSearched: true }));
-      void (async () => {
-        try {
-          const scoped = scopeKbIds.length > 0;
-          const kbs = scoped ? [] : await ensureKnowledgeBasesLoaded(client, kbCacheRef.current);
-          const kbIds = scoped ? [...scopeKbIds] : kbs.map((kb) => kb.id);
-          const [chunks, messagePayload, sessions, agents] = await Promise.all([
-            searchKnowledgeChunks(client, { query: trimmed, knowledgeBaseIds: kbIds }),
-            scoped ? Promise.resolve({ items: [], total: 0 }) : searchMessagesByQuery(client, { query: trimmed, limit: 30 }),
-            scoped ? Promise.resolve([] as CmdkSessionSummary[]) : searchSessionsByKeyword(client, { query: trimmed, limit: 20 }),
-            scoped || !agentsEnabled ? Promise.resolve([] as CmdkAgent[]) : ensureAgentsLoaded(client, agentCacheRef.current),
-          ]);
-          if (seq !== seqRef.current) return; // stale response guard
-
-          const nameOf = (kbId: string): string => kbs.find((kb) => kb.id === kbId)?.name ?? '';
-          const fileGroups = groupChunksByKnowledge(chunks, nameOf);
-          const messageGroups = groupMessagesBySession(messagePayload.items);
-          const coveredSessions = new Set(messageGroups.map((group) => group.sessionId));
-          setState({
-            loading: false,
-            hasSearched: true,
-            fileGroups,
-            messageGroups,
-            kbMatches: scoped ? [] : matchKnowledgeBasesByName(kbs, trimmed),
-            agentMatches: scoped ? [] : matchAgentsByName(agents, trimmed),
-            sessionMatches: scoped ? [] : matchSessionsByTitle(sessions, trimmed, coveredSessions),
-            totalChunks: chunks.length,
-            totalMessages: messagePayload.total,
-            knowledgeBases: kbs,
-          });
-        } catch {
-          if (seq !== seqRef.current) return;
+      // F4 — Vue useSearch 语义：各源各自落地各自更新（kbMatches/agentMatches
+      // 是 computed，客户端名匹配在缓存就绪后即时出现；chunks/messages 各自
+      // 响应到达后补齐），不再被单一 Promise.all 闸在最慢远端源上。
+      // loading 只由远端搜索（chunks + 非 scoped 的 messages）把关，与 Vue
+      // runSearch 的 Promise.all([knowledge, messages]) 收口一致。
+      const scoped = scopeKbIds.length > 0;
+      let remotePending = scoped ? 1 : 2;
+      const settleRemote = () => {
+        remotePending -= 1;
+        if (remotePending === 0 && seq === seqRef.current) {
           setState((current) => ({ ...current, loading: false }));
         }
+      };
+
+      // KB 名匹配：缓存列表就绪即发布（不等任何远端搜索）。
+      const kbsPromise = scoped
+        ? Promise.resolve([] as CmdkKb[])
+        : ensureKnowledgeBasesLoaded(client, kbCacheRef.current).catch(() => [] as CmdkKb[]);
+      void kbsPromise.then((kbs) => {
+        if (seq !== seqRef.current) return;
+        setState((current) => ({
+          ...current,
+          knowledgeBases: kbs,
+          kbMatches: scoped ? [] : matchKnowledgeBasesByName(kbs, trimmed),
+        }));
+      });
+
+      // 智能体名匹配：智能体列表就绪即发布。
+      if (!scoped && agentsEnabled) {
+        ensureAgentsLoaded(client, agentCacheRef.current)
+          .then((agents) => {
+            if (seq !== seqRef.current) return;
+            setState((current) => ({ ...current, agentMatches: matchAgentsByName(agents, trimmed) }));
+          })
+          .catch(() => { /* cache load failure keeps the prior (empty) matches */ });
+      }
+
+      // 会话标题匹配：与消息组联动去重（Vue sessionMatches 依赖
+      // messageGroups 的 computed），任一侧到达都按最新两侧结果重发布。
+      const sessionState = { sessions: [] as CmdkSessionSummary[], messageGroups: [] as CmdkMessageGroup[] };
+      const publishSessions = () => {
+        if (seq !== seqRef.current) return;
+        const covered = new Set(sessionState.messageGroups.map((group) => group.sessionId));
+        setState((current) => ({ ...current, sessionMatches: scoped ? [] : matchSessionsByTitle(sessionState.sessions, trimmed, covered) }));
+      };
+
+      // 知识块搜索：需要 kbIds（scoped 用锁定范围，否则等 KB 缓存）。
+      void (async () => {
+        const kbs = await kbsPromise;
+        const kbIds = scoped ? [...scopeKbIds] : kbs.map((kb) => kb.id);
+        const chunks = await searchKnowledgeChunks(client, { query: trimmed, knowledgeBaseIds: kbIds });
+        if (seq !== seqRef.current) return;
+        const nameOf = (kbId: string): string => kbs.find((kb) => kb.id === kbId)?.name ?? '';
+        setState((current) => ({ ...current, fileGroups: groupChunksByKnowledge(chunks, nameOf), totalChunks: chunks.length }));
+        settleRemote();
       })();
+
+      // 消息搜索（scoped 下禁用：loading 计数不含此腿，不额外收口）。
+      if (!scoped) {
+        void searchMessagesByQuery(client, { query: trimmed, limit: 30 }).then((payload) => {
+          if (seq !== seqRef.current) { settleRemote(); return; }
+          sessionState.messageGroups = groupMessagesBySession(payload.items);
+          setState((current) => ({ ...current, messageGroups: sessionState.messageGroups, totalMessages: payload.total }));
+          publishSessions(); // 消息组到达后重新去重会话标题匹配（Vue computed）
+          settleRemote();
+        });
+      }
+
+      // 会话标题搜索（scoped 下禁用）。
+      if (!scoped) {
+        void searchSessionsByKeyword(client, { query: trimmed, limit: 20 }).then((sessions) => {
+          if (seq !== seqRef.current) return;
+          sessionState.sessions = sessions;
+          publishSessions();
+        });
+      }
     }, debounceMs);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

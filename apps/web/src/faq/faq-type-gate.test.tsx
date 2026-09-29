@@ -133,8 +133,9 @@ test('document KB on the faq route redirects to the KB detail view and fires zer
 
   assert.equal(fake.listCalls(), 0, 'faq.list must never be called for a document KB');
   assert.equal(fake.rawRequests(), 0, 'no raw /api/v1/faq/* request may fire for a document KB');
-  const redirect = navigations.find((entry) => entry.path === '/knowledgeBase/kb-1');
-  assert.ok(redirect, 'expected a redirect to the KB detail (documents) route /knowledgeBase/kb-1');
+  // KBL-R1：KB 详情统一 platform 族路径（library 族已在 router 层重定向）。
+  const redirect = navigations.find((entry) => entry.path === '/platform/knowledge-bases/kb-1');
+  assert.ok(redirect, 'expected a redirect to the KB detail (documents) route /platform/knowledge-bases/kb-1');
   assert.equal(redirect.mode, 'replace', 'the gate redirect replaces the unreachable /faq URL');
   assert.equal((container.textContent || '').trim(), '', 'no FAQ view markup renders for a document KB');
 });

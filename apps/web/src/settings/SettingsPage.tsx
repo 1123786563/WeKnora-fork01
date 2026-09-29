@@ -565,7 +565,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           (settings-sidebar[sidebar-header + settings-nav] + settings-content
           > content-wrapper > section)。样式平移在 settings.td.css §1。 */}
       <div className="settings-overlay">
-        <div ref={modalRef} className="settings-modal wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
+        <div ref={modalRef} className="settings-modal wks-modal" onKeyDown={handleDialogKeyDown}>
           <button
             ref={closeButtonRef}
             type="button"

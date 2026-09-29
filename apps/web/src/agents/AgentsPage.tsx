@@ -82,7 +82,6 @@ export interface AgentEditDeepLink {
   sourceTenantId?: string;
 }
 
-const AGENT_EDITOR_SECTIONS = new Set(['basic', 'prompts', 'model', 'conversation', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills']);
 const AGENT_HIGHLIGHT_SECTIONS: Record<string, string> = { summary_model: 'model', rerank_model: 'model', allowed_tools: 'tools' };
 
 export function parseAgentEditDeepLink(search: string): AgentEditDeepLink | null {
@@ -94,7 +93,13 @@ export function parseAgentEditDeepLink(search: string): AgentEditDeepLink | null
   const section = requestedSection || (highlight ? AGENT_HIGHLIGHT_SECTIONS[highlight] : undefined) || 'basic';
   return {
     editId,
-    section: section === 'sandbox' ? 'skills' : AGENT_EDITOR_SECTIONS.has(section) ? section : 'basic',
+    // AGT-9 — Vue AgentList.vue:1163-1170 passes the requested section
+    // through unfiltered (requestedSection || 'basic'); the editor modal's
+    // own section table sanitizes unknown ids (AgentEditorModal.tsx:325
+    // falls back to 'basic'). The former page-level whitelist dropped
+    // ?section=share (and suggestions/personalization/multimodal/mcp/
+    // subagents) to basic before the modal ever saw them.
+    section: section === 'sandbox' ? 'skills' : section,
     highlight,
     sourceTenantId: params.get('sourceTenantId')?.trim() || undefined,
   };

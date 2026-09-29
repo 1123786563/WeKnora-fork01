@@ -91,11 +91,16 @@ export function computeKBPermissions(kb: KBSurfaceKB, me: KBSurfaceMe | null | u
   return { canContribute, viewerOnly: !canContribute };
 }
 
-/** Audit #6: an FAQ-type KB must land on the FAQ route, never the documents list. */
+/**
+ * Audit #6: an FAQ-type KB must land on the FAQ surface, never the documents
+ * list. KBL-R1 起 FAQ 不是路由而是 kb.type 分流：platform 族详情 URL 由
+ * KnowledgeBaseView 按类型就地渲染 FAQPage（Vue 语义），重定向目标即详情
+ * 路径本身。
+ */
 export function kbTypeRedirectPath(kb: KBSurfaceKB): string | undefined {
   const id = typeof kb.id === 'string' ? kb.id : undefined;
   if (!id || typeof kb.type !== 'string' || kb.type.toLowerCase() !== 'faq') return undefined;
-  return `/knowledgeBase/${encodeURIComponent(id)}/faq`;
+  return `/platform/knowledge-bases/${encodeURIComponent(id)}`;
 }
 
 /**
@@ -143,8 +148,10 @@ export function resolveKBSurfaceTabs(kb: KBSurfaceKB): KBSurfaceTab[] {
  * link falls back to the canonical documents URL — the same view Vue shows.
  * Mirrors kbTypeRedirectPath: undefined when the current URL is already right.
  */
-export function kbWikiTabFallbackPath(kb: KBSurfaceKB): string | undefined {
+export function kbWikiTabFallbackPath(kb: KBSurfaceKB, _currentPathname?: string): string | undefined {
   const id = typeof kb.id === 'string' ? kb.id : undefined;
   if (!id || kb.indexing_strategy?.wiki_enabled === true) return undefined;
-  return `/knowledgeBase/${encodeURIComponent(id)}`;
+  // KBL-R1：library 族入口已重定向收编，回退目标恒为 platform 族详情路径
+  // （currentPathname 参数保留以兼容既有调用方签名）。
+  return `/platform/knowledge-bases/${encodeURIComponent(id)}`;
 }

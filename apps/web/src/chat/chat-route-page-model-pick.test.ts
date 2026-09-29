@@ -160,12 +160,16 @@ test('an explicit composer model pick is persisted to the per-scope storage key'
     location: 'http://localhost:5175/platform/creatChat',
   });
   captured.onModelChange('m2');
+  // CHAT-2 —— Vue handleModelChange 同时写 lastPick 与 store 默认层
+  // （WeKnora_settings）；React 镜像为第二槽位 chat-model-default。
+  const defaultKey = 'weknora:chat-model-default:undefined:anonymous:tenant-1';
   assert.deepEqual(
     captured.storageWrites,
-    [storageKey],
-    `model pick write must land on exactly the per-scope key (writes: ${JSON.stringify(captured.storageWrites)})`,
+    [storageKey, defaultKey],
+    `model pick write must land on the per-scope key and the default slot (writes: ${JSON.stringify(captured.storageWrites)})`,
   );
   assert.equal(captured.storage.get(storageKey), 'm2');
+  assert.equal(captured.storage.get(defaultKey), 'm2');
 });
 
 test('a bare render never writes a model pick (no synthetic first-model persistence)', async () => {
@@ -176,4 +180,5 @@ test('a bare render never writes a model pick (no synthetic first-model persiste
   });
   assert.equal(typeof captured.onModelChange, 'function');
   assert.deepEqual(captured.storageWrites.filter((key) => key.includes('last-chat-model')), []);
+  assert.deepEqual(captured.storageWrites.filter((key) => key.includes('chat-model-default')), []);
 });

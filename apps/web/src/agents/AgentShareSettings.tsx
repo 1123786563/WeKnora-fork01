@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Organization, WeKnoraClient } from '@weknora/api-client';
-import { Button, Input, MessagePlugin, Tooltip } from 'tdesign-react';
+import { Button, Empty, Input, MessagePlugin, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { SpaceAvatar } from '../organizations/SpaceAvatar.tsx';
 import type { Translate } from './agent-editor.ts';
@@ -257,9 +257,14 @@ export function AgentShareSettings({ agentId, agent, client, t, locale }: AgentS
         ) : null}
         {!loadingShares && filteredShares.length === 0 ? (
           <div className="share-panel-empty" data-share-empty="">
-            <p className="share-panel-empty-text">
-              {searchQuery.trim() ? t('organization.share.emptySearch', { q: searchQuery.trim() }) : t('organization.share.noShares')}
-            </p>
+            {/* AGT-12 — Vue AgentShareSettings.vue:75-79 空表走 t-empty：
+                组件自带默认标题行「暂无数据」(t-empty__title，随 tdesign
+                locale) + 传入 description；原 React 只渲染了 description
+                文本，缺「暂无数据」占位行。 */}
+            <Empty
+              className="share-panel-empty-text"
+              description={searchQuery.trim() ? t('organization.share.emptySearch', { q: searchQuery.trim() }) : t('organization.share.noShares')}
+            />
           </div>
         ) : null}
         {filteredShares.length > 0 ? (

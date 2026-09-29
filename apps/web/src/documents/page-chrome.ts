@@ -67,13 +67,30 @@ export function computeUnsupportedFileTypes(
 /** Vue handleNavigateToKbList → router.push('/platform/knowledge-bases'). */
 export const documentsKBListPath = '/platform/knowledge-bases';
 
+/**
+ * KBL-R1：KB 详情统一 platform 族路径（/platform/knowledge-bases/:id）。
+ * 旧 library 族 /knowledgeBase/:id 已在 router 层重定向收编，内部 href
+ * 一律直接生成 platform 族形态（对齐 Vue 全程 platform 族的基准）。
+ */
 export function documentsKBDetailPath(knowledgeBaseId: string): string {
-  return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId);
+  return '/platform/knowledge-bases/' + encodeURIComponent(knowledgeBaseId);
 }
 
-/** Vue gear (handleOpenKBSettings) lands on the React KB settings route. */
-export function documentsKBSettingsPath(knowledgeBaseId: string): string {
-  return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId) + '/settings';
+/**
+ * KBW-2：KB 详情面包屑 tab 链接。Vue 的 tab 切换是就地
+ * router.replace({ query: { tab } })（KnowledgeBase.vue L1150-1158 watcher），
+ * URL 停留在当前路径上，回文档 tab 时 delete query.tab；React 用链接导航
+ * 表达同一语义。KBL-R1 起 library 族入口已重定向收编，路径恒为 platform
+ * 族（currentPathname 参数保留以兼容既有调用方签名）。documents tab 不带
+ * tab 参数。
+ */
+export function kbTabHref(
+  knowledgeBaseId: string,
+  tab: 'documents' | 'wiki' | 'graph',
+  _currentPathname: string,
+): string {
+  const base = documentsKBDetailPath(knowledgeBaseId);
+  return tab === 'documents' ? base : `${base}?tab=${tab}`;
 }
 
 /**

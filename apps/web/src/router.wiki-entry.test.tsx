@@ -30,6 +30,7 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
   if (specifier.endsWith('.css') || specifier.endsWith('.svg')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
   if (specifier === './documents/KnowledgeDocumentsPage.tsx' && fromRouter(context).endsWith('/router.tsx')) return { shortCircuit: true, url: stubModuleUrl('KnowledgeDocumentsPage', 'documents') };
   if (specifier === './wiki/WikiPage.tsx' && fromRouter(context).endsWith('/router.tsx')) return { shortCircuit: true, url: stubModuleUrl('WikiPage', 'wiki') };
+  if (specifier === './faq/FAQPage.tsx' && fromRouter(context).endsWith('/router.tsx')) return { shortCircuit: true, url: stubModuleUrl('FAQPage', 'faq') };
   return nextResolve(specifier, context);
 } });
 
@@ -113,10 +114,20 @@ function assertNoRenderPhaseNotify(): void {
 
 const gateCases: GateCase[] = [
   {
-    name: 'a wiki-disabled library falls back to the documents view and cleans the URL after commit',
+    // KBW-7：Vue 就地回退（URL 保持原样）——不写历史、不清 tab 参数。
+    name: 'a wiki-disabled library falls back to the documents view and keeps the wiki URL (Vue parity)',
     settings: () => Promise.resolve({ id: 'kb-1', indexing_strategy: { wiki_enabled: false } }),
     expectedView: 'documents',
-    expectedReplace: ['/knowledgeBase/kb-1'],
+    expectedReplace: [],
+  },
+  {
+    // KBW-7：FAQ 类型按 R492 D3 同款分流就地渲染 FAQ 视图——落到
+    // KnowledgeDocumentsPage 会触发其内置 FAQ 分流跳 /knowledgeBase/:id/faq，
+    // 逃出 platform 壳层。
+    name: 'a wiki-disabled FAQ library renders the FAQ view in place without escaping the route family',
+    settings: () => Promise.resolve({ id: 'kb-1', type: 'faq', indexing_strategy: { wiki_enabled: false } }),
+    expectedView: 'faq',
+    expectedReplace: [],
   },
   {
     name: 'a wiki-enabled library renders the wiki view without touching history',

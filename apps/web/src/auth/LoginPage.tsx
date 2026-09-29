@@ -77,6 +77,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     toastTimer.current = setTimeout(() => setToast(null), 3000);
   };
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  // F7 —— Vue stores/auth.ts:450 parity：登出落到 /login 时清 Lite 深键。
+  useEffect(() => { sessionStorage.removeItem('weknora_lite_last_path'); }, []);
   const [registrationMode, setRegistrationMode] = useState('self_serve');
   const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);

@@ -17,13 +17,14 @@ import { WkCard as Card, WkDialog as Dialog, WkStatus as Status } from "../share
 import { Icon as TIcon } from "tdesign-icons-react";
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
 import type { KBInfoPopoverKB } from "../documents/KBInfoPopover.tsx";
-import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
-import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
+import { computeSupportedFileTypes, computeUnsupportedFileTypes } from "../documents/page-chrome.ts";
+import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createSourceRefTitleHydrator, type SourceRefTitleHydrator } from "./source-titles.ts";
 import { WikiFolderActions } from "./WikiFolderActions.tsx";
 import {
   assembleWikiIndexMarkdown,
+  encodeWikiGraphSlug,
   handleWikiBodyClick,
   parseWikiSourceRefs,
   renderWikiMarkdown,
@@ -37,6 +38,7 @@ import { createTranslator, useAppLocale } from "../i18n.ts";
 import { navigate } from "../platform/navigation.ts";
 import { pagerState } from "../pagination.ts";
 import { wikiEditPermission } from "./edit-permission.ts";
+import { useWikiIndexStatus } from "./wiki-index-status.ts";
 import { canUploadKnowledgeDocuments, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from "../knowledge/permissions.ts";
 
 const WIKI_PAGE_SIZE = 50;
@@ -461,6 +463,9 @@ export function WikiPage({
   const [infoPermission, setInfoPermission] = useState("");
   const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Vue uiStore.openKBSettings(kbId, 'parser') 在解析器提示横幅处以 parser
+  // 分节打开设置面（同 KnowledgeGraphPage.openParserSettings）。
+  const [settingsSection, setSettingsSection] = useState<KnowledgeSettingsSectionKey | undefined>(undefined);
   const supportedFileTypes = useMemo(() => {
     const rules = (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? [];
     return [...computeSupportedFileTypes(parserEngines, rules)];
@@ -469,9 +474,25 @@ export function WikiPage({
     () => computeUnsupportedFileTypes(parserEngines, (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? []),
     [kbMeta, parserEngines],
   );
+  // KBW-4：Wiki 索引状态轮询（Vue WikiBrowser loadStats + KnowledgeBase 父层
+  // 口径——挂载拉一次 GET /wiki/stats；仅索引中（is_active || pending_tasks>0）
+  // 才 5s 轮询，回到空闲停表并重载页面列表）。stats 的 pages_by_type 同时供
+  // 侧栏 tab 计数，替代原先的一次性 client.wiki.stats 拉取，保持挂载时恰好
+  // 一次请求（与 Vue 请求周期一致）。
+  const wikiIndex = useWikiIndexStatus(client, knowledgeBaseId, {
+    onIndexingSettled: () => { void loadPages(); },
+  });
+  // Vue wikiIndexingTip（KnowledgeBase.vue L105-108）：索引中时 Wiki/图谱 tab
+  // 的队列 tooltip 文案（tab title 承载；DocumentsBreadcrumb 的 title 即
+  // t-tooltip content）。
+  const wikiIndexingTip = wikiIndex.indexing
+    ? t("wikiBrowser.queueStatus", { count: wikiIndex.stats?.pendingTasks ?? 0 })
+    : undefined;
   // Vue title row (KnowledgeBase.vue L2359-2380): the third crumb level is the
   // 文档 / Wiki / 图谱 row with the active Wiki tab.
-  const kbBasePath = `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`;
+  // KBL-R1：KB 详情统一 platform 族路径（library 族入口已在 router 层
+  // 重定向收编）。
+  const kbBasePath = `/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`;
   const resolvedTabs = kbMeta ? resolveKBSurfaceTabs(kbMeta) : undefined;
   const kbTabs: DocumentsBreadcrumbTab[] | undefined = resolvedTabs
     ? resolvedTabs.map((tab: KBSurfaceTab) => ({
@@ -483,7 +504,13 @@ export function WikiPage({
           : t("knowledgeEditor.wikiBrowser.tabGraph"),
       href: tab === "documents" ? kbBasePath : `${kbBasePath}?tab=${tab}`,
       active: tab === "wiki",
-      title: tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined,
+      // KBW-4：索引中时 Wiki/图谱 tab 的 tooltip 换成队列状态（Vue 面包屑
+      // t-tooltip wikiIndexingTip）；图谱 tab 空闲时保留 tabGraphTip。
+      title: wikiIndexingTip
+        ?? (tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined),
+      // KBW-4：索引中时 Wiki/图谱 tab 点亮 indexing 态（tab loading 指示器 +
+      // indexing class，DocumentsBreadcrumb 渲染；documents tab 不参与）。
+      indexing: tab === "wiki" || tab === "graph" ? wikiIndex.indexing : undefined,
     }))
     : undefined;
   // Vue picture-preview state: the previewed image src, null closes the viewer.
@@ -628,24 +655,22 @@ export function WikiPage({
     void loadPages();
   }, [client, knowledgeBaseId, keyword, initialSlug, page, folderPath, viewMode, activeBucket]);
   useEffect(() => {
-    let active = true;
-    void client.wiki.stats(knowledgeBaseId).then((value) => {
-      if (active) {
-        setPagesByType(value.pages_by_type);
-        // Vue preferredDefaultTab: 知识 first, then 摘要 — applied only while
-        // the user has not picked a bucket themselves.
-        setActiveBucket((current) => {
-          if (current) return current;
-          const knowledge = (value.pages_by_type.entity ?? 0) + (value.pages_by_type.concept ?? 0)
-            + (value.pages_by_type.synthesis ?? 0) + (value.pages_by_type.comparison ?? 0);
-          if (knowledge > 0) return "knowledge";
-          if ((value.pages_by_type.summary ?? 0) > 0) return "summary";
-          return "";
-        });
-      }
-    }).catch(() => { if (active) setPagesByType({}); });
-    return () => { active = false; };
-  }, [client, knowledgeBaseId]);
+    // KBW-4：tab 计数与默认 bucket 改由轮询 hook 的 stats 驱动（每响应都重算，
+    // 轮询期间计数随索引完成自动刷新；初始 pagesByType={} 与旧失败口径一致）。
+    if (!wikiIndex.stats) return;
+    const pages_by_type = wikiIndex.stats.pagesByType;
+    setPagesByType(pages_by_type);
+    // Vue preferredDefaultTab: 知识 first, then 摘要 — applied only while
+    // the user has not picked a bucket themselves.
+    setActiveBucket((current) => {
+      if (current) return current;
+      const knowledge = (pages_by_type.entity ?? 0) + (pages_by_type.concept ?? 0)
+        + (pages_by_type.synthesis ?? 0) + (pages_by_type.comparison ?? 0);
+      if (knowledge > 0) return "knowledge";
+      if ((pages_by_type.summary ?? 0) > 0) return "summary";
+      return "";
+    });
+  }, [wikiIndex.stats]);
   useEffect(() => {
     setPage(1);
   }, [keyword, folderPath, viewMode]);
@@ -1361,7 +1386,7 @@ export function WikiPage({
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
-            onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigure={() => { setSettingsSection('parser'); setSettingsOpen(true); }}
           />
         </div>
       </div>
@@ -1402,15 +1427,18 @@ export function WikiPage({
             {directory}
               {viewMode === "list" ? listPages.filter((page) => pageInBucket(page, activeBucket)).map((page) => (
                 <button
-                  className={`wk-wiki-page-item wk-wiki-85 ${selected?.id === page.id ? "wk-wiki-81" : ""}`}
+                  className={`wk-wiki-page-item wk-wiki-85 wiki-page-item--list ${selected?.id === page.id ? "wk-wiki-81" : ""}`}
                   key={page.id}
                   type="button"
                   draggable={canContribute}
                   onDragStart={(event) => { event.dataTransfer.setData("text/wiki-slug", page.slug); event.dataTransfer.effectAllowed = "move"; }}
                   onClick={() => choose(page)}
                 >
-                  <WikiPageTypeGlyph pageType={String((page as Record<string, unknown>).page_type ?? "")} />
-                  <span className="wk-wiki-page-item-title wk-wiki-33">{page.title}</span>
+                  <span className="wiki-page-item-title wk-wiki-33">{page.title}</span>
+                  <span className="wiki-page-item-summary">{page.summary}</span>
+                  <span className="wiki-page-item-meta">
+                    <span>{wikiFormatDate(String((page as Record<string, unknown>).updated_at ?? ""))}</span>
+                  </span>
                 </button>
               )) : null}
               {state.status === "loading" ? (
@@ -1540,7 +1568,7 @@ export function WikiPage({
                           type="button"
                           className="wiki-action-btn"
                           aria-label={t("wikiBrowser.viewInGraph")}
-                          onClick={() => navigate(`/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}?tab=graph&slug=${encodeURIComponent(selected.slug)}`)}
+                          onClick={() => navigate(`/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}?tab=graph&slug=${encodeWikiGraphSlug(selected.slug)}`)}
                         >
                           <TIcon name="chart-bubble" />
                         </button>
@@ -1692,10 +1720,10 @@ export function WikiPage({
           open
           title={t('knowledgeBase.settings')}
           closeLabel={t('common.close')}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => { setSettingsOpen(false); setSettingsSection(undefined); }}
           className="wk-wiki-53"
         >
-          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} />
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} initialSection={settingsSection} />
         </Dialog>
       ) : null}
       {/* Vue create page dialog (WikiBrowser.vue L733-765): t-dialog「新建

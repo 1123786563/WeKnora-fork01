@@ -253,6 +253,26 @@ function mentionOptions(container: HTMLElement): Array<{ type: string; name: str
   }));
 }
 
+/*
+ * CHAT-1 两级菜单：@ 弹层首屏是分组入口（.mention-group-entry，带
+ * data-group-type），进入某组后才渲染 [data-mention-id] 条目。测试助手
+ * 点击分组入口进入二级再读条目（对应 Vue 首屏「知识库N / 文件N」交互）。
+ */
+function enterMentionGroup(container: HTMLElement, groupType: string): HTMLElement | null {
+  const entry = container.querySelector<HTMLButtonElement>(`.mention-group-entry[data-group-type="${groupType}"]`);
+  if (!entry) return null;
+  entry.click();
+  return entry;
+}
+
+function mentionGroupEntries(container: HTMLElement): Array<{ type: string; label: string; count: string }> {
+  return [...container.querySelectorAll<HTMLElement>('.mention-group-entry')].map((el) => ({
+    type: el.getAttribute('data-group-type') ?? '',
+    label: el.querySelector('.mention-group-entry__label')?.textContent ?? '',
+    count: el.querySelector('.mention-group-entry__count')?.textContent ?? '',
+  }));
+}
+
 test.afterEach(async () => {
   if (bundleModule) await bundleModule.unmount();
   document.body.replaceChildren();
@@ -282,9 +302,21 @@ test('@ popup keeps a model-ready KB, scopes tags to it, and drops files from ot
   await bundleModule!.click(atButton);
   for (let i = 0; i < 6; i++) await bundleModule!.act(async () => { await Promise.resolve(); });
 
-  const options = mentionOptions(container);
-  assert.deepEqual(options, [{ type: 'kb', name: 'Ready KB' }, { type: 'file', name: 'ready-notes.md' }],
-    'only the model-ready KB and its files survive the scope');
+  // 首屏分组入口：仅 知识库1 / 文件1 两组存活（其余 KB 及其文件被过滤）。
+  const groups = mentionGroupEntries(container);
+  assert.deepEqual(groups, [
+    { type: 'kb', label: '知识库', count: '1' },
+    { type: 'file', label: '文件', count: '1' },
+  ], 'only the model-ready KB and its files survive the scope');
+  enterMentionGroup(container, 'kb');
+  for (let i = 0; i < 2; i++) await bundleModule!.act(async () => { await Promise.resolve(); });
+  assert.deepEqual(mentionOptions(container), [{ type: 'kb', name: 'Ready KB' }]);
+  const back = container.querySelector<HTMLButtonElement>('.mention-back-row');
+  assert.ok(back);
+  await bundleModule!.click(back);
+  enterMentionGroup(container, 'file');
+  for (let i = 0; i < 2; i++) await bundleModule!.act(async () => { await Promise.resolve(); });
+  assert.deepEqual(mentionOptions(container), [{ type: 'file', name: 'ready-notes.md' }]);
   assert.deepEqual(tagCalls, ['kb-ready'], 'KB tag enumeration only runs for the scoped KB');
 });
 
@@ -305,6 +337,8 @@ test('@ popup merges writable-shared KBs after the own rows, deduped by id (Inpu
   await bundleModule!.click(atButton);
   for (let i = 0; i < 6; i++) await bundleModule!.act(async () => { await Promise.resolve(); });
 
+  enterMentionGroup(container, 'kb');
+  for (let i = 0; i < 2; i++) await bundleModule!.act(async () => { await Promise.resolve(); });
   const options = mentionOptions(container);
   assert.deepEqual(options.map((o) => o.name), ['Ready KB', 'Own Dup', 'Shared KB'],
     'shared KBs append after own rows; the own row wins the id dedup; null knowledge_base rows are skipped');

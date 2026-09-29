@@ -20,6 +20,27 @@ function readInitialLocale(): Locale {
 }
 const msg = (locale: Locale, key: string, values?: Record<string, string | number>): string => formatMessage(locale, key, values);
 
+// AUTH-3 — Vue MyInvitationsDialog 富卡片字段对齐：邀请人回退链
+// （inviter_name → inviter_email → invited_by → —）与到期时间本地化格式。
+function inviterDisplay(invitation: TenantInvitation): string {
+  return invitation.inviter_name?.trim() || invitation.inviter_email?.trim() || invitation.invited_by || '—';
+}
+
+function formatExpiresAt(locale: Locale, value: string): string {
+  if (!value) return '-';
+  try {
+    return new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function roleLabel(locale: Locale, role: string): string {
+  const key = `tenantMember.role.${role}`;
+  const rendered = msg(locale, key);
+  return rendered === key ? role : rendered;
+}
+
 export interface WorkspaceOnboardingPageProps {
   client: WeKnoraClient;
   scopeRuntime: WebScopeRuntime;
@@ -149,6 +170,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       title={<span className="wk-onb-4"><svg className="wk-onb-5" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
       className="wk-onb-6"
+      hideClose
     >
       <p className="wk-muted wk-onb-3">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
       <form className="wk-form wk-onb-7" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
@@ -161,29 +183,45 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
+        {/* AUTH-7 — Vue CreateTenantDialog footer 顺序：取消 | 创建（t-dialog
+            cancelBtn 在前 confirmBtn 在后）；原 React 为 创建|取消。 */}
         <div className="wk-actions">
-          <TButton type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'tenant.create.submit')}</TButton>
-          <TButton type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'tenant.create.cancel')}</TButton>
+          <TButton type="button" disabled={creating} onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'tenant.create.cancel')}</TButton>
+          <TButton type="submit" theme="primary" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'tenant.create.submit')}</TButton>
         </div>
       </form>
     </TDialog>
 
     <TDialog
       open={invitationsVisible}
-      title={msg(locale, 'auth.workspaceOnboarding.invitations')}
+      title={msg(locale, 'tenantInvitation.myInbox.title')}
       onClose={() => setInvitationsVisible(false)}
       className="wk-onb-11"
     >
+      {/* AUTH-3 — Vue MyInvitationsDialog：标题「我的邀请」+ 说明行 + 富卡片
+          （租户名+角色本地化 tag+邀请人+到期+留言），无底部 footer 按钮。 */}
+      <p className="wk-muted wk-onb-3">{msg(locale, 'tenantInvitation.myInbox.description')}</p>
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
       {invitationNotice ? <Status tone="success">{invitationNotice}</Status> : null}
       {invitations === null ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
-        <ul>{invitations.map((invitation) => <li key={invitation.id}>
-          <strong>{invitation.tenant_name || msg(locale, 'auth.workspaceOnboarding.workspaceFallback', { id: invitation.tenant_id })}</strong> — {invitation.role}
-          <TButton type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton>
-          <TButton type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.declineButton')}</TButton>
+        <ul className="wk-onb-inv">{invitations.map((invitation) => <li key={invitation.id} className="wk-onb-inv-card">
+          <div className="wk-onb-inv-main">
+            <div className="wk-onb-inv-header">
+              <strong className="wk-onb-inv-tenant">{invitation.tenant_name || `${msg(locale, 'tenantInvitation.myInbox.tenantLabel')} #${invitation.tenant_id}`}</strong>
+              <span className="wk-onb-inv-role">{roleLabel(locale, invitation.role)}</span>
+            </div>
+            <div className="wk-onb-inv-meta">
+              <span>{msg(locale, 'tenantInvitation.myInbox.from')}：{inviterDisplay(invitation)}</span>
+              <span>{msg(locale, 'tenantInvitation.myInbox.expiresIn', { date: formatExpiresAt(locale, invitation.expires_at) })}</span>
+              {invitation.message ? <span>{msg(locale, 'tenantInvitation.myInbox.messageLabel')}：{invitation.message}</span> : null}
+            </div>
+          </div>
+          <div className="wk-onb-inv-actions">
+            <TButton type="button" size="small" theme="primary" disabled={respondingId !== null} onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton>
+            <TButton type="button" size="small" variant="outline" disabled={respondingId !== null} onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.declineButton')}</TButton>
+          </div>
         </li>)}</ul>
       )}
-      <TButton type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</TButton>
     </TDialog>
   </Card></main>;
 }

@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Dialog as TDialog } from 'tdesign-react';
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12a：可见面直译 TenantMembers.vue 的 t-tag / t-pagination / t-popup /
 // t-button / t-icon；表格暂保留原生实现（偏离项见 task-12a 报告）。
@@ -531,8 +530,6 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
     return () => { document.removeEventListener('mousedown', onPointerDown); document.removeEventListener('keydown', onKeyDown); };
   }, [permissionsOpen]);
 
-  function openInvite() { setInviteEmail(''); setInviteRole('contributor'); setInviteOpen(true); }
-  function openShareLink() { setShareLinkRole('contributor'); setShareLink(null); setShareLinkOpen(true); }
 
   async function submitInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -867,10 +864,81 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
               <TInput size="small" clearable aria-label={tr('tenantMember.searchPlaceholder')} placeholder={tr('tenantMember.searchPlaceholder')} value={query} onChange={(value) => setQuery(String(value ?? ''))} prefixIcon={<TIcon name="search" />} />
             </form>
             {canManage ? <>
-              <TButton theme="primary" variant="outline" shape="square" size="small" className="members-list-add-btn"
-                title={tr('tenantMember.add.button')} aria-label={tr('tenantMember.add.button')} onClick={openInvite} icon={<TIcon name="user-add" />} />
-              <TButton theme="default" variant="outline" shape="square" size="small" className="members-list-add-btn"
-                title={tr('tenantInvitation.shareLink.button')} aria-label={tr('tenantInvitation.shareLink.button')} onClick={openShareLink} icon={<TIcon name="link" />} />
+              {/* SETA-1 — Vue TenantMembers.vue:200-244：邀请成员是锚定
+                  members-list-add-btn 的 t-popup（placement bottom-end），不是
+                  屏幕居中模态；trigger=click 由 Popup 接管，打开时复位表单。 */}
+              <TPopup
+                visible={inviteOpen}
+                trigger="click"
+                placement="bottom-right"
+                destroyOnClose
+                overlayClassName="member-invite-popup-overlay"
+                onVisibleChange={(visible: boolean) => { if (visible) { setInviteEmail(''); setInviteRole('contributor'); setInviteOpen(true); } else setInviteOpen(false); }}
+                content={(
+                  <div className="member-invite-popup-inner" onClick={(event) => event.stopPropagation()}>
+                    <div className="member-invite-popup-title">{tr('tenantMember.add.dialogTitle')}</div>
+                    <form className="wk-tenant-invite-form" onSubmit={submitInvite}>
+                      <label className="wk-tenant-invite-field">
+                        <span className="wk-tenant-invite-label">{tr('tenantMember.add.emailLabel')}</span>
+                        <TInput type="text" className="wk-tenant-invite-input" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
+                          onChange={(value) => setInviteEmail(String(value))} />
+                      </label>
+                      <label className="wk-tenant-invite-field">
+                        <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
+                        <TSelect className="wk-tenant-sel-invite-role" value={inviteRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setInviteRole(String(value) as TenantRole)} />
+                      </label>
+                      <div className="invite-popup-footer">
+                        <TButton type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</TButton>
+                        <TButton type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</TButton>
+                      </div>
+                    </form>
+                  </div>
+                )}
+              >
+                <TButton theme="primary" variant="outline" shape="square" size="small" className="members-list-add-btn"
+                  title={tr('tenantMember.add.button')} aria-label={tr('tenantMember.add.button')} icon={<TIcon name="user-add" />} />
+              </TPopup>
+              {/* SETA-1 — Vue :249-320：生成共享链接同款锚定弹层
+                  （member-invite-popup-overlay），结果态与表单态同层切换。 */}
+              <TPopup
+                visible={shareLinkOpen}
+                trigger="click"
+                placement="bottom-right"
+                destroyOnClose
+                overlayClassName="member-invite-popup-overlay"
+                onVisibleChange={(visible: boolean) => { if (visible) { setShareLinkRole('contributor'); setShareLink(null); setShareLinkOpen(true); } else setShareLinkOpen(false); }}
+                content={(
+                  <div className="member-invite-popup-inner" onClick={(event) => event.stopPropagation()}>
+                    <div className="member-invite-popup-title">{shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')}</div>
+                    {shareLink ? <div className="wk-tenant-share-result">
+                      <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.resultBody')}</p>
+                      <div className="wk-tenant-share-row">
+                        <TInput className="wk-tenant-share-input" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
+                          onFocus={(_, context) => { const input = (context.e.target as HTMLInputElement | null); input?.select?.(); }} />
+                        <TButton type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
+                          <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
+                        </TButton>
+                      </div>
+                      <div className="invite-popup-footer">
+                        <TButton type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</TButton>
+                      </div>
+                    </div> : <div className="wk-tenant-invite-form">
+                      <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
+                      <label className="wk-tenant-invite-field">
+                        <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
+                        <TSelect className="wk-tenant-sel-share-role" value={shareLinkRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setShareLinkRole(String(value) as TenantRole)} />
+                      </label>
+                      <div className="invite-popup-footer">
+                        <TButton type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</TButton>
+                        <TButton type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</TButton>
+                      </div>
+                    </div>}
+                  </div>
+                )}
+              >
+                <TButton theme="default" variant="outline" shape="square" size="small" className="members-list-add-btn"
+                  title={tr('tenantInvitation.shareLink.button')} aria-label={tr('tenantInvitation.shareLink.button')} icon={<TIcon name="link" />} />
+              </TPopup>
             </> : null}
           </div>
         </div>
@@ -1000,48 +1068,6 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       </div>
     </TenantAuditDrawer>
 
-    <TDialog footer={false} visible={inviteOpen} header={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)}>
-      <form className="wk-tenant-invite-form" onSubmit={submitInvite}>
-        <label className="wk-tenant-invite-field">
-          <span className="wk-tenant-invite-label">{tr('tenantMember.add.emailLabel')}</span>
-          <TInput type="text" className="wk-tenant-invite-input" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
-            onChange={(value) => setInviteEmail(String(value))} />
-        </label>
-        <label className="wk-tenant-invite-field">
-          <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
-          <TSelect className="wk-tenant-sel-invite-role" value={inviteRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setInviteRole(String(value) as TenantRole)} />
-        </label>
-        <div className="wk-tenant-invite-actions">
-          <TButton type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</TButton>
-          <TButton type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</TButton>
-        </div>
-      </form>
-    </TDialog>
 
-    <TDialog footer={false} visible={shareLinkOpen} header={shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')} onClose={() => setShareLinkOpen(false)}>
-      {shareLink ? <div className="wk-tenant-share-result">
-        <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.resultBody')}</p>
-        <div className="wk-tenant-share-row">
-          <TInput className="wk-tenant-share-input" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
-            onFocus={(_, context) => { const input = (context.e.target as HTMLInputElement | null); input?.select?.(); }} />
-          <TButton type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
-            <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
-          </TButton>
-        </div>
-        <div className="wk-tenant-invite-actions">
-          <TButton type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</TButton>
-        </div>
-      </div> : <div className="wk-tenant-invite-form">
-        <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
-        <label className="wk-tenant-invite-field">
-          <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
-          <TSelect className="wk-tenant-sel-share-role" value={shareLinkRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setShareLinkRole(String(value) as TenantRole)} />
-        </label>
-        <div className="wk-tenant-invite-actions">
-          <TButton type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</TButton>
-          <TButton type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</TButton>
-        </div>
-      </div>}
-    </TDialog>
   </section>;
 }

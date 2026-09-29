@@ -84,6 +84,10 @@ export function buildChatStreamRequest(options: ChatStreamRequestOptions): Clien
     path: `${prefix}${encodeURIComponent(options.sessionId)}`,
     headers: {
       accept: 'text/event-stream',
+      // CHAT-13 对齐 —— Vue streame.ts fetchEventSource 显式
+      // "Content-Type": "application/json"；transport 层 JSON.stringify 了
+      // body 却不带头，浏览器会落 text/plain;charset=UTF-8。
+      'content-type': 'application/json',
       ...(options.lastEventId ? { 'Last-Event-ID': options.lastEventId } : {}),
     },
     body: options.body,

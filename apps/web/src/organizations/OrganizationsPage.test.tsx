@@ -430,12 +430,40 @@ test('card click opens the shared-space settings modal with members and join req
   assert.match(requestsPanel.textContent ?? '', /待审核申请/, 'inner list title keeps the Vue 待审核申请 wording');
   assert.match(requestsPanel.textContent ?? '', /Bob/);
 
-  const approveButtons = textButtons(requestsPanel, '通过');
-  assert.equal(approveButtons.length, 1, 'expected approve button for pending join request');
-  await click(approveButtons[0]);
+  // ORG-1 — Vue join-requests t-table（:537-619）：六列表头 + 行内图标钮走
+  // 批准弹层（assign-role 下拉 + 取消/确认），拒绝走 popconfirm——行内不再
+  // 有直接执行的文本按钮。
+  const requestsTable = requestsPanel.querySelector('table') as HTMLTableElement | null;
+  assert.ok(requestsTable, 'join requests render as a table (Vue join-requests-table)');
+  assert.deepEqual(
+    [...requestsTable.querySelectorAll('thead th')].map((cell) => (cell.textContent ?? '').trim()),
+    ['申请人', '类型', '申请角色', '申请说明', '申请时间', '操作'],
+    'table headers mirror Vue joinRequestColumns (applicant/type/requestedRole/message/appliedAt/operations)',
+  );
+  const requestRow = [...requestsTable.querySelectorAll('tbody tr')].find((row) => (row.textContent ?? '').includes('Bob')) as HTMLTableRowElement | undefined;
+  assert.ok(requestRow, 'pending request row renders');
+  assert.match(requestRow?.textContent ?? '', /加入/, 'request_type tag renders the Vue typeJoin wording');
+  assert.match(requestRow?.textContent ?? '', /只读/, 'requested role renders the role tag (organization.role.viewer = 只读)');
+  assert.match(requestRow?.textContent ?? '', /2030-01-02/, 'appliedAt renders in the Vue formatDate form');
+  assert.equal(textButtons(requestsPanel, '通过').length, 0, 'no direct-execute approve text button anymore (Vue :577-582 icon + popup)');
+
+  const approveTrigger = [...requestsPanel.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === '通过') as HTMLButtonElement | undefined;
+  assert.ok(approveTrigger, 'approve icon button renders in the actions cell (Vue :578-581)');
+  await click(approveTrigger);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)); });
+  const approvePopup = document.body.querySelector('.org-approve-request-popup-overlay') as HTMLElement | null;
+  assert.ok(approvePopup, 'approve opens the assign-role popup (Vue :574-605)');
+  assert.match(approvePopup?.textContent ?? '', /通过申请/, 'popup title reads organization.joinRequests.approveTitle');
+  assert.match(approvePopup?.textContent ?? '', /为「Bob」分配加入后的角色/, 'popup desc names the applicant');
+  assert.match(approvePopup?.textContent ?? '', /分配角色/, 'popup carries the assign-role select (Vue :590-592)');
+  const confirmApprove = textButtons(approvePopup as HTMLElement, '通过')[0];
+  assert.ok(confirmApprove, 'popup footer confirm reads organization.settings.approve');
+  await click(confirmApprove);
+  await act(async () => {});
   assert.equal(calls.review.length, 1);
   assert.equal((calls.review[0] as unknown[])[0], 'org-1');
   assert.equal((calls.review[0] as unknown[])[1], 'r1');
+  assert.deepEqual((calls.review[0] as unknown[])[2], { approved: true, role: 'viewer' }, 'approve posts the popup-assigned role (Vue confirmApproveRequest)');
 });
 
 test('settings renders shared agents and protects the organization owner member', async () => {
@@ -830,7 +858,7 @@ test('?scope=joined deep-link selects the 我加入的 rail and lists only joine
   assert.match(activeRail?.textContent ?? '', /我加入的/);
 });
 
-test('rail clicks sync ?scope= (created/joined set it, all removes it)', async () => {
+test('rail clicks keep the URL untouched while switching the section (ORG-5, Vue parity)', async () => {
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
   const railButtons = [...root.querySelectorAll('.icon-item-labeled')] as HTMLElement[];
@@ -839,11 +867,11 @@ test('rail clicks sync ?scope= (created/joined set it, all removes it)', async (
   assert.ok(railFor('全部') && railFor('我创建的') && railFor('我加入的'), 'rail labels match Vue entries');
 
   await click(railFor('我加入的')!);
-  assert.equal(window.location.search, '?scope=joined', 'joined writes ?scope=joined');
+  assert.equal(window.location.search, '', 'joined keeps the URL (Vue 切换只改组件内状态)');
   await click(railFor('我创建的')!);
-  assert.equal(window.location.search, '?scope=created', 'created writes ?scope=created');
+  assert.equal(window.location.search, '', 'created keeps the URL');
   await click(railFor('全部')!);
-  assert.equal(window.location.search, '', 'all removes the ?scope param (KB convention)');
+  assert.equal(window.location.search, '', 'all keeps the URL');
 
   // Vue ListSpaceSidebar tooltipText: counts ride the t-tooltip content prop
   // (rendered on hover, not as a title attribute — Vue 同构后无 title 属性)。
@@ -1182,9 +1210,17 @@ test('members section mirrors the Vue header: 成员管理 title, permission mat
 
   const matrixTrigger = dialog.querySelector('button[aria-label="成员权限"]') as HTMLButtonElement | null;
   assert.ok(matrixTrigger, 'the permission-matrix info trigger renders next to the h2 (Vue :306-310)');
-  await click(matrixTrigger);
-  await act(async () => {});
-  const matrixText = dialog.textContent ?? '';
+  // ORG-4 — Vue t-popup trigger="hover"（:303-306）：矩阵悬停展开（portal 到
+  // body），点击不再切换。
+  assert.equal(matrixTrigger?.hasAttribute('aria-expanded'), false, 'the trigger is no longer an aria-expanded click toggle');
+  await act(async () => {
+    matrixTrigger?.dispatchEvent(new dom.window.MouseEvent('mouseenter', { bubbles: false }));
+    matrixTrigger?.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+  const matrixPopover = document.body.querySelector('.org-permissions-popup-overlay') as HTMLElement | null;
+  assert.ok(matrixPopover, 'hovering opens the permission matrix (Vue trigger="hover")');
+  const matrixText = matrixPopover?.textContent ?? '';
   assert.match(matrixText, /了解共享空间中不同角色对知识库与智能体的权限范围/, 'matrix popup shows the Vue permissionsDesc');
   for (const role of ['管理员', '编辑', '只读']) assert.match(matrixText, new RegExp(role), 'matrix lists the ' + role + ' role block');
   assert.match(matrixText, /管理共享空间设置、成员及知识库与智能体共享/, 'matrix carries the admin permission row');
@@ -1203,4 +1239,126 @@ test('shares section shows the Vue sharedDesc under the 共享知识库 heading'
   const heading = contentHeadings[0];
   assert.equal(heading?.textContent, '共享知识库', 'section h2 reads organization.share.sharedKnowledgeBase like Vue');
   assert.match(dialog.textContent ?? '', /查看共享到此共享空间的所有知识库/, 'the sharedDesc line renders (Vue sharedDesc)');
+});
+
+// ORG-1 — Vue join-request reject goes through a t-popconfirm (Vue :606-616):
+// the danger icon opens 确认拒绝该申请？ and only the confirm posts the review.
+test('join-request reject asks through the Vue popconfirm and cancel stays read-only', async () => {
+  const { client, calls } = clientWith([ownerOrg]);
+  const dialog = await openSettings(client);
+  const requestsNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('加入申请'));
+  assert.ok(requestsNav);
+  await click(requestsNav);
+  await act(async () => {});
+
+  const rejectTrigger = [...dialog.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === '拒绝') as HTMLButtonElement | undefined;
+  assert.ok(rejectTrigger, 'reject icon button renders (Vue :610-615)');
+  await click(rejectTrigger);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)); });
+  const confirm = document.body.querySelector('.t-popconfirm') as HTMLElement | null;
+  assert.ok(confirm, 'reject opens the popconfirm like Vue');
+  assert.match(confirm?.textContent ?? '', /确认拒绝该申请？/, 'popconfirm carries the Vue rejectConfirm copy');
+  const cancel = textButtons(confirm as HTMLElement, '取消')[0];
+  assert.ok(cancel);
+  await click(cancel);
+  await act(async () => {});
+  assert.equal(calls.review.length, 0, 'cancelling the popconfirm posts no review');
+});
+
+// ORG-3 — Vue sharedKbColumns (OrganizationSettingsModal.vue:1155-1170): a
+// 6-column table with the jump-to-KB browse button and a popconfirm-backed
+// unshare icon button in the actions cell.
+test('shares section renders the Vue 6-column KB table with browse and unshare actions', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.knowledgeBaseShares.listForOrganization = async () => ({
+    items: [{ id: 'share-1', knowledge_base_id: 'kb-1', knowledge_base_name: 'Parity KB', shared_by_username: 'Alice', created_at: '2030-02-03T00:00:00Z', permission: 'viewer', my_permission: 'editor' }],
+    total: 1,
+  });
+  const dialog = await openSettings(client);
+  const sharesNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('共享知识库'));
+  assert.ok(sharesNav);
+  await click(sharesNav);
+  await act(async () => {});
+
+  assert.match(dialog.textContent ?? '', /共享知识库/, 'inner list title keeps the Vue kbListTitle wording');
+  const table = dialog.querySelector('table') as HTMLTableElement | null;
+  assert.ok(table, 'shared KB list renders as a table (Vue shared-resources-table)');
+  assert.deepEqual(
+    [...table.querySelectorAll('thead th')].map((cell) => (cell.textContent ?? '').trim()),
+    ['名称', '共享者', '共享时间', '共享空间权限', '生效权限', '操作'],
+    'table headers mirror Vue sharedKbColumns (name/sharedBy/sharedAt/spacePermission/myPermission/actions)',
+  );
+  const row = table.querySelector('tbody tr') as HTMLTableRowElement | null;
+  assert.ok(row);
+  assert.match(row?.textContent ?? '', /Parity KB/, 'KB name cell renders');
+  assert.match(row?.textContent ?? '', /Alice/, 'sharedBy cell renders the sharer username');
+  assert.match(row?.textContent ?? '', /2030-02-03/, 'sharedAt cell renders the Vue formatDate form');
+  assert.match(row?.textContent ?? '', /只读/, 'space permission tag renders permissionReadonly');
+  assert.match(row?.textContent ?? '', /可编辑/, 'my permission tag renders permissionEditable');
+  const goToKb = [...row?.querySelectorAll('button') ?? []].find((button) => button.getAttribute('aria-label') === '进入知识库');
+  assert.ok(goToKb, 'actions cell carries the jump-to-KB browse button (Vue :693-698)');
+  const unshare = [...row?.querySelectorAll('button') ?? []].find((button) => button.getAttribute('aria-label') === '从共享空间中移除');
+  assert.ok(unshare, 'actions cell carries the popconfirm unshare icon button (Vue :700-710)');
+  await click(unshare as HTMLButtonElement);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)); });
+  const confirm = document.body.querySelector('.t-popconfirm') as HTMLElement | null;
+  assert.ok(confirm, 'unshare opens the Vue-style popconfirm');
+  assert.match(confirm?.textContent ?? '', /确定将「Parity KB」从本共享空间中移除/, 'popconfirm carries the Vue removeShareConfirm copy');
+});
+
+// ORG-3 — Vue empty state is two lines (noSharedKB + noSharedKBTip, :662-668).
+test('shares empty state keeps the Vue second tip line noSharedKBTip', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const dialog = await openSettings(client);
+  const sharesNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('共享知识库'));
+  assert.ok(sharesNav);
+  await click(sharesNav);
+  await act(async () => {});
+  const empty = dialog.querySelector('.wk-org-empty-block');
+  assert.ok(empty, 'the two-line empty block renders');
+  assert.match(empty?.textContent ?? '', /暂无共享的知识库/, 'first line keeps noSharedKB');
+  assert.match(empty?.textContent ?? '', /知识库拥有者可以在知识库设置中将其共享到此共享空间/, 'second line keeps noSharedKBTip (locale zh-CN.ts:1917)');
+});
+
+// ORG-3 — Vue sharedAgentColumns (Vue :1172-1186): an 8-column table where the
+// KB/web-search/MCP scope cells fall back to — when the share has no scope.
+test('agents section renders the Vue 8-column agent table', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const dialog = await openSettings(client);
+  const agentsNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('共享智能体'));
+  assert.ok(agentsNav);
+  await click(agentsNav);
+  await act(async () => {});
+
+  assert.match(dialog.textContent ?? '', /共享智能体/, 'inner list title keeps the Vue agentListTitle wording');
+  const table = dialog.querySelector('table') as HTMLTableElement | null;
+  assert.ok(table, 'shared agents render as a table');
+  assert.deepEqual(
+    [...table.querySelectorAll('thead th')].map((cell) => (cell.textContent ?? '').trim()),
+    ['名称', '共享者', '共享时间', '知识库', '网络搜索', 'MCP 服务', '权限', '操作'],
+    'table headers mirror Vue sharedAgentColumns (name/sharedBy/sharedAt/scope_kb/scope_web_search/scope_mcp/permission/actions)',
+  );
+  const row = table.querySelector('tbody tr') as HTMLTableRowElement | null;
+  assert.ok(row);
+  assert.match(row?.textContent ?? '', /Research agent/, 'agent name cell renders');
+  assert.match(row?.textContent ?? '', /只读/, 'permission cell renders the readonly tag (Vue :780-783)');
+  const scopeCells = [...(row?.querySelectorAll('td') ?? [])].slice(3, 6).map((cell) => (cell.textContent ?? '').trim());
+  assert.deepEqual(scopeCells, ['—', '—', '—'], 'scope cells fall back to the Vue — placeholder without scope data');
+});
+
+// ORG-6 — Vue members-list-search stays rendered even while the member list is
+// empty/loading (:349-356), with the search prefix icon.
+test('members search input stays mounted with a prefix icon when the member list is empty', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.members.list = async () => ({ items: [], total: 0 });
+  const dialog = await openSettings(client);
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
+  assert.ok(membersNav);
+  await click(membersNav);
+  await act(async () => {});
+
+  const search = dialog.querySelector('input[placeholder="搜索成员…"]') as HTMLInputElement | null;
+  assert.ok(search, 'the member search input renders even with zero members (Vue :349-356 常驻)');
+  assert.ok(search?.closest('.t-input')?.querySelector('.t-icon, svg'), 'search input carries the Vue search prefix icon');
+  assert.match(dialog.textContent ?? '', /暂无成员/, 'empty member state still renders below the resident search');
 });

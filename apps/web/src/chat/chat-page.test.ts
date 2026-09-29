@@ -42,6 +42,27 @@ test('chat view keeps destructive session actions behind the Vue confirmation st
   assert.match(sidebarSource, /deleteConfirmBody/);
   assert.match(sidebarSource, /sessionDangerAction/);
   assert.match(sidebarSource, /role="dialog"/);
+  // CHAT-4 — Vue menu.vue handleInlineBatchDelete routes batch deletion through
+  // a DialogPlugin.confirm styled dialog; the sidebar must not fall back to a
+  // native window.confirm, and the dialog carries the batchManage copy.
+  assert.doesNotMatch(sidebarSource, /window\.confirm\(/);
+  assert.match(sidebarSource, /requestBatchDelete/);
+  assert.match(sidebarSource, /batchDeleteConfirmTitle/);
+  assert.match(sidebarSource, /batchDeleteConfirmAction/);
+  assert.match(sidebarSource, /session-action-confirm__btn is-danger/);
+  // CHAT-6 — the route-level handlers run only behind the styled dialogs
+  // above (Vue has a single confirmation layer, never a native second one).
+  assert.doesNotMatch(routeSource, /window\.confirm\(/);
+});
+
+test('clicking a body citation opens the references panel like the Vue drawer', () => {
+  // CHAT-7 — Vue useChatCitationPopover onClick → referencesDrawer.open
+  // (panel 0→9): activateCitation must open the shared references panel, not
+  // only swap the highlighted id while the panel stays closed.
+  const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  const activate = viewSource.match(/function activateCitation\([\s\S]*?\n  }/);
+  assert.ok(activate, 'activateCitation must stay a named function in page.tsx');
+  assert.match(activate[0], /setReferencesOpen\(true\)/);
 });
 
 test('streaming steer composer renders one localized task label', () => {
@@ -667,9 +688,14 @@ test('composer exposes a KB mention listbox and selected mention chips', () => {
     onMentionSelect: () => undefined,
     onMentionRemove: () => undefined,
   }));
+  // CHAT-1 两级菜单：SSR 首屏是分组入口（mention-group-entry：知识库 + count），
+  // 条目（产品文档/kb-1）在点入二级后渲染（jsdom 交互用例覆盖）；已选 chip 不受影响。
   assert.match(html, /role="listbox"/);
-  assert.match(html, /产品文档/);
-  assert.match(html, /data-mention-id="kb-1"/);
+  assert.match(html, /mention-group-entry/);
+  assert.match(html, /data-group-type="kb"/);
+  assert.match(html, /mention-group-entry__label">知识库</);
+  assert.match(html, /mention-group-entry__count">1</);
+  assert.doesNotMatch(html, /data-mention-id="kb-1"/);
   assert.match(html, /data-mention-id="kb-2"/);
   assert.match(html, /aria-label="关闭: FAQ"/);
 });

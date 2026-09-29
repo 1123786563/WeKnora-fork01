@@ -32,7 +32,7 @@ export function WkStatus({ tone = 'neutral', children }: { tone?: 'neutral' | 'e
 const openDialogStack: HTMLElement[] = [];
 
 /** packages/ui 旧栈 Dialog 的 DOM 同构副本（packages/ui/src/dialog.tsx:20-53 全量语义）。 */
-export function WkDialog({ open, title, children, onClose, closeLabel = 'Close', className, portal = true }: {
+export function WkDialog({ open, title, children, onClose, closeLabel = 'Close', className, portal = true, hideClose = false }: {
   open: boolean;
   title: ReactNode;
   children: ReactNode;
@@ -41,6 +41,9 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
   className?: string;
   /** Keep SSR/static rendering inline; browser usage portals to body by default. */
   portal?: boolean;
+  /** AUTH-7 — Vue t-dialog 创建空间弹窗无头部 ×（footer 取消|创建）；
+   * 默认 false 保持既有弹窗的 DOM 同构（关闭钮保留）。 */
+  hideClose?: boolean;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -81,7 +84,7 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
     };
   }, [onClose, open]);
   if (!open) return null;
-  const content = <div className="wk-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={className ? `wk-dialog ${className}` : 'wk-dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={dialogRef}><header className="wk-dialog-header"><h2 id={titleId}>{title}</h2><button className="wk-dialog-close" type="button" onClick={onClose} aria-label={closeLabel}>×</button></header><div className="wk-dialog-body">{children}</div></section></div>;
+  const content = <div className="wk-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={className ? `wk-dialog ${className}` : 'wk-dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={dialogRef}><header className="wk-dialog-header"><h2 id={titleId}>{title}</h2>{hideClose ? null : <button className="wk-dialog-close" type="button" onClick={onClose} aria-label={closeLabel}>×</button>}</header><div className="wk-dialog-body">{children}</div></section></div>;
   return !portal || !mounted || typeof document === 'undefined' ? content : createPortal(content, document.body);
 }
 

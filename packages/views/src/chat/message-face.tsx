@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, FeedbackRating } from '@weknora/contracts';
 import { copyAnswerText } from '@weknora/domain/chat/copy-answer';
 import { groupChatReferences } from '@weknora/domain/chat/references';
-import { conversationTimeLabels, type ChatCopyTable } from './chat-copy.ts';
+import { conversationTimeLabels, formatChatCopy, type ChatCopyTable } from './chat-copy.ts';
 import { formatConversationTimestampLabel } from '@weknora/domain/chat/message-timestamps';
 import { renderChatMarkdown } from './markdown.ts';
 
@@ -195,9 +195,11 @@ export function RagPipelineProgressFace(props: {
   copy: ChatCopyTable;
   message: ChatMessage;
   liveStatusText: string;
-  /** Vue toggleExpanded：折叠根切换共享引用抽屉（旧 React 行为对齐）。缺省只读。 */
+  /** Vue toggleExpanded：折叠根切换内联 RAG 管线时间线（tree-children）。
+   *  CHAT-8 对齐——旧 React 行为（切共享引用面板）已移除，引用面板仍由
+   *  正文 citation 点击（activateCitation）打开。 */
   onToggle?(): void;
-  /** 引用抽屉当前开合态（aria-expanded + chevron 方向）。 */
+  /** 引用抽屉当前开合态（保留给宿主透传 aria 语义；折叠根不再消费）。 */
   referencesOpen?: boolean;
 }) {
   const row = props.message as Record<string, unknown>;
@@ -206,7 +208,131 @@ export function RagPipelineProgressFace(props: {
   const groups = groupChatReferences(refs);
   const docCount = groups.flatMap((group) => (group.kind === 'document' ? group.items : [])).length;
   const webCount = groups.flatMap((group) => (group.kind === 'web' ? group.items : [])).length;
-  if (docCount === 0 && webCount === 0) return null;
+  /*
+   * Vue RagPipelineProgress.vue 展开态（tree-children tree-children-expanded）：
+   * 记忆行（ChatMemoryStep，used_memories）+ 检索步骤（agentEventStream 中
+   * RAG_TIMELINE_TOOL_NAMES 的 tool_call；历史行缺失时按
+   * ensureRagPipelineHistoryStream 从 knowledge_references 合成
+   * query_understand + knowledge_search 两步）+ 思考行（thinking 事件）+
+   * 完成行（common.finish）。展开/收起由本组件 userExpanded 局部态承载。
+   */
+  const [ragExpanded, setRagExpanded] = useState(false);
+  const [ragMemoryOpen, setRagMemoryOpen] = useState(false);
+  const [ragThinkingOpen, setRagThinkingOpen] = useState(true);
+  /*
+   * Vue useChatStreamHandler.reconstructEventStreamFromSteps：历史行以
+   * agent_steps 持久化，客户端重建 agentEventStream（tool_call 事件取
+   * target.name / target.args / result.data；thinking 取 reasoning_content）。
+   * React 侧同构重建，让展开时间线读到真实的检索参数（标题「：query」后缀）
+   * 与 result.data 摘要；两者皆缺时才回落 ensureRagPipelineHistoryStream 的
+   * knowledge_references 合成。
+   */
+  const stream = Array.isArray(row.agentEventStream)
+    ? row.agentEventStream as Array<Record<string, unknown>>
+    : (Array.isArray(row.agent_steps)
+        ? (row.agent_steps as Array<Record<string, unknown>>).flatMap((step) => {
+            const events: Array<Record<string, unknown>> = [];
+            const reasoning = step.reasoning_content !== undefined ? String(step.reasoning_content) : '';
+            if (reasoning.trim()) events.push({ type: 'thinking', content: reasoning });
+            const toolCalls = Array.isArray(step.tool_calls) ? step.tool_calls as Array<Record<string, unknown>> : [];
+            for (const call of toolCalls) {
+              const target = (call.target ?? null) as Record<string, unknown> | null;
+              const result = (call.result ?? null) as Record<string, unknown> | null;
+              events.push({
+                type: 'tool_call',
+                tool_call_id: String(call.id ?? ''),
+                tool_name: String(target?.name ?? call.name ?? ''),
+                arguments: target?.args ?? call.args,
+                tool_data: result?.data,
+                pending: false,
+                success: result?.success !== false,
+              });
+            }
+            return events;
+          })
+        : []);
+  const memories = Array.isArray(row.used_memories) ? row.used_memories as Array<Record<string, unknown>> : [];
+  const ragTimelineTools = new Set(['query_understand', 'knowledge_search', 'search_knowledge', 'attachment_parsing', 'image_analysis']);
+  const ragToolSteps = stream.filter((event) => event.type === 'tool_call' && typeof event.tool_name === 'string' && ragTimelineTools.has(event.tool_name as string));
+  /*
+   * Vue getQueryText + getRagPipelineStepTitle：query 取 args.query/args.queries
+   *（字符串或数组，多值以「，」连接），检索标题追加「：<query>」。
+   */
+  const ragQueryText = (args: unknown): string => {
+    if (!args) return '';
+    let parsed = args;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { return ''; }
+    }
+    if (!parsed || typeof parsed !== 'object') return '';
+    const record = parsed as Record<string, unknown>;
+    const collect = (value: unknown): string[] => {
+      if (typeof value === 'string' && value.trim()) return [value.trim()];
+      if (Array.isArray(value)) return value.flatMap(collect);
+      return [];
+    };
+    const queries = [...collect(record.query), ...collect(record.queries)];
+    return [...new Set(queries)].join('，');
+  };
+  const ragStepTitle = (toolName: string, args: unknown): string => {
+    const base = toolName === 'query_understand'
+      ? props.copy.timelineQueryUnderstandDone
+      : props.copy.timelineSearchKnowledge;
+    if (toolName === 'query_understand') return base;
+    const query = ragQueryText(args);
+    return query ? `${base}：「${query}」` : base;
+  };
+  const ragSummaryFromCounts = (count: number, kbCount: number, docTotal: number, webTotal: number): string => {
+    if (kbCount > 0) return formatChatCopy(props.copy, 'timelineFoundResultsFromFiles', { count: String(count), files: String(kbCount) });
+    if (docTotal > 0 && webTotal > 0) return formatChatCopy(props.copy, 'timelineFoundMixedResults', { count: String(count), docCount: String(docTotal), webCount: String(webTotal) });
+    if (webTotal > 0) return formatChatCopy(props.copy, 'timelineWebResults', { count: String(count) });
+    return formatChatCopy(props.copy, 'timelineFoundResults', { count: String(count) });
+  };
+  // Vue getKnowledgeSearchSummaryHtml：优先 result.data（count/doc_count/
+  // web_count/kb_counts），缺省从 knowledge_references 推导（kbCounts 只按
+  // 真实 knowledge_id/knowledge_title 归属计数）。
+  const ragSummaryText = (toolData: unknown): string => {
+    if (toolData && typeof toolData === 'object') {
+      const data = toolData as Record<string, unknown>;
+      const results = data.results;
+      const count = (Array.isArray(results) ? results.length : 0) || Number(data.count) || 0;
+      if (count > 0) {
+        const kbCounts = data.kb_counts;
+        const kbCount = kbCounts && typeof kbCounts === 'object' ? Object.keys(kbCounts).length : 0;
+        return ragSummaryFromCounts(count, kbCount, Number(data.doc_count) || (kbCount > 0 ? count : 0), Number(data.web_count) || 0);
+      }
+    }
+    const kbKeys = new Set<string>();
+    let docTotal = 0;
+    let webTotal = 0;
+    for (const reference of refs) {
+      const chunkType = (reference as { chunk_type?: unknown }).chunk_type;
+      if (chunkType === 'web_search') { webTotal += 1; continue; }
+      docTotal += 1;
+      const item = reference as { knowledge_id?: unknown; knowledge_title?: unknown };
+      const key = item.knowledge_id ?? item.knowledge_title;
+      if (key != null && String(key).trim() !== '') kbKeys.add(String(key));
+    }
+    return ragSummaryFromCounts(refs.length, kbKeys.size, docTotal, webTotal);
+  };
+  const ragSteps: Array<{ id: string; title: string; summary?: string }> = ragToolSteps.length > 0
+    ? ragToolSteps.map((event, index) => ({
+        id: String(event.tool_call_id ?? `${String(event.tool_name)}-${index}`),
+        title: ragStepTitle(String(event.tool_name), event.arguments),
+        ...(String(event.tool_name) !== 'query_understand' && !(event.pending === true) ? { summary: ragSummaryText(event.tool_data) } : {}),
+      }))
+    : (refs.length > 0 ? [
+        { id: 'rag-history-query-understand', title: props.copy.timelineQueryUnderstandDone },
+        { id: 'rag-history-knowledge-search', title: props.copy.timelineSearchKnowledge, summary: ragSummaryText(undefined) },
+      ] : []);
+  const ragThinkingContent = stream
+    .filter((event) => event.type === 'thinking')
+    .map((event) => String(event.content ?? ''))
+    .join('')
+    .trim();
+  const ragShowThinking = stream.some((event) => event.type === 'thinking');
+  const ragShowDone = ragSteps.length > 0 || ragShowThinking;
+  const ragHasMemory = memories.length > 0;
   // Vue RagPipelineProgress.vue:502-515 三分支：doc+web 组合文案 / doc / web。
   const referenceText = docCount > 0 && webCount > 0
     ? props.copy.referencesDocAndWebCount.replace('{docCount}', String(docCount)).replace('{webCount}', String(webCount))
@@ -224,17 +350,86 @@ export function RagPipelineProgressFace(props: {
                 type="button"
                 className="tree-root-expand"
                 aria-label={props.copy.searchDone}
-                aria-expanded={props.referencesOpen === true}
-                onClick={props.onToggle}
+                aria-expanded={ragExpanded}
+                onClick={() => { setRagExpanded((current) => !current); props.onToggle?.(); }}
               >
                 <span className="tree-root-status">{props.copy.searchDone}</span>
                 <span className="tree-root-reference">{referenceText}</span>
-                <SpriteIcon name={props.referencesOpen === true ? 'chevron-down' : 'chevron-right'} className="tree-root-expand__icon" />
+                <SpriteIcon name={ragExpanded ? 'chevron-down' : 'chevron-right'} className="tree-root-expand__icon" />
               </button>
             </div>
           </div>
         </div>
       </div>
+      {ragExpanded ? <div className="tree-children tree-children-expanded">
+        {ragHasMemory ? <div className={'tree-child chat-memory-step memory-step' + (!ragShowThinking && ragSteps.length === 0 && !ragShowDone ? ' tree-child-last' : '')}>
+          <div className="tree-branch" />
+          <div className="tree-child-content">
+            <div className="tool-event">
+              <div className="action-card">
+                <div className="memory-header" role="button" tabIndex={0} aria-expanded={ragMemoryOpen} onClick={() => setRagMemoryOpen((current) => !current)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setRagMemoryOpen((current) => !current); } }}>
+                  <SpriteIcon name="bookmark" className="memory-icon" />
+                  <span className="memory-name">{formatChatCopy(props.copy, 'timelineMemoryUsedCount', { count: String(memories.length) })}</span>
+                  <SpriteIcon name={ragMemoryOpen ? 'chevron-down' : 'chevron-right'} className="memory-chevron" />
+                </div>
+                {ragMemoryOpen ? <div className="memory-detail-content">
+                  {memories.map((memory) => <div key={String(memory.id)} className="memory-row">
+                    <span className="memory-kind">{String(memory.kind ?? '')}</span>
+                    <span className="memory-text">{String(memory.content ?? '')}</span>
+                  </div>)}
+                </div> : null}
+              </div>
+            </div>
+          </div>
+        </div> : null}
+        {ragSteps.map((step, index) => <div key={step.id} className={'tree-child' + (index === ragSteps.length - 1 && !ragShowThinking && !ragShowDone ? ' tree-child-last' : '')}>
+          <div className="tree-branch" />
+          <div className="tree-child-content">
+            <div className="tool-event">
+              <div className="action-card">
+                <div className="action-header no-results">
+                  <div className="action-title">
+                    <SpriteIcon name="search" className="action-title-icon" />
+                    <span className="action-name">{step.title}</span>
+                  </div>
+                </div>
+                {step.summary ? <div className="search-results-summary-fixed"><div className="results-summary-text">{step.summary}</div></div> : null}
+              </div>
+            </div>
+          </div>
+        </div>)}
+        {ragShowThinking ? <div className={'tree-child rag-thinking-step' + (!ragShowDone ? ' tree-child-last' : '')}>
+          <div className="tree-branch" />
+          <div className="tree-child-content">
+            <div className="tool-event">
+              <div className="action-card">
+                <div className="action-header no-results" role="button" tabIndex={0} aria-expanded={ragThinkingOpen} onClick={() => setRagThinkingOpen((current) => !current)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setRagThinkingOpen((current) => !current); } }}>
+                  <div className="action-title">
+                    <SpriteIcon name="lightbulb" className="action-title-icon" />
+                    <span className="action-name">{props.copy.timelineThink}</span>
+                  </div>
+                </div>
+                {ragThinkingContent && ragThinkingOpen ? <div className="thinking-detail-content">{ragThinkingContent}</div> : null}
+              </div>
+            </div>
+          </div>
+        </div> : null}
+        {ragShowDone ? <div className="tree-child agent-step-done tree-child-last">
+          <div className="tree-branch" />
+          <div className="tree-child-content">
+            <div className="tool-event">
+              <div className="action-card">
+                <div className="action-header no-results">
+                  <div className="action-title">
+                    <SpriteIcon name="check-circle" className="action-title-icon" />
+                    <span className="action-name">{props.copy.timelineFinish}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div> : null}
+      </div> : null}
     </div>
   );
 }

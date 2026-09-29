@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Fragment } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, UIEvent as ReactUIEvent } from "react";
 import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   normalizeKnowledgeProcessingStatus,
@@ -190,7 +190,9 @@ import { useKbDetailGuideTrigger } from "../../../../packages/views/src/guides/u
 import uploadMaskIllustration from "./upload-mask.svg";
 import "./documents-list.css";
 import {
+  documentListPageSize,
   loadKnowledgeDocuments,
+  mergeDocumentListState,
   type KnowledgeDocumentListState,
 } from "./list.ts";
 import {
@@ -204,12 +206,11 @@ import {
   computeSupportedFileTypes,
   computeUnsupportedFileTypes,
   dateRangeToTimeParams,
-  documentsKBDetailPath,
-  documentsKBSettingsPath,
   isFilteringDocuments,
+  kbTabHref,
 } from "./page-chrome.ts";
 import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
-import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
+import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { KnowledgeDocumentDetailPage } from "./KnowledgeDocumentDetailPage.tsx";
 import {
   DocumentEmptyState,
@@ -597,7 +598,23 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
           title={t("knowledgeBase.documents.title")}
           role="button"
           tabIndex={0}
-          onClick={(event) => { event.stopPropagation(); setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; }); }}
+          /* tdesign Popup attaches its own native click listener on this element
+             (trigger="click" → onVisibleChange → setOpen above). A React onClick
+             that toggles `open` races it — the element-level native listener runs
+             before the root-delegated React handler, so the toggle flips the just
+             opened state back to closed and the grid menu never opens (the list
+             row trigger has no onClick of its own, which is why rows worked).
+             Only stop propagation here (Vue more-wrap @click.stop, keeps the
+             card's open-document click suppressed) and let the Popup drive
+             open/close. Keyboard Enter/Space synthesizes no native click, so the
+             explicit toggle there is safe. */
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; });
+          }}
         >
           <img className="more-icon" src={MORE_PNG} alt="" />
         </div>
@@ -938,7 +955,6 @@ export function DocumentCardGrid({
 function DocumentListRows({
   items,
   folders,
-  showFolderTree,
   selected,
   canContribute,
   canMutateKnowledge,
@@ -966,7 +982,6 @@ function DocumentListRows({
 }: {
   items: KnowledgeDocument[];
   folders: Array<{ path: string; name: string; total_count: number }>;
-  showFolderTree: boolean;
   selected: Set<string>;
   canContribute: boolean;
   canMutateKnowledge?: boolean;
@@ -1020,10 +1035,10 @@ function DocumentListRows({
       </div>
 
       <div className="doc-list-body">
-        {/* Vue KnowledgeBase.vue L719-721: with the folder tree open it
-            already lists the same folders, so the list skips duplicate
-            sub-folder rows (tree closed keeps the navigable rows). */}
-        {!showFolderTree ? folders.map((folder) => (
+        {/* `folders` arrives pre-gated by the Vue currentChildFolders rule
+            (contentFolders above): rows only render while not filtering and
+            with the sidebar tree hidden or collapsed. */}
+        {folders.map((folder) => (
           <div
             key={`folder-${folder.path}`}
             className="doc-list-row doc-list-row--folder"
@@ -1051,7 +1066,7 @@ function DocumentListRows({
             <div className="cell cell-time"></div>
             {canContribute ? <div className="cell cell-actions" aria-hidden="true"></div> : null}
           </div>
-        )) : null}
+        ))}
 
         {items.map((document) => {
           const status = listRowStatus(document, t);
@@ -1628,6 +1643,10 @@ export interface UploadSourceDropdownProps {
    * data-guide="kb-detail-add-doc" (KnowledgeBase.vue:2613). Only the
    * page-level dropdown passes it; the dialog's "continue add" stays anonymous. */
   guideTarget?: string;
+  /** Vue :accept="acceptFileTypes || undefined" — the hidden file input's
+   * extension filter (KbUploadSourceDropdown.vue L8). The webkitdirectory
+   * folder input stays unfiltered, exactly like Vue. */
+  acceptFileTypes?: string;
 }
 
 /**
@@ -1658,6 +1677,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
       <input
         type="file"
         multiple
+        accept={props.acceptFileTypes || undefined}
         className="hidden-file-input"
         data-upload-source-input="file"
         autoComplete="off"
@@ -3074,7 +3094,19 @@ export function KnowledgeDocumentsPage({
     processConfig: unknown;
   } | null>(null);
   const [pendingBatchReparse, setPendingBatchReparse] = useState<string[] | null>(null);
-  const pageSize = 20;
+  // Vue getPageSize (KnowledgeBase.vue L810-816): viewport-adaptive page size
+  // (floor(innerHeight / 148) * 5, floor 35) computed once per mount — the
+  // list then grows by appending pages on scroll, with no explicit paginator.
+  const pageSize = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? 35
+        : documentListPageSize(window.innerHeight || document.documentElement.clientHeight),
+    [],
+  );
+  // Vue scrollLoading guard (KnowledgeBase.vue L412): scroll loads are
+  // single-flight; reset by the loading effect's settle.
+  const scrollLoadingRef = useRef(false);
 
   // Vue isFiltering: any active filter (search descends the folder subtree).
   const filtering = isFilteringDocuments({
@@ -3239,7 +3271,9 @@ export function KnowledgeDocumentsPage({
 
   useEffect(() => {
     let active = true;
-    setState({ status: "loading" });
+    // Vue docListLoading (loadKnowledgeFiles, page 1 only): a scroll load
+    // keeps the loaded list on screen while the next slice is fetched.
+    if (page <= 1) setState({ status: "loading" });
     void loadKnowledgeDocuments(client, knowledgeBaseId, {
       page,
       page_size: pageSize,
@@ -3256,7 +3290,14 @@ export function KnowledgeDocumentsPage({
       unavailable: t("common.error"),
       failed: t("common.error"),
     }).then((next) => {
-      if (active) setState(next);
+      if (!active) return;
+      // Vue getKnowled append semantics: page 1 replaces the list, a scroll
+      // load (page > 1) appends behind the loaded slice (list.ts merge).
+      setState((current) => mergeDocumentListState(current, next, page));
+    }).finally(() => {
+      // Vue resets scrollLoading when the fetch settles; a superseded run
+      // (filter/kb change) leaves the flag to its own successor.
+      if (active) scrollLoadingRef.current = false;
     });
     return () => {
       active = false;
@@ -3339,6 +3380,35 @@ export function KnowledgeDocumentsPage({
   // Vue only allocates the folder column when the tree has a real folder;
   // the synthetic Root row alone must leave the document surface full width.
   const showFolderTree = folders.some((folder) => folder.path.trim() !== "");
+  // Vue FOLDER_TREE_COLLAPSED_KEY ('weknora.kbFolderTreeCollapsed',
+  // KnowledgeBase.vue:681-702): the folder-panel collapse persists in
+  // localStorage; read/write failures (private mode) fall back silently.
+  const [folderTreeCollapsed, setFolderTreeCollapsed] = useState(() => {
+    try {
+      const raw = typeof window === "undefined" ? null : window.localStorage.getItem("weknora.kbFolderTreeCollapsed");
+      return raw === null ? false : raw === "true";
+    } catch {
+      return false;
+    }
+  });
+  const handleFolderTreeCollapsedChange = (value: boolean) => {
+    setFolderTreeCollapsed(value);
+    try {
+      if (typeof window !== "undefined") window.localStorage.setItem("weknora.kbFolderTreeCollapsed", String(value));
+    } catch {
+      // Storage failures must not break collapsing (Vue writeStoredFlag catch).
+    }
+  };
+  // Vue currentChildFolders (KnowledgeBase.vue:722-726): sub-folder entries in
+  // the content area only while NOT filtering and the sidebar tree is not
+  // visible-and-expanded — the open tree already lists the same folders, so
+  // the grid/list must not duplicate them (KBL-5). Collapsing the tree brings
+  // the navigable folder entries back.
+  const contentFolders = useMemo(() => {
+    if (filtering) return [];
+    if (showFolderTree && !folderTreeCollapsed) return [];
+    return folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""));
+  }, [filtering, showFolderTree, folderTreeCollapsed, folders, folderPath]);
   const vllmModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? "").toLowerCase() === 'vllm'), [tenantModels]);
   const asrModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'asr'), [tenantModels]);
   // Vue supportedFileTypes / unsupportedFileTypes computeds: the KB's
@@ -3356,6 +3426,13 @@ export function KnowledgeDocumentsPage({
   const unsupportedFileTypes = useMemo(
     () => computeUnsupportedFileTypes(parserEngines, parserRules),
     [parserEngines, parserRules],
+  );
+  // Vue acceptFileTypes computed (KnowledgeBase.vue L220-222): the same
+  // supported set, '.'-prefixed and comma-joined, feeding the upload file
+  // chooser's accept filter.
+  const acceptFileTypes = useMemo(
+    () => [...supportedFileTypes].map((type) => "." + type).join(","),
+    [supportedFileTypes],
   );
   const storageEngineMissing = isStorageEngineMissing(kbMeta);
 
@@ -3445,6 +3522,20 @@ export function KnowledgeDocumentsPage({
     lastSelectedIndex.current = -1;
   }
   const pageTotal = state.status === "success" ? state.page.total : 0;
+  // Vue handleScroll (KnowledgeBase.vue L2013-2032): when the list scroll
+  // container nears its bottom (scrollTop + clientHeight >= scrollHeight - 10)
+  // and more pages remain (loaded < total, page < ceil(total / pageSize)),
+  // advance the page — the loading effect appends the next slice. Replaces the
+  // React-only explicit paginator (KBL-4).
+  function handleListScroll(event: ReactUIEvent<HTMLDivElement>) {
+    if (state.status !== "success" || scrollLoadingRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    if (scrollTop + clientHeight < scrollHeight - 10) return;
+    if (items.length >= pageTotal) return;
+    if (page >= Math.ceil(pageTotal / pageSize)) return;
+    scrollLoadingRef.current = true;
+    setPage((value) => value + 1);
+  }
   // resolveKBSurfaceTabs is the strict Vue isWiki gate (permissions.ts): a KB
   // with the wiki off yields no tabs at all — even with graph extraction on —
   // and the breadcrumb falls back to the plain 文档 crumb. While the KB
@@ -3459,6 +3550,9 @@ export function KnowledgeDocumentsPage({
   // settings surface in place instead of navigating away; the Dialog below
   // re-hosts KnowledgeSettingsPage for the same behavior.
   const [kbSettingsOpen, setKbSettingsOpen] = useState(false);
+  // Vue uiStore.openKBSettings(kbId, 'parser') 在解析器提示横幅处以 parser
+  // 分节打开设置面（同 KnowledgeGraphPage.openParserSettings）。
+  const [kbSettingsSection, setKbSettingsSection] = useState<KnowledgeSettingsSectionKey | undefined>(undefined);
   // Vue renders the 文档/Wiki/图谱 row inline as the third breadcrumb level
   // (KnowledgeBase.vue:2359-2380, activeKbTab === 'documents' here); the
   // label keys match the graph page's breadcrumb tabs so both surfaces read
@@ -3470,9 +3564,10 @@ export function KnowledgeDocumentsPage({
       : tab === "wiki"
         ? "Wiki" /* Vue template renders the wiki tab as the literal "Wiki" (KnowledgeBase.vue L2365) */
         : t("knowledgeEditor.wikiBrowser.tabGraph"),
-    href: tab === "documents"
-      ? documentsKBDetailPath(knowledgeBaseId)
-      : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}?tab=${tab}`,
+    // KBW-2：tab 链接按当前路由族生成（platform 壳层保持 /platform/
+    // knowledge-bases/:id?tab=…），replace 对齐 Vue 的 router.replace 语义。
+    href: kbTabHref(knowledgeBaseId, tab, window.location.pathname),
+    replace: true,
     active: tab === "documents",
     title: tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined,
   }));
@@ -4290,10 +4385,10 @@ export function KnowledgeDocumentsPage({
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
-            onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigure={() => { setKbSettingsSection('parser'); setKbSettingsOpen(true); }}
           />
           {storageEngineMissing ? (
-            <p className="storage-engine-warning" onClick={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}>
+            <p className="storage-engine-warning" onClick={() => { setKbSettingsSection(undefined); setKbSettingsOpen(true); }}>
               <TIcon name="info-circle" className="warning-icon" />
               <span>{t('knowledgeBase.missingStorageEngine')}</span>
               <span className="warning-link">{t('knowledgeBase.goToStorageSettings')} →</span>
@@ -4310,9 +4405,25 @@ export function KnowledgeDocumentsPage({
           onDrop 已收敛，对齐 Vue KnowledgeBase.vue 无页面级 drop 处理器。 */}
       <div className="knowledge-main">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
-          {showFolderTree ? <aside className="wk-folder-panel wk-kd-105">
-            {/* Vue folderTree title (目录), not documents.folders (文件夹). */}
-            <strong>{t("knowledgeBase.folderTree.title")}</strong>
+          {showFolderTree && !folderTreeCollapsed ? <aside className="wk-folder-panel wk-kd-105">
+            {/* Vue folderTree title (目录), not documents.folders (文件夹).
+                Header mirrors KbFolderTree.vue: title + collapse icon button
+                (.kb-folder-tree__icon-btn, chevron-left-double) emitting
+                update:collapsed → KnowledgeBase hides the whole aside. */}
+            <div className="kb-folder-tree__header">
+              <strong className="kb-folder-tree__title">{t("knowledgeBase.folderTree.title")}</strong>
+              <Tooltip content={t("knowledgeBase.folderTree.collapse")} placement="top">
+                <button
+                  type="button"
+                  className="kb-folder-tree__icon-btn"
+                  aria-label={t("knowledgeBase.folderTree.collapse")}
+                  title={t("knowledgeBase.folderTree.collapse")}
+                  onClick={() => handleFolderTreeCollapsedChange(true)}
+                >
+                  <TIcon name="chevron-left-double" size="15px" />
+                </button>
+              </Tooltip>
+            </div>
             {folderState.status === "loading" ? (
               <Status>{t("knowledgeBase.documents.loadingFolders")}</Status>
             ) : null}
@@ -4350,6 +4461,22 @@ export function KnowledgeDocumentsPage({
           <div className="tag-content">
             <div className="doc-card-area">
             {showFolderTree ? <nav className="doc-folder-path" aria-label={t("knowledgeBase.folderTree.title")}>
+              {/* Vue KnowledgeBase.vue L2491: while the tree is collapsed the
+                  breadcrumb leads with the expand toggle (folder icon) so the
+                  panel can be brought back without the sidebar. */}
+              {folderTreeCollapsed ? (
+                <Tooltip content={t("knowledgeBase.folderTree.expand")} placement="top">
+                  <button
+                    type="button"
+                    className="doc-folder-path__tree-toggle"
+                    aria-label={t("knowledgeBase.folderTree.expand")}
+                    title={t("knowledgeBase.folderTree.expand")}
+                    onClick={() => handleFolderTreeCollapsedChange(false)}
+                  >
+                    <TIcon name="folder" size="14px" />
+                  </button>
+                </Tooltip>
+              ) : null}
               <button type="button" className="doc-folder-path__crumb is-current" onClick={() => setFolderPath(undefined)}>
                 {t("knowledgeBase.folderTree.rootRow")}
               </button>
@@ -4525,6 +4652,7 @@ export function KnowledgeDocumentsPage({
                     <UploadSourceDropdown
                       tooltip={t("knowledgeBase.addDocument")}
                       guideTarget="kb-detail-add-doc"
+                      acceptFileTypes={acceptFileTypes}
                       items={[
                         { key: "file", label: ct("upload.uploadDocument") },
                         { key: "folder", label: ct("upload.uploadFolder") },
@@ -4713,10 +4841,11 @@ export function KnowledgeDocumentsPage({
               ref={documentListRef}
               className={
                 'doc-scroll-container' +
-                (!items.length && !folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).length && state.status === "success" ? ' is-empty' : '') +
+                (!items.length && !contentFolders.length && state.status === "success" ? ' is-empty' : '') +
                 (marquee.visible ? ' is-marquee-active' : '')
               }
               onMouseDown={marquee.onMouseDown}
+              onScroll={handleListScroll}
             >
               {marquee.visible ? (
                 <div
@@ -4726,7 +4855,7 @@ export function KnowledgeDocumentsPage({
                 />
               ) : null}
               {/* 文档骨架屏（Vue docListLoading && 空 && 无子目录） */}
-              {state.status === "loading" && items.length === 0 && !folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).length ? (
+              {state.status === "loading" && items.length === 0 && !contentFolders.length ? (
                 <div className="doc-card-list doc-card-list-animated">
                   {Array.from({ length: 8 }, (_, n) => (
                     <div key={`doc-skel-${n}`} className="knowledge-card knowledge-card-skeleton">
@@ -4742,10 +4871,10 @@ export function KnowledgeDocumentsPage({
                     </div>
                   ))}
                 </div>
-              ) : state.status === "success" && viewMode === "grid" && hasDocumentGridContent(items, folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))) ? (
+              ) : state.status === "success" && viewMode === "grid" && hasDocumentGridContent(items, contentFolders) ? (
                 <DocumentCardGrid
                   items={items}
-                  folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
+                  folders={contentFolders}
                   selected={selected}
                   batchMode={batchMode}
                   canContribute={canContribute}
@@ -4773,8 +4902,7 @@ export function KnowledgeDocumentsPage({
               ) : state.status === "success" && items.length > 0 && viewMode === "list" ? (
                 <DocumentListRows
                   items={items}
-                  folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
-                  showFolderTree={showFolderTree}
+                  folders={contentFolders}
                   selected={selected}
                   canContribute={canContribute}
                   canMutateKnowledge={canMutate}
@@ -4811,33 +4939,6 @@ export function KnowledgeDocumentsPage({
                   <DocumentEmptyState t={t} variant="illustration" />
                 )
               ) : null}
-              {state.status === "success" && pageTotal > pageSize ? (
-                <nav
-                  className="wk-pagination"
-                  aria-label={t("knowledgeBase.documents.title")}
-                >
-                  <TdButton
-                    type="button"
-                    disabled={page <= 1}
-                    onClick={() => setPage((value) => value - 1)}
-                  >
-                    {t("knowledgeBase.documents.previous")}
-                  </TdButton>
-                  <span>
-                    {t("knowledgeBase.documents.page", {
-                      page,
-                      total: pageTotal,
-                    })}
-                  </span>
-                  <TdButton
-                    type="button"
-                    disabled={page * pageSize >= pageTotal}
-                    onClick={() => setPage((value) => value + 1)}
-                  >
-                    {t("knowledgeBase.documents.next")}
-                  </TdButton>
-                </nav>
-              ) : null}
             </div>
           </div>
         </div>
@@ -4865,6 +4966,7 @@ export function KnowledgeDocumentsPage({
               </span>
               <UploadSourceDropdown
                 tooltip={ct("uploadConfirm.continueAdd")}
+                acceptFileTypes={acceptFileTypes}
                 items={[
                   { key: "file", label: ct("upload.uploadDocument") },
                   { key: "folder", label: ct("upload.uploadFolder") },
@@ -4991,7 +5093,7 @@ export function KnowledgeDocumentsPage({
             asrIssue={asrIssue}
             parserEngines={parserEngines}
             parserLoading={parserEnginesLoading}
-            onConfigureParserSettings={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigureParserSettings={() => { setKbSettingsSection('parser'); setKbSettingsOpen(true); }}
             vllmModels={vllmModels}
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}
@@ -5065,7 +5167,13 @@ export function KnowledgeDocumentsPage({
               />
             </label>
             <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
+            {/* Vue KbUploadSourceDropdown.vue t-dialog footer: cancel-btn left,
+                confirm-btn (primary) right — [取消|确认]. Keep that order here
+                (KBL-7); the header × stays as the extra close affordance. */}
             <div className="wk-list-actions wk-kd-109">
+              <TdButton type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+                {ct("uploadConfirm.cancel")}
+              </TdButton>
               <TdButton
                 type="button"
                 onClick={() => {
@@ -5076,9 +5184,6 @@ export function KnowledgeDocumentsPage({
                 }}
               >
                 {ct("common.confirm")}
-              </TdButton>
-              <TdButton type="button" onClick={() => setSourceUrlDialogOpen(false)}>
-                {ct("uploadConfirm.cancel")}
               </TdButton>
             </div>
           </div>
@@ -5345,12 +5450,12 @@ export function KnowledgeDocumentsPage({
           open
           title={t("knowledgeBase.settings")}
           closeLabel={t("common.close")}
-          onClose={() => setKbSettingsOpen(false)}
+          onClose={() => { setKbSettingsOpen(false); setKbSettingsSection(undefined); }}
           className="wk-kb-settings-dialog wk-kd-134"
         >
           {/* R484: the Vue settings footer 取消 (handleClose) discards the
               drafts and closes the drawer — onClose wires that close. */}
-          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} onClose={() => setKbSettingsOpen(false)} />
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} initialSection={kbSettingsSection} onClose={() => { setKbSettingsOpen(false); setKbSettingsSection(undefined); }} />
         </Dialog>
       ) : null}
     </div>

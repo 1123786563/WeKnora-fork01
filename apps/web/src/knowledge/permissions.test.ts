@@ -57,8 +57,8 @@ test('missing or incomplete capability evidence fails closed', () => {
 });
 
 test('faq-type KBs redirect to the FAQ route', () => {
-  assert.equal(kbTypeRedirectPath({ id: 'kb-1', type: 'faq' }), '/knowledgeBase/kb-1/faq');
-  assert.equal(kbTypeRedirectPath({ id: 'kb-1', type: 'FAQ' }), '/knowledgeBase/kb-1/faq');
+  assert.equal(kbTypeRedirectPath({ id: 'kb-1', type: 'faq' }), '/platform/knowledge-bases/kb-1');
+  assert.equal(kbTypeRedirectPath({ id: 'kb-1', type: 'FAQ' }), '/platform/knowledge-bases/kb-1');
   assert.equal(kbTypeRedirectPath({ id: 'kb-1', type: 'document' }), undefined);
   assert.equal(kbTypeRedirectPath({ type: 'faq' }), undefined);
 });
@@ -79,8 +79,8 @@ test('non-wiki ?tab deep links fall back to the canonical documents URL', () => 
   // Vue keeps the ?tab=graph URL but renders the documents branch when isWiki
   // is false (KnowledgeBase.vue:2412/2418); the React pages are separate
   // routes, so the deep link redirects to the documents URL instead.
-  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: true } }), '/knowledgeBase/kb-1');
-  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false } }), '/knowledgeBase/kb-1');
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: true } }), '/platform/knowledge-bases/kb-1');
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false } }), '/platform/knowledge-bases/kb-1');
   assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: true } }), undefined);
   assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: true, graph_enabled: true } }), undefined);
   assert.equal(kbWikiTabFallbackPath({ indexing_strategy: { wiki_enabled: false } }), undefined);

@@ -7,8 +7,8 @@ import {
   dateRangeToTimeParams,
   documentsKBListPath,
   documentsKBDetailPath,
-  documentsKBSettingsPath,
   isFilteringDocuments,
+  kbTabHref,
 } from './page-chrome.ts';
 
 // Vue parity source: frontend/src/views/knowledge/KnowledgeBase.vue:186-233
@@ -67,8 +67,23 @@ test('date range maps to the backend list params like Vue filterParams', () => {
 
 test('breadcrumb destinations mirror Vue navigation', () => {
   assert.equal(documentsKBListPath, '/platform/knowledge-bases');
-  assert.equal(documentsKBDetailPath('9727d104-cde4-4d03-879f-d7e3897b69a3'), '/knowledgeBase/9727d104-cde4-4d03-879f-d7e3897b69a3');
-  assert.equal(documentsKBSettingsPath('9727d104'), '/knowledgeBase/9727d104/settings');
+  assert.equal(documentsKBDetailPath('9727d104-cde4-4d03-879f-d7e3897b69a3'), '/platform/knowledge-bases/9727d104-cde4-4d03-879f-d7e3897b69a3');
+  // KBL-R1：documentsKBSettingsPath 已删除——KB 设置是各 surface 就地 ⚙ Dialog
+  //（Vue uiStore.openKBSettings，无 URL），不再有 settings 路径生成器。
+});
+
+// KBW-2：tab 链接按当前路由族生成——platform 壳层不逃出、library 域保持
+// 原路径；documents tab 删除 tab 参数（Vue watch(activeKbTab) delete query.tab）。
+test('kbTabHref keeps the current route family and drops the tab param on documents', () => {
+  // platform 壳层：/platform/knowledge-bases/:id 下保持 platform 前缀。
+  assert.equal(kbTabHref('kb-1', 'wiki', '/platform/knowledge-bases/kb-1'), '/platform/knowledge-bases/kb-1?tab=wiki');
+  assert.equal(kbTabHref('kb-1', 'graph', '/platform/knowledge-bases/kb-1?tab=wiki'), '/platform/knowledge-bases/kb-1?tab=graph');
+  assert.equal(kbTabHref('kb-1', 'documents', '/platform/knowledge-bases/kb-1?tab=wiki'), '/platform/knowledge-bases/kb-1');
+  // KBL-R1：library 族入口已在 router 层重定向收编，tab 链接恒为 platform 族。
+  assert.equal(kbTabHref('kb-1', 'wiki', '/knowledgeBase/kb-1'), '/platform/knowledge-bases/kb-1?tab=wiki');
+  assert.equal(kbTabHref('kb-1', 'documents', '/knowledgeBase/kb-1?tab=graph'), '/platform/knowledge-bases/kb-1');
+  // id 参与编码，跳到同族下另一 KB 也保持族一致。
+  assert.equal(kbTabHref('kb 2/x', 'wiki', '/platform/knowledge-bases/kb-1'), '/platform/knowledge-bases/kb%202%2Fx?tab=wiki');
 });
 
 test('isFilteringDocuments: search descends the folder subtree, browsing does not', () => {

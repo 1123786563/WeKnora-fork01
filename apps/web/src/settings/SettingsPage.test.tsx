@@ -210,6 +210,19 @@ test('tenant section shows the Vue info rows instead of the English form', async
   assert.equal(Boolean(tenantInfo.compareDocumentPosition(deleteZone) & 4), true, 'danger zone follows tenant information like Vue');
 });
 
+// SETA-5 — Vue getUsagePercentage (TenantInfo.vue:661-668) keeps two decimals:
+// 1.21MB of a 10GB quota renders 0.01%, not a Math.round'ed 0%.
+test('tenant storage usage keeps the Vue two-decimal precision', async () => {
+  const container = await mountPage(makeClient({ tenant: {
+    id: 10000, name: 'Parity 空间', description: '', status: 'active', created_at: '2026-01-01T00:00:00Z',
+    storage_quota: 10 * 1024 * 1024 * 1024,
+    storage_used: 1.21 * 1024 * 1024,
+  } }), '?section=tenant');
+  const usageText = container.querySelector('.usage-text');
+  assert.ok(usageText, 'the tenant usage row renders');
+  assert.equal(usageText?.textContent, '0.01%', 'usage keeps two decimals like Vue (React used to Math.round to 0%)');
+});
+
 test('tenant deletion accepts a space-padded confirmation name like the Vue dialog', async () => {
   const container = await mountPage(makeClient({ tenant: { id: 10000, name: 'Parity 空间', description: '' } }), '?section=tenant');
   const openDelete = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))

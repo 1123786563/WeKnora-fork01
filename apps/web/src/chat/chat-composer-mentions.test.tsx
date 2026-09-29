@@ -46,6 +46,18 @@ test('KB mention picker supports search, Enter selection, Escape, and chip remov
   // Vue MentionSelector 同构：弹层无搜索框，键盘导航挂在 textarea（wk-chat-draft）。
   const textarea = container.querySelector<HTMLTextAreaElement>('#wk-chat-draft');
   assert.ok(textarea);
+  // CHAT-1 两级结构（Vue MentionSelector）：首屏是分组入口（mention-group-entry：
+  // label + count + chevron-right），点入二级才出条目列表，带返回行。
+  const groupEntries = () => [...container.querySelectorAll<HTMLButtonElement>('button.mention-group-entry')];
+  assert.equal(groupEntries().length, 1);
+  assert.equal(groupEntries()[0]?.getAttribute('data-group-type'), 'kb');
+  assert.equal(groupEntries()[0]?.querySelector('.mention-group-entry__label')?.textContent, '知识库');
+  assert.equal(groupEntries()[0]?.querySelector('.mention-group-entry__count')?.textContent, '2');
+  assert.equal(container.querySelector('.mention-back-row'), null);
+  await act(async () => groupEntries()[0]?.click());
+  const backRow = container.querySelector<HTMLButtonElement>('.mention-back-row');
+  assert.ok(backRow);
+  assert.equal(backRow.querySelector('span')?.textContent, '知识库');
   const options = () => [...container.querySelectorAll<HTMLElement>('[role="option"]')];
   assert.equal(options()[0]?.getAttribute('id'), 'wk-chat-mention-option-kb-2');
   assert.equal(options()[0]?.getAttribute('aria-selected'), 'true');
@@ -58,6 +70,16 @@ test('KB mention picker supports search, Enter selection, Escape, and chip remov
   assert.deepEqual(selected, ['kb-3']);
   assert.equal(container.querySelector('[role="listbox"]'), null);
   await act(async () => trigger?.click());
+  // Vue watch(visible)：重开复位回首屏分组入口；键盘 ArrowDown+Enter 进入二级。
+  assert.equal(container.querySelector('.mention-back-row'), null);
+  assert.ok(container.querySelector('button.mention-group-entry'));
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  assert.ok(container.querySelector('.mention-back-row'));
+  // 返回行点击回首屏。
+  await act(async () => container.querySelector<HTMLButtonElement>('.mention-back-row')?.click());
+  assert.equal(container.querySelector('.mention-back-row'), null);
+  assert.ok(container.querySelector('button.mention-group-entry'));
   await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
   assert.equal(container.querySelector('[role="listbox"]'), null);
   await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="关闭: 产品文档"]')?.click());
@@ -75,9 +97,16 @@ test('resource mention options expose stable type markers for non-KB resources',
     { id: 'skill-1', name: 'summarize', type: 'skill' },
   ]} />));
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="知识库"]')?.click());
-  assert.deepEqual([...container.querySelectorAll('[role="option"]')].map((node) => node.getAttribute('data-mention-type')), ['file', 'tag', 'mcp', 'skill']);
+  // CHAT-1 两级结构：混合资源首屏为逐类型分组入口（label+count），点入「文件」
+  // 二级后条目携带 data-mention-type 标记。
+  const entries = [...container.querySelectorAll<HTMLButtonElement>('button.mention-group-entry')];
+  assert.deepEqual(entries.map((node) => node.getAttribute('data-group-type')), ['tag', 'mcp', 'skill', 'file']);
+  assert.deepEqual(entries.map((node) => node.querySelector('.mention-group-entry__count')?.textContent), ['1', '1', '1', '1']);
+  await act(async () => entries[3]?.click());
+  const options = [...container.querySelectorAll('[role="option"]')];
+  assert.deepEqual(options.map((node) => node.getAttribute('data-mention-type')), ['file']);
   // Vue .mention-item 结构：icon-wrap > svg（sprite 类型图标）替代旧文本 marker。
-  assert.equal(container.querySelectorAll('[role="option"] .icon-wrap svg').length, 4);
+  assert.equal(container.querySelectorAll('[role="option"] .icon-wrap svg').length, 1);
 });
 
 test('streaming steer picker supports keyboard navigation and blocks existing attachments', async () => {

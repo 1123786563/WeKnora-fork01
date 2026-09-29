@@ -8,7 +8,7 @@
 
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Popup, Tooltip } from 'tdesign-react';
+import { Loading, Popup, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { createTranslator } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
@@ -16,7 +16,6 @@ import { KBInfoPopover, type KBInfoPopoverKB } from './KBInfoPopover.tsx';
 import {
   documentsKBDetailPath,
   documentsKBListPath,
-  documentsKBSettingsPath,
 } from './page-chrome.ts';
 
 type Translate = ReturnType<typeof createTranslator>;
@@ -30,7 +29,7 @@ export interface KBChromeMeta {
   createdAt?: string;
 }
 
-function defaultNavigate(path: string): void { navigate(path); }
+function defaultNavigate(path: string, mode: 'push' | 'replace' = 'push'): void { navigate(path, mode); }
 
 // --- Inline icons (no TDesign / icon font; feather-style strokes) -----------------
 
@@ -66,6 +65,14 @@ export interface DocumentsBreadcrumbTab {
   active?: boolean;
   /** Vue wraps the graph tab in t-tooltip content=tabGraphTip. */
   title?: string;
+  /** Vue tab 切换是 router.replace（无历史栈条目）；tab 链接标记 replace。 */
+  replace?: boolean;
+  /**
+   * KBW-4：Vue wikiIsIndexing——索引中时 Wiki/图谱 tab 加 indexing class 并在
+   * label 后渲染 t-loading 小指示器（KnowledgeBase.vue L2426-2440；队列
+   * tooltip 文案仍由 title 承载，与 Vue 内层 t-tooltip 等价）。
+   */
+  indexing?: boolean;
 }
 
 export interface DocumentsBreadcrumbProps {
@@ -93,7 +100,7 @@ export interface DocumentsBreadcrumbProps {
    * settings-route navigation (/knowledgeBase/<id>/settings).
    */
   onOpenSettings?: () => void;
-  onNavigate?: (path: string) => void;
+  onNavigate?: (path: string, mode?: 'push' | 'replace') => void;
   /** When present, the third crumb level is the Vue breadcrumb-tab row. */
   tabs?: DocumentsBreadcrumbTab[];
 }
@@ -159,19 +166,19 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
                 {tab.title ? (
                   <Tooltip content={tab.title} placement="bottom">
                     <span
-                      className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
+                      className={'breadcrumb-tab' + (tab.active ? ' active' : '') + (tab.indexing ? ' indexing' : '')}
                       role="link"
                       tabIndex={0}
-                      onClick={() => onNavigate(tab.href)}
-                    >{tab.label}</span>
+                      onClick={() => onNavigate(tab.href, tab.replace ? 'replace' : 'push')}
+                    >{tab.label}{tab.indexing ? <Loading size="small" className="breadcrumb-tab-indicator" /> : null}</span>
                   </Tooltip>
                 ) : (
                   <span
-                    className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
+                    className={'breadcrumb-tab' + (tab.active ? ' active' : '') + (tab.indexing ? ' indexing' : '')}
                     role="link"
                     tabIndex={0}
-                    onClick={() => onNavigate(tab.href)}
-                  >{tab.label}</span>
+                    onClick={() => onNavigate(tab.href, tab.replace ? 'replace' : 'push')}
+                  >{tab.label}{tab.indexing ? <Loading size="small" className="breadcrumb-tab-indicator" /> : null}</span>
                 )}
               </Fragment>
             ))}
@@ -195,7 +202,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
         ) : null}
         {canManage ? (
           <Tooltip content={t('knowledgeBase.settings')} placement="top">
-            <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
+            <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBDetailPath(knowledgeBaseId)); }}>
               <TIcon name="setting" size="16px" />
             </button>
           </Tooltip>

@@ -21,7 +21,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount, faqImportBlocked } = await import('./FAQPage.tsx');
+const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBDetailPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount, faqImportBlocked } = await import('./FAQPage.tsx');
 const { createRoot } = await import('react-dom/client');
 
 const t = createFaqTranslator('zh-CN');
@@ -99,9 +99,11 @@ test('breadcrumb shows 知识库 › kbName › 问答 instead of the raw UUID e
   assert.ok(!html.includes(kbId), 'never exposes the raw KB UUID');
 });
 
-test('breadcrumb destinations mirror Vue: KB list, KB detail and KB settings', () => {
+test('breadcrumb destinations mirror Vue: KB list and KB detail', () => {
   assert.equal(faqKBListPath, '/platform/knowledge-bases');
-  assert.equal(faqKBSettingsPath(kbId), '/knowledgeBase/' + kbId + '/settings');
+  // KBL-R1：faqKBSettingsPath 已删除——KB 设置是就地 ⚙ Dialog（对齐 Vue
+  // uiStore.openKBSettings，无 URL），faqKBDetailPath 统一 platform 族。
+  assert.equal(faqKBDetailPath(kbId), '/platform/knowledge-bases/' + kbId);
 });
 
 test('kbName crumb is a dropdown switcher and info + gear icons are present', () => {

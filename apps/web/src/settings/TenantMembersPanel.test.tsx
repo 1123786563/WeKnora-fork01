@@ -339,11 +339,14 @@ test('invite dialog opens from the add-member button and sends the invitation', 
 
   const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   await act(async () => addBtn?.click());
-  // S6：tdesign Dialog 渲染 .t-dialog（无 role=dialog），portal 到 body；
-  // email 字段落 tdesign Input 后 type=email 不再透传（jsdom 邮箱校验由
-  // submitInvite 的 JS 分支承担），按 placeholder 查询。
-  const dialog = document.querySelector('.t-dialog');
-  assert.ok(dialog);
+  // SETA-1 — Vue TenantMembers.vue:200-244：邀请成员是锚定按钮的 t-popup
+  //（placement bottom-end，overlay class member-invite-popup-overlay），不再
+  // 是屏幕居中 TDialog（.t-dialog）；email 字段落 tdesign Input 后
+  // type=email 不再透传（jsdom 邮箱校验由 submitInvite 的 JS 分支承担），
+  // 按 placeholder 查询。
+  const dialog = document.querySelector('.member-invite-popup-overlay');
+  assert.ok(dialog, 'invite popup anchors next to the add button (t-popup, not centered .t-dialog)');
+  assert.equal(document.querySelector('.t-dialog'), null, 'no centered dialog remains for the invite flow');
   assert.match(dialog?.textContent ?? '', /邀请成员/);
   const email = dialog?.querySelector<HTMLInputElement>('input[placeholder]');
   assert.ok(email, 'email field');
@@ -370,7 +373,9 @@ test('invite dialog opens from the add-member button and sends the invitation', 
   await act(async () => form?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
   assert.deepEqual(created, [{ email: 'new@example.com', role: 'contributor' }]);
   assert.ok(invitationCalls.length >= 2, 'invitations reload after the invite is sent');
-  assert.equal(document.querySelector('[role="dialog"]'), null, 'dialog closes after a successful send');
+  // t-popup 离场动画 ~200ms（destroyOnClose），冲刷后再断言弹层消失。
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)); });
+  assert.equal(document.querySelector('.member-invite-popup-overlay'), null, 'popup closes after a successful send');
   assert.match(container.textContent ?? '', /邀请已发出，等待对方接受。/);
 });
 

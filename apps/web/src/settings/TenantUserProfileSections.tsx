@@ -110,7 +110,9 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
     // (10 GB, not 10.0 GB).
     return parseFloat((bytes / Math.pow(1024, index)).toFixed(2)) + ' ' + units[index];
   };
-  const usage = hasQuota && quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+  // SETA-5 — Vue getUsagePercentage（TenantInfo.vue:661-668）：两位小数精度
+  // （Math.round(pct * 100) / 100），不是取整——1.21MB/10GB 显示 0.01%。
+  const usage = hasQuota && quota > 0 ? Math.min(Math.round((used / quota) * 100 * 100) / 100, 100) : 0;
   const reload = () => { window.location.reload(); };
 
   // TenantInfo.vue 逐节点复刻：section-header + loading/error-inline 自持态 +
@@ -169,7 +171,11 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
                         if (e.key === 'Escape') cancelEdits();
                       }}
                     />
-                    <TButton theme="primary" size="small" loading={saving} disabled={!nameDraft.trim()} onClick={() => { void saveName(reload); }}>
+                    {/* Vue canSubmit（TenantInfo.vue:450-452）：非空且 ≠ 原值才可
+                        保存——打开即可点的初始态会提交无变化的 PATCH（SETA-2）。
+                        初始 disabled 会让 tdesign-react 把宿主退化成 div（同
+                        SETSYS-N1），tag="button" 保持原生 button 语义。 */}
+                    <TButton theme="primary" size="small" tag="button" loading={saving} disabled={saving || !nameDraft.trim() || nameDraft.trim() === currentName} onClick={() => { void saveName(reload); }}>
                       {t('tenant.details.editNameConfirm')}
                     </TButton>
                     <TButton theme="default" variant="outline" size="small" disabled={saving} onClick={cancelEdits}>
@@ -220,7 +226,10 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
                       }}
                     />
                     <div className="inline-edit-actions">
-                      <TButton theme="primary" size="small" loading={savingDescription} disabled={!descriptionDraft.trim()} onClick={() => { void saveDescription(reload); }}>
+                      {/* Vue canSubmitDescription（TenantInfo.vue:478-480）：描述是
+                          可选字段，允许清空，只要求 ≠ 原值（SETA-2）；tag="button"
+                          同上，避免初始 disabled 退化成 div 宿主。 */}
+                      <TButton theme="primary" size="small" tag="button" loading={savingDescription} disabled={savingDescription || descriptionDraft.trim() === currentDescription} onClick={() => { void saveDescription(reload); }}>
                         {t('tenant.details.editNameConfirm')}
                       </TButton>
                       <TButton theme="default" variant="outline" size="small" disabled={savingDescription} onClick={cancelEdits}>

@@ -347,7 +347,8 @@ test('switching provider autofills the default URL and re-syncs thinking control
 
   const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
-  const baseUrl = document.body.querySelector<HTMLInputElement>('input[type="url"]');
+  // SETSYS-N8：对齐 Vue t-input（默认 text，无 type=url）。
+  const baseUrl = inputByPlaceholder(document.body, '例如：https://api.openai.com/v1');
   assert.ok(baseUrl);
   assert.equal(baseUrl.value, 'https://api.openai.com/v1');
 
@@ -764,9 +765,11 @@ test('local source renders a keyboard-navigable Ollama combobox with a download 
 });
 
 // B4b: per-field blur validation with per-field messages
-// (ModelEditorDialog.vue rules lines 907-946).
-test('name and base URL validate on blur with per-field Vue copy', async () => {
-  const { client } = makeClient();
+// (ModelEditorDialog.vue rules lines 907-946). Base URL 例外：对齐 Vue 的
+// 控件类型与校验时机——text 输入、blur 不校验、保存时 new URL() 校验
+// （SETSYS-N8，ModelEditorDialog.vue:233/1542-1547）。
+test('name validates on blur; base URL stays a text input and validates at save', async () => {
+  const { client, calls } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
   const providerSelect = modelOptionTrigger(document.body);
@@ -787,23 +790,19 @@ test('name and base URL validate on blur with per-field Vue copy', async () => {
   fieldError = name.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
   assert.equal(fieldError ?? null, null);
 
-  const baseUrl = document.body.querySelector<HTMLInputElement>('input[type="url"]')!;
+  // SETSYS-N8：Vue t-input 无 type（默认 text），blur 不出内联错误。
+  const baseUrl = inputByPlaceholder(document.body, '例如：https://api.openai.com/v1')!;
   assert.ok(baseUrl);
-  await setInput(baseUrl, '');
-  await blur(baseUrl);
-  fieldError = baseUrl.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
-  assert.equal(fieldError?.textContent, '请输入 Base URL');
-
+  assert.notEqual(baseUrl.type, 'url', 'the Base URL field renders as a plain text input');
   await setInput(baseUrl, 'not-a-url');
   await blur(baseUrl);
   fieldError = baseUrl.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
-  assert.equal(fieldError?.textContent, 'Base URL 格式不正确，请输入有效的 URL');
+  assert.equal(fieldError ?? null, null, 'no inline base URL error on blur');
 
-  await setInput(baseUrl, 'https://api.openai.com/v1');
-  await blur(baseUrl);
-  await setInput(name, 'gpt-4o-mini');
-  await blur(name);
-  assert.equal(document.body.querySelector('.wk-field-error'), null, 'fixing a field clears its error');
+  // 校验挪到保存时（与 Vue 保存流程同一触发点）。
+  await submitForm(document.body.querySelector('form')!);
+  assert.match(document.body.textContent ?? '', /Base URL 格式不正确，请输入有效的 URL/);
+  assert.equal(calls.create.length, 0, 'invalid base URL never reaches the API');
 });
 
 // B4c: ESC preserves the add draft for the next add open; explicit cancel

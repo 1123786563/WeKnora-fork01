@@ -84,3 +84,74 @@
 .wk-onb-11 {
   width: min(560px,100%) !important;
 }
+
+/* AUTH-3 — 我的邀请富卡片（对齐 Vue MyInvitationsDialog .invitation-card） */
+.wk-onb-inv {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.wk-onb-inv-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--td-bg-color-container, #fff);
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 8px;
+}
+
+.wk-onb-inv-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wk-onb-inv-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wk-onb-inv-tenant {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wk-onb-inv-role {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  background: var(--td-brand-color-light, #e8f3ff);
+  color: var(--td-brand-color, #0052d9);
+}
+
+.wk-onb-inv-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #616161);
+  word-break: break-word;
+}
+
+.wk-onb-inv-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+}

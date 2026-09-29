@@ -1475,10 +1475,12 @@
 /* ---- session-sidebar.tsx ---- */
 
 .wk-vc-session-sidebar-1 {
-  display: grid;
-  gap: 0.25rem;
+  /* Vue menu.vue .session-list-scope-header：来源筛选 inline 触发器所在行 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   margin-inline: 4px;
-  margin-block: 0.55rem;
+  margin-block: 0.35rem;
   color: rgba(0,0,0,0.4);
   font-size: 12px;
 }
@@ -2552,3 +2554,179 @@
 /* ---- T15：输入占位符色语义化（原 placeholder:text-[rgba(...)]） ---- */
 .wk-vc-composer-12::placeholder { color: rgba(0, 0, 0, 0.4); }
 .wk-vc-session-sidebar-2::placeholder { color: rgba(0, 0, 0, 0.26); }
+
+/* ---- session-source-filter（Vue SessionSourceFilter.vue inline 形态平移，CHAT-10） ---- */
+
+.session-source-filter {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 0 6px;
+}
+
+.session-source-filter__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--td-text-color-disabled, rgba(0,0,0,0.26));
+  cursor: pointer;
+  font-family: var(--app-font-family);
+  text-align: left;
+}
+
+.session-source-filter__trigger:hover,
+.session-source-filter__trigger[aria-expanded='true'] {
+  background: transparent;
+  color: var(--td-text-color-placeholder, rgba(0,0,0,0.4));
+}
+
+.session-source-filter--emphasized .session-source-filter__trigger {
+  color: var(--td-text-color-secondary, rgba(0,0,0,0.6));
+}
+
+.session-source-filter__leading,
+.session-source-filter__option-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.session-source-filter__label,
+.session-source-filter__option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+}
+
+.session-source-filter__option-label {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--td-text-color-primary, rgba(0,0,0,0.9));
+}
+
+.session-source-filter__logo {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  opacity: 0.7;
+}
+
+.session-source-filter__option .session-source-filter__logo {
+  width: 14px;
+  height: 14px;
+  opacity: 0.82;
+}
+
+.session-source-filter__icon {
+  flex: 0 0 auto;
+  font-size: 12px !important;
+  color: var(--td-text-color-disabled, rgba(0,0,0,0.26));
+}
+
+.session-source-filter__option .session-source-filter__icon {
+  font-size: 14px !important;
+  color: var(--td-text-color-placeholder, rgba(0,0,0,0.4));
+}
+
+.session-source-filter__chevron {
+  flex: 0 0 auto;
+  font-size: 10px !important;
+  color: var(--td-text-color-disabled, rgba(0,0,0,0.26));
+  opacity: 0.85;
+  transition: transform 0.18s ease;
+}
+
+.session-source-filter__chevron--open {
+  transform: rotate(180deg);
+}
+
+.session-source-filter__panel {
+  position: fixed;
+  z-index: 3000;
+  width: max-content;
+  min-width: 108px;
+  max-width: min(200px, calc(100vw - 16px));
+  padding: 3px;
+  border: 1px solid var(--td-component-stroke, #f0f0f0);
+  border-radius: 7px;
+  background: var(--td-bg-color-sidebar, #fff);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.session-source-filter__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--td-text-color-primary, rgba(0,0,0,0.9));
+  cursor: pointer;
+  font-family: var(--app-font-family);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.session-source-filter__option:hover {
+  background: var(--td-bg-color-container-hover, #f3f3f3);
+}
+
+.session-source-filter__option--active {
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+}
+
+.session-source-filter__check {
+  flex: 0 0 13px;
+  width: 13px;
+  margin-left: 2px;
+  color: var(--td-text-color-placeholder, rgba(0,0,0,0.4));
+  font-size: 12px !important;
+  visibility: hidden;
+}
+
+.session-source-filter__check--visible {
+  visibility: visible;
+}
+
+/* ---- 批量底栏（Vue menu.vue .batch-inline-footer 结构，CHAT-5） ---- */
+
+.wk-vc-session-sidebar-3.batch-inline-footer {
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--td-component-stroke, #f0f0f0);
+}
+
+.wk-vc-session-sidebar-3 .batch-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder, rgba(0,0,0,0.4));
+}
+
+.wk-vc-session-sidebar-3 .batch-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

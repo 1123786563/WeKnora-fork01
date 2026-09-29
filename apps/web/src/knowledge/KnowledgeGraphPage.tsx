@@ -3,7 +3,7 @@ import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 // S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button 换 tdesign；检索框沿 Vue
 // 自定义 combobox 形态落原生 input（wk-kg-19 = 原视觉规则，DOM/aria 锚点不变）；
 // Dialog（KB 设置再宿主）与 Status 无 TDesign 对应/需保 DOM，走 shared/wk-legacy。
-import { Button as TButton } from 'tdesign-react';
+import { Button as TButton, Popup } from 'tdesign-react';
 import { WkDialog as Dialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { renderChatMarkdown } from '@weknora/views';
 import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewport, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
@@ -12,10 +12,11 @@ import { navigate } from '../platform/navigation.ts';
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
 import './knowledge-u.css';
 import '../documents/documents.td.css';
-import { computeSupportedFileTypes, computeUnsupportedFileTypes } from '../documents/page-chrome.ts';
+import { computeSupportedFileTypes, computeUnsupportedFileTypes, kbTabHref } from '../documents/page-chrome.ts';
 import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
 import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
 import { useKbDetailGuideTrigger } from '../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts';
+import { useWikiIndexStatus } from '../wiki/wiki-index-status.ts';
 
 /* 静态 per-type 语义类（原 .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-*；
    T15：任意值 bg-[#…] utility 语义化进 knowledge-u.css .wk-kg-dot-bg--*）。
@@ -126,16 +127,27 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }, [kbMeta]);
   const unsupportedFileTypes = useMemo(() => computeUnsupportedFileTypes(parserEngines, parserRules), [parserEngines, parserRules]);
 
+  // KBW-4：Wiki 索引状态轮询（Vue WikiBrowser loadStats 口径——挂载拉一次
+  // GET /wiki/stats；仅索引中（is_active || pending_tasks>0）才 5s 轮询，回到
+  // 空闲停表并重载图谱，对齐 Vue 完成分支的 loadGraph()）。
+  const wikiIndex = useWikiIndexStatus(client, knowledgeBaseId, {
+    onIndexingSettled: () => { void load(mode, center || undefined); },
+  });
+  // Vue wikiIndexingTip（KnowledgeBase.vue L105-108）：索引中时 Wiki/图谱 tab
+  // 的队列 tooltip 文案（tab title 承载；DocumentsBreadcrumb 的 title 即
+  // t-tooltip content）。
+  const wikiIndexingTip = wikiIndex.indexing
+    ? t('wikiBrowser.queueStatus', { count: wikiIndex.stats?.pendingTasks ?? 0 })
+    : undefined;
   // Vue title row (KnowledgeBase.vue L2359-2380): wiki KBs render the third
   // crumb level as the 文档 / Wiki / 图谱 breadcrumb-tab row; the active graph
   // tab carries the tabGraphTip concept-clarification tooltip (Vue t-tooltip).
   // The row exists only when the KB enables the wiki (Vue isWiki gate —
   // resolveKBSurfaceTabs returns nothing for a non-wiki KB even when graph
   // extraction is on, permissions.ts); an empty/absent list falls back to the
-  // plain 文档 crumb inside DocumentsBreadcrumb. /knowledgeBase/<id>?tab=… is
-  // the canonical KB route form (routes.tsx knowledgeBaseView) — the same URLs
-  // the documents page nav links to.
-  const kbBasePath = `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`;
+  // plain 文档 crumb inside DocumentsBreadcrumb. KBW-2：tab 链接按当前路由族
+  // 生成（platform 壳层保持 /platform/knowledge-bases/:id?tab=…），replace
+  // 对齐 Vue 的 router.replace 语义（documents page 同）。
   const resolvedTabs = kbMeta ? resolveKBSurfaceTabs(kbMeta) : undefined;
   const kbTabs: DocumentsBreadcrumbTab[] | undefined = resolvedTabs
     ? resolvedTabs.map((tab: KBSurfaceTab) => ({
@@ -145,9 +157,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         : tab === 'wiki'
           ? 'Wiki' /* Vue template renders the wiki tab as the literal "Wiki" (KnowledgeBase.vue L2365) */
           : t('knowledgeEditor.wikiBrowser.tabGraph'),
-      href: tab === 'documents' ? kbBasePath : `${kbBasePath}?tab=${tab}`,
+      href: kbTabHref(knowledgeBaseId, tab, window.location.pathname),
+      replace: true,
       active: tab === 'graph',
-      title: tab === 'graph' ? t('knowledgeEditor.wikiBrowser.tabGraphTip') : undefined,
+      // KBW-4：索引中时 Wiki/图谱 tab 的 tooltip 换成队列状态（Vue 面包屑
+      // t-tooltip wikiIndexingTip）；图谱 tab 空闲时保留 tabGraphTip。
+      title: wikiIndexingTip
+        ?? (tab === 'graph' ? t('knowledgeEditor.wikiBrowser.tabGraphTip') : undefined),
+      // KBW-4：索引中时 Wiki/图谱 tab 点亮 indexing 态（tab loading 指示器 +
+      // indexing class，DocumentsBreadcrumb 渲染；documents tab 不参与）。
+      indexing: tab === 'wiki' || tab === 'graph' ? wikiIndex.indexing : undefined,
     }))
     : undefined;
 
@@ -156,7 +175,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   // (KnowledgeBase.vue:2412/2418). The React tab pages are separate routes, so
   // a non-wiki deep link falls back to the canonical documents URL instead of
   // erroring against wiki-only APIs (same view the URL shows in Vue).
-  const wikiTabFallbackPath = useMemo(() => (kbMeta ? kbWikiTabFallbackPath(kbMeta) : undefined), [kbMeta]);
+  const wikiTabFallbackPath = useMemo(() => (kbMeta ? kbWikiTabFallbackPath(kbMeta, window.location.pathname) : undefined), [kbMeta]);
   useEffect(() => {
     if (wikiTabFallbackPath) navigate(wikiTabFallbackPath, 'replace');
   }, [wikiTabFallbackPath]);
@@ -742,21 +761,33 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                   {searchOptions.map((option, index) => <li key={option.slug} id={`wk-graph-search-option-${index}`} role="option" aria-selected={index === searchActive}><button type="button" className={`wk-kg-60 ${index === searchActive ? 'wk-kg-61' : ''}`} onMouseEnter={() => setSearchActive(index)} onClick={() => selectSearchResult(option)}>{option.title}</button></li>)}
                 </ul> : null}
               </div>
-              <details className="wk-kg-23">
-                <summary className="wk-kg-24" title={t('wikiBrowser.helpButtonTitle')} aria-label={t('wikiBrowser.helpButtonTitle')}>?</summary>
-                <dl className="wk-kg-25">
-                  <div className="wk-kg-26">{t('wikiBrowser.helpTitle')}</div>
-                  <div className="wk-kg-27">
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpClickDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpHoverPlusAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpHoverPlusDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDragAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDragDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpPanAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpPanDesc')}</dd></div>
-                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpZoomAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpZoomDesc')}</dd></div>
-                  </div>
-                </dl>
-              </details>
+              {/* KBW-6：容器形态对齐 Vue t-popup（WikiBrowser.vue L19-36
+                  trigger="click" placement="bottom-right" showArrow 弹层面板），
+                  原 details/summary 就地折叠弃用；7 条帮助内容逐字不变。 */}
+              <Popup
+                trigger="click"
+                placement="bottom-right"
+                showArrow
+                overlayClassName="wiki-graph-help-popup"
+                overlayStyle={{ padding: 0 }}
+                overlayInnerStyle={{ padding: 0 }}
+                content={(
+                  <dl className="wk-kg-25">
+                    <div className="wk-kg-26">{t('wikiBrowser.helpTitle')}</div>
+                    <div className="wk-kg-27">
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpClickDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpHoverPlusAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpHoverPlusDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDragAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDragDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpPanAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpPanDesc')}</dd></div>
+                      <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpZoomAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpZoomDesc')}</dd></div>
+                    </div>
+                  </dl>
+                )}
+              >
+                <button type="button" className="wk-kg-23 wk-kg-24" title={t('wikiBrowser.helpButtonTitle')} aria-label={t('wikiBrowser.helpButtonTitle')} aria-haspopup="dialog">?</button>
+              </Popup>
             </div>
           </div> : null}
           {graphReady ? <div data-testid="knowledge-graph-legend" className="wk-kg-31" style={drawerNode ? { right: 'calc(480px + 16px)' } : undefined}>

@@ -66,7 +66,6 @@ import type { SteerMutationResponse } from '@weknora/contracts';
 import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
-import { chatClearConfirmation } from './clear-confirmation.ts';
 // SP13 Task 8 — 会话分享弹窗（侧栏 ⋯ 菜单「分享」→ mint 只读链接）。
 import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
@@ -102,6 +101,23 @@ function readStoredChatModelId(scope: ReturnType<ScopeController['current']>['sc
   try { return window.localStorage.getItem(chatModelStorageKey(scope))?.trim() ?? ''; } catch { return ''; }
 }
 
+/*
+ * CHAT-2 对齐 —— Vue 模型选择的双层持久化：localStorage lastPick
+ * （weknora_last_chat_model_id）之外，settings store 的
+ * conversationModels.selectedChatModelId 也随每次显式选择写入
+ * （WeKnora_settings，pinia persist）。探针只清 lastPick 时，新会话页仍从
+ * store 默认值恢复上次所选。React 侧以同一 scope 粒度的第二槽位镜像该
+ * 「用户默认」层：显式选择与（未来）写回路径都落这里；pick 清空后
+ * 新会话页回退到该默认，而非落到列表第一个。
+ */
+function chatModelDefaultStorageKey(scope: ReturnType<ScopeController['current']>['scope']): string {
+  return `weknora:chat-model-default:${scope.origin}:${scope.userId ?? 'anonymous'}:${scope.tenantId ?? 'default'}`;
+}
+
+function readStoredChatModelDefault(scope: ReturnType<ScopeController['current']>['scope']): string {
+  try { return window.localStorage.getItem(chatModelDefaultStorageKey(scope))?.trim() ?? ''; } catch { return ''; }
+}
+
 // R484 D15 — per-browser web-search toggle persistence (Vue keeps it in the
 // settings store; the tenant KV write there is admin-gated and not ported).
 const WEB_SEARCH_ENABLED_KEY = 'weknora:web-search-enabled';
@@ -132,10 +148,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Chat models for the composer chip (Vue chatResources chatModels); the
   // KnowledgeQA filter lives in model-chip.ts like the Vue store.
   const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState(() => readStoredChatModelId(scope.scope));
+  const [selectedModelId, setSelectedModelId] = useState(() => readStoredChatModelId(scope.scope) || readStoredChatModelDefault(scope.scope));
   // Vue readLastChatModelID: the chip resolves the user's *explicit* pick, not
   // the synthetic first-model default the loader seeds selectedModelId with.
-  const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope));
+  const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope) || readStoredChatModelDefault(scope.scope));
   // SP14 Task 4 — 用户默认模型（Ruling P-3 方案 A）：server-side
   // preferences.default_model，拉取一次；失败/未设静默保持 undefined（芯片
   // 与发送链维持 models[0] 兜底）。模型解析链变为 pick > 助手绑定 >
@@ -198,6 +214,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>(() =>
     prefillKbIdsRef.current!.map((id) => ({ id, name: id, type: 'kb' as const })));
   const [mentionLoading, setMentionLoading] = useState(false);
+  // CHAT-1 — Vue MentionSelector groupCounts.file：文件搜索 total（首屏只拉
+  // 20 条，分组入口显示服务端总数）。
+  const [mentionFileTotal, setMentionFileTotal] = useState<number | undefined>(undefined);
   const [mentionError, setMentionError] = useState<string>();
   const mentionLoadedRef = useRef(false);
   const mentionLoadingRef = useRef(false);
@@ -214,7 +233,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // binds the conversation model; the user's explicit model pick is persisted
   // per origin/user/tenant so it survives a fresh chat route.
   const agentModelId = useMemo(() => {
-    const agent = agents.find((item) => item.id === selectedAgentId);
+    // CHAT-2 —— Vue Input-field.vue:159 selectedAgentId || BUILTIN_QUICK_ANSWER_ID：
+    // 未显式选 agent（''）时默认 builtin-quick-answer，其 config.model_id 绑定
+    // 对话模型（quick-answer 模式同样生效，Vue agent-model watch immediate）。
+    const agent = agents.find((item) => item.id === selectedAgentId)
+      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
     const modelId = (agent?.config as Record<string, unknown> | undefined)?.model_id;
     return typeof modelId === 'string' ? modelId : undefined;
   }, [agents, selectedAgentId]);
@@ -348,6 +371,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionLoadedRef.current = false;
     mentionLoadingRef.current = false;
     setMentionOptions([]);
+    setMentionFileTotal(undefined);
     setMentionedItems([]);
     setMentionLoading(false);
     setMentionError(undefined);
@@ -525,7 +549,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           // before the tenant's first chat model. The pick layer (localStorage
           // persistence in onModelChange) is untouched — a synthetic seed is
           // never written there.
-          const explicitPick = readStoredChatModelId(scope.scope);
+          // CHAT-2 —— Vue initChatModelSelection/ensureModelSelection 链：
+          // lastPick（localStorage）> store 默认（第二槽位，显式选择/会话写回
+          // 落点）> 服务端用户默认（SP14 P-3）> 列表第一个。
+          const explicitPick = readStoredChatModelId(scope.scope) || readStoredChatModelDefault(scope.scope);
           if (explicitPick && models.some((model) => String(model.id) === explicitPick)) {
             setSelectedModelId(explicitPick);
           } else {
@@ -542,6 +569,43 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     // the list still lands (the effect body only re-reads, never refetches
     // unless the scope changed).
   }, [client, scope.signal, scope.scope, scopeController, userDefaultModel]);
+
+  /*
+   * CHAT-2 对齐 —— Vue loadSessionAndHydrate（chat/index.vue:295-309）：打开
+   * 会话时 GET /sessions/:id 并把 last_request_state.model_id 写回
+   * settings store（applyLastRequestState），输入栏/芯片恢复该会话上次的
+   * 发起态。React 侧以 userModelPick+selectedModelId 承载该写回（不落
+   * localStorage pick——Vue 明确「旧会话的状态不应污染用户默认」，跨路由
+   * 的 SPA 生命周期内生效，与 pinia store 同粒度）。
+   */
+  useEffect(() => {
+    let active = true;
+    const sessionId = selectedSessionId;
+    if (!sessionId) return;
+    void client.sessions.get(sessionId, scope.signal).then(
+      (session) => {
+        if (!active || !scopeController.isCurrent(scope.scope)) return;
+        const lastState = (session as { last_request_state?: { model_id?: unknown } }).last_request_state;
+        if (!lastState || typeof lastState.model_id !== 'string') return;
+        const modelId = lastState.model_id.trim();
+        setUserModelPick(modelId);
+        setSelectedModelId(modelId || '');
+      },
+      () => { /* 会话详情失败非致命：保持当前模型态 */ },
+    );
+    return () => { active = false; };
+  }, [client, selectedSessionId, scope.signal, scope.scope, scopeController]);
+
+  // CHAT-2 —— Vue Input-field.vue agent-model watch（immediate）：选中 agent 的
+  // config.model_id 绑定对话模型；仅当用户显式 pick（localStorage）与 agent 模型
+  // 不同且当前选中就是该 pick 时保留用户选择。agents 晚于模型列表到达，故用
+  // effect 追加同步（含 builtin-quick-answer 默认身位，见 agentModelId memo）。
+  useEffect(() => {
+    if (!agentModelId) return;
+    const explicitPick = readStoredChatModelId(scope.scope);
+    if (explicitPick && userModelPick === explicitPick && explicitPick !== agentModelId) return;
+    setSelectedModelId((current) => (current === agentModelId ? current : agentModelId));
+  }, [agentModelId, userModelPick, scope.scope]);
 
   // SP14 Task 4 — pull the user's default chat model once (PUT-backed
   // preferences from the 会话偏好 settings section). A failed read leaves the
@@ -748,15 +812,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   // Reload starters whenever the new-conversation view is shown and the agent
   // selection changes; failures degrade to an empty list (starter-questions.ts).
+  // CHAT-2/creatChat parity —— Vue 默认身位是 builtin-quick-answer（Input-field
+  // :159），未显式选 agent 时建议问题同样从它加载（Vue 你可以这样问我 常显）。
   useEffect(() => {
-    if (selectedSessionId || !selectedAgentId) {
+    const defaultAgent = agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer');
+    const starterAgentId = selectedAgentId || defaultAgent?.id || '';
+    if (selectedSessionId || !starterAgentId) {
       setStarterQuestions([]);
       setStarterQuestionsLoading(false);
       return;
     }
     let active = true;
     setStarterQuestionsLoading(true);
-    void loadStarterQuestions(client.configuration.agents, selectedSessionId, selectedAgentId, scope.signal).then(
+    void loadStarterQuestions(client.configuration.agents, selectedSessionId, starterAgentId, scope.signal).then(
       (questions) => {
         if (!active) return;
         setStarterQuestions(questions);
@@ -764,7 +832,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       },
     );
     return () => { active = false; };
-  }, [client, selectedAgentId, selectedSessionId, scope.signal, starterQuestionsRefreshKey]);
+  }, [agents, client, selectedAgentId, selectedSessionId, scope.signal, starterQuestionsRefreshKey]);
 
   function refreshStarterQuestions(): void {
     if (selectedSessionId || !selectedAgentId) return;
@@ -1425,7 +1493,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
-    if (!window.confirm(copy.deleteConfirmBody)) return;
     try {
       await client.sessions.remove(sessionId, scope.signal);
       setSessions((items) => items.filter((session) => session.id !== sessionId));
@@ -1438,7 +1505,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function clearMessages(): Promise<void> {
-    if (!selectedSessionId || !window.confirm(chatClearConfirmation(readStoredLocale()))) return;
+    if (!selectedSessionId) return;
     try {
       await client.sessions.clear(selectedSessionId, scope.signal);
       setMessages([]);
@@ -1586,6 +1653,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           description: item.description ?? '',
         })) : [];
         setMentionOptions([...kbItems, ...tagItems, ...fileItems, ...mcpItems, ...skillItems]);
+        const searchTotal = hasDocumentSearch && results[1].status === 'fulfilled' && typeof (results[1].value as { total?: unknown }).total === 'number'
+          ? (results[1].value as { total: number }).total
+          : undefined;
+        setMentionFileTotal(searchTotal !== undefined && searchTotal > fileItems.length ? searchTotal : undefined);
       },
       (cause: unknown) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
@@ -1889,6 +1960,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onRemoveAttachment={removeAttachment}
     attachmentAccept={supportedAttachmentExtensions}
     mentionOptions={mentionOptions}
+    mentionGroupCounts={mentionFileTotal !== undefined ? { file: mentionFileTotal } : undefined}
     mentionedItems={mentionedItems}
     mentionLoading={mentionLoading}
     mentionError={mentionError}
@@ -1929,8 +2001,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onWebSearchToggle={toggleWebSearch}
     onModelChange={(modelId) => {
       // Vue handleModelChange order: persist the explicit pick first, then
-      // update the in-memory selection states.
-      try { window.localStorage.setItem(chatModelStorageKey(scope.scope), modelId); } catch { /* storage may be unavailable */ }
+      // update the in-memory selection states（同时写 store 默认层 =
+      // updateConversationModels → WeKnora_settings 持久化，CHAT-2）。
+      try {
+        window.localStorage.setItem(chatModelStorageKey(scope.scope), modelId);
+        window.localStorage.setItem(chatModelDefaultStorageKey(scope.scope), modelId);
+      } catch { /* storage may be unavailable */ }
       setUserModelPick(modelId);
       setSelectedModelId(modelId);
     }}

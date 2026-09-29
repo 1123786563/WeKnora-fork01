@@ -241,6 +241,10 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
               theme="default"
               size="small"
               className="download-btn"
+              // tdesign-react 在 disabled 且未传 tag 时把宿主渲染成 div（无
+              // role/tabindex，键盘不可达）；Vue t-button 恒为原生 button。
+              // 显式 tag="button" 保证禁用态也保持 BUTTON 宿主（SETSYS-N1）。
+              tag="button"
               loading={downloading}
               disabled={!downloadModelName.trim()}
               icon={<TIcon name="download" />}

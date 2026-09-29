@@ -243,7 +243,7 @@
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="showInvitePreview" class="invite-preview-overlay" @click.self="closeInvitePreview">
-          <div class="invite-preview-modal" :class="{
+          <div class="invite-preview-modal" role="dialog" aria-label="加入共享空间" :class="{
             'is-wide': !invitePreviewData && !invitePreviewLoading && joinStep === 'search'
           }">
             <div class="invite-preview-header">

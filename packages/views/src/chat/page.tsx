@@ -135,6 +135,8 @@ export interface ChatPageProps {
   /** R490 B1 — Vue mentionEmptyHint: agent-compatibility empty state of the
    *  @ popup, shown instead of the generic empty label. */
   mentionEmptyHint?: string;
+  /** Vue MentionSelector groupCounts（CHAT-1）：分组入口服务端总数（文件搜索 total）。 */
+  mentionGroupCounts?: Partial<Record<ChatMentionView['type'], number>>;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -551,13 +553,18 @@ export function ChatPage(props: ChatPageProps) {
   }
   const sandboxArtifacts = useMemo(() => collectSessionArtifacts(props.messages), [props.messages]);
   // Vue chat references live behind the collapsed 检索完成 summary
-  // (ChatReferencesDrawer); the shared panel stays closed until that opens it.
+  // (ChatReferencesDrawer); the shared panel stays closed until that summary
+  // or a body citation click (useChatCitationPopover → drawer.open) opens it.
   const [referencesOpen, setReferencesOpen] = useState(false);
   const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
 
   useEffect(() => { setActiveCitationId(null); }, [props.selectedSessionId]);
 
   function activateCitation(referenceId: string): void {
+    // Vue useChatCitationPopover onClick → referencesDrawer.open({ highlight }):
+    // a body citation click opens the references panel and highlights the chunk
+    // there; it never leaves the panel closed with a bare id swap.
+    setReferencesOpen(true);
     setActiveCitationId(referenceId);
     props.onCitationClick?.(referenceId);
   }
@@ -662,6 +669,7 @@ export function ChatPage(props: ChatPageProps) {
       mentionLoading={props.mentionLoading}
       mentionError={props.mentionError}
       mentionEmptyHint={props.mentionEmptyHint}
+      mentionGroupCounts={props.mentionGroupCounts}
       onMentionOpen={props.onMentionOpen}
       onMentionSelect={props.onMentionSelect}
       onMentionRemove={props.onMentionRemove}
@@ -729,6 +737,10 @@ export function ChatPage(props: ChatPageProps) {
       <div className="chat_thread">
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
+        {/* CHAT-7 —— 会话视图与空态视图同样挂引用来源面板：正文引用 chip 点击
+            （activateCitation → setReferencesOpen(true)）或「检索完成」根按钮
+            展开后，Vue ChatReferencesDrawer 的对应物在此可见。 */}
+        {referencesOpen && references.length > 0 ? <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} /> : null}
         {props.error ? <p role="alert">{props.error}</p> : null}
         {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
         <MessageList

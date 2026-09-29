@@ -17,7 +17,7 @@ import type { Root } from 'react-dom/client';
 // PlatformShell imports .css files; teach the ESM loader to treat them as
 // empty modules (same approach as new-user-guide.test.tsx).
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
-const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png')
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png') || specifier.endsWith('.svg')
   ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
   : nextResolve(specifier, context);
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
@@ -331,16 +331,15 @@ test('(i) shell session source filter exposes Vue-backed web, API, and configure
     },
   });
   const container = await mountShell({ client });
-  const filter = container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]') as HTMLSelectElement | null;
-  assert.ok(filter, 'expected the source filter select');
+  const trigger = container.querySelector('nav[aria-label="我的对话"] button.session-source-filter__trigger[aria-label="会话来源"]') as HTMLButtonElement | null;
+  assert.ok(trigger, 'expected the source filter trigger');
   assert.deepEqual(metadataCalls.sort(), ['embed', 'im']);
-  assert.deepEqual([...filter.options].map((option) => option.value), ['web', 'api', 'embed:embed-1', 'im:feishu']);
-  assert.deepEqual([...filter.options].map((option) => option.textContent), ['我的对话', 'API 会话', '帮助中心', 'feishu']);
-  await act(async () => {
-    filter.value = 'api';
-    filter.dispatchEvent(new Event('change', { bubbles: true }));
-    await settle(40);
-  });
+  await act(async () => { trigger?.click(); await settle(2); });
+  const panel = container.querySelector('nav[aria-label="我的对话"] div[role="listbox"][aria-label="会话来源"]');
+  assert.ok(panel, 'expected the source filter panel');
+  const options = [...(panel?.querySelectorAll('button[role="option"]') ?? [])] as HTMLButtonElement[];
+  assert.deepEqual(options.map((option) => option.textContent), ['我的对话', 'API 会话', '帮助中心', 'feishu']);
+  await act(async () => { options[1]?.click(); await settle(40); });
   // The second 'web' is the reload once auth/me resolves the admin role: the
   // scope change must restart the load (it used to strand the list on
   // Loading), then the explicit bucket switch appends its own request.
@@ -353,7 +352,7 @@ test('(j) viewers and unknown mounts keep admin session sources hidden', async (
     embed: { channels: { listAll: async () => [{ id: 'embed-1', name: '帮助中心' }] }, im: { listAll: async () => [{ id: 'im-1', platform: 'feishu' }] } },
   });
   const container = await mountShell({ client });
-  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] button.session-source-filter__trigger'), null);
 });
 
 test('(k) admin source filter stays hidden when API and configured channels have no sessions', async () => {
@@ -363,7 +362,7 @@ test('(k) admin source filter stays hidden when API and configured channels have
     list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }),
   });
   const container = await mountShell({ client });
-  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] button.session-source-filter__trigger'), null);
 });
 
 test('(l) replacing an admin client with a viewer client resets an invalid source to web before loading', async () => {
@@ -379,9 +378,13 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
     list: async (params: { source?: string }) => { viewerCalls.push(params.source ?? ''); return { data: [], total: 0, page: 1, page_size: 30 }; },
   });
   const container = await mountShell({ client: admin });
-  const filter = container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]') as HTMLSelectElement;
-  assert.ok(filter);
-  await act(async () => { filter.value = 'api'; filter.dispatchEvent(new Event('change', { bubbles: true })); await settle(10); });
+  const trigger = container.querySelector('nav[aria-label="我的对话"] button.session-source-filter__trigger[aria-label="会话来源"]') as HTMLButtonElement;
+  assert.ok(trigger);
+  await act(async () => { trigger.click(); await settle(2); });
+  const apiOption = [...(container.querySelectorAll('nav[aria-label="我的对话"] div[role="listbox"][aria-label="会话来源"] button[role="option"]') ?? [])]
+    .find((node) => node.textContent === 'API 会话') as HTMLButtonElement | undefined;
+  assert.ok(apiOption);
+  await act(async () => { apiOption?.click(); await settle(10); });
   await act(async () => {
     mountedRoot?.render(React.createElement(PlatformShell, { client: viewer as never, onLogout: () => undefined, children: React.createElement('div', null, 'page') }));
     await settle(30);
@@ -391,7 +394,7 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
   // resolution reloads web once more (same restart semantics as (i)/(l2)).
   assert.ok(viewerCalls.length > 0, 'expected the viewer client to load the web bucket');
   assert.ok(viewerCalls.every((source) => source === 'web'), `viewer client must only request web, saw ${viewerCalls.join(',')}`);
-  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] button.session-source-filter__trigger'), null);
 });
 
 test('(l2) admin auth/me scope flip during the first load must not strand the list on Loading', async () => {
@@ -434,29 +437,36 @@ test('(m) batch management exposes accessible selection and deletes selected ses
     batchRemove: async (sessionIds: string[]) => { removed.push(...sessionIds); },
   });
   const originalConfirm = window.confirm;
-  window.confirm = () => true;
+  let nativeConfirmCalls = 0;
+  window.confirm = () => { nativeConfirmCalls += 1; return true; };
   try {
     const container = await mountShell({ client });
-    const menuToggle = container.querySelector('nav[aria-label="我的对话"] details summary') as HTMLElement | null;
-    assert.ok(menuToggle, 'expected a session actions menu');
-    await act(async () => { menuToggle?.click(); await settle(1); });
-    const manage = container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement | null;
+    const menu1 = container.querySelector('nav[aria-label="我的对话"] .session-chat-row details') as HTMLDetailsElement | null;
+    assert.ok(menu1, 'expected a session actions menu');
+    await act(async () => { (menu1 as HTMLDetailsElement).open = true; await settle(2); });
+    const manage = [...menu1!.querySelectorAll('button[role="menuitem"]')].find((node) => node.getAttribute('aria-label') === '批量管理') as HTMLButtonElement | undefined;
     assert.ok(manage);
     await act(async () => { manage?.click(); await settle(2); });
-    const selectAll = container.querySelector('nav[aria-label="我的对话"] input[aria-label="全选会话"]') as HTMLInputElement | null;
+    const selectAll = container.querySelector('nav[aria-label="我的对话"] input[aria-label="全选"]') as HTMLInputElement | null;
     assert.ok(selectAll);
     const checkboxes = [...container.querySelectorAll('nav[aria-label="我的对话"] input[type="checkbox"]')]
       .filter((node) => node !== selectAll) as HTMLInputElement[];
     assert.equal(checkboxes.length, SESSIONS.length);
     await act(async () => { checkboxes[0]?.click(); await settle(1); });
     await act(async () => { checkboxes[2]?.click(); await settle(1); });
-    const deleteButton = container.querySelector('nav[aria-label="我的对话"] button[aria-label^="删除所选"]') as HTMLButtonElement | null;
+    const deleteButton = container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除对话(2)"]') as HTMLButtonElement | null;
     assert.ok(deleteButton);
     assert.equal(deleteButton?.disabled, false);
-    await act(async () => { deleteButton?.click(); await settle(10); });
+    await act(async () => { deleteButton?.click(); await settle(2); });
+    const dialog = container.querySelector('nav[aria-label="我的对话"] div[role="dialog"][aria-label="删除对话"]');
+    assert.ok(dialog, 'expected the styled batch delete confirm dialog');
+    const confirmButton = [...(dialog?.querySelectorAll('button') ?? [])].find((node) => node.textContent === '删除对话') as HTMLButtonElement | undefined;
+    assert.ok(confirmButton);
+    await act(async () => { confirmButton?.click(); await settle(10); });
     assert.deepEqual(removed.sort(), ['session-2', 'session-pin']);
     assert.equal(rowTitles().includes('昨天的会话'), false);
     assert.equal(rowTitles().includes('置顶的会话'), false);
+    assert.equal(nativeConfirmCalls, 0, 'batch deletion must use the styled dialog, not window.confirm');
   } finally {
     window.confirm = originalConfirm;
   }
@@ -473,19 +483,33 @@ test('(n) failed batch deletion keeps selection and offers retry', async () => {
   window.confirm = () => true;
   try {
     const container = await mountShell({ client });
-    const menuToggle = container.querySelector('nav[aria-label="我的对话"] details summary') as HTMLElement | null;
-    assert.ok(menuToggle, 'expected a session actions menu');
-    await act(async () => { menuToggle.click(); await settle(1); });
-    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement).click(); await settle(1); });
-    const first = container.querySelector('nav[aria-label="我的对话"] input[type="checkbox"]:not([aria-label="全选会话"])') as HTMLInputElement;
+    const menu1 = container.querySelector('nav[aria-label="我的对话"] .session-chat-row details') as HTMLDetailsElement | null;
+    assert.ok(menu1, 'expected a session actions menu');
+    await act(async () => { (menu1 as HTMLDetailsElement).open = true; await settle(2); });
+    const manage = [...menu1!.querySelectorAll('button[role="menuitem"]')].find((node) => node.getAttribute('aria-label') === '批量管理') as HTMLButtonElement | undefined;
+    assert.ok(manage);
+    await act(async () => { manage?.click(); await settle(2); });
+    const first = container.querySelector('nav[aria-label="我的对话"] input[type="checkbox"]:not([aria-label="全选"])') as HTMLInputElement;
     await act(async () => { first.click(); await settle(1); });
-    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label^="删除所选"]') as HTMLButtonElement).click(); await settle(10); });
+    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除对话(1)"]') as HTMLButtonElement).click(); await settle(2); });
+    await act(async () => {
+      const dialog = container.querySelector('nav[aria-label="我的对话"] div[role="dialog"][aria-label="删除对话"]');
+      const confirmButton = [...(dialog?.querySelectorAll('button') ?? [])].find((node) => node.textContent === '删除对话') as HTMLButtonElement | undefined;
+      confirmButton?.click();
+      await settle(10);
+    });
     const status = container.querySelector('nav[aria-label="我的对话"] [role="alert"]');
     assert.equal(status?.textContent?.includes('批量删除失败'), true);
     assert.equal((first as HTMLInputElement).checked, true);
     const retry = container.querySelector('nav[aria-label="我的对话"] button[aria-label="重试"]') as HTMLButtonElement | null;
     assert.ok(retry);
-    await act(async () => { retry?.click(); await settle(10); });
+    await act(async () => { retry?.click(); await settle(2); });
+    await act(async () => {
+      const dialog = container.querySelector('nav[aria-label="我的对话"] div[role="dialog"][aria-label="删除对话"]');
+      const confirmButton = [...(dialog?.querySelectorAll('button') ?? [])].find((node) => node.textContent === '删除对话') as HTMLButtonElement | undefined;
+      confirmButton?.click();
+      await settle(10);
+    });
     assert.equal(rowTitles().includes('置顶的会话'), false);
   } finally {
     window.confirm = originalConfirm;

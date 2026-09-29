@@ -19,9 +19,13 @@
 // Without the prop the footer click stays a no-op, matching the Vue emit
 // without a listener.
 
-/** The host document-detail route for one knowledge/document id. */
+/**
+ * The host document view for one knowledge/document id. KBL-R1：library 族
+ * documents 子路由已收编，platform 族的等价形态是 knowledge_id 深链——
+ * KB 详情就地把该文档抽屉打开（KnowledgeDocumentsPage.initialDocumentId）。
+ */
 export function wikiSourceDocPath(knowledgeBaseId: string, documentId: string): string {
-  return `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(documentId)}`;
+  return `/platform/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}?knowledge_id=${encodeURIComponent(documentId)}`;
 }
 
 /**

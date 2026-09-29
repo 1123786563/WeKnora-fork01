@@ -53,6 +53,10 @@ import './platform-u.css';
 import '../../../../packages/views/src/guides/guides.css';
 import './platform-shell.td.css';
 import { Icon as TIcon } from 'tdesign-icons-react';
+import { Button as TButton, Input as TInput, Textarea as TTextarea, Tooltip as TTooltip } from 'tdesign-react';
+import { WkDialog } from '../shared/wk-legacy.tsx';
+// F2 — 超管侧栏空间切换器（Vue menu.vue:53 TenantSelector 挂载）。
+import { TenantSelector } from './TenantSelector.tsx';
 // 全局拖拽上传（Vue platform/index.vue document 级监听 + upload-mask.vue）：
 // 壳层负责原生事件、计数式遮罩与 weknora:*-file-drop 派发；插画复用
 // documents 域同款 upload-mask.svg（与 Vue assets 逐字节一致）。
@@ -218,7 +222,7 @@ const NAV_ICON_URLS: Record<string, { default: string; active: string }> = {
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
   return [
     { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: 'creatChat', match: NEW_CHAT_ACTIVE, guide: 'nav-creatChat' },
-    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: (p: string) => KB_ACTIVE(p) && !/\/creatChat$/.test(p), guide: 'nav-knowledge-bases' },
+    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: labels.knowledgeBase, icon: 'knowledge-bases', match: (p: string) => KB_ACTIVE(p) && !/\/creatChat$/.test(p), guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional
     // (the GET /experts list is tenant-scoped, no admin gate). React-only
@@ -244,6 +248,26 @@ export function shouldShowTenantSwitcher(options: {
   hasSwitchHandler: boolean;
 }): boolean {
   return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
+}
+
+/**
+ * Rail visibility filter (pure, exported for tests). See the visibleNavItems
+ * memo below for the full provenance comments:
+ *  • organizations — admin role + !lite (Vue menu.ts:76-78);
+ *  • agents — deployment capability 'agents' (Vue menu.ts:33
+ *    requiredCapability; AGT-4), fail-open until the probe resolves;
+ *  • analytics/experts/market — React-only surfaces off the rail (round-22/23).
+ */
+export function filterVisibleNavItems(
+  items: readonly NavItem[],
+  context: { canSeeOrganizations: boolean; isLiteEdition: boolean; agentsEnabled: boolean },
+): NavItem[] {
+  return items.filter((item) =>
+    (item.key !== 'organizations' || (context.canSeeOrganizations && !context.isLiteEdition))
+    && (item.key !== 'agents' || context.agentsEnabled)
+    && item.key !== 'analytics'
+    && item.key !== 'experts'
+    && item.key !== 'market');
 }
 
 // Vue composables/useRoleLabel.ts ROLE_ICONS — 角色前缀图标映射（受限集合，
@@ -273,6 +297,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const t = useCallback((key: string) => formatMessage(locale, key), [locale]);
   const labels = {
     newChat: formatMessage(locale, 'menu.newChat'),
+    // N1 — Vue menu.vue:90 labels the knowledge-base rail entry with
+    // $t('menu.knowledgeBase') (frontend i18n en-US「Knowledge Base」);
+    // common.knowledgeBases diverges in en-US ("Knowledge bases"), so the
+    // rail follows the Vue key.
+    knowledgeBase: formatMessage(locale, 'menu.knowledgeBase'),
     agents: formatMessage(locale, 'menu.agents'),
     // M2 expert templates rail entry (menu.* key registered React-side in
     // scripts/parity/backfill-i18n-keys.mjs EXPERTS_VALUES — the Vue menu
@@ -343,7 +372,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // navigated so leaving the step can return to the previous page, mirroring
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean; isSystemAdmin: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false, isSystemAdmin: false });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean; isSystemAdmin: boolean; homeTenantId: string; canCreateTenant: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false, isSystemAdmin: false, homeTenantId: '', canCreateTenant: false });
   // Vue menu.ts:72-81 — the organizations nav entry is gated on
   // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
   // the shared space). Initial true = fail-open while identity resolves:
@@ -367,6 +396,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       avatar: typeof record.avatar === 'string' ? record.avatar : '',
       tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
       tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
+      // F3 — Vue useHomeTenant (composables/useRoleLabel.ts:54-61): the home
+      // workspace is authStore.user.tenant_id (the user record's own tenant),
+      // not the active me.tenant; the submenu home dot compares against it.
+      homeTenantId: record.tenant_id !== undefined && record.tenant_id !== null && String(record.tenant_id).trim() !== '' ? String(record.tenant_id) : '',
+      // F3 — Vue UserMenu.vue:191 gates the "+ 创建新空间" entry on
+      // authStore.canCreateTenant (/auth/me capabilities.can_create_tenant;
+      // stores/auth.ts:308 setCanCreateTenant).
+      canCreateTenant: (me.capabilities as Record<string, unknown> | undefined)?.can_create_tenant === true,
       role: '',
       memberships: (me.memberships ?? []).flatMap((item) => {
         if (!item || typeof item !== 'object') return [];
@@ -411,6 +448,21 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
+  // F7 —— Vue platform/index.vue:55-68 parity：Wails 桌面端拦截 Cmd/Ctrl+R 做
+  // 前端软刷新（重挂壳层重置 store/状态），浏览器端不拦截交给真刷新。
+  const [shellReloadKey, setShellReloadKey] = useState(0);
+  useEffect(() => {
+    const isWailsDesktop = !!(window as { runtime?: { EventsOn?: unknown } }).runtime?.EventsOn;
+    if (!isWailsDesktop) return;
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        setShellReloadKey((key) => key + 1);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [recentQueries, setRecentQueries] = useState<string[]>([]);
   const recentQueriesKey = recentQueriesStorageKey(user.id || null, readReactPlatformState(window.localStorage)?.tenantId ?? null);
 
@@ -568,6 +620,64 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       applyAuthMe(me);
     }).catch(() => { /* keep last-known memberships; degrade silently */ });
   }, [applyAuthMe, client, tenantMenuOpen]);
+
+  // F3 — Vue UserMenu.vue:191-199 + components/CreateTenantDialog.vue: the
+  // tenant submenu's bottom "+ 创建新空间" entry opens the self-service
+  // create-workspace dialog (footer 取消|创建, no header × — AUTH-7 posture).
+  // After a successful create Vue refreshes /auth/me, selects the new tenant
+  // and hard-navigates (onTenantCreated → setSelectedTenant +
+  // navigateAfterTenantSwitch); the shell reuses onTenantSwitch for the same
+  // credential re-issue + platform-home navigation.
+  const [createTenantOpen, setCreateTenantOpen] = useState(false);
+  const [createTenantName, setCreateTenantName] = useState('');
+  const [createTenantDescription, setCreateTenantDescription] = useState('');
+  const [createTenantError, setCreateTenantError] = useState('');
+  const [createTenantSubmitting, setCreateTenantSubmitting] = useState(false);
+  const openCreateTenantDialog = useCallback(() => {
+    // Vue openCreateTenantDialog closes the account menu + submenu first,
+    // then guards with an info toast when self-service creation is off
+    // (the entry is v-if-hidden then, so the toast is defense-in-depth).
+    setMenuOpen(false);
+    setTenantMenuOpen(false);
+    if (!user.canCreateTenant) {
+      setCreateTenantNotice(t('tenant.create.disabled'));
+      return;
+    }
+    setCreateTenantOpen(true);
+  }, [t, user.canCreateTenant]);
+  const closeCreateTenantDialog = useCallback(() => {
+    if (createTenantSubmitting) return;
+    setCreateTenantOpen(false);
+    setCreateTenantName('');
+    setCreateTenantDescription('');
+    setCreateTenantError('');
+  }, [createTenantSubmitting]);
+  const submitCreateTenant = useCallback(async () => {
+    if (createTenantSubmitting) return;
+    const name = createTenantName.trim();
+    if (!name) { setCreateTenantError(t('tenant.create.nameRequired')); return; }
+    setCreateTenantSubmitting(true);
+    setCreateTenantError('');
+    try {
+      // Defensive namespace lookup (same posture as the shell's other
+      // probes — bare test fakes may not expose identity.tenants).
+      const tenantsApi = (client as unknown as {
+        identity?: { tenants?: { admin?: { create?: (input: { name: string; description?: string }) => Promise<Record<string, unknown> & { id: number | string }> } } },
+      }).identity?.tenants?.admin;
+      if (!tenantsApi?.create) throw new Error(t('tenant.create.failed'));
+      const created = await tenantsApi.create({ name, description: createTenantDescription.trim() || undefined });
+      try { applyAuthMe(await client.auth.me()); } catch { /* the switch below still targets the fresh membership */ }
+      setCreateTenantOpen(false);
+      setCreateTenantName('');
+      setCreateTenantDescription('');
+      if (onTenantSwitch) { await onTenantSwitch(String(created.id)); }
+      else { window.location.assign('/platform/knowledge-bases'); }
+    } catch (cause) {
+      setCreateTenantError(cause instanceof Error ? cause.message : t('tenant.create.failed'));
+    } finally {
+      setCreateTenantSubmitting(false);
+    }
+  }, [applyAuthMe, client, createTenantDescription, createTenantName, createTenantSubmitting, onTenantSwitch, t]);
 
   // Recent ⌘K searches are namespaced per (user, tenant); reload whenever
   // that identity resolves (mirrors Vue commandPaletteStore's auth watcher).
@@ -956,6 +1066,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     if (dragNoticeTimer.current !== null) window.clearTimeout(dragNoticeTimer.current);
     dragNoticeTimer.current = window.setTimeout(() => setDragNotice(null), 2400);
   }, []);
+  // F3 — tenant.create.disabled info toast（Vue openCreateTenantDialog 的
+  // MessagePlugin.info；壳层无 tdesign toast 通道，复用 wk-shell-6 形态）。
+  const [createTenantNotice, setCreateTenantNotice] = useState<string | null>(null);
+  const createTenantNoticeTimer = useRef<number | null>(null);
+  useEffect(() => { if (createTenantNotice === null) return; if (createTenantNoticeTimer.current !== null) window.clearTimeout(createTenantNoticeTimer.current); createTenantNoticeTimer.current = window.setTimeout(() => setCreateTenantNotice(null), 2400); return () => { if (createTenantNoticeTimer.current !== null) { window.clearTimeout(createTenantNoticeTimer.current); createTenantNoticeTimer.current = null; } }; }, [createTenantNotice]);
   // document 级计数式拖拽监听（capture）+ 全屏遮罩态；drop 事件流见
   // global-file-drop.ts 头注（聊天/知识库分支与 Vue 逐分支对齐）。
   const uploadMaskVisible = useGlobalFileDrop({ client, locale, notify: showDragNotice });
@@ -1020,8 +1135,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // has no market link, and the extra 38px row pushed the session list
     // ~40px down on every page. The /platform/market route and its page stay
     // reachable by URL; only the sidebar entry is removed.
-    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics' && item.key !== 'experts' && item.key !== 'market'),
-    [navItems, canSeeOrganizations, isLiteEdition],
+    // AGT-4 — Vue menu.ts:33 gates the agents rail entry on
+    // requiredCapability 'agents'（deploymentCapabilities.isSupported，探测
+    // 失败 fail-open）；React 复用 paletteAccess.canOpenAgents 的同一能力源
+    // （GET /api/v1/system/capabilities），路由守卫见 router.tsx agentsRoute。
+    () => filterVisibleNavItems(navItems, { canSeeOrganizations, isLiteEdition, agentsEnabled: paletteAccess.canOpenAgents }),
+    [navItems, canSeeOrganizations, isLiteEdition, paletteAccess.canOpenAgents],
   );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
@@ -1086,7 +1205,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // components/menu.vue .aside_box（logo_row / menu_top / menu_bottom）。
     // 类名与结构 1:1（样式 platform-shell.td.css）；根容器与右侧 outlet 的
     // 布局 utilities 维持原值（与 Vue .main/.platform-route-outlet 计算值一致）。
-    <div className="wk-shell-1">
+    <div className="wk-shell-1" key={shellReloadKey}>
       <aside className={collapsed ? 'aside_box aside_box--collapsed' : 'aside_box'}>
         {/* 展开时：Logo + 搜索/折叠按钮同行（Vue menu.vue logo_row）。 */}
         {!collapsed ? <div className="logo_row">
@@ -1114,8 +1233,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             </button>
           </div>
         </div> : <>
-          {/* 折叠时：展开按钮（Vue menu.vue:33-50 t-tooltip > .menu_item.sidebar-toggle-item）。 */}
-          <button type="button" className="menu_item sidebar-toggle-item" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
+          {/* 折叠时：展开按钮（Vue menu.vue:33-50 t-tooltip placement=right >
+            .menu_item.sidebar-toggle-item）。F6 — 样式化浮层替代原生 title。 */}
+          <TTooltip content={t('menu.expandSidebar')} placement="right">
+            <button type="button" className="menu_item sidebar-toggle-item" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')}>
             <span className="menu_item-box">
               <span className="menu_icon">
                 <svg className="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1126,22 +1247,43 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 </svg>
               </span>
             </span>
-          </button>
+            </button>
+          </TTooltip>
           {/* 折叠时右侧拖拽展开手柄（Vue menu.vue:56 + onDragHandleMouseDown:1151-1169：
               右拖 >40px 展开侧栏）。 */}
           <div className="sidebar-drag-handle" onMouseDown={onDragHandleMouseDown} />
         </>}
 
+        {/* F2 — Vue menu.vue:53：canAccessAllTenants 且展开时挂载超管侧栏
+            TenantSelector（触发卡 + 搜索/分页列表/切换；切换走 shell
+            switchTenant，创建入口复用既有 CreateTenantDialog）。 */}
+        {shouldShowTenantSwitcher({ canAccessAllTenants: user.canAccessAllTenants, collapsed, hasSwitchHandler: Boolean(onTenantSwitch) }) ? (
+          <TenantSelector
+            locale={locale}
+            request={(input) => client.request(input)}
+            currentTenantName={user.tenantName}
+            currentTenantId={activeTenantId || null}
+            canCreateTenant={user.canCreateTenant}
+            switchPending={tenantSwitchPending !== null}
+            onSelectTenant={(tenantId) => void switchTenant(tenantId)}
+            onCreateTenant={openCreateTenantDialog}
+          />
+        ) : null}
+
         {/* 上半部分：新对话吸顶 + 知识库/智能体/共享空间/历史会话随滚动一起滚走
             （Vue menu.vue .menu_top）。 */}
         <div className="menu_top" onScroll={onSessionsScroll}>
-          {/* 全局搜索入口：折叠态保留为图标项（Vue menu.vue:62-78 .menu_box--cmdk）。 */}
+          {/* 全局搜索入口：折叠态保留为图标项（Vue menu.vue:62-78 t-tooltip
+              placement=right > .menu_box--cmdk）。F6 — cmdk-tip 样式化浮层
+              （platform-shell.td.css 既有段）替代原生 title。 */}
           {collapsed ? <div className="menu_box menu_box--cmdk">
-            <button type="button" className="menu_item menu_item--cmdk" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
-              <span className="menu_item-box">
-                <span className="menu_icon"><img className="icon" src={searchIconUrl} alt="" /></span>
-              </span>
-            </button>
+            <TTooltip placement="right" content={<span className="cmdk-tip"><span className="cmdk-tip-label">{t('menu.search')}</span><span className="cmdk-tip-keys">{platformModKeyLabel(navigator.platform)}K</span></span>}>
+              <button type="button" className="menu_item menu_item--cmdk" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')}>
+                <span className="menu_item-box">
+                  <span className="menu_icon"><img className="icon" src={searchIconUrl} alt="" /></span>
+                </span>
+              </button>
+            </TTooltip>
           </div> : null}
           <nav className="wk-shell-2" aria-label="Platform">
             {visibleNavItems.map((item) => {
@@ -1151,8 +1293,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               // menu_item_active（底色 + 品牌色）。
               const chatDetailActive = item.key === 'newChat' && /^\/platform\/chat\//.test(pathname);
               const iconPair = NAV_ICON_URLS[item.icon];
-              return (
-                <div key={item.key} className={item.key === 'newChat' && !collapsed ? 'menu_box menu_box--sticky' : 'menu_box'}>
+              // F6 — Vue menu.vue:81 t-tooltip(content=title, placement=right,
+              // disabled=!collapsed)：折叠态样式化浮层替代原生 title。
+              const anchor = (
                   <a href={item.href} onClick={(event) => {
                     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     event.preventDefault();
@@ -1161,7 +1304,6 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     + (chatDetailActive && !active ? ' menu_item_c_active' : '')
                     + (active ? ' menu_item_active' : '')}
                     aria-current={active ? 'page' : undefined}
-                    title={collapsed ? item.label : undefined}
                     data-guide={item.guide}>
                     <span className="menu_item-box">
                       <span className="menu_icon">
@@ -1179,6 +1321,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                       </> : null}
                     </span>
                   </a>
+              );
+              return (
+                <div key={item.key} className={item.key === 'newChat' && !collapsed ? 'menu_box menu_box--sticky' : 'menu_box'}>
+                  {collapsed ? <TTooltip content={item.label} placement="right">{anchor}</TTooltip> : anchor}
                 </div>
               );
             })}
@@ -1278,9 +1424,42 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   </button> : null}
                 </div> : null}
                 {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="tenant-submenu-inline">
-                  {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} onClick={() => void switchTenant(membership.tenantId)}>
-                    <span className="tenant-submenu-item-name">{membership.tenantName}</span><span className="tenant-submenu-role">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
-                  </button>)}
+                  {/* F3 — Vue UserMenu.vue:150-195 submenu content parity:
+                      标题「切换空间」+ 首字母 avatar（home 行右下角 home 标识）
+                      + 角色图标/角色名 + 「当前」徽标 + 空态文案 + 底部「+ 创建
+                      新空间」入口（打开 CreateTenantDialog 同款弹窗）。React 保
+                      留下拉内 listbox 承载（扫描态不出现），行内容对齐 Vue。 */}
+                  <div className="tenant-submenu-header" aria-hidden="true">{t('tenant.switcher.menuLabel')}</div>
+                  <div className="tenant-submenu-list">
+                    {user.memberships.length === 0 ? <div className="tenant-submenu-empty">{t('tenant.switcher.empty')}</div> : user.memberships.map((membership) => {
+                      const membershipCurrent = membership.tenantId === activeTenantId;
+                      const membershipHome = membership.tenantId === user.homeTenantId;
+                      const membershipRoleIcon = membership.role && ROLE_ICONS[membership.role] ? ROLE_ICONS[membership.role] : '';
+                      const membershipRoleLabel = membership.role ? formatMessage(locale, `tenantMember.role.${membership.role}`) : '';
+                      return <button key={membership.tenantId} type="button" role="option" aria-selected={membershipCurrent}
+                        className={'tenant-submenu-item' + (membershipCurrent ? ' is-current' : '')}
+                        disabled={tenantSwitchPending !== null} onClick={() => void switchTenant(membership.tenantId)}>
+                        <span className={'tenant-submenu-item-avatar' + (membershipCurrent ? ' is-current' : '')}>
+                          {(membership.tenantName || '?').charAt(0).toUpperCase()}
+                          {membershipHome ? <span className="tenant-submenu-item-home-dot" title={t('tenant.switcher.homeTooltip')}><TIcon name="home" size="9px" /></span> : null}
+                        </span>
+                        <span className="tenant-submenu-item-info">
+                          <span className="tenant-submenu-item-name" title={membership.tenantName}>{membership.tenantName}</span>
+                          <span className="tenant-submenu-item-meta">
+                            <span className="tenant-submenu-item-role">
+                              {membershipRoleIcon ? <TIcon name={membershipRoleIcon} size="12px" className="tenant-submenu-item-role-icon" aria-hidden="true" /> : null}
+                              {membershipRoleLabel}
+                            </span>
+                            {membershipCurrent ? <span className="tenant-submenu-item-badge">{t('tenant.switcher.currentBadge')}</span> : null}
+                          </span>
+                        </span>
+                      </button>;
+                    })}
+                  </div>
+                  {user.canCreateTenant ? <button type="button" className="tenant-submenu-create" onClick={openCreateTenantDialog}>
+                    <TIcon name="add" className="tenant-submenu-create-icon" />
+                    <span className="tenant-submenu-create-label">{t('tenant.create.action')}</span>
+                  </button> : null}
                 </div> : null}
                 <div className="menu-divider" aria-hidden="true" />
                 {/* T17.5 功能一致性：Vue UserMenu.vue:77「个人设置」落 general 段（用户菜单
@@ -1436,6 +1615,41 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           {shellShareToast}
         </div>
       ) : null}
+      {createTenantNotice ? (
+        <div role="status" aria-live="polite" className="wk-shell-6">
+          {createTenantNotice}
+        </div>
+      ) : null}
+      {/* F3 — 租户子菜单「+ 创建新空间」弹窗（Vue UserMenu.vue:199 >
+          CreateTenantDialog.vue）。DOM/文案对齐向导版创建弹窗：header 图标+
+          标题、副标题、名称（128）/描述（512）、footer 取消|创建（AUTH-7
+          顺序，无头部 ×，Escape/遮罩关闭沿 WkDialog）。 */}
+      <WkDialog
+        open={createTenantOpen}
+        title={<span className="tenant-create-dialog-title"><TIcon name="system-sum" size="20px" aria-hidden="true" />{t('tenant.create.dialogTitle')}</span>}
+        onClose={closeCreateTenantDialog}
+        className="tenant-create-dialog"
+        hideClose
+      >
+        <p className="tenant-create-dialog-subtitle">{t('tenant.create.dialogSubtitle')}</p>
+        <form className="tenant-create-dialog-form" onSubmit={(event) => { event.preventDefault(); void submitCreateTenant(); }}>
+          <label className="tenant-create-dialog-field">
+            {t('tenant.create.nameLabel')}
+            <TInput value={createTenantName} onChange={(value) => setCreateTenantName(String(value))} maxlength={128} autofocus disabled={createTenantSubmitting} placeholder={t('tenant.create.namePlaceholder')} />
+          </label>
+          <label className="tenant-create-dialog-field">
+            {t('tenant.create.descriptionLabel')}
+            <TTextarea value={createTenantDescription} onChange={(value) => setCreateTenantDescription(String(value))} maxlength={512} rows={3} disabled={createTenantSubmitting} placeholder={t('tenant.create.descriptionPlaceholder')} />
+          </label>
+          {createTenantError ? <p role="alert" className="tenant-create-dialog-error">{createTenantError}</p> : null}
+          <div className="tenant-create-dialog-footer">
+            <TButton type="button" variant="outline" disabled={createTenantSubmitting} onClick={closeCreateTenantDialog}>{t('tenant.create.cancel')}</TButton>
+            {/* Vue 提交钮不按空名禁用（校验走 nameRequired，浏览器端 TDesign
+                disabled 态会退化成 div 渲染、破坏按钮清点口径）。 */}
+            <TButton type="submit" theme="primary" loading={createTenantSubmitting}>{t('tenant.create.submit')}</TButton>
+          </div>
+        </form>
+      </WkDialog>
     </div>
   );
 }

@@ -70,6 +70,38 @@ function normalizePage(value: unknown): KnowledgeDocumentPage {
   throw new Error('Invalid knowledge document page');
 }
 
+/**
+ * Vue getPageSize (KnowledgeBase.vue L810-816): the document list is a
+ * viewport-adaptive infinite-scroll surface — floor(innerHeight / 148) * 5
+ * items per request, floored at 35, computed once per mount. No paginator.
+ */
+export function documentListPageSize(viewportHeight: number): number {
+  const itemHeight = 148;
+  const itemsInView = Math.floor(viewportHeight / itemHeight) * 5;
+  return Math.max(35, itemsInView);
+}
+
+/**
+ * Vue useKnowledgeBase getKnowled append semantics: page 1 replaces the list,
+ * page > 1 (scroll load) appends behind the already-loaded slice. A failed
+ * scroll load keeps the current success state instead of blanking the list
+ * (Vue cardList is untouched when the scroll fetch errors).
+ */
+export function mergeDocumentListState(
+  current: KnowledgeDocumentListState,
+  next: KnowledgeDocumentListState,
+  page: number,
+): KnowledgeDocumentListState {
+  if (page <= 1 || current.status !== 'success') return next;
+  if (next.status !== 'success') return current;
+  const seen = new Set(current.page.items.map((item) => item.id));
+  const appended = next.page.items.filter((item) => !seen.has(item.id));
+  return {
+    status: 'success',
+    page: { ...next.page, items: [...current.page.items, ...appended] },
+  };
+}
+
 export async function loadKnowledgeDocuments(
   client: { knowledge?: { documents?: DocumentListApi }; knowledgeBases?: { documents?: DocumentListApi } },
   knowledgeBaseId: string,

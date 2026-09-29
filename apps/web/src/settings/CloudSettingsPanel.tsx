@@ -231,6 +231,9 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
           <div className="setting-control">
             <TButton
               theme="primary"
+              // 同 OllamaSettingsPanel 下载按钮：tdesign-react disabled 未传
+              // tag 时宿主退化成 div，显式保持 BUTTON（SETSYS-N1）。
+              tag="button"
               loading={saving}
               disabled={!form.appId || !form.appSecret}
               onClick={() => void handleSave()}

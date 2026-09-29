@@ -72,8 +72,10 @@ test('resolveChatCopy exposes the Vue full-content label in every locale', () =>
 test('batch session controls use translated English SSR copy', () => {
   const copy = resolveChatCopy('en-US');
   assert.equal(copy.batchManage, 'Batch manage');
-  assert.equal(formatChatCopy(copy, 'batchDelete', { count: 3 }), 'Delete selected (3)');
-  assert.equal(formatChatCopy(copy, 'batchDeleteConfirm', { count: 3 }), 'Delete the selected 3 chats? This cannot be undone.');
+  // CHAT-5 —— Vue batchManage.delete + (N) 直拼：Delete Conversations(3)。
+  assert.equal(copy.batchSelectAll, 'Select All');
+  assert.equal(formatChatCopy(copy, 'batchDelete', { count: 3 }), 'Delete Conversations(3)');
+  assert.equal(formatChatCopy(copy, 'batchDeleteConfirm', { count: 3 }), 'Are you sure you want to delete the selected 3 conversation(s)? This action cannot be undone.');
   assert.equal(copy.sourceSelectLabel, 'Chat source');
 });
 
@@ -250,6 +252,62 @@ test('resolveChatCopy exposes the Vue steer attachment warnings in every locale'
   for (const [key, perLocale] of Object.entries(expected)) {
     for (const locale of CHAT_COPY_LOCALES) {
       assert.equal(resolveChatCopy(locale)[key as keyof typeof expected], perLocale[locale], `${key} must be byte-exact for ${locale}`);
+    }
+  }
+});
+
+/*
+ * CHAT-4 / CHAT-6 — byte-exact mirrors of frontend/src/i18n/locales/*.ts
+ * chatHeader.{clearConfirmTitle,clearConfirmBody} and
+ * batchManage.{deleteConfirmTitle,deleteConfirmBody,delete}: the styled
+ * confirmation dialogs (batch delete, clear messages) must carry the Vue
+ * copy, including the 「对话本身会保留」 keep-conversation semantics.
+ */
+test('session confirm dialogs carry the Vue clear/batch-delete copy in every locale', () => {
+  const expected = {
+    clearConfirmTitle: {
+      'zh-CN': '清空对话消息',
+      'en-US': 'Clear Conversation Messages',
+      'ja-JP': '会話のメッセージをクリア',
+      'ko-KR': '대화 메시지 지우기',
+      'ru-RU': 'Очистить сообщения диалога',
+    },
+    clearConfirmBody: {
+      'zh-CN': '确认清空当前对话的全部消息？对话本身会保留，此操作无法恢复。',
+      'en-US': 'Clear all messages in this conversation? The conversation will remain, but this cannot be undone.',
+      'ja-JP': 'この会話のメッセージをすべてクリアしますか？会話自体は残りますが、この操作は取り消せません。',
+      'ko-KR': '현재 대화의 모든 메시지를 지울까요? 대화는 유지되지만 복구할 수 없습니다.',
+      'ru-RU': 'Очистить все сообщения? Диалог останется, но это действие нельзя отменить.',
+    },
+    batchDeleteConfirmTitle: {
+      'zh-CN': '删除对话',
+      'en-US': 'Delete Conversations',
+      'ja-JP': '会話を削除',
+      'ko-KR': '대화 삭제',
+      'ru-RU': 'Удалить диалоги',
+    },
+    batchDeleteConfirmAction: {
+      'zh-CN': '删除对话',
+      'en-US': 'Delete Conversations',
+      'ja-JP': '会話を削除',
+      'ko-KR': '대화 삭제',
+      'ru-RU': 'Удалить диалоги',
+    },
+    batchDeleteConfirmBody: {
+      'zh-CN': '确定要删除选中的 1 条对话吗？删除后无法恢复。',
+      'en-US': 'Are you sure you want to delete the selected 1 conversation(s)? This action cannot be undone.',
+      'ja-JP': '選択した1件の会話を削除してもよろしいですか？この操作は取り消せません。',
+      'ko-KR': '선택한 1개의 대화를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.',
+      'ru-RU': 'Вы уверены, что хотите удалить выбранные 1 диалог(ов)? Это действие необратимо.',
+    },
+  } as const;
+  for (const [key, perLocale] of Object.entries(expected)) {
+    for (const locale of CHAT_COPY_LOCALES) {
+      const table = resolveChatCopy(locale);
+      const actual = key === 'batchDeleteConfirmBody'
+        ? formatChatCopy(table, 'batchDeleteConfirm', { count: 1 })
+        : table[key as keyof typeof perLocale];
+      assert.equal(actual, perLocale[locale], `${key} must be byte-exact for ${locale}`);
     }
   }
 });

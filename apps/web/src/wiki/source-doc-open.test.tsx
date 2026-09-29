@@ -28,17 +28,18 @@ const { WikiReaderFooter } = await import('./WikiPage.tsx');
 // WikiBrowser.vue:607 `@click.prevent="emit('open-source-doc', ref.id)"` and
 // KnowledgeBase.vue:1431 `openSourceDoc(knowledgeId)` open the clicked source
 // document for viewing. The React host's established "view a document"
-// affordance is the document-detail route (/knowledgeBase/:kbId/documents/:docId,
+// affordance is the platform-family knowledge_id drawer deep link
+// (/platform/knowledge-bases/:kbId?knowledge_id=:docId, KBL-R1),
 // routes.tsx kind 'knowledge-document' — the same target the documents surface
 // navigates to via onOpenDocument). The mount point (main.tsx) is owned by
 // another agent this round, so the wiring helper lives here in wiki/** and the
 // host passes it as the onOpenSourceDoc prop in one line.
 
 test('wikiSourceDocPath builds the host document-detail route', () => {
-  assert.equal(wikiSourceDocPath('kb-1', 'doc-1'), '/knowledgeBase/kb-1/documents/doc-1');
+  assert.equal(wikiSourceDocPath('kb-1', 'doc-1'), '/platform/knowledge-bases/kb-1?knowledge_id=doc-1');
   assert.equal(
     wikiSourceDocPath('kb id/x', 'doc id/y'),
-    `/knowledgeBase/${encodeURIComponent('kb id/x')}/documents/${encodeURIComponent('doc id/y')}`,
+    `/platform/knowledge-bases/${encodeURIComponent('kb id/x')}?knowledge_id=${encodeURIComponent('doc id/y')}`,
     'route segments are URL-encoded like the host navigate calls',
   );
 });
@@ -50,8 +51,8 @@ test('createWikiSourceDocOpener opens the clicked source document via the host r
   openSourceDoc('012345678901234567890');
   openSourceDoc('doc-2');
   assert.deepEqual(navigated, [
-    '/knowledgeBase/kb-1/documents/012345678901234567890',
-    '/knowledgeBase/kb-1/documents/doc-2',
+    '/platform/knowledge-bases/kb-1?knowledge_id=012345678901234567890',
+    '/platform/knowledge-bases/kb-1?knowledge_id=doc-2',
   ], 'each clicked source ref opens its document-detail route');
 });
 
@@ -76,7 +77,7 @@ test('clicking a footer source link triggers the host navigation', async () => {
   await React.act(async () => {
     link!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
-  assert.deepEqual(navigated, ['/knowledgeBase/kb-1/documents/doc-1'], 'the click opens the source document');
+  assert.deepEqual(navigated, ['/platform/knowledge-bases/kb-1?knowledge_id=doc-1'], 'the click opens the source document');
   await React.act(async () => {
     root.unmount();
   });

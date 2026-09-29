@@ -42,6 +42,17 @@ export function wikiSlugDisplayName(
 }
 
 /**
+ * KBW-5 —「在图谱中查看」slug 编码（Vue 口径）：vue-router 的 encodeQueryValue
+ * 保留路径斜杠（`?tab=graph&slug=concept/ertong-mianpiao-zhengce`），React 的
+ * encodeURIComponent 会把 `/` 编成 `%2F`。这里除 `/` 外仍按 encodeURIComponent
+ * 编码（&、=、空格等仍转义，query 结构不受影响），与 Vue 序列化结果一致；
+ * 读取端（router.tsx `query.get('slug')`）对原样与 %2F 两种形态等价解码。
+ */
+export function encodeWikiGraphSlug(slug: string): string {
+  return encodeURIComponent(slug).replace(/%2F/gi, '/');
+}
+
+/**
  * Vue WikiBrowser.vue `stripDuplicateLeadingTitle()`: drop a leading `# Title`
  * heading when it only repeats the page title (the reader header already
  * shows it).

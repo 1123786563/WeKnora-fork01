@@ -8,9 +8,9 @@ import * as React from 'react';
 (Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } as never : nextResolve(specifier, context) });
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } as never : nextResolve(specifier, context) });
 
-const { buildNavItems, shouldShowTenantSwitcher } = await import('./PlatformShell.tsx');
+const { buildNavItems, filterVisibleNavItems, shouldShowTenantSwitcher } = await import('./PlatformShell.tsx');
 
 test('matches Vue menu: chat detail does not activate the New Chat item', () => {
   const items = buildNavItems((key) => key, {
@@ -67,8 +67,47 @@ test('M4: the rail carries the skills-market entry right after experts', () => {
   assert.equal(market.match('/platform/experts'), false);
 });
 
+test('N1: the knowledge-base rail label follows menu.knowledgeBase (labels.knowledgeBase), not common.knowledgeBases', () => {
+  const items = buildNavItems((key) => key, {
+    newChat: 'New Chat',
+    knowledgeBase: 'Knowledge Base',
+    agents: 'Agents',
+    organizations: 'Organizations',
+  });
+  const kb = items.find((item) => item.key === 'knowledgeBases');
+  assert.ok(kb);
+  // Vue menu.vue:90 uses $t('menu.knowledgeBase') → en-US「Knowledge Base」;
+  // the former common.knowledgeBases label rendered「Knowledge bases」.
+  assert.equal(kb.label, 'Knowledge Base');
+  assert.notEqual(kb.label, 'common.knowledgeBases');
+});
+
 test('matches Vue TenantSelector visibility for ordinary multi-tenant members', () => {
   assert.equal(shouldShowTenantSwitcher({ canAccessAllTenants: false, collapsed: false, hasSwitchHandler: true }), false);
   assert.equal(shouldShowTenantSwitcher({ canAccessAllTenants: true, collapsed: false, hasSwitchHandler: true }), true);
   assert.equal(shouldShowTenantSwitcher({ canAccessAllTenants: true, collapsed: true, hasSwitchHandler: true }), false);
+});
+
+/* AGT-4 — Vue menu.ts:33 agents 侧栏项 requiredCapability:'agents' 过滤；
+ * 能力探测 fail-open（探测中/失败均保持可见，后端仍为权威边界）。 */
+test('AGT-4: the rail drops the agents entry when the deployment capability is off', () => {
+  const items = buildNavItems((key) => key, {
+    newChat: 'New Chat',
+    knowledgeBase: 'Knowledge Base',
+    agents: 'Agents',
+    organizations: 'Organizations',
+  });
+  const base = { canSeeOrganizations: true, isLiteEdition: false };
+  const withAgentsOff = filterVisibleNavItems(items, { ...base, agentsEnabled: false });
+  assert.equal(withAgentsOff.some((item) => item.key === 'agents'), false, 'agents entry hidden when the capability reports unsupported');
+  const withAgentsOn = filterVisibleNavItems(items, { ...base, agentsEnabled: true });
+  assert.equal(withAgentsOn.some((item) => item.key === 'agents'), true, 'agents entry visible when supported');
+  // fail-open：探测未完成/失败（agentsEnabled=true 缺省口径）时不下架。
+  assert.equal(
+    filterVisibleNavItems(items, { canSeeOrganizations: true, isLiteEdition: false, agentsEnabled: true }).some((item) => item.key === 'agents'),
+    true,
+    'fail-open while the capability probe is pending or failed',
+  );
+  // 既有口径回归：organizations 仍按 admin+!lite 门控。
+  assert.equal(filterVisibleNavItems(items, { canSeeOrganizations: false, isLiteEdition: false, agentsEnabled: true }).some((item) => item.key === 'organizations'), false);
 });

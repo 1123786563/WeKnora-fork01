@@ -2762,3 +2762,43 @@
 .kb-info-popover-anchor {
   display: inline-flex;
 }
+
+/* 目录面板折叠开关（KBL-6）：Vue KbFolderTree.vue L260-287 平移——面板头
+   （标题 + 收起按钮 .kb-folder-tree__icon-btn）与 Vue scoped 样式一致。 */
+.wk-folder-panel .kb-folder-tree__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+.wk-folder-panel .kb-folder-tree__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-folder-panel .kb-folder-tree__icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wk-folder-panel .kb-folder-tree__icon-btn:hover {
+  color: var(--td-brand-color);
+  background: var(--td-bg-color-container-hover);
+}

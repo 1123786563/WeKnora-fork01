@@ -19,7 +19,7 @@ import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 // S6：packages/ui 旧栈 离栈（T15 硬前置），换 tdesign。
 import { Input as TInput, Select as TSelect, Switch as TSwitch, Textarea as TTextarea } from 'tdesign-react';
-import { Button, Dialog, Input, Popup, Skeleton, Tag, Textarea, Tooltip } from 'tdesign-react';
+import { Button, Dialog, Input, Popconfirm, Popup, Skeleton, Tag, Textarea, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { copyText, sharedResourceRow } from './settings-actions.ts';
@@ -146,20 +146,10 @@ type OrgSectionKey = 'created' | 'joined';
 /** Tenant membership role, mirroring scopeRuntime.role() / Vue authStore. */
 export type OrganizationSpaceRole = 'owner' | 'admin' | 'contributor' | 'viewer';
 
-// R017 (?scope=): deep link + URL sync use the KB-list convention (App.tsx
-// readScopeFromUrl/writeScopeToUrl). Values all|created|joined match the Vue
-// spaceSelection union; 'all' removes the param so the canonical URL stays
-// /platform/organizations.
+// R017 (?scope=): deep link uses the KB-list convention; Vue 端切换不回写 URL（ORG-5）。
 function readScopeFromUrl(): SpaceSelection {
   const value = new URLSearchParams(window.location.search).get('scope');
   return value === 'created' || value === 'joined' ? value : 'all';
-}
-
-function writeScopeToUrl(selection: SpaceSelection): void {
-  const url = new URL(window.location.href);
-  if (selection === 'all') url.searchParams.delete('scope');
-  else url.searchParams.set('scope', selection);
-  window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
 }
 
 // shouldShowOrgRelationTag ported from frontend/src/utils/card-list-badge.ts:
@@ -433,6 +423,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [requests, setRequests] = useState<OrganizationJoinRequest[]>([]);
+  // ORG-1 — Vue join-request review state (OrganizationSettingsModal.vue
+  // :874-875, :1377-1378): search box, the approve popup's open row + assign
+  // role, and the per-row reviewing indicator.
+  const [joinRequestSearchQuery, setJoinRequestSearchQuery] = useState('');
+  const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
+  const [approveAssignRole, setApproveAssignRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
   const [sharedResources, setSharedResources] = useState<Array<Record<string, unknown>>>([]);
   const [sharedAgents, setSharedAgents] = useState<Array<Record<string, unknown>>>([]);
   const [detailFeeds, setDetailFeeds] = useState<Record<DetailFeedKey, DetailFeedState>>(idleDetailFeeds);
@@ -450,7 +447,6 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [formSearchable, setFormSearchable] = useState(false);
   const [formValidityDays, setFormValidityDays] = useState(7);
   const [formMemberLimit, setFormMemberLimit] = useState<number | ''>(50);
-  const [permissionsPopupOpen, setPermissionsPopupOpen] = useState(false);
   // R488 D-B5 — Vue renders the「我」badge via authStore.currentUserId
   // (OrganizationSettingsModal.vue:467); the auth/me call already runs for
   // canManageOrg, so the user id rides along.
@@ -541,11 +537,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const canManageOrg = resolvedCanManage ?? false;
   const writeGuardTitle = t(locale, 'organization.rbac.needTenantAdminTip');
 
-  // Vue ListSpaceSidebar v-model="spaceSelection": rail clicks mirror the
-  // selection into ?scope= so shell sub-filter and deep links stay in sync.
+  // ORG-5 —— Vue ListSpaceSidebar 只改组件内状态，URL 不变（2026-09-29 实测）；
+  // ?scope= 仍作为 shell 子筛深链的初始读取入口（readScopeFromUrl）。
   const setSelection = (next: SpaceSelection) => {
     setSelectionState(next);
-    writeScopeToUrl(next);
   };
 
   function clearInviteFromUrl() {
@@ -621,7 +616,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     setFormName(org.name); setFormDescription(strOf(org.description)); setFormAvatar(strOf(org.avatar));
     setMembers([]); setRequests([]); setSharedResources([]); setSharedAgents([]); setDetailFeeds(idleDetailFeeds);
     setMemberSearchQuery(''); setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
-    setPermissionsPopupOpen(false);
+    setJoinRequestSearchQuery(''); setApproveRequestId(null); setReviewingRequestId(null);
     // Vue formData defaults (L901-909) until the org detail lands.
     setSettingsInviteCode(''); setInviteCodeExpiresAt(null); setRefreshingCode(false);
     setFormRequireApproval(false); setFormSearchable(false); setFormValidityDays(7); setFormMemberLimit(50);
@@ -795,7 +790,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function removeMember(member: OrganizationMember) {
     if (!settingsOrg || !settingsCanManage || member.tenant_id === settingsOrg.owner_tenant_id || member.user_id === settingsOrg.owner_id) return;
-    if (!window.confirm(t(locale, 'organization.detail.removeMemberConfirm', { name: member.tenant_name ?? member.username }))) return;
+    // ORG-2 — 确认改由行内 Popconfirm（对齐 Vue OrganizationSettingsModal.vue
+    // :486-496 t-popconfirm：danger 确认钮 + placement left）；原 window.confirm
+    // 系统对话框不再出现。
     try {
       await organizationsApi.members.remove(settingsOrg.id, member.tenant_id);
       await loadOrganizationDetail(settingsOrg.id);
@@ -803,13 +800,20 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.memberRemoveFailed'))); }
   }
 
-  async function reviewRequest(request: OrganizationJoinRequest, approved: boolean) {
+  // ORG-1 — Vue handleApprove/handleRejectRequest (OrganizationSettingsModal.vue
+  // :1444-1492): approve goes through the assign-role popup (role param), reject
+  // posts no role; both carry the per-row reviewing indicator and refresh the
+  // detail feeds (设置弹窗/卡片/侧栏 pending count all read the same lists).
+  async function reviewRequest(request: OrganizationJoinRequest, approved: boolean, assignRole?: 'admin' | 'editor' | 'viewer') {
     if (!settingsOrg || !settingsCanManage) return;
+    setReviewingRequestId(request.id);
     try {
-      await organizationsApi.joinRequests.review(settingsOrg.id, request.id, { approved, role: requestedRoleOf(request) });
+      await organizationsApi.joinRequests.review(settingsOrg.id, request.id, { approved, role: assignRole ?? requestedRoleOf(request) });
+      setApproveRequestId(null);
       await loadOrganizationDetail(settingsOrg.id);
       showToast('success', t(locale, approved ? 'organization.settings.approveSuccess' : 'organization.settings.rejectSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.settings.reviewFailed'))); }
+    finally { setReviewingRequestId(null); }
   }
 
   async function confirmLeaveOrDelete() {
@@ -893,7 +897,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function unshareKnowledgeBase(row: ReturnType<typeof sharedResourceRow>) {
     if (!settingsOrg || !settingsCanManage) return;
-    if (!window.confirm(t(locale, 'organization.settings.removeShareConfirm', { name: row.name }))) return;
+    // ORG-2 — 同上：t-popconfirm 风格确认（Vue :684-699）。
     try {
       await organizationsApi.knowledgeBaseShares.remove(row.knowledgeBaseId, row.shareId);
       await loadOrganizationDetail(settingsOrg.id);
@@ -941,7 +945,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     if (!settingsOrg || !settingsCanManage) return;
     const agentId = strOf(agent.agent_id);
     const shareId = strOf(agent.id) || strOf(agent.share_id);
-    if (!agentId || !shareId || !window.confirm(t(locale, 'organization.settings.removeShareConfirm', { name: strOf(agent.agent_name) || strOf(agent.name) || agentId }))) return;
+    if (!agentId || !shareId) return;
+    // ORG-2 — 同上：t-popconfirm 风格确认（Vue 取消共享智能体行内确认）。
     try {
       await organizationsApi.agentShares.remove(agentId, shareId);
       await loadOrganizationDetail(settingsOrg.id);
@@ -1177,6 +1182,39 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const filteredMembers = normalizedMemberSearchQuery
     ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
     : members;
+  // ORG-1 — Vue filteredJoinRequests / joinRequestApplicantLabel /
+  // joinRequestApplicantSecondary (OrganizationSettingsModal.vue:1221-1241):
+  // search haystack = username/email/user_id/message; the applicant cell shows
+  // the primary identity with the email as the secondary line.
+  const pendingJoinRequests = requests.filter((request) => request.status === 'pending');
+  const normalizedJoinRequestSearchQuery = joinRequestSearchQuery.trim().toLocaleLowerCase();
+  const filteredJoinRequests = normalizedJoinRequestSearchQuery
+    ? pendingJoinRequests.filter((request) => [request.username, request.email, request.user_id, request.message].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedJoinRequestSearchQuery)))
+    : pendingJoinRequests;
+  const joinRequestApplicantLabel = (request: OrganizationJoinRequest): string => request.username || request.email || request.user_id;
+  const joinRequestApplicantSecondary = (request: OrganizationJoinRequest): string => {
+    const primary = joinRequestApplicantLabel(request);
+    return request.email && request.email !== primary ? request.email : '';
+  };
+  // ORG-3 — Vue share helpers (OrganizationSettingsModal.vue:1136-1141,
+  // :1188-1209): KB/agent share cells read the raw feed records.
+  const sharePermissionLabelOf = (permission: string): string => t(locale, permission === 'editor' || permission === 'admin' ? 'organization.share.permissionEditable' : 'organization.share.permissionReadonly');
+  const agentKbScopeLabel = (agent: Record<string, unknown>): string => {
+    const scope = strOf(agent.scope_kb);
+    if (scope === '') return '—';
+    if (scope === 'all') return t(locale, 'agent.shareScope.kbAll');
+    if (scope === 'selected' && numOf(agent.scope_kb_count) > 0) return t(locale, 'agent.shareScope.kbSelected', { count: numOf(agent.scope_kb_count) });
+    return t(locale, 'agent.shareScope.kbNone');
+  };
+  const agentWebSearchScopeLabel = (agent: Record<string, unknown>): string => agent.scope_web_search === undefined
+    ? '—' : agent.scope_web_search ? t(locale, 'agent.shareScope.enabled') : t(locale, 'agent.shareScope.disabled');
+  const agentMcpScopeLabel = (agent: Record<string, unknown>): string => {
+    const scope = strOf(agent.scope_mcp);
+    if (scope === '') return '—';
+    if (scope === 'all') return t(locale, 'agent.shareScope.mcpAll');
+    if (scope === 'selected' && numOf(agent.scope_mcp_count) > 0) return t(locale, 'agent.shareScope.mcpSelected', { count: numOf(agent.scope_mcp_count) });
+    return t(locale, 'agent.shareScope.mcpNone');
+  };
   // R488 D-B5 — member-row helpers ported from Vue OrganizationSettingsModal
   // (L1246-1272): the workspace name is the primary label (members are
   // workspaces after Plan 3), the representative username is the secondary
@@ -1575,9 +1613,19 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <div className="wk-org-34">
                             <h2 className={ORG_SECTION_TITLE + ' wk-org-102'}>{t(locale, 'organization.manageMembers')}</h2>
                             <span className="wk-org-35">
-                              <button type="button" className="wk-org-36" aria-label={t(locale, 'organization.editor.permissionsTitle')} title={t(locale, 'organization.settings.permissionsIconHint')} aria-expanded={permissionsPopupOpen} onClick={() => setPermissionsPopupOpen((open) => !open)}><IconInfoCircle size={16} /></button>
-                              {permissionsPopupOpen ? (
-                                <div className="wk-org-37">
+                              {/* ORG-4 — Vue t-popup trigger="hover" placement
+                                  bottom-start（OrganizationSettingsModal.vue
+                                  :303-336）：权限矩阵改为悬停展开，不再是
+                                  aria-expanded 的 click 切换。 */}
+                              <Popup
+                                trigger="hover"
+                                // react 1.18.3 无 bottom-start 粒度（EnvVar 面板同款库间差异），
+                                // 最近似值 bottom-left。
+                                placement="bottom-left"
+                                destroyOnClose
+                                overlayClassName="org-permissions-popup-overlay"
+                                content={(
+                                <div className="wk-org-perm-pop">
                                   <div className="wk-org-38">
                                     <div className="wk-org-39">{t(locale, 'organization.editor.permissionsTitle')}</div>
                                     <div className="wk-org-29">{t(locale, 'organization.editor.permissionsDesc')}</div>
@@ -1595,7 +1643,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                     ))}
                                   </div>
                                 </div>
-                              ) : null}
+                                )}
+                              >
+                                <button type="button" className="wk-org-36" aria-label={t(locale, 'organization.editor.permissionsTitle')} title={t(locale, 'organization.settings.permissionsIconHint')}><IconInfoCircle size={16} /></button>
+                              </Popup>
                             </span>
                           </div>
                           <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
@@ -1612,7 +1663,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <span className="wk-org-46" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
                         </div>
                         <div className="wk-org-34">
-                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <TInput className={ORG_FIELD + ' wk-org-109'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(value) => setMemberSearchQuery(String(value))} /> : null}
+                          {/* ORG-6 — Vue members-list-search（:349-356）：常驻渲染
+                              （加载/空态也在），带 search 前缀图标与 clearable。 */}
+                          <TInput className={ORG_FIELD + ' wk-org-109'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(value) => setMemberSearchQuery(String(value))} clearable prefixIcon={<TIcon name="search" />} />
                           {settingsCanManage ? (
                             <div className="wk-org-47">
                               <button type="button" className="wk-org-48" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
@@ -1650,8 +1703,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                       </div>
                       {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
-                      {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
-                      {detailFeeds.members.status === 'ready' && members.length > 0 && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim())}</p> : null}
+                      {detailFeeds.members.status === 'ready' && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{normalizedMemberSearchQuery ? t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim()) : t(locale, 'organization.noMembers')}</p> : null}
                       {detailFeeds.members.status === 'ready' && filteredMembers.length > 0 ? (
                         /* R488 D-B5 — the member list is a table mirroring Vue
                          * memberColumns (L1124-1134): 成员/角色/加入时间 plus
@@ -1691,7 +1743,20 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                       )}
                                     </td>
                                     <td className={MEMBER_TD + ' wk-org-119'}>{formatDateYmd(strOf(member.joined_at))}</td>
-                                    {settingsCanManage ? <td className={MEMBER_TD}>{memberIsOwner ? null : <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-120'} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>}</td> : null}
+                                    {settingsCanManage ? <td className={MEMBER_TD}>{memberIsOwner ? null : (
+                                      // ORG-2 — Vue OrganizationSettingsModal.vue:486-496:
+                                      // 移除成员走 t-popconfirm（danger 确认、placement
+                                      // left），文案同 removeMemberConfirm。
+                                      <Popconfirm
+                                        content={t(locale, 'organization.detail.removeMemberConfirm', { name: member.tenant_name ?? member.username })}
+                                        confirmBtn={{ content: t(locale, 'common.confirm'), theme: 'danger' }}
+                                        cancelBtn={{ content: t(locale, 'common.cancel') }}
+                                        placement="left"
+                                        onConfirm={() => void removeMember(member)}
+                                      >
+                                        <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-120'}>{t(locale, 'common.remove')}</button>
+                                      </Popconfirm>
+                                    )}</td> : null}
                                   </tr>
                                 );
                               })}
@@ -1726,23 +1791,108 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           live count is the inner list title below it. */}
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.joinRequests')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.joinRequestsDesc')}</p>
-                      <div className="wk-org-63">
-                        <span className="wk-org-39">{t(locale, 'organization.joinRequests.listTitle')}</span>
-                        <span className="wk-org-46" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{requests.filter((request) => request.status === 'pending').length}</span>
+                      {/* ORG-1 — Vue joinRequests 分区（OrganizationSettingsModal.vue
+                          :510-621）：搜索框 + t-table 六列（申请人/类型/申请角色/
+                          申请说明/申请时间/操作）；批准走 assign-role 弹层，拒绝走
+                          t-popconfirm，行按钮不再直接执行。 */}
+                      <div className="wk-org-45">
+                        <div className="wk-org-34">
+                          <span className="wk-org-39">{t(locale, 'organization.joinRequests.listTitle')}</span>
+                          <span className="wk-org-46" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{filteredJoinRequests.length}</span>
+                        </div>
+                        <div className="wk-org-34">
+                          <TInput className={ORG_FIELD + ' wk-org-109'} aria-label={t(locale, 'organization.joinRequests.listTitle')} placeholder={t(locale, 'organization.joinRequests.searchPlaceholder')} value={joinRequestSearchQuery} onChange={(value) => setJoinRequestSearchQuery(String(value))} clearable prefixIcon={<TIcon name="search" />} />
+                        </div>
                       </div>
                       {feedStatus('requests', t(locale, 'organization.settings.reviewFailed'))}
-                      {detailFeeds.requests.status === 'ready' && requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : null}
-                      {detailFeeds.requests.status === 'ready' ? requests.filter((request) => request.status === 'pending').map((request) => (
-                        <div key={request.id} className={ORG_MEMBER_ROW}>
-                          <div className={ORG_MEMBER_COPY}>
-                            <strong className="wk-org-39">{request.username}</strong>
-                            <span className="wk-org-32">{t(locale, 'organization.joinRequests.columns.requestedRole')}: {t(locale, 'organization.role.' + request.requested_role)}</span>
-                          </div>
-                          <div className={ORG_ROW_ACTIONS}>
-                            {settingsCanManage ? <><button type="button" className={ORG_BTN_OUTLINE} onClick={() => void reviewRequest(request, true)}>{t(locale, 'organization.settings.approve')}</button><button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void reviewRequest(request, false)}>{t(locale, 'organization.settings.reject')}</button></> : null}
-                          </div>
+                      {detailFeeds.requests.status === 'ready' && filteredJoinRequests.length === 0 ? <p className={ORG_EMPTY_INLINE}>{normalizedJoinRequestSearchQuery ? t(locale, 'organization.joinRequests.emptySearch').replace('{q}', joinRequestSearchQuery.trim()) : t(locale, 'organization.settings.noPendingRequests')}</p> : null}
+                      {detailFeeds.requests.status === 'ready' && filteredJoinRequests.length > 0 ? (
+                        <div className="wk-org-55">
+                          <table className={MEMBER_TABLE}>
+                            <thead>
+                              <tr>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.joinRequests.columns.applicant')}</th>
+                                <th className={MEMBER_TH + ' wk-org-115'}>{t(locale, 'organization.joinRequests.columns.type')}</th>
+                                <th className={MEMBER_TH + ' wk-org-116'}>{t(locale, 'organization.joinRequests.columns.requestedRole')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.joinRequests.columns.message')}</th>
+                                <th className={MEMBER_TH + ' wk-org-119'}>{t(locale, 'organization.joinRequests.columns.appliedAt')}</th>
+                                {settingsCanManage ? <th className={MEMBER_TH + ' wk-org-117'}>{t(locale, 'organization.members.columns.operations')}</th> : null}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredJoinRequests.map((request) => {
+                                const applicantPrimary = joinRequestApplicantLabel(request);
+                                const applicantSecondary = joinRequestApplicantSecondary(request);
+                                const isUpgrade = request.request_type === 'upgrade';
+                                const prevRole = strOf(request.prev_role);
+                                const displayRole = requestedRoleOf(request);
+                                return (
+                                  <tr key={request.id}>
+                                    <td className={MEMBER_TD}>
+                                      <div className="wk-org-org-member-copy">
+                                        <span className="wk-org-56"><span className="wk-org-57">{applicantPrimary}</span></span>
+                                        {applicantSecondary ? <span className="wk-org-60">{applicantSecondary}</span> : null}
+                                      </div>
+                                    </td>
+                                    <td className={MEMBER_TD + ' wk-org-115'}>
+                                      <Tag size="small" variant="light" theme={isUpgrade ? 'warning' : 'primary'}>{t(locale, isUpgrade ? 'organization.joinRequests.typeUpgrade' : 'organization.joinRequests.typeJoin')}</Tag>
+                                    </td>
+                                    <td className={MEMBER_TD + ' wk-org-116'}>
+                                      {isUpgrade && prevRole ? (
+                                        <span className="wk-org-join-role-change">{t(locale, 'organization.role.' + requestedRoleOf({ requested_role: prevRole }))}<TIcon name="arrow-right" size="12px" />{t(locale, 'organization.role.' + displayRole)}</span>
+                                      ) : (
+                                        <Tag size="small" variant="light" theme={displayRole === 'admin' ? 'primary' : displayRole === 'editor' ? 'warning' : 'default'}>{t(locale, 'organization.role.' + displayRole)}</Tag>
+                                      )}
+                                    </td>
+                                    <td className={MEMBER_TD}><span className="wk-org-join-message" title={strOf(request.message) || undefined}>{strOf(request.message) || '—'}</span></td>
+                                    <td className={MEMBER_TD + ' wk-org-119'}>{formatDateYmd(strOf(request.created_at))}</td>
+                                    {settingsCanManage ? <td className={MEMBER_TD}>
+                                      <div className={ORG_ROW_ACTIONS}>
+                                        <Popup
+                                          visible={approveRequestId === request.id}
+                                          trigger="click"
+                                          placement="left-top"
+                                          destroyOnClose
+                                          overlayClassName="org-approve-request-popup-overlay"
+                                          onVisibleChange={(visible: boolean) => {
+                                            if (visible) { setApproveRequestId(request.id); setApproveAssignRole(requestedRoleOf(request)); }
+                                            else if (approveRequestId === request.id) setApproveRequestId(null);
+                                          }}
+                                          content={(
+                                            <div className="wk-org-approve-popup" onClick={(event) => event.stopPropagation()}>
+                                              <div className="wk-org-39">{t(locale, 'organization.joinRequests.approveTitle')}</div>
+                                              <p className="wk-org-51">{t(locale, 'organization.joinRequests.approveDesc', { name: applicantPrimary })}</p>
+                                              <div className={ORG_FORM_ITEM}>
+                                                <label className={ORG_FORM_LABEL}>{t(locale, 'organization.settings.assignRole')}</label>
+                                                <TSelect className={ORG_FIELD + ' wk-org-111'} aria-label={t(locale, 'organization.settings.assignRole')} value={approveAssignRole} options={roleOptions.map(([value, labelKey]) => ({ value, label: t(locale, labelKey) }))} onChange={(value) => setApproveAssignRole(String(value) as 'admin' | 'editor' | 'viewer')} />
+                                              </div>
+                                              <div className="wk-org-54">
+                                                <button type="button" className={ORG_BTN_OUTLINE + ' wk-org-114'} disabled={reviewingRequestId === request.id} onClick={() => setApproveRequestId(null)}>{t(locale, 'common.cancel')}</button>
+                                                <button type="button" className={ORG_BTN_PRIMARY + ' wk-org-114'} disabled={reviewingRequestId === request.id} onClick={() => void reviewRequest(request, true, approveAssignRole)}>{t(locale, 'organization.settings.approve')}</button>
+                                              </div>
+                                            </div>
+                                          )}
+                                        >
+                                          <button type="button" className="wk-org-36" aria-label={t(locale, 'organization.settings.approve')} title={t(locale, 'organization.settings.approve')}><TIcon name="check" /></button>
+                                        </Popup>
+                                        <Popconfirm
+                                          content={t(locale, 'organization.joinRequests.rejectConfirm')}
+                                          confirmBtn={{ content: t(locale, 'organization.settings.reject'), theme: 'danger' }}
+                                          cancelBtn={{ content: t(locale, 'common.cancel') }}
+                                          placement="left"
+                                          onConfirm={() => void reviewRequest(request, false)}
+                                        >
+                                          <button type="button" className="wk-org-36 wk-org-122-danger" aria-label={t(locale, 'organization.settings.reject')} title={t(locale, 'organization.settings.reject')}><TIcon name="close" /></button>
+                                        </Popconfirm>
+                                      </div>
+                                    </td> : null}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      )) : null}
+                      ) : null}
                     </>
                   ) : settingsSection === 'shares' ? (
                     <>
@@ -1751,32 +1901,145 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           organization.settings.sharedDesc description. */}
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.share.sharedKnowledgeBase')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.sharedDesc')}</p>
+                      {/* ORG-3 — Vue 共享知识库分区（OrganizationSettingsModal.vue
+                          :650-715）：内层列表标题+计数、六列表格（名称/共享者/
+                          共享时间/共享空间权限/生效权限/操作）、空态两行
+                          （noSharedKB + noSharedKBTip）。 */}
+                      <div className="wk-org-45">
+                        <div className="wk-org-34">
+                          <span className="wk-org-39">{t(locale, 'organization.sharedResources.kbListTitle')}</span>
+                          <span className="wk-org-46" aria-label={t(locale, 'organization.sharedResources.kbListTitle') + ' count'}>{sharedResources.length}</span>
+                        </div>
+                      </div>
                       {feedStatus('shares', t(locale, 'organization.settings.removeShareFailed'))}
-                      {detailFeeds.shares.status === 'ready' && sharedResources.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedKB')}</p> : null}
-                      {detailFeeds.shares.status === 'ready' ? sharedResources.map((resource, index) => {
-                        const row = sharedResourceRow(resource);
-                        return (
-                          <div key={row.shareId || index} className={ORG_MEMBER_ROW}>
-                            <div className={ORG_MEMBER_COPY}>
-                              <strong className="wk-org-39">{row.name}</strong>
-                              <span className="wk-org-32">{row.permission || t(locale, 'organization.sharedResources.columns.permission')}</span>
-                            </div>
-                            {row.canUnshare && settingsCanManage ? (
-                              <div className={ORG_ROW_ACTIONS}>
-                                <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareKnowledgeBase(row)}>{t(locale, 'organization.share.unshareAction')}</button>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      }) : null}
+                      {detailFeeds.shares.status === 'ready' && sharedResources.length === 0 ? (
+                        <div className="wk-org-empty-block">
+                          <p className="wk-org-empty-title">{t(locale, 'organization.settings.noSharedKB')}</p>
+                          <p className="wk-org-empty-desc">{t(locale, 'organization.settings.noSharedKBTip')}</p>
+                        </div>
+                      ) : null}
+                      {detailFeeds.shares.status === 'ready' && sharedResources.length > 0 ? (
+                        <div className="wk-org-55">
+                          <table className={MEMBER_TABLE}>
+                            <thead>
+                              <tr>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.name')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.sharedBy')}</th>
+                                <th className={MEMBER_TH + ' wk-org-119'}>{t(locale, 'organization.sharedResources.columns.sharedAt')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.settings.sharePermissionLabel')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.settings.myPermissionLabel')}</th>
+                                <th className={MEMBER_TH + ' wk-org-117'}>{t(locale, 'organization.members.columns.operations')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sharedResources.map((resource, index) => {
+                                const row = sharedResourceRow(resource);
+                                const spacePermission = strOf(resource.permission);
+                                const myPermission = strOf(resource.my_permission) || spacePermission;
+                                const goToKb = t(locale, 'knowledgeList.detail.goToKb');
+                                return (
+                                  <tr key={row.shareId || index}>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-name" title={row.name}>{row.name}</span></td>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-meta">{strOf(resource.shared_by_username) || '—'}</span></td>
+                                    <td className={MEMBER_TD + ' wk-org-119'}>{formatDateYmd(strOf(resource.created_at))}</td>
+                                    <td className={MEMBER_TD}><Tag size="small" variant="light" theme={spacePermission === 'admin' ? 'primary' : spacePermission === 'editor' ? 'warning' : 'default'}>{sharePermissionLabelOf(spacePermission)}</Tag></td>
+                                    <td className={MEMBER_TD}><Tag size="small" variant="light" theme={myPermission === 'admin' ? 'primary' : myPermission === 'editor' ? 'warning' : 'default'}>{sharePermissionLabelOf(myPermission)}</Tag></td>
+                                    <td className={MEMBER_TD}>
+                                      <div className={ORG_ROW_ACTIONS}>
+                                        <button type="button" className="wk-org-36" aria-label={goToKb} title={goToKb} onClick={() => { closeSettings(); window.location.assign('/platform/knowledge-bases/' + encodeURIComponent(row.knowledgeBaseId)); }}><TIcon name="browse" /></button>
+                                        {row.canUnshare && settingsCanManage ? (
+                                          // ORG-2/ORG-3 — Vue :700-710 取消共享 KB
+                                          // t-popconfirm + delete 图标钮。
+                                          <Popconfirm
+                                            content={t(locale, 'organization.settings.removeShareConfirm', { name: row.name })}
+                                            confirmBtn={{ content: t(locale, 'common.confirm'), theme: 'danger' }}
+                                            cancelBtn={{ content: t(locale, 'common.cancel') }}
+                                            placement="left"
+                                            onConfirm={() => void unshareKnowledgeBase(row)}
+                                          >
+                                            <button type="button" className="wk-org-36 wk-org-122-danger" aria-label={t(locale, 'organization.settings.removeShareFromOrg')} title={t(locale, 'organization.settings.removeShareFromOrg')}><TIcon name="delete" /></button>
+                                          </Popconfirm>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : settingsSection === 'agents' ? (
                     <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.sharedResources.agentListTitle')}</h2>
+                      {/* ORG-3 — Vue 共享智能体分区（OrganizationSettingsModal.vue
+                          :719-801）：h2 用 settings.sharedAgents，内层 agentListTitle
+                          +计数，八列表格（名称/共享者/共享时间/知识库/联网搜索/
+                          MCP/权限/操作），空态两行（noSharedAgents+Tip）。 */}
+                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.sharedAgents')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.sharedAgentsDesc')}</p>
+                      <div className="wk-org-45">
+                        <div className="wk-org-34">
+                          <span className="wk-org-39">{t(locale, 'organization.sharedResources.agentListTitle')}</span>
+                          <span className="wk-org-46" aria-label={t(locale, 'organization.sharedResources.agentListTitle') + ' count'}>{sharedAgents.length}</span>
+                        </div>
+                      </div>
                       {feedStatus('agents', t(locale, 'organization.settings.removeShareFailed'))}
-                      {detailFeeds.agents.status === 'ready' && sharedAgents.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedAgents')}</p> : null}
-                      {detailFeeds.agents.status === 'ready' ? sharedAgents.map((agent, index) => <div key={strOf(agent.id) || index} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="wk-org-39">{strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id)}</strong><span className="wk-org-32">{strOf(agent.permission) || t(locale, 'organization.sharedResources.columns.permission')}</span></div>{settingsCanManage && strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareAgent(agent)}>{t(locale, 'organization.share.unshareAction')}</button> : null}</div>) : null}
+                      {detailFeeds.agents.status === 'ready' && sharedAgents.length === 0 ? (
+                        <div className="wk-org-empty-block">
+                          <p className="wk-org-empty-title">{t(locale, 'organization.settings.noSharedAgents')}</p>
+                          <p className="wk-org-empty-desc">{t(locale, 'organization.settings.noSharedAgentsTip')}</p>
+                        </div>
+                      ) : null}
+                      {detailFeeds.agents.status === 'ready' && sharedAgents.length > 0 ? (
+                        <div className="wk-org-55">
+                          <table className={MEMBER_TABLE}>
+                            <thead>
+                              <tr>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.name')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.sharedBy')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.sharedAt')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'agent.shareScope.knowledgeBase')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'agent.shareScope.webSearch')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'agent.shareScope.mcp')}</th>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.sharedResources.columns.permission')}</th>
+                                {settingsCanManage ? <th className={MEMBER_TH + ' wk-org-117'}>{t(locale, 'organization.members.columns.operations')}</th> : null}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sharedAgents.map((agent, index) => {
+                                const agentName = strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id);
+                                return (
+                                  <tr key={strOf(agent.id) || index}>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-name" title={agentName}>{agentName}</span></td>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-meta">{strOf(agent.shared_by_username) || '—'}</span></td>
+                                    <td className={MEMBER_TD}>{formatDateYmd(strOf(agent.created_at))}</td>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-meta" title={agentKbScopeLabel(agent)}>{agentKbScopeLabel(agent)}</span></td>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-meta">{agentWebSearchScopeLabel(agent)}</span></td>
+                                    <td className={MEMBER_TD}><span className="wk-org-resource-meta" title={agentMcpScopeLabel(agent)}>{agentMcpScopeLabel(agent)}</span></td>
+                                    <td className={MEMBER_TD}><Tag size="small" variant="light" theme="default">{t(locale, 'organization.share.permissionReadonly')}</Tag></td>
+                                    {settingsCanManage ? <td className={MEMBER_TD}>
+                                      {strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? (
+                                        // ORG-2/ORG-3 — Vue :786-796 取消共享智能体
+                                        // t-popconfirm + delete 图标钮。
+                                        <Popconfirm
+                                          content={t(locale, 'organization.settings.removeAgentShareConfirm', { name: agentName })}
+                                          confirmBtn={{ content: t(locale, 'common.confirm'), theme: 'danger' }}
+                                          cancelBtn={{ content: t(locale, 'common.cancel') }}
+                                          placement="left"
+                                          onConfirm={() => void unshareAgent(agent)}
+                                        >
+                                          <button type="button" className="wk-org-36 wk-org-122-danger" aria-label={t(locale, 'organization.settings.removeShareFromOrg')} title={t(locale, 'organization.settings.removeShareFromOrg')}><TIcon name="delete" /></button>
+                                        </Popconfirm>
+                                      ) : null}
+                                    </td> : null}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>

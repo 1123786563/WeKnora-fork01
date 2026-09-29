@@ -878,6 +878,48 @@
   background-color: #f3f3f3;
 }
 
+/* KBW-8：列表视图行三段式（Vue WikiBrowser.vue .wiki-page-item--list
+   L5213-5247）——标题 14px/20px、摘要 12px 两行截断、日期 11px，行高 98px；
+   色值对应 Vue --td-text-color-primary/secondary/placeholder
+   （rgba(0,0,0,.9)/.6/.4）。树形视图行维持原图标行形态。 */
+.wk-wiki-85.wiki-page-item--list {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  height: 98px;
+  min-height: 98px;
+  box-sizing: border-box;
+  padding-block: 8px;
+}
+
+.wiki-page-item--list .wk-wiki-33 {
+  display: block;
+  flex: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 14px;
+  line-height: 20px;
+  margin-bottom: 4px;
+}
+
+.wiki-page-item-summary {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.wiki-page-item-meta {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
 .wk-wiki-86 {
   display: block;
 }

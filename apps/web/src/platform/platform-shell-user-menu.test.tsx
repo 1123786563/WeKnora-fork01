@@ -13,7 +13,7 @@ import { act } from 'react';
 import type { Root } from 'react-dom/client';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
-const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png')
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png') || specifier.endsWith('.svg')
   ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
   : nextResolve(specifier, context);
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
@@ -30,6 +30,9 @@ Object.assign(globalThis, {
   Element: dom.window.Element,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
+  // F3 创建空间弹窗走 tdesign Input/Textarea（jsdom 下 rAF 可能缺省，
+  // 与 platform-shell-invitations.test.tsx 同款 shim）。
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 try { Object.defineProperty(dom.window.navigator, 'language', { value: 'zh-CN', configurable: true }); } catch { /* keep jsdom default */ }
@@ -278,4 +281,70 @@ test('R449-A2: settings.navGroups.systemAdministration exists with the Vue local
     assert.equal(messages[locale]['settings.navGroups.systemAdministration'], expected[locale], `${locale} copy matches Vue`);
     assert.equal(formatMessage(locale, 'settings.navGroups.systemAdministration'), expected[locale]);
   }
+});
+
+// F3 — Vue UserMenu.vue:150-195 submenu content parity: 标题「切换空间」+
+// 首字母 avatar（home 行 home dot）+ 角色图标/角色名 + 「当前」徽标 + 底部
+// 「+ 创建新空间」入口（打开创建弹窗，footer 取消|创建）。
+test('F3: tenant submenu renders header/avatar/home-dot/role/当前 badge and the create entry', async () => {
+  const multiTenantClient = {
+    ...fakeClient(),
+    auth: {
+      me: async () => ({
+        user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: false, tenant_id: 1 },
+        tenant: { id: 1, name: 'Home' },
+        memberships: [
+          { tenant_id: 1, tenant_name: 'Home', role: 'owner' },
+          { tenant_id: 2, tenant_name: 'Project B', role: 'viewer' },
+        ],
+        capabilities: { can_create_tenant: true },
+      }),
+    },
+  };
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => mountedRoot?.render(React.createElement(PlatformShell, {
+    client: multiTenantClient as never,
+    onLogout: () => undefined,
+    onTenantSwitch: async () => undefined,
+    children: React.createElement('div', null, 'page'),
+  })));
+  await settle(20);
+  await openUserMenu();
+
+  const trailBtn = document.querySelector('.dropdown-tenant-panel-trail-btn') as HTMLButtonElement | null;
+  assert.ok(trailBtn, 'tenant switcher trail button renders for multi-membership users');
+  await act(async () => trailBtn!.click());
+  await settle();
+
+  const submenu = document.querySelector('.tenant-submenu-inline') as HTMLElement | null;
+  assert.ok(submenu, 'tenant submenu opens inline');
+  const header = submenu.querySelector('.tenant-submenu-header');
+  assert.equal((header?.textContent ?? '').trim(), '切换空间', 'header title follows tenant.switcher.menuLabel');
+  const items = Array.from(submenu.querySelectorAll('[role="option"]'));
+  assert.equal(items.length, 2, 'both memberships render');
+  const currentRow = items[0] as HTMLElement;
+  assert.equal(currentRow.getAttribute('aria-selected'), 'true', 'home row is the current tenant');
+  assert.ok(currentRow.querySelector('.tenant-submenu-item-avatar')?.textContent?.includes('H'), 'avatar renders the tenant initial');
+  assert.ok(currentRow.querySelector('.tenant-submenu-item-home-dot'), 'home tenant row carries the home dot');
+  assert.ok((currentRow.querySelector('.tenant-submenu-item-role')?.textContent ?? '').includes('所有者'), 'role label localized like Vue formatRole');
+  assert.equal((currentRow.querySelector('.tenant-submenu-item-badge')?.textContent ?? '').trim(), '当前', '当前 badge follows tenant.switcher.currentBadge');
+  assert.ok(!(items[1] as HTMLElement).querySelector('.tenant-submenu-item-badge'), 'non-current row has no 当前 badge');
+
+  const createEntry = submenu.querySelector('.tenant-submenu-create') as HTMLButtonElement | null;
+  assert.ok(createEntry, 'can_create_tenant users get the + 创建新空间 entry');
+  assert.ok((createEntry.textContent ?? '').includes('创建新空间'), 'entry label follows tenant.create.action');
+  await act(async () => createEntry!.click());
+  await settle();
+
+  const dialog = document.querySelector('.tenant-create-dialog[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'create-workspace dialog opens (the first-visit guide overlay also carries role=dialog — scope to the create modal)');
+  assert.match(dialog.textContent ?? '', /创建新空间/);
+  assert.equal(dialog.querySelector('.wk-dialog-close'), null, 'no header × (AUTH-7 posture)');
+  const cancel = [...dialog.querySelectorAll('button')].find((b) => (b.textContent ?? '').trim() === '取消') as HTMLButtonElement | undefined;
+  assert.ok(cancel, 'dialog carries a 取消 action');
+  await act(async () => cancel!.click());
+  await settle();
+  assert.equal(document.querySelector('.tenant-create-dialog[role="dialog"]'), null, 'cancel closes the create dialog');
 });

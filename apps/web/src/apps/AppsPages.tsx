@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
-import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
-import { Alert as TAlert, Button as TButton, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag } from 'tdesign-react';
+import { Alert as TAlert, Button as TButton, Descriptions as TDescriptions, MessagePlugin, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag, Tooltip as TTooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
 import { pollBackoffDelayMs } from './pollBackoff.ts';
@@ -17,7 +16,6 @@ type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
 type Props = { client: WeKnoraClient; mode: AppMode; id?: string; role?: string };
 
 type ToastTone = 'success' | 'warning' | 'error';
-type ToastState = { tone: ToastTone; text: string } | null;
 
 function isAbortError(cause: unknown): boolean {
   const error = cause as { name?: string; code?: string };
@@ -41,27 +39,11 @@ function errorMessage(cause: unknown): string {
   return typeof message === 'string' ? message : '';
 }
 
-/* Toast mirrors the local-toast pattern used by OrganizationsPage (Vue shows
-   MessagePlugin toasts on these flows). */
-function Toast({ toast }: { toast: ToastState }) {
-  if (!toast) return null;
-  return <div role="status" aria-live="polite" className={`wk-apps-21 ${toast.tone === 'success' ? 'wk-apps-22' : toast.tone === 'warning' ? 'wk-apps-23' : 'wk-apps-24'}`}>{toast.text}</div>;
-}
-
-/* Vue t-icon refresh glyph (tdesign-icons-vue-next refresh, 24 viewBox). */
-function IconRefresh({ size = 14 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M21.448 13C20.9483 17.7767 16.909 21.5 12 21.5C8.18227 21.5 4.89052 19.248 3.38065 16M2.5 20.5V15.5H5.5M2.55176 11C3.05145 6.22334 7.09079 2.5 11.9998 2.5C15.8175 2.5 19.1092 4.75197 20.6191 8M21.4998 3.5V8.5H18.4998" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></svg>;
-}
-
-/* Vue t-tag (variant dark, size small): solid 20px chip, 12px text, radius 3. */
-function Tag({ theme = 'default', children }: { theme?: 'success' | 'warning' | 'danger' | 'primary' | 'default'; children: ReactNode }) {
-  /* T15：bg-[#…]/text-* 旧栈 utility 语义化为 .wk-apps-tag--*（apps-u.css）。 */
-  const palette = theme === 'success' ? 'wk-apps-tag--success'
-    : theme === 'warning' ? 'wk-apps-tag--warning'
-    : theme === 'danger' ? 'wk-apps-tag--danger'
-    : theme === 'primary' ? 'wk-apps-tag--primary'
-    : 'wk-apps-tag--default';
-  return <span className={`wk-apps-25 ${palette}`}>{children}</span>;
+/* APP-9 — Vue 写操作反馈走 MessagePlugin 全局消息条（ConnectionsView.vue /
+   ActionView.vue）；React 侧 tdesign-react MessagePlugin 同款命令式通道
+   （main.tsx react-19-adapter 已接线）。 */
+function showGlobalToast(tone: ToastTone, text: string): void {
+  void MessagePlugin[tone](text);
 }
 
 /* TDesign t-popconfirm counterpart: an anchored confirm bubble with a danger
@@ -89,11 +71,18 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
   </span>;
 }
 
-/* 留守段 frame（authorization/action 两页，R490 React 端口自持）：
-   apps/apps-connections 两页已迁 Vue DOM（.apps-view/.connections-view +
-   apps.td.css），此 frame 仅供未扫描的两页沿用旧布局。 */
-function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'wk-apps-frame-gap', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
-  return <main className={`wk-page wk-apps-26 ${gapClass}`}><header className="wk-apps-5"><div><h1 className="wk-apps-6">{title}</h1><p className="wk-apps-7">{description}</p></div><TButton aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="wk-apps-8"><IconRefresh size={14} />{refreshLabel}</TButton></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
+/* APP-1 — authorization/action 两页对齐 Vue 布局（AuthorizationView.vue /
+   ActionView.vue）：h2 标题 + t-alert 告警条 + t-descriptions 带边框表格 +
+   t-tag；两页刷新按钮同 apps/connections 页 outline 形态（APP-3）。
+   prefix 为各页 Vue SFC 根类前缀（类名 1:1）。 */
+function PageHeader({ prefix, title, description, loading, onReload, refreshLabel }: { prefix: string; title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string }): ReactNode {
+  return <div className={`${prefix}__header`}>
+    <div className={`${prefix}__heading`}>
+      <h2 className={`${prefix}__title`}>{title}</h2>
+      <p className={`${prefix}__desc`}>{description}</p>
+    </div>
+    <TButton variant="outline" disabled={loading} aria-label={refreshLabel} onClick={onReload} icon={<TIcon name="refresh" />}>{refreshLabel}</TButton>
+  </div>;
 }
 
 function useAppsCopy() {
@@ -200,9 +189,10 @@ function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient
   const [data, setData] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [revokingId, setRevokingId] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null); const canManage = role === 'owner' || role === 'admin';
   const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setLoadError(false); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setLoadError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client]);
-  // Vue startAuthorization: a missing attempt id is an error toast, never a
-  // fabricated navigation (T13-F-3).
-  const startAuthorization = async (row: AppRow) => { if (!canManage || revokingId) return; setRevokingId(String(row.id)); try { const value = responseRecord(await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/authorization-attempts`, body: {} })); if (value.attempt_id) { navigate('/platform/apps/authorization/' + encodeURIComponent(String(value.attempt_id))); return; } showToast('error', t('apps.connections.startAuthorizationFailed')); } catch (cause) { showToast('error', errorMessage(cause) || t('apps.connections.startAuthorizationFailed')); } finally { setRevokingId(''); } };
+  // Vue startAuthorization (ConnectionsView.vue:221-234): a missing attempt id
+  // is an error toast, never a fabricated navigation (T13-F-3). APP-7 — 发起
+  // 授权不触碰 revokingId（仅 revoke 自身互斥），发起期间断开按钮不被禁用。
+  const startAuthorization = async (row: AppRow) => { if (!canManage) return; try { const value = responseRecord(await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/authorization-attempts`, body: {} })); if (value.attempt_id) { navigate('/platform/apps/authorization/' + encodeURIComponent(String(value.attempt_id))); return; } showToast('error', t('apps.connections.startAuthorizationFailed')); } catch (cause) { showToast('error', errorMessage(cause) || t('apps.connections.startAuthorizationFailed')); } };
   // Vue revoke: echo the live auth_version (?? 1 covers a stale backend and
   // can only produce a safe 409), then reload. 409/VERSION_CONFLICT warns and
   // re-reads; local success is stated exactly, remote cleanup stays async.
@@ -224,12 +214,11 @@ function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient
             content={t('apps.connections.revokeConfirmContent')}
             confirmBtn={{ content: t('apps.connections.revoke'), theme: 'danger', loading: revokingId === String(row.id) }}
             cancelBtn={{ content: t('apps.common.cancel'), theme: 'default' }}
-            placement="left"
             onConfirm={() => void revoke(row)}
           >
             <TButton size="small" variant="text" theme="danger" disabled={revokingId !== ''} aria-label={t('apps.connections.revoke')}>{t('apps.connections.revoke')}</TButton>
           </TPopconfirm>
-        </>) : row.state === 'revoked' ? <span className="connections-view__cleanup-note">{t('apps.connections.remoteCleanupNote')}</span> : '—'}
+        </>) : row.state === 'revoked' ? <span className="connections-view__cleanup-note">{t('apps.connections.remoteCleanupNote')}</span> : null}
       </div>
     ) },
   ];
@@ -308,9 +297,27 @@ function AuthorizationPage({ client, id, t }: { client: WeKnoraClient; id: strin
     void pollOnce();
     return () => { generation.current += 1; cancelTimer(); request.current?.abort(); pollFailures.current = 0; };
   }, [client, id]);
-  const statusTheme = status === 'active' ? 'success' : status === 'failed' || status === 'expired' || status === 'revoked' ? 'danger' : polling ? 'warning' : 'neutral';
-  const statusLabel = (() => { if (!status) return '—'; const label = t(`apps.authorization.status.${status}`); return label === `apps.authorization.status.${status}` ? t('apps.authorization.status.other', { state: status }) : label; })();
-  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="wk-apps-9"><dl className="wk-apps-10"><div><dt className="wk-apps-11">{t('apps.authorization.attemptLabel')}</dt><dd className="wk-apps-12">{id || '—'}</dd></div><div><dt className="wk-apps-11">{t('apps.authorization.connectionLabel')}</dt><dd className="wk-apps-12" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="wk-apps-11">{t('apps.authorization.statusLabel')}</dt><dd className="wk-apps-13"><Tag theme={statusTheme as 'success' | 'danger' | 'warning' | 'default'}>{statusLabel}</Tag></dd></div><div><dt className="wk-apps-11">{t('apps.authorization.expiresLabel')}</dt><dd className="wk-apps-13">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="wk-apps-14">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="wk-apps-15">{t('apps.authorization.completedHint')}</p> : null}</div></Card><TButton variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</TButton></PageFrame>;
+  const statusTheme: 'success' | 'danger' | 'warning' | 'default' = status === 'active' ? 'success' : status === 'failed' || status === 'expired' || status === 'revoked' ? 'danger' : polling ? 'warning' : 'default';
+  // APP-2 — Vue statusLabel computed 对空状态不做提前返回：key 未命中即落
+  // status.other 插值（空 state → 「状态：」），从不显示破折号。
+  const statusLabel = (() => { const label = t(`apps.authorization.status.${status}`); return label === `apps.authorization.status.${status}` ? t('apps.authorization.status.other', { state: status }) : label; })();
+  return <div className="authorization-view">
+    <PageHeader prefix="authorization-view" title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} />
+    {loadError ? <TAlert theme="error" message={t('apps.authorization.loadFailed')} className="authorization-view__alert" /> : null}
+    {/* T13-F-3 (binding): no authorization URL exists on this path — state the
+        control-plane guidance, never a fabricated or linked URL. */}
+    <TAlert theme="info" message={t('apps.authorization.noUrlGuidance')} className="authorization-view__alert" />
+    <div className="authorization-view__card" role="status" aria-live={polled ? 'polite' : 'off'}>
+      <TDescriptions column={1} bordered size="medium" colon items={[
+        { label: t('apps.authorization.attemptLabel'), content: <span className="authorization-view__mono">{id || '—'}</span> },
+        { label: t('apps.authorization.connectionLabel'), content: attempt.connection_id ? <span title={String(attempt.connection_id)} className="authorization-view__mono">{vueShortId(attempt.connection_id)}</span> : <span>—</span> },
+        { label: t('apps.authorization.statusLabel'), content: <TTag theme={statusTheme} size="small">{statusLabel}</TTag> },
+        { label: t('apps.authorization.expiresLabel'), content: formatTime(attempt.expires_at) },
+      ]} />
+      {polling ? <p className="authorization-view__hint">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="authorization-view__hint authorization-view__hint--ok">{t('apps.authorization.completedHint')}</p> : null}
+    </div>
+    <TButton variant="text" aria-label={t('apps.authorization.back')} onClick={() => navigate('/platform/apps/connections')} icon={<TIcon name="arrow-left" />}>{t('apps.authorization.back')}</TButton>
+  </div>;
 }
 
 function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient; id: string; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
@@ -360,33 +367,40 @@ function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient;
   const riskLabel = riskValue ? ((label) => label === `apps.risk.${riskValue}` ? riskValue : label)(t(`apps.risk.${riskValue}`)) : '';
   const state = String(action.state ?? '');
   const stateLabel = (() => { if (state === 'unknown') return t('apps.actions.unknown'); if (!state) return '—'; const label = t(`apps.actions.state.${state}`); return label === `apps.actions.state.${state}` ? t('apps.actions.state.other', { state }) : label; })();
-  const stateTheme = state === 'succeeded' ? 'success' : state === 'failed' || state === 'unknown' ? 'danger' : state === 'awaiting_approval' ? 'warning' : 'neutral';
+  // APP-8 — Vue ActionView stateTheme: unknown → warning（结果待核对），非红。
+  const stateTheme: 'success' | 'warning' | 'danger' | 'default' = state === 'succeeded' ? 'success' : state === 'failed' ? 'danger' : state === 'awaiting_approval' || state === 'unknown' ? 'warning' : 'default';
+  const riskTheme: 'success' | 'warning' | 'danger' | 'default' = riskValue === 'read' ? 'success' : riskValue === 'write' ? 'warning' : riskValue === 'send' || riskValue === 'delete' ? 'danger' : 'default';
   const prettyArgs = (() => { const raw = String(action.content ?? ''); if (!raw) return '—'; try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; } })();
   const shortText = (value: string): string => value && value.length > 16 ? value.slice(0, 16) + '…' : value || '—';
-  return <PageFrame title={t('apps.actions.title')} description={t('apps.actions.description')} loading={loading} onReload={() => void reload()} refreshLabel={t('apps.actions.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{notFound ? t('apps.actions.notFound') : t('apps.actions.loadFailed')}</Status> : null}{hasAction ? <>
-    <Card><dl className="wk-apps-10">
-      <div><dt className="wk-apps-11">{t('apps.actions.accountLabel')}</dt><dd className="wk-apps-12">{appStatus(action.connection_name)}</dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.targetLabel')}</dt><dd className="wk-apps-12">{appStatus(action.target)}</dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.riskLabel')}</dt><dd className="wk-apps-13" title={riskLabel ? undefined : t('apps.actions.riskUnknownHint')}>{riskLabel ? <Tag theme={riskValue === 'read' ? 'success' : riskValue === 'write' ? 'warning' : riskValue === 'send' || riskValue === 'delete' ? 'danger' : 'default'}>{riskLabel}</Tag> : <span className="wk-apps-16">—</span>}</dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.stateLabel')}</dt><dd className="wk-apps-13"><Tag theme={stateTheme as 'success' | 'danger' | 'warning' | 'default'}>{stateLabel}</Tag></dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.digestLabel')}</dt><dd className="wk-apps-12" title={digest}>{shortText(digest)}</dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.fenceLabel')}</dt><dd className="wk-apps-12">{appStatus(detail?.expected_version, '0')}</dd></div>
-      <div><dt className="wk-apps-11">{t('apps.actions.argsLabel')}</dt><dd className="wk-apps-17" tabIndex={0}>{prettyArgs}</dd></div>
-    </dl></Card>
-    <div className="wk-apps-18">{controls.approve ? <TButton loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</TButton> : null}{controls.execute ? <TButton loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</TButton> : null}{state === 'unknown' ? <p className="wk-apps-19">{t('apps.actions.unknown')}</p> : null}</div>
-    {state === 'unknown' ? <p className="wk-apps-20">{t('apps.actions.noResendHint')}</p> : null}
-    {!canDrive ? <Status>{t('apps.actions.memberCannotApprove')}</Status> : null}
-  </> : null}</PageFrame>;
+  return <div className="action-view">
+    <PageHeader prefix="action-view" title={t('apps.actions.title')} description={t('apps.actions.description')} loading={loading} onReload={() => void reload()} refreshLabel={t('apps.actions.refresh')} />
+    {loadError ? <TAlert theme="error" message={notFound ? t('apps.actions.notFound') : t('apps.actions.loadFailed')} className="action-view__alert" /> : null}
+    {hasAction ? <>
+      <div className="action-view__card">
+        <TDescriptions column={1} bordered size="medium" colon items={[
+          { label: t('apps.actions.accountLabel'), content: <span className="action-view__mono">{appStatus(action.connection_name)}</span> },
+          { label: t('apps.actions.targetLabel'), content: <span className="action-view__mono">{appStatus(action.target)}</span> },
+          { label: t('apps.actions.riskLabel'), content: riskLabel ? <TTag theme={riskTheme} size="small">{riskLabel}</TTag> : <TTooltip content={t('apps.actions.riskUnknownHint')}><span className="action-view__risk-missing">—</span></TTooltip> },
+          { label: t('apps.actions.stateLabel'), content: <TTag theme={stateTheme} size="small">{stateLabel}</TTag> },
+          { label: t('apps.actions.digestLabel'), content: <span className="action-view__mono" title={digest}>{shortText(digest)}</span> },
+          { label: t('apps.actions.fenceLabel'), content: <span className="action-view__mono">{appStatus(detail?.expected_version, '0')}</span> },
+          { label: t('apps.actions.argsLabel'), content: <pre className="action-view__args" tabIndex={0}>{prettyArgs}</pre> },
+        ]} />
+      </div>
+      <div className="action-view__controls">
+        {controls.approve ? <TButton loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</TButton> : null}
+        {controls.execute ? <TButton loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</TButton> : null}
+        {state === 'unknown' ? <p>{t('apps.actions.unknown')}</p> : null}
+      </div>
+      {state === 'unknown' ? <p className="action-view__hint">{t('apps.actions.noResendHint')}</p> : null}
+      {!canDrive ? <TAlert theme="info" message={t('apps.actions.memberCannotApprove')} className="action-view__alert" /> : null}
+    </> : null}
+  </div>;
 }
 
 export function AppsPage({ client, mode, id, role }: Props) {
   const { t } = useAppsCopy();
-  const [toast, setToast] = useState<ToastState>(null);
-  const showToast = (tone: ToastTone, text: string) => setToast({ tone, text });
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-  return <><Toast toast={toast} />{mode === 'catalog' ? <CatalogPage client={client} t={t} /> : mode === 'connections' ? <ConnectionsPage client={client} role={role} t={t} showToast={showToast} /> : mode === 'authorization' ? <AuthorizationPage client={client} id={id ?? ''} t={t} /> : <ActionPage client={client} id={id ?? ''} role={role} t={t} showToast={showToast} />}</>;
+  // APP-9 — Vue MessagePlugin 全局消息条（写操作反馈不再用页内局部 Toast）。
+  const showToast = (tone: ToastTone, text: string) => showGlobalToast(tone, text);
+  return <>{mode === 'catalog' ? <CatalogPage client={client} t={t} /> : mode === 'connections' ? <ConnectionsPage client={client} role={role} t={t} showToast={showToast} /> : mode === 'authorization' ? <AuthorizationPage client={client} id={id ?? ''} t={t} /> : <ActionPage client={client} id={id ?? ''} role={role} t={t} showToast={showToast} />}</>;
 }

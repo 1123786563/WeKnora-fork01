@@ -263,3 +263,38 @@ test('a settled search with no hits anywhere shows the localized empty state', a
   await settle(30);
   assert.ok((document.body.textContent ?? '').includes('No matches found'));
 });
+
+/* F4 — Vue useSearch 渐进语义：kb/agent 名匹配为 computed（缓存就绪即显），
+ * chunks/messages 各自响应到达后补齐；不再被单一 Promise.all 闸在最慢源上
+ * （SHELL-4 残留根因 palette-live-search.ts 单次 setState）。 */
+test('F4: agent name matches land before the slow remote sources finish (progressive per-source updates)', async () => {
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const client = {
+    knowledgeBases: {
+      list: async () => [{ id: 'kb-1', name: 'Alpha KB' }],
+      search: async () => { await delay(150); return [CHUNK_HIT]; },
+    },
+    settings: {
+      chatHistory: {
+        search: async () => { await delay(150); return { items: [], total: 0 }; },
+      },
+    },
+    sessions: { list: async () => ({ data: [] }) },
+    configuration: {
+      agents: { list: async () => [{ id: 'ag-1', name: 'Revenue Agent', description: 'counts revenue' }] },
+    },
+  };
+  await mountPalette({ client });
+  await typeQuery('revenue');
+  // debounce(10ms) + 立即返回的 KB/智能体缓存：远端 chunks/messages 仍在飞。
+  await settle(50);
+  const early = document.body.textContent ?? '';
+  assert.ok(early.includes('Agents'), 'agent name-match group already visible (client-side match, not gated on the slow source)');
+  assert.ok(early.includes('Revenue Agent'), 'agent card visible');
+  assert.ok(!early.includes('Files'), 'slow chunk group has not landed yet — sources land independently');
+  await settle(200);
+  const late = document.body.textContent ?? '';
+  assert.ok(late.includes('Files'), 'chunk group lands once the slow source settles');
+  assert.ok(late.includes('Revenue Report'), 'chunk card title renders');
+  assert.ok(late.includes('Revenue Agent'), 'agent group persists after the remote sources land');
+});

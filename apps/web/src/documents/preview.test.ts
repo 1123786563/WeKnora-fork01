@@ -16,7 +16,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
   const hooks = (await import('node:module')) as unknown as { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
   if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
 }
-const { DocumentMarkdownBody, DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview } = await import('./preview.ts');
+const { DocumentMarkdownBody, DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview, stripMarkdownHtmlComments } = await import('./preview.ts');
 type DocumentMermaidLabels = import('./preview.ts').DocumentMermaidLabels;
 type DocumentMermaidLoader = import('./preview.ts').DocumentMermaidLoader;
 
@@ -394,4 +394,25 @@ test('a failing hydration degrades to the ordinary code block (engine fallback s
   await act(async () => { root.unmount(); });
   host.remove();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+test('stripMarkdownHtmlComments removes prose comments like Vue DOMPurify (KBL-9)', () => {
+  assert.equal(stripMarkdownHtmlComments('a<!-- Slide number: 1 -->\nb'), 'a\nb');
+  assert.equal(stripMarkdownHtmlComments('<!-- multi\nline -->kept'), 'kept');
+  assert.equal(stripMarkdownHtmlComments('no comments here'), 'no comments here');
+  assert.equal(stripMarkdownHtmlComments(''), '');
+});
+
+test('stripMarkdownHtmlComments keeps fenced code blocks and inline code spans verbatim', () => {
+  const fence = '```html\n<!-- keep me -->\n```';
+  assert.equal(stripMarkdownHtmlComments(fence + '\n<!-- drop -->'), fence + '\n');
+  const span = 'say `<!-- keep -->` aloud';
+  assert.equal(stripMarkdownHtmlComments(span + '<!-- drop -->'), span);
+  assert.equal(stripMarkdownHtmlComments('~~~\n<!-- in tilde fence -->\n~~~'), '~~~\n<!-- in tilde fence -->\n~~~');
+});
+
+test('DocumentMarkdownBody renders PPTX conversion comments as nothing, not text (KBL-9)', () => {
+  const markup = renderToStaticMarkup(createElement(DocumentMarkdownBody, { markdown: '<!-- Slide number: 1 -->\n# 迪士尼乐园', labels: {} as never }));
+  assert.doesNotMatch(markup, /Slide number/);
+  assert.match(markup, /迪士尼乐园/);
 });

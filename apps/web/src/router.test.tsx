@@ -16,6 +16,8 @@ interface FakeDeps {
   kind: 'anonymous' | 'bearer';
   tenantId: string | null;
   systemAdmin?: boolean;
+  /** AGT-4 — /api/v1/system/capabilities agents 条目；缺省=无 administration 命名空间（fail-open）。 */
+  agentsCapability?: { supported: boolean };
 }
 
 function makeDeps(fake: FakeDeps): WeKnoraRouterDeps {
@@ -27,6 +29,11 @@ function makeDeps(fake: FakeDeps): WeKnoraRouterDeps {
         registrationConfig: () => Promise.resolve({ registrationMode: 'self_serve' }),
         acceptInvitationByToken: () => Promise.resolve({}),
       },
+      ...(fake.agentsCapability !== undefined ? {
+        administration: {
+          capabilities: () => Promise.resolve({ edition: 'standard', capabilities: { agents: fake.agentsCapability } }),
+        },
+      } : {}),
     },
     scopeController: { current: () => scope },
     scopeRuntime: {
@@ -163,6 +170,41 @@ test('knowledge-base paths match their owning routes with the shell', () => {
   }
 });
 
+/* KBL-R1 — library 族 /knowledgeBase/* 收编为 platform 族重定向：认证守卫
+ * 先行，随后 SPA replace 到映射表目标（libraryKBRedirectTarget）；未知子
+ * 路径不重定向，保留给 library 布局的 404。 */
+test('library knowledge-base paths SPA-replace to their platform-family equivalents', async () => {
+  const router = bootRouter(member, '/platform/knowledge-bases');
+  const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;
+  const libraryBeforeLoad = routeBeforeLoad(router, '/knowledgeBase');
+  assert.ok(libraryBeforeLoad, 'the library layout must run the KBL-R1 redirect beforeLoad');
+  const cases: Array<[string, Record<string, string>, string]> = [
+    ['/knowledgeBase', {}, '/platform/knowledge-bases'],
+    ['/knowledgeBase/', {}, '/platform/knowledge-bases'],
+    ['/knowledgeBase/kb-1', {}, '/platform/knowledge-bases/kb-1'],
+    ['/knowledgeBase/kb-1', { tab: 'wiki', slug: 'home' }, '/platform/knowledge-bases/kb-1?tab=wiki&slug=home'],
+    ['/knowledgeBase/kb-1', { knowledge_id: 'doc-1' }, '/platform/knowledge-bases/kb-1?knowledge_id=doc-1'],
+    ['/knowledgeBase/kb-1/wiki', { knowledge_id: 'doc-4' }, '/platform/knowledge-bases/kb-1?knowledge_id=doc-4&tab=wiki'],
+    ['/knowledgeBase/kb-1/documents/doc-9', {}, '/platform/knowledge-bases/kb-1?knowledge_id=doc-9'],
+    ['/knowledgeBase/kb-1/documents/doc-9', { tab: 'wiki' }, '/platform/knowledge-bases/kb-1?knowledge_id=doc-9'],
+    ['/knowledgeBase/kb%2Fa/documents/d%2F1', {}, '/platform/knowledge-bases/kb%2Fa?knowledge_id=d%2F1'],
+    // FAQ 是 kb.type 就地分流、KB 设置是就地 ⚙ Dialog：两者都落 KB 详情。
+    ['/knowledgeBase/kb-1/faq', {}, '/platform/knowledge-bases/kb-1'],
+    ['/knowledgeBase/kb-1/settings', {}, '/platform/knowledge-bases/kb-1'],
+  ];
+  for (const [pathname, search, expected] of cases) {
+    replaceCalls.length = 0;
+    void Promise.resolve(libraryBeforeLoad({ location: { pathname, search }, abortSignal: undefined })).catch(() => { /* the takeover aborts the superseded load */ });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.ok(replaceCalls.includes(expected), `${pathname} should SPA-replace to ${expected}, got ${replaceCalls.join(',')}`);
+  }
+  // 未知子路径：不重定向（路由树本身不匹配，布局渲染 404）。
+  replaceCalls.length = 0;
+  void Promise.resolve(libraryBeforeLoad({ location: { pathname: '/knowledgeBase/zzz/unknown', search: {} }, abortSignal: undefined })).catch(() => { /* unreachable path never redirects */ });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(replaceCalls.length, 0, `unknown library subpaths must not redirect, got ${replaceCalls.join(',')}`);
+});
+
 test('public entries stay outside the shell', () => {
   const router = bootRouter(member, '/login');
   assert.deepEqual(matchedRouteIds(router, '/login'), ['__root__', '/login']);
@@ -238,3 +280,32 @@ test('knowledge-base view entries keep the tab, slug and knowledge_id query on t
     assert.ok(ids.length > 0, `${path} should still match its route with the query attached`);
   }
 });
+
+/* AGT-4 — Vue router/index.ts:139,453-458：/platform/agents 路由
+ * meta.requiredCapability:'agents' 守卫。不支持 → SPA 重定向
+ * /platform/knowledge-bases（+ MessagePlugin.warning，headless 下仅尽力而为）；
+ * 无 administration 命名空间/探测失败 fail-open 放行（后端仍为权威）。 */
+test('AGT-4: /platform/agents redirects to knowledge-bases when the agents capability is unsupported', async () => {
+  const router = bootRouter({ kind: 'bearer', tenantId: 'tenant-1', agentsCapability: { supported: false } }, '/platform/agents');
+  const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;
+  const agentsRoute = findAgentsRoute(router);
+  assert.ok(agentsRoute?.options?.beforeLoad, 'agents route carries the capability guard beforeLoad');
+  void Promise.resolve(agentsRoute?.options?.beforeLoad?.({ location: { pathname: '/platform/agents', search: {} }, abortSignal: undefined })).catch(() => { /* the takeover aborts the superseded load */ });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(replaceCalls.includes('/platform/knowledge-bases'), `expected the capability redirect, got ${replaceCalls.join(',')}`);
+});
+
+test('AGT-4: the agents capability guard fails open when the capabilities probe is unavailable', async () => {
+  const router = bootRouter({ kind: 'bearer', tenantId: 'tenant-1' }, '/platform/agents');
+  const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;
+  const agentsRoute = findAgentsRoute(router);
+  const outcome = await Promise.resolve(agentsRoute?.options?.beforeLoad?.({ location: { pathname: '/platform/agents', search: {} }, abortSignal: undefined }));
+  assert.equal(outcome, undefined, 'no redirect decision without an administration namespace (fail-open)');
+  assert.equal(replaceCalls.length, 0, 'no URL rewrite happened');
+});
+
+/** /platform/agents is a grandchild of the route tree (platform layout child). */
+function findAgentsRoute(router: WeKnoraRouter): { options?: { beforeLoad?: (ctx: unknown) => Promise<unknown> } } | undefined {
+  const platform = (router.routeTree as { children?: Array<{ id: string; children?: Array<{ id: string; options?: { beforeLoad?: (ctx: unknown) => Promise<unknown> } }> }> }).children?.find((route) => route.id === '/platform');
+  return platform?.children?.find((route) => route.id === '/platform/agents');
+}
