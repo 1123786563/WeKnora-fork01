@@ -553,22 +553,23 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
                   <TIcon name="arrow-right" size="14px" />
                   <span>{move.selectedTargetName}</span>
                 </div>
-                {(["reuse_vectors", "reparse"] as const).map((mode) => (
-                  <button
-                    type="button"
-                    key={mode}
-                    className={'move-mode-item' + (move.mode === mode ? ' active' : '')}
-                    onClick={() => move.onModeChange(mode)}
-                    role="radio"
-                    aria-checked={move.mode === mode}
-                  >
-                    <span className={'move-mode-radio' + (move.mode === mode ? ' checked' : '')} aria-hidden="true" />
-                    <div className="move-mode-text">
-                      <span className="move-mode-label">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
-                      <span className="move-mode-desc">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
-                    </div>
-                  </button>
-                ))}
+                <div className="move-mode-group" role="group" aria-label={t("knowledgeBase.moveConfirmTitle")}>
+                  {(["reuse_vectors", "reparse"] as const).map((mode) => (
+                    <button
+                      type="button"
+                      key={mode}
+                      className={'move-mode-item' + (move.mode === mode ? ' active' : '')}
+                      onClick={() => move.onModeChange(mode)}
+                      aria-pressed={move.mode === mode}
+                    >
+                      <span className={'move-mode-radio' + (move.mode === mode ? ' checked' : '')} aria-hidden="true" />
+                      <div className="move-mode-text">
+                        <span className="move-mode-label">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
+                        <span className="move-mode-desc">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
                 <div className="move-confirm-actions">
                   <TdButton size="small" variant="outline" onClick={() => move.onBack()}>{t("common.cancel")}</TdButton>
                   <TdButton size="small" theme="primary" loading={move.submitting} onClick={() => move.onConfirm()}>{t("knowledgeBase.moveConfirm")}</TdButton>
