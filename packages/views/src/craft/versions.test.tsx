@@ -96,14 +96,11 @@ test('the restore confirmation dialog states the source and the no-overwrite con
     restoreBtn.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  await act(async () => {
-    restoreBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
   const dialog = document.querySelector('.wk-craft-restore-dialog .t-dialog');
   assert.ok(dialog, `the TDesign confirmation dialog opens; DOM=${document.body.innerHTML}`);
   assert.equal(dialog.getAttribute('role'), 'dialog');
   assert.equal(dialog.getAttribute('aria-modal'), 'true');
+  assert.equal(dialog.getAttribute('aria-label') ?? document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent, '从此版本继续？', 'dialog has its visible localized title as its accessible name');
   assert.ok(dialog.querySelector('button[aria-label="关闭"]'), 'the dialog close control is a native button');
   const dialogButtons = [...dialog.querySelectorAll('button')];
   assert.ok(dialogButtons.length >= 3, 'dialog offers close, cancel, and confirm controls');

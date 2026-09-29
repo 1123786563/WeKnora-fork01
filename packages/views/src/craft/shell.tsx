@@ -95,7 +95,7 @@ export function CraftDrawer({ open, title, onClose, children }: {
   onClose: () => void;
   children: ReactNode;
 }) {
-  useTDesignOverlayA11y(open, '.wk-craft-drawer .t-drawer__content-wrapper');
+  useTDesignOverlayA11y(open, '.wk-craft-drawer .t-drawer__content-wrapper', title);
   return (
     <Drawer
       visible={open}

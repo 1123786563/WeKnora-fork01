@@ -81,6 +81,7 @@ test('CraftDrawer closes on Escape and restores the opener focus', async () => {
   assert.ok(panel instanceof dom.window.HTMLElement, 'TDesign drawer panel rendered');
   assert.equal(panel.getAttribute('role'), 'dialog');
   assert.equal(panel.getAttribute('aria-modal'), 'true');
+  assert.equal(panel.getAttribute('aria-label') ?? document.getElementById(panel.getAttribute('aria-labelledby') ?? '')?.textContent, '来源', 'drawer has the visible localized title as its accessible name');
   assert.ok(panel.querySelector('button[aria-label="Close"]'), 'the overlay close control is a native button');
   const last = [...panel.querySelectorAll('button')].at(-1);
   assert.ok(last);

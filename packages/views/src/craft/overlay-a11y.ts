@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Adds the missing modal keyboard contract around TDesign's supported overlay. */
-export function useTDesignOverlayA11y(open: boolean, panelSelector: string): void {
+export function useTDesignOverlayA11y(open: boolean, panelSelector: string, accessibleName: string): void {
   useEffect(() => {
     if (!open) return undefined;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -13,6 +13,7 @@ export function useTDesignOverlayA11y(open: boolean, panelSelector: string): voi
       if (!panel) return false;
       panel.setAttribute('role', 'dialog');
       panel.setAttribute('aria-modal', 'true');
+      panel.setAttribute('aria-label', accessibleName);
       if (!panel.hasAttribute('tabindex')) panel.tabIndex = -1;
       panel.focus();
       return true;
@@ -41,5 +42,5 @@ export function useTDesignOverlayA11y(open: boolean, panelSelector: string): voi
       document.removeEventListener('keydown', onKeyDown);
       opener?.focus();
     };
-  }, [open, panelSelector]);
+  }, [open, panelSelector, accessibleName]);
 }

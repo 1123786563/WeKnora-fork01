@@ -36,8 +36,9 @@ export interface CraftVersionsDrawerProps {
 
 export function CraftVersionsDrawer(props: CraftVersionsDrawerProps) {
   const [confirming, setConfirming] = useState<CraftVersionFact | null>(null);
-  useTDesignOverlayA11y(confirming !== null, '.wk-craft-restore-dialog .t-dialog');
   const zh = props.locale === 'zh';
+  const restoreTitle = zh ? '从此版本继续？' : 'Continue from this version?';
+  useTDesignOverlayA11y(confirming !== null, '.wk-craft-restore-dialog .t-dialog', restoreTitle);
 
   const eligibilityOf = (version: CraftVersionFact) =>
     restoreEligibility(props.selection, version.id, { canWrite: props.canWrite, hasActiveRun: props.hasActiveRun });
@@ -96,7 +97,7 @@ export function CraftVersionsDrawer(props: CraftVersionsDrawerProps) {
 
       <Dialog
         visible={confirming !== null}
-        header={zh ? '从此版本继续？' : 'Continue from this version?'}
+        header={restoreTitle}
         onClose={() => setConfirming(null)}
         closeOnEscKeydown
         closeBtn={<button type="button" aria-label={zh ? '关闭' : 'Close'}>×</button>}
