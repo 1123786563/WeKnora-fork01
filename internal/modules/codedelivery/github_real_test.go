@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -84,9 +85,35 @@ func realLoopBaselineSHA(t *testing.T, client GitHubClient) string {
 	require.NoError(t, err)
 	head, exists, err := client.BranchHead(context.Background(), info.DefaultBranch)
 	require.NoError(t, err)
-	require.True(t, exists, "the default branch must exist on the real repo")
+	require.True(t, exists, "default branch %q is absent; refusing to deliver from a missing baseline", info.DefaultBranch)
 	require.Len(t, head, 40)
 	return head
+}
+
+// materializeRealLoopBaseline mirrors a checkout: every baseline blob is
+// written before the test adds its one new marker file. This keeps the real
+// delivery diff limited to that marker instead of accidentally deleting the
+// repository's existing files.
+func materializeRealLoopBaseline(t *testing.T, client GitHubClient, baselineSHA, repoDir string) {
+	t.Helper()
+	treeSHA, err := client.CommitTree(context.Background(), baselineSHA)
+	require.NoError(t, err)
+	entries, err := client.Tree(context.Background(), treeSHA)
+	require.NoError(t, err)
+	paths := make([]string, 0, len(entries))
+	for path := range entries {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		clean := filepath.Clean(filepath.FromSlash(path))
+		require.True(t, filepath.IsLocal(clean), "GitHub tree path must stay inside the test repository: %q", path)
+		content, err := client.Blob(context.Background(), entries[path])
+		require.NoError(t, err)
+		full := filepath.Join(repoDir, clean)
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, content, 0o644))
+	}
 }
 
 // TestGitHubRealRecoveryLoopNoRepeatPush 需要 WEKNORA_GITHUB_TEST_TOKEN（对
@@ -122,17 +149,23 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 		TenantID: 7, AuthVersion: 1,
 	}).Error)
 
+	factory := NewGitHubClientFactory(httpClientDefault(), GitHubAPIBaseURL)
+	client := factory(token, repo)
+	baseline := realLoopBaselineSHA(t, client)
+	info, err := client.Repository(context.Background())
+	require.NoError(t, err)
+
 	root := t.TempDir()
 	sessionID := fmt.Sprintf("s-real-%d", time.Now().UnixNano())
 	dir := filepath.Join(root, repo.Owner, repo.Name)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("# real loop\n"), 0o644))
+	materializeRealLoopBaseline(t, client, baseline, dir)
+	marker := filepath.Join(dir, "weknora-real-recovery-loop.txt")
+	_, err = os.Stat(marker)
+	require.True(t, os.IsNotExist(err), "the marker must be a new path so the baseline remains untouched")
+	require.NoError(t, os.WriteFile(marker, []byte("recovery loop marker\n"), 0o644))
 	workspace, err := NewLocalWorkspaceSource(root)
 	require.NoError(t, err)
-
-	factory := NewGitHubClientFactory(httpClientDefault(), GitHubAPIBaseURL)
-	client := factory(token, repo)
-	baseline := realLoopBaselineSHA(t, client)
 
 	actionStore := appconnectorrepo.NewActionStore(db)
 	store := deliveryrepo.NewDeliveryStore(db)
@@ -162,6 +195,10 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryDelivered), view.State)
 	require.NotEmpty(t, view.PRURL)
+	receipt, err := client.PullRequestForHead(ctx, repo.Owner+":"+view.Branch, info.DefaultBranch)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.True(t, receipt.Draft, "the real PR must remain a draft")
 
 	// The duplicate dispatch must be refused by the state machine — no
 	// second push leaves the process.
