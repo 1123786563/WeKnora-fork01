@@ -385,6 +385,44 @@ test('M3: malformed successful preference receipt is definite and does not persi
   assert.equal(blocked.status, 'invalid_receipt'); assert.equal(prompts, 0);
 });
 
+test('T16-1: invalid receipt blocks the sync persistence seam until a verified profile refresh clears it', async () => {
+  let writeCount = 0;
+  await freshLogin({
+    'POST /api/v1/career/act': call => { writeCount++; stub.succeed(call, { data: writeCount === 1 ? { kind: 'confirmed', requestId: call.options.data.requestId } : confirmedAct('notifications.push', 'subscribed', 4) }); },
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 4, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: 4, facts: [], proposals: [] } }),
+  });
+  await assert.rejects(rulesPage.persistPushPreference(3), error => error.code === 'contract_violation');
+  const writes = () => careerCall('/act').filter(call => (call.options.method ?? 'GET') === 'POST');
+  assert.equal(writes().length, 1);
+  await assert.rejects(rulesPage.persistPushPreference(3), error => error.code === 'invalid_receipt');
+  assert.equal(writes().length, 1, 'sync cannot submit a second write while the successful receipt is invalid');
+  const refreshed = await career.refreshCareer();
+  assert.equal(refreshed.revision, 4, 'the profile refresh supplies a verified current profile');
+  rulesPage.clearPushReceiptInvalidAfterProfileRefresh(runtime.auth.scope.capture());
+  await rulesPage.persistPushPreference(4);
+  assert.equal(writes().length, 2, 'a verified profile refresh reopens the sync path');
+});
+
+test('T16-2: opt-out invalidates old authorization before a malformed committed-success receipt', async () => {
+  await freshLogin({
+    'POST /api/v1/career/act': call => stub.succeed(call, { data: { kind: 'confirmed', requestId: call.options.data.requestId } }),
+  });
+  const stamp = runtime.auth.scope.capture();
+  let marker = true;
+  await assert.rejects(rulesPage.runPushOptOut(stamp, captured => runtime.auth.scope.isCurrent(captured), () => { marker = false; }, () => platform.setPushSubscription('unsubscribed', 3)), error => error.code === 'contract_violation');
+  assert.equal(marker, false, 'the previous accepted authorization cannot survive an uncertain opt-out response');
+  assert.equal(rulesPage.hasInvalidPushReceipt(stamp), true, 'an undecodable successful response requires profile fact recovery');
+  let prompts = 0;
+  const result = await rulesPage.runPushSubscribeFlow({ stamp, isCurrent: captured => runtime.auth.scope.isCurrent(captured), hasPendingWrite: () => false, hasInvalidReceipt: captured => rulesPage.hasInvalidPushReceipt(captured),
+    marker: () => marker, setMarker: () => { marker = true; }, clearMarker: () => { marker = false; }, requestAuthorization: async () => { prompts++; return { status: 'accepted', templateIds: ['TMPL-1'], delivered: false }; },
+    revision: () => undefined, persist: async () => {},
+  });
+  assert.equal(result.status, 'invalid_receipt');
+  assert.equal(prompts, 0, 'profile fact recovery must happen before another authorization or write');
+  assert.equal(careerCall('/act').filter(call => (call.options.method ?? 'GET') === 'POST').length, 1, 'the malformed success was not retried');
+});
+
 test('C2: a rejected subscription keeps the in-station todos readable — no fake delivery', async () => {
   await freshLogin({
     'GET /api/v1/career/reminders': call => stub.succeed(call, { data: { reminders: [reminderView()] } }),
