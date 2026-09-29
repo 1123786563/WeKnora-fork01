@@ -123,6 +123,44 @@
 
 **Acceptance:** History remains loadable for underfilled viewports and invalid image fallback follows active locale.
 
+## Task 8: Make document move destinations and mode choices keyboard-operable
+
+**Dependency:** Follow-up to Task 1 review finding `UI-R2-DOC-01`; continue in the Task 1 worktree after its initial commit.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, focused document action tests, and narrowly scoped CSS only if needed.
+
+**Consumes / produces:** Existing move destination and move-mode callbacks. Replace click-only destination and mode `div`s with native buttons and radio/checkbox controls as appropriate; preserve styling and selected state. Tests must focus a destination, invoke it through keyboard semantics, and assert that the existing callback receives the selected destination and mode.
+
+**Steps:**
+
+- [ ] Add failing interaction tests for keyboard selection of a destination and each move mode, plus the resulting callback payload.
+- [ ] Implement native controls and accessible selected/checked state, preserving the menu's existing pointer behavior.
+- [ ] Run the focused KnowledgeDocumentsPage tests, document package typecheck, and `git diff --check`; perform a browser keyboard smoke if the jsdom environment cannot emulate native button activation.
+- [ ] Commit a repair on the Task 1 branch and report RED/GREEN evidence plus any browser-only evidence.
+
+**Acceptance:** Every choice needed to finish a document move can be opened, selected and confirmed without a pointer.
+
+## Task 9: Preserve Agent Editor section button layout and verify real keyboard semantics
+
+**Dependency:** Follow-up to Task 3 review finding `UI-R2-AGENT-01`; continue in the Task 3 worktree after its initial commit.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/agents/AgentEditorModal.tsx`, focused Agent Editor tests, and the modal's scoped CSS only.
+
+**Consumes / produces:** Native button section navigation from Task 3. Reset button-specific border/background/font/padding/width properties to the prior `.nav-item` appearance without removing focus indication or disabled/selected state. Add an interaction check using a keyboard-capable test helper when available; otherwise document that jsdom cannot synthesize browser default activation and run a real browser keyboard smoke.
+
+**Steps:**
+
+- [ ] Add a test for section focusability, selected semantics, and Enter/Space activation; capture the current style regression where supported by the test harness.
+- [ ] Restore the full-width navigation appearance with scoped button reset styles while preserving visible focus.
+- [ ] Run focused Agent Editor tests, Web typecheck, and `git diff --check`; perform browser keyboard/visual smoke if the unit harness cannot exercise native activation.
+- [ ] Commit a repair on the Task 3 branch and report evidence.
+
+**Acceptance:** Keyboard activation switches sections, and native button styling no longer changes the modal's established navigation layout.
+
 ## Parallelism and integration
 
 Tasks 1–7 have non-overlapping production file ownership and isolated test/artifact paths; they may be implemented concurrently from the same integration checkpoint. Task 5 owns two settings files with no overlap elsewhere. Integrate by task number only after task-specific validation and independent review; then run the complete relevant Web and views test/typecheck gates. No task may edit the original issue30-sweep worktree.
