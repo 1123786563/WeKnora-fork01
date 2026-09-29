@@ -688,7 +688,7 @@ export interface MobileCodeDeliveryRemote {
 
 错误形态约定（Task 5 翻译消费）：409 以 ApiError 双形状抛出（顶层 `.status`/`.code`，或替身 `.body.code`），`code === 'code_delivery_state_conflict'`。
 
-- [ ] **Step 1: 写失败测试（terminal 面钉死）**
+- [x] **Step 1: 写失败测试（terminal 面钉死）**
 
 新建 `packages/api-client/src/sandbox/terminal-surface.test.ts`：
 
@@ -710,7 +710,7 @@ test('the terminal api surface is ticket-issue only — no input or write channe
 Run: `pnpm exec tsx --test packages/api-client/src/sandbox/terminal-surface.test.ts`
 Expected: PASS（现状即满足——钉死性测试，同 Task 3 语义；若 FAIL 说明面已被污染，停下核查）。
 
-- [ ] **Step 2: 写失败测试（恢复写方法）**
+- [x] **Step 2: 写失败测试（恢复写方法）**
 
 在 `packages/api-client/src/mobile/code-delivery.test.ts` 追加（复用文件内既有 `okDeliveryWire`/`fakeRequest`）：
 
@@ -745,16 +745,16 @@ test('a 409 state conflict rejects with the ApiError shape intact for the recove
 Run: `pnpm exec tsx --test packages/api-client/src/mobile/code-delivery.test.ts`
 Expected: FAIL（`remote.dispatchDelivery is not a function`）。
 
-- [ ] **Step 3: 实现两个恢复方法**
+- [x] **Step 3: 实现两个恢复方法**
 
 在 `packages/api-client/src/mobile/code-delivery.ts` 中：接口 `MobileCodeDeliveryRemote` 追加上述两方法；把既有 `delivery()` 内的 envelope→record 解析提取为私有 helper `deliveryRecordOf(response: unknown): CodeDeliveryRecord`（success 信封 + `data.delivery` + `parseCodeDeliveryRecord`，逻辑逐字搬移）；两个新方法 POST 对应路径后经同一 helper 返回（404→null 语义**不适用**于恢复面——恢复目标不存在是错误，照常 reject）。请求体为空对象 `{}`（服务端 handler 不读 body）。
 
-- [ ] **Step 4: 运行测试验证 GREEN**
+- [x] **Step 4: 运行测试验证 GREEN**
 
 Run: `pnpm exec tsx --test packages/api-client/src/sandbox/terminal-surface.test.ts packages/api-client/src/mobile/code-delivery.test.ts`
 Expected: 全部 PASS——`code-delivery.test.ts` 既有 4 项 + 新 3 项，加 `terminal-surface.test.ts` 1 项，两文件合计 8 项。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/api-client/src/sandbox/terminal-surface.test.ts packages/api-client/src/mobile/code-delivery.ts packages/api-client/src/mobile/code-delivery.test.ts
@@ -1152,7 +1152,7 @@ git commit -m "feat(mobile): delivery recovery action on the task detail receipt
 
 **边界声明（写进测试注释）**：真实平台无法注入「PR 创建确定性失败」，因此真实部分成功（pushed）闭环不可确定性制造——该分支的最高稳定 Interface 证据是 Task 2 的 wire 契约 e2e（`github_wire_test.go` 钉合真实 API 形状）；本测试覆盖真实环境可确定性的部分：完整真实交付→delivered→重复 dispatch 被服务端状态机拒绝（HTTP 409）→读面幂等。测试会在真实仓库留下任务分支与草稿 PR（`weknora/task/<session>` 前缀），**必须使用专用测试仓库**，注释中写明。
 
-- [ ] **Step 1: 写测试（追加到 `github_real_test.go`；文件头 import 补 `"context"`/`"fmt"`/`"path/filepath"`/`"time"` 与 `appconnectorrepo`/`appconnectorsvc`/`deliveryrepo`/`"gorm.io/driver/sqlite"`/`"gorm.io/gorm"`/`"gorm.io/gorm/logger"`——既有 import 仅 context/os/testing/require）**
+- [x] **Step 1: 写测试（追加到 `github_real_test.go`；文件头 import 补 `"context"`/`"fmt"`/`"path/filepath"`/`"time"` 与 `appconnectorrepo`/`appconnectorsvc`/`deliveryrepo`/`"gorm.io/driver/sqlite"`/`"gorm.io/gorm"`/`"gorm.io/gorm/logger"`——既有 import 仅 context/os/testing/require）**
 
 ```go
 // realLoopConnections mirrors fixtureConnections (service_prepare_test.go:41)
@@ -1288,17 +1288,17 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行确认 blocked-env skip 形态**
+- [x] **Step 2: 运行确认 blocked-env skip 形态**
 
 Run: `go test ./internal/modules/codedelivery/ -run 'TestGitHubRealRecoveryLoopNoRepeatPush' -count=1 -v`
 Expected: SKIP（`WEKNORA_GITHUB_TEST_TOKEN/.../WEKNORA_GITHUB_TEST_WRITABLE not set (blocked-env)`）——本环境无真实凭据，如实 skip；`go vet` 级编译通过。
 
-- [ ] **Step 3: 编译与邻近回归**
+- [x] **Step 3: 编译与邻近回归**
 
 Run: `go test ./internal/modules/codedelivery/ -count=1`
 Expected: PASS（既有全部测试 + 新增 1 skip）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/modules/codedelivery/github_real_test.go
