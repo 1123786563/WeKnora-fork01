@@ -106,9 +106,10 @@ test('assembly: a response landing after a scope change is discarded (SCOPE_CHAN
     'GET /api/v1/execution-targets': () => {/* 挂起：等切换后再响应 */}
   });
   const pending = runtime.client.request({ method: 'GET', path: '/api/v1/execution-targets' });
-  runtime.auth.logout(); // 注销/切空间使旧 scope 失效
+  const logout = runtime.auth.logout(); // 注销/切空间使旧 scope 失效
   const call = stub.lastCall('request');
   stub.succeed(call, { data: { success: true, data: [{ id: 'x', kind: 'platform', state: 'active' }] } });
+  await logout;
   // 中止先于响应到达：表现为 CANCELLED（已中止）或 SCOPE_CHANGED（丢弃），都证明旧数据未回写。
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
 });
@@ -385,13 +386,18 @@ test('assembly: unknown signed-download 401 body defaults to denial without app-
 
 test('assembly: a scope switch during transfer prevents opening and any private copy', async () => {
   await freshLogin();
-  stub.use(() => {});
+  stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname === '/api/v1/auth/logout') {
+      stub.succeed(call, { data: { success: true } });
+    }
+  });
   const files = await import('../src/platform/files.ts');
   const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=old', 'report.pdf');
   await new Promise(resolve => setImmediate(resolve));
   const download = stub.lastCall('downloadFile');
-  runtime.auth.logout();
+  const logout = runtime.auth.logout();
   stub.succeed(download, { tempFilePath: '/tmp/old-scope.pdf' });
+  await logout;
   await assert.rejects(pending, /SCOPE_CHANGED/);
   assert.equal(stub.state.openedDocuments.length, 0);
   assert.deepEqual(stub.state.copies, [], 'scope 失效后不得创建任何私有副本');
@@ -403,8 +409,9 @@ test('assembly: scope change while obtaining a grant prevents an old-scope downl
   const pending = workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 });
   await new Promise(resolve => setImmediate(resolve));
   const grant = stub.lastCall('request');
-  runtime.auth.logout();
+  const logout = runtime.auth.logout();
   stub.succeed(grant, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=old`, expires_at: '2026-09-24T00:15:00Z' } } });
+  await logout;
   await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
   assert.equal(stub.state.calls.some(call => call.kind === 'downloadFile'), false);
 });
