@@ -62,5 +62,5 @@ xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator \
 
 APP="$IOS/build/Build/Products/Release-iphonesimulator/WeKnora.app"
 test -d "$APP" || { echo "expected Release app missing: $APP" >&2; exit 1; }
-python3 "$MOBILE/scripts/verify-ios-framework-closure.py" "$APP"
+python3 "$MOBILE/scripts/verify-ios-framework-closure.py" "$APP" "$IOS/Podfile.properties.json"
 echo "RELEASE_APP=$APP"

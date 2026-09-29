@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 const script = join(import.meta.dirname, '../scripts/verify-ios-framework-closure.py');
-function fixture(loads: Record<string, string>, failBinary?: string) {
+function fixture(loads: Record<string, string>, failBinary?: string, mode: 'source' | 'precompiled' = 'source') {
   const root = mkdtempSync(join(tmpdir(), 'ios-framework-closure-'));
   const app = join(root, 'WeKnora.app');
   const frameworks = join(app, 'Frameworks');
@@ -14,6 +14,11 @@ function fixture(loads: Record<string, string>, failBinary?: string) {
   const appBinary = join(app, 'WeKnora');
   writeFileSync(appBinary, 'fixture');
   writeFileSync(join(app, 'Info.plist'), plist('WeKnora'));
+  const propertiesPath = join(root, 'Podfile.properties.json');
+  writeFileSync(propertiesPath, JSON.stringify({
+    'ios.buildReactNativeFromSource': mode === 'source' ? 'true' : 'false',
+    EXPO_USE_PRECOMPILED_MODULES: mode === 'source' ? 'false' : 'true',
+  }));
   for (const name of ['Alpha', 'Beta']) {
     const dir = join(frameworks, `${name}.framework`);
     mkdirSync(dir);
@@ -25,14 +30,14 @@ function fixture(loads: Record<string, string>, failBinary?: string) {
   const fakeOtool = join(bin, 'otool');
   writeFileSync(fakeOtool, `#!/bin/sh\nname=$(basename "$2")\nif [ "$name" = "${failBinary ?? '__none__'}" ]; then echo fake-failure >&2; exit 9; fi\necho "$2:"\ncase "$name" in WeKnora) deps='${loads.app ?? ''}' ;; Alpha) deps='${loads.Alpha ?? ''}' ;; Beta) deps='${loads.Beta ?? ''}' ;; esac\n[ -z "$deps" ] || printf '    %s\\n' "$deps"\n`);
   chmodSync(fakeOtool, 0o755);
-  return { root, app, bin, appBinary };
+  return { root, app, bin, appBinary, propertiesPath };
 }
 function plist(executable: string) {
   // XML plist accepted by Python's standard plistlib.
   return `<?xml version="1.0"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>${executable}</string></dict></plist>`;
 }
 function run(f: ReturnType<typeof fixture>) {
-  const result = spawnSync('python3', [script, f.app], { encoding: 'utf8', env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}` } });
+  const result = spawnSync('python3', [script, f.app, f.propertiesPath], { encoding: 'utf8', env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}` } });
   return { ...result, output: `${result.stdout}${result.stderr}` };
 }
 
@@ -72,8 +77,64 @@ test('production checker rejects framework executable symlinks escaping the app'
     require('node:fs').symlinkSync(join(f.root, 'outside'), join(f.app, 'Frameworks/Alpha.framework/Alpha'));
     const result = run(f);
     assert.notEqual(result.status, 0);
-    assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_APP/);
+    assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_BUNDLE/);
   } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker rejects framework executable declared in a sibling bundle', () => {
+  const f = fixture({ app: '@rpath/Alpha.framework/Alpha' });
+  try {
+    writeFileSync(join(f.app, 'Frameworks/Alpha.framework/Info.plist'), plist('../Beta/Alpha'));
+    writeFileSync(join(f.app, 'Frameworks/Beta.framework/Alpha'), 'sibling executable');
+    const result = run(f);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /FRAMEWORK_BINARY_OUTSIDE_BUNDLE/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker accepts a versioned framework load path resolving to CFBundleExecutable', () => {
+  const f = fixture({ app: '@rpath/Alpha.framework/Versions/A/Alpha' });
+  try {
+    const versioned = join(f.app, 'Frameworks/Alpha.framework/Versions/A');
+    mkdirSync(versioned, { recursive: true });
+    writeFileSync(join(versioned, 'Alpha'), 'versioned executable');
+    rmSync(join(f.app, 'Frameworks/Alpha.framework/Alpha'));
+    require('node:fs').symlinkSync('Versions/A/Alpha', join(f.app, 'Frameworks/Alpha.framework/Alpha'));
+    const result = run(f);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /FRAMEWORK_CLOSURE_OK/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker rejects a mismatched requested framework binary path', () => {
+  const f = fixture({ app: '@rpath/Alpha.framework/OtherBinary' });
+  try {
+    const result = run(f);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /MISSING_FRAMEWORK_DEPENDENCY/);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('production checker reports mode from generated properties and rejects missing or contradictory values', () => {
+  const source = fixture({ app: '' });
+  try { assert.match(run(source).output, /FRAMEWORK_MODE=source-expo-modules/); }
+  finally { rmSync(source.root, { recursive: true, force: true }); }
+  const precompiled = fixture({ app: '' }, undefined, 'precompiled');
+  try { assert.match(run(precompiled).output, /FRAMEWORK_MODE=precompiled-expo-modules/); }
+  finally { rmSync(precompiled.root, { recursive: true, force: true }); }
+  const invalid = fixture({ app: '' });
+  try {
+    writeFileSync(invalid.propertiesPath, JSON.stringify({ 'ios.buildReactNativeFromSource': 'false', EXPO_USE_PRECOMPILED_MODULES: 'false' }));
+    assert.match(run(invalid).output, /FRAMEWORK_MODE_PROPERTIES_CONTRADICTORY/);
+    writeFileSync(invalid.propertiesPath, JSON.stringify({}));
+    assert.match(run(invalid).output, /FRAMEWORK_MODE_PROPERTIES_INVALID/);
+    const worklets = join(invalid.app, 'Frameworks/ExpoModulesWorklets.framework');
+    mkdirSync(worklets);
+    writeFileSync(join(worklets, 'ExpoModulesWorklets'), 'binary');
+    writeFileSync(join(worklets, 'Info.plist'), plist('ExpoModulesWorklets'));
+    writeFileSync(invalid.propertiesPath, JSON.stringify({ 'ios.buildReactNativeFromSource': 'true', EXPO_USE_PRECOMPILED_MODULES: 'false' }));
+    assert.match(run(invalid).output, /FRAMEWORK_MODE_MISMATCH/);
+  } finally { rmSync(invalid.root, { recursive: true, force: true }); }
 });
 
 test('production checker fails closed when otool exits unsuccessfully', () => {

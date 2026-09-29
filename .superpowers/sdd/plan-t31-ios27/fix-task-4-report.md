@@ -54,3 +54,16 @@ Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r1-brief.md`; repaired fi
 - Full outer Release log is persisted as tracked `xcodebuild-release-final.log.gz`; uncompressed SHA-256 `46f47407fb270ca1f8361a0442d32c5cbe184eaf7b1ed928420aa8afd1b3de83`, compressed SHA-256 `4d182b68807f739504742a13bb1dfb3c62208f0629d36eb6184da41ce8fa435d`. Original T39 tracked log remains SHA-256 `12a27ed4f698074356c5e1d7722b5d7af78b2d60b5cdf9e9856e44e37b7bb71e`.
 - Full mobile suite `pnpm --filter @weknora/mobile test`: 306 total, 292 pass, 14 opt-in skips, 0 failures. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
 - Repair implementation commit: `c4c16ad6cef751cec16e1c5bf22f694f3a83679e`.
+
+## Review repair round 2 addendum
+
+Authority: `.superpowers/sdd/plan-t31-ios27/fix-task-4-r2-brief.md`; addresses findings R4-R1-1 and R4-R1-2 in `.superpowers/sdd/plan-t31-ios27/fix-task-4-r1-review.md`. No native build was run and the evidence set was not modified.
+
+- Framework executable declarations must resolve inside their own framework bundle. For every `@rpath/<Framework>.framework/<requested-path>` load, the requested path is resolved from that framework bundle and must be the same regular file as its resolved `CFBundleExecutable`. This accepts valid `Versions/A/<Executable>` paths while rejecting sibling bundle declarations, absent/mismatched paths, and symlinks outside the bundle.
+- The checker now receives the generated `Podfile.properties.json` as its second argument from the production Release script. It requires recognized string values for `ios.buildReactNativeFromSource` and `EXPO_USE_PRECOMPILED_MODULES`, rejects missing or contradictory combinations, reports the configured mode, and rejects `ExpoModulesWorklets.framework` in source mode.
+- Integration cases exercise the production Python checker with fake `otool`: complete closure, app direct dependency missing, framework binary missing despite directory, symlink escaping the app, sibling executable, valid versioned load path, requested binary mismatch, source/precompiled mode, missing/contradictory mode properties, source mode containing precompiled Worklets, and `otool` failure.
+- Focused command from `apps/mobile`: `node --import tsx --test src/ios-framework-closure.test.ts src/scripts/ios-acceptance-scripts.test.ts` — 12/12 passed.
+- Retained app check: `python3 apps/mobile/scripts/verify-ios-framework-closure.py apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app apps/mobile/ios/Podfile.properties.json` → `FRAMEWORK_MODE=source-expo-modules`, `FRAMEWORK_CLOSURE_OK`. The executable SHA-256 remains `8d2141d06f3b6f0d185be79dff122e7fd0d102e901d72862bed7dec200e073e4`.
+- Full suite: `pnpm --filter @weknora/mobile test` — 310 total, 296 pass, 14 opt-in skips, 0 fail. `pnpm --filter @weknora/mobile typecheck`, `pnpm --filter @weknora/mobile exec expo install --check`, and `git diff --check` all pass.
+- The additional `apps/mobile/src/scripts/ios-acceptance-scripts.test.ts` change asserts the Release script passes both the `.app` and generated Podfile properties to the checked-in production checker.
+- Repair commit: pending.
