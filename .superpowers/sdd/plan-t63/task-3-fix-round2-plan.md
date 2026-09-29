@@ -17,3 +17,7 @@ Source: independent review of round-1 repair package `.superpowers/sdd/plan-t63/
 ## Review focus
 
 No lifecycle transition may commit between eligibility guard and adoption insertion. Test must control interleaving deterministically and observe final listing/release/adoption state. Do not rely on pre-transition sequential checks or sleeps.
+
+## Required scope amendment — proposal acceptance eligibility
+
+The full round-1 independent review also found a second high F1 gap: `AcceptUpgradeProposal` creates a Variant, then `TransitionProposal` commits accepted state without an atomic listing/release eligibility check. The lifecycle transition can land between those operations. Extend this repair task to `internal/application/repository/agent_upgrade.go`, its repository/service tests, and only the minimal interface signature if required. In the same DB transaction as proposal state CAS, load the tenant-scoped proposal's adoption/listing and target release, acquire the same guarded row writes/locks used by Unlist/Deprecate, and fail with existing conflict semantics if no longer eligible. Preserve the accepted-variant reference behavior and do not expand to merging variant creation into this transaction (the reviewed plan explicitly allows benign orphan draft variants). Add a deterministic test that gates after Variant creation and before proposal transition, commits Unlist or Deprecate, then proves proposal remains open/not accepted. Include this path in the round-2 report/package and review focus. Update owned-files list accordingly.
