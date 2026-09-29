@@ -55,7 +55,7 @@ Root timeline cross-reference events for #73–#105 were reported on 2026-09-20;
 
 ## Root retry-safety comment
 
-Root comment [5785844972](https://github.com/1123786563/WeKnora-fork01/issues/72#issuecomment-5785844972) is dated 2026-09-22 in the source audit (an exact time of day was not supplied). It summarizes the retry-safety context: retain stable `operationId`; classify external outcomes as `CONFIRMED`, `ABSENT`, or `UNKNOWN`; and treat `UNKNOWN` as no retry permission until authoritative reconciliation. It reinforces existing retry/idempotency context. It does not alter the approved Spec, DAG, or ruling register and adds no graph edge.
+Root comment [5785844972](https://github.com/1123786563/WeKnora-fork01/issues/72#issuecomment-5785844972) has API `created_at=2026-09-22T23:12:44Z` (2026-09-23 07:12:44 CST), verified by read-only `GET /repos/1123786563/WeKnora-fork01/issues/comments/5785844972` during Fix 1 review. It summarizes the retry-safety context: retain stable `operationId`; classify external outcomes as `CONFIRMED`, `ABSENT`, or `UNKNOWN`; and treat `UNKNOWN` as no retry permission until authoritative reconciliation. It reinforces existing retry/idempotency context. It does not alter the approved Spec, DAG, or ruling register and adds no graph edge.
 
 ## Sanitized live process, Paseo, and worktree observation
 
@@ -63,24 +63,24 @@ The sanitized process audit was observed 2026-09-30 01:23 Asia/Shanghai. Six req
 
 `paseo ls --json` returned one non-archived agent: ID `103c8a15-f69f-428c-8b00-37e8e2f79b6e` (short ID `103c8a1`), `拉取最新代码`, provider `claude/glm-5.3`, idle, cwd `~/trea/deepseek-harness`. No mapping to Issue #72 is established. No other non-archived agent was returned at that observation; archived or external sessions are not ruled out.
 
-The supplied registry snapshot listed these #72-named worktrees and HEAD/branch values:
+The supplied registry snapshot listed these #72-named worktrees and HEAD/branch values. A fresh read-only status observation was captured at 2026-09-30 01:38:39 CST (17:38:39 UTC); statuses below are names-only, and dirty worktree contents were not inspected. The documentation worktree was clean immediately before the ignored SDD report was touched. These statuses do not establish task ownership, release, or readiness.
 
-| Worktree | HEAD | Branch/state |
-|---|---|---|
-| `~/.codex/worktrees/issue72-r8-ignore/WeKnora-fork01` | `85fd67f7f8be9d39d7f9f30b9a439524866fcffe` | `codex/issue-72-r8-runbook` |
-| `~/.codex/worktrees/issue72-r8-late-success/WeKnora-fork01` | `32aadf55ca19a08e6ae845431024c753d54fe5bb` | `codex/issue-72-r8-task2` |
-| `~/.codex/worktrees/issue72-r8-python/WeKnora-fork01` | `d907ceb04604f5a98dd1c1e71036ad8bf9fdc700` | `codex/issue-72-r8-task2-red` |
-| `~/.codex/worktrees/issue72-t15-contract/WeKnora-fork01` | `84d17f128ab343435bf2382c3999007580602b91` | detached |
-| `~/.paseo/worktrees/144ixsa6/codex-issue-72-84-full-review-fix-r1` | `2a10570cf87cb49aefd938d473709495441fdff8` | `codex/issue-72-84-full-review-fix-r1` |
-| `~/.paseo/worktrees/144ixsa6/issue-72-dimension-owner-ruling` | `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` | `codex/issue-72-dimension-owner-ruling` |
-| `.worktrees-issue72/issue-82-t9-fixture` | `d8d21cd967c94c09d32c34a2981904758f442330` | `codex/issue-72-82-t9-test-fixture-r1` |
-| `.worktrees-issue72/issue-84` | `dfdf803543d7e710192c5c24ff6bce91262675d6` | `codex/issue-72-lago-84` |
-| `.worktrees-issue72/issue-85` | `da4b544dbec0d3c759ee4b522abd93c16926aaf7` | `codex/issue-72-lago-85` |
-| `.worktrees-issue72/issue-86` | `d65b9c4ecfdbf7f1c0af6b21f600d029792ff600` | `codex/issue-72-lago-86` |
-| `.worktrees-issue72/lago-int` | `8329b85d4dfff301d03f94406dfc829d87cb5b26` | `codex/issue-72-lago` |
-| `.worktrees-issue72/parallel-refresh-20260929` | `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce` | `codex/issue-72-parallel-refresh-20260929` |
+| Worktree | HEAD | Branch/state | Status at 2026-09-30 01:38:39 CST |
+|---|---|---|---|
+| `~/.codex/worktrees/issue72-r8-ignore/WeKnora-fork01` | `85fd67f7f8be9d39d7f9f30b9a439524866fcffe` | `codex/issue-72-r8-runbook` | dirty (untracked runbook) |
+| `~/.codex/worktrees/issue72-r8-late-success/WeKnora-fork01` | `32aadf55ca19a08e6ae845431024c753d54fe5bb` | `codex/issue-72-r8-task2` | clean |
+| `~/.codex/worktrees/issue72-r8-python/WeKnora-fork01` | `d907ceb04604f5a98dd1c1e71036ad8bf9fdc700` | `codex/issue-72-r8-task2-red` | clean |
+| `~/.codex/worktrees/issue72-t15-contract/WeKnora-fork01` | `84d17f128ab343435bf2382c3999007580602b91` | detached | dirty (untracked R7 probe plans) |
+| `~/.paseo/worktrees/144ixsa6/codex-issue-72-84-full-review-fix-r1` | `2a10570cf87cb49aefd938d473709495441fdff8` | `codex/issue-72-84-full-review-fix-r1` | dirty (untracked OCR supplement) |
+| `~/.paseo/worktrees/144ixsa6/issue-72-dimension-owner-ruling` | `bdfa6c4bec3aa25c04ac7598418ee8cb222c120f` | `codex/issue-72-dimension-owner-ruling` | dirty (untracked paseo.json) |
+| `.worktrees-issue72/issue-82-t9-fixture` | `d8d21cd967c94c09d32c34a2981904758f442330` | `codex/issue-72-82-t9-test-fixture-r1` | clean |
+| `.worktrees-issue72/issue-84` | `dfdf803543d7e710192c5c24ff6bce91262675d6` | `codex/issue-72-lago-84` | clean |
+| `.worktrees-issue72/issue-85` | `da4b544dbec0d3c759ee4b522abd93c16926aaf7` | `codex/issue-72-lago-85` | clean |
+| `.worktrees-issue72/issue-86` | `d65b9c4ecfdbf7f1c0af6b21f600d029792ff600` | `codex/issue-72-lago-86` | clean |
+| `.worktrees-issue72/lago-int` | `8329b85d4dfff301d03f94406dfc829d87cb5b26` | `codex/issue-72-lago` | dirty (names only; owner-controlled contents not inspected) |
+| `.worktrees-issue72/parallel-refresh-20260929` | `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce` | `codex/issue-72-parallel-refresh-20260929` | clean immediately before the ignored SDD ledger was touched; not a release signal |
 
-The table is a registry snapshot, not evidence of process ownership. TTY-to-task/worktree mappings remain unknown. Dirty or owner-controlled worktrees must remain untouched; a clean worktree is not a release signal. In this assigned documentation worktree, the observed starting HEAD was `86b6e7ac0e921f7e1d4fd328ce29be3aa12dc6ce`, branch `codex/issue-72-parallel-refresh-20260929`; before this task's edits its only reported status item was the untracked implementation plan. No sibling worktree status was independently refreshed here.
+The table combines the registry HEAD/branch capture and the timestamped names-only status observation; do not treat it as process ownership evidence. TTY-to-task/worktree mappings remain unknown. Preserve dirty or owner-controlled worktrees, and do not infer release from clean status. No dirty sibling contents were inspected.
 
 ## Canonical references and readiness boundaries
 
