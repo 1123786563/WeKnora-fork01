@@ -42,7 +42,7 @@ I compared SHA-256 values for the integration checkout at `8329b85d4` with the i
 | `migrations/sqlite/000110_commercial_fulfillment_exceptions.up.sql` | `ccf238910b2915215b26271a28f0065cef12547f7e54a778b076e984f73a4ee2` |
 | `migrations/sqlite/000110_commercial_fulfillment_exceptions.down.sql` | `6a67323850baac981824e1c9c2f14ad9fcfcb40986fb48c8d940adc612095512` |
 
-The Task 2 report records passing focused/full commercial service tests, handler and router suites, and `git diff --check`; it also explicitly records that PostgreSQL runtime migration verification was unavailable. This verifies Task 2 code integration only. It does not establish whole Issue #84 acceptance, PostgreSQL runtime behavior, or overall #72 completion.
+The initial Task 2 implementation report and validation record package/service/handler/router checks at their recorded checkpoint; fix 1 adds a passing focused and full commercial service run, and fix 2 records another passing focused and full commercial service run against the final fulfillment file hashes listed above. The fix 2 reviewer independently checked the exact final two-file hashes and passed Spec compliance and quality; the validation record identifies commit `aaf0b4960c215f71395c12455b3016df3b6a54f2`. The original report/validation do not alone prove the post-fix files were tested. These records are stored in the Task 2 worktree at `/Users/wuyongjun/.codex/worktrees/issue72-r8-late-success/WeKnora-fork01/.superpowers/sdd/issue-72-ocr-findings-r8/`; they are not copied into the integration worktree. PostgreSQL runtime migration verification remains unavailable. This verifies Task 2 code integration only, not whole Issue #84 acceptance, PostgreSQL runtime behavior, or overall #72 completion.
 
 ## Current gates and settled R-6 choices
 
@@ -52,7 +52,7 @@ The Task 2 report records passing focused/full commercial service tests, handler
 - **Settled R-6 choice 1:** the immutable published Plan Version's explicit Billable Metric-to-dimension mapping selects the unique active subscription owner. Overlap or duplicate declarations fail closed for the affected dimension; uniquely owned dimensions may continue.
 - **Settled R-6 choice 2:** retain `PurchaseService.ensureNoCharges`; charge-bearing paid-plan purchases remain excluded. Do not reopen that path by inference.
 
-The first two bullets above are documented in the R-6 authoritative records and latest R16 amendment; the remaining acceptance and runtime gates remain as recorded in the DAG and Ledger. These are distinct status facts: settled policy is not implementation or runtime proof.
+The two settled R-6 choices above are documented in the R-6 authoritative records and latest R16 amendment; the acceptance and runtime gates remain as recorded in the DAG and Ledger. These are distinct status facts: settled policy is not implementation or runtime proof.
 
 ## Dispatch frontier
 
@@ -63,4 +63,4 @@ The safe next frontier is checkpointing the already path-patched R-6/R16 documen
 - [Issue #72 DAG](issue-72-dag.md) and [Issue #72 execution Ledger](issue-72-execution-ledger.md), integration HEAD `8329b85d4`.
 - [Issue #72 #86 Ledger](issue-72-ledger-86.md), [#87 R16 plan](issue-72-plan-87-r16.md), [R-6 ruling log](issue-72-user-rulings.md), [R-6 implementation plan](issue-72-ruling-r6-plan.md), and [R16 amendment plan](issue-72-r16-r6-amendment-plan.md).
 - Task reports and path-scoped review packages: `.superpowers/sdd/issue-72-ruling-r6-plan/task-1-report.md`, `.superpowers/sdd/issue-72-ruling-r6-plan/review-8329b85d4..5ab7919c5.diff`, `.superpowers/sdd/issue-72-r16-r6-amendment-plan/task-1-report.md`, and `.superpowers/sdd/issue-72-r16-r6-amendment-plan/review-5ab7919c5..8965a3cbc.diff`.
-- R8 Task 2 report and reviews: `.superpowers/sdd/issue-72-ocr-findings-r8/task-2-report.md`, `task-2-fix1-review.md`, `task-2-fix2-review.md`, plus its independent validation reports in the same directory.
+- R8 Task 2 report, review, and validation records are in the Task 2 worktree path given above; the fix 2 review/validation bind the final fulfillment source/test hashes to commit `aaf0b4960c215f71395c12455b3016df3b6a54f2`.
