@@ -32,10 +32,10 @@
 ## Task DAG
 
 ```text
-T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review
+T1 evidence/status note ──> T2 plan traceability correction ──> T3 verification-scope clarification ──> T4 correct Task 1 base range and plan DAG/self-check ──> T5 correct source attribution ──> T6 correct residual failure-handling attribution ──> T7 correct partial OCR findings and preserve its report ──> T8 correct Task 7 residuals and record TTY correlation ──> T9 correct TTY issue mapping after independent review ──> T10 qualify sibling evidence durability and PID/session inference
 ```
 
-These nine documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments. No application implementation Task is ready under the current #86/#87 gates.
+These ten documentation Tasks are in scope. Task 7 addresses the five findings in the partial OCR record; Task 8 addresses its remaining R7 link/scope residuals and adds the requested read-only TTY/session correlation; Task 9 corrects the issue-level goal mapping using independently reviewed rollout-goal attachments; Task 10 qualifies the sibling evidence durability and PID/session inference. No application implementation Task is ready under the current #86/#87 gates.
 
 ### Task 1: Record Issue #72 parallel evidence refresh
 
@@ -218,10 +218,10 @@ These nine documentation Tasks are in scope. Task 7 addresses the five findings 
 ## Plan self-check
 
 - Spec coverage: this is a status/evidence refresh, not an implementation or acceptance promotion; each audited Issue and the R-6 rulings are explicitly mapped.
-- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, and Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments.
+- Step clarity: each step writes one or verifies one bounded artifact; Task 2 corrects the Task 1 plan's source-hash conclusion, Task 3 scopes its verification to its own plan edit, Task 4 corrects the Task 1 base range and makes the task DAG/self-check traceable, Task 5 attributes report and Git evidence to their respective sources, Task 6 corrects residual failure-handling attribution, Task 7 addresses the five partial OCR findings and records their incomplete coverage, Task 8 closes the R7 link/scope residuals and records bounded TTY/session correlation without acting on processes, Task 9 corrects TTY-to-issue mapping from independently reviewed rollout-goal attachments, and Task 10 states that R7 sibling files were staged but absent from HEAD and that PID/session pairs are inferred by timestamps.
 - Type/interface consistency: not applicable to documentation-only changes.
 - Review Focus: every risk is tied to path, hash, process, or dependency checks above.
-- Proportion: nine documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, and Task 9 handles the mapping correction only. No production tests are relevant.
+- Proportion: ten documentation tasks; Tasks 2–6 retain their prior review-driven corrections, Task 7 covers the five findings in the partial OCR record, Task 8 handles residual evidence traceability and read-only process/session correlation, Task 9 handles the mapping correction, and Task 10 makes the two evidence-strength corrections. No production tests are relevant.
 
 ### Task 7: Correct partial OCR documentation findings
 
@@ -265,17 +265,17 @@ These nine documentation Tasks are in scope. Task 7 addresses the five findings 
 
 **Consumes:** Existing Task 7 R7 evidence references; sibling integration worktree files `../lago-int/docs/migrations/lago/t15-admission-pricing-r7-evidence/probe-results-r7-wallet-consumption.json` and `README.md`; read-only `ps`, `lsof`, rollout `session_meta`, and user goal/attachment evidence captured 2026-09-29 22:36 CST.
 
-**Produces:** Both R7 links resolve from `docs/plans/`; JSON is described as the initial blocked-env record (`2026-09-28T14:50+08`, `./deploy/lago/lago.sh up`), while the later explicit-isolation rerun and zero-call result are attributed to the exact README. Earlier R2/R6 authenticated calls remain distinct. The audit note and Ledger include one-to-one TTY/PID/session correlation, root cwd/`main`, issue-level goal mapping, the live #72 TTY002 shell with no lane release, and explicit limits: no child/task or dedicated worktree mapping and no shell action.
+**Produces:** Both R7 evidence paths are identified from `docs/plans/`; JSON is described as the initial blocked-env record (`2026-09-28T14:50+08`, `./deploy/lago/lago.sh up`), while the later explicit-isolation rerun and zero-call result are attributed to the README. Earlier R2/R6 authenticated calls remain distinct. The audit note and Ledger include timestamp-inferred PID/session pairs, root cwd/`main`, direct session-to-issue goal mapping, the live inferred #72 TTY002 shell with no lane release, and explicit limits: no child/task or dedicated worktree mapping and no shell action.
 
 **Implementation steps:**
 
-- [ ] Correct both R7 evidence Markdown targets to `../../../lago-int/...` and verify both files exist.
+- [ ] Replace durable-looking R7 hyperlinks with literal sibling-worktree paths and record the staged-at-capture status, hashes, HEAD exclusion, and loss-of-source caveat.
 - [ ] Clarify the initial JSON versus later README evidence, and narrow the Ledger zero-call statement to the later explicit-isolation R7 rerun after health HTTP `000`.
 - [ ] Add the dated read-only TTY/session correlation section to the audit note and Ledger, preserving the stated mapping limits and no-action boundary.
 - [ ] Append Task 8 to this plan DAG and self-check; retain all Tasks 1–7 and their history.
 - [ ] Run `git diff --check`; verify only the plan, audit note, and Ledger changed; commit only those paths with `docs(issue-72): clarify TTY mapping and R7 evidence scope`.
 
-**Verification:** `ps`/`lsof` output confirms the four live `codex` PIDs, TTYs, and repo-root cwd; rollout metadata and user goal/attachment evidence support the one-to-one session and issue-level mappings. Both sibling R7 files exist and the corrected Markdown links resolve. The R7 JSON contains the initial start/setup context; README carries the later isolation/HTTP-000/zero-call conclusion. `git diff --check` passes and the only changed paths are this plan, the audit note, and the execution Ledger.
+**Verification:** `ps`/`lsof` output confirms the four live `codex` PIDs, TTYs, and repo-root cwd; process/session pairs are inferred by timestamp because `session_meta` has no PID/TTY, while goal attachments directly support session-to-issue mappings. The sibling R7 file hashes and staged status were checked read-only; HEAD `8329b85d...` excludes both. JSON contains the initial start/setup context; README carries the later isolation/HTTP-000/zero-call conclusion. `git diff --check` passes and the only changed paths are this plan, the audit note, and the execution Ledger.
 
 **Failure handling:** If any process is absent or mapping evidence is inconsistent, report only verified fields and leave the unresolved mapping explicit; do not act on or signal any shell, infer child/task ownership, or modify `lago-int`.
 
@@ -291,7 +291,7 @@ These nine documentation Tasks are in scope. Task 7 addresses the five findings 
 
 **Consumes:** Verified rollout-goal attachments: TTY001 PID 78779/session `01a0ebb7-72be-7cb2-a48e-bddb059ec1a5` → Issue #30 (attachment `b10249b8...`); TTY002 PID 81039/session `01a0ebb8-01aa-7201-9632-1cbe61427b36` → Issue #72 (`f247...`); TTY003 PID 84486/session `01a0ebbb-3fa1-7b30-9be0-85351aeb9463` → Issue #140 (`6c1...`); TTY004 PID 88833/session `01a0ebbb-eb35-7453-b985-f9c0ceaef7b7` → Craft #107, supported by its rollout goal and T14 answer.
 
-**Produces:** The audit note and Ledger carry the corrected one-to-one mappings and remove the claim that two #72 shells share the same goal. They retain that all four processes have repository-root cwd and branch `main`, no child/task or dedicated worktree mapping is established, #72 TTY002 remains live so no lane release is inferred, and no shell was acted on.
+**Produces:** The audit note and Ledger carry direct session-to-issue goal mappings and remove the claim that two #72 shells share the same goal. PID/session pairs remain timestamp-inferred. They retain that all four processes have repository-root cwd and branch `main`, no child/task or dedicated worktree mapping is established, the inferred #72 TTY002 remains live so no lane release is inferred, and no shell was acted on.
 
 **Implementation steps:**
 
@@ -299,6 +299,32 @@ These nine documentation Tasks are in scope. Task 7 addresses the five findings 
 - [ ] Add Task 9 to this plan's DAG and update the task count and self-check.
 - [ ] Run `git diff --check`; verify only this plan, the audit note, and the execution Ledger changed; commit only those paths with `docs(issue-72): correct TTY issue mapping`.
 
-**Verification:** Each TTY/PID/session is paired with its verified issue/goal mapping in the audit note and Ledger; no duplicate-#72-goal assertion remains; retained operational facts remain present. `git diff --check` passes and the changed paths are exactly the three owned Markdown files. No tests apply.
+**Verification:** Direct session-to-issue goal mappings and separately timestamp-inferred PID/session pairs appear in the audit note and Ledger; no duplicate-#72-goal assertion remains; retained operational facts remain present. `git diff --check` passes and the changed paths are exactly the three owned Markdown files. No tests apply.
 
 **Failure handling:** If an attachment cannot support the mapping stated above, preserve the discrepancy and stop short of assigning that goal; do not act on any shell or infer child/task/worktree ownership.
+
+### Task 10: Qualify provisional R7 evidence and inferred PID/session correlation
+
+**Dependencies:** Tasks 1–9 are recorded; full-branch review `bdfa6c4..c6feff1` found a Medium durability overstatement for sibling staged files and a Low overstatement of PID/session certainty.
+
+**Owner role:** `mechanical_worker` for bounded documentation-only corrections.
+
+**Validator role:** `reviewer` for evidence-strength and wording consistency.
+
+**Owned files:** Modify only this plan, `docs/plans/issue-72-parallel-refresh-2026-09-29.md`, and `docs/plans/issue-72-execution-ledger.md`.
+
+**Consumes:** Read-only sibling status and hashes: JSON `c7c72e9a3eccb4900fb51ac5c6ed19a2a37a36c98b8f0ab2f29a42e51fc6c7d1`; README `5547afbc7fdd10b606d9080156c2d754c79cd61eecfb2d052618bff9e23b27ca`; sibling HEAD `8329b85d4dfff301d03f94406dfc829d87cb5b26`. `session_meta` timestamps and goal attachments support inferred PID/session pairs and direct session/Issue mapping respectively.
+
+**Produces:** R7 evidence is explicitly provisional/staged at capture, excluded from sibling HEAD, and not claimed as durable; Task 0 remains blocked with the source-loss caveat. PID/session pairing is timestamp-inferred because metadata has no PID/TTY; direct session→Issue goal/attachment mappings are preserved. Task 8/9 no longer claim one-to-one or verified PID/session matching. The R7 JSON remains the initial blocked result and README remains the later explicit rerun HTTP000/zero-call record. TTY001 maps #30, TTY002 #72, TTY003 #140, TTY004 Craft #107; all cwd root/main, no lane release, and no shell action.
+
+**Implementation steps:**
+
+- [ ] Replace durable-looking sibling R7 links with literal paths and state exact hashes, staged-at-capture status, exclusion from HEAD `8329...`, and the source-loss caveat.
+- [ ] Label every PID/session pair inferred; preserve direct session-to-Issue goal mapping and all bounded operational facts.
+- [ ] Add this Task 10 to the DAG/self-check while retaining prior task history.
+- [ ] Record full-branch review findings: Medium R7 sibling files not committed, Low PID/session inference; reviewer Spec pass / quality fail pending these corrections.
+- [ ] Verify sibling hashes and staged state read-only, run `git diff --check`, confirm only these three documents changed, and commit as `docs(issue-72): qualify provisional evidence and TTY correlation`.
+
+**Verification:** Supplied sibling file SHA-256 values match and Git reports both as staged additions outside HEAD `8329...`; the changed paths are exactly the plan, audit note, and Ledger; `git diff --check` passes. No tests apply.
+
+**Failure handling:** If either sibling file status/hash differs, record the observed discrepancy and do not claim durable source evidence. Do not change R7 semantics, act on shells, or infer task/worktree ownership.
