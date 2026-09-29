@@ -75,3 +75,30 @@ test('a real ApiError-shaped 404 (top-level code, no body) also maps to null', a
   const remote2 = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: wrongCode.request });
   await assert.rejects(() => remote2.delivery('run-1'));
 });
+
+test('dispatchDelivery posts the PR-only recovery half and maps the record', async () => {
+  const transport = fakeRequest(() => ({ status: 200, body: { delivery: okDeliveryWire } }));
+  const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: transport.request });
+  const record = await remote.dispatchDelivery({ runId: 'run-1', deliveryId: 'dlv-1' });
+  assert.equal(record.state, 'pushed');
+  assert.equal(transport.seen[0].method, 'POST');
+  assert.equal(transport.seen[0].path, '/api/v1/workbench/executions/run-1/delivery/dlv-1/dispatch');
+});
+
+test('resolveDelivery posts the unknown-resolution half and maps the record', async () => {
+  const transport = fakeRequest(() => ({ status: 200, body: { delivery: okDeliveryWire } }));
+  const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: transport.request });
+  const record = await remote.resolveDelivery({ runId: 'run-1', deliveryId: 'dlv-1' });
+  assert.equal(record.state, 'pushed');
+  assert.equal(transport.seen[0].method, 'POST');
+  assert.equal(transport.seen[0].path, '/api/v1/workbench/executions/run-1/delivery/dlv-1/resolve');
+});
+
+test('a 409 state conflict rejects with the ApiError shape intact for recovery translation', async () => {
+  const conflict = fakeRequest(() => ({ status: 409, body: { code: 'code_delivery_state_conflict' } }));
+  const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: conflict.request });
+  await assert.rejects(
+    () => remote.dispatchDelivery({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: any) => error.status === 409 && error.body?.code === 'code_delivery_state_conflict',
+  );
+});
