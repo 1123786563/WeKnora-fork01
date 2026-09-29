@@ -201,7 +201,7 @@
 
 - [ ] Add a focused failing guard assertion proving the exact workbench queue → agentruntime root pair is the only new allowlisted pair and a neighboring file remains forbidden.
 - [ ] Add one exact `importExceptions` entry; do not broaden owner rules or suppress any other import.
-- [ ] Run guard unit tests, architecture discovery/coverage tests, and `git diff --check`. After Task 4 source changes are integrated, require the full guard to reduce from 8 known findings to 1: the exact Workbench → AgentRuntime root import owned by this task.
+- [ ] Run guard unit tests, architecture discovery/coverage tests, and `git diff --check`. With Tasks 4 and 6 integrated, this task's exact import exception must leave the full Architecture Guard with zero diagnostics.
 - [ ] Commit `docs(architecture): allow exact workbench runtime contract` and record the exact contract rationale.
 
 **Acceptance:** The approved module-root contract is explicit, exact, and tested; internal subpackage imports remain forbidden and neighboring cross-module imports still diagnose.
