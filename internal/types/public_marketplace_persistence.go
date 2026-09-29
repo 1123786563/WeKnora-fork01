@@ -38,6 +38,9 @@ type PublicMarketplaceListingEntity struct {
 	Summary           string  `gorm:"type:text;not null;default:''"`
 	State             string  `gorm:"type:varchar(32);not null;default:'listed'"`
 	CurrentReleaseID  *string `gorm:"type:varchar(36)"`
+	UnlistedBy        string  `gorm:"type:varchar(255);not null;default:''"`
+	UnlistedAt        *time.Time
+	UnlistReason      string `gorm:"type:text;not null;default:''"`
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -85,18 +88,22 @@ func (PublicReleaseReviewEntity) TableName() string { return "public_release_rev
 // the tenant release it pins semantic version, digest, Manifest, Dependency
 // Lock and the portable bundle bytes.
 type PublicAgentReleaseEntity struct {
-	ID                 string `gorm:"type:varchar(36);primaryKey"`
-	ListingID          string `gorm:"type:varchar(36);not null"`
-	SubmissionID       string `gorm:"type:varchar(36);not null"`
-	PublisherTenantID  uint64 `gorm:"not null"`
-	ReleaseNumber      int    `gorm:"not null"`
-	SemanticVersion    string `gorm:"type:varchar(64);not null"`
-	BundleDigest       string `gorm:"type:varchar(64);not null"`
-	ManifestJSON       string `gorm:"type:text;not null"`
-	DependencyLockJSON string `gorm:"type:text;not null"`
-	Bundle             []byte `gorm:"type:blob;not null"`
-	PublishedBy        string `gorm:"type:varchar(255);not null;default:''"`
-	CreatedAt          time.Time
+	ID                   string `gorm:"type:varchar(36);primaryKey"`
+	ListingID            string `gorm:"type:varchar(36);not null"`
+	SubmissionID         string `gorm:"type:varchar(36);not null"`
+	PublisherTenantID    uint64 `gorm:"not null"`
+	ReleaseNumber        int    `gorm:"not null"`
+	SemanticVersion      string `gorm:"type:varchar(64);not null"`
+	BundleDigest         string `gorm:"type:varchar(64);not null"`
+	ManifestJSON         string `gorm:"type:text;not null"`
+	DependencyLockJSON   string `gorm:"type:text;not null"`
+	Bundle               []byte `gorm:"type:blob;not null"`
+	PublishedBy          string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedBy         string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedAt         *time.Time
+	DeprecationReason    string `gorm:"type:text;not null;default:''"`
+	ReplacementReleaseID string `gorm:"type:varchar(36);not null;default:''"`
+	CreatedAt            time.Time
 }
 
 func (PublicAgentReleaseEntity) TableName() string { return "public_agent_releases" }

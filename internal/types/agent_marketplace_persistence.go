@@ -10,6 +10,9 @@ type AgentMarketplaceListingEntity struct {
 	Summary          string  `gorm:"type:text;not null;default:''"`
 	State            string  `gorm:"type:varchar(32);not null;default:'listed'"`
 	CurrentReleaseID *string `gorm:"type:varchar(36)"`
+	UnlistedBy       string  `gorm:"type:varchar(255);not null;default:''"`
+	UnlistedAt       *time.Time
+	UnlistReason     string `gorm:"type:text;not null;default:''"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -71,13 +74,17 @@ type AgentReleaseEntity struct {
 	// Fork lineage (T32 #62): set when the submitted agent derives from an
 	// adopted Release (spec §5/§9). Zero-value rows (original content or
 	// pre-#62 history) carry no lineage and are never gated.
-	IsFork              bool   `gorm:"not null;default:false"`
-	ForkSourceListingID string `gorm:"type:varchar(36);not null;default:''"`
-	ForkSourceReleaseID string `gorm:"type:varchar(36);not null;default:''"`
-	ForkNotes           string `gorm:"type:text;not null;default:''"`
-	LineageLicenseID    string `gorm:"type:varchar(64);not null;default:''"`
-	PublishedBy         string `gorm:"type:varchar(255);not null;default:''"`
-	CreatedAt           time.Time
+	IsFork               bool   `gorm:"not null;default:false"`
+	ForkSourceListingID  string `gorm:"type:varchar(36);not null;default:''"`
+	ForkSourceReleaseID  string `gorm:"type:varchar(36);not null;default:''"`
+	ForkNotes            string `gorm:"type:text;not null;default:''"`
+	LineageLicenseID     string `gorm:"type:varchar(64);not null;default:''"`
+	PublishedBy          string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedBy         string `gorm:"type:varchar(255);not null;default:''"`
+	DeprecatedAt         *time.Time
+	DeprecationReason    string `gorm:"type:text;not null;default:''"`
+	ReplacementReleaseID string `gorm:"type:varchar(36);not null;default:''"`
+	CreatedAt            time.Time
 }
 
 func (AgentReleaseEntity) TableName() string { return "agent_releases" }

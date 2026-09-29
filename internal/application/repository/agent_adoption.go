@@ -17,6 +17,7 @@ import (
 var (
 	ErrAgentAdoptionNotFound          = errors.New("agent adoption resource not found")
 	ErrAgentAdoptionVariantTransition = errors.New("agent adoption variant state transition failed")
+	ErrAgentAdoptionTransition        = errors.New("agent adoption state transition failed")
 	// ErrAgentAdoptionRemapStateConflict marks a ReplaceCapabilityMappings
 	// whose guarded state UPDATE lost to a concurrent transition (e.g.
 	// publish landing between the service's pre-check and this write): the
@@ -30,6 +31,13 @@ var (
 type AgentAdoptionPublishedRow struct {
 	Variant types.AgentAdoptionVariantEntity
 	Agent   *types.CustomAgent
+}
+
+// AgentTaskAdmission is the narrow persistence seam used when admitting a new
+// Task from a tenant-owned local Agent. Ordinary Agents without a marketplace
+// Variant return false.
+type AgentTaskAdmission interface {
+	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
 }
 
 // AgentAdoptionRepository owns the Adoption/Variant/mapping SQL. All reads
@@ -46,9 +54,78 @@ type AgentAdoptionRepository interface {
 	ReplaceCapabilityMappings(context.Context, uint64, string, []types.AgentVariantCapabilityMappingEntity, string) error
 	ListCapabilityMappings(context.Context, uint64, string) ([]types.AgentVariantCapabilityMappingEntity, error)
 	UpdateVariantState(context.Context, uint64, string, []string, string, map[string]any) (*types.AgentAdoptionVariantEntity, error)
+	RetireVariant(context.Context, uint64, string, string, string) (*types.AgentAdoptionVariantEntity, error)
+	EndAdoption(context.Context, uint64, string, string, string) (*types.AgentAdoptionEntity, error)
+	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
 	PublishedAvailableAgents(context.Context, uint64) ([]AgentAdoptionPublishedRow, error)
 	GetMarketplaceListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+}
+
+// RetireVariant is a tenant-scoped, one-way compare-and-set transition. The
+// Variant row and its pinned local Agent Version are retained for history.
+func (r *agentAdoptionRepository) RetireVariant(ctx context.Context, tenantID uint64, variantID, actorID, reason string) (*types.AgentAdoptionVariantEntity, error) {
+	variantID = strings.TrimSpace(variantID)
+	if tenantID == 0 || variantID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
+		return nil, ErrAgentAdoptionVariantTransition
+	}
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, variantID, []string{"draft", "mapped", "tested", "published"}).
+		Updates(map[string]any{"state": "retired", "retired_by": strings.TrimSpace(actorID), "retired_at": now, "retirement_reason": strings.TrimSpace(reason), "updated_at": now})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		var count int64
+		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", tenantID, variantID).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			return nil, ErrAgentAdoptionNotFound
+		}
+		return nil, ErrAgentAdoptionVariantTransition
+	}
+	return r.GetVariant(ctx, tenantID, variantID)
+}
+
+// EndAdoption is a one-way CAS that also enforces the aggregate invariant:
+// every Variant must already be retired before the Adoption can end.
+func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID, actorID, reason string) (*types.AgentAdoptionEntity, error) {
+	adoptionID = strings.TrimSpace(adoptionID)
+	if tenantID == 0 || adoptionID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
+		return nil, ErrAgentAdoptionTransition
+	}
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ? AND NOT EXISTS (SELECT 1 FROM agent_adoption_variants v WHERE v.tenant_id = agent_adoptions.tenant_id AND v.adoption_id = agent_adoptions.id AND v.state <> ?)", tenantID, adoptionID, "active", "retired").
+		Updates(map[string]any{"state": "ended", "ended_by": strings.TrimSpace(actorID), "ended_at": now, "end_reason": strings.TrimSpace(reason), "updated_at": now})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		var count int64
+		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND id = ?", tenantID, adoptionID).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			return nil, ErrAgentAdoptionNotFound
+		}
+		return nil, ErrAgentAdoptionTransition
+	}
+	return r.GetAdoption(ctx, tenantID, adoptionID)
+}
+
+// IsRetiredMarketplaceAgent implements the Task admission lookup. An Agent
+// with no marketplace Variant is ordinary local content and is admitted.
+func (r *agentAdoptionRepository) IsRetiredMarketplaceAgent(ctx context.Context, tenantID uint64, localAgentID string) (bool, error) {
+	if tenantID == 0 || strings.TrimSpace(localAgentID) == "" {
+		return false, nil
+	}
+	var count int64
+	err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND local_agent_id = ? AND state = ?", tenantID, strings.TrimSpace(localAgentID), "retired").Count(&count).Error
+	return count > 0, err
 }
 
 type agentAdoptionRepository struct{ db *gorm.DB }
