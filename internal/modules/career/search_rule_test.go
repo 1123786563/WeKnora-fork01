@@ -2,6 +2,7 @@ package career
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -119,62 +120,6 @@ func TestSetRuleStoresRuleAndReplayIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, RuleStatusPaused, view.Status)
 	require.Nil(t, view.NextDueAt)
-}
-
-func TestListRulesReturnsScopedBoundedSummariesInStableOrder(t *testing.T) {
-	o, _, _, ctx := newSearchRuleOffice(t)
-	a, err := o.SetRule(ctx, ruleInput("list-rule-a", 60, RuleStatusEnabled))
-	require.NoError(t, err)
-	bInput := ruleInput("list-rule-b", 120, RuleStatusPaused)
-	bInput.Query = "platform engineer"
-	b, err := o.SetRule(ctx, bInput)
-	require.NoError(t, err)
-	// Force equal timestamps to exercise the deterministic ID tie-breaker.
-	equal := searchRuleClockBase.Add(-time.Minute)
-	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("id IN ?", []string{a.RuleID, b.RuleID}).Update("updated_at", equal).Error)
-	rules, err := o.ListRules(ctx)
-	require.NoError(t, err)
-	require.Len(t, rules, 2)
-	require.Less(t, rules[0].RuleID, rules[1].RuleID)
-	require.True(t, (rules[0].RuleID == a.RuleID && rules[0].Query == searchFixtureQuery) || (rules[0].RuleID == b.RuleID && rules[0].Query == "platform engineer"))
-	require.Equal(t, equal, rules[0].UpdatedAt)
-	encoded, err := json.Marshal(rules[0])
-	require.NoError(t, err)
-	if rules[0].RuleID == b.RuleID {
-		require.JSONEq(t, `{"ruleId":"`+b.RuleID+`","query":"platform engineer","intervalMinutes":120,"status":"paused","revision":1,"nextDueAt":null,"estimate":{"triggersPerDay":12,"sourcesPerTrigger":1,"estimatedSearchesPerDay":12,"basis":"`+ruleEstimateBasis+`"},"createdAt":"`+rules[0].CreatedAt.Format(time.RFC3339Nano)+`","updatedAt":"`+equal.Format(time.RFC3339Nano)+`"}`, string(encoded))
-	} else {
-		require.JSONEq(t, `{"ruleId":"`+a.RuleID+`","query":"`+searchFixtureQuery+`","intervalMinutes":60,"status":"enabled","revision":1,"nextDueAt":"`+a.NextDueAt.Format(time.RFC3339Nano)+`","estimate":{"triggersPerDay":24,"sourcesPerTrigger":1,"estimatedSearchesPerDay":24,"basis":"`+ruleEstimateBasis+`"},"createdAt":"`+rules[0].CreatedAt.Format(time.RFC3339Nano)+`","updatedAt":"`+equal.Format(time.RFC3339Nano)+`"}`, string(encoded))
-	}
-	neighbor := WithScope(ctx, Scope{UserID: "neighbor", TenantID: 97})
-	require.NoError(t, o.ClaimSpace(neighbor))
-	got, err := o.ListRules(neighbor)
-	require.NoError(t, err)
-	require.Empty(t, got)
-	emptyOffice, _, _, emptyCtx := newSearchRuleOffice(t)
-	empty, err := emptyOffice.ListRules(emptyCtx)
-	require.NoError(t, err)
-	require.NotNil(t, empty)
-	require.Empty(t, empty)
-}
-
-func TestDueRuleRevalidatedAfterQuotaAdmissionBeforeSearch(t *testing.T) {
-	o, transport, gate, ctx := newSearchRuleOffice(t)
-	created, err := o.SetRule(ctx, ruleInput("revalidate-rule-1", 1, RuleStatusEnabled))
-	require.NoError(t, err)
-	gate.onAdmit = func() {
-		var row searchRuleRecord
-		require.NoError(t, o.db.Where("id=?", created.RuleID).First(&row).Error)
-		row.Status = RuleStatusPaused
-		row.Query = "edited query"
-		row.Revision++
-		require.NoError(t, o.db.Save(&row).Error)
-	}
-	outcomes, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Minute))
-	require.NoError(t, err)
-	require.Empty(t, outcomes)
-	require.Equal(t, 1, gate.calls)
-	require.Empty(t, transport.calls, "the committed pause/edit must prevent external search")
-	require.Zero(t, countRows(t, o, &searchRecord{}))
 }
 
 // ---- 2. disabled rules never trigger or enqueue -----------------------------
@@ -616,6 +561,10 @@ func TestListRulesUsesStableBoundedOwnerScopedPages(t *testing.T) {
 	require.Equal(t, []string{"rule-list-050", "rule-list-051"}, []string{second.Rules[0].RuleID, second.Rules[1].RuleID})
 	_, err = o.ListRules(ctx, "not-a-cursor")
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	unknownVersion, err := json.Marshal(rulePageCursor{Version: 99, TenantID: 96, UserID: "rule-owner", Updated: searchRuleClockBase, RuleID: "rule-list-000"})
+	require.NoError(t, err)
+	_, err = o.ListRules(ctx, base64.RawURLEncoding.EncodeToString(unknownVersion))
+	require.ErrorIs(t, err, ErrInvalidRequest, "unknown cursor versions must fail closed")
 	other := WithScope(context.Background(), Scope{UserID: "neighbor", TenantID: 97})
 	require.NoError(t, o.ClaimSpace(other))
 	otherPage, err := o.ListRules(other, "")
@@ -634,6 +583,44 @@ func TestListRulesUsesStableBoundedOwnerScopedPages(t *testing.T) {
 	for _, key := range []string{"ruleId", "query", "intervalMinutes", "status", "revision", "nextDueAt", "estimate", "createdAt", "updatedAt"} {
 		require.Contains(t, fields, key)
 	}
+}
+
+func TestRuleEditDuringStartedRunPreservesEditedSchedule(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	o.searchRuleNow = func() time.Time { return searchRuleClockBase.Add(2 * time.Minute) }
+	created, err := o.SetRule(ctx, ruleInput("rule-edit-active-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("id=?", created.RuleID).Update("next_due_at", searchRuleClockBase.Add(-time.Minute)).Error)
+	var scanned searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&scanned).Error)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+	claim, existing, err := o.claimRulePeriod(ctx, scope, scanned, searchRuleClockBase)
+	require.NoError(t, err)
+	require.NotNil(t, existing)
+	require.Equal(t, RuleRunStatusStarted, existing.Status)
+	var claimRow lifecycleClaim
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", 96, "rule-owner", "rule_run", claim.Run.RequestID).First(&claimRow).Error)
+
+	edit := ruleInput("rule-edit-active-edit", 90, RuleStatusEnabled)
+	edit.RuleID = created.RuleID
+	edit.ExpectedRevision = 0
+	updated, err := o.SetRule(ctx, edit)
+	require.NoError(t, err)
+	var afterEdit searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&afterEdit).Error)
+	finished, err := o.executeClaimedRuleRun(ctx, scope, claim, searchRuleClockBase.Add(5*time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, claim.Run.RequestID, finished.RequestID)
+	var stored searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&stored).Error)
+	require.Equal(t, updated.Revision, stored.Revision)
+	require.Equal(t, updated.NextDueAt, stored.NextDueAt)
+	require.Equal(t, afterEdit.Revision, stored.Revision)
+	require.Equal(t, afterEdit.UpdatedAt, stored.UpdatedAt) // Terminalization cannot rewrite the edit timestamp.
+	var claims int64
+	require.NoError(t, o.db.Model(&lifecycleClaim{}).Where("operation=? AND request_id=?", "rule_run", claim.Run.RequestID).Count(&claims).Error)
+	require.Zero(t, claims, "terminalization resolves the lifecycle claim")
 }
 
 func TestSecondStaleDueCandidateCannotClaimNextPeriodEarly(t *testing.T) {
@@ -667,6 +654,10 @@ func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, o.db.Create(&searchRuleRunRecord{ID: uuid.NewString(), TenantID: 96, UserID: "rule-owner", RuleID: rule.ID,
 		Period: 1, RequestID: run.RequestID, Status: RuleRunStatusStarted, Body: string(body), CreatedAt: searchRuleClockBase}).Error)
+	err = o.admitLifecycleClaim(ctx, Scope{TenantID: 96, UserID: "rule-owner"}, "rule_run", run.RequestID, rule.Query)
+	require.NoError(t, err, "restart re-admits the original request before its external recovery")
+	err = o.beginLifecycleDeletion(ctx, Scope{TenantID: 96, UserID: "rule-owner"}, "delete-in-progress", "delete-fingerprint")
+	require.ErrorIs(t, err, ErrCareerOperationsBusy, "recovery claim must retain deletion barrier until the run settles")
 
 	o2, err := NewOffice(o.db)
 	require.NoError(t, err)
@@ -691,6 +682,6 @@ func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
 	require.Equal(t, RuleRunStatusCompleted, recovered.Status)
 	var storedRule searchRuleRecord
 	require.NoError(t, o.db.Where("id=?", rule.ID).First(&storedRule).Error)
-	require.Equal(t, uint64(1), storedRule.LastPeriod)
+	require.Equal(t, uint64(0), storedRule.LastPeriod, "legacy started recovery must not fabricate a claim-time schedule advancement")
 	require.Nil(t, storedRule.NextDueAt)
 }

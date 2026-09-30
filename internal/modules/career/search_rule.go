@@ -153,6 +153,7 @@ type RulePage struct {
 }
 
 type rulePageCursor struct {
+	Version  int       `json:"version"`
 	TenantID uint64    `json:"tenantId"`
 	UserID   string    `json:"userId"`
 	Updated  time.Time `json:"updatedAt"`
@@ -551,13 +552,13 @@ func (o *Office) ListRules(ctx context.Context, cursor string) (RulePage, error)
 			return RulePage{}, ErrInvalidRequest
 		}
 		var key rulePageCursor
-		if json.Unmarshal(decoded, &key) != nil || key.TenantID != s.TenantID || key.UserID != s.UserID || key.RuleID == "" || key.Updated.IsZero() {
+		if json.Unmarshal(decoded, &key) != nil || key.Version != 1 || key.TenantID != s.TenantID || key.UserID != s.UserID || key.RuleID == "" || key.Updated.IsZero() {
 			return RulePage{}, ErrInvalidRequest
 		}
 		query = query.Where("(updated_at < ?) OR (updated_at = ? AND id > ?)", key.Updated, key.Updated, key.RuleID)
 	}
 	var rows []searchRuleRecord
-	if err = query.Order("updated_at DESC, id ASC").Limit(maxRulePageSize + 1).Find(&rows).Error; err != nil {
+	if err = query.Select("id, query, interval_minutes, status, revision, next_due_at, created_at, updated_at").Order("updated_at DESC, id ASC").Limit(maxRulePageSize + 1).Find(&rows).Error; err != nil {
 		return RulePage{}, err
 	}
 	page := RulePage{Rules: []RuleSummary{}, NextCursor: nil}
@@ -581,7 +582,7 @@ func (o *Office) ListRules(ctx context.Context, cursor string) (RulePage, error)
 	}
 	if hasMore && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		payload, marshalErr := json.Marshal(rulePageCursor{TenantID: s.TenantID, UserID: s.UserID, Updated: last.UpdatedAt, RuleID: last.ID})
+		payload, marshalErr := json.Marshal(rulePageCursor{Version: 1, TenantID: s.TenantID, UserID: s.UserID, Updated: last.UpdatedAt, RuleID: last.ID})
 		if marshalErr != nil {
 			return RulePage{}, marshalErr
 		}
@@ -697,6 +698,12 @@ func (o *Office) claimRulePeriod(ctx context.Context, s Scope, scanned searchRul
 	var claim claimedRulePeriod
 	var existing *searchRuleRunRecord
 	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Match SetRule's profile -> rule lock order, then lock the durable
+		// deletion gate before admitting this period.
+		var head profile
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; e != nil && !errors.Is(e, gorm.ErrRecordNotFound) {
+			return e
+		}
 		var row searchRuleRecord
 		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, scanned.ID).First(&row).Error; e != nil {
@@ -721,14 +728,10 @@ func (o *Office) claimRulePeriod(ctx context.Context, s Scope, scanned searchRul
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
-		var head profile
-		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
-		if errors.Is(e, gorm.ErrRecordNotFound) {
-			head.Revision = 0
-		} else if e != nil {
+		requestID := fmt.Sprintf("rule:%s:%d", row.ID, period)
+		if e = admitLifecycleClaimTx(tx, s, "rule_run", requestID, row.Query); e != nil {
 			return e
 		}
-		requestID := fmt.Sprintf("rule:%s:%d", row.ID, period)
 		claim.Run = RuleRunView{Kind: RuleKindRun, RuleID: row.ID, Period: period, RequestID: requestID, Status: RuleRunStatusStarted, TriggeredAt: now}
 		claim.Query = row.Query
 		claim.ExpectedProfileRevision = head.Revision
@@ -740,6 +743,14 @@ func (o *Office) claimRulePeriod(ctx context.Context, s Scope, scanned searchRul
 			Period: period, RequestID: requestID, Status: RuleRunStatusStarted, Body: string(body), CreatedAt: now}
 		if e = tx.Create(&run).Error; e != nil {
 			return e
+		}
+		nextPeriodDue := planNextDue(row.Status, now, row.IntervalMinutes)
+		update := tx.Model(&searchRuleRecord{}).Where("tenant_id=? AND user_id=? AND id=? AND revision=? AND status=? AND last_period=? AND next_due_at=?", s.TenantID, s.UserID, row.ID, row.Revision, RuleStatusEnabled, row.LastPeriod, row.NextDueAt).Updates(map[string]any{"last_period": period, "next_due_at": nextPeriodDue})
+		if update.Error != nil {
+			return update.Error
+		}
+		if update.RowsAffected != 1 {
+			return errRuleCandidateStale
 		}
 		existing = &run
 		return nil
@@ -760,6 +771,15 @@ func (o *Office) recoverRuleRun(ctx context.Context, s Scope, row searchRuleRunR
 
 func (o *Office) executeClaimedRuleRun(ctx context.Context, s Scope, claim claimedRulePeriod, now time.Time) (RuleRunSummary, error) {
 	run := claim.Run
+	scope, err := getScope(ctx)
+	if err != nil {
+		return RuleRunSummary{}, err
+	}
+	// Re-establish admission on restart before recovering the external request.
+	// During deletion the gate permits only this already-admitted request ID.
+	if err = o.admitLifecycleClaim(ctx, scope, "rule_run", run.RequestID, claim.Query); err != nil {
+		return RuleRunSummary{}, err
+	}
 	var receipt SearchOnceReceipt
 	runResults := false
 	if len(o.ruleVettedSources()) == 0 {
@@ -804,11 +824,7 @@ func (o *Office) executeClaimedRuleRun(ctx context.Context, s Scope, claim claim
 		}
 	}
 	var summary RuleRunSummary
-	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var rule searchRuleRecord
-		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, run.RuleID).First(&rule).Error; e != nil {
-			return e
-		}
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current searchRuleRunRecord
 		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND rule_id=? AND period=?", s.TenantID, s.UserID, run.RuleID, run.Period).First(&current).Error; e != nil {
 			return e
@@ -830,19 +846,15 @@ func (o *Office) executeClaimedRuleRun(ctx context.Context, s Scope, claim claim
 		}
 		if runResults && len(receipt.Results) > 0 {
 			for _, result := range receipt.Results {
-				todo := searchDiscoveryTodoRecord{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, RuleID: rule.ID, RunID: current.ID,
+				todo := searchDiscoveryTodoRecord{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, RuleID: run.RuleID, RunID: current.ID,
 					SearchID: receipt.SearchID, SourceID: result.SourceID, Link: result.Link, Status: RuleTodoStatusOpen, CreatedAt: now}
 				if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&todo).Error; e != nil {
 					return e
 				}
 			}
 		}
-		if rule.LastPeriod < run.Period {
-			nextDue := planNextDue(rule.Status, now, rule.IntervalMinutes)
-			if e = tx.Model(&searchRuleRecord{}).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, rule.ID).
-				Updates(map[string]any{"last_period": run.Period, "next_due_at": nextDue, "updated_at": now}).Error; e != nil {
-				return e
-			}
+		if e = tx.Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", s.TenantID, s.UserID, "rule_run", run.RequestID).Delete(&lifecycleClaim{}).Error; e != nil {
+			return e
 		}
 		summary = RuleRunSummary{RuleID: run.RuleID, Period: run.Period, RequestID: run.RequestID, Status: run.Status}
 		return nil
