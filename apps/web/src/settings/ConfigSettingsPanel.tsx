@@ -81,28 +81,54 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
   const [notice, setNotice] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
+  const draftGenerationRef = useRef(0);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
 
-  useEffect(() => { setValues(initialValues(section, initialValue)); }, [section, initialValue]);
+  useEffect(() => {
+    const next = initialValues(section, initialValue);
+    draftGenerationRef.current += 1;
+    valuesRef.current = next;
+    setValues(next);
+  }, [section, initialValue]);
 
   const modelOptions: readonly SettingsModelOption[] = models ?? [];
   const allowedModelIds = tenantModelIds(modelOptions);
   const dirty = isDirty(section, savedValues, values);
 
-  function setValue(key: string, value: unknown) { setValues((current) => ({ ...current, [key]: value })); }
+  function setValue(key: string, value: unknown) {
+    const next = { ...valuesRef.current, [key]: value };
+    draftGenerationRef.current += 1;
+    valuesRef.current = next;
+    setValues(next);
+  }
 
-  async function saveValues(nextValues: ConfigValues) {
+  async function saveValues(nextValues: ConfigValues, generation = draftGenerationRef.current) {
     if (savingRef.current) return;
     savingRef.current = true;
     setBusy(true); setError(null); setNotice(null);
     try {
       const patch = settingsConfigPatch(section, nextValues, allowedModelIds.length > 0 ? { allowedModelIds } : {});
       const saved = await api.update(patch);
-      setValues((current) => ({ ...current, ...initialValues(section, saved) }));
-      setNotice(t(saveSuccessKey));
-      onSaved?.();
+      if (generation === draftGenerationRef.current) {
+        const next = { ...valuesRef.current, ...initialValues(section, saved) };
+        valuesRef.current = next;
+        setValues(next);
+        setNotice(t(saveSuccessKey));
+        onSaved?.();
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t(saveFailedKey, { message: '' }));
-    } finally { savingRef.current = false; setBusy(false); }
+      if (generation === draftGenerationRef.current) setError(reason instanceof Error ? reason.message : t(saveFailedKey, { message: '' }));
+    } finally {
+      savingRef.current = false;
+      if (generation !== draftGenerationRef.current) {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        void saveValues(valuesRef.current, draftGenerationRef.current);
+      } else {
+        setBusy(false);
+      }
+    }
   }
 
   // Vue RetrievalSettings persists changes after a 500ms debounce; retain the
@@ -111,7 +137,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
     if (section !== 'retrieval') return;
     if (!dirty || savingRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveValues(values); }, 500);
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveValues(valuesRef.current, draftGenerationRef.current); }, 500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [section, values, dirty]);
 

@@ -63,6 +63,37 @@ test('retrieval changes auto-save after the Vue 500ms debounce', async () => {
   assert.equal(calls[0]?.rerank_model_id, 'rerank-9');
 });
 
+test('retrieval serializes saves and persists edits made while an earlier save is in flight', async () => {
+  const calls: Array<{ body: Record<string, unknown>; resolve: (value: Record<string, unknown>) => void }> = [];
+  const client = { settings: { retrieval: { update: (body: Record<string, unknown>) => new Promise<Record<string, unknown>>((resolve) => calls.push({ body, resolve })) } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{}} models={[]} />));
+
+  const input = container.querySelector<HTMLInputElement>('input[placeholder]');
+  assert.ok(input, 'retrieval rerank model control should render');
+  const changeModel = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    input.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  await changeModel('rerank-old');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
+  assert.equal(calls.length, 1, 'first generation starts its save');
+
+  await changeModel('rerank-new');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
+  assert.equal(calls.length, 1, 'the second update waits for the first request');
+
+  await act(async () => { calls[0]!.resolve({ ...calls[0]!.body, rerank_model_id: 'server-old' }); await Promise.resolve(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(calls.length, 2, 'the latest generation is sent after the first request completes');
+  assert.equal(calls[1]!.body.rerank_model_id, 'rerank-new');
+  assert.equal(input.value, 'rerank-new', 'the older response does not overwrite the newer draft');
+  await act(async () => { calls[1]!.resolve(calls[1]!.body); await Promise.resolve(); });
+});
+
 test('retrieval keeps the Vue rerank-model-first slider order', async () => {
   const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
   const container = document.createElement('div');
