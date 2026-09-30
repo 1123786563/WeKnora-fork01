@@ -24,6 +24,21 @@ type mapExportStorage struct {
 	files map[string][]byte
 }
 
+type blockingExportStorage struct {
+	*mapExportStorage
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingExportStorage) SaveExport(ctx context.Context, tenantID uint64, name string, data []byte) (string, error) {
+	select {
+	case b.started <- struct{}{}:
+	default:
+	}
+	<-b.release
+	return b.mapExportStorage.SaveExport(ctx, tenantID, name, data)
+}
+
 func newMapExportStorage() *mapExportStorage {
 	return &mapExportStorage{files: map[string][]byte{}}
 }
@@ -149,6 +164,39 @@ func TestPublishMaterialBindsSameDigestAndVersionToPDFAndDOCX(t *testing.T) {
 	require.Equal(t, receipt.ContentDigest, again.ContentDigest)
 	require.Equal(t, exportFile(receipt, ExportFormatPDF).FileDigest, exportFile(again, ExportFormatPDF).FileDigest)
 	require.Equal(t, exportFile(receipt, ExportFormatDOCX).FileDigest, exportFile(again, ExportFormatDOCX).FileDigest)
+}
+
+func TestDeleteCareerWaitsForInFlightExportPublish(t *testing.T) {
+	o, _, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	baseStore := newMapExportStorage()
+	o.SetExportStorage(baseStore)
+	fx := seedExportChain(t, o, ctx, "publish-delete-race")
+	store := &blockingExportStorage{mapExportStorage: baseStore, started: make(chan struct{}, 1), release: make(chan struct{})}
+	o.SetExportStorage(store)
+	publishDone := make(chan error, 1)
+	go func() {
+		_, err := o.PublishMaterial(ctx, PublishMaterialInput{
+			RequestID: "publish-delete-race-late", MaterialID: fx.MaterialID,
+			Version: fx.Version, ExpectedRevision: fx.Revision,
+		})
+		publishDone <- err
+	}()
+	<-store.started
+
+	deleteDone := make(chan error, 1)
+	go func() {
+		_, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "publish-delete-race-delete", ExpectedRevision: fx.Revision})
+		deleteDone <- err
+	}()
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("deletion crossed the in-flight exporter: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(store.release)
+	require.NoError(t, <-publishDone)
+	require.NoError(t, <-deleteDone)
+	require.Empty(t, baseStore.files, "all files published before deletion finalization must be removed")
 }
 
 func receiptBodyOf(t *testing.T, o *Office, ctx context.Context, receipt ExportReceipt) MaterialBody {

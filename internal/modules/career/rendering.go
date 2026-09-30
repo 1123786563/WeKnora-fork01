@@ -1103,6 +1103,8 @@ func (o *Office) loadExportRow(ctx context.Context, s Scope, materialID, exportI
 // verified become submittable; a single-format failure keeps the staged state
 // with the typed error and never publishes half a pair as deliverable.
 func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput) (ExportReceipt, error) {
+	o.lifecycleMu.RLock()
+	defer o.lifecycleMu.RUnlock()
 	s, err := getScope(ctx)
 	if err != nil {
 		return ExportReceipt{}, err

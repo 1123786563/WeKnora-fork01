@@ -751,6 +751,8 @@ var careerPurgeTables = []string{
 // failing step leaves a partial, recoverable state under the same request
 // ID — the receipt never claims full deletion until every step is done.
 func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (CareerDeletionReceipt, error) {
+	o.lifecycleMu.Lock()
+	defer o.lifecycleMu.Unlock()
 	s, err := getScope(ctx)
 	if err != nil {
 		return CareerDeletionReceipt{}, err

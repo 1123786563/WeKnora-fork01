@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -253,6 +254,11 @@ func (receipt) TableName() string                     { return "career_receipts"
 func (sourceRevision) TableName() string              { return "career_source_revisions" }
 
 type Office struct {
+	// lifecycleMu serializes deletion against operations whose durable side
+	// effects cross the Career transaction boundary (export storage and the
+	// Workbench task linker). The database revision checks remain the durable
+	// guard for ordinary Career writes.
+	lifecycleMu          sync.RWMutex
 	db                   *gorm.DB
 	opportunityExtractor opportunityExtractor
 	// linker is the only channel to durable Workbench application tasks.
