@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -39,7 +38,7 @@ func newMemoryHarness(t *testing.T) (*Service, *gorm.DB, *stubTenantRepo) {
 		configs: map[uint64]*types.MemoryConfig{},
 	}
 	svc := &Service{
-		repo:       repository.NewMemoryRepository(db),
+		repo:       NewMemoryRepository(db),
 		tenantRepo: tenantRepo,
 	}
 	return svc, db, tenantRepo

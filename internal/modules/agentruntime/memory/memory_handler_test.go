@@ -1,4 +1,4 @@
-package handler
+package memory_test
 
 import (
 	"context"
@@ -16,6 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Ruling 2026-09-28-TEST-PACKAGE-SPLIT（b3-r-memory / R1.3；先例 R1.2
+// persistence_message_paging_test.go）：原 internal/handler/memory_consistency_test.go
+// 随 memory_handler.go 迁入本目录后，同包测试 import internal/middleware 与
+// R1.2 宿主 compat（repository→memory，container.go:321 消费）构成确定性
+// import cycle（middleware→repository(kb_access.go)→memory）。本文件按裁定转
+// package memory_test 外部测试包：用例名、子用例与断言逐字不变，仅构造器/
+// 错误值改经导出符号（memory.NewMemoryHandler / memory.ErrSensitiveContent）
+// 等价组装。remove_at: IB3 核验（conventions §10.8）。
 type memoryFailureService struct{ interfaces.MemoryService }
 
 func (memoryFailureService) ConfirmItem(context.Context, string) (*types.MemoryItem, error) {
@@ -29,7 +37,7 @@ func (memoryFailureService) UpdateItem(context.Context, string, string, int) (*t
 func TestMemoryConsistencyHTTPFailures(t *testing.T) {
 	router := gin.New()
 	router.Use(middleware.ErrorHandler())
-	handler := NewMemoryHandler(memoryFailureService{})
+	handler := memory.NewMemoryHandler(memoryFailureService{})
 	router.POST("/memory/items/:id/confirm", handler.ConfirmItem)
 	router.PUT("/memory/items/:id", handler.UpdateItem)
 	for _, tc := range []struct {

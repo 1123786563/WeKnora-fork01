@@ -14,10 +14,7 @@
 | `internal/application/repository/agent_run_snapshot.go` | Agent run snapshot (application/repository) | `B-agentruntime` |
 | `internal/application/repository/agent_run_tools.go` | Agent run tools (application/repository) | `B-agentruntime` |
 | `internal/application/repository/mcp_tool_approval_repository.go` | Mcp tool approval repository (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory.go` | Memory (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_extraction.go` | Memory extraction (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_lifecycle.go` | Memory lifecycle (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_vector.go` | Memory vector (application/repository) | `B-agentruntime` |
+| `internal/application/repository/agentruntime_memory_passb_compat.go` | Memory host compat (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_commit.go` | Native commit (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_events.go` | Native events (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_lease.go` | Native lease (application/repository) | `B-agentruntime` |
@@ -46,7 +43,7 @@
 | `internal/application/service/native_recovery.go` | Native recovery (application/service) | `B-agentruntime` |
 | `internal/application/service/native_usage.go` | Native usage (application/service) | `B-agentruntime` |
 | `internal/application/service/subagent_delegate.go` | Subagent delegate (application/service) | `B-agentruntime` |
-| `internal/handler/memory.go` | Memory (handler) | `B-agentruntime` |
+| `internal/handler/agentruntime_memory_passb_compat.go` | Memory host compat (handler) | `B-agentruntime` |
 | `internal/handler/session/agent_run.go` | Agent run (handler/session) | `B-agentruntime` |
 | `internal/handler/session/agent_stream_handler.go` | Agent stream handler (handler/session) | `B-agentruntime` |
 | `internal/handler/session/native_archive.go` | Native archive (handler/session) | `B-agentruntime` |
