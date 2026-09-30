@@ -3,13 +3,13 @@ import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createInMemoryCredentialStore, createMobileRuntime } from '@weknora/mobile-core';
+import { createInMemoryCredentialStore, createInMemoryDeploymentRegistry, createMobileRuntime } from '@weknora/mobile-core';
 import type { ResourceShelfHandle } from '@weknora/mobile-core';
 
 const CLIENT_PROTOCOL = CLIENT_PROTOCOL_VERSION;
 
 export type MobileRuntimeIntegrationConfig =
-  | { enabled: true; deploymentOrigin: string; email: string; password: string; switchTenantId?: string }
+  | { enabled: true; deploymentOrigin: string; email: string; password: string; switchTenantId?: string; alt?: { deploymentOrigin: string; email: string; password: string } }
   | { enabled: false; disposition: 'skip'; reason: string }
   | { enabled: false; disposition: 'invalid'; reason: string };
 
@@ -20,6 +20,8 @@ export interface MobileRuntimeIntegrationEvidence {
   identity: 'present' | 'absent';
   outcome: 'authorized' | 'not-authorized';
   tenantSwitch: 'skipped' | 'switched' | 'switch-failed';
+  deploymentSwitch: 'skipped' | 'switched' | 'switch-failed';
+  registeredDeployments: number;
   resourceShelf: 'not-authorized' | 'browsed' | 'browse-failed';
   resourceCounts?: { agents: number; knowledge: number; connections: number };
   commandTimestamp: string;
@@ -34,14 +36,14 @@ function capabilityEvidenceMode(capabilities: unknown): MobileRuntimeIntegration
 }
 
 /** 部署 URL 主机防线：仅允许公网主机，拒绝 localhost、环回、私网、链路本地与保留地址（含 IPv6 形式）。 */
-function disallowedIpv4Octets(octets: number[]): string | undefined {
+function disallowedIpv4Octets(octets: number[], variable: string): string | undefined {
   const a = octets[0]!;
   const b = octets[1]!;
-  if (a === 127 || a === 0 || a >= 240) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target loopback or reserved addresses';
-  if (a === 10) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-  if (a === 172 && b >= 16 && b <= 31) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-  if (a === 192 && b === 168) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-  if (a === 169 && b === 254) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  if (a === 127 || a === 0 || a >= 240) return `${variable} must not target loopback or reserved addresses`;
+  if (a === 10) return `${variable} must not target private addresses`;
+  if (a === 172 && b >= 16 && b <= 31) return `${variable} must not target private addresses`;
+  if (a === 192 && b === 168) return `${variable} must not target private addresses`;
+  if (a === 169 && b === 254) return `${variable} must not target link-local addresses`;
   return undefined;
 }
 
@@ -78,43 +80,43 @@ function parseIpv6Literal(host: string): number[] | undefined {
   return bytes;
 }
 
-function disallowedIpv6Bytes(bytes: number[]): string | undefined {
+function disallowedIpv6Bytes(bytes: number[], variable: string): string | undefined {
   const words = Array.from({ length: 8 }, (_, i) => (bytes[i * 2]! << 8) | bytes[i * 2 + 1]!);
   const wordsZero = (from: number, to: number) => words.slice(from, to).every((word) => word === 0);
   // ::ffff:0:0/96 IPv4-mapped：内嵌 IPv4 部分复用 IPv4 规则。
-  if (wordsZero(0, 6) && words[6] === 0xffff) return disallowedIpv4Octets(bytes.slice(12));
+  if (wordsZero(0, 6) && words[6] === 0xffff) return disallowedIpv4Octets(bytes.slice(12), variable);
   if (wordsZero(0, 7)) {
-    if (words[7] === 0) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target the unspecified address';
-    if (words[7] === 1) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target a loopback or wildcard address';
+    if (words[7] === 0) return `${variable} must not target the unspecified address`;
+    if (words[7] === 1) return `${variable} must not target a loopback or wildcard address`;
     // ::/96 IPv4-compatible：内嵌 IPv4 部分复用 IPv4 规则。
-    return disallowedIpv4Octets(bytes.slice(12));
+    return disallowedIpv4Octets(bytes.slice(12), variable);
   }
   // fe80::/10 链路本地（含全部 zone-scoped 地址）。
-  if ((words[0]! & 0xffc0) === 0xfe80) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  if ((words[0]! & 0xffc0) === 0xfe80) return `${variable} must not target link-local addresses`;
   // fc00::/7 ULA 私有。
-  if ((words[0]! & 0xfe00) === 0xfc00) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+  if ((words[0]! & 0xfe00) === 0xfc00) return `${variable} must not target private addresses`;
   // ff00::/8 组播。
-  if ((words[0]! & 0xff00) === 0xff00) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target multicast or reserved addresses';
+  if ((words[0]! & 0xff00) === 0xff00) return `${variable} must not target multicast or reserved addresses`;
   // 2001::/32 Teredo 与 2001:db8::/32 文档保留段。
-  if (words[0] === 0x2001 && (words[1] === 0x0db8 || words[1] === 0)) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  if (words[0] === 0x2001 && (words[1] === 0x0db8 || words[1] === 0)) return `${variable} must not target reserved addresses`;
   // 2002::/16 6to4：内嵌 IPv4（第 2、3 字节组）复用 IPv4 规则。
-  if (words[0] === 0x2002) return disallowedIpv4Octets(bytes.slice(2, 6));
+  if (words[0] === 0x2002) return disallowedIpv4Octets(bytes.slice(2, 6), variable);
   // 100::/64 discard-only。
-  if (words[0] === 0x0100 && wordsZero(1, 4)) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  if (words[0] === 0x0100 && wordsZero(1, 4)) return `${variable} must not target reserved addresses`;
   // 除 2000::/3 全球单播外的其余地址段均为保留/未分配。
-  if ((words[0]! & 0xe000) !== 0x2000) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  if ((words[0]! & 0xe000) !== 0x2000) return `${variable} must not target reserved addresses`;
   return undefined;
 }
 
-function disallowedDeploymentHost(hostname: string): string | undefined {
+function disallowedDeploymentHost(hostname: string, variable: string): string | undefined {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (host === 'localhost' || host.endsWith('.localhost')) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target localhost';
+  if (host === 'localhost' || host.endsWith('.localhost')) return `${variable} must not target localhost`;
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (match) return disallowedIpv4Octets([Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])]);
+  if (match) return disallowedIpv4Octets([Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])], variable);
   if (host.includes(':')) {
     const bytes = parseIpv6Literal(host);
-    if (!bytes) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target an invalid IPv6 host';
-    return disallowedIpv6Bytes(bytes);
+    if (!bytes) return `${variable} must not target an invalid IPv6 host`;
+    return disallowedIpv6Bytes(bytes, variable);
   }
   return undefined;
 }
@@ -142,8 +144,34 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
   }
-  const hostRejection = disallowedDeploymentHost(parsed.hostname);
+  const hostRejection = disallowedDeploymentHost(parsed.hostname, 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL');
   if (hostRejection) return { enabled: false, disposition: 'invalid', reason: hostRejection };
+
+  const altOrigin = env.WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL?.trim();
+  const altEmail = env.WEKNORA_MOBILE_TEST_ALT_EMAIL?.trim();
+  const altPassword = env.WEKNORA_MOBILE_TEST_ALT_PASSWORD;
+  const altPresent = [altOrigin, altEmail, altPassword].filter((value) => value !== undefined && value !== '').length;
+  if (altPresent !== 0 && altPresent !== 3) {
+    return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL, WEKNORA_MOBILE_TEST_ALT_EMAIL and WEKNORA_MOBILE_TEST_ALT_PASSWORD must be provided together' };
+  }
+  let alt: { deploymentOrigin: string; email: string; password: string } | undefined;
+  if (altPresent === 3) {
+    let parsedAlt: URL;
+    try {
+      parsedAlt = new URL(altOrigin!);
+    } catch {
+      return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL is not an absolute URL' };
+    }
+    if (parsedAlt.protocol !== 'https:' || parsedAlt.username || parsedAlt.password || parsedAlt.pathname !== '/' || parsedAlt.search || parsedAlt.hash) {
+      return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
+    }
+    const altHostRejection = disallowedDeploymentHost(parsedAlt.hostname, 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL');
+    if (altHostRejection) return { enabled: false, disposition: 'invalid', reason: altHostRejection };
+    if (parsedAlt.origin === parsed.origin) {
+      return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL must differ from WEKNORA_MOBILE_TEST_DEPLOYMENT_URL' };
+    }
+    alt = { deploymentOrigin: parsedAlt.origin, email: altEmail!, password: altPassword! };
+  }
 
   const switchTenantId = env.WEKNORA_MOBILE_TEST_SWITCH_TENANT_ID?.trim();
   if (switchTenantId !== undefined && switchTenantId !== '' && !/^\d+$/.test(switchTenantId)) {
@@ -152,7 +180,7 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
   if (/^0+$/.test(switchTenantId ?? '')) {
     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_SWITCH_TENANT_ID must be a positive integer tenant id' };
   }
-  return { enabled: true, deploymentOrigin: parsed.origin, email, password, ...(switchTenantId ? { switchTenantId } : {}) };
+  return { enabled: true, deploymentOrigin: parsed.origin, email, password, ...(switchTenantId ? { switchTenantId } : {}), ...(alt ? { alt } : {}) };
 }
 
 /** Browses the real tenant resources through the shelf interface; evidence carries counts only. */
@@ -179,15 +207,21 @@ export async function collectResourceShelfEvidence(
  */
 export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeIntegrationConfig, { enabled: true }>): Promise<MobileRuntimeIntegrationEvidence> {
   let capabilityMode: MobileRuntimeIntegrationEvidence['capabilityMode'] = 'unknown';
+  let passwordLogins = 0;
   const fetcher: FetchLike = (input, init) => fetch(input, init as RequestInit);
   const runtime = createMobileRuntime({
     credentialStore: createInMemoryCredentialStore(),
+    deploymentRegistry: createInMemoryDeploymentRegistry(),
     clientVersion: CLIENT_PROTOCOL,
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(fetcher) });
       const remote = createMobileRuntimeRemote({ origin, request: client.request });
       return {
         ...remote,
+        async passwordLogin(input: { email: string; password: string }) {
+          passwordLogins += 1;
+          return remote.passwordLogin(input);
+        },
         async deploymentCapabilities(accessToken: string) {
           const capabilities = await remote.deploymentCapabilities(accessToken);
           capabilityMode = capabilityEvidenceMode(capabilities);
@@ -220,6 +254,27 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
       : 'switch-failed';
   }
 
+  let deploymentSwitch: MobileRuntimeIntegrationEvidence['deploymentSwitch'] = 'skipped';
+  if (config.alt && snapshot.surface === 'authorized') {
+    const altSignIn = await runtime.signIn({
+      deployment: { origin: config.alt.deploymentOrigin, label: 'Alt deployment' },
+      email: config.alt.email,
+      password: config.alt.password,
+    });
+    const loginsAfterAlt = passwordLogins;
+    const leaseBeforeSwitch = runtime.scopeLease();
+    const switchedBack = await runtime.switchDeployment(config.deploymentOrigin);
+    deploymentSwitch = altSignIn.surface === 'authorized' &&
+      switchedBack.surface === 'authorized' &&
+      switchedBack.deployment?.origin === config.deploymentOrigin &&
+      runtime.scopeLease() !== undefined &&
+      runtime.scopeLease() !== leaseBeforeSwitch &&
+      passwordLogins === loginsAfterAlt
+      ? 'switched'
+      : 'switch-failed';
+  }
+  const registeredDeployments = (await runtime.listDeployments()).length;
+
   const shelfEvidence = await collectResourceShelfEvidence(runtime);
 
   return {
@@ -229,6 +284,8 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
     identity: identityPresent ? 'present' : 'absent',
     outcome: snapshot.surface === 'authorized' && identityPresent ? 'authorized' : 'not-authorized',
     tenantSwitch,
+    deploymentSwitch,
+    registeredDeployments,
     ...shelfEvidence,
     commandTimestamp: new Date().toISOString(),
   };

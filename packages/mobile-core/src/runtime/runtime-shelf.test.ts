@@ -159,18 +159,31 @@ test('browse retries once through the runtime refresh seam and persists the rota
   assert.equal((await store.read(DEPLOYMENT.origin))?.token, 'access-2', 'the rotated credential must be persisted through the runtime single-flight');
 });
 
-test('a capability downgrade never opens a shelf', async () => {
+test('a server-behind downgrade serves a read-only shelf and an app-behind downgrade opens none', async () => {
   const resource = tenantResourceRemote();
-  const runtime = createMobileRuntime({
+  const behindServer = createMobileRuntime({
     credentialStore: fakeStore(),
     remoteFor: () => baseRemote(),
     clientVersion: 99,
     resourceShelf: { remoteFor: () => resource },
   });
 
-  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const snapshot = await behindServer.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
 
-  assert.equal(snapshot.surface, 'upgrade-required');
-  assert.equal(runtime.resourceShelf(), undefined);
-  assert.equal(resource.calls.length, 0, 'no resource request may leave without an authorized scope');
+  assert.equal(snapshot.surface, 'read-only');
+  const handle = behindServer.resourceShelf();
+  assert.ok(handle, 'a read-only scope still exposes the browse-only shelf');
+  assert.equal((await handle.browse()).tenantId, 'tenant-1');
+
+  const untouched = tenantResourceRemote();
+  const olderApp = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => baseRemote(),
+    clientVersion: 1,
+    resourceShelf: { remoteFor: () => untouched },
+  });
+  const stale = await olderApp.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.equal(stale.surface, 'upgrade-required');
+  assert.equal(olderApp.resourceShelf(), undefined);
+  assert.equal(untouched.calls.length, 0, 'no resource request may leave without an authorized or read-only scope');
 });

@@ -56,6 +56,8 @@ test('non-authorized evidence is emitted before assertions without credential fi
     identity: 'absent',
     outcome: 'not-authorized',
     tenantSwitch: 'skipped',
+    deploymentSwitch: 'skipped',
+    registeredDeployments: 1,
     resourceShelf: 'browse-failed',
     commandTimestamp: '2026-09-21T00:00:00.000Z',
   }, (record) => emitted.push(record));
@@ -68,6 +70,8 @@ test('non-authorized evidence is emitted before assertions without credential fi
     identity: 'absent',
     outcome: 'not-authorized',
     tenantSwitch: 'skipped',
+    deploymentSwitch: 'skipped',
+    registeredDeployments: 1,
     resourceShelf: 'browse-failed',
     commandTimestamp: '2026-09-21T00:00:00.000Z',
   });
@@ -174,4 +178,69 @@ test('resource shelf evidence distinguishes not-authorized, browsed and failed h
     await collectResourceShelfEvidence({ resourceShelf: () => failingHandle } as Parameters<typeof collectResourceShelfEvidence>[0]),
     { resourceShelf: 'browse-failed' },
   );
+});
+
+test('real HTTP multi-deployment switch restores the prior instance without a second login', async (t) => {
+  const config = mobileRuntimeIntegrationConfig(process.env);
+  if (!config.enabled) {
+    if (config.disposition === 'skip') t.skip(`MOBILE_RUNTIME_HTTP_SKIPPED: ${config.reason}`);
+    else assert.fail(`MOBILE_RUNTIME_HTTP_INVALID: ${config.reason}`);
+    return;
+  }
+  if (!config.alt) {
+    t.skip('MOBILE_RUNTIME_HTTP_DEPLOYMENT_SWITCH_SKIPPED: missing WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL/_EMAIL/_PASSWORD');
+    return;
+  }
+
+  const evidence = await runMobileRuntimeIntegration(config);
+  emitMobileRuntimeIntegrationEvidence(evidence, (record) => t.diagnostic(record));
+
+  assert.equal(evidence.outcome, 'authorized');
+  assert.equal(evidence.deploymentSwitch, 'switched', 'switching back must reuse the stored credential instead of a new login');
+  assert.equal(evidence.registeredDeployments, 2, 'both live deployments must be registered on the device');
+});
+
+test('integration config marks partial alternate deployment credentials invalid rather than skippable', () => {
+  const config = mobileRuntimeIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://deployment.example',
+    WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
+    WEKNORA_MOBILE_TEST_PASSWORD: nonEmptyPassword,
+    WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL: 'https://alt.example',
+  });
+
+  assert.equal(config.enabled, false);
+  assert.equal(config.disposition, 'invalid');
+  assert.match(config.disposition === 'invalid' ? config.reason : '', /must be provided together/);
+});
+
+test('integration config rejects an alternate deployment identical to the primary', () => {
+  const config = mobileRuntimeIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://deployment.example',
+    WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
+    WEKNORA_MOBILE_TEST_PASSWORD: nonEmptyPassword,
+    WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL: 'https://deployment.example',
+    WEKNORA_MOBILE_TEST_ALT_EMAIL: 'alt@example.test',
+    WEKNORA_MOBILE_TEST_ALT_PASSWORD: nonEmptyPassword,
+  });
+
+  assert.deepEqual(config, {
+    enabled: false,
+    disposition: 'invalid',
+    reason: 'WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL must differ from WEKNORA_MOBILE_TEST_DEPLOYMENT_URL',
+  });
+});
+
+test('integration config rejects a loopback alternate deployment host', () => {
+  const config = mobileRuntimeIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://deployment.example',
+    WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
+    WEKNORA_MOBILE_TEST_PASSWORD: nonEmptyPassword,
+    WEKNORA_MOBILE_TEST_ALT_DEPLOYMENT_URL: 'https://127.0.0.1',
+    WEKNORA_MOBILE_TEST_ALT_EMAIL: 'alt@example.test',
+    WEKNORA_MOBILE_TEST_ALT_PASSWORD: nonEmptyPassword,
+  });
+
+  assert.equal(config.enabled, false);
+  assert.equal(config.disposition, 'invalid');
+  assert.match(config.disposition === 'invalid' ? config.reason : '', /must not target/);
 });

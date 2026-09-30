@@ -1,6 +1,7 @@
 import type { ScopedVault } from '../vault/scoped-vault.ts';
 import type { ResourceRemote } from '../shelf/ports.ts';
 import type { RuntimeAuthorizedRequest } from './types.ts';
+import type { Deployment } from './types.ts';
 
 /** Exact credential fields returned by Task 2's `passwordLogin` adapter. */
 export interface StoredCredential {
@@ -19,6 +20,13 @@ export interface DeploymentStore {
   read(): Promise<{ origin: string; label?: string } | undefined>;
   write(deployment: { origin: string; label: string }): Promise<void>;
   clear(): Promise<void>;
+}
+
+/** 登记实例清单：只保存 presentation-safe 的 origin/label，永不保存凭据。 */
+export interface DeploymentRegistry {
+  list(): Promise<Deployment[]>;
+  upsert(deployment: Deployment): Promise<void>;
+  remove(origin: string): Promise<void>;
 }
 
 /** Structural subset of `createMobileRuntimeRemote`; mobile-core remains adapter-independent. */
@@ -75,6 +83,8 @@ export interface AppLifecyclePort {
 export interface MobileRuntimePorts {
   credentialStore: CredentialStore;
   deploymentStore?: DeploymentStore;
+  /** 已登记 Deployment 清单；Runtime 在每次鉴权成功时 upsert 当前实例。 */
+  deploymentRegistry?: DeploymentRegistry;
   remoteFor(deployment: string): RuntimeRemote;
   clientVersion: number;
   pendingOidcStore?: PendingOidcStore;
