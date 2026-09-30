@@ -66,11 +66,81 @@ const admittingEstimate = () => ({
  limitUnits: 50, reservedUnits: 0, settledUnits: 0, remainingUnits: 50, wouldAdmit: true,
 })
 async function mountRules(career: CareerStubs, scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })) {
- const stubs: CareerStubs = { usageEstimate: async () => admittingEstimate(), ...career }
+ const storedRule = window.localStorage.getItem('weknora:career:rule-id:u-1:t-1')
+ const stubs: CareerStubs = { usageEstimate: async () => admittingEstimate(), listRules: async () => ({ rules: storedRule ? [{ ruleId: storedRule, query: '杭州 后端', intervalMinutes: 60, status: 'paused', revision: 4, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T22:00:00Z' }] : [], nextCursor: null }), ...career }
  const container = render(React.createElement(CareerRulePage, { client: { career: stubs } as unknown as WeKnoraClient, scopeController }))
  await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
  return { container, scopeController }
 }
+
+test('server discovery selects an existing sole rule after local storage is empty', async () => {
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: [{ ruleId: 'remote-1', query: '远端岗位', intervalMinutes: 90, status: 'paused', revision: 2, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }] }), getRule: async () => ruleView({ ruleId: 'remote-1', query: '远端岗位', intervalMinutes: 90, revision: 2 }) })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, '远端岗位')
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), 'remote-1')
+})
+
+test('multiple server rules require selection and list failure blocks create', async () => {
+ const many = ['rule-1', 'rule-2'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: many, nextCursor: null }), setRule: async () => createdDisabled })
+ assert.equal(container.querySelector<HTMLSelectElement>('#career-rule-select')?.value, '')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ const failed = await mountRules({ open: async () => view(5), listRules: async () => { throw new Error('offline') }, setRule: async () => createdDisabled })
+ assert.ok(failed.container.querySelector('[role="alert"]'))
+ assert.equal(failed.container.querySelector('button[type="submit"]'), null)
+})
+
+test('list pagination finishes before displaying the form and follows each cursor once', async () => {
+ const cursors: Array<string | undefined> = []
+ const { container } = await mountRules({ open: async () => view(5), listRules: async (cursor?: string) => {
+  cursors.push(cursor)
+  return cursor ? { rules: [{ ruleId: 'rule-2', query: '二', intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }], nextCursor: null }
+   : { rules: [{ ruleId: 'rule-1', query: '一', intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }], nextCursor: 'page-2' }
+ } })
+ assert.deepEqual(cursors, [undefined, 'page-2'])
+ assert.equal(container.querySelector<HTMLSelectElement>('#career-rule-select')?.value, '')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+})
+
+test('repeated pagination cursor fails closed before rendering the create form', async () => {
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: [], nextCursor: 'repeat' }) })
+ assert.ok(container.querySelector('[role="alert"]'))
+ assert.equal(container.querySelector('[aria-label="找岗条件"]'), null)
+})
+
+test('pending receipt lookup keeps the form hidden until resolved and failed detail stays locked', async () => {
+ window.localStorage.setItem('weknora:career:rule-attempt:u-1:t-1', JSON.stringify({ requestId: 'pending-1', query: 'q', intervalMinutes: 60, status: 'disabled', expectedRevision: 5 }))
+ let finishReceipt!: (value: unknown) => void
+ const loading = mountRules({ open: async () => view(5), ruleReceipt: async () => new Promise((resolve) => { finishReceipt = resolve }), setRule: async () => createdDisabled })
+ await new Promise((resolve) => setImmediate(resolve))
+ assert.equal(document.querySelector('[aria-label="找岗条件"]'), null)
+ await act(async () => { finishReceipt({ ...createdDisabled, requestId: 'pending-1' }); await settle() })
+ const recovered = (await loading).container
+ assert.ok(recovered.querySelector('[aria-label="规则状态"]'))
+
+ const failed = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: [{ ruleId: 'rule-1', query: 'q', intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }], nextCursor: null }), getRule: async () => { throw new Error('detail unavailable') } })
+ assert.equal(failed.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.ok(failed.container.querySelector('[role="alert"]'))
+})
+
+test('malformed persisted recovery attempt is shown as blocked instead of enabling a fresh write', async () => {
+ window.localStorage.setItem('weknora:career:rule-attempt:u-1:t-1', '{bad json')
+ const { container } = await mountRules({ open: async () => view(5), setRule: async () => createdDisabled })
+ assert.ok(container.querySelector('[role="alert"]'))
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+})
+
+test('selection generation prevents a slow earlier detail from replacing the latest choice', async () => {
+ const details = new Map<string, (value: ReturnType<typeof ruleView>) => void>()
+ const items = ['rule-1', 'rule-2'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: items, nextCursor: null }), getRule: async (ruleId: string) => new Promise((resolve) => details.set(ruleId, resolve)) })
+ const select = container.querySelector<HTMLSelectElement>('#career-rule-select')!
+ await act(async () => { select.value = 'rule-1'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { select.value = 'rule-2'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { details.get('rule-2')!(ruleView({ ruleId: 'rule-2', query: 'latest choice' })); await settle() })
+ await act(async () => { details.get('rule-1')!(ruleView({ ruleId: 'rule-1', query: 'stale choice' })); await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, 'latest choice')
+ assert.equal(container.querySelector<HTMLSelectElement>('#career-rule-select')?.value, 'rule-2')
+})
 function byLabel(container: HTMLElement, selector: string, label: string): HTMLElement {
  const found = [...container.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.trim() === label)
  assert.ok(found, `${selector} “${label}” exists`)
@@ -240,6 +310,22 @@ test('an unknown write outcome recovers through the original request ID without 
  assert.ok(container.querySelector('[aria-label="规则状态"]'))
 })
 
+test('unknown set-rule survives remount and replays the exact scoped request before unlocking', async () => {
+ let original: RuleWrite | undefined
+ const first = await mountRules({ open: async () => view(5), setRule: async (input: RuleWrite) => { original = input; throw Object.assign(new Error('gateway timeout'), { code: 'outcome_unknown', requestId: input.requestId }) } })
+ await saveRule(first.container, '精确岗位', '120', 'disabled')
+ const persisted = JSON.parse(window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1') ?? 'null')
+ assert.deepEqual(persisted, original)
+ await act(async () => { await root?.unmount() })
+ root = undefined; host?.remove(); host = undefined
+ const replayed: RuleWrite[] = []
+ const reopened = await mountRules({ open: async () => view(5), ruleReceipt: async () => { throw Object.assign(new Error('missing'), { code: 'not_found' }) }, setRule: async (input: RuleWrite) => { replayed.push(input); return { ...createdDisabled, requestId: input.requestId } } })
+ assert.deepEqual(replayed, [original])
+ assert.equal(window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1'), null)
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), 'rule-1')
+ assert.equal(reopened.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, false)
+})
+
 test('a mismatched rule receipt ends recovery as a definite error', async () => {
  const { container } = await mountRules({
   open: async () => view(5),
@@ -249,7 +335,7 @@ test('a mismatched rule receipt ends recovery as a definite error', async () => 
  await saveRule(container, '上海 前端 实习', '1440', 'disabled')
  await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle(); await settle() })
  assert.match(container.textContent ?? '', /请求编号与本次保存不匹配/)
- assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询回执')), false)
+ assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询回执')), true)
 })
 
 test('revision conflict surfaces the current revision and retries the same request refreshed', async () => {
@@ -277,7 +363,7 @@ test('revision conflict surfaces the current revision and retries the same reque
  assert.ok(container.querySelector('[aria-label="规则状态"]'))
 })
 
-test('a stored rule that is no longer visible is reported and the stale reference cleared', async () => {
+test('a stored rule that is no longer visible remains blocked until list reconciliation', async () => {
  window.localStorage.setItem('weknora:career:rule-id:u-1:t-1', 'rule-gone')
  const reads: string[] = []
  const { container } = await mountRules({
@@ -285,9 +371,9 @@ test('a stored rule that is no longer visible is reported and the stale referenc
   getRule: async (ruleId: string) => { reads.push(ruleId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
  })
  assert.deepEqual(reads, ['rule-gone'])
- assert.match(container.textContent ?? '', /这条规则在服务端已不可见/)
- assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), null)
- assert.ok(container.querySelector('[aria-label="找岗条件"]'))
+ assert.match(container.textContent ?? '', /规则列表与详情暂不一致/)
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), 'rule-gone')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
 })
 
 test('a transient stored-rule read failure is surfaced and saving stays blocked until the reference resolves', async () => {
@@ -391,4 +477,51 @@ test('an exhausted window shows the blocked-trigger overage state while enabling
  assert.equal(writes[0]?.status, 'enabled')
  assert.ok(container.querySelector('[aria-label="下次运行计划"]'))
  assert.ok(estimateReads.length >= 2, `estimate refreshed after the write (reads: ${estimateReads.length})`)
+})
+
+test('listed rule detail not_found keeps creation locked', async () => {
+ const writes: RuleWrite[] = []
+ window.localStorage.setItem('weknora:career:rule-id:u-1:t-1', 'rule-1')
+ const items = ['rule-1', 'rule-2'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: items, nextCursor: null }), getRule: async () => { throw Object.assign(new Error('gone'), { code: 'not_found' }) }, setRule: async (input: RuleWrite) => { writes.push(input); return { ...createdDisabled, requestId: input.requestId } } })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(writes.length, 0)
+})
+
+test('mismatched write request ID preserves durable unknown attempt across submit and remount', async () => {
+ let originalId = ''
+ const { container } = await mountRules({ open: async () => view(5), setRule: async (input: RuleWrite) => { originalId = input.requestId; return { ...createdDisabled, requestId: 'different-id' } } })
+ await saveRule(container, '保留第一次尝试', '60', 'disabled')
+ const raw = window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1')
+ assert.ok(raw)
+ assert.equal(JSON.parse(raw!).requestId, originalId)
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(container.querySelectorAll('button').length > 0, true)
+ await act(async () => { await root?.unmount() })
+ root = undefined; host?.remove(); host = undefined
+ const writes: RuleWrite[] = []
+ const receiptIds: string[] = []
+ const remounted = await mountRules({ open: async () => view(5), ruleReceipt: async (id: string) => { receiptIds.push(id); throw Object.assign(new Error('missing'), { code: 'not_found' }) }, setRule: async (input: RuleWrite) => { writes.push(input); throw Object.assign(new Error('offline'), { code: 'TEMPORARY' }) } })
+ assert.deepEqual(receiptIds, [originalId])
+ assert.equal(writes[0]?.requestId, originalId)
+ assert.equal(remounted.container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(JSON.parse(window.localStorage.getItem('weknora:career:rule-attempt:u-1:t-1') ?? 'null').requestId, originalId)
+})
+
+test('late post-save detail refresh cannot replace a manually selected rule', async () => {
+ const items = ['rule-A', 'rule-B'].map((ruleId) => ({ ruleId, query: ruleId, intervalMinutes: 60, status: 'paused', revision: 1, nextDueAt: null, estimate, createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T08:00:00Z' }))
+ let refreshA!: (value: ReturnType<typeof ruleView>) => void
+ let aCalls = 0
+ const { container } = await mountRules({ open: async () => view(5), listRules: async () => ({ rules: items, nextCursor: null }), getRule: async (ruleId: string) => {
+  if (ruleId === 'rule-A' && ++aCalls === 2) return new Promise((resolve) => { refreshA = resolve })
+  return ruleView({ ruleId, query: `detail ${ruleId}` })
+ }, setRule: async (input: RuleWrite) => ({ ...createdDisabled, ruleId: 'rule-A', requestId: input.requestId }) })
+ const select = container.querySelector<HTMLSelectElement>('#career-rule-select')!
+ await act(async () => { select.value = 'rule-A'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await settle() })
+ await saveRule(container, 'updated A', '60', 'disabled')
+ await act(async () => { select.value = 'rule-B'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, 'detail rule-B')
+ await act(async () => { refreshA(ruleView({ ruleId: 'rule-A', query: 'stale refresh A' })); await settle() })
+ assert.equal(container.querySelector<HTMLSelectElement>('#career-rule-select')?.value, 'rule-B')
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.value, 'detail rule-B')
 })

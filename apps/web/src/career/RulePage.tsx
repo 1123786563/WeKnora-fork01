@@ -44,12 +44,22 @@ function formatEstimateNumber(value: number): string {
 function ruleIdKey(userId: string | null, tenantId: string | null): string {
  return `weknora:career:rule-id:${userId ?? ''}:${tenantId ?? ''}`
 }
+function attemptKey(userId: string | null, tenantId: string | null): string { return `weknora:career:rule-attempt:${userId ?? ''}:${tenantId ?? ''}` }
 function readStoredRuleId(storage: Storage | undefined, key: string): string | undefined {
  if (!storage) return undefined
  try {
   const raw = storage.getItem(key)
   return raw && raw.trim() ? raw : undefined
  } catch { return undefined }
+}
+function decodeAttempt(value: unknown): Attempt | undefined {
+ if (!value || typeof value !== 'object') return undefined
+ const item = value as Record<string, unknown>
+ if (typeof item.requestId !== 'string' || !item.requestId.trim() || (item.ruleId !== undefined && (typeof item.ruleId !== 'string' || !item.ruleId.trim()))
+  || typeof item.query !== 'string' || !item.query.trim() || !Number.isSafeInteger(item.intervalMinutes) || Number(item.intervalMinutes) < 1 || Number(item.intervalMinutes) > 43200
+  || !['enabled', 'paused', 'disabled'].includes(String(item.status)) || !Number.isSafeInteger(item.expectedRevision) || Number(item.expectedRevision) < 0
+  || Object.keys(item).some((key) => !['requestId', 'ruleId', 'query', 'intervalMinutes', 'status', 'expectedRevision'].includes(key))) return undefined
+ return value as Attempt
 }
 
 export function CareerRulePage({ client, scopeController }: { client: WeKnoraClient; scopeController: ScopeController }): ReactNode {
@@ -65,20 +75,26 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const [attempt, setAttempt] = useState<Attempt>()
  const [receipt, setReceipt] = useState<SetRuleReceipt>()
  const [ruleView, setRuleView] = useState<RuleView>()
+ const [rules, setRules] = useState<Array<{ ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number }>>([])
+ const [selectedRuleId, setSelectedRuleId] = useState<string>()
+ const [detailLoading, setDetailLoading] = useState(false)
  const [storedRuleUnreadable, setStoredRuleUnreadable] = useState<TypedError>()
  const [phase, setPhase] = useState<Phase>('idle')
  const [notice, setNotice] = useState('')
  const [error, setError] = useState<TypedError>()
  const loadedForScope = useRef<string | undefined>(undefined)
+ const selectionGeneration = useRef(0)
+ const selectedRuleIdRef = useRef<string | undefined>(undefined)
 
  const clearForScopeChange = useCallback((message: string): void => {
+  selectionGeneration.current += 1
   // Memory only. The rule-id key is already isolated per userId/tenantId, and
   // the abort listener fires while current() still reports the outgoing
   // identity (scope.advance aborts before installing the new scope), so a
   // removeItem here would delete the outgoing user's own stored reference and
   // make their next save silently mint a second rule. The stored reference is
   // only dropped on a server-confirmed not_found in load().
-  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined); setStoredRuleUnreadable(undefined)
+  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined); setRules([]); setSelectedRuleId(undefined); setDetailLoading(false); setStoredRuleUnreadable(undefined)
   setPhase('idle'); setNotice(message); setError(undefined)
   setRevision(undefined); setViewPhase('scope-changed'); setViewError(undefined)
  }, [scopeController])
@@ -90,34 +106,64 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    const view = await client.career.open(requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    setRevision(view.revision)
-   setViewPhase('ready')
+   const allRules: Awaited<ReturnType<typeof client.career.listRules>>['rules'] = []
+   let cursor: string | undefined
+   const seenCursors = new Set<string>()
+   do {
+    const listed = await client.career.listRules(cursor, requestScope.signal)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    allRules.push(...listed.rules)
+    cursor = listed.nextCursor ?? undefined
+    if (cursor && seenCursors.has(cursor)) throw new TypeError('重复的规则列表游标')
+    if (cursor) seenCursors.add(cursor)
+   } while (cursor)
+   setRules(allRules)
    const storage = typeof window === 'undefined' ? undefined : window.localStorage
    const storedRuleId = readStoredRuleId(storage, ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId))
-   if (!storedRuleId) return
-   try {
-    const stored = await client.career.getRule(storedRuleId, requestScope.signal)
-    if (!scopeController.isCurrent(requestScope.scope)) return
-    setRuleView(stored); setStoredRuleUnreadable(undefined)
-    setDraft({ query: stored.query, interval: String(stored.intervalMinutes), status: stored.status })
-   } catch (cause) {
-    if (!scopeController.isCurrent(requestScope.scope)) return
-    const parsed = errorDetails(cause)
-    if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除持续找岗状态。'); return }
-    if (parsed.code === 'not_found') {
-     // The stored reference is no longer visible under this scope; drop it
-     // instead of claiming a rule we cannot show.
-     try { storage?.removeItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId)) } catch { /* private mode */ }
-     setNotice('这条规则在服务端已不可见，已清除本地引用。可重新创建一条规则。')
-     return
+   const selected = allRules.find((rule) => rule.ruleId === storedRuleId) ?? (allRules.length === 1 ? allRules[0] : undefined)
+   selectionGeneration.current += 1
+   selectedRuleIdRef.current = selected?.ruleId
+   setSelectedRuleId(selected?.ruleId)
+   if (selected) {
+    try { storage?.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), selected.ruleId) } catch { /* private mode */ }
+    try {
+     const stored = await client.career.getRule(selected.ruleId, requestScope.signal)
+     if (!scopeController.isCurrent(requestScope.scope)) return
+     setRuleView(stored)
+     setDraft({ query: stored.query, interval: String(stored.intervalMinutes), status: stored.status })
+    } catch (cause) {
+     if (!scopeController.isCurrent(requestScope.scope)) return
+     const parsed = errorDetails(cause)
+     if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除持续找岗状态。'); return }
+     if (parsed.code === 'not_found') {
+      setStoredRuleUnreadable(parsed)
+      setNotice('规则列表与详情暂不一致；为避免重复创建，请重新读取规则列表后再保存。')
+     } else {
+      setStoredRuleUnreadable(parsed)
+      setNotice(`读取已保存规则未成功：${parsed.text}。此时保存会新建一条规则；请先重新读取成功后再保存，避免出现双重规则。`)
+     }
     }
-    // Any other failure (e.g. a transient 5xx) leaves the stored rule
-    // unresolved: ruleView stays undefined, so a save now would silently
-    // mint a second rule (the backend enforces no one-rule-per-user limit
-    // here and an old enabled rule would keep charging). Surface it and
-    // block the write until the reference resolves by re-reading.
-    setStoredRuleUnreadable(parsed)
-    setNotice(`读取已保存规则未成功：${parsed.text}。此时保存会新建一条规则；请先重新读取成功后再保存，避免出现双重规则。`)
    }
+   const attemptStorageKey = attemptKey(requestScope.scope.userId, requestScope.scope.tenantId)
+   let pending: Attempt | undefined
+   let rawAttempt: string | null = null
+   try { rawAttempt = storage?.getItem(attemptStorageKey) ?? null; if (rawAttempt) pending = decodeAttempt(JSON.parse(rawAttempt)) } catch { /* invalid persisted data fails closed below */ }
+   if (rawAttempt && !pending) { setStoredRuleUnreadable({ text: '本地保存的未确认请求无法安全读取；为避免重复写入，保存已停用。' }); setViewPhase('ready'); return }
+   if (pending) {
+    setAttempt(pending); setPhase('unknown'); setNotice('正在恢复上次未确认的规则保存…')
+    try {
+     let recovered: SetRuleReceipt
+     try { recovered = await client.career.ruleReceipt(pending.requestId, requestScope.signal) }
+     catch (cause) { if (errorDetails(cause).code !== 'not_found') throw cause; recovered = await client.career.setRule(pending, requestScope.signal) }
+     if (!scopeController.isCurrent(requestScope.scope)) return
+     if (recovered.requestId === pending.requestId) {
+      try { storage?.removeItem(attemptStorageKey) } catch { /* private mode */ }
+      setReceipt(recovered); setRuleView(undefined); setSelectedRuleId(recovered.ruleId); setPhase('idle'); setAttempt(undefined)
+      try { storage?.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), recovered.ruleId) } catch { /* private mode */ }
+     }
+    } catch (cause) { if (scopeController.isCurrent(requestScope.scope)) { setPhase('unknown'); setNotice(`上次保存结果仍未确认：${errorDetails(cause).text}。请先恢复原请求。`) } }
+   }
+   if (scopeController.isCurrent(requestScope.scope)) setViewPhase('ready')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
@@ -145,9 +191,10 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
 
  const refreshRuns = useCallback(async (ruleId: string): Promise<void> => {
   const requestScope = scopeController.current()
+  const generation = selectionGeneration.current
   try {
    const stored = await client.career.getRule(ruleId, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || selectionGeneration.current !== generation || selectedRuleIdRef.current !== ruleId) return
    setRuleView(stored)
   } catch { /* run history is best-effort after a write; the receipt above stays authoritative */ }
  }, [client, scopeController])
@@ -155,6 +202,10 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const acceptReceipt = useCallback((next: SetRuleReceipt): void => {
   setReceipt(next); setPhase('idle'); setError(undefined); setNotice(''); setAttempt(undefined)
   const activeScope = scopeController.current().scope
+  try { window.localStorage.removeItem(attemptKey(activeScope.userId, activeScope.tenantId)) } catch { /* private mode */ }
+  selectionGeneration.current += 1
+  selectedRuleIdRef.current = next.ruleId
+  setSelectedRuleId(next.ruleId)
   try { window.localStorage.setItem(ruleIdKey(activeScope.userId, activeScope.tenantId), next.ruleId) } catch { /* private mode */ }
   // A saved rule (especially an enabled one) changes what the next charged
   // run would consume; re-read the live estimate instead of showing a
@@ -166,10 +217,13 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const send = useCallback(async (next: Attempt): Promise<void> => {
   const requestScope = scopeController.current()
   setPhase('busy'); setError(undefined); setNotice('正在保存规则…')
+  const storageScope = requestScope.scope
+  try { window.localStorage.setItem(attemptKey(storageScope.userId, storageScope.tenantId), JSON.stringify(next)) }
+  catch { setPhase('idle'); setError({ code: 'storage_unavailable', text: '浏览器无法保存恢复请求，本次规则写入未发送。' }); setNotice(''); return }
   try {
    const result = await client.career.setRule(next, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配，已放弃本次结果。请重新保存。' }); setPhase('idle'); setAttempt(undefined); return }
+   if (result.requestId !== next.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；原请求结果仍未知，已保留恢复编号并锁定新保存。' }); setPhase('unknown'); setNotice(''); setAttempt(next); return }
    acceptReceipt(result)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -226,7 +280,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   try {
    const stored = await client.career.ruleReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；已放弃本次结果，请使用新的请求编号重新保存。' }); setPhase('idle'); setAttempt(undefined); setNotice(''); return }
+   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；原请求结果仍未知，已保留恢复编号并锁定新保存。' }); setPhase('unknown'); setAttempt(attempt); setNotice(''); return }
    acceptReceipt(stored)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -243,7 +297,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  // submitting a new attempt here would mint a fresh request ID and break
  // that recovery contract. A stored rule whose reference cannot be resolved
  // locks the form too (saving then would mint a second rule).
- const composeLocked = phase === 'busy' || phase === 'unknown' || storedRuleUnreadable !== undefined
+ const composeLocked = viewPhase !== 'ready' || detailLoading || phase === 'busy' || phase === 'unknown' || storedRuleUnreadable !== undefined || (rules.length > 1 && !selectedRuleId)
  // The latest write receipt is the authoritative live configuration; the
  // stored rule view backs it up on a fresh load and carries run history.
  const live = receipt ?? ruleView
@@ -258,6 +312,20 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   {viewPhase === 'error' ? <Card bordered><div role="alert"><strong>暂时无法打开求职空间</strong><p>{viewError?.text}</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'scope-changed' ? <Card bordered><p>{notice}</p><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'ready' ? <>
+   {rules.length > 1 ? <Card bordered><label htmlFor="career-rule-select">选择要查看或修改的规则</label><select id="career-rule-select" value={selectedRuleId ?? ''} onChange={(event) => {
+    const ruleId = event.currentTarget.value
+    const generation = ++selectionGeneration.current
+    selectedRuleIdRef.current = ruleId || undefined
+    setSelectedRuleId(ruleId || undefined); setRuleView(undefined); setReceipt(undefined); setStoredRuleUnreadable(undefined)
+    setDetailLoading(Boolean(ruleId))
+    const requestScope = scopeController.current()
+    try { if (ruleId) window.localStorage.setItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId), ruleId); else window.localStorage.removeItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId)) } catch { /* private mode */ }
+    if (ruleId) void client.career.getRule(ruleId, requestScope.signal).then((next) => {
+     if (scopeController.isCurrent(requestScope.scope) && selectionGeneration.current === generation) { setRuleView(next); setDraft({ query: next.query, interval: String(next.intervalMinutes), status: next.status }); setDetailLoading(false) }
+    }).catch((cause) => {
+     if (scopeController.isCurrent(requestScope.scope) && selectionGeneration.current === generation) { setStoredRuleUnreadable(errorDetails(cause)); setDetailLoading(false) }
+    })
+   }}><option value="">请选择规则</option>{rules.map((rule) => <option key={rule.ruleId} value={rule.ruleId}>{rule.query}（{statusLabels[rule.status]}）</option>)}</select></Card> : null}
    {storedRuleUnreadable ? <Card bordered><div role="alert"><strong>已保存规则暂时无法读取</strong><p>本地记录的规则编号无法读取（{storedRuleUnreadable.text}）。在重新读取成功前，保存会新建一条规则、可能造成重复的启用规则，因此保存已暂时停用。</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
    <CareerUsagePanel usage={usage.state} onRetry={usage.reload} />
    <Card bordered className="wk-career-rule__compose">
