@@ -1,13 +1,17 @@
 import {
+  parseCommercialAccountCredits,
   parseCommercialSummary,
   parseCommercialUsageList,
   parseOrderView,
+  parsePurchaseView,
   parseQuoteView,
   parseRefundView,
+  type CommercialAccountCredits,
   type CommercialSummary,
   type CommercialUsageRow,
   type CreateOrderInput,
   type OrderView,
+  type PurchaseView,
   type QuoteInput,
   type QuoteView,
   type RefundInput,
@@ -58,6 +62,15 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
     async createOrder(input: CreateOrderInput, signal?: AbortSignal): Promise<OrderView> {
       return parseOrderView(unwrap(await request({ method: 'POST', path: '/api/v1/commercial/orders', body: input, signal })));
     },
+    // #81: the payment-gated purchase. A retry with the same quote_id is
+    // idempotent server-side (the SAME order answers); the match gate runs
+    // before any channel payment request.
+    async purchase(input: { quote_id: string; provider: 'wechat' | 'alipay' }, signal?: AbortSignal): Promise<PurchaseView> {
+      return parsePurchaseView(unwrap(await request({ method: 'POST', path: '/api/v1/commercial/purchases', body: input, signal })));
+    },
+    async purchaseStatus(signal?: AbortSignal): Promise<PurchaseView> {
+      return parsePurchaseView(unwrap(await request({ method: 'GET', path: '/api/v1/commercial/purchase', signal })));
+    },
     async requestRefund(input: RefundInput, signal?: AbortSignal): Promise<{ id: string; state: string }> {
       const data = unwrap(await request({ method: 'POST', path: '/api/v1/commercial/refunds', body: input, signal }));
       if (typeof data !== 'object' || data === null || Array.isArray(data)) {
@@ -85,6 +98,24 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
         body: { decision, expected_version: expectedVersion },
         signal,
       })));
+    },
+    // #86: the credits breakdown — balance / held / refund-locked /
+    // available / projected-at plus the per-batch face (monthly|topup).
+    // GET /api/v1/commercial/account; a benefits.credits section absent
+    // (the chain is pending) answers null — the card hides, never errors.
+    async account(signal?: AbortSignal): Promise<CommercialAccountCredits | null> {
+      const data = unwrap(await request({ method: 'GET', path: '/api/v1/commercial/account', signal }));
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected an account response object' });
+      }
+      const benefits = (data as Record<string, unknown>).benefits;
+      if (benefits === undefined || benefits === null) return null; // pending: no fabricated credits
+      if (typeof benefits !== 'object' || Array.isArray(benefits)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a benefits object' });
+      }
+      const credits = (benefits as Record<string, unknown>).credits;
+      if (credits === undefined || credits === null) return null;
+      return parseCommercialAccountCredits(credits);
     },
   };
 }

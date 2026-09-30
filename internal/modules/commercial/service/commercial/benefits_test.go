@@ -2,6 +2,7 @@ package commercial
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -60,7 +61,7 @@ func newBenefitsService(t *testing.T, platform domain.CommercialPlatform) (*Bene
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := NewBenefitsService(db, accounts, plans, platform)
+	svc, err := NewBenefitsService(db, accounts, plans, platform, repocommercial.NewBudgetStore(db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +169,194 @@ func TestEnsureBenefitsHappyChain(t *testing.T) {
 	}
 	if _, taskLimit, hasTasks := broker.counter(benefitsTenant, "concurrent_tasks"); !hasTasks || taskLimit != 2 {
 		t.Fatalf("concurrent_tasks counter missing/wrong")
+	}
+}
+
+// (F-4 flow evidence) The purchase first-period batch joins the credits
+// view: the PurchaseFulfiller's grant rides its OWN wallet identity (D4)
+// and bypasses this coordinator's registry — the activation month's batch
+// line must aggregate BOTH wallets' balances (SUM, never an arbitrary
+// last-write overwrite) and the total must carry the purchase credits.
+func TestEnsureBenefitsPurchaseBatchJoinsCreditsView(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(502)
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Purchase Space", "user-1"); err != nil {
+		t.Fatalf("EnsureBenefits: %v", err)
+	}
+	// The fulfiller's purchase grant for the activation month: own key
+	// family, own deterministic wallet name (the PurchaseFulfiller path).
+	period := "2026-09"
+	purchaseMicro := int64(9_900_000)
+	end, err := domain.PeriodEnd(period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindGrantIncludedCredits,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Actor: "fulfiller", Reason: "purchase first period",
+		Payload: domain.GrantIncludedCreditsPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
+			WalletName: domain.PurchaseWalletName(tenant, period),
+			Priority:   domain.MonthlyWalletPriority,
+		},
+	}); err != nil {
+		t.Fatalf("purchase grant: %v", err)
+	}
+	status, err := svc.EnsureBenefits(context.Background(), tenant, "Purchase Space", "user-1")
+	if err != nil {
+		t.Fatalf("re-ensure: %v", err)
+	}
+	if status.Credits == nil {
+		t.Fatalf("credits view must answer, got nil")
+	}
+	want := BasePlanSeedIncludedCreditsMicro + purchaseMicro
+	if status.Credits.BalanceMicro != want {
+		t.Fatalf("balance must carry base + purchase, got %d want %d", status.Credits.BalanceMicro, want)
+	}
+	found := false
+	for _, batch := range status.Credits.Batches {
+		if batch.Period == period {
+			found = true
+			if batch.BalanceMicro != want {
+				t.Fatalf("the activation month's line must aggregate BOTH wallets, got %d want %d", batch.BalanceMicro, want)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the activation month's batch must be present, got %+v", status.Credits.Batches)
+	}
+}
+
+// (F-4) A purchase batch whose activation month has NO registry row (the
+// tenant never visited billing that month — the purchase grant rides the
+// fulfiller, not this coordinator) still answers the view honestly from
+// the authority snapshot.
+func TestRefreshProjectionUnionsSnapshotOnlyPurchasePeriod(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(503)
+	period := "2026-09"
+	purchaseMicro := int64(9_900_000)
+	end, err := domain.PeriodEnd(period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindGrantIncludedCredits,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Actor: "fulfiller", Reason: "purchase first period",
+		Payload: domain.GrantIncludedCreditsPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
+			WalletName: domain.PurchaseWalletName(tenant, period),
+			Priority:   domain.MonthlyWalletPriority,
+		},
+	}); err != nil {
+		t.Fatalf("purchase grant: %v", err)
+	}
+	_, batches, _, err := svc.refreshAndCollect(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("refreshAndCollect: %v", err)
+	}
+	found := false
+	for _, batch := range batches {
+		if batch.Period == period {
+			found = true
+			if batch.BalanceMicro != purchaseMicro {
+				t.Fatalf("the snapshot-only purchase batch must answer its balance, got %+v", batches)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("a registry-less purchase period must join the view, got %+v", batches)
+	}
+}
+
+// (F-2' value semantics) The definitions are the VALUE truth: entitlement
+// existence alone would over-claim a base-only tenant (the publish leg
+// attaches entitlements for false-valued codes too on the pinned
+// authority). A base-only tenant keeps advanced_models FALSE; an ACTIVE
+// purchase ORs its plan's definition on top — the purchaser's
+// advanced_models answers TRUE.
+func TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true, "advanced_models": false, "priority_support": false})
+	svc, _, db := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	// Publish the pro plan locally (definition + publication rows).
+	proDef := domain.PlanVersion{Key: "pro", Version: 1, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY}
+	proJSON, err := json.Marshal(proDef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 1,
+		DefinitionJSON: string(proJSON), State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PublicationRow{
+		CommandKey: domain.PublishCommandKey("pro", 1), PlanKey: "pro", Version: 1,
+		PlanCode: domain.DeterministicPlanCode("pro", 1), ReceiptJSON: "{}",
+		PublishedBy: "test", PublishedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	tenant := uint64(504)
+	// Base-only first: advanced_models must stay FALSE.
+	status, err := svc.EnsureBenefits(ctx, tenant, "OR Space", "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBenefits (base-only): %v", err)
+	}
+	if status.Plan == nil || status.Plan.Features["advanced_models"] {
+		t.Fatalf("base-only tenant must keep advanced_models FALSE, got %+v", status.Plan.Features)
+	}
+	if !status.Plan.Features["api_access"] {
+		t.Fatalf("base features must answer, got %+v", status.Plan.Features)
+	}
+	// The purchase chain on the fake: create + settle → ACTIVE.
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), domain.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode:                       domain.DeterministicPlanCode("pro", 1), AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatalf("purchase create: %v", err)
+	}
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindSettlePurchasePayment,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-or-1"),
+		Actor: "test", Reason: "settle",
+		Payload: domain.SettlePurchasePaymentPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode:                       domain.DeterministicPlanCode("pro", 1),
+			ChannelTransaction:             "txn-or-1", AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	// The purchaser's face: advanced_models TRUE (the purchase plan's
+	// definition ORs on top), api_access still TRUE.
+	status2, err := svc.EnsureBenefits(ctx, tenant, "OR Space", "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBenefits (purchaser): %v", err)
+	}
+	if status2.Plan == nil || !status2.Plan.Features["advanced_models"] {
+		t.Fatalf("an active purchase must OR advanced_models TRUE, got %+v", status2.Plan.Features)
+	}
+	if !status2.Plan.Features["api_access"] || status2.Plan.Features["priority_support"] {
+		t.Fatalf("the base booleans must hold otherwise, got %+v", status2.Plan.Features)
 	}
 }
 
@@ -292,6 +481,250 @@ func TestMonthlyGrantNewPeriod(t *testing.T) {
 	}
 	if n := broker.batchCount(benefitsTenant); n != 2 {
 		t.Fatalf("registry must keep both periods, got %d", n)
+	}
+}
+
+// walletPriorityByName answers the observable priority of one wallet (nil
+// when absent) — the #86 consumption-order assertion helper.
+func walletPriorityByName(t *testing.T, fake *commercialplatform.FakeAdapter, name string) (int, bool) {
+	t.Helper()
+	for _, w := range fake.Wallets() {
+		if w.Name == name {
+			return w.Priority, true
+		}
+	}
+	return 0, false
+}
+
+// TestRefreshSyncsLotsFromSnapshot (#86 Task 3): one benefits refresh
+// projects the authority batch read-back onto commercial_budget_lots — both
+// the monthly-family and the top-up batch land as lot rows with the correct
+// balances (the allocation order's comparison keys ride the same rows).
+func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, db := newBenefitsService(t, fake)
+	if err := db.AutoMigrate(&repocommercial.BudgetLotRow{}); err != nil {
+		t.Fatal(err)
+	}
+	svc.SetNow(septemberClock())
+	tenant := uint64(507)
+	ctx := context.Background()
+
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// A top-up batch beside the monthly one.
+	ext := domain.ExternalCustomerID(tenant)
+	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
+		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	type lotRow struct {
+		LotID          string
+		RemainingMicro int64
+	}
+	var lots []lotRow
+	if err := db.Raw(`SELECT lot_id, remaining_micro FROM commercial_budget_lots WHERE tenant_id = ? ORDER BY lot_id`, tenant).Scan(&lots).Error; err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]int64{}
+	for _, l := range lots {
+		byID[l.LotID] = l.RemainingMicro
+	}
+	monthly := domain.MonthlyWalletName(tenant, "2026-09")
+	if got, ok := byID[monthly]; !ok || got != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("monthly lot row missing/wrong: %+v", byID)
+	}
+	if got, ok := byID[ext+"-topup-x"]; !ok || got != domain.CentsToMicro(5_000) {
+		t.Fatalf("topup lot row missing/wrong: %+v", byID)
+	}
+	if len(byID) != 2 {
+		t.Fatalf("exactly two lot rows expected, got %+v", byID)
+	}
+}
+
+// TestBreakdownHoldsSurviveMissingAccountRow (#86 Task 4): a tenant with NO
+// budget account row answers held=0, refund_locked=0 and available=balance
+// — an honest zero face, never an error.
+func TestBreakdownHoldsSurviveMissingAccountRow(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(508)
+	status, err := svc.EnsureBenefits(context.Background(), tenant, "Holds Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	if status.Credits.HeldMicro != 0 || status.Credits.RefundLockedMicro != 0 {
+		t.Fatalf("no budget row must answer zero holds, got held=%d locked=%d",
+			status.Credits.HeldMicro, status.Credits.RefundLockedMicro)
+	}
+	if status.Credits.BalanceMicro != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("balance = %d", status.Credits.BalanceMicro)
+	}
+	if status.Credits.ProjectedAt.IsZero() {
+		t.Fatal("projected_at must answer the projection instant")
+	}
+}
+
+// TestBreakdownCrossMonthBatchesCarryGrantedAt (OCR r1, CR-86-1): after a
+// month rolls over the registry KEEPS the expired month's batch row while
+// the authority snapshot no longer lists the terminated wallet — the view
+// line's GrantedAt must fall back to the REGISTRY row's grant instant
+// (created_at), never the zero time (the wire omits granted_at for a zero
+// instant and the frontend contract then rejects the whole breakdown).
+func TestBreakdownCrossMonthBatchesCarryGrantedAt(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	ctx := context.Background()
+	tenant := uint64(509)
+	// September: the registry row for 2026-09 is minted (grant completed).
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	if _, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// The registry's grant instant for the September row.
+	row, err := svc.store.GetBatch(ctx, tenant, "2026-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CreatedAt.IsZero() {
+		t.Fatal("test setup: the registry row must carry a grant instant")
+	}
+	// October: the September wallet is TERMINATED on the authority (absent
+	// from the snapshot — the post-lazy-termination steady state), yet the
+	// registry row lingers. The September view line must still carry a
+	// NON-ZERO GrantedAt (the registry's grant instant).
+	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	fake.TerminateWallet(domain.MonthlyWalletName(tenant, "2026-09"))
+	status, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	sawSeptember := false
+	for _, b := range status.Credits.Batches {
+		if b.Period != "2026-09" {
+			continue
+		}
+		sawSeptember = true
+		if b.GrantedAt.IsZero() {
+			t.Fatal("CR-86-1: the expired month's lingering batch must carry the registry grant instant, got the zero time")
+		}
+		if !b.GrantedAt.Equal(row.CreatedAt) {
+			t.Fatalf("September GrantedAt = %v, want the registry row's CreatedAt %v (the snapshot no longer contributes one)", b.GrantedAt, row.CreatedAt)
+		}
+		if b.BalanceMicro != 0 {
+			t.Fatalf("the expired September batch must surface zero (no rollover), got %d", b.BalanceMicro)
+		}
+	}
+	if !sawSeptember {
+		t.Fatal("the September registry batch must stay in the view (expired/zero, not dropped)")
+	}
+}
+
+// TestMonthlyGrantEncodesYieldPriority (#86 Task 2): a top-up batch expiring
+// BEFORE this month's end pushes the monthly wallet's creation priority to
+// TopUpWalletPriority+1 (it must be consumed after the aging top-up); with
+// no aging batch the next month's wallet keeps class 1. This drives
+// EnsureMonthlyCredits DIRECTLY — the grant-time initial; the refresh-chain
+// rebalance that follows a full EnsureBenefits would immediately converge
+// the same set to absolute ranks (TestRefreshRebalancesMixedFamilies).
+func TestMonthlyGrantEncodesYieldPriority(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	tenant := uint64(505)
+	ext := domain.ExternalCustomerID(tenant)
+
+	// An aging top-up: expires mid-month, strictly before 2026-09-30's end.
+	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), clock, domain.TopUpWalletPriority)
+
+	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	p, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-09"))
+	if !ok {
+		t.Fatal("the September monthly wallet must exist")
+	}
+	if p != domain.TopUpWalletPriority+1 {
+		t.Fatalf("September monthly priority = %d, want %d (yielding to the aging top-up)", p, domain.TopUpWalletPriority+1)
+	}
+
+	// October: the aging batch is gone (expired) — no top-up expires before
+	// the new period end, so the new monthly wallet keeps class 1.
+	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	p2, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-10"))
+	if !ok {
+		t.Fatal("the October monthly wallet must exist")
+	}
+	if p2 != domain.MonthlyWalletPriority {
+		t.Fatalf("October monthly priority = %d, want %d (no aging top-up)", p2, domain.MonthlyWalletPriority)
+	}
+}
+
+// TestRefreshRebalancesMixedFamilies (#86 Task 2, the r1-review High
+// counterexample end-to-end): aging top-up A + monthly M + fresh top-up B
+// coexist at their creation-time initials (A=2, B=2, M=3 — statically
+// unorderable); one benefits refresh submits the authority rebalance and
+// the fake's priorities converge to the true expiry order A=1, M=2, B=3.
+func TestRefreshRebalancesMixedFamilies(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	tenant := uint64(506)
+	ext := domain.ExternalCustomerID(tenant)
+
+	// A: aging top-up (expires 2026-09-25, before the period end).
+	fake.SeedTopUpWallet(ext+"-topup-a", ext, 5_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 9, 15, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+	// The first ensure mints the monthly wallet at the YIELDING initial (3).
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Mixed Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// B: fresh top-up (expires 2027-03, after the period end).
+	fake.SeedTopUpWallet(ext+"-topup-b", ext, 5_000,
+		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+
+	// The refresh chain now sees all three families and submits the
+	// rebalance — the fake's priorities must converge to the expiry order.
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Mixed Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{
+		ext + "-topup-a": 1,
+		domain.MonthlyWalletName(tenant, "2026-09"): 2,
+		ext + "-topup-b": 3,
+	}
+	for name, rank := range want {
+		p, ok := walletPriorityByName(t, fake, name)
+		if !ok {
+			t.Fatalf("wallet %s must exist", name)
+		}
+		if p != rank {
+			t.Fatalf("priority of %s = %d, want %d (true expiry order)", name, p, rank)
+		}
 	}
 }
 
@@ -494,7 +927,7 @@ func TestSeedBasePlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake)
+	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,5 +1076,76 @@ func TestEnsureBenefitsConcurrentFirstGrantExactlyOnePost(t *testing.T) {
 	}
 	if n := broker.batchCount(benefitsTenant); n != 1 {
 		t.Fatalf("one registry row expected, got %d", n)
+	}
+}
+
+// TestEffectiveFeaturesStalePurchaseEntitlementNotMaterialized（A-22 / F92）：
+// authority 的 entitlement 读是 base 与 purchase 两腿的无状态过滤并集——
+// canceled 购买的 entitlement 可能残留到懒清理窗口。购买 plan 定义已知的
+// codes 只在购买 ACTIVE 时从 authority 物化腿进来；非 ACTIVE 购买（canceled）
+// 的 plan 定义 codes 必须从物化中剔除，未付款/已取消者不得凭残留 entitlement
+// 保留付费特性。
+func TestEffectiveFeaturesStalePurchaseEntitlementNotMaterialized(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true, "advanced_models": false})
+	svc, _, db := newBenefitsService(t, fake)
+	// 本地发布 pro 计划（定义 advanced_models=true）。
+	proDef := domain.PlanVersion{Key: "pro", Version: 1, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY}
+	proJSON, err := json.Marshal(proDef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 1,
+		DefinitionJSON: string(proJSON), State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PublicationRow{
+		CommandKey: domain.PublishCommandKey("pro", 1), PlanKey: "pro", Version: 1,
+		PlanCode: domain.DeterministicPlanCode("pro", 1), ReceiptJSON: "{}",
+		PublishedBy: "test", PublishedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	const tenant = uint64(522)
+	ext := domain.ExternalPurchaseSubscriptionID(tenant)
+	// CANCELED 购买（懒清理窗口内 authority 仍带着 entitlement）。
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(ext, domain.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: ext, PlanCode: domain.DeterministicPlanCode("pro", 1),
+			AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.CancelPurchase(ext)
+	base := map[string]bool{"api_access": true, "advanced_models": false}
+	// 模拟 authority 懒清理窗口的残留 entitlement（购买腿仍带着 code）。
+	staleEntitled := map[string]bool{"advanced_models": true}
+	out := svc.effectiveFeatures(ctx, tenant, base, staleEntitled)
+	if out["advanced_models"] {
+		t.Fatalf("a CANCELED purchase's plan-defined code must NOT materialize from the stale authority entitlement leg, got %+v", out)
+	}
+	if !out["api_access"] {
+		t.Fatalf("base features must answer regardless, got %+v", out)
+	}
+	// 对照组：authority 物化一个本地无定义的 code 仍然生效（未知 code 的
+	// 物化语义保留——只剔除非 ACTIVE 购买 plan 定义的 codes）。
+	out2 := svc.effectiveFeatures(ctx, tenant, base, map[string]bool{"brand_new_code": true})
+	if !out2["brand_new_code"] {
+		t.Fatalf("an authority-materialized code no definition knows must still answer true, got %+v", out2)
+	}
+	// 对照组二：ACTIVE 购买时同 code 经定义腿正常 OR 上来（CancelPurchase
+	// 后的 settle 会被 fake 按终态拒绝——直接 ActivatePurchase 表达「权威
+	// 已激活」姿态，隔离 settle 细节）。
+	fake.ActivatePurchase(ext)
+	out3 := svc.effectiveFeatures(ctx, tenant, base, staleEntitled)
+	if !out3["advanced_models"] {
+		t.Fatalf("an ACTIVE purchase's plan definition must OR advanced_models TRUE, got %+v", out3)
 	}
 }

@@ -55,29 +55,35 @@ func providersFromEnv(getenv func(string) string) (map[string]Provider, error) {
 // without the whole set is an error.
 func alipayConfigFromEnv(getenv func(string) string) (AlipayConfig, bool, error) {
 	var cfg AlipayConfig
-	set := map[string]*string{
-		"WEKNORA_ALIPAY_APP_ID":            &cfg.AppID,
-		"WEKNORA_ALIPAY_SELLER_ID":         &cfg.SellerID,
-		"WEKNORA_ALIPAY_PUBLIC_KEY_PATH":   &cfg.AlipayPublicKeyPath,
-		"WEKNORA_ALIPAY_MERCHANT_KEY_PATH": &cfg.MerchantPrivKeyPath,
+	// Fixed iteration order (slice, not map) so the partial-config error
+	// names a DETERMINISTIC variable — map iteration made the message flaky
+	// across runs.
+	set := []struct {
+		name string
+		dst  *string
+	}{
+		{"WEKNORA_ALIPAY_APP_ID", &cfg.AppID},
+		{"WEKNORA_ALIPAY_SELLER_ID", &cfg.SellerID},
+		{"WEKNORA_ALIPAY_PUBLIC_KEY_PATH", &cfg.AlipayPublicKeyPath},
+		{"WEKNORA_ALIPAY_MERCHANT_KEY_PATH", &cfg.MerchantPrivKeyPath},
 	}
 	present := false
-	for name, dst := range set {
-		v := strings.TrimSpace(getenv(name))
+	for _, ref := range set {
+		v := strings.TrimSpace(getenv(ref.name))
 		if v == "" {
 			continue
 		}
 		present = true
-		*dst = v
+		*ref.dst = v
 	}
 	if !present {
 		return AlipayConfig{}, false, nil
 	}
-	for name, dst := range set {
-		if *dst == "" {
+	for _, ref := range set {
+		if *ref.dst == "" {
 			return AlipayConfig{}, false, fmt.Errorf(
-				"alipay channel partially configured: WEKNORA_ALIPAY_%s missing; APP_ID, SELLER_ID, PUBLIC_KEY_PATH and MERCHANT_KEY_PATH are required together",
-				strings.TrimPrefix(name, "WEKNORA_ALIPAY_"))
+				"alipay channel partially configured: %s missing; APP_ID, SELLER_ID, PUBLIC_KEY_PATH and MERCHANT_KEY_PATH are required together",
+				ref.name)
 		}
 	}
 	// Optional references: gateway override, async notify URL and explicit

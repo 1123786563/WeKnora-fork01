@@ -2,11 +2,16 @@ export interface OrderView {
  id: string; payment: 'pending'|'paid'|'closed';
  fulfillment: 'pending'|'processing'|'fulfilled'|'attention';
  amount_fen: string; currency: 'CNY';
+ // The channel checkout link when a payment request was created (#81, the
+ // payment entry the checkout page renders); absent while unpaid/unconfigured.
+ checkout_url?:string;
 }
 // The commercial summary wire shape mirrors the handler projection
 // (internal/handler/commercial.go Summary): the purchased subscription or
-// the base tier. It is NOT a ledger — available/held/refund_locked are
-// served by no endpoint; resource usage comes from
+// the base tier. It is NOT a ledger — the credits breakdown
+// (balance/held/refund_locked/available + batches) is served by
+// GET /api/v1/commercial/account's benefits.credits face
+// (parseCommercialAccountCredits); resource usage comes from
 // parseCommercialUsageList (GET /api/v1/commercial/usage) instead.
 export interface CommercialSubscription {
  id:string; plan_key:string; plan_version:number;
@@ -17,7 +22,11 @@ export interface CommercialSummary {
  base_tier:boolean; base_tier_key?:string; can_manage_billing:boolean;
 }
 export interface CommercialUsageRow { resource:string; used:number; limit:number|null }
-export interface QuoteView { id:string;amount_fen:string;credit_delta:string;expires_at:string; }
+export interface QuoteView {
+ id:string;amount_fen:string;credit_delta:string;expires_at:string;
+ // #81 AC1 additive freeze fields (legacy quotes answer without them):
+ currency?:string; features?:Record<string,boolean>; line_items?:PurchaseLineItemView[];
+}
 export interface QuoteInput { plan_key:string; plan_version:number; subscription_version:number; }
 export interface CreateOrderInput { quote_id:string; provider:'wechat'|'alipay'; idempotency_key:string; }
 export interface RefundInput { order_id:string; amount_fen:string; reason:string; idempotency_key:string; }
@@ -27,11 +36,36 @@ export function parseOrderView(value:unknown):OrderView {
  if(typeof v.id!=='string'||typeof v.amount_fen!=='string'||!/^\d+$/.test(v.amount_fen)||
     v.currency!=='CNY'||!['pending','paid','closed'].includes(String(v.payment))||
     !['pending','processing','fulfilled','attention'].includes(String(v.fulfillment))) throw new Error('invalid order');
+ // R1-V13：checkout_url 源自外部支付渠道响应，一路透传到渲染层。危险 scheme
+ // （javascript:/data: 等）不能进入前端——不安全的值在此被丢弃（订单本身仍
+ // 有效），渲染层还会用 isSafeCheckoutUrl 做第二道防线。
+ if(v.checkout_url!==undefined&&v.checkout_url!==null&&v.checkout_url!==''&&
+    !isSafeCheckoutUrl(String(v.checkout_url))) {
+  const out={...v}; delete out.checkout_url;
+  return out as unknown as OrderView;
+ }
  return v as unknown as OrderView;
+}
+
+// R1-V13：checkout_url 的渲染白名单——http/https 与已知渠道深链
+// （微信 Native code_url 的 weixin://wxpay/、支付宝的 alipayqr/alipays）。
+// 其余一律不安全（XSS/钓鱼跳转入口）。
+export function isSafeCheckoutUrl(href:string):boolean {
+ const SAFE = /^(https?:\/\/|weixin:\/\/wxpay\/|alipayqr:\/\/platformapi\/|alipays:\/\/platformapi\/)/i;
+ return SAFE.test(href);
 }
 
 function digitString(value: unknown, field: string, label: string): string {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new Error('invalid ' + label + ' (' + field + ')');
+  return value;
+}
+
+// signedDigitString accepts ONE optional leading '-' (an over-committed
+// projection's negative availability is a fact, displayed as-is — #86 plan
+// Task 4: "available 可为负数如实显示"). Everything else rejects like
+// digitString.
+function signedDigitString(value: unknown, field: string, label: string): string {
+  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) throw new Error('invalid ' + label + ' (' + field + ')');
   return value;
 }
 
@@ -86,10 +120,82 @@ export function parseQuoteView(value:unknown):QuoteView {
  const amount_fen=digitString(v.amount_fen,'amount_fen','quote');
  if(typeof v.credit_delta!=='string'||!/^-?\d+$/.test(v.credit_delta)) throw new Error('invalid quote (credit_delta)');
  const expires_at=nonEmptyString(v.expires_at,'expires_at','quote');
- return {id,amount_fen,credit_delta:v.credit_delta,expires_at};
+ const out:QuoteView = {id,amount_fen,credit_delta:v.credit_delta,expires_at};
+ // #81 AC1 freeze pass-through: currency, frozen entitlements and the
+ // subscription-fee line items ride along when present (never invented).
+ if(v.currency!==undefined) {
+  nonEmptyString(v.currency,'currency','quote');
+  out.currency = v.currency as string;
+ }
+ if(v.features!==undefined) {
+  if(typeof v.features!=='object'||v.features===null||Array.isArray(v.features)) throw new Error('invalid quote (features)');
+  const features:Record<string,boolean> = {};
+  for(const [k,val] of Object.entries(v.features as Record<string,unknown>)) {
+   if(typeof val!=='boolean') throw new Error('invalid quote (features)');
+   features[k]=val;
+  }
+  out.features = features;
+ }
+ if(v.line_items!==undefined) {
+  if(!Array.isArray(v.line_items)) throw new Error('invalid quote (line_items)');
+  out.line_items = v.line_items.map((row):PurchaseLineItemView=>{
+   if(typeof row!=='object'||row===null) throw new Error('invalid quote (line_items)');
+   const li=row as Record<string,unknown>;
+   return { kind: nonEmptyString(li.kind,'kind','quote line item'),
+    name: typeof li.name==='string'?li.name:'',
+    amount_fen: digitString(li.amount_fen,'amount_fen','quote line item') };
+  });
+ }
+ return out;
 }
 
 export interface RefundView { id:string; state:string; amount_fen:string; locked_credits:string; }
+
+// ---- #86: the credits breakdown (GET /commercial/account benefits.credits) ----
+
+// CreditBatchView is one batch line: the closed source set (monthly = the
+// plan-included monthly family incl. the purchase first-period batch; topup
+// = a payment-confirmed top-up batch), the calendar period (empty for
+// top-ups), the grant instant, the balance and the expiry — amounts as
+// digit strings (the wire-amount convention).
+export interface CreditBatchView {
+ source:'monthly'|'topup'; period:string; granted_at:string;
+ balance_micro:string; expires_at:string;
+}
+export interface CommercialAccountCredits {
+ balance_micro:string; held_micro:string; refund_locked_micro:string;
+ available_micro:string; projected_at:string; batches:CreditBatchView[];
+}
+export function parseCommercialAccountCredits(value:unknown):CommercialAccountCredits {
+ if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid account credits');
+ const v=value as Record<string,unknown>;
+ const out:CommercialAccountCredits = {
+  balance_micro: digitString(v.balance_micro,'balance_micro','account credits'),
+  held_micro: digitString(v.held_micro,'held_micro','account credits'),
+  refund_locked_micro: digitString(v.refund_locked_micro,'refund_locked_micro','account credits'),
+  available_micro: signedDigitString(v.available_micro,'available_micro','account credits'),
+  projected_at: nonEmptyString(v.projected_at,'projected_at','account credits'),
+  batches: [],
+ };
+ if(!Array.isArray(v.batches)) throw new Error('invalid account credits (batches)');
+ out.batches = v.batches.map((row):CreditBatchView=>{
+  if(typeof row!=='object'||row===null||Array.isArray(row)) throw new Error('invalid account credits (batch)');
+  const b=row as Record<string,unknown>;
+  if(b.source!=='monthly'&&b.source!=='topup') throw new Error('invalid account credits (batch source)');
+  if(typeof b.period!=='string') throw new Error('invalid account credits (batch period)');
+  return {
+   source: b.source,
+   period: b.period,
+   // granted_at is DISPLAY-ONLY advisory metadata: a backend that omits it
+   // (the cross-month lingering-batch shape, CR-86-1) degrades to '' —
+   // never a whole-breakdown parse failure over a display field.
+   granted_at: typeof b.granted_at==='string' ? b.granted_at : '',
+   balance_micro: digitString(b.balance_micro,'balance_micro','account credits batch'),
+   expires_at: nonEmptyString(b.expires_at,'expires_at','account credits batch'),
+  };
+ });
+ return out;
+}
 
 // C05 refund lifecycle vocabulary (internal/commercial/refund.go). The wire
 // contract accepts exactly these states; 'refund_unknown' and 'rejected' exist
@@ -115,4 +221,48 @@ export function parseRefundView(value:unknown):RefundView {
   // represented by a lower value.
   const locked_credits=digitString(v.locked_credits,'locked_credits','refund');
   return {id,state:v.state,amount_fen,locked_credits};
+}
+
+// #81 purchase vocabulary: PurchaseLineItemView is one frozen invoice line
+// (kind is the closed subscription_fee token in the first slice);
+// PurchaseView.state is the CLOSED product token set — the provider's raw
+// states (e.g. incomplete) NEVER cross this contract (spec L210). Reason is
+// the closed platform-failure token, present only on a non-confirmable
+// answer.
+export interface PurchaseLineItemView { kind:string; name:string; amount_fen:string }
+export interface PurchaseView {
+  // paid_awaiting_activation is the coordinator-composed middle state (#82
+  // D3): a locally paid order while the authority has not been observed
+  // active. It never comes from an authority read.
+  state:'awaiting_payment'|'paid_awaiting_activation'|'active'|'absent'|'canceled';
+  order?:OrderView; plan_key?:string; plan_version?:number;
+  amount_fen?:string; currency?:string; reason?:string;
+}
+
+const PURCHASE_STATES = new Set<string>(['awaiting_payment','paid_awaiting_activation','active','absent','canceled']);
+const PURCHASE_REASONS = new Set<string>(['unconfigured','unreachable','invalid_response','unsupported']);
+
+export function parsePurchaseView(value:unknown):PurchaseView {
+  if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid purchase');
+  const v=value as Record<string,unknown>;
+  if(typeof v.state!=='string'||!PURCHASE_STATES.has(v.state)) throw new Error('invalid purchase (state)');
+  const out:PurchaseView = { state: v.state as PurchaseView['state'] };
+  if(v.order!==undefined&&v.order!==null) out.order = parseOrderView(v.order);
+  if(v.plan_key!==undefined) out.plan_key = nonEmptyString(v.plan_key,'plan_key','purchase');
+  if(v.plan_version!==undefined) {
+    const n = integer(v.plan_version,'plan_version','purchase');
+    out.plan_version = n;
+  }
+  if(v.amount_fen!==undefined&&v.amount_fen!==null&&v.amount_fen!=='') {
+    out.amount_fen = digitString(v.amount_fen,'amount_fen','purchase');
+  }
+  if(v.currency!==undefined&&v.currency!==null&&v.currency!=='') out.currency = nonEmptyString(v.currency,'currency','purchase');
+  // (R2-21) reason is ADVISORY closed-vocabulary metadata: a backend ahead
+  // of the frontend (rolling upgrade, version drift) may emit a newer
+  // token — an unknown token is ignored as if absent (the state stays
+  // strictly validated; it is render-required and MUST fail loudly),
+  // never a whole-view parse failure that would surface 'invalid purchase
+  // (reason)' to the user.
+  if(typeof v.reason==='string'&&v.reason!==''&&PURCHASE_REASONS.has(v.reason)) out.reason=v.reason;
+  return out;
 }

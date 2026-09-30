@@ -179,14 +179,20 @@ type stubWallet struct {
 	GrantedCents int64
 	BalanceCents int64
 	ExpiresAt    string
+	CreatedAt    string
+	Priority     int
 	Metadata     map[string]string
 }
 
 func walletJSON(w stubWallet) string {
 	m, _ := json.Marshal(w.Metadata)
+	createdAt := w.CreatedAt
+	if createdAt == "" {
+		createdAt = "2099-01-01T00:00:00Z"
+	}
 	return fmt.Sprintf(
-		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"metadata":%s,"currency":"CNY"}`,
-		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, string(m))
+		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"created_at":%q,"priority":%d,"metadata":%s,"currency":"CNY"}`,
+		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, createdAt, w.Priority, string(m))
 }
 
 func centsString(cents int64) string { return commercial.FenToDecimalString(cents) }
@@ -229,7 +235,8 @@ type walletsStub struct {
 	createStatuses []int  // scripted statuses; a 422 answers wallet_limit_reached
 	limitExhausted bool   // every POST answers the limit 422
 	settleRounds   int    // initial wallet GETs answering an unsettled balance
-	entitlements   string // scripted entitlements body
+	entitlements   string // scripted entitlements body (the BASE "-sub" leg)
+	purchaseEntitlements string // scripted purchase-leg body ("" = 404 — no purchase subscription yet)
 	// entitlementCustomer scopes the scripted entitlements to ONE customer
 	// (per-customer truth; empty = all customers — the direct stub tests).
 	entitlementCustomer string
@@ -241,7 +248,9 @@ type walletsStub struct {
 func newWalletsStubBuilder() *walletsStub {
 	s := &walletsStub{
 		createStatuses: []int{http.StatusCreated},
-		entitlements:   `{"entitlements":[{"feature_code":"api_access","value":"base"}]}`,
+		// The PINNED v1.53 entitlement shape (F-2' live-stack evidence):
+		// the feature code rides `code`, not feature_code/feature.code.
+		entitlements: `{"entitlements":[{"code":"api_access","name":"api_access"}]}`,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/wallets", func(w http.ResponseWriter, r *http.Request) {
@@ -256,6 +265,7 @@ func newWalletsStubBuilder() *walletsStub {
 				Name               string            `json:"name"`
 				GrantedCredits     string            `json:"granted_credits"`
 				ExpirationAt       string            `json:"expiration_at"`
+				Priority           int               `json:"priority"`
 				Metadata           map[string]string `json:"metadata"`
 			} `json:"wallet"`
 		}
@@ -277,6 +287,7 @@ func newWalletsStubBuilder() *walletsStub {
 				GrantedCents: granted,
 				BalanceCents: 0, // unsettled until the after-commit job (settle poll)
 				ExpiresAt:    parsed.Wallet.ExpirationAt,
+				Priority:     parsed.Wallet.Priority,
 				Metadata:     parsed.Wallet.Metadata,
 			})
 			resp = `{"wallet":` + walletJSON(s.wallets[len(s.wallets)-1]) + `}`
@@ -290,6 +301,34 @@ func newWalletsStubBuilder() *walletsStub {
 		id := strings.TrimPrefix(r.URL.Path, "/api/v1/wallets/")
 		var resp string
 		status := http.StatusOK
+		if r.Method == http.MethodPut {
+			// The priority-calibration write (the #86 rebalance): parse
+			// {"wallet":{"priority":N}}, apply onto the stored wallet.
+			blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			var parsed struct {
+				Wallet struct {
+					Priority int `json:"priority"`
+				} `json:"wallet"`
+			}
+			_ = json.Unmarshal(blob, &parsed)
+			s.mu.Lock()
+			var found *stubWallet
+			for i := range s.wallets {
+				if s.wallets[i].LagoID == id {
+					found = &s.wallets[i]
+					break
+				}
+			}
+			if found == nil {
+				status, resp = http.StatusNotFound, `{}`
+			} else {
+				found.Priority = parsed.Wallet.Priority
+				resp = `{"wallet":` + walletJSON(*found) + `}`
+			}
+			s.mu.Unlock()
+			respond(w, r, &s.requests, &s.mu, status, resp, blob)
+			return
+		}
 		s.mu.Lock()
 		var found *stubWallet
 		for i := range s.wallets {
@@ -312,11 +351,43 @@ func newWalletsStubBuilder() *walletsStub {
 		s.mu.Unlock()
 		respond(w, r, &s.requests, &s.mu, status, resp, nil)
 	})
+	mux.HandleFunc("/api/v1/subscriptions/", func(w http.ResponseWriter, r *http.Request) {
+		// GET /api/v1/subscriptions/{external_id}/entitlements — the ONLY
+		// entitlements index the pinned v1.53 exposes (F-2 flow evidence:
+		// the customers-nested route answers 404 on the real release, so
+		// the stub models the real route shape, never the absent one).
+		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/subscriptions/")
+		externalID, subpath, _ := strings.Cut(rest, "/")
+		if subpath != "entitlements" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		// Map the WeKnora subscription identities back to the customer for
+		// the per-customer scoping the stub models.
+		customer := externalID
+		for _, suffix := range []string{"-sub", "-purchase"} {
+			if strings.HasSuffix(externalID, suffix) {
+				customer = strings.TrimSuffix(externalID, suffix)
+				break
+			}
+		}
+		s.mu.Lock()
+		body, code := s.entitlements, http.StatusOK
+		switch {
+		case s.entitlementCustomer != "" && customer != s.entitlementCustomer:
+			body = `{"entitlements":[]}` // per-customer truth: no entitlements attached
+		case strings.HasSuffix(externalID, "-purchase") && s.purchaseEntitlements == "":
+			code = http.StatusNotFound // no purchase subscription (yet)
+		case strings.HasSuffix(externalID, "-purchase"):
+			body = s.purchaseEntitlements
+		}
+		s.mu.Unlock()
+		respond(w, r, &s.requests, &s.mu, code, body, nil)
+	})
 	mux.HandleFunc("/api/v1/customers/", func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
 		customer, subpath, _ := strings.Cut(rest, "/")
-		switch {
-		case subpath == "wallets" && r.Method == http.MethodGet:
+		if subpath == "wallets" && r.Method == http.MethodGet {
 			s.mu.Lock()
 			out := make([]stubWallet, 0, len(s.wallets))
 			for _, w := range s.wallets {
@@ -330,17 +401,9 @@ func newWalletsStubBuilder() *walletsStub {
 				items = append(items, walletJSON(w))
 			}
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, `{"wallets":[`+strings.Join(items, ",")+`],"meta":{"next_page":null}}`, nil)
-		case subpath == "entitlements" && r.Method == http.MethodGet:
-			s.mu.Lock()
-			body := s.entitlements
-			if s.entitlementCustomer != "" && customer != s.entitlementCustomer {
-				body = `{"entitlements":[]}` // per-customer truth: no entitlements attached
-			}
-			s.mu.Unlock()
-			respond(w, r, &s.requests, &s.mu, http.StatusOK, body, nil)
-		default:
-			http.NotFound(w, r)
+			return
 		}
+		http.NotFound(w, r)
 	})
 	s.handler = mux
 	return s
@@ -399,6 +462,10 @@ func newCombinedStub(t *testing.T) *combinedStub {
 	c := &combinedStub{subs: newSubscriptionsStubBuilder(), wallets: newWalletsStubBuilder()}
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/subscriptions", c.subs.handler)
+	// The subscription SUB-paths the wallets stub owns: the v1.53
+	// entitlements index (F-2 — the customers-nested route does not exist
+	// on the pinned release).
+	mux.Handle("/api/v1/subscriptions/", c.wallets.handler)
 	mux.Handle("/api/v1/wallets", c.wallets.handler)
 	mux.Handle("/api/v1/wallets/", c.wallets.handler)
 	mux.Handle("/api/v1/customers/", c.wallets.handler)
@@ -445,6 +512,7 @@ func grantCommand(credits int64) commercial.Command {
 			Period:             period,
 			CreditsMicro:       credits,
 			ExpiresAt:          end,
+			Priority:           commercial.MonthlyWalletPriority,
 		},
 	}
 }
@@ -790,6 +858,377 @@ func TestLagoBenefitsSnapshot(t *testing.T) {
 	if other.Benefits == nil || other.Benefits.SubscriptionState != commercial.SubscriptionStatePending ||
 		other.Benefits.BalanceMicro != 0 || len(other.Benefits.Batches) != 0 {
 		t.Fatalf("untouched tenant must answer pending/zero honestly, got %+v", other.Benefits)
+	}
+}
+
+// (F-2 flow evidence) The entitlements read rides the v1.53 SUBSCRIPTION
+// routes — the pinned release exposes NO customer-nested entitlements
+// route (the old GET /api/v1/customers/:id/entitlements answered 404 on
+// the real stack, leaving Benefits.Features permanently empty). The
+// feature face is the UNION over the base "-sub" and purchase "-purchase"
+// identities, and a 404 purchase leg (no purchase yet) contributes
+// nothing.
+func TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	stub.wallets.mu.Lock()
+	// Both legs in the PINNED v1.53 shape (F-2' evidence): {"entitlements":
+	// [{"code":…}]}.
+	stub.wallets.entitlements = `{"entitlements":[{"code":"api_access"}]}`
+	stub.wallets.purchaseEntitlements = `{"entitlements":[{"code":"advanced_models"}]}`
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("benefits snapshot: %v", err)
+	}
+	if !snap.Benefits.Features["api_access"] || !snap.Benefits.Features["advanced_models"] {
+		t.Fatalf("features must union BOTH subscription legs, got %+v", snap.Benefits.Features)
+	}
+	// The read rode the subscription entitlements routes — never the
+	// customers-nested route the pinned release does not expose.
+	stub.wallets.mu.Lock()
+	defer stub.wallets.mu.Unlock()
+	sawBase, sawPurchase, sawAbsentRoute := false, false, false
+	for _, req := range stub.wallets.requests {
+		switch {
+		case req.Method == http.MethodGet && req.Path == "/api/v1/subscriptions/"+commercial.ExternalSubscriptionID(subTenant)+"/entitlements":
+			sawBase = true
+		case req.Method == http.MethodGet && req.Path == "/api/v1/subscriptions/"+commercial.ExternalPurchaseSubscriptionID(subTenant)+"/entitlements":
+			sawPurchase = true
+		case strings.HasPrefix(req.Path, "/api/v1/customers/") && strings.HasSuffix(req.Path, "/entitlements"):
+			sawAbsentRoute = true
+		}
+	}
+	if !sawBase || !sawPurchase {
+		t.Fatalf("both subscription entitlement legs must be read, base=%v purchase=%v (requests: %+v)", sawBase, sawPurchase, stub.wallets.requests)
+	}
+	if sawAbsentRoute {
+		t.Fatalf("the customers-nested entitlements route must never be called (absent on pinned v1.53)")
+	}
+}
+
+// (F-2') The parser answers the pinned v1.53 `code` shape FIRST and keeps
+// tolerating the older/newer shapes (feature_code, nested feature.code)
+// — never assumed, never required.
+func TestLagoBenefitsFeaturesParseToleratedShapes(t *testing.T) {
+	shapes := []string{
+		`{"entitlements":[{"code":"feat_code"}]}`,           // pinned v1.53 (live-stack evidence)
+		`{"entitlements":[{"feature_code":"feat_feature"}]}`, // tolerated
+		`{"entitlements":[{"feature":{"code":"feat_nested"}}]}`, // tolerated
+	}
+	for i, body := range shapes {
+		stub := newCombinedStub(t)
+		stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+		stub.wallets.mu.Lock()
+		stub.wallets.entitlements = body
+		stub.wallets.mu.Unlock()
+		snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+		})
+		if err != nil {
+			t.Fatalf("shape %d: %v", i, err)
+		}
+		if len(snap.Benefits.Features) != 1 {
+			t.Fatalf("shape %d: exactly one feature must parse, got %+v", i, snap.Benefits.Features)
+		}
+		if !snap.Benefits.Features["feat_code"] && !snap.Benefits.Features["feat_feature"] && !snap.Benefits.Features["feat_nested"] {
+			t.Fatalf("shape %d: feature code must parse, got %+v", i, snap.Benefits.Features)
+		}
+	}
+}
+
+// (F-4 flow evidence) The PURCHASE first-period wallet (its own
+// deterministic name "<ext>-purchase-<YYYY-MM>" and meta key
+// weknora_purchase_period — D4) joins the benefits batches beside the
+// base monthly wallet of the SAME period: both batches answer, the
+// balance carries both.
+func TestLagoBenefitsSnapshotIncludesPurchaseBatch(t *testing.T) {
+	stub := newCombinedStub(t)
+	base := stubWallet{
+		LagoID: "lago-wallet-base", Customer: commercial.ExternalCustomerID(subTenant),
+		Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+		GrantedCents: 100, BalanceCents: 100,
+		ExpiresAt: "2099-02-01T00:00:00Z",
+		Metadata: map[string]string{
+			commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant),
+			commercial.WalletMetaPeriod: "2099-01",
+		},
+	}
+	purchase := stubWallet{
+		LagoID: "lago-wallet-purchase", Customer: commercial.ExternalCustomerID(subTenant),
+		Name: commercial.PurchaseWalletName(subTenant, "2099-01"), Status: "active",
+		GrantedCents: 990, BalanceCents: 990,
+		ExpiresAt: "2099-02-01T00:00:00Z",
+		Metadata: map[string]string{
+			commercial.WalletMetaTenant:         commercial.ExternalCustomerID(subTenant),
+			commercial.WalletMetaPurchasePeriod: "2099-01",
+		},
+	}
+	stub.wallets.mu.Lock()
+	stub.wallets.wallets = []stubWallet{base, purchase}
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("benefits snapshot: %v", err)
+	}
+	b := snap.Benefits
+	if len(b.Batches) != 2 {
+		t.Fatalf("the base AND purchase batches must both answer for the same period, got %+v", b.Batches)
+	}
+	for _, batch := range b.Batches {
+		if batch.Period != "2099-01" {
+			t.Fatalf("both batches belong to the activation month, got %+v", b.Batches)
+		}
+	}
+	if b.BalanceMicro != commercial.CentsToMicro(100)+commercial.CentsToMicro(990) {
+		t.Fatalf("balance must carry both wallets, got %d", b.BalanceMicro)
+	}
+}
+
+// TestLagoGrantWalletCarriesEncodedPriority (#86 Task 2): the wallet create
+// POST body must carry payload.Priority — the consumption-order class is
+// explicitly encoded at creation, never left to the provider default.
+func TestLagoGrantWalletCarriesEncodedPriority(t *testing.T) {
+	stub := newWalletsStub(t)
+	cmd := grantCommand(9_900_000)
+	cmd.Payload = commercial.GrantIncludedCreditsPayload{
+		TenantID:           subTenant,
+		ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+		Period:             "2099-01",
+		CreditsMicro:       9_900_000,
+		ExpiresAt:          time.Date(2099, 2, 1, 0, 0, 0, 0, time.UTC),
+		Priority:           3, // a yielding month's monthly batch
+	}
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(), cmd); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	var body string
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPost && r.Path == "/api/v1/wallets" {
+			body = r.Body
+		}
+	}
+	if !strings.Contains(body, `"priority":3`) {
+		t.Fatalf("wallet create body must carry encoded priority, got %s", body)
+	}
+}
+
+// TestLagoRebalancePutsMixedFamiliesInExpiryOrder (#86 Task 2, the r1-review
+// High counterexample on the wire): three wallets stored at their
+// creation-time initials (aging top-up A=2, fresh top-up B=2, monthly M=3)
+// — the static encoding's consumption order A→B→M is WRONG (B must be
+// consumed after M). One rebalance command must PUT exactly three wallets to
+// A=1, M=2, B=3 (the true expiry order).
+func TestLagoRebalancePutsMixedFamiliesInExpiryOrder(t *testing.T) {
+	stub := newWalletsStub(t)
+	ext := commercial.ExternalCustomerID(subTenant)
+	stub.mu.Lock()
+	stub.wallets = []stubWallet{
+		{ // A — aging top-up (expires before the monthly period end)
+			LagoID: "w-a", Customer: ext,
+			Name: ext + "-topup-a", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-01-15T00:00:00Z", CreatedAt: "2098-01-15T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+		{ // M — monthly (expires at the period end)
+			LagoID: "w-m", Customer: ext,
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 100, BalanceCents: 100,
+			ExpiresAt: "2099-02-01T00:00:00Z", CreatedAt: "2099-01-01T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority + 1,
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: ext,
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+		{ // B — fresh top-up (expires after the period end)
+			LagoID: "w-b", Customer: ext,
+			Name: ext + "-topup-b", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-07-10T00:00:00Z", CreatedAt: "2099-01-10T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+	}
+	stub.mu.Unlock()
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(),
+		commercial.Command{
+			Kind:  commercial.CommandKindRebalanceCreditsOrder,
+			Key:   commercial.RebalanceCreditsOrderCommandKey(commercial.ExternalCustomerID(subTenant)),
+			Actor: "test", Reason: "refresh_calibration",
+			Payload: commercial.RebalanceCreditsOrderPayload{
+				TenantID: subTenant, ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+			},
+		}); err != nil {
+		t.Fatalf("rebalance: %v", err)
+	}
+	puts := map[string]int{} // wallet lago_id → the PUT body's priority
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.Path, "/api/v1/wallets/") {
+			var p struct {
+				Wallet struct {
+					Priority int `json:"priority"`
+				} `json:"wallet"`
+			}
+			if err := json.Unmarshal([]byte(r.Body), &p); err != nil {
+				t.Fatalf("PUT body malformed: %v (%s)", err, r.Body)
+			}
+			puts[strings.TrimPrefix(r.Path, "/api/v1/wallets/")] = p.Wallet.Priority
+		}
+	}
+	if len(puts) != 3 || puts["w-a"] != 1 || puts["w-m"] != 2 || puts["w-b"] != 3 {
+		t.Fatalf("rebalance PUTs = %+v, want w-a=1 w-m=2 w-b=3", puts)
+	}
+	// The stub's stored priorities converged too (the authority state).
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	for _, w := range stub.wallets {
+		want := map[string]int{"w-a": 1, "w-m": 2, "w-b": 3}[w.LagoID]
+		if w.Priority != want {
+			t.Fatalf("stored priority of %s = %d, want %d", w.LagoID, w.Priority, want)
+		}
+	}
+}
+
+// TestLagoRebalanceSkipsAlignedWallets (#86 Task 2): priorities already
+// equal to the WalletRank ranks answer ZERO PUTs — the calibration is an
+// idempotent no-op when converged (no gratuitous writes on the hot refresh
+// path).
+func TestLagoRebalanceSkipsAlignedWallets(t *testing.T) {
+	stub := newWalletsStub(t)
+	ext := commercial.ExternalCustomerID(subTenant)
+	stub.mu.Lock()
+	stub.wallets = []stubWallet{
+		{
+			LagoID: "w-x", Customer: ext,
+			Name: ext + "-topup-x", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-01-15T00:00:00Z", CreatedAt: "2098-01-15T00:00:00Z",
+			Priority: 1,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+		{
+			LagoID: "w-y", Customer: ext,
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 100, BalanceCents: 100,
+			ExpiresAt: "2099-02-01T00:00:00Z", CreatedAt: "2099-01-01T00:00:00Z",
+			Priority: 2,
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: ext,
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+	}
+	stub.mu.Unlock()
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(),
+		commercial.Command{
+			Kind:  commercial.CommandKindRebalanceCreditsOrder,
+			Key:   commercial.RebalanceCreditsOrderCommandKey(commercial.ExternalCustomerID(subTenant)),
+			Actor: "test", Reason: "refresh_calibration",
+			Payload: commercial.RebalanceCreditsOrderPayload{
+				TenantID: subTenant, ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+			},
+		}); err != nil {
+		t.Fatalf("rebalance: %v", err)
+	}
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPut {
+			t.Fatalf("an aligned wallet set must answer ZERO PUTs, saw %s %s", r.Method, r.Path)
+		}
+	}
+}
+
+// TestLagoBenefitsSnapshotListsTopUpBatch (#86 Task 1): an active wallet
+// carrying NO weknora_period metadata but THIS tenant's weknora_tenant key
+// (the #85 top-up batch shape) must join Batches with Source=topup and
+// GrantedAt = the wallet's created_at; the monthly batch answers
+// Source=monthly. The balance sum still carries both (existing behavior).
+func TestLagoBenefitsSnapshotListsTopUpBatch(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	stub.subs.preloaded = []stubSubscription{{
+		ExternalID:       commercial.ExternalSubscriptionID(subTenant),
+		ExternalCustomer: commercial.ExternalCustomerID(subTenant),
+		PlanCode:         subPlanCode,
+		Status:           "active",
+	}}
+	stub.wallets.mu.Lock()
+	stub.wallets.wallets = []stubWallet{
+		{ // top-up shape: no period key, this tenant's tenant key
+			LagoID: "w-topup", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.ExternalCustomerID(subTenant) + "-topup-ord1", Status: "active",
+			GrantedCents: 5000, BalanceCents: 5000,
+			ExpiresAt: "2100-01-31T00:00:00Z", CreatedAt: "2099-01-10T00:00:00Z",
+			Metadata: map[string]string{commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant)},
+		},
+		{ // monthly shape (the established seed convention)
+			LagoID: "w-monthly", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 990, BalanceCents: 990, ExpiresAt: "2099-02-01T00:00:00Z",
+			CreatedAt: "2099-01-01T00:00:00Z",
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant),
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+	}
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawTopUp, sawMonthly bool
+	for _, b := range snap.Benefits.Batches {
+		switch b.Source {
+		case commercial.BatchSourceTopUp:
+			sawTopUp = true
+			if b.BalanceMicro != commercial.CentsToMicro(5000) {
+				t.Fatalf("topup balance: %d", b.BalanceMicro)
+			}
+			if !b.GrantedAt.Equal(time.Date(2099, 1, 10, 0, 0, 0, 0, time.UTC)) {
+				t.Fatalf("topup granted_at: %v", b.GrantedAt)
+			}
+			if b.Period != "" {
+				t.Fatalf("topup batch carries no calendar period, got %q", b.Period)
+			}
+		case commercial.BatchSourceMonthly:
+			sawMonthly = true
+		default:
+			t.Fatalf("unknown source %q", b.Source)
+		}
+	}
+	if !sawTopUp || !sawMonthly {
+		t.Fatalf("batches incomplete: topup=%v monthly=%v", sawTopUp, sawMonthly)
+	}
+	if snap.Benefits.BalanceMicro != commercial.CentsToMicro(5990) { // both count (existing behavior)
+		t.Fatalf("balance = %d", snap.Benefits.BalanceMicro)
+	}
+}
+
+// The 404 purchase leg (no purchase subscription yet) must contribute
+// nothing — the base features still answer, never an error.
+func TestLagoBenefitsFeaturesTolerateMissingPurchaseLeg(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	// purchaseEntitlements stays "" — the stub answers the purchase leg 404.
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("a missing purchase leg must not fail the snapshot, got %v", err)
+	}
+	if !snap.Benefits.Features["api_access"] {
+		t.Fatalf("base features must still answer, got %+v", snap.Benefits.Features)
+	}
+	if snap.Benefits.Features["advanced_models"] {
+		t.Fatalf("no purchase entitlements may be fabricated, got %+v", snap.Benefits.Features)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -70,6 +71,11 @@ type CommercialHandler struct {
 	// — the account read then answers the #78 fail-closed envelope WITHOUT
 	// a benefits object (documented, never 500 for a wiring gap).
 	benefits *commercialsvc.BenefitsService
+	// purchases is the W5 (#81) payment-gated purchase coordination; nil
+	// until the container wires it — the purchase endpoints then fail
+	// closed with 501 (the order-pipeline posture), never a fabricated
+	// state.
+	purchases *commercialsvc.PurchaseService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -235,7 +241,10 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 // fields stay in the same object (information superset; unknown fields pass
 // through the parsers by convention).
 func quoteWire(q commercialsvc.QuoteView) gin.H {
-	return gin.H{
+	// #81 AC1 additive freeze: the currency, the frozen entitlements and the
+	// line items ride along when present (legacy quotes answer without
+	// them, JSON-omitted).
+	wire := gin.H{
 		"id":            q.ID,
 		"plan_key":      q.PlanKey,
 		"plan_version":  q.PlanVersion,
@@ -244,6 +253,24 @@ func quoteWire(q commercialsvc.QuoteView) gin.H {
 		"credits_micro": q.CreditsMicro,
 		"expires_at":    q.ExpiresAt,
 	}
+	if q.Currency != "" {
+		wire["currency"] = q.Currency
+	}
+	if len(q.Features) > 0 {
+		wire["features"] = q.Features
+	}
+	if len(q.LineItems) > 0 {
+		lines := make([]gin.H, 0, len(q.LineItems))
+		for _, li := range q.LineItems {
+			lines = append(lines, gin.H{
+				"kind":       li.Kind,
+				"name":       li.Name,
+				"amount_fen": strconv.FormatInt(li.AmountFen, 10),
+			})
+		}
+		wire["line_items"] = lines
+	}
+	return wire
 }
 
 // orderWire projects the service order onto the wire contract the web
@@ -262,7 +289,7 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 	case commercial.OrderStateFulfilled:
 		payment, fulfillment = "paid", "fulfilled"
 	}
-	return gin.H{
+	w := gin.H{
 		"id":             o.ID,
 		"quote_id":       o.QuoteID,
 		"state":          o.State,
@@ -275,6 +302,12 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 		"checkout_error": o.CheckoutError,
 		"version":        o.Version,
 	}
+	// (R2-27) the closed degradation marker rides along when set — the
+	// raw persistence error stays in the server log, never on the wire.
+	if o.CheckoutLinkDegraded {
+		w["checkout_link_degraded"] = true
+	}
+	return w
 }
 
 // Plans lists published catalog rows only; drafts and archived
@@ -351,6 +384,172 @@ func (h *CommercialHandler) SetBillingAccountService(s *commercialsvc.BillingAcc
 // #78 envelope without a benefits object — never a fabricated plan.
 func (h *CommercialHandler) SetBenefitsService(s *commercialsvc.BenefitsService) {
 	h.benefits = s
+}
+
+// SetPurchaseService wires the W5 purchase chain (injection point for the
+// container, #81). Until it is called, the purchase endpoints fail closed
+// with 501 — the edge never fabricates a purchase.
+func (h *CommercialHandler) SetPurchaseService(s *commercialsvc.PurchaseService) {
+	h.purchases = s
+}
+
+// purchaseWire projects the service purchase onto the wire contract the web
+// parsers expect (packages/contracts parsePurchaseView): the CLOSED state
+// token, a digit-string amount_fen and the order object when one exists.
+// No Lago vocabulary, no external identity, no raw status ever crosses.
+func purchaseWire(p commercialsvc.PurchaseView) gin.H {
+	wire := gin.H{"state": p.State}
+	if p.Order != nil {
+		wire["order"] = orderWire(*p.Order)
+	}
+	if p.PlanKey != "" {
+		wire["plan_key"] = p.PlanKey
+	}
+	if p.PlanVersion != 0 {
+		wire["plan_version"] = p.PlanVersion
+	}
+	if p.AmountFen != 0 {
+		wire["amount_fen"] = strconv.FormatInt(p.AmountFen, 10)
+	}
+	if p.Currency != "" {
+		wire["currency"] = p.Currency
+	}
+	if p.Reason != "" {
+		wire["reason"] = p.Reason
+	}
+	return wire
+}
+
+// Purchase serves POST /commercial/purchases (#81): submit a frozen quote
+// into the payment-gated purchase. The match gate runs BEFORE any channel
+// payment request: a mismatch answers 409 invoice_quote_mismatch with zero
+// channel calls.
+func (h *CommercialHandler) Purchase(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.purchases == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "purchase pipeline not configured"})
+		return
+	}
+	var req struct {
+		QuoteID  string `json:"quote_id"`
+		Provider string `json:"provider"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QuoteID == "" || req.Provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quote_id and provider are required"})
+		return
+	}
+	// The actor is the real authenticated caller (R1-V17): the synthetic
+	// "billing-admin" made purchase and ensure audit trails unattributable.
+	// The ensure display name comes from the tenant record like the other
+	// production call sites.
+	actor := commercialUserID(c)
+	view, err := h.purchases.Purchase(c.Request.Context(), tenantID, req.QuoteID, req.Provider,
+		actor, h.tenantDisplayName(tenantID))
+	switch {
+	case err == nil && view.Order != nil && view.Order.CheckoutError != "":
+		// (R1-V14) The order is durably pending but the channel call failed:
+		// mirror POST /orders and answer 202 — the client recovers through
+		// GET /commercial/orders/:id instead of reading a clean creation.
+		// (R2-27) CheckoutError now means CHANNEL failure only: a checkout
+		// whose link persistence degraded (CheckoutLinkDegraded) answers the
+		// clean 201 below — the channel call succeeded and the client holds
+		// a working link.
+		c.JSON(http.StatusAccepted, gin.H{"success": true, "data": purchaseWire(view)})
+	case err == nil:
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": purchaseWire(view)})
+	case errors.Is(err, commercialsvc.ErrInvoiceQuoteMismatch):
+		c.JSON(http.StatusConflict, gin.H{"error": "invoice_quote_mismatch"})
+	case errors.Is(err, repocommercial.ErrQuoteExpired):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
+	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; please re-quote"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase_plan_conflict"})
+	case errors.Is(err, commercialsvc.ErrPurchaseNotAwaiting):
+		// (R1-V03) The held purchase is active/canceled — no new channel
+		// order may be opened for it.
+		c.JSON(http.StatusConflict, gin.H{"error": commercialsvc.ErrPurchaseNotAwaiting.Error()})
+	case errors.Is(err, commercialsvc.ErrQuoteLegacySnapshot):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote predates the purchase freeze; please re-quote"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanInvalid):
+		// (R1-V18) Corrupt plan definition: a server-side data problem,
+		// never a re-quote signal.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase plan definition is invalid"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanCharges):
+		c.JSON(http.StatusConflict, gin.H{"error": "this plan version is not purchasable yet; please re-quote later"})
+	case errors.Is(err, commercialsvc.ErrPurchaseUnavailable):
+		// (R1-V04) Platform failure: 503 with the CLOSED reason token —
+		// never a fabricated success and never raw error text.
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":  "purchase temporarily unavailable",
+			"reason": commercialsvc.PurchaseUnavailableReason(err),
+		})
+	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
+	case errors.Is(err, repocommercial.ErrQuoteNotFound):
+		// (OCR r4 / review R82-2) A nonexistent/expired quote id is a
+		// CLIENT fact: the tenant-guarded quote read miss answers 404 —
+		// never the residual 500 (which invites retrying a deterministic
+		// failure).
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found"})
+	case errors.Is(err, repocommercial.ErrPlanNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "no published plan version for this quote"})
+	case errors.Is(err, repocommercial.ErrQuoteAlreadyUsed):
+		// (R1-V21) Same race outcome as POST /orders: 409, not a generic 400.
+		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
+	case errors.Is(err, repocommercial.ErrPurchasePendingExists):
+		// (D12 / r2:306) A pending-exists race the service could not replay
+		// (the winner is still inside its channel-Create window, link-less
+		// and too fresh for the sweep): a RETRYABLE conflict, never the
+		// default branch's 500 — whose "server-side, never invites retry"
+		// semantics is exactly backwards for a race the caller wins by
+		// re-reading a moment later.
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists"})
+	default:
+		// (R1-09) The residual error face is server-side (gorm/storage
+		// failures from EnsureBillingAccount/GetPublication/GetVersion/
+		// CreateOrder, snapshot JSON corruption): 500 with a CLOSED
+		// message — never a 400 (which invites the caller to retry the
+		// same request as if it were a client fault) and never raw error
+		// text across the public boundary (same posture as the 503
+		// branch's "never raw error text"). The original error stays in
+		// the server log.
+		log.Printf("commercial: purchase failed for tenant %d: %v", tenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase failed"})
+	}
+}
+
+// PurchaseStatus serves GET /commercial/purchase (#81): the caller space's
+// purchase projection in closed product vocabulary — absent when no
+// purchase exists, never a fabricated state.
+func (h *CommercialHandler) PurchaseStatus(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.purchases == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "purchase pipeline not configured"})
+		return
+	}
+	view, err := h.purchases.PurchaseStatus(c.Request.Context(), tenantID)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": purchaseWire(view)})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "purchase not found for this tenant"})
+	default:
+		// (OCR r4) A residual failure here is server-side (storage), never
+		// a client fault: 500 with a closed message, never raw error text.
+		log.Printf("commercial: purchase status failed for tenant %d: %v", tenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase status failed"})
+	}
 }
 
 // tenantDisplayName reads the space's display name for the ADVISORY
@@ -431,24 +630,49 @@ func (h *CommercialHandler) AccountStatus(c *gin.Context) {
 
 // benefitsWire projects the closed benefits answer onto the wire: the plan
 // (key/version/state), the feature map, the limits and the credits
-// breakdown (amounts as digit strings — the wire-amount convention). nil
-// while the chain is pending: never a fabricated plan.
+// BREAKDOWN (#86 Task 4) — balance, held, refund-locked, available
+// (= balance − held − refund_locked, negative honestly when over-committed),
+// the projection instant and the per-batch face (source monthly|topup,
+// period, grant instant, expiry). Amounts are digit strings — the
+// wire-amount convention. nil while the chain is pending: never a
+// fabricated plan.
 func benefitsWire(status commercialsvc.BenefitsStatus) gin.H {
 	if status.Plan == nil {
 		return nil
 	}
-	balance := int64(0)
+	balance, held, refundLocked := int64(0), int64(0), int64(0)
+	projectedAt := ""
 	var batches []gin.H
 	if status.Credits != nil {
 		balance = status.Credits.BalanceMicro
+		held = status.Credits.HeldMicro
+		refundLocked = status.Credits.RefundLockedMicro
+		if !status.Credits.ProjectedAt.IsZero() {
+			projectedAt = status.Credits.ProjectedAt.UTC().Format(time.RFC3339)
+		}
 		batches = make([]gin.H, 0, len(status.Credits.Batches))
 		for _, b := range status.Credits.Batches {
-			batches = append(batches, gin.H{
+			batch := gin.H{
+				"source":        b.Source,
 				"period":        b.Period,
 				"balance_micro": strconv.FormatInt(b.BalanceMicro, 10),
 				"expires_at":    b.ExpiresAt.UTC().Format(time.RFC3339),
-			})
+			}
+			if !b.GrantedAt.IsZero() {
+				batch["granted_at"] = b.GrantedAt.UTC().Format(time.RFC3339)
+			}
+			batches = append(batches, batch)
 		}
+	}
+	credits := gin.H{
+		"balance_micro":       strconv.FormatInt(balance, 10),
+		"held_micro":          strconv.FormatInt(held, 10),
+		"refund_locked_micro": strconv.FormatInt(refundLocked, 10),
+		"available_micro":     strconv.FormatInt(balance-held-refundLocked, 10),
+		"batches":             batches,
+	}
+	if projectedAt != "" {
+		credits["projected_at"] = projectedAt
 	}
 	return gin.H{
 		"plan": gin.H{
@@ -458,10 +682,7 @@ func benefitsWire(status commercialsvc.BenefitsStatus) gin.H {
 		},
 		"features": status.Plan.Features,
 		"limits":   status.Plan.Limits,
-		"credits": gin.H{
-			"balance_micro": strconv.FormatInt(balance, 10),
-			"batches":       batches,
-		},
+		"credits":  credits,
 	}
 }
 
@@ -618,6 +839,33 @@ func (h *CommercialHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
 	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut"})
+	case errors.Is(err, repocommercial.ErrPurchasePendingExists):
+		// (R3-25) The partial pending-purchase invariant rejected this
+		// insert (the legacy POST /orders path has no PurchaseService-style
+		// pre-check, so the sentinel escapes through OpenOrder): answer 409
+		// and attach the EXISTING payable pending order so the client holds
+		// the payment entry instead of a bare error token.
+		// (A-21/F105, r2:818) The attached order must carry a plan-ownership
+		// PROOF: its frozen quote must have bought the SAME plan as this
+		// request's quote, else the replayed checkout_url settles ANOTHER
+		// plan's quote while orderWire carries no plan field for the client
+		// to tell them apart. Foreign plan (or an unreadable quote on either
+		// side) answers the bare 409.
+		if existing, rerr := h.orders.CurrentPayablePendingOrderView(c.Request.Context(), tenantID); rerr == nil {
+			_, reqSnap, qerr := h.orders.QuoteSnapshotForTenant(c.Request.Context(), tenantID, req.QuoteID)
+			_, exSnap, eerr := h.orders.QuoteSnapshotForTenant(c.Request.Context(), tenantID, existing.QuoteID)
+			if qerr == nil && eerr == nil && reqSnap.PlanKey == exSnap.PlanKey {
+				c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists",
+					"order": orderWire(existing)})
+				return
+			}
+		} else {
+			// (r2:823) The bare-409 degrade keeps one diagnosable line: the
+			// index proved a pending exists but the replay read failed
+			// (swept mid-flight, storage fault).
+			log.Printf("commercial: pending-purchase conflict read failed for tenant %d: %v", tenantID, rerr)
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

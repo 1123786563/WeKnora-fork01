@@ -5,6 +5,7 @@ packages:
   - packages/mobile-core
   - packages/career-core
   - packages/core
+  - packages/ui
   - packages/design-tokens
   - packages/i18n
   - packages/views

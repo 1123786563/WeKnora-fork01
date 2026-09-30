@@ -56,6 +56,12 @@ func (p *stubCheckoutProvider) QueryRefund(_ context.Context, id string) (paymen
 	return payment.RefundResult{State: payment.StatePending, ProviderID: id}, nil
 }
 
+// MerchantID models the channel merchant identity contract: a WeChat-shaped
+// mchid that is deliberately NOT the provider name, so any attempt
+// registration that writes the provider name instead fails the merchant
+// assertions (issue #82 flow defect 2).
+func (p *stubCheckoutProvider) MerchantID() string { return "1900000109" }
+
 func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
@@ -182,6 +188,48 @@ func TestOrderQuoteExpiryAndUnconfiguredProvider(t *testing.T) {
 // contract: a channel failure AFTER the atomic open leaves a durable
 // pending order, and CreateOrder answers with the operation ID + state
 // (CheckoutError set, nil error) so the client recovers through
+// TestCheckoutURLPersistsAndReplaysVerbatim (R1-35): the channel link used
+// to live ONLY in the first CreateOrder answer — a client that timed out or
+// refreshed after the channel call lost the payment entry to an
+// already-consumed quote. The link is now persisted on the order row and
+// re-served verbatim by the recovery projection while the order is pending.
+func TestCheckoutURLPersistsAndReplaysVerbatim(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 104, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(ctx, 104, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.CheckoutURL == "" {
+		t.Fatalf("first answer must carry the link: %+v", order)
+	}
+	// Persisted on the order row (the bounded update after the atomic unit).
+	var stored repocommercial.OrderRow
+	if err := db.Where("id = ?", order.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("checkout_url must be persisted, row=%q answer=%q", stored.CheckoutURL, order.CheckoutURL)
+	}
+	// The recovery projection re-serves it verbatim while the channel is
+	// still pending (queryState switched BEFORE the recover call).
+	provider.mu.Lock()
+	provider.queryState = payment.StatePending
+	provider.mu.Unlock()
+	got, err := svc.RecoverOrderStatus(ctx, 104, order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != domain.OrderStatePending || got.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("pending recovery must re-serve the checkout link verbatim, got %+v (want %q)", got, order.CheckoutURL)
+	}
+}
+
 // RecoverOrderStatus instead of retrying the consumed quote.
 func TestOrderChannelFailureStillReturnsRecoverableOrder(t *testing.T) {
 	svc, provider, db := newOrderTestEnv(t)
@@ -220,6 +268,66 @@ func seedSecondPlan(t *testing.T, db *gorm.DB) {
 	if err := db.Create(&repocommercial.PlanRow{PlanKey: "lite", Version: 2, DefinitionJSON: string(def),
 		ExternalID: "ext-lite-2", State: domain.PlanStatePublished}).Error; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// cancellingCreateStub (R3-28): the channel Create fails BECAUSE the caller
+// cancelled — the cancellation happens DURING the channel call (the client
+// disconnected mid-checkout), exactly the shape whose row-persisting writes
+// must survive the request's end.
+type cancellingCreateStub struct {
+	*stubCheckoutProvider
+	onCreate func()
+}
+
+func (p *cancellingCreateStub) Create(_ context.Context, _ payment.OrderRequest) (payment.AttemptResult, error) {
+	p.onCreate()
+	return payment.AttemptResult{}, context.Canceled
+}
+
+// TestOpenOrderPersistsChannelFailurePastCallerCancellation（R3-28）：渠道
+// Create 因调用方取消而失败时，channel_failed 标记的写入曾复用同一已取消
+// ctx（标记丢失 → 僵尸 pending：channel_failed=false 且无链接，永久占用租户
+// 的可付槽并阻塞一切新结账）。持久化写现在脱离请求取消——标记必须落地。
+func TestOpenOrderPersistsChannelFailurePastCallerCancellation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := db.DB(); err == nil {
+		s.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.Subscription{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	base := &stubCheckoutProvider{queryState: payment.StatePending}
+	wrapped := &cancellingCreateStub{stubCheckoutProvider: base, onCreate: cancel}
+	svc, err := NewOrderService(db, map[string]payment.Provider{"wechat": wrapped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedPublishedPlan(t, db)
+	q, err := svc.CreateQuote(context.Background(), 110, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 110, q.ID, "wechat")
+	if err != nil {
+		t.Fatalf("the channel-failure posture must still answer the write: %v", err)
+	}
+	if view.CheckoutError == "" {
+		t.Fatalf("expected the channel-failure posture, got %+v", view)
+	}
+	var stored repocommercial.OrderRow
+	if err := db.Where("id = ?", view.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.ChannelFailed {
+		t.Fatalf("the channel-failed mark must survive the caller's cancellation, row=%+v", stored)
 	}
 }
 
@@ -388,5 +496,38 @@ func TestOpenOrderClaimLosesWholeUnitOnStaleVersion(t *testing.T) {
 	var used int64
 	if err := db.Model(&repocommercial.QuoteRow{}).Where("id = ? AND used_order_id IS NOT NULL", "qt_second").Count(&used).Error; err != nil || used != 0 {
 		t.Fatalf("losing claim consumed its quote: count=%d err=%v", used, err)
+	}
+}
+
+// seedPublishedProWithFeatures 按 seedPublishedPlan 的同型模式 seed 一个带
+// features 的版本（#81 AC1：quote 冻结名/币种/权益）。
+func seedPublishedProWithFeatures(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	def, _ := json.Marshal(domain.PlanVersion{Key: "pro", Version: 4, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY, Name: "Pro"})
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 4,
+		DefinitionJSON: string(def), ExternalID: "ext-pro-4", State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateQuoteFreezesLineItemsFeaturesAndCurrency(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedProWithFeatures(t, db)
+	q, err := svc.CreateQuote(context.Background(), 7, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Currency != "CNY" {
+		t.Fatalf("currency = %q, want CNY", q.Currency)
+	}
+	if len(q.LineItems) != 1 || q.LineItems[0].Kind != "subscription_fee" || q.LineItems[0].AmountFen != 9900 {
+		t.Fatalf("line items = %+v, want single subscription_fee 9900", q.LineItems)
+	}
+	if !q.Features["advanced_models"] {
+		t.Fatalf("features = %+v, must freeze plan entitlements", q.Features)
+	}
+	if q.ExpiresAt == "" {
+		t.Fatal("expiry must be present")
 	}
 }

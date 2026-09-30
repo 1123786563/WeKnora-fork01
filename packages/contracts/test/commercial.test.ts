@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
+import { isSafeCheckoutUrl, parseCommercialSummary, parseCommercialUsageList, parseOrderView, parsePurchaseView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
 
 const order = { id: 'o1', payment: 'paid', fulfillment: 'pending', amount_fen: '100', currency: 'CNY' };
 
@@ -292,4 +292,83 @@ test('rejects malformed refund views', () => {
     { ...refund, state: 42 },
   ];
   for (const value of malformed) assert.throws(() => parseRefundView(value), /invalid refund/);
+});
+
+test('parsePurchaseView accepts awaiting_payment with order', () => {
+  const v = parsePurchaseView({ state: 'awaiting_payment',
+    order: { id: 'ord_1', quote_id: 'qt_1', state: 'pending', amount_fen: '9900', currency: 'CNY',
+      payment: 'pending', fulfillment: 'pending', version: 1 },
+    plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' });
+  assert.equal(v.state, 'awaiting_payment');
+  assert.equal(v.order?.id, 'ord_1');
+});
+
+// (#82 D3) paid_awaiting_activation 是协调层合成态：契约接受它；null
+// currency（后端滚动窗口）不炸整份视图。
+test('parsePurchaseView accepts paid_awaiting_activation and tolerates null currency', () => {
+  const v = parsePurchaseView({ state: 'paid_awaiting_activation',
+    order: { id: 'ord_2', quote_id: 'qt_2', state: 'paid', amount_fen: '9900', currency: 'CNY',
+      payment: 'paid', fulfillment: 'pending', version: 2 },
+    plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: null });
+  assert.equal(v.state, 'paid_awaiting_activation');
+  assert.equal(v.currency, undefined);
+});
+
+test('parsePurchaseView rejects raw provider states', () => {
+  assert.throws(() => parsePurchaseView({ state: 'incomplete' }));
+  assert.throws(() => parsePurchaseView({ state: 'awaiting_payment', amount_fen: 9900 })); // 非数字串
+});
+
+// (R2-21) reason 是建议性闭合令牌：后端先于前端发版新增令牌（滚动升级/版本
+// 漂移）时按缺席忽略——整份视图不得解析失败（POST 路径会把 'invalid purchase
+// (reason)' 原文展示给用户）；state 保持严格（渲染必需）。
+test('parsePurchaseView ignores an unknown reason token instead of failing the whole view', () => {
+  const v = parsePurchaseView({ state: 'absent', reason: 'new_future_token' });
+  assert.equal(v.state, 'absent');
+  assert.equal(v.reason, undefined);
+  const known = parsePurchaseView({ state: 'absent', reason: 'unreachable' });
+  assert.equal(known.reason, 'unreachable');
+  // state 校验保持严格：渲染必需字段。
+  assert.throws(() => parsePurchaseView({ state: 'weird_state' }));
+});
+
+test('parseQuoteView passes through frozen line items', () => {
+  const q = parseQuoteView({ id: 'qt_1', amount_fen: '9900', credit_delta: '9900000',
+    expires_at: '2026-09-23T12:00:00Z', currency: 'CNY',
+    features: { advanced_models: true },
+    line_items: [{ kind: 'subscription_fee', name: 'Pro', amount_fen: '9900' }] });
+  assert.equal(q.line_items?.[0]?.kind, 'subscription_fee');
+  assert.equal(q.features?.advanced_models, true);
+});
+
+// R1-V13：checkout_url 源自外部支付渠道响应，一路透传到渲染层。危险 scheme
+// （javascript:/data: 等）在解析层即被丢弃——订单本身仍有效，但不会以链接
+// 形式进入前端；安全 scheme（http/https 与已知渠道深链）原样保留。
+test('parseOrderView keeps a safe checkout_url and drops a dangerous one', () => {
+  for (const url of [
+    'https://pay.example/qr',
+    'http://pay.example/qr',
+    'weixin://wxpay/bizpayurl?pr=issue81flow',
+    'alipayqr://platformapi/startapp?appId=20000067',
+    'alipays://platformapi/startapp?appId=20000067',
+  ]) {
+    const view = parseOrderView({ ...order, checkout_url: url });
+    assert.equal(view.checkout_url, url, url);
+  }
+  for (const url of ['javascript:alert(1)', 'data:text/html,<script>', 'vbscript:x', 'file:///etc/passwd', 'unknown://x']) {
+    const view = parseOrderView({ ...order, checkout_url: url }) as Record<string, unknown>;
+    assert.equal(view.checkout_url, undefined, url);
+  }
+  // 缺失/空值保持合法（订单无支付入口是正常分支）。
+  assert.equal((parseOrderView(order) as Record<string, unknown>).checkout_url, undefined);
+});
+
+test('isSafeCheckoutUrl whitelists http/https and known channel deep links only', () => {
+  assert.equal(isSafeCheckoutUrl('https://api.mch.weixin.qq.com'), true);
+  assert.equal(isSafeCheckoutUrl('weixin://wxpay/bizpayurl?pr=x'), true);
+  assert.equal(isSafeCheckoutUrl('alipayqr://platformapi/startapp'), true);
+  assert.equal(isSafeCheckoutUrl('javascript:alert(1)'), false);
+  assert.equal(isSafeCheckoutUrl('data:text/html,x'), false);
+  assert.equal(isSafeCheckoutUrl('weixin://evil/notwxpay'), false);
+  assert.equal(isSafeCheckoutUrl(''), false);
 });

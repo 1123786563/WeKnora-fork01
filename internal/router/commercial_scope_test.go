@@ -399,6 +399,10 @@ func (p *scopeStubProvider) QueryRefund(context.Context, string) (payment.Refund
 	return payment.RefundResult{}, nil
 }
 
+// MerchantID models the channel merchant identity contract (NOT the provider
+// name — see the Provider interface doc).
+func (p *scopeStubProvider) MerchantID() string { return "1900000109" }
+
 // serveJSONWith behaves like serveWith but sends a JSON request body (the
 // write endpoints bind their inputs from it).
 func serveJSONWith(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, method, path, body string) (*httptest.ResponseRecorder, string) {

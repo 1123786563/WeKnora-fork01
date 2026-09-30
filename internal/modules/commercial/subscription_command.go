@@ -3,6 +3,7 @@ package commercial
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -95,18 +96,87 @@ const CommandKindGrantIncludedCredits CommandKind = "grant_included_credits"
 // consumption order is `priority ASC, created_at ASC`).
 const MonthlyWalletPriority = 1
 
+// TopUpWalletPriority is the single creation-time priority class of top-up
+// batches (#86 Task 2). Under the uniform twelve-month TTL the family's
+// internal expiry order ≡ grant order, so Lago's same-priority
+// `created_at ASC` tie-break already IS the expiry order — one class
+// suffices at creation; the authority rebalance (WalletRank) is the
+// invariant's real guarantee.
+const TopUpWalletPriority = 2
+
+// MonthlyWalletPriorityFor computes a monthly wallet's CREATION-TIME
+// priority: MonthlyWalletPriority (1) unless some top-up batch expires
+// strictly before this period's end ("aging" — it must be consumed before
+// the monthly batch), in which case the monthly batch yields to
+// TopUpWalletPriority+1 (3). This initial value only reduces rebalance
+// writes; correctness is the refresh-time authority rebalance — a static
+// encoding cannot express mixed aging+fresh coexistence (the r1-review
+// counterexample: rebalance converges A=1, M=2, B=3).
+func MonthlyWalletPriorityFor(topUpExpiries []time.Time, periodEnd time.Time) int {
+	for _, exp := range topUpExpiries {
+		if exp.After(time.Time{}) && exp.Before(periodEnd) {
+			return TopUpWalletPriority + 1
+		}
+	}
+	return MonthlyWalletPriority
+}
+
+// WalletRankInput is one active batch participating in the authority
+// consumption-order ranking (seam-internal shape).
+type WalletRankInput struct {
+	WalletRef string // the wallet's deterministic name (adapters map to lago_id)
+	ExpiresAt time.Time
+	GrantedAt time.Time // the authority's created_at (grant time)
+}
+
+// WalletRank answers the correct ranks 1..n over (ExpiresAt ASC, GrantedAt
+// ASC, WalletRef ASC) — the "earliest expiry, then earliest grant" order
+// spec L132 mandates. WalletRef is the deterministic final tie-break. The
+// authority rebalance aligns each wallet's priority to its rank; Lago then
+// consumes `priority ASC, created_at ASC` = the intended total order.
+func WalletRank(batches []WalletRankInput) map[string]int {
+	ordered := append([]WalletRankInput(nil), batches...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if !ordered[i].ExpiresAt.Equal(ordered[j].ExpiresAt) {
+			return ordered[i].ExpiresAt.Before(ordered[j].ExpiresAt)
+		}
+		if !ordered[i].GrantedAt.Equal(ordered[j].GrantedAt) {
+			return ordered[i].GrantedAt.Before(ordered[j].GrantedAt)
+		}
+		return ordered[i].WalletRef < ordered[j].WalletRef
+	})
+	ranks := make(map[string]int, len(ordered))
+	for i, b := range ordered {
+		ranks[b.WalletRef] = i + 1
+	}
+	return ranks
+}
+
 // GrantIncludedCreditsPayload is the typed payload of grant_included_credits.
 // One calendar month per grant: Period is the UTC "YYYY-MM", ExpiresAt the
 // EXCLUSIVE period end (short-TTL wallet — included credits never roll
 // over), CreditsMicro an integer micro-credit amount that must stay
 // cent-aligned (% 10_000 == 0) so the adapter converts to the provider's
 // decimal string exactly, never through binary float.
+//
+// WalletName (additive, #82 D4) optionally overrides the wallet identity:
+// empty keeps the Base-plan MonthlyWalletName batch; the purchase first-
+// period grant sets PurchaseWalletName so purchase credits never collide
+// with the Base monthly batch (F11: grant idempotency matches by name AND
+// metadata — a shared name would trigger grant content conflicts).
 type GrantIncludedCreditsPayload struct {
 	TenantID           uint64
 	ExternalCustomerID string    // derived-equality enforced
 	Period             string    // "YYYY-MM", UTC
 	CreditsMicro       int64     // > 0 and cent-aligned (CreditsMicro % 10_000 == 0)
 	ExpiresAt          time.Time // exclusive period end, > grant time
+	WalletName         string    // optional; empty = MonthlyWalletName (Base batch)
+	// Priority is the consumption-order class encoded into the wallet at
+	// creation (#86 Task 2; MonthlyWalletPriorityFor / TopUpWalletPriority).
+	// Required [1,50] — the consumption order must be explicit, never the
+	// provider default. The invariant's authority is the refresh-time
+	// rebalance; this initial value only reduces rebalance writes.
+	Priority int
 }
 
 // Validate enforces the monthly grant contract: derived identity, strict
@@ -135,6 +205,9 @@ func (p GrantIncludedCreditsPayload) Validate() error {
 	if p.CreditsMicro%10_000 != 0 {
 		return errors.New("invalid grant payload: credits_micro must be cent-aligned (% 10_000 == 0)")
 	}
+	if p.Priority < 1 || p.Priority > 50 {
+		return errors.New("invalid grant payload: priority must be within [1,50] (the consumption-order class)")
+	}
 	return nil
 }
 
@@ -154,12 +227,27 @@ func MonthlyWalletName(tenantID uint64, period string) string {
 	return ExternalCustomerID(tenantID) + "-" + period
 }
 
+// PurchaseWalletName derives the deterministic wallet identity for a
+// purchase first-period credits batch (#82 D4):
+// "<ext-purchase-subscription-id>-<YYYY-MM>". Deliberately distinct from
+// MonthlyWalletName (the Base-plan monthly batch) so the two grant families
+// never collide on the adapter's by-name idempotency match (F11: a shared
+// name would make the purchase grant re-use — or content-conflict with —
+// the Base monthly wallet).
+func PurchaseWalletName(tenantID uint64, period string) string {
+	return ExternalPurchaseSubscriptionID(tenantID) + "-" + period
+}
+
 // Wallet metadata keys — the E3 recovery-by-metadata obligation: a grant
 // whose create response was lost is recovered by querying wallets carrying
 // these markers, never by a blind re-create.
 const (
 	WalletMetaTenant = "weknora_tenant"
 	WalletMetaPeriod = "weknora_period"
+	// WalletMetaPurchasePeriod marks a PURCHASE first-period batch (#82 D4):
+	// a distinct key so purchase wallets never match a Base monthly batch's
+	// metadata (and vice versa) even if a name ever collided.
+	WalletMetaPurchasePeriod = "weknora_purchase_period"
 )
 
 // MonthlyPeriod formats a time as the UTC calendar period "YYYY-MM".
@@ -231,12 +319,32 @@ const (
 
 // CreditBatchSnapshot is one wallet batch inside a benefits snapshot: the
 // calendar period, the RAW authority balance micro (expiry overlay is the
-// coordinator's job), and the batch's expiry instant.
+// coordinator's job), and the batch's expiry instant. Source and GrantedAt
+// are additive (#86): the closed batch family (monthly vs top-up — top-up
+// batches are the #85 payment-confirmed credits shape) and the authority's
+// grant instant (created_at), the consumption-order tie-break input
+// ("earliest expiry, then earliest grant").
 type CreditBatchSnapshot struct {
 	Period       string
 	BalanceMicro int64
 	ExpiresAt    time.Time
+	Source       string    // closed set: BatchSourceMonthly | BatchSourceTopUp
+	GrantedAt    time.Time // the wallet's created_at (grant time, tie-break)
+	// WalletRef is the batch's deterministic wallet name — the batch
+	// identity the local lot projection keys on (#86 Task 3). The Base
+	// monthly and purchase first-period batches of one period carry
+	// DISTINCT refs (their own wallet names), so both stay addressable.
+	WalletRef string
 }
+
+// Batch sources — the closed two-family set. A top-up batch carries no
+// calendar period (Period stays ""); a monthly-family batch (Base monthly
+// OR purchase first-period — both expire at period end and never roll over,
+// #82 D4) answers BatchSourceMonthly.
+const (
+	BatchSourceMonthly = "monthly"
+	BatchSourceTopUp   = "topup"
+)
 
 // BenefitsSnapshot is the authority-side benefits section of a Snapshot: the
 // subscription truth, the attached plan code (seam-internal — the service
@@ -252,3 +360,36 @@ type BenefitsSnapshot struct {
 	CheckedAt         time.Time
 }
 
+// CommandKindRebalanceCreditsOrder converges the customer's active wallets'
+// priorities onto the correct consumption order (#86 Task 2): the adapter
+// lists the active wallets, ranks them by WalletRank (expires_at ASC,
+// created_at ASC) and PUTs each wallet whose current priority diverges from
+// its rank — aligned wallets answer ZERO writes (idempotent no-op). A replay
+// re-computes from the authoritative list and converges again: the command
+// is a calibrating reconciliation, never a mutation with its own state.
+const CommandKindRebalanceCreditsOrder CommandKind = "rebalance_credits_order"
+
+// RebalanceCreditsOrderPayload is the typed payload of
+// rebalance_credits_order — one customer's wallet set, derived identity only.
+type RebalanceCreditsOrderPayload struct {
+	TenantID           uint64
+	ExternalCustomerID string // must equal ExternalCustomerID(TenantID)
+}
+
+// Validate enforces the derived-identity equality.
+func (p RebalanceCreditsOrderPayload) Validate() error {
+	if p.TenantID == 0 {
+		return errors.New("invalid rebalance_credits_order payload: tenant is required")
+	}
+	if p.ExternalCustomerID != ExternalCustomerID(p.TenantID) {
+		return errors.New("invalid rebalance_credits_order payload: external_customer_id must equal ExternalCustomerID(tenant)")
+	}
+	return nil
+}
+
+// RebalanceCreditsOrderCommandKey derives the seam command identity
+// "rebalance_credits_order:<ext-customer>" — a convergent calibration: a
+// replay re-ranks from the authoritative list and is harmless by design.
+func RebalanceCreditsOrderCommandKey(externalCustomerID string) string {
+	return string(CommandKindRebalanceCreditsOrder) + ":" + externalCustomerID
+}

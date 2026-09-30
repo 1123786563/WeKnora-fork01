@@ -79,6 +79,14 @@ type RefundResult struct {
 // by the caller) and returns the payment fact WITHOUT local identity:
 // TenantID and OrderID stay zero because a callback payload is untrusted;
 // the caller must resolve them from the local order registry.
+//
+// MerchantID reports the channel merchant identity this provider's verified
+// callbacks carry on PaymentFact.Merchant (Alipay SellerID, WeChat MchID).
+// The order pipeline MUST register attempts with exactly this value: the
+// callback resolution and ConfirmPayment both key on
+// (provider, merchant, merchant_order_id), so a divergent registration
+// (e.g. the provider NAME) makes every genuine channel callback unresolvable
+// (issue #82 flow defect 2).
 type Provider interface {
 	Create(context.Context, OrderRequest) (AttemptResult, error)
 	Query(context.Context, string) (AttemptResult, error)
@@ -86,4 +94,5 @@ type Provider interface {
 	Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error)
 	Refund(context.Context, RefundRequest) (RefundResult, error)
 	QueryRefund(context.Context, string) (RefundResult, error)
+	MerchantID() string
 }

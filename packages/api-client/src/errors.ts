@@ -65,5 +65,21 @@ export function errorFromResult(status: number, body: unknown, headers: Record<s
       : typeof record?.requestId === 'string'
         ? record.requestId
     : typeof headers['x-request-id'] === 'string' ? headers['x-request-id'] : undefined;
-  return new ApiError({ status, code, message, requestId, details: nested?.details ?? record?.details });
+  // (R1-24) A closed-vocabulary top-level reason token (e.g. the purchase
+  // 503 envelope's {"error":..., "reason":"unreachable"}) must survive the
+  // non-2xx throw: merge it into details so callers can map the closed
+  // token instead of showing the raw English message to the user.
+  // (R3-31) Only a PLAIN OBJECT base is spread-mergeable: an array base
+  // would be spread into index keys ({0:..,1:..,reason}) and silently lose
+  // its array semantics, and a string base would be dropped whole — both
+  // are discarded in favor of a fresh object carrying only the token.
+  const reason = typeof record?.reason === 'string' && record.reason !== '' ? record.reason : undefined;
+  let details: unknown = nested?.details ?? record?.details;
+  if (reason !== undefined) {
+    const base = typeof details === 'object' && details !== null && !Array.isArray(details)
+      ? details as Record<string, unknown>
+      : {};
+    details = { ...base, reason };
+  }
+  return new ApiError({ status, code, message, requestId, details });
 }

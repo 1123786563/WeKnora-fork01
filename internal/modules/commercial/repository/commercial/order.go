@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -17,13 +18,23 @@ var (
 	ErrInvalidOrderState      = errors.New("invalid_order_state")
 	ErrInvalidPaymentAttempt  = errors.New("invalid_payment_attempt")
 	ErrPaymentAttemptNotFound = errors.New("payment_attempt_not_found")
+	// ErrPurchasePendingExists (R2-26): the partial unique index rejected a
+	// second concurrent payable purchase order for the same tenant — the
+	// caller replays the existing pending order (the ErrQuoteAlreadyUsed
+	// shape, one purchase identity ahead).
+	ErrPurchasePendingExists = errors.New("purchase_pending_exists")
 )
 
 // Payment attempt lifecycle states: an attempt is registered pending and
-// becomes succeeded once its provider transaction is confirmed.
+// becomes succeeded once its provider transaction is confirmed. A pending
+// attempt whose channel entry was deliberately retired (CloseChannelOrder,
+// #83) lands closed — the row keeps the channel identity for a late
+// confirmation (ConfirmPayment still resolves it) but the attempt is no
+// longer the recovery path's payable entry.
 const (
 	PaymentAttemptStatePending   = "pending"
 	PaymentAttemptStateSucceeded = "succeeded"
+	PaymentAttemptStateClosed    = "closed"
 )
 
 // Outbox event kinds emitted by payment confirmation.
@@ -45,6 +56,27 @@ type OrderRow struct {
 	Currency  string `gorm:"column:currency;not null"`
 	State     string `gorm:"column:state;not null"`
 	Version   int64  `gorm:"column:version;not null;default:1"`
+	// CreatedAt (R1-20): order ids are "ord_"+random hex, so id order is NOT
+	// a recency order — the timestamp is the only deterministic "newest"
+	// anchor for the current-purchase resolution (same-price historical
+	// purchases, repurchases after cancellation).
+	CreatedAt time.Time `gorm:"column:created_at"`
+	// CheckoutURL persists the channel's customer-facing payment link
+	// (R1-35): it arrives from the provider AFTER the order unit commits, so
+	// it is written in its own step and the replay/recovery projections
+	// re-serve it verbatim — a client that lost the first answer (timeout,
+	// refresh) must not lose the only payment entry to an already-consumed
+	// quote. Empty when the channel call failed (the CheckoutError posture)
+	// or never made; never fabricated.
+	CheckoutURL string `gorm:"column:checkout_url"`
+	// ChannelFailed (R2-28): the channel Create call FAILED for this order
+	// (gateway 5xx / transport timeout) — the order stays pending for the
+	// recovery paths but is NOT a payable entry (no checkout link exists,
+	// the channel most likely never saw the order), so it must neither be
+	// replayed as a payment entry nor block a fresh quote's checkout (the
+	// partial pending-uniqueness index excludes it). A late channel
+	// confirmation still pays it through the standard ConfirmPayment path.
+	ChannelFailed bool `gorm:"column:channel_failed;not null;default:false"`
 }
 
 func (OrderRow) TableName() string { return "commercial_orders" }
@@ -105,6 +137,21 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	if row.Version == 0 {
 		row.Version = 1
 	}
+	// (R1-20) creation timestamp: the deterministic recency anchor. Tests
+	// may pre-set it; the store never overwrites a caller-provided value.
+	// (A-30 / F110) Whatever the source, the instant is NORMALIZED to UTC
+	// before it lands: the SQLite driver stores time.Time as text and the
+	// recency ORDER BY / sweep age gate compare that text LEXICALLY, so a
+	// local-offset rendering (+08:00) would sort behind UTC rows of the
+	// same instant and push the sweep gate across a day boundary (or, on a
+	// negative offset, sweep a just-created order immediately). Normalizing
+	// changes the RENDERING only — never the instant itself. The zero value
+	// is filled explicitly (a zero CreatedAt would otherwise be auto-filled
+	// by gorm in the SERVER's local zone, re-introducing the skew).
+	if row.CreatedAt.IsZero() {
+		row.CreatedAt = time.Now()
+	}
+	row.CreatedAt = row.CreatedAt.UTC()
 	var existing OrderRow
 	err := tx.Where("quote_id = ?", row.QuoteID).First(&existing).Error
 	if err == nil {
@@ -113,7 +160,64 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return tx.Create(&row).Error
+	if err := tx.Create(&row).Error; err != nil {
+		// (R2-26) The partial unique index uq_purchase_pending_per_tenant
+		// makes "one payable pending purchase order per tenant" a DATABASE
+		// invariant: a concurrent checkout's insert loses here (both
+		// pre-checks passed before the winner committed). SQLite reports
+		// "UNIQUE constraint failed: commercial_orders.tenant_id" (column
+		// face — the quote_id index reports quote_id instead), PostgreSQL
+		// names the index itself.
+		if row.Kind == domain.OrderKindPurchase && isPendingPurchaseConflict(err) {
+			return ErrPurchasePendingExists
+		}
+		// (A-20 / F89) The quote face of the same race: two concurrent
+		// checkouts on the SAME quote both pass the First pre-check above
+		// and the loser's insert hits the quote_id unique INDEX here — the
+		// sentinel translation the service's replay branch
+		// (errors.Is(err, ErrQuoteAlreadyUsed)) exists for. Without it the
+		// loser surfaces a raw driver error (an unmapped 500) instead of
+		// the idempotent replay of the winner's order.
+		if isQuoteUniqueConflict(err) {
+			return ErrQuoteAlreadyUsed
+		}
+		return err
+	}
+	return nil
+}
+
+// isPendingPurchaseConflict matches the partial pending-uniqueness index
+// violation (R2-26) across the two supported drivers. The quote_id unique
+// index is the OTHER conflict shape and deliberately does not match.
+func isPendingPurchaseConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "uq_purchase_pending_per_tenant") {
+		return true
+	}
+	return strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "tenant_id")
+}
+
+// isQuoteUniqueConflict matches the quote_id unique index violation (A-20)
+// across the two supported drivers: SQLite reports the column face
+// ("UNIQUE constraint failed: commercial_orders.quote_id"), PostgreSQL
+// names the index — in the UNDERSCORE form gorm's default NamingStrategy
+// actually generates (idx_commercial_orders_quote_id, r2:212 — the dotted
+// literal the previous matcher relied on never appears on a live PG; it
+// stays matched as a defensive shape). The pending-uniqueness shape
+// deliberately does not match (it reports tenant_id).
+func isQuoteUniqueConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "commercial_orders.quote_id") {
+		return true
+	}
+	return strings.Contains(msg, "idx_commercial_orders_quote_id") ||
+		strings.Contains(msg, "idx_commercial_orders.quote_id")
 }
 
 // OpenOrderCommand is the SINGLE input from which the order row and its
@@ -189,6 +293,9 @@ func (s *OrderStore) OpenOrder(ctx context.Context, cmd OpenOrderCommand) error 
 		if err := createOrderTx(tx, OrderRow{
 			ID: cmd.OrderID, TenantID: cmd.TenantID, QuoteID: cmd.QuoteID,
 			Kind: cmd.Kind, AmountFen: cmd.AmountFen, Currency: cmd.Currency,
+			// (R1-20) the command's clock: the order's creation timestamp
+			// shares the unit's time base (quote consumption included).
+			CreatedAt: cmd.Now,
 		}); err != nil {
 			return err
 		}
@@ -218,6 +325,193 @@ func (s *OrderStore) ListOrdersByTenant(ctx context.Context, tenantID uint64) ([
 	return rows, nil
 }
 
+// CurrentPurchaseOrder returns the order row that belongs to the CURRENT
+// purchase (#81): purchase-kind orders at the held purchase's frozen price
+// face (amount+currency), the NEWEST unfinished (pending) checkout
+// preferred (R1-20: order ids are "ord_"+random hex, so id order is not a
+// recency order — created_at DESC is the recency anchor, id the deterministic
+// tie-break; same-price historical purchases and repurchases after
+// cancellation must not shadow the current order, and a stale pending
+// leftover must not outrank the current one). All bounds are
+// parameter-bound; no matching order reports ErrOrderNotFound.
+func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var rows []OrderRow
+	if err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ?",
+			tenantID, domain.OrderKindPurchase, amountFen, currency).
+		Order("created_at DESC, id ASC").Find(&rows).Error; err != nil {
+		return OrderRow{}, err
+	}
+	for _, row := range rows {
+		// (A-29 / F109) A channel-failed pending row is a DEAD payment
+		// entry (R2-28 — no checkout link exists, it is neither payable nor
+		// replayable): it must never win the pending preference and shadow a
+		// real paid order of the same price face (the caller would project a
+		// permanently-pending dead order and MISS the paid_awaiting_activation
+		// synthesis window). The pending preference carries the SAME payable
+		// predicate as CurrentPendingPurchaseOrder.
+		if row.State == domain.OrderStatePending && !row.ChannelFailed {
+			return row, nil
+		}
+	}
+	// (r2:348) The fallback carries the SAME dead-row discipline: any
+	// pending row still reaching the fallback is a DEAD payment entry
+	// (channel-failed, or link-less — a payable one would have won the
+	// preference loop above), and the newest row being one (a paid order
+	// followed by a failed channel Create within the awaiting window) must
+	// not shadow the newest LIVE row. The first non-pending row (the newest
+	// paid/fulfilled one) answers; an all-pending price face reports
+	// not-found rather than projecting a permanently-dead entry.
+	for _, row := range rows {
+		if row.State == domain.OrderStatePending {
+			continue // dead payment entry — never the current purchase face
+		}
+		return row, nil
+	}
+	return OrderRow{}, ErrOrderNotFound
+}
+
+// CurrentPaidAwaitingActivationPurchaseOrder answers the NEWEST purchase
+// order sitting in the paid-awaiting-activation window (D11 / r2:253):
+// purchase-kind at the held purchase's frozen price face, state=paid —
+// "paid but not yet fulfilled" is exactly the OrderRow.State=paid shape
+// (MarkFulfilled moves it to fulfilled, which leaves the window and this
+// read). The pre-create probe uses it to REPLAY the paid order instead of
+// opening a second channel order for the same gating subscription (the
+// pending uniqueness index only guards state='pending' — a paid order has
+// left its range, so the database no longer rejects the double open).
+// No matching order reports ErrOrderNotFound; all bounds are
+// parameter-bound.
+func (s *OrderStore) CurrentPaidAwaitingActivationPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ?",
+			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePaid).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
+}
+
+// CurrentPendingPurchaseOrder returns the NEWEST still-PENDING, PAYABLE
+// purchase order at the held purchase's frozen price face (R1-22, R2-28):
+// at most ONE payable channel order may exist per purchase, so a checkout
+// under a fresh quote must replay the existing pending order instead of
+// opening a second concurrent channel order for the same gating invoice
+// (two payable orders would double-charge the same subscription — each
+// callback confirms independently). Payable (R2-28) means the channel
+// Create SUCCEEDED: channel-failed orders carry no checkout link and are
+// not replayed as payment entries, and an empty checkout_url (persistence
+// degraded, R2-27) is not a payment entry either. No payable pending order
+// reports ErrOrderNotFound.
+func (s *OrderStore) CurrentPendingPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ? AND channel_failed = ? AND checkout_url <> ''",
+			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePending, false).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
+}
+
+// CurrentPayablePendingOrder returns the tenant's NEWEST payable pending
+// purchase order WITHOUT the price-face filter (R2-26): it is the conflict
+// replay read — the partial unique index just proved such an order exists,
+// so the price face would only risk a read mismatch (the concurrent winner
+// consumed a quote of the SAME purchase, hence the same frozen face, but
+// the looser read keeps the replay unconditional on matching keys).
+// (R3-26) PAYABLE is the SAME predicate as the index: channel_failed =
+// false AND a persisted checkout_url — a link-less row (persist-degraded,
+// ctx-cancelled channel failure, pre-column legacy) is never replayed as a
+// clean winner; the caller that cannot find a replayable row surfaces the
+// conflict error instead of answering an unpayable 201.
+func (s *OrderStore) CurrentPayablePendingOrder(ctx context.Context, tenantID uint64) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND checkout_url <> ''",
+			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
+}
+
+// MarkChannelFailed persists the channel entry's retirement on the order row
+// (R2-28, #83): the order stays pending (the recovery paths and a late
+// channel confirmation still work) but is marked NOT payable — the channel
+// entry is no longer open (a failed channel Create left no checkout link, or
+// CloseChannelOrder deliberately closed a pending order). The partial
+// pending-uniqueness index excludes channel-failed rows, so a fresh quote's
+// checkout is never blocked by a dead order.
+func (s *OrderStore) MarkChannelFailed(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("id = ? AND state = ?", orderID, domain.OrderStatePending).
+		Update("channel_failed", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrOrderNotFound
+	}
+	return nil
+}
+
+// SweepStaleLinklessPending marks the tenant's pending purchase rows that
+// carry channel_failed=false but NO persisted checkout link (R3-26): the
+// persist-degraded residue (the channel call succeeded but the link never
+// landed — including pre-column legacy rows before the migration backfill).
+// Such a row is not a replayable payment entry, yet it occupies the
+// pending-uniqueness slot; sweeping it to channel-failed releases the slot
+// so a fresh quote's checkout can proceed. Parameter-bound; returns the
+// number of rows swept.
+func (s *OrderStore) SweepStaleLinklessPending(ctx context.Context, tenantID uint64) (int64, error) {
+	// (OCR r4) Time-scoped: only rows OLDER than the sweep age are stale —
+	// a just-created order whose checkout link is still mid-landing must
+	// never be swept out from under its own checkout.
+	staleBefore := time.Now().UTC().Add(-SweepStaleAge)
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND (checkout_url IS NULL OR checkout_url = '') AND created_at < ?",
+			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false, staleBefore).
+		Update("channel_failed", true)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// SweepStaleAge is the age at which a link-less pending purchase row counts
+// as sweepable residue (OCR r4: a fresh checkout's persist window is
+// seconds; anything still link-less after this is degraded residue).
+const SweepStaleAge = 15 * time.Minute
+
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —
 // the identifier payment recovery re-queries the channel with. An order with
 // no pending attempt reports ErrPaymentAttemptNotFound.
@@ -232,6 +526,61 @@ func (s *OrderStore) FirstPendingAttempt(ctx context.Context, orderID string) (P
 	return att, err
 }
 
+// MarkAttemptClosed retires every still-pending attempt of an order to the
+// closed state (#83 CloseChannelOrder landing): the channel entry is gone,
+// but the row — and its (provider, merchant, merchant_order_id) identity —
+// survives so a LATE channel success still confirms through ConfirmPayment
+// (the fund fact is never destroyed by a close). Idempotent by construction:
+// only pending rows move, so a replay (or a race with a confirmation that
+// already succeeded the attempt) is a no-op. Parameter-bound.
+func (s *OrderStore) MarkAttemptClosed(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&PaymentAttemptRow{}).
+		Where("order_id = ? AND state = ?", orderID, PaymentAttemptStatePending).
+		Update("state", PaymentAttemptStateClosed)
+	if res.Error != nil {
+		return res.Error
+	}
+	return nil
+}
+
+// CloseAttemptAndRetireChannel lands the close-decision PAIR — every
+// still-pending attempt to closed AND the order row to channel_failed — in
+// ONE transaction (OCR C-07): the pair is the single close landing, and
+// landing it as two independent UPDATEs left a recoverable-only-by-hand
+// half state on a crash between them (attempt closed but the order still
+// payable: channel_failed=false with a persisted checkout_url has NO API
+// recovery path — the switch branch needs a pending attempt, the sweep only
+// touches link-less rows). Both writes carry the same predicates as the
+// standalone methods (MarkAttemptClosed / MarkChannelFailed); a concurrent
+// payment that already advanced the order past pending refuses the half
+// landing (ErrOrderNotFound — the whole transaction rolls back).
+// Parameter-bound throughout.
+func (s *OrderStore) CloseAttemptAndRetireChannel(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&PaymentAttemptRow{}).
+			Where("order_id = ? AND state = ?", orderID, PaymentAttemptStatePending).
+			Update("state", PaymentAttemptStateClosed).Error; err != nil {
+			return err
+		}
+		res := tx.Model(&OrderRow{}).
+			Where("id = ? AND state = ?", orderID, domain.OrderStatePending).
+			Update("channel_failed", true)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrOrderNotFound
+		}
+		return nil
+	})
+}
+
 // GetOrder returns an order by ID; readers distinguish paid from fulfilled.
 func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) {
 	var row OrderRow
@@ -240,6 +589,46 @@ func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) 
 		return OrderRow{}, ErrOrderNotFound
 	}
 	return row, err
+}
+
+// SetCheckoutURL persists the channel checkout link after the order unit
+// committed (R1-35): the link is produced by the provider call that follows
+// OpenOrder, so it lands in its own bounded update. An empty url is refused
+// (nothing to persist — the CheckoutError posture stays the single marker of
+// a failed channel call); the update is parameter-bound and reports
+// ErrOrderNotFound when the order row is gone.
+func (s *OrderStore) SetCheckoutURL(ctx context.Context, orderID, checkoutURL string) error {
+	if orderID == "" || checkoutURL == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("id = ?", orderID).
+		Update("checkout_url", checkoutURL)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrOrderNotFound
+	}
+	return nil
+}
+
+// GetOrderByQuote returns the order opened against one quote (#81): the
+// retry idempotency surface — a replayed purchase resolves the EXISTING
+// order instead of opening a second channel request. Both bounds are
+// parameter-bound; an order of another tenant is simply not found.
+func (s *OrderStore) GetOrderByQuote(ctx context.Context, tenantID uint64, quoteID string) (OrderRow, error) {
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND quote_id = ?", tenantID, quoteID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
 }
 
 // RegisterAttempt records the merchant-side attempt before any payment

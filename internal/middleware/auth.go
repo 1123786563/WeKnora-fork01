@@ -66,6 +66,14 @@ var noAuthAPI = map[string][]string{
 	// before GET to validate Content-Type / Content-Length when rendering
 	// image previews — both verbs must be allowed for image links to work.
 	"/api/v1/files/presigned": {"GET", "HEAD"},
+	// Provider payment callbacks (issue #82 flow defect 1): Alipay/WeChat
+	// servers POST notifications anonymously — authenticity comes from the
+	// provider signature over the raw body (PaymentCallbacksHandler.Verify),
+	// never from a session. Without this whitelist entry the global Auth
+	// middleware 401s every channel server push before the handler runs
+	// (routes_commercial.go mounts the group under the authenticated /api/v1
+	// tree by design; the fail-closed handler rejects unsigned bodies).
+	"/api/v1/commercial/callbacks/*": {"POST"},
 }
 
 // 检查请求是否在无需认证的API列表中

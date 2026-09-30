@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 // ProviderWechat names the WeChat Pay channel on PaymentFact.Provider.
@@ -176,12 +177,30 @@ func NewWechatProvider(cfg WechatConfig) (*WechatProvider, error) {
 // code must go through NewWechatProvider so keys come only from
 // configured references.
 func newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey, apiv3Key []byte) *WechatProvider {
+	// (R2-19) NewSSRFSafeTransport does not set Proxy: building the client
+	// through it silently dropped ProxyFromEnvironment, so proxy-only
+	// egress deployments (HTTP_PROXY/HTTPS_PROXY) lost gateway reachability
+	// the default-Transport client used to have. Compose via
+	// NewSSRFSafeHTTPClientWithTransport and re-attach the environment
+	// proxy — the SSRF dial/validation layers stay intact.
+	channelTransport := secutils.NewSSRFSafeTransport(secutils.SSRFSafeHTTPClientConfig{})
+	channelTransport.Proxy = http.ProxyFromEnvironment
 	return &WechatProvider{
 		cfg:          cfg,
 		platformKeys: platformKeys,
 		apiv3Key:     apiv3Key,
-		client:       &http.Client{Timeout: cfg.timeout()},
-		now:          time.Now,
+		// (R1-V09/R1-14) The shared SSRF-safe client: every redirect hop is
+		// re-validated against the same policy AND capped at MaxRedirects
+		// (a custom CheckRedirect replaces the stdlib's default 10-hop
+		// limit, so the previous per-hop check alone allowed an unlimited
+		// redirect loop), while the SSRFSafe transport pins the DNS answer
+		// at DIAL time — closing the validate-then-dial rebinding window a
+		// default Transport leaves open (it re-resolves independently).
+		client: secutils.NewSSRFSafeHTTPClientWithTransport(secutils.SSRFSafeHTTPClientConfig{
+			Timeout:      cfg.timeout(),
+			MaxRedirects: 10,
+		}, channelTransport),
+		now: time.Now,
 	}
 }
 
@@ -211,6 +230,10 @@ type wechatPaymentResult struct {
 	TradeState    string           `json:"trade_state"`
 	Amount        wechatAmountJSON `json:"amount"`
 }
+
+// MerchantID reports the configured MchID — the identity Verify stamps on
+// every verified fact (trusted: matched against the configured merchant).
+func (p *WechatProvider) MerchantID() string { return p.cfg.MchID }
 
 // Verify authenticates one payment callback end to end (WX-02): serial
 // selection from CONFIGURED references only, timestamp window,
@@ -343,9 +366,10 @@ type wechatNativeOrderResponse struct {
 }
 
 type wechatTransactionResponse struct {
-	OutTradeNo string           `json:"out_trade_no"`
-	TradeState string           `json:"trade_state"`
-	Amount     wechatAmountJSON `json:"amount"`
+	OutTradeNo    string           `json:"out_trade_no"`
+	TransactionID string           `json:"transaction_id"`
+	TradeState    string           `json:"trade_state"`
+	Amount        wechatAmountJSON `json:"amount"`
 }
 
 type wechatCloseRequest struct {
@@ -401,7 +425,13 @@ func (p *WechatProvider) Create(ctx context.Context, req OrderRequest) (AttemptR
 	return AttemptResult{State: StatePending, ProviderID: req.MerchantOrderID, CheckoutURL: out.CodeURL}, nil
 }
 
-// Query reconciles an attempt by its ORIGINAL out_trade_no (WX-03).
+// Query reconciles an attempt by its ORIGINAL out_trade_no (WX-03). The
+// result keys the channel TRANSACTION id when the answer carries one: the
+// recovery path records this value as the attempt's provider transaction,
+// and ConfirmPayment's exactly-once guard compares it against the verified
+// callback fact's transaction — keying out_trade_no here would misread the
+// SAME payment (recovered first, callback second) as two different channel
+// transactions (issue #83 flow defect, spec L127 duplicate-fact unity).
 func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptResult, error) {
 	if providerID == "" {
 		return AttemptResult{}, fmt.Errorf("%w: empty provider id", ErrInvalidRequest)
@@ -412,7 +442,10 @@ func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptR
 		return AttemptResult{State: stateIfTimeout(err, StateUnknown), ProviderID: providerID},
 			fmt.Errorf("wechat query %s: %w", providerID, err)
 	}
-	id := out.OutTradeNo
+	id := out.TransactionID
+	if id == "" {
+		id = out.OutTradeNo
+	}
 	if id == "" {
 		id = providerID
 	}
@@ -511,8 +544,16 @@ func isTimeoutErr(err error) bool {
 
 // do sends one signed APIv3 request. The Authorization header is signed
 // with the merchant private key resolved from its configured path; a
-// missing reference fails closed with ErrNotConfigured.
+// missing reference fails closed with ErrNotConfigured. (R1-V09) The egress
+// is validated against the shared SSRF policy before EVERY request: the
+// configured API base must be http/https and must not point at
+// localhost/loopback/private/reserved addresses unless explicitly exempted
+// server-side via SSRF_WHITELIST(_EXTRA) — the flow-evidence stub loopback
+// setup relies on exactly that auditable exemption.
 func (p *WechatProvider) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
+	if err := secutils.ValidateURLForSSRF(p.cfg.apiBase()); err != nil {
+		return fmt.Errorf("%w: api base url failed SSRF validation: %v", ErrNotConfigured, err)
+	}
 	auth, err := p.authorization(method, path, body)
 	if err != nil {
 		return err

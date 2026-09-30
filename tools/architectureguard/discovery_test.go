@@ -190,12 +190,12 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // worker 23+23 两侧一致；hooks 58。 ----
 
 const (
-	wantRouteLiteral  = 631
+	wantRouteLiteral  = 633
 	wantRouteAPIKey   = 95
 	wantRouteHandle   = 0
-	wantRouteTotal    = 726
+	wantRouteTotal    = 728
 	wantWorkersPerMix = 23
-	wantHooks         = 62
+	wantHooks         = 63
 )
 
 func repoRoot(t *testing.T) string {

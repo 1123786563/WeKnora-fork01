@@ -968,15 +968,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		h.SetPlanVersionService(s)
 	}))
 	// T08 (#80): the lazy Base-Plan benefits chain (seed → account →
-	// subscription → monthly credits → projection) behind the benefits
-	// section of GET /commercial/account, plus the commercial growth gate
-	// (ResourceQuotaGuard) wired into the member and knowledge growth
-	// paths. Registered in the SAME block, away from the pre-craft-Invoke
-	// provider block (the ordering trap documented there). The guard is
-	// fail-open BY CONSTRUCTION: quotas bite only where a projection wrote
-	// a hard_limit — an unprojected dimension (blocked-env, Lago outage,
-	// unconfigured platform) carries NULL limits and every reserve passes;
-	// a pending chain never locks a space out of its own functions.
+	// subscription → monthly credits → projection + lot sync) behind the
+	// benefits section of GET /commercial/account, plus the commercial
+	// growth gate (ResourceQuotaGuard) wired into the member and knowledge
+	// growth paths. Registered in the SAME block, away from the
+	// pre-craft-Invoke provider block (the ordering trap documented there).
+	// The guard is fail-open BY CONSTRUCTION: quotas bite only where a
+	// projection wrote a hard_limit — an unprojected dimension
+	// (blocked-env, Lago outage, unconfigured platform) carries NULL limits
+	// and every reserve passes; a pending chain never locks a space out of
+	// its own functions. NewBudgetStore (#86 Task 3) feeds the benefits
+	// service's lot-sync parameter — fx constructs it from the provided
+	// *gorm.DB (the manually-built BudgetStore inside newMobileVoiceHandler
+	// is that handler's own private instance, unrelated to this wiring).
+	must(container.Provide(repocommercial.NewBudgetStore))
 	must(container.Provide(commercialsvc.NewBenefitsService))
 	must(container.Invoke(func(
 		h *handler.CommercialHandler,
@@ -1006,6 +1011,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (The gateway/execution-gate/remote-usage providers this drains through
 	// are registered earlier, before the craft Invoke that first resolves
 	// newAgentRuntime.)
+	must(container.Provide(commercialsvc.NewPurchaseFulfiller))
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
 	// A03 action approval pipeline: the persisted action store and the
@@ -1104,6 +1110,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(commercialsvc.NewOrderService))
 	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.OrderService) {
 		h.SetOrderService(s)
+	}))
+	// W5 (#81): the payment-gated purchase chain behind
+	// POST /commercial/purchases and GET /commercial/purchase. dig resolves
+	// the collaborators (BillingAccountService, PlanVersionService,
+	// OrderService) in their own blocks above; the platform seam arrives
+	// from the commercial platform provider. Until wired, the endpoints
+	// fail closed with 501 (the order-pipeline posture).
+	must(container.Provide(commercialsvc.NewPurchaseService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.PurchaseService) {
+		h.SetPurchaseService(s)
 	}))
 	// Provider payment callbacks share the same channel adapters: the
 	// router injects this handler into RegisterCommercialRoutes so a

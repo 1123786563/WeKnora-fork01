@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 // ProviderAlipay names the Alipay channel on PaymentFact.Provider.
@@ -191,11 +192,29 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("alipay public key: %w", err)
 	}
+	// (R2-17) NewSSRFSafeTransport does not set Proxy: building the client
+	// through it silently dropped ProxyFromEnvironment, so proxy-only
+	// egress deployments (HTTP_PROXY/HTTPS_PROXY) lost gateway reachability
+	// the default-Transport client used to have. Compose via
+	// NewSSRFSafeHTTPClientWithTransport and re-attach the environment
+	// proxy — the SSRF dial/validation layers stay intact.
+	channelTransport := secutils.NewSSRFSafeTransport(secutils.SSRFSafeHTTPClientConfig{})
+	channelTransport.Proxy = http.ProxyFromEnvironment
 	return &AlipayProvider{
 		cfg:          cfg,
 		alipayPubKey: pub,
-		client:       &http.Client{Timeout: cfg.timeout()},
-		now:          time.Now,
+		// (R1-V09/R1-14) The shared SSRF-safe client: every redirect hop is
+		// re-validated against the same policy AND capped at MaxRedirects
+		// (a custom CheckRedirect replaces the stdlib's default 10-hop
+		// limit, so the previous per-hop check alone allowed an unlimited
+		// redirect loop), while the SSRFSafe transport pins the DNS answer
+		// at DIAL time — closing the validate-then-dial rebinding window a
+		// default Transport leaves open (it re-resolves independently).
+		client: secutils.NewSSRFSafeHTTPClientWithTransport(secutils.SSRFSafeHTTPClientConfig{
+			Timeout:      cfg.timeout(),
+			MaxRedirects: 10,
+		}, channelTransport),
+		now: time.Now,
 	}, nil
 }
 
@@ -268,6 +287,10 @@ func (p *AlipayProvider) alipayVerifySignature(signType, sign, content string) e
 	}
 	return nil
 }
+
+// MerchantID reports the configured SellerID — the identity Verify stamps
+// on every verified fact (trusted: matched against the configured seller).
+func (p *AlipayProvider) MerchantID() string { return p.cfg.SellerID }
 
 // Verify authenticates one asynchronous payment notification (ALI-02). The
 // RAW form body is parsed exactly once; the signature is recomputed over
@@ -446,7 +469,17 @@ func (p *AlipayProvider) Query(ctx context.Context, providerID string) (AttemptR
 		return AttemptResult{State: stateIfTimeout(err, StateUnknown), ProviderID: providerID},
 			fmt.Errorf("alipay query %s: %w", providerID, err)
 	}
-	id := out.OutTradeNo
+	// (OCR C-08) The query's ProviderID must be SAME-SOURCED with the
+	// notify fact's Transaction (trade_no, the provider's own transaction
+	// identity) — the #83 duplicate-fact-unity contract the wechat leg
+	// already satisfies (transaction_id first). Answering out_trade_no
+	// instead broke ConfirmPayment's sameTxn replay detection whenever a
+	// recovery query landed before the notify replay: the transaction id
+	// was rewritten and a spurious over-payment audit event minted.
+	id := out.TradeNo
+	if id == "" {
+		id = out.OutTradeNo
+	}
 	if id == "" {
 		id = providerID
 	}
@@ -540,8 +573,15 @@ func mapAlipayRefundStatus(status string) AttemptState {
 
 // call sends one signed gateway request (ALI-01 common params) and verifies
 // the response envelope signature over the ORIGINAL inner JSON bytes with
-// the configured Alipay public key before unmarshalling it.
+// the configured Alipay public key before unmarshalling it. (R1-V09) The
+// egress is validated against the shared SSRF policy before every request:
+// the configured gateway must be http/https and must not point at
+// localhost/loopback/private/reserved addresses unless explicitly exempted
+// server-side via SSRF_WHITELIST(_EXTRA).
 func (p *AlipayProvider) call(ctx context.Context, method string, biz interface{}, out interface{}) error {
+	if err := secutils.ValidateURLForSSRF(p.cfg.gateway()); err != nil {
+		return fmt.Errorf("%w: gateway url failed SSRF validation: %v", ErrNotConfigured, err)
+	}
 	bizJSON, err := json.Marshal(biz)
 	if err != nil {
 		return err

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 func TestAlipayAmountIsExactFen(t *testing.T) {
@@ -233,10 +234,31 @@ func TestAlipaySyncReturnNeverConfirms(t *testing.T) {
 	}
 }
 
+// TestSyncReturnCannotConfirmPurchase pins the SENTINEL, not just failure
+// (incremental over TestAlipaySyncReturnNeverConfirms, which only asserts
+// err != nil). A future implementation must not degrade to a generic error:
+// callers rely on errors.Is(err, ErrAlipaySyncReturn) to tell "the
+// synchronous return page can never confirm a payment" (issue #82 AC2)
+// apart from a transient channel failure.
+func TestSyncReturnCannotConfirmPurchase(t *testing.T) {
+	p, _, _ := alipayNotifyFixture(t)
+	fact, err := p.VerifySyncReturn(context.Background(), http.Header{},
+		[]byte("out_trade_no=out-1&trade_no=trade-1"))
+	if !errors.Is(err, ErrAlipaySyncReturn) || fact != (commercial.PaymentFact{}) {
+		t.Fatalf("sync return must fail with the dedicated sentinel: fact=%+v err=%v",
+			fact, err)
+	}
+}
+
 // alipayGatewayFixture stands up an offline gateway that answers signed
 // envelopes with the test "Alipay" key and records the last request form.
+// (R1-V09) The loopback gateway rides the SSRF_WHITELIST exemption — the
+// same auditable mechanism production uses.
 func alipayGatewayFixture(t *testing.T, respond func(r *http.Request) (string, error)) (*AlipayProvider, *url.Values, *httptest.Server) {
 	t.Helper()
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
 	_, alipayKey, cfg := alipayNotifyFixture(t)
 	lastForm := &url.Values{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -293,7 +315,11 @@ func TestAlipayQueryReconcilesMissedNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.State != StateSucceeded || res.ProviderID != "out-9" {
+	// (OCR C-08) The query's ProviderID is SAME-SOURCED with the notify
+	// fact's Transaction: trade_no first (the provider's own transaction
+	// identity — the #83 duplicate-fact-unity contract the wechat leg
+	// already satisfies), out_trade_no only as the fallback.
+	if res.State != StateSucceeded || res.ProviderID != "trade-9" {
 		t.Fatalf("query result: %+v", res)
 	}
 	if lastForm.Get("method") != "alipay.trade.query" {
@@ -301,6 +327,23 @@ func TestAlipayQueryReconcilesMissedNotification(t *testing.T) {
 	}
 	if lastForm.Get("biz_content") == "" || lastForm.Get("sign") == "" {
 		t.Fatalf("query request not signed: %v", lastForm)
+	}
+}
+
+// TestAlipayQueryFallsBackWhenTradeNoAbsent (OCR C-08): trade_no is the
+// primary ProviderID (same-sourced with the notify fact's Transaction);
+// when the provider answer omits it, the original out_trade_no key remains
+// the fallback — the query is still keyed, never empty.
+func TestAlipayQueryFallsBackWhenTradeNoAbsent(t *testing.T) {
+	p, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
+		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_trade_no\":\"out-fb\",\"trade_status\":\"TRADE_SUCCESS\",\"total_amount\":\"10.01\",\"seller_id\":\"2088000000000001\"}", nil
+	})
+	res, err := p.Query(context.Background(), "out-fb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.State != StateSucceeded || res.ProviderID != "out-fb" {
+		t.Fatalf("query result: %+v", res)
 	}
 }
 

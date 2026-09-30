@@ -63,7 +63,7 @@ func newBenefitsEngine(t *testing.T, platform commercial.CommercialPlatform) (*g
 		if err != nil {
 			t.Fatal(err)
 		}
-		benefits, err := commercialsvc.NewBenefitsService(db, accounts, plans, platform)
+		benefits, err := commercialsvc.NewBenefitsService(db, accounts, plans, platform, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

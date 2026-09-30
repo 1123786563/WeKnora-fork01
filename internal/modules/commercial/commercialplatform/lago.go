@@ -69,6 +69,19 @@ var (
 type LagoAdapter struct {
 	cfg    Config
 	client *http.Client
+	// Test seams (R1-24): the provider-customer id derivation and the
+	// payment-method sync poll. NewLagoAdapter binds them to the real
+	// methods; only tests override them, to exercise the binding decision
+	// without a live provider endpoint (the outbound host policy refuses
+	// loopback, so the provider side cannot be stubbed over HTTP locally).
+	deriveProviderCustomer func(context.Context, string) (string, providerCustomerSource, error)
+	syncPaymentMethods     func(context.Context, string) error
+	// reAttachDefaultPM re-drives the configured default payment method
+	// onto a BOUND provider customer (A-34: the 422 no_default_payment_
+	// method recovery leg — a binding created while the token was empty
+	// never got the attach; the bound short-circuit never re-runs it).
+	// Same injection pattern as the two above.
+	reAttachDefaultPM func(context.Context, string, string) error
 }
 
 // NewLagoAdapter builds the adapter. Construction succeeds unconfigured on
@@ -79,7 +92,11 @@ func NewLagoAdapter(cfg Config) *LagoAdapter {
 	if client == nil {
 		client = &http.Client{Timeout: healthRequestTimeout}
 	}
-	return &LagoAdapter{cfg: cfg, client: client}
+	a := &LagoAdapter{cfg: cfg, client: client}
+	a.deriveProviderCustomer = a.deriveProviderCustomerID
+	a.syncPaymentMethods = a.waitForPaymentMethodSync
+	a.reAttachDefaultPM = a.providerAttachDefaultPaymentMethod
+	return a
 }
 
 // ReadSnapshot answers the readiness snapshot (GET <base>/health) and the
@@ -129,6 +146,8 @@ func (a *LagoAdapter) ReadSnapshot(ctx context.Context, query commercial.Snapsho
 		}, nil
 	case commercial.SnapshotKindBenefits:
 		return a.readBenefitsSnapshot(ctx, query.TenantID)
+	case commercial.SnapshotKindPurchase:
+		return a.readPurchaseSnapshot(ctx, query.TenantID)
 	default:
 		return commercial.Snapshot{}, commercial.ErrPlatformUnsupported
 	}
@@ -155,9 +174,86 @@ func (a *LagoAdapter) SubmitCommand(ctx context.Context, cmd commercial.Command)
 		return a.ensureSubscription(ctx, cmd)
 	case commercial.CommandKindGrantIncludedCredits:
 		return a.grantIncludedCredits(ctx, cmd)
+	case commercial.CommandKindCreatePurchaseSubscription:
+		return a.createPurchaseSubscription(ctx, cmd)
+	case commercial.CommandKindSettlePurchasePayment:
+		return a.settlePurchasePayment(ctx, cmd)
+	case commercial.CommandKindRebalanceCreditsOrder:
+		return a.rebalanceCreditsOrder(ctx, cmd)
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
+}
+
+// rebalanceCreditsOrder converges the customer's active WeKnora wallets onto
+// the correct consumption order (#86 Task 2): list the ACTIVE wallets
+// anchored to this tenant, rank them by WalletRank (expires_at ASC,
+// created_at ASC — the "earliest expiry, then earliest grant" order), and
+// PUT every wallet whose current priority diverges from its rank. Aligned
+// wallets answer ZERO writes (an idempotent no-op on the hot refresh path);
+// a replay re-ranks from the authoritative list and converges again. A
+// terminated wallet is never touched (the pinned v1.53 refuses updates on
+// terminated wallets — wallet_is_terminated).
+func (a *LagoAdapter) rebalanceCreditsOrder(ctx context.Context, cmd commercial.Command) (commercial.CommandReceipt, error) {
+	if err := a.configured(); err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	payload, ok := cmd.Payload.(commercial.RebalanceCreditsOrderPayload)
+	if !ok {
+		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+	}
+	if err := payload.Validate(); err != nil {
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout)
+	defer cancel()
+	wallets, err := a.listCustomerWallets(ctx, payload.ExternalCustomerID)
+	if err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	// Only this tenant's ANCHORED active wallets participate (the same
+	// admission the benefits snapshot applies — foreign or unanchored
+	// wallets are never calibrated by us).
+	ours := make([]lagoWallet, 0, len(wallets))
+	inputs := make([]commercial.WalletRankInput, 0, len(wallets))
+	for _, w := range wallets {
+		if w.Status != "active" {
+			continue
+		}
+		if w.meta()[commercial.WalletMetaTenant] != payload.ExternalCustomerID {
+			continue
+		}
+		ours = append(ours, w)
+		inputs = append(inputs, commercial.WalletRankInput{
+			WalletRef: w.Name,
+			ExpiresAt: parseRFC3339UTC(w.ExpirationAt),
+			GrantedAt: parseRFC3339UTC(w.CreatedAt),
+		})
+	}
+	ranks := commercial.WalletRank(inputs)
+	for _, w := range ours {
+		rank, ranked := ranks[w.Name]
+		if !ranked || w.Priority == rank {
+			continue // aligned (or unranked): zero writes
+		}
+		status, _, err := a.do(ctx, http.MethodPut, "/api/v1/wallets/"+url.PathEscape(w.LagoID),
+			map[string]any{"wallet": map[string]any{"priority": rank}})
+		if err != nil {
+			return commercial.CommandReceipt{}, err
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet priority update unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet priority update rejected", commercial.ErrPlatformInvalidResponse)
+		}
+	}
+	return commercial.CommandReceipt{
+		Key:        cmd.Key,
+		ExternalID: payload.ExternalCustomerID,
+		RecordedAt: time.Now().UTC(),
+	}, nil
 }
 
 // Reconcile stays frozen and disabled: fail closed.
@@ -261,6 +357,15 @@ func (a *LagoAdapter) createCustomer(ctx context.Context, externalID, displayNam
 func (a *LagoAdapter) configured() error {
 	if a.cfg.BaseURL == "" || a.cfg.APIKey == "" {
 		return commercial.ErrPlatformUnconfigured
+	}
+	// (OCR r4 / S1) The authority egress itself is host-validated BEFORE
+	// any request is built — a hostile or misconfigured BaseURL pointing
+	// at loopback/private/reserved space can never leave this process. The
+	// explicit dev-only bypass admits loopback hosts for local stub
+	// verification (WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true);
+	// everything else still runs the full policy.
+	if err := validateOutboundHostWithBypass(a.cfg.BaseURL, a.cfg.OutboundAllowLoopback); err != nil {
+		return fmt.Errorf("%w: authority base url violates the outbound host policy", commercial.ErrPlatformUnconfigured)
 	}
 	return nil
 }
@@ -570,6 +675,11 @@ type lagoSubscription struct {
 	ExternalCustomerID string `json:"external_customer_id"`
 	PlanCode           string `json:"plan_code"`
 	Status             string `json:"status"`
+	// Purchase price face (#81, additive fields): the index answer carries
+	// the plan's frozen amount/currency (t02 evidence fields). json.Number
+	// keeps the integer parse exact — never binary float.
+	PlanAmountCents    json.Number `json:"plan_amount_cents"`
+	PlanAmountCurrency string      `json:"plan_amount_currency"`
 }
 
 // subscriptionIndexStatuses is the EXPLICIT status set every identity read
@@ -650,7 +760,12 @@ func (a *LagoAdapter) readSubscriptionByIdentity(ctx context.Context, externalSu
 	}
 	switch {
 	case status >= 200 && status < 300:
-	case status >= 500:
+	// (D13 / r2:688) The transient split every other read path already
+	// applies: a 429/5xx index answer is the RETRYABLE unreachable — the
+	// fulfiller's taxonomy keys off this (unreachable keeps a paid order
+	// pending; the definitive sentinel would mint terminal attention out
+	// of a throttled read).
+	case status == http.StatusTooManyRequests || status >= 500:
 		return lagoSubscription{}, false, fmt.Errorf("%w: subscription read unavailable", commercial.ErrPlatformUnreachable)
 	default:
 		return lagoSubscription{}, false, fmt.Errorf("%w: subscription read rejected", commercial.ErrPlatformInvalidResponse)
@@ -723,11 +838,22 @@ type lagoWallet struct {
 	BalanceCents   int64             `json:"balance_cents"`
 	GrantedCredits string            `json:"granted_credits"`
 	ExpirationAt   string            `json:"expiration_at"`
+	CreatedAt      string            `json:"created_at"`
+	Priority       int               `json:"priority"`
 	MetadataMap    map[string]string `json:"metadata"`
 	MetadataList   []struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
 	} `json:"metadata_array"`
+}
+
+// parseRFC3339UTC parses an RFC3339 instant to UTC; unparseable input
+// answers the zero time (callers treat zero as unknown).
+func parseRFC3339UTC(s string) time.Time {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
 }
 
 // meta answers the wallet metadata in map form whatever wire shape it rode.
@@ -768,7 +894,19 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout+walletLimitRetryBudget)
 	defer cancel()
 
-	walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+	// (D4) An empty WalletName keeps the Base monthly batch identity; the
+	// purchase first-period grant names its own wallet (never colliding
+	// with the monthly batch on the by-name idempotency match, F11).
+	walletName := payload.WalletName
+	// The metadata period key follows the batch family (D4): the purchase
+	// wallet stamps purchase_period, the Base monthly batch period — the
+	// two families never match each other's metadata (F11 anti-collision).
+	periodMetaKey := commercial.WalletMetaPeriod
+	if walletName != "" {
+		periodMetaKey = commercial.WalletMetaPurchasePeriod
+	} else {
+		walletName = commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+	}
 	grantCents := payload.CreditsMicro / 10_000
 	deadline := time.Now().Add(walletLimitRetryBudget)
 	for {
@@ -780,7 +918,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 			meta := w.meta()
 			byName := w.Name == walletName
 			byMeta := meta[commercial.WalletMetaTenant] == payload.ExternalCustomerID &&
-				meta[commercial.WalletMetaPeriod] == payload.Period
+				meta[periodMetaKey] == payload.Period
 			if !byName && !byMeta {
 				continue
 			}
@@ -796,7 +934,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 			}, nil
 		}
 		// Absent: create the short-TTL wallet for this month.
-		status, body, err := a.createWallet(ctx, payload, walletName)
+		status, body, err := a.createWallet(ctx, payload, walletName, periodMetaKey)
 		if err != nil {
 			return commercial.CommandReceipt{}, err
 		}
@@ -838,7 +976,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 // createWallet posts the short-TTL monthly wallet. Credits cross as an
 // exact decimal string (never binary float); rate_amount "1" keeps credit
 // cents == currency cents; the metadata anchors E3 recovery-by-query.
-func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.GrantIncludedCreditsPayload, walletName string) (int, []byte, error) {
+func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.GrantIncludedCreditsPayload, walletName, periodMetaKey string) (int, []byte, error) {
 	granted, err := commercial.MicroToDecimalString(payload.CreditsMicro)
 	if err != nil {
 		return 0, nil, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
@@ -851,9 +989,10 @@ func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.Grant
 			"granted_credits":      granted,
 			"rate_amount":          "1",
 			"expiration_at":        payload.ExpiresAt.UTC().Format(time.RFC3339),
+			"priority":             payload.Priority,
 			"metadata": map[string]string{
 				commercial.WalletMetaTenant: payload.ExternalCustomerID,
-				commercial.WalletMetaPeriod: payload.Period,
+				periodMetaKey:               payload.Period,
 			},
 		},
 	}
@@ -984,7 +1123,7 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 	// Entitlements read (features keyed by code — T02 fact). A missing or
 	// unparseable entitlement surface leaves Features nil — the service
 	// falls back to the publication definition (documented branch).
-	if features, err := a.readCustomerFeatures(ctx, extCustomer); err == nil && len(features) > 0 {
+	if features, err := a.readCustomerFeatures(ctx, tenantID); err == nil && len(features) > 0 {
 		b.Features = features
 	}
 	wallets, err := a.listCustomerWallets(ctx, extCustomer)
@@ -999,63 +1138,121 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 		meta := w.meta()
 		period := meta[commercial.WalletMetaPeriod]
 		if period == "" {
-			// Deterministic-name fallback: "<ext-customer>-<YYYY-MM>".
-			if suffix, ok := strings.CutPrefix(w.Name, extCustomer+"-"); ok {
-				if _, err := commercial.PeriodEnd(suffix); err == nil {
-					period = suffix
+			// A PURCHASE first-period batch carries its own meta key (D4:
+			// deliberately distinct so the two grant families never alias).
+			period = meta[commercial.WalletMetaPurchasePeriod]
+		}
+		if period == "" {
+			// Deterministic-name fallback, both wallet families:
+			// "<ext>-<YYYY-MM>" (monthly) and "<ext>-purchase-<YYYY-MM>"
+			// (purchase — the longer, more specific prefix first).
+			for _, prefix := range []string{
+				commercial.ExternalPurchaseSubscriptionID(tenantID) + "-",
+				extCustomer + "-",
+			} {
+				if suffix, ok := strings.CutPrefix(w.Name, prefix); ok {
+					if _, err := commercial.PeriodEnd(suffix); err == nil {
+						period = suffix
+						break
+					}
 				}
 			}
 		}
-		if period == "" || meta[commercial.WalletMetaTenant] != "" && meta[commercial.WalletMetaTenant] != extCustomer {
-			continue // a foreign (future top-up) wallet — counted in balance, not a monthly batch
+		if meta[commercial.WalletMetaTenant] != "" && meta[commercial.WalletMetaTenant] != extCustomer {
+			continue // a foreign wallet — counted in balance, never a batch
+		}
+		// Three-way family classification (#86 Task 1): a period-carrying
+		// wallet is the monthly family (Base monthly OR purchase first-period
+		// — both expire at period end and never roll over, #82 D4); a
+		// period-less wallet of THIS tenant is a top-up batch (the #85
+		// payment-confirmed credits shape: no weknora_period key, grant-time
+		// metadata anchors only). Anything else (foreign or unanchored) is
+		// not a batch.
+		source := ""
+		if period != "" {
+			source = commercial.BatchSourceMonthly
+		} else if meta[commercial.WalletMetaTenant] == extCustomer {
+			source = commercial.BatchSourceTopUp
+		} else {
+			continue // unanchored — counted in balance, not a batch
 		}
 		expires := time.Time{}
 		if t, err := time.Parse(time.RFC3339, w.ExpirationAt); err == nil {
 			expires = t.UTC()
 		}
+		granted := time.Time{}
+		if t, err := time.Parse(time.RFC3339, w.CreatedAt); err == nil {
+			granted = t.UTC()
+		}
 		b.Batches = append(b.Batches, commercial.CreditBatchSnapshot{
 			Period:       period,
 			BalanceMicro: commercial.CentsToMicro(w.BalanceCents),
 			ExpiresAt:    expires,
+			Source:       source,
+			GrantedAt:    granted,
+			WalletRef:    w.Name,
 		})
 	}
 	return commercial.Snapshot{Kind: commercial.SnapshotKindBenefits, Benefits: b}, nil
 }
 
 // readCustomerFeatures reads the customer's attached entitlements into the
-// closed feature map.
-func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, externalCustomerID string) (map[string]bool, error) {
-	status, body, err := a.do(ctx, http.MethodGet,
-		"/api/v1/customers/"+url.PathEscape(externalCustomerID)+"/entitlements", nil)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case status >= 200 && status < 300:
-	case status >= 500:
-		return nil, fmt.Errorf("%w: entitlement read unavailable", commercial.ErrPlatformUnreachable)
-	default:
-		return nil, fmt.Errorf("%w: entitlement read rejected", commercial.ErrPlatformInvalidResponse)
-	}
-	var parsed struct {
-		Entitlements []struct {
-			FeatureCode string `json:"feature_code"`
-			Feature     *struct {
-				Code string `json:"code"`
-			} `json:"feature"`
-		} `json:"entitlements"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("%w: entitlement read malformed", commercial.ErrPlatformInvalidResponse)
-	}
+// closed feature map. The pinned v1.53 exposes NO customer-nested
+// entitlements route (F-2 flow evidence: GET /api/v1/customers/:id/
+// entitlements answers 404 on the pinned release — the entitlements index
+// rides the subscription routes only: /api/v1/subscriptions/:external_id/
+// entitlements), so the feature face is the UNION over both WeKnora
+// subscription identities — the Base Plan "-sub" and the purchase
+// "-purchase". A 404 on one leg means that subscription does not exist
+// (yet): the leg contributes nothing, never an error.
+func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, tenantID uint64) (map[string]bool, error) {
 	features := make(map[string]bool)
-	for _, e := range parsed.Entitlements {
-		code := e.FeatureCode
-		if code == "" && e.Feature != nil {
-			code = e.Feature.Code
+	for _, externalSubscriptionID := range []string{
+		commercial.ExternalSubscriptionID(tenantID),
+		commercial.ExternalPurchaseSubscriptionID(tenantID),
+	} {
+		status, body, err := a.do(ctx, http.MethodGet,
+			"/api/v1/subscriptions/"+url.PathEscape(externalSubscriptionID)+"/entitlements", nil)
+		if err != nil {
+			return nil, err
 		}
-		if code != "" {
-			features[code] = true
+		if status == http.StatusNotFound {
+			continue // that subscription does not exist (yet) — no entitlements
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return nil, fmt.Errorf("%w: entitlement read unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return nil, fmt.Errorf("%w: entitlement read rejected", commercial.ErrPlatformInvalidResponse)
+		}
+		var parsed struct {
+			Entitlements []struct {
+				// The pinned v1.53 answers the feature code in `code`
+				// ({"entitlements":[{"code":…,"name":…}]} — F-2' live-stack
+				// evidence); feature_code / nested feature.code are
+				// tolerated shapes, never assumed.
+				Code         string `json:"code"`
+				FeatureCode  string `json:"feature_code"`
+				Feature      *struct {
+					Code string `json:"code"`
+				} `json:"feature"`
+			} `json:"entitlements"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, fmt.Errorf("%w: entitlement read malformed", commercial.ErrPlatformInvalidResponse)
+		}
+		for _, e := range parsed.Entitlements {
+			code := e.Code
+			if code == "" {
+				code = e.FeatureCode
+			}
+			if code == "" && e.Feature != nil {
+				code = e.Feature.Code
+			}
+			if code != "" {
+				features[code] = true
+			}
 		}
 	}
 	return features, nil

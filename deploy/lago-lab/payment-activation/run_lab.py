@@ -7,7 +7,7 @@ from the caller environment (``STRIPE_TEST_SECRET_KEY`` or
 ``STRIPE_SECRET_KEY``; live keys are refused), and executes the Task 2
 phases in order:
 
-    setup -> provider_setup -> gate -> manual -> activate -> duplicates
+    setup -> provider_setup -> gate -> activate -> manual -> duplicates
     -> retries -> decline_control -> cleanup (always, from finally)
 
 Outputs one sanitized JSON report per phase plus ``t02-environment.json``
@@ -195,6 +195,24 @@ def scan_and_scrub(output_dir, secrets, timeline):
             "clean": remaining == 0}
 
 
+# Execution order contract. phases.PHASE_ORDER must carry the same sequence
+# (guarded by test_phase_order_contract_matches_runner_order); the comment
+# on "manual" explains why it must run after activate.
+PHASE_SEQUENCE = (
+    ("setup", phases.phase_setup),
+    ("provider_setup", phases.phase_provider_setup),
+    ("gate", phases.phase_gate),
+    ("activate", phases.phase_activate),
+    # manual runs after activate: on v1.53.0 the 3DS gate invoice stays
+    # API-invisible (open/closed are INVISIBLE_STATUS), so the manual-403
+    # probe needs customer B's finalized invoice as its target.
+    ("manual", phases.phase_manual),
+    ("duplicates", phases.phase_duplicates),
+    ("retries", phases.phase_retries),
+    ("decline_control", phases.phase_decline_control),
+)
+
+
 def run_experiment(args):
     timeline = Timeline()
     output_dir = Path(args.output_dir)
@@ -254,18 +272,10 @@ def run_experiment(args):
         poll_timeout=args.poll_timeout,
         stability_rounds=args.stability_rounds,
         stability_delay=args.stability_delay,
+        duplicates_settle_delay=args.duplicates_settle_delay,
     )
 
-    order = [
-        ("setup", phases.phase_setup),
-        ("provider_setup", phases.phase_provider_setup),
-        ("gate", phases.phase_gate),
-        ("manual", phases.phase_manual),
-        ("activate", phases.phase_activate),
-        ("duplicates", phases.phase_duplicates),
-        ("retries", phases.phase_retries),
-        ("decline_control", phases.phase_decline_control),
-    ]
+    order = PHASE_SEQUENCE
 
     def run_one(name, fn):
         timeline.log(f"phase {name}: start")
@@ -362,6 +372,13 @@ def main(argv=None):
     parser.add_argument("--poll-timeout", type=float, default=300.0)
     parser.add_argument("--stability-rounds", type=int, default=3)
     parser.add_argument("--stability-delay", type=float, default=5.0)
+    # (R1-V11) Own knob for the deferred duplicate-registration re-check:
+    # the delayed-update drift it guards against lands MINUTES after the
+    # 200, so the default is 120s — never reuse the seconds-scale
+    # stability window for this wait.
+    parser.add_argument("--duplicates-settle-delay", type=float, default=120.0,
+                        help="seconds to wait before the deferred re-check of "
+                             "the duplicate-registration end state (default: 120)")
     args = parser.parse_args(argv)
     code, _timeline = run_experiment(args)
     return code

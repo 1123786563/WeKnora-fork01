@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
@@ -56,19 +58,29 @@ type PlanView struct {
 	Limits   map[string]int64
 }
 
-// BatchView is one monthly credit batch in the Billing API answer; an
-// expired batch reports zero (the registry expiry overlay).
+// BatchView is one credit batch in the Billing API answer; an expired
+// batch reports zero (the registry expiry overlay). Monthly-family batches
+// of one period AGGREGATE into one line (the #82 F-4 semantics); top-up
+// batches answer individually (each carries its own grant/expiry face).
 type BatchView struct {
 	Period       string
 	BalanceMicro int64
 	ExpiresAt    time.Time
+	Source       string    // closed set: monthly | topup
+	GrantedAt    time.Time // the batch's grant instant (display face)
 }
 
-// CreditsView is the included-credit answer: the expiry-overlaid balance
-// and the per-batch breakdown.
+// CreditsView is the balance breakdown (#86 Task 4): the expiry-overlaid
+// balance, the committed holds face (in-flight reservation holds and
+// refund-locked credits — zeros when no budget projection answers), the
+// derived available amount, the projection instant, and the per-batch
+// breakdown.
 type CreditsView struct {
-	BalanceMicro int64
-	Batches      []BatchView
+	BalanceMicro      int64
+	HeldMicro         int64
+	RefundLockedMicro int64
+	ProjectedAt       time.Time
+	Batches           []BatchView
 }
 
 // BenefitsStatus is the closed product answer served by the Billing API:
@@ -87,11 +99,12 @@ type BenefitsStatus struct {
 // become spendable only with #87/#88 admission, which can add the clock):
 //
 //	EnsureBenefits
-//	  ├─ SeedBasePlan         (idempotent #79 publish of (base, v1); no-op once published)
+//	  ├─ SeedBasePlan         (idempotent #79 publish of (base,1); no-op once published)
 //	  ├─ EnsureBillingAccount (#78 — the SAME customer ensure; linked row answers fast)
 //	  ├─ ensure_subscription  (seam; idempotent by ExternalSubscriptionID)
 //	  ├─ EnsureMonthlyCredits (registry-gated grant for the current UTC period)
-//	  └─ RefreshProjection    (benefits snapshot → plan identity via publications → limits/features → counters)
+//	  ├─ RefreshProjection    (benefits snapshot → plan identity via publications → limits/features → counters)
+//	  └─ SyncLots             (#86 — the batch read-back projected onto local lots)
 //
 // Failure posture (the #78 doctrine): every platform failure is a STATE
 // (pending + closed reason), never a caller error; the chain is resumable
@@ -102,8 +115,9 @@ type BenefitsService struct {
 	accounts *BillingAccountService
 	plans    *PlanVersionService
 	store    *repocommercial.BenefitsStore
-	platform domain.CommercialPlatform // nil legal: projection stays pending, nothing fabricated
-	now      func() time.Time          // injectable clock
+	budget   *repocommercial.BudgetStore // nil legal: lot sync disabled (tests without the lot face)
+	platform domain.CommercialPlatform   // nil legal: projection stays pending, nothing fabricated
+	now      func() time.Time            // injectable clock
 	// seedMu makes concurrent first-access seeding exactly-once in-process:
 	// without it, racing seeds would each allocate the next (base, N)
 	// version and fork parallel publications of one product plan.
@@ -122,8 +136,10 @@ type BenefitsService struct {
 
 // NewBenefitsService builds the service and bootstraps its schema (portable
 // EnsureSchema — safe next to migrations 000180/000101). A nil platform is
-// legal (blocked-env: the chain fails closed as pending/unconfigured).
-func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *PlanVersionService, platform domain.CommercialPlatform) (*BenefitsService, error) {
+// legal (blocked-env: the chain fails closed as pending/unconfigured); a
+// nil budget is legal too (the lot-sync face is simply not wired — tests
+// that never touch commercial_budget_lots).
+func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *PlanVersionService, platform domain.CommercialPlatform, budget *repocommercial.BudgetStore) (*BenefitsService, error) {
 	if db == nil {
 		return nil, errors.New("benefits service requires a database")
 	}
@@ -135,6 +151,7 @@ func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *Pla
 		accounts: accounts,
 		plans:    plans,
 		store:    store,
+		budget:   budget,
 		platform: platform,
 		now:      func() time.Time { return time.Now().UTC() },
 	}, nil
@@ -300,10 +317,25 @@ func (s *BenefitsService) EnsureBenefits(ctx context.Context, tenantID uint64, d
 		}
 	}
 	if len(batches) > 0 {
-		status.Credits = &CreditsView{Batches: batches}
+		credits := &CreditsView{Batches: batches, ProjectedAt: row.ProjectedAt}
 		for _, b := range batches {
-			status.Credits.BalanceMicro += b.BalanceMicro
+			credits.BalanceMicro += b.BalanceMicro
 		}
+		// The committed holds face (#86 Task 4): in-flight reservation holds
+		// and refund-locked credits from the budget projection. A missing
+		// row (or no budget wired) answers honest zeros — the breakdown is
+		// still complete; a read failure degrades to zeros with one Warn
+		// (the billing read must not turn into an error over the advisory
+		// face — the A-23 posture).
+		if s.budget != nil {
+			held, locked, holdsErr := s.budget.AccountHolds(ctx, tenantID)
+			if holdsErr != nil {
+				logger.Warnf(ctx, "[CommercialBenefits] account holds read failed for tenant %d: %v", tenantID, holdsErr)
+			} else {
+				credits.HeldMicro, credits.RefundLockedMicro = held, locked
+			}
+		}
+		status.Credits = credits
 	}
 	return status, nil
 }
@@ -322,6 +354,26 @@ func (s *BenefitsService) tenantGrantMu(tenantID uint64) *sync.Mutex {
 		s.grantMus[tenantID] = mu
 	}
 	return mu
+}
+
+// topUpExpiries collects this tenant's UNEXPIRED top-up batch expiries from
+// the authority benefits snapshot — the yield input for
+// MonthlyWalletPriorityFor (#86 Task 2). A snapshot read failure propagates
+// (the caller's platform-failure posture applies).
+func (s *BenefitsService) topUpExpiries(ctx context.Context, tenantID uint64, now time.Time) ([]time.Time, error) {
+	snap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindBenefits, TenantID: tenantID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var exps []time.Time
+	for _, b := range snap.Benefits.Batches {
+		if b.Source == domain.BatchSourceTopUp && b.ExpiresAt.After(now) {
+			exps = append(exps, b.ExpiresAt)
+		}
+	}
+	return exps, nil
 }
 
 // EnsureMonthlyCredits issues the current period's included credits through
@@ -366,6 +418,15 @@ func (s *BenefitsService) EnsureMonthlyCredits(ctx context.Context, tenantID uin
 	if !created && row.WalletRef != "" {
 		return row, nil // a completed batch replays from the registry alone
 	}
+	// The consumption-order initial (#86 Task 2): an aging top-up batch (one
+	// expiring strictly before this period's end) must be consumed FIRST, so
+	// the monthly wallet's creation priority yields to the top-up class. A
+	// snapshot read failure propagates as the platform-failure state (the
+	// same pending posture as every other chain leg; no retry here).
+	topUps, err := s.topUpExpiries(ctx, tenantID, now)
+	if err != nil {
+		return row, err
+	}
 	receipt, err := s.platform.SubmitCommand(ctx, domain.Command{
 		Kind:   domain.CommandKindGrantIncludedCredits,
 		Key:    domain.GrantCreditsCommandKey(extCustomer, period),
@@ -377,6 +438,7 @@ func (s *BenefitsService) EnsureMonthlyCredits(ctx context.Context, tenantID uin
 			Period:             period,
 			CreditsMicro:       BasePlanSeedIncludedCreditsMicro,
 			ExpiresAt:          end,
+			Priority:           domain.MonthlyWalletPriorityFor(topUps, end),
 		},
 	})
 	if err != nil {
@@ -442,19 +504,20 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		return repocommercial.BenefitsRow{}, nil, "", err
 	}
 
-	// Features and limits come from the LOCAL definition (the authority's
-	// entitlement surface may lag or differ — the publication's definition
-	// is the product truth); the snapshot's feature map wins when present.
+	// Features and limits come from the LOCAL definitions (the publication
+	// definitions are the VALUE truth — the pinned authority's entitlement
+	// surface carries no boolean value and the publish leg attaches
+	// entitlements for false-valued codes too, so entitlement EXISTENCE
+	// alone would over-claim a base-only tenant, F-2'). The purchase face
+	// ORs the ACTIVE purchase plan's definition on top (#82: a purchaser's
+	// advanced_models must answer true); authority entitlement
+	// materialization only ADDS codes no local definition knows.
 	if row.PlanKey != "" {
 		definition, defErr := s.definitionOf(ctx, row.PlanKey, row.PlanVersion)
 		switch {
 		case defErr == nil:
 			row.LimitsJSON = encodeJSONIntMap(definition.Limits)
-			if len(b.Features) > 0 {
-				row.FeaturesJSON = encodeJSONBoolMap(b.Features)
-			} else {
-				row.FeaturesJSON = encodeJSONBoolMap(definition.Features)
-			}
+			row.FeaturesJSON = encodeJSONBoolMap(s.effectiveFeatures(ctx, tenantID, definition.Features, b.Features))
 		default:
 			if len(b.Features) > 0 {
 				row.FeaturesJSON = encodeJSONBoolMap(b.Features)
@@ -487,24 +550,220 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 
 	// The expiry overlay: registry truth decides spendability. An expired
 	// batch reports ZERO even while the authority still lists the wallet
-	// active (the lazy-termination window — E1).
+	// active (the lazy-termination window — E1). Monthly-family balances
+	// aggregate by period ACROSS grant families (F-4): the purchase
+	// first-period wallet (#82 D4 — its own deterministic name and meta
+	// key) shares the activation month with the base monthly batch; the
+	// month's line answers the SUM, never an arbitrary last-write
+	// overwrite. Top-up batches (#86) answer INDIVIDUALLY — each carries
+	// its own twelve-month expiry face, never a period.
 	all, err := s.store.ListBatches(ctx, tenantID)
 	if err != nil {
 		return repocommercial.BenefitsRow{}, nil, "", err
 	}
 	balances := make(map[string]int64, len(b.Batches))
+	expires := make(map[string]time.Time, len(b.Batches))
+	granted := make(map[string]time.Time, len(b.Batches))
+	var topUps []BatchView
 	for _, batch := range b.Batches {
-		balances[batch.Period] = batch.BalanceMicro
+		if batch.Period == "" {
+			// A top-up batch: its own line, same expiry overlay,
+			// expiry-then-grant order for a deterministic answer.
+			balance := int64(0)
+			if batch.ExpiresAt.After(now) {
+				balance = batch.BalanceMicro
+			}
+			topUps = append(topUps, BatchView{
+				BalanceMicro: balance, ExpiresAt: batch.ExpiresAt,
+				Source: domain.BatchSourceTopUp, GrantedAt: batch.GrantedAt,
+			})
+			continue
+		}
+		balances[batch.Period] += batch.BalanceMicro
+		if batch.ExpiresAt.After(expires[batch.Period]) {
+			expires[batch.Period] = batch.ExpiresAt
+		}
+		if g, ok := granted[batch.Period]; !ok || batch.GrantedAt.Before(g) {
+			granted[batch.Period] = batch.GrantedAt
+		}
 	}
-	batches := make([]BatchView, 0, len(all))
+	batches := make([]BatchView, 0, len(all)+len(topUps))
+	seen := make(map[string]bool, len(all))
 	for _, a := range all {
+		seen[a.Period] = true
 		balance := int64(0)
 		if a.ExpiresAt.After(now) {
 			balance = balances[a.Period] // absent from the snapshot (terminated) = 0
 		}
-		batches = append(batches, BatchView{Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt})
+		// GrantedAt: the snapshot's authority instant when the period's
+		// wallet still lists, else the REGISTRY row's own grant instant —
+		// never the zero time (CR-86-1: a lingering cross-month batch row
+		// whose terminated wallet left the snapshot must still carry a
+		// grant instant; the wire omits zero instants and the frontend
+		// contract then rejects the whole breakdown).
+		grantedAt := granted[a.Period]
+		if grantedAt.IsZero() {
+			grantedAt = a.CreatedAt
+		}
+		batches = append(batches, BatchView{
+			Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt,
+			Source: domain.BatchSourceMonthly, GrantedAt: grantedAt,
+		})
+	}
+	// Snapshot-only periods (F-4): the purchase grant rides the fulfiller,
+	// not this coordinator's registry — a purchase activated in a month
+	// the tenant never visited billing leaves no registry row. Those
+	// authority-truth batches join the view honestly (same expiry
+	// overlay), oldest-period-first for a deterministic answer.
+	var missing []string
+	for period := range balances {
+		if !seen[period] {
+			missing = append(missing, period)
+		}
+	}
+	sort.Strings(missing)
+	for _, period := range missing {
+		balance := int64(0)
+		if expires[period].After(now) {
+			balance = balances[period]
+		}
+		batches = append(batches, BatchView{
+			Period: period, BalanceMicro: balance, ExpiresAt: expires[period],
+			Source: domain.BatchSourceMonthly, GrantedAt: granted[period],
+		})
+	}
+	sort.Slice(topUps, func(i, j int) bool {
+		if !topUps[i].ExpiresAt.Equal(topUps[j].ExpiresAt) {
+			return topUps[i].ExpiresAt.Before(topUps[j].ExpiresAt)
+		}
+		return topUps[i].GrantedAt.Before(topUps[j].GrantedAt)
+	})
+	batches = append(batches, topUps...)
+
+	// The lot projection (#86 Task 3): the same authority batch read-back
+	// feeds the local lot table — the reservation face's allocation source.
+	// A registry batch the snapshot no longer lists needs NO sync input
+	// here: SyncLots collapses snapshot-absent lots to hold-only by itself.
+	// A sync failure is a Warn, never a billing-read error (A-23 posture) —
+	// the lot face re-syncs on the next refresh.
+	if s.budget != nil {
+		sync := make([]domain.LotSyncBatch, 0, len(b.Batches))
+		for _, batch := range b.Batches {
+			if batch.WalletRef == "" {
+				continue // a batch without a deterministic identity never syncs
+			}
+			sync = append(sync, domain.LotSyncBatch{
+				LotID:          batch.WalletRef,
+				RemainingMicro: batch.BalanceMicro,
+				ExpiresAt:      batch.ExpiresAt,
+				IssuedAt:       batch.GrantedAt,
+			})
+		}
+		if err := s.budget.SyncLots(ctx, tenantID, sync, now); err != nil {
+			logger.Warnf(ctx, "[CommercialBenefits] lot sync failed for tenant %d: %v", tenantID, err)
+		}
+	}
+
+	// The consumption-order calibration (#86 Task 2): after the projection
+	// is written, converge the customer's wallet priorities onto the true
+	// expiry order (the invariant's authority — creation-time initials
+	// cannot express mixed aging+fresh coexistence). A failure is a Warn,
+	// NEVER a billing-read error (the A-23 posture): a failed calibration
+	// leaves the wallets on their last priorities and the next refresh
+	// re-runs the convergent rebalance.
+	if _, err := s.platform.SubmitCommand(ctx, domain.Command{
+		Kind:   domain.CommandKindRebalanceCreditsOrder,
+		Key:    domain.RebalanceCreditsOrderCommandKey(domain.ExternalCustomerID(tenantID)),
+		Actor:  "system:benefits-refresh",
+		Reason: "consumption_order_calibration",
+		Payload: domain.RebalanceCreditsOrderPayload{
+			TenantID:           tenantID,
+			ExternalCustomerID: domain.ExternalCustomerID(tenantID),
+		},
+	}); err != nil {
+		logger.Warnf(ctx, "[CommercialBenefits] credits-order rebalance failed for tenant %d: %v", tenantID, err)
 	}
 	return row, batches, reason, nil
+}
+
+// effectiveFeatures resolves the tenant's EFFECTIVE feature face (F-2'):
+// the publication definitions are the VALUE truth (the pinned authority's
+// entitlement surface carries no boolean value — the publish leg attaches
+// entitlements for false-valued feature codes too, so entitlement
+// EXISTENCE alone would over-claim a base-only tenant). A code answers
+// true when the Base definition says so, or — the #82 purchase face —
+// when the tenant's purchase is ACTIVE and its plan's definition says so;
+// authority entitlement materialization adds codes no local definition
+// knows. A purchase read failure is NOT surfaced here (the benefits face
+// must not break on the purchase leg) — the base truth answers alone —
+// but every swallowed leg failure leaves ONE Warn line (A-23 / F93: an
+// ACTIVE paying tenant silently degraded to base features on a transient
+// snapshot/publication failure is otherwise undiagnosable).
+func (s *BenefitsService) effectiveFeatures(ctx context.Context, tenantID uint64, baseFeatures, entitled map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(baseFeatures)+len(entitled))
+	for code, on := range baseFeatures {
+		out[code] = on
+	}
+	// (A-22 / F92) Authority materialization guard: the entitlement read is
+	// a UNION of the base and purchase legs with NO status filter — a
+	// canceled purchase's entitlement can linger through the authority's
+	// lazy-cleanup window. Codes the purchase's plan DEFINES are only ever
+	// materialized from the authority leg while the purchase is ACTIVE; a
+	// non-active purchase (canceled) contributes its known codes to a
+	// staleness set that the materialization loop below refuses — an
+	// unpaid/canceled purchaser must not keep paid features through a
+	// stale entitlement row. Codes the definition read cannot prove stay
+	// untouched (fail-open on the GUARD itself, the same posture as the
+	// feature face below).
+	purchaseState, purchasePlanCode := "", ""
+	if psnap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindPurchase, TenantID: tenantID,
+	}); err == nil && psnap.Purchase != nil {
+		purchaseState = psnap.Purchase.State
+		purchasePlanCode = psnap.Purchase.PlanCode
+	} else if err != nil {
+		logger.Warnf(ctx, "[CommercialBenefits] purchase snapshot read failed for tenant %d: %v", tenantID, err)
+	}
+	stalePurchaseCodes := make(map[string]bool)
+	if purchasePlanCode != "" && purchaseState != domain.PurchaseStateActive {
+		if pub, pubErr := s.plans.FindPublicationByCode(ctx, purchasePlanCode); pubErr == nil {
+			if definition, defErr := s.definitionOf(ctx, pub.PlanKey, pub.Version); defErr == nil {
+				for code := range definition.Features {
+					stalePurchaseCodes[code] = true
+				}
+			} else {
+				logger.Warnf(ctx, "[CommercialBenefits] purchase plan definition read failed for tenant %d plan %s: %v", tenantID, purchasePlanCode, defErr)
+			}
+		} else {
+			logger.Warnf(ctx, "[CommercialBenefits] purchase publication read failed for tenant %d plan code %s: %v", tenantID, purchasePlanCode, pubErr)
+		}
+	}
+	if purchaseState == domain.PurchaseStateActive && purchasePlanCode != "" {
+		if pub, pubErr := s.plans.FindPublicationByCode(ctx, purchasePlanCode); pubErr == nil {
+			if definition, defErr := s.definitionOf(ctx, pub.PlanKey, pub.Version); defErr == nil {
+				for code, on := range definition.Features {
+					if on {
+						out[code] = true
+					} else if _, known := out[code]; !known {
+						out[code] = false
+					}
+				}
+			} else {
+				logger.Warnf(ctx, "[CommercialBenefits] purchase plan definition read failed for tenant %d plan %s: %v", tenantID, purchasePlanCode, defErr)
+			}
+		} else {
+			logger.Warnf(ctx, "[CommercialBenefits] purchase publication read failed for tenant %d plan code %s: %v", tenantID, purchasePlanCode, pubErr)
+		}
+	}
+	for code := range entitled {
+		if stalePurchaseCodes[code] {
+			continue // a stale authority leg of a non-active purchase (A-22)
+		}
+		if _, known := out[code]; !known {
+			out[code] = true // authority materialization of a code no definition knows
+		}
+	}
+	return out
 }
 
 // definitionOf decodes the plan version's stored definition (the product

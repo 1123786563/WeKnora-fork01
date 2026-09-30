@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
+import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button } from 'tdesign-react';
-import { Card, Status } from './surface.tsx';
-import './commercial-u.css';
+import { Button, Card, Status } from '@weknora/ui';
+// (D15-f) 共享购买状态词表：本页不再持有私有的三行内联文案。
+import { PURCHASE_STATE_LABEL } from './order-state.ts';
 
 export type CommercialSummaryState =
   | { status: 'success'; summary: CommercialSummary }
@@ -13,6 +13,12 @@ export type CommercialSummaryState =
 
 export type CommercialUsageState =
   | { status: 'success'; rows: CommercialUsageRow[] }
+  | { status: 'error'; message: string };
+
+// #86：余额分解状态——credits 为 null 表示 benefits 尚未就绪（pending），
+// 卡片隐藏而非报错。
+export type CommercialAccountState =
+  | { status: 'success'; credits: CommercialAccountCredits | null }
   | { status: 'error'; message: string };
 
 export async function loadCommercialSummary(
@@ -39,6 +45,36 @@ export async function loadCommercialUsage(
   }
 }
 
+export async function loadCommercialAccount(
+  client: Pick<WeKnoraClient['commercial'], 'account'>,
+  signal?: AbortSignal,
+): Promise<CommercialAccountState> {
+  try {
+    return { status: 'success', credits: await client.account(signal) };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return { status: 'error', message: error instanceof Error ? error.message : 'Unable to load credits breakdown' };
+  }
+}
+
+/** micro → 显示两位小数（纯展示换算，不在契约层做）。 */
+export function microToDisplay(micro: string): string {
+  const n = Number(micro);
+  if (!Number.isFinite(n)) return micro;
+  return (n / 1_000_000).toFixed(2);
+}
+
+/** 批次来源的显示名：套餐月度 / 充值。 */
+export function batchSourceLabel(source: string): string {
+  return source === 'topup' ? '充值' : '套餐月度';
+}
+
+/** 批次是否在 30 天内到期（近到期行加标记）。 */
+export function batchExpiringWithin(expiresAt: string, now: Date = new Date()): boolean {
+  const exp = new Date(expiresAt).getTime();
+  return Number.isFinite(exp) && exp - now.getTime() <= 30 * 24 * 3600 * 1000;
+}
+
 /** 套餐行的显示名：已购空间显示 plan_key，base_tier 空间回退 base_tier_key 或「基础版」。 */
 export function planDisplayName(summary: CommercialSummary): string {
   return summary.base_tier || !summary.subscription
@@ -52,17 +88,18 @@ interface BillingPageProps {
 }
 
 // 与 UsagePanel 模型表格同款样式（tailwind utilities）。
-const USAGE_TABLE = 'wk-bill-usage-table';
-
-const USAGE_TABLE_CELL = 'wk-bill-usage-table-cell';
-
-const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' wk-bill-usage-number-cell';
-
+const USAGE_TABLE = 'w-full border-collapse text-[13px]';
+const USAGE_TABLE_CELL = 'border-b border-[#eef1f5] px-[10px] py-[8px] text-left';
+const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' text-right tabular-nums';
 
 export function BillingPage({ client, scopeController }: BillingPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<CommercialSummaryState>({ status: 'error', message: 'Loading…' });
   const [usageState, setUsageState] = useState<CommercialUsageState>({ status: 'error', message: 'Loading…' });
+  // #86：余额分解（pending → credits null，卡片隐藏）。
+  const [accountState, setAccountState] = useState<CommercialAccountState>({ status: 'error', message: 'Loading…' });
+  // #81：购买状态（awaiting_payment → 套餐行显示「待付款（权益未开放）」）。
+  const [purchase, setPurchase] = useState<PurchaseView | null>(null);
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'commercial-summary'), [scope.scope]);
   // Space label comes from the current scope tenant; fall back to a neutral label
@@ -73,11 +110,25 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
     let active = true;
     setState({ status: 'error', message: 'Loading…' });
     setUsageState({ status: 'error', message: 'Loading…' });
+    setAccountState({ status: 'error', message: 'Loading…' });
+    // R1-V15：切换租户/重载时同步清掉上一租户的购买状态，避免 summary 先到、
+    // purchaseStatus 后到期间套餐行短暂显示错误租户的「待付款」。
+    setPurchase(null);
     void loadCommercialSummary(client.commercial, scope.signal).then((next) => {
       if (active && scopeController.isCurrent(scope.scope)) setState(next);
     });
     void loadCommercialUsage(client.commercial, scope.signal).then((next) => {
       if (active && scopeController.isCurrent(scope.scope)) setUsageState(next);
+    });
+    // #86：并行读取余额分解；失败静默降级（卡片隐藏，不阻塞账单页）。
+    void loadCommercialAccount(client.commercial, scope.signal).then((next) => {
+      if (active && scopeController.isCurrent(scope.scope)) setAccountState(next);
+    });
+    // #81：并行读取购买状态；失败静默降级（待付款行只是缺席，不阻塞账单页）。
+    void client.commercial.purchaseStatus(scope.signal).then((view) => {
+      if (active && scopeController.isCurrent(scope.scope)) setPurchase(view);
+    }).catch(() => {
+      if (active && scopeController.isCurrent(scope.scope)) setPurchase(null);
     });
     return () => { active = false; };
   }, [client, reloadToken, scopeController, scope.scope, scope.signal]);
@@ -90,7 +141,7 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
           <h1>{spaceName} · 账单与套餐</h1>
           <p className="wk-muted">Live data from GET /api/v1/commercial/summary</p>
         </div>
-        <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Reload</Button>
+        <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Reload</Button>
       </header>
       <Card>
         <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
@@ -98,16 +149,69 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
         {state.status === 'error' && state.message !== 'Loading…' ? (
           <>
             <Status tone="error">{state.message}</Status>
-            <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button>
+            <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button>
           </>
         ) : null}
         {state.status === 'success' ? (
           <ul className="wk-list" data-testid="billing-summary-list">
-            <li><strong>套餐</strong><span>{planDisplayName(state.summary)}</span></li>
+            <li>
+              <strong>套餐</strong>
+              <span>
+                {planDisplayName(state.summary)}
+                {/* AC1（#82 三态）：待付款（权益未开放）→ 已付款待激活 → 已生效。
+                    (D15-f) 文案经共享词表 PURCHASE_STATE_LABEL——两页不再各持一套。 */}
+                {purchase?.state && purchase.state !== 'absent'
+                  ? ` · ${PURCHASE_STATE_LABEL[purchase.state]}`
+                  : ''}
+              </span>
+            </li>
             <li><strong>到期</strong><span>{state.summary.subscription?.paid_until || '无固定到期（未订阅）'}</span></li>
           </ul>
         ) : null}
       </Card>
+      {accountState.status === 'success' && accountState.credits ? (
+        <Card>
+          <h2>余额</h2>
+          {/* #86：余额分解——总余额/预占/退款锁定/可用 + 批次表。 */}
+          <ul className="wk-list" data-testid="billing-credits-breakdown">
+            <li><strong>总余额</strong><span>{microToDisplay(accountState.credits.balance_micro)}</span></li>
+            <li><strong>预占（进行中任务）</strong><span>{microToDisplay(accountState.credits.held_micro)}</span></li>
+            <li><strong>退款锁定</strong><span>{microToDisplay(accountState.credits.refund_locked_micro)}</span></li>
+            <li><strong>可用</strong><span>{microToDisplay(accountState.credits.available_micro)}</span></li>
+          </ul>
+          {accountState.credits.batches.length > 0 ? (
+            <table className={USAGE_TABLE} data-testid="billing-credits-batches">
+              <thead>
+                <tr className="border-b border-[#e7e7ea]">
+                  <th className={USAGE_TABLE_CELL + ' font-semibold'}>来源</th>
+                  <th className={USAGE_TABLE_CELL + ' font-semibold'}>批次 / 发放日</th>
+                  <th className={USAGE_TABLE_CELL + ' font-semibold'}>到期</th>
+                  <th className={USAGE_NUMBER_CELL + ' font-semibold'}>余额</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountState.credits.batches.map((batch, index) => (
+                  <tr key={`${batch.source}-${batch.period}-${index}`}
+                    data-testid={batchExpiringWithin(batch.expires_at) ? 'batch-expiring' : undefined}>
+                    <td className={USAGE_TABLE_CELL}>{batchSourceLabel(batch.source)}</td>
+                    <td className={USAGE_TABLE_CELL}>
+                      {batch.period === '' ? '充值批次' : batch.period}
+                      <span className="wk-muted"> · {batch.granted_at.slice(0, 10)}</span>
+                    </td>
+                    <td className={USAGE_TABLE_CELL}>{batch.expires_at.slice(0, 10)}</td>
+                    <td className={USAGE_NUMBER_CELL}>{microToDisplay(batch.balance_micro)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          <p className="wk-muted">对账时间：{accountState.credits.projected_at}</p>
+        </Card>
+      ) : accountState.status === 'error' && accountState.message !== 'Loading…' ? (
+        <Card>
+          <Status tone="error">{accountState.message}</Status>
+        </Card>
+      ) : null}
       {usageState.status === 'success' ? (
         <Card>
           <h2>资源用量</h2>
@@ -116,10 +220,10 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
           ) : (
             <table className={USAGE_TABLE} data-testid="billing-usage-table">
               <thead>
-                <tr className="wk-bill-1">
-                  <th className={USAGE_TABLE_CELL + ' wk-bill-2'}>资源</th>
-                  <th className={USAGE_NUMBER_CELL + ' wk-bill-2'}>已用</th>
-                  <th className={USAGE_NUMBER_CELL + ' wk-bill-2'}>上限</th>
+                <tr className="border-b border-[#e7e7ea]">
+                  <th className={USAGE_TABLE_CELL + ' font-semibold'}>资源</th>
+                  <th className={USAGE_NUMBER_CELL + ' font-semibold'}>已用</th>
+                  <th className={USAGE_NUMBER_CELL + ' font-semibold'}>上限</th>
                 </tr>
               </thead>
               <tbody>

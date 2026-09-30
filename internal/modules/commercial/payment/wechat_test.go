@@ -12,12 +12,49 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
+
+// (R1-V09) 渠道出站必须经过共享 SSRF 校验：环回/私有/保留地址一律拒绝
+// （fail-closed ErrNotConfigured），除非运维显式配置 SSRF_WHITELIST(_EXTRA)
+// 豁免——flow-evidence-81 的本环回 stub 流程即依赖该可审计豁免。
+func TestWechatDoRejectsInternalEgressWithoutWhitelist(t *testing.T) {
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	p := newWechatProvider(WechatConfig{AppID: "wx-test-app", MchID: "1900000001",
+		APIBaseURL: "http://127.0.0.1:8291"}, nil, nil)
+	err := p.do(context.Background(), http.MethodPost, "/v3/pay/transactions/native", []byte("{}"), nil)
+	if !errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("loopback egress must fail closed with the SSRF gate, got %v", err)
+	}
+}
+
+func TestWechatDoAllowsWhitelistedLoopbackStub(t *testing.T) {
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code_url":"weixin://wxpay/bizpayurl?pr=x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	p := newWechatProvider(WechatConfig{AppID: "wx-test-app", MchID: "1900000001",
+		APIBaseURL: srv.URL}, nil, nil)
+	err := p.do(context.Background(), http.MethodPost, "/v3/pay/transactions/native", []byte("{}"), nil)
+	// 白名单豁免后必须通过 SSRF 门（此后失败只能发生在签名授权环节——测试
+	// provider 无商户密钥材料），证明豁免通道可用。
+	if err != nil && strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("whitelisted loopback must pass the SSRF gate, got %v", err)
+	}
+}
 
 func TestWechatRejectsChangedCallbackBody(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -224,4 +261,89 @@ func TestWechatDuplicateDeliveryIsIdempotent(t *testing.T) {
 		first.State != second.State {
 		t.Fatalf("duplicate delivery produced a different fact: %+v vs %+v", first, second)
 	}
+}
+
+// TestChannelClientsCapRedirectLoop（R1-14）：两个主机互发 302 即成无限重定向
+// 环——旧客户端的自定义 CheckRedirect 整体替换了标准库默认的 10 跳上限（该
+// 默认仅 CheckRedirect 为 nil 时生效），每次支付/查单会持续跳转直到 Timeout
+// 耗尽。共享 SSRFSafe 客户端在 MaxRedirects 上限处终止；环回桩经
+// SSRF_WHITELIST 显式豁免（与真实出站策略同一豁免通道）。
+func TestChannelClientsCapRedirectLoop(t *testing.T) {
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+
+	var hops int64
+	var srvA, srvB *httptest.Server
+	srvA = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&hops, 1)
+		http.Redirect(w, r, srvB.URL+"/hop", http.StatusFound)
+	}))
+	srvB = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&hops, 1)
+		http.Redirect(w, r, srvA.URL+"/hop", http.StatusFound)
+	}))
+	t.Cleanup(srvA.Close)
+	t.Cleanup(srvB.Close)
+
+	clients := map[string]*http.Client{}
+	wechat := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001",
+		APIBaseURL: srvA.URL}, nil, nil)
+	clients["wechat"] = wechat.client
+	if p, _, _ := alipayNotifyFixture(t); p != nil {
+		clients["alipay"] = p.client
+	}
+
+	for name, client := range clients {
+		if client == nil || client.CheckRedirect == nil {
+			t.Fatalf("%s client must carry the shared SSRF-safe redirect policy", name)
+		}
+		atomic.StoreInt64(&hops, 0)
+		req, err := http.NewRequest(http.MethodGet, srvA.URL+"/start", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.Do(req)
+		if err == nil {
+			t.Fatalf("%s: redirect loop must fail, not return a response", name)
+		}
+		if !strings.Contains(err.Error(), "stopped after 10 redirects") {
+			t.Fatalf("%s: loop must stop at the redirect cap, got %v", name, err)
+		}
+		if n := atomic.LoadInt64(&hops); n > 12 {
+			t.Fatalf("%s: loop must stop at the cap (hops=%d), not run to the client timeout", name, n)
+		}
+	}
+}
+
+// TestChannelTransportKeepsEnvironmentProxy（R2-17/R2-19）：切换到共享
+// SSRFSafe 客户端时静默丢了 ProxyFromEnvironment（NewSSRFSafeTransport 不设
+// Proxy 字段，而默认 Transport 带环境代理）——仅允许代理出网的部署会从「经
+// 代理可达」退化为「直连超时」。两个渠道的 transport 现在都显式挂回环境
+// 代理（SSRF 拨号/校验层保持不变）。
+func TestChannelTransportKeepsEnvironmentProxy(t *testing.T) {
+	assertProxy := func(name string, client *http.Client) {
+		t.Helper()
+		if client == nil || client.Transport == nil {
+			t.Fatalf("%s: client/transport missing", name)
+		}
+		rt, ok := client.Transport.(*secutils.SSRFValidatingRoundTripper)
+		if !ok {
+			t.Fatalf("%s: transport must be the SSRF-validating wrapper, got %T", name, client.Transport)
+		}
+		tr, ok := rt.Base.(*http.Transport)
+		if !ok {
+			t.Fatalf("%s: base transport must be *http.Transport, got %T", name, rt.Base)
+		}
+		if tr.Proxy == nil {
+			t.Fatalf("%s: base transport must carry the environment proxy (R2-17/R2-19 regression)", name)
+		}
+		if tr.DialContext == nil {
+			t.Fatalf("%s: the SSRF-safe dial layer must stay mounted", name)
+		}
+	}
+	wechat := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001"}, nil, nil)
+	assertProxy("wechat", wechat.client)
+	alipay, _, _ := alipayNotifyFixture(t)
+	assertProxy("alipay", alipay.client)
 }

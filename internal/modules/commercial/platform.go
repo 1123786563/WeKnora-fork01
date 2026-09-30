@@ -147,6 +147,10 @@ type Snapshot struct {
 	// unless the snapshot kind is benefits. Earlier consumers are
 	// unaffected — a zero-value Snapshot keeps Benefits nil.
 	Benefits *BenefitsSnapshot
+	// Purchase is the additive W5 purchase section (#81, Lago T09); nil
+	// unless the snapshot kind is purchase. Earlier consumers are
+	// unaffected — a zero-value Snapshot keeps Purchase nil.
+	Purchase *PurchaseSnapshot
 }
 
 // ExternalCustomerID is THE deterministic WeKnora→authority customer

@@ -28,12 +28,15 @@ Entitlement becomes usable?
   `License.premium?` requires a server-verified `LAGO_LICENSE`
   (`config/initializers/license.rb`,
   `lib/lago_utils/lago_utils/license.rb`).
-- **Runtime evidence this run:** [`t02-manual.json`](./t02-manual.json)
-  reports `blocked-env` — the manual attempt requires customer A's gating
-  invoice, which requires a provider-connected customer, which requires a
-  Stripe TEST-mode key that was absent from the caller environment. The
-  403-on-Community claim is therefore **source-verified, unproven at
-  runtime in this run**; re-run with a test key to capture the live 403.
+- **Runtime evidence (re-run with a Stripe TEST key):**
+  [`t02-manual.json`](./t02-manual.json) reports `pass` —
+  `POST /api/v1/payments` against a real lab invoice returned HTTP 403
+  Forbidden and left invoice + subscription state unchanged. On v1.53.0
+  the 3DS gate invoice stays API-invisible (open/closed are
+  INVISIBLE_STATUS), so the probe targets customer B's settled activation
+  invoice — the Premium gate fires before any invoice-state check, so the
+  403 evidences the Community gate on any real invoice. The Community 403
+  is now **runtime-proven**, matching the source verdict.
 - **Actual REST contract (source-verified, differs from the ticket
   draft):** `POST /api/v1/payments` accepts only `invoice_id`,
   `amount_cents`, `reference`, `paid_at` (`payments_controller#create_params`).
@@ -74,19 +77,29 @@ Entitlement becomes usable?
   the same `external_id` returns `422 value_already_exist` (active) or
   `subscription_incomplete` (incomplete); the PaymentIntent carries
   `idempotency_key: "payment-#{payment.id}"`.
-- **Runtime evidence this run:** [`t02-activation.json`](./t02-activation.json),
-  [`t02-duplicates.json`](./t02-duplicates.json),
-  [`t02-retries.json`](./t02-retries.json),
-  [`t02-decline.json`](./t02-decline.json) all report `blocked-env`
-  (missing Stripe TEST-mode key in the caller environment —
-  [`t02-environment.json`](./t02-environment.json) records
-  `stripe.test_mode_key_present: false` with the env-var names checked).
-  The end-to-end provider-path proof is therefore **pending one
-  environment input**, not a negative result: the stack, runner, operator
-  login, real object creation (`t02-setup.json`: **pass**), and cleanup
-  (`t02-cleanup.json`: **pass**) all worked on the pinned runtime.
-  Re-running with `STRIPE_SECRET_KEY=<sk_test_…>` executes the full AC1–AC4
-  chain unchanged (see the lab README workflow).
+- **Runtime evidence (re-run with a Stripe TEST key,
+  [`t02-environment.json`](./t02-environment.json)
+  `run.overall: pass`):** [`t02-activation.json`](./t02-activation.json)
+  reports `pass` — customer B's gated subscription became `active` with
+  1 succeeded provider payment
+  (`provider_payment_id` present), the invoice finalized, numbered and
+  `payment_status: succeeded`, entitlements 200 with the plan feature,
+  totals matched in integer cents.
+  [`t02-duplicates.json`](./t02-duplicates.json) `pass` (duplicate probes
+  harmless — the re-POST answered 200 with the SAME subscription,
+  `retry_payment` 405, manual 403; final state byte-identical);
+  [`t02-retries.json`](./t02-retries.json) `pass`
+  ({"gate_not_activated": true, "no_second_payment_row": true, "no_succeeded_payment_for_gate": true, "same_identity_recovered": true});
+  [`t02-decline.json`](./t02-decline.json) `pass` (a charge that cannot
+  succeed never activates — with `timeout_hours: 0` the negative-control
+  subscription stays `incomplete`, entitlements 404, zero succeeded
+  payments; `canceled(payment_failed)` only appears after a non-zero
+  timeout expires on the hourly clock, outside a lab window).
+  A read-only DB observer confirmed exactly-once at the projection level:
+  succeeded payments peaked at history+1 this run, customer B reached
+  active without regressing, customer C never reached active.
+  The end-to-end provider-path activation is therefore
+  **runtime-proven on the pinned Community v1.53.0**.
 
 ## 4. Blocker statement for WeChat/Alipay channel payments
 
@@ -126,20 +139,28 @@ supported provider can be the real rail: it is the only option that
 preserves the spec's architecture (WeKnora-verified channel Payment Facts
 drive Lago; Lago remains the sole activation authority; no dual-write, no
 local force-active), and the activation mechanism it rides on is already
-wired in the pinned release. **Explicitly unproven:** (i) the AC1–AC4
-runtime evidence of this lab is blocked-env pending a Stripe TEST-mode key;
+wired in the pinned release. **Explicitly unproven:** (i) ~~the AC1–AC4
+runtime evidence of this lab is blocked-env pending a Stripe TEST-mode
+key~~ (resolved by the re-run: all phases `pass`);
 (ii) the Premium manual-payment → activation flow is source-verified only
 (Premium is out of scope for this lab); (iii) commercial terms of Premium
 are outside the lab's competence.
+
+### 裁决记录（2026-09-23，补录）
+
+T02 三选一已由用户裁决为**选项 (b)——受支持 Provider 作真实扣款轨道**（Stripe TEST 通道已在本 lab 实证：run11 `5d06a277` 九阶段全 pass，流程验证 run `3dc51207` 21/21 逐 AC 断言）；本 lab 的推荐意见 (a)（采购 Premium、以 manual Payment 录入渠道事实）**不采纳**。
+
+- **出处**：2026-09-23 编排任务指令转述的用户裁决（原文要点：『T02 三选一已裁决为选项②（受支持 Provider，Stripe TEST 已在 #74 实证）』）。此前过程文档未留书面裁决记录——`docs/plans/issue-72-final-report.md` §1/§9.3 曾记『T02 三选项裁决仍未提供』，该记录早于本裁决到达，已被取代；本段由 issue-72 架构师补录以闭合溯源缺口（DAG 审查 2026-09-23 high finding），未改动上方 §5 的原始论证与推荐意见。
+- **影响**：#81/#82 的裁决型阻塞解除——payment-gated 订阅的激活通道定型为受支持 Provider 轨道；WeKnora 自有微信/支付宝渠道事实与 provider 轨道的并存口径（选项 (b) 行内已声明 Stripe 不能服务微信/支付宝原生流）由 #81/#82 实施票按 spec 细化。
 
 ## 6. Acceptance-criterion mapping
 
 | #74 acceptance criterion | Evidence files |
 |--------------------------|----------------|
-| AC1 — 付款前 Subscription 保持 incomplete，Entitlement 不可使用 | [`t02-gating.json`](./t02-gating.json) (this run: `blocked-env`) |
-| AC2 — 可信付款登记后 Subscription 变为 active，且重复登记不重复激活 | [`t02-activation.json`](./t02-activation.json) + [`t02-duplicates.json`](./t02-duplicates.json) (this run: `blocked-env`) |
-| AC3 — 响应丢失、超时与重试使用同一商业身份并可恢复 | [`t02-retries.json`](./t02-retries.json) (this run: `blocked-env`) |
-| AC4 — 若 manual Payment 不能激活，证据明确给出受支持替代路径或 blocker | [`t02-manual.json`](./t02-manual.json) + [`t02-decline.json`](./t02-decline.json) (this run: `blocked-env`) + this document (section 4 blocker, section 5 supported path) |
+| AC1 — 付款前 Subscription 保持 incomplete，Entitlement 不可使用 | [`t02-gating.json`](./t02-gating.json) (re-run: `pass`) |
+| AC2 — 可信付款登记后 Subscription 变为 active，且重复登记不重复激活 | [`t02-activation.json`](./t02-activation.json) + [`t02-duplicates.json`](./t02-duplicates.json) (re-run: `pass`) |
+| AC3 — 响应丢失、超时与重试使用同一商业身份并可恢复 | [`t02-retries.json`](./t02-retries.json) (re-run: `pass`) |
+| AC4 — 若 manual Payment 不能激活，证据明确给出受支持替代路径或 blocker | [`t02-manual.json`](./t02-manual.json) + [`t02-decline.json`](./t02-decline.json) (re-run: `pass`) + this document (section 4 blocker, section 5 supported path) |
 
 ## 7. Cross-ticket notes
 
@@ -171,7 +192,7 @@ are outside the lab's competence.
   cannot observe the hourly tick, so this is recorded as source knowledge
   (`app/services/subscriptions/activation_rules/…`, `clock.rb`), not
   runtime evidence.
-- **Environment gap to close:** supply `STRIPE_TEST_SECRET_KEY` (or
-  `STRIPE_SECRET_KEY`) with an `sk_test_`/`rk_test_` value and re-run the
-  documented workflow to convert every `blocked-env` phase report into a
-  real pass/fail verdict for AC1–AC4.
+- **Environment gap closed (2026-09 re-run):** the documented re-run with a
+  Stripe TEST-mode key converted every phase report into a real verdict;
+  see [`t02-environment.json`](./t02-environment.json) (`run.overall:
+  pass`).

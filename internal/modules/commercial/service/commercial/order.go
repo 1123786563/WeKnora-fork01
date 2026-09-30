@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -37,15 +38,36 @@ var (
 // enough for a human to pay; short enough that a price change lands soon.
 const quoteValidity = 30 * time.Minute
 
+// checkoutPersistTimeout (R3-28) bounds the order-row persisting writes
+// (channel-failed mark, checkout_url) that ride a context detached from the
+// caller's cancellation: long enough for a single bounded UPDATE, short
+// enough to never leak a request's cleanup.
+const checkoutPersistTimeout = 5 * time.Second
+
+// QuoteLineItem is one frozen invoice line of the offer (#81 AC1): the
+// first slice prices exactly one subscription fee; integer fen only.
+type QuoteLineItem struct {
+	Kind      string `json:"kind"`       // 闭合 "subscription_fee"
+	Name      string `json:"name"`       // plan 显示名
+	AmountFen int64  `json:"amount_fen"` // 整数分
+}
+
 // quoteSnapshot is the exact offer frozen at quote time: the published plan
-// version it buys, its exact price in fen and the monthly credits it grants.
-// The order is priced from THIS snapshot, never re-read from the (possibly
-// republished) catalog at order time.
+// version it buys, its exact price in fen, the monthly credits it grants
+// and — additive #81 fields — the closed currency, the frozen entitlement
+// features and the line items. The order is priced from THIS snapshot,
+// never re-read from the (possibly republished) catalog at order time.
+// New fields are JSON-backward-compatible: a legacy snapshot unmarshals
+// them as zero values, and the purchase path refuses legacy snapshots with
+// ErrQuoteLegacySnapshot (re-quote) instead of guessing.
 type quoteSnapshot struct {
-	PlanKey      string `json:"plan_key"`
-	PlanVersion  int64  `json:"plan_version"`
-	PriceFen     int64  `json:"price_fen"`
-	CreditsMicro int64  `json:"credits_micro"`
+	PlanKey      string          `json:"plan_key"`
+	PlanVersion  int64           `json:"plan_version"`
+	PriceFen     int64           `json:"price_fen"`
+	CreditsMicro int64           `json:"credits_micro"`
+	Currency     string          `json:"currency"` // "CNY"
+	Features     map[string]bool `json:"features,omitempty"`
+	LineItems    []QuoteLineItem `json:"line_items,omitempty"` // 首期恰一行 subscription_fee
 }
 
 // OrderService implements the order pipeline over the repository stores:
@@ -82,6 +104,58 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
 		return nil, err
+	}
+	// (R3-26) Migration of PRE-INVARIANT rows, BEFORE the index is created:
+	// a pending purchase order whose checkout link never landed (the old
+	// POST /orders pipeline predates the checkout_url column — every legacy
+	// pending row is link-less; SetCheckoutURL degradations and
+	// ctx-cancelled channel failures leave the same shape) is NOT a payable
+	// entry and must not enter the invariant's scope on upgrade day. Mark
+	// those rows channel-failed (the recovery paths and a late channel
+	// confirmation still work; the row simply stops blocking fresh
+	// checkouts). created_at is backfilled for rows created before the
+	// column existed (NULL/zero on PostgreSQL sorts NULLS FIRST and would
+	// shadow every newer row). Parameter-bound; no external input.
+	// (OCR r4) The backfill is scoped to PRE-INVARIANT rows ONLY: a
+	// created_at IS NULL/zero row predates the column (the legacy
+	// pipeline); every row the new pipeline writes carries created_at, so
+	// a restart while a fresh checkout is mid-landing (order created,
+	// checkout_url not yet written) never gets swept here.
+	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = true
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = false
+		AND (checkout_url IS NULL OR checkout_url = '')
+		AND (created_at IS NULL OR created_at < '1970-01-02 00:00:00')`).Error; err != nil {
+		return nil, fmt.Errorf("commercial pending-purchase backfill: %w", err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET created_at = ?
+		WHERE created_at IS NULL OR created_at < '1970-01-02 00:00:00'`,
+		time.Now().UTC()).Error; err != nil {
+		return nil, fmt.Errorf("commercial created_at backfill: %w", err)
+	}
+	// (R2-26/R3-27) Database-level invariant: at most ONE payable pending
+	// purchase order per tenant. The purchase path's read-decide-write only
+	// narrowed the race window — two concurrent POSTs with two fresh quotes
+	// could both pass the pre-checks and commit; the partial unique index
+	// closes the gap at INSERT time (loser answers ErrPurchasePendingExists
+	// and replays the winner, the ErrQuoteAlreadyUsed shape). The predicate
+	// is deliberately channel_failed = false ONLY (NOT "and a checkout_url"):
+	// including the link would move the conflict from the atomic INSERT to
+	// the later SetCheckoutURL UPDATE (two concurrent checkouts both insert
+	// link-less, the second link persistence then hits the index) — the
+	// link-less rows that DO occupy the slot are only the persist-degraded
+	// residue, and the service's conflict path unlocks those by sweeping
+	// them to channel-failed before retrying once. A deployment holding
+	// pre-invariant duplicates fails HERE loudly (the index cannot be
+	// created) instead of silently continuing without the invariant. The
+	// boolean is spelled `false` / `true` (NOT 0/1): GORM migrates the Go
+	// bool to a PostgreSQL boolean column, and `boolean = integer` has no
+	// implicit cast there — the 0/1 spelling failed at PARSE time on every
+	// PostgreSQL deployment (R3-27); SQLite 3.23+ and PostgreSQL both
+	// accept the boolean literals.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_pending_per_tenant
+		ON commercial_orders (tenant_id)
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = false`).Error; err != nil {
+		return nil, fmt.Errorf("commercial pending-purchase invariant: %w", err)
 	}
 	return &OrderService{
 		quotes:    repocommercial.NewCatalogStore(db),
@@ -126,14 +200,19 @@ func normalizeMigratedCommercialUniques(db *gorm.DB) error {
 	return nil
 }
 
-// QuoteView is the produced quote projection.
+// QuoteView is the produced quote projection. Currency, Features and
+// LineItems are the additive #81 AC1 freeze: the customer sees exactly the
+// currency, entitlements and invoice lines the quote commits to.
 type QuoteView struct {
-	ID           string `json:"id"`
-	PlanKey      string `json:"plan_key"`
-	PlanVersion  int64  `json:"plan_version"`
-	AmountFen    int64  `json:"amount_fen"`
-	CreditsMicro int64  `json:"credits_micro"`
-	ExpiresAt    string `json:"expires_at"`
+	ID           string          `json:"id"`
+	PlanKey      string          `json:"plan_key"`
+	PlanVersion  int64           `json:"plan_version"`
+	AmountFen    int64           `json:"amount_fen"`
+	CreditsMicro int64           `json:"credits_micro"`
+	ExpiresAt    string          `json:"expires_at"`
+	Currency     string          `json:"currency,omitempty"`
+	Features     map[string]bool `json:"features,omitempty"`
+	LineItems    []QuoteLineItem `json:"line_items,omitempty"`
 }
 
 // CreateQuote cuts an offer for the LATEST PUBLISHED version of planKey in
@@ -164,6 +243,13 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 		PlanVersion:  plan.Version,
 		PriceFen:     int64(plan.Price),
 		CreditsMicro: int64(plan.Monthly),
+		// #81 AC1 freeze: closed currency, the version's entitlements and the
+		// single first-period subscription-fee line (no pay-in-advance
+		// charges exist on publishable plans — usage charges are
+		// pay-in-arrears and never enter the first invoice).
+		Currency:  domain.CurrencyCNY,
+		Features:  plan.Features,
+		LineItems: []QuoteLineItem{{Kind: "subscription_fee", Name: plan.Name, AmountFen: int64(plan.Price)}},
 	}
 	snapJSON, err := json.Marshal(snap)
 	if err != nil {
@@ -184,6 +270,7 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 		ID: id, PlanKey: snap.PlanKey, PlanVersion: snap.PlanVersion,
 		AmountFen: snap.PriceFen, CreditsMicro: snap.CreditsMicro,
 		ExpiresAt: expires.UTC().Format(time.RFC3339),
+		Currency:  snap.Currency, Features: snap.Features, LineItems: snap.LineItems,
 	}, nil
 }
 
@@ -193,16 +280,21 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 // was durably opened: the pending order stays recoverable through
 // GetOrder/RecoverOrderStatus, and the write answer still carries the
 // operation ID and state as the product contract requires.
+// CheckoutLinkDegraded (R2-27) marks a DIFFERENT posture: the channel call
+// succeeded and the answer carries a working CheckoutURL, but persisting
+// the link for later replays failed (closed marker, raw error in the server
+// log only) — the answer itself stays a clean success.
 type OrderView struct {
-	ID            string `json:"id"`
-	QuoteID       string `json:"quote_id"`
-	State         string `json:"state"`
-	AmountFen     int64  `json:"amount_fen"`
-	Currency      string `json:"currency"`
-	Provider      string `json:"provider,omitempty"`
-	CheckoutURL   string `json:"checkout_url,omitempty"`
-	CheckoutError string `json:"checkout_error,omitempty"`
-	Version       int64  `json:"version"`
+	ID                   string `json:"id"`
+	QuoteID              string `json:"quote_id"`
+	State                string `json:"state"`
+	AmountFen            int64  `json:"amount_fen"`
+	Currency             string `json:"currency"`
+	Provider             string `json:"provider,omitempty"`
+	CheckoutURL          string `json:"checkout_url,omitempty"`
+	CheckoutError        string `json:"checkout_error,omitempty"`
+	CheckoutLinkDegraded bool   `json:"checkout_link_degraded,omitempty"`
+	Version              int64  `json:"version"`
 }
 
 // CreateOrder consumes the quote and opens one pending order with one
@@ -220,6 +312,36 @@ func (s *OrderService) CreateOrder(ctx context.Context, tenantID uint64, quoteID
 		return OrderView{}, err
 	}
 	return s.openOrder(ctx, tenantID, q, providerName, snap.PriceFen, domain.OrderKindPurchase, nil)
+}
+
+// QuoteSnapshotForTenant is the public quote read (#81): the purchase path
+// loads the same guarded snapshot the order path consumes. quoteForTenant
+// keeps the historical private name so existing call sites stay untouched.
+func (s *OrderService) QuoteSnapshotForTenant(ctx context.Context, tenantID uint64, quoteID string) (repocommercial.QuoteRow, quoteSnapshot, error) {
+	return s.quoteForTenant(ctx, tenantID, quoteID)
+}
+
+// ProviderConfigured reports whether the named channel provider is wired
+// (a pure in-memory map lookup — no I/O). The purchase path checks it
+// BEFORE any seam-side effect so a blocked-env checkout can never leave a
+// payment-gated subscription behind (review F1).
+func (s *OrderService) ProviderConfigured(name string) bool {
+	provider, ok := s.providers[name]
+	return ok && provider != nil
+}
+
+// CurrentPayablePendingOrderView projects the tenant's newest payable
+// pending purchase order (R3-25): the handler's conflict answer for a
+// rejected duplicate checkout attaches it so the client keeps a payment
+// entry instead of a bare error token.
+func (s *OrderService) CurrentPayablePendingOrderView(ctx context.Context, tenantID uint64) (OrderView, error) {
+	row, err := s.orders.CurrentPayablePendingOrder(ctx, tenantID)
+	if err != nil {
+		return OrderView{}, err
+	}
+	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+		AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
+		Version: row.Version}, nil
 }
 
 // quoteForTenant loads and validates the quote snapshot for a tenant.
@@ -273,7 +395,13 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 	cmd := repocommercial.OpenOrderCommand{
 		OrderID: id, AttemptID: "att_" + newLeaseToken(), TenantID: tenantID,
 		QuoteID: q.ID, Kind: kind, AmountFen: amountFen, Currency: "CNY",
-		Provider: providerName, Merchant: providerName, MerchantOrderID: merchantOrderID,
+		// The attempt's merchant MUST be the channel merchant identity the
+		// provider's verified callbacks carry (SellerID/MchID) — NOT the
+		// provider name: resolveByMerchantOrderID and ConfirmPayment key on
+		// (provider, merchant, merchant_order_id), so any other value makes
+		// every genuine channel callback unresolvable (issue #82 flow
+		// defect 2: registered 'alipay' vs notified SellerID → 404).
+		Provider: providerName, Merchant: provider.MerchantID(), MerchantOrderID: merchantOrderID,
 		SubscriptionVersion: subVersion, Now: time.Now(),
 	}
 	if claim != nil {
@@ -287,19 +415,63 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 		OrderID: id, MerchantOrderID: merchantOrderID,
 		AmountFen: amountFen, Currency: "CNY",
 	})
+	// (R3-26 trigger b) A channel Create that "succeeded" without producing
+	// a checkout link is NOT a payable outcome: SetCheckoutURL refuses empty
+	// strings, so persisting the link is impossible and the row would sit
+	// pending+link-less forever. Treat the empty link exactly like a channel
+	// failure (same posture below) — the row is marked channel-failed, the
+	// answer carries CheckoutError, and the tenant's next checkout is not
+	// blocked.
+	if err == nil && res.CheckoutURL == "" {
+		err = errors.New("channel answered without a checkout link")
+	}
+	// (R3-28) The two row-persisting writes below ride a context DETACHED
+	// from the caller's cancellation: a channel Create that failed BECAUSE
+	// the client disconnected (ctx cancelled) used to take the
+	// channel-failed mark down with it (same cancelled ctx) — leaving a
+	// zombie pending row with channel_failed=false and no link that blocked
+	// the tenant's every future checkout. The detached context keeps the
+	// short UPDATE alive past the request's end; only its own timeout
+	// bounds it.
+	persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), checkoutPersistTimeout)
+	defer persistCancel()
 	if err != nil {
-		// The channel call failed (or timed out into StateUnknown): the
-		// pending order and attempt REMAIN, the quote is consumed, and the
-		// response still carries the operation ID + state so recovery goes
-		// through GetOrder — never through a second checkout of the same
-		// quote.
+		// The channel call failed (or timed out into StateUnknown, or
+		// answered without a link): the pending order and attempt REMAIN
+		// (channel-failed — see MarkChannelFailed below), the quote is
+		// consumed, and the response still carries the operation ID + state
+		// so recovery goes through GetOrder — never through a second
+		// checkout of the same quote.
+		// (R2-28) The channel failure is ALSO persisted on the row: the
+		// channel-failed pending order is not a payable entry and must not
+		// block a fresh quote's checkout.
+		if ferr := s.orders.MarkChannelFailed(persistCtx, id); ferr != nil {
+			log.Printf("commercial: channel-failed mark lost for order %s: %v", id, ferr)
+		}
 		return OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
 			AmountFen: amountFen, Currency: "CNY", Provider: providerName, Version: 1,
 			CheckoutError: fmt.Sprintf("channel checkout failed for %s: %v", id, err)}, nil
 	}
-	return OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
+	view := OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
 		AmountFen: amountFen, Currency: "CNY", Provider: providerName,
-		CheckoutURL: res.CheckoutURL, Version: 1}, nil
+		CheckoutURL: res.CheckoutURL, Version: 1}
+	// (R1-35) Persist the channel link so the POST replay (the existing-order
+	// branch) and the GetOrder recovery path re-serve it verbatim — without
+	// the persistence the first answer carried the ONLY copy of the payment
+	// entry to an already-consumed quote, and a client that lost it (timeout,
+	// refresh) had no way back to the checkout. A persistence failure does
+	// NOT undo the answer: the write-answer contract still holds (the client
+	// gets the link this once).
+	// (R2-27) The degradation is its OWN closed marker — NOT the channel
+	// failure's CheckoutError: the channel call SUCCEEDED here (the client
+	// holds a working link), so the handler must answer a clean 201, never
+	// the channel-failure 202; and the raw error (SQL/driver detail) stays
+	// in the server log, never on the wire.
+	if err := s.orders.SetCheckoutURL(persistCtx, id, res.CheckoutURL); err != nil {
+		log.Printf("commercial: checkout_url persistence failed for order %s: %v", id, err)
+		view.CheckoutLinkDegraded = true
+	}
+	return view, nil
 }
 
 // ListOrders returns the caller space's orders, newest first. Never crosses
@@ -338,9 +510,11 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
 	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
 		// No attempt ever registered (e.g. channel unconfigured at creation):
-		// honestly pending, nothing to recover.
+		// honestly pending, nothing to recover. The persisted checkout link
+		// (R1-35) still rides along so the customer keeps a payment entry.
 		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
-			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+			AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
+			Version: row.Version}, nil
 	}
 	if err != nil {
 		return OrderView{}, err
@@ -371,9 +545,112 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 			return OrderView{}, err
 		}
 	}
+	// (R1-35) A still-pending order re-serves the persisted checkout link
+	// verbatim: the channel said pending (or the confirm re-read the row),
+	// and the customer must be able to reach the payment page again without
+	// a second checkout of the same consumed quote.
 	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
-		Version: row.Version}, nil
+		CheckoutURL: row.CheckoutURL, Version: row.Version}, nil
+}
+
+// CloseChannelOrder retires one pending order's channel entry in a
+// race-safe way (#83, spec L123 close + L165 indeterminate outcomes): the
+// channel Close is driven against the ORIGINAL merchant order id; ANY close
+// failure (ORDER_PAID race, transport timeout, already-closed) is decided by
+// the channel Query — a succeeded query confirms the payment through the
+// SAME ConfirmPayment transaction the callback path uses (the fund fact
+// survives the close, the fulfillment right is minted exactly once), a
+// closed query lands like a clean close, and anything else (NOTPAY /
+// unknown / query failure) stays UNRESOLVED: the error surfaces, nothing is
+// marked, and the order keeps its payable entry so the caller may retry.
+func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, orderID string) (OrderView, error) {
+	row, err := s.orders.GetOrder(ctx, orderID)
+	if err != nil {
+		return OrderView{}, err
+	}
+	if row.TenantID != tenantID {
+		return OrderView{}, ErrOrderTenantMismatch
+	}
+	if row.State != domain.OrderStatePending {
+		// No payable channel entry exists for a paid/fulfilled order; the
+		// caller answers the current state (zero channel calls).
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+	}
+	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
+	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
+		// A pending order with no attempt is not payable at all (e.g. a
+		// channel-unconfigured leftover): retire the slot and answer pending.
+		if err := s.orders.MarkChannelFailed(ctx, orderID); err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+	}
+	if err != nil {
+		return OrderView{}, err
+	}
+	provider, ok := s.providers[att.Provider]
+	if !ok || provider == nil {
+		return OrderView{}, fmt.Errorf("%w: %q", ErrPaymentProviderUnconfigured, att.Provider)
+	}
+	landClosed := func() (OrderView, error) {
+		// (OCR C-07) The attempt-close and the channel_failed marking land
+		// as ONE transactional pair: two independent UPDATEs left a
+		// hand-recovery-only half state (attempt closed, order still
+		// payable) when the process died between them.
+		if err := s.orders.CloseAttemptAndRetireChannel(ctx, orderID); err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: domain.OrderStatePending,
+			AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
+			Version: row.Version}, nil
+	}
+	cerr := provider.Close(ctx, att.MerchantOrderID)
+	if cerr == nil {
+		return landClosed()
+	}
+	// Indeterminate on the close side (ORDER_PAID race, timeout, already
+	// closed, transport error): the channel alone knows the truth — decide
+	// by querying the ORIGINAL identifier, never by parsing the close error.
+	res, qerr := provider.Query(ctx, att.MerchantOrderID)
+	if qerr != nil {
+		// Both legs failed: the outcome stays unknown — surface it, mark
+		// nothing, keep the payable entry for a retry.
+		return OrderView{}, qerr
+	}
+	switch res.State {
+	case payment.StateSucceeded:
+		txn := res.ProviderID
+		if txn == "" {
+			txn = att.MerchantOrderID
+		}
+		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
+			Provider: att.Provider, Merchant: att.Merchant,
+			AttemptID: att.MerchantOrderID, OrderID: orderID, TenantID: tenantID,
+			Amount: domain.CNYFen(att.AmountFen), Currency: att.Currency,
+			Transaction: txn, State: payment.StateSucceeded.String(),
+		}); err != nil {
+			return OrderView{}, err
+		}
+		after, err := s.orders.GetOrder(ctx, orderID)
+		if err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: after.ID, QuoteID: after.QuoteID, State: after.State,
+			AmountFen: after.AmountFen, Currency: after.Currency, Provider: att.Provider,
+			Version: after.Version}, nil
+	case payment.StateClosed:
+		// The channel already closed it (or the close landed first): same
+		// landing as a clean close.
+		return landClosed()
+	default:
+		// NOTPAY / unknown: the close did not resolve and the channel has
+		// no terminal answer — return the original close error, mark
+		// nothing, keep the payable entry.
+		return OrderView{}, cerr
+	}
 }
 
 // ChangePlanView is the Commerce.ChangePlan answer: either an UPGRADE order
