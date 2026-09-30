@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,77 @@ func integrationEnv(names ...string) map[string]string {
 		}
 	}
 	return out
+}
+
+func TestPaymentIntentCandidateSelection(t *testing.T) {
+	candidates, err := preSettlePaymentIntentCandidates([]any{
+		map[string]any{"id": "pi_older", "created": float64(100), "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+		map[string]any{"id": "pi_newest", "created": float64(200), "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+		map[string]any{"id": "pi_unlinked", "created": float64(300), "status": "requires_action", "metadata": map[string]any{}},
+		map[string]any{"id": "pi_already_done", "created": float64(400), "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_old"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedID, err := expectedPaymentIntentID(candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expectedID != "pi_newest" {
+		t.Fatalf("expected newest candidate, got %q", expectedID)
+	}
+	if _, ok := candidates["pi_unlinked"]; ok {
+		t.Fatal("intent without Lago invoice metadata was captured")
+	}
+
+	rows := []any{
+		map[string]any{"id": "pi_newest", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+		map[string]any{"id": "pi_older", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+	}
+	preObservedIDs := map[string]struct{}{"pi_older": {}, "pi_newest": {}, "pi_unlinked": {}, "pi_already_done": {}}
+	selected, err := succeededPaymentIntent(rows, expectedID, preObservedIDs)
+	if err != nil {
+		t.Fatalf("expected newest candidate to be selected: %v", err)
+	}
+	if selected["id"] != "pi_newest" {
+		t.Fatalf("selected %v, want pi_newest", selected["id"])
+	}
+
+	_, err = succeededPaymentIntent(rows[1:], expectedID, preObservedIDs)
+	if err == nil || !strings.Contains(err.Error(), "pi_newest") || !strings.Contains(err.Error(), "pi_older") {
+		t.Fatalf("older-only success must fail with expected/observed IDs, got %v", err)
+	}
+
+	_, err = succeededPaymentIntent(append(rows, map[string]any{
+		"id": "pi_interleaved", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_current"},
+	}), expectedID, preObservedIDs)
+	if err == nil || !strings.Contains(err.Error(), "pi_interleaved") {
+		t.Fatalf("new invoice-linked success must fail and name its identity, got %v", err)
+	}
+
+	// A pre-existing succeeded history row is allowed, and a newly listed
+	// succeeded row without invoice linkage does not represent an invoice race.
+	withHistory := append(rows, map[string]any{
+		"id": "pi_already_done", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "inv_old"},
+	})
+	if _, err := succeededPaymentIntent(withHistory, expectedID, preObservedIDs); err != nil {
+		t.Fatalf("pre-existing historical success must be allowed: %v", err)
+	}
+	withoutInvoice := append(rows, map[string]any{"id": "pi_unlinked_new", "status": "succeeded", "metadata": map[string]any{}})
+	if _, err := succeededPaymentIntent(withoutInvoice, expectedID, preObservedIDs); err != nil {
+		t.Fatalf("new success without invoice metadata must not trigger identity guard: %v", err)
+	}
+
+	tied, err := preSettlePaymentIntentCandidates([]any{
+		map[string]any{"id": "pi_tie_a", "created": float64(500), "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+		map[string]any{"id": "pi_tie_b", "created": float64(500), "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := expectedPaymentIntentID(tied); err == nil || !strings.Contains(err.Error(), "share created timestamp") {
+		t.Fatalf("tied newest timestamps must fail closed before settle, got %v", err)
+	}
 }
 
 // stripeForm issues one form-encoded Stripe API call with the credential
@@ -109,6 +181,117 @@ func base64Header(apiKey string) string {
 		}
 	}
 	return out.String()
+}
+
+type paymentIntentCandidate struct {
+	Created   int64
+	InvoiceID string
+}
+
+// preSettlePaymentIntentCandidates captures the identity and ordering fields
+// needed to mirror latestIntent before issuing the settle command.
+func preSettlePaymentIntentCandidates(rows []any) (map[string]paymentIntentCandidate, error) {
+	candidates := make(map[string]paymentIntentCandidate)
+	for _, row := range rows {
+		intent, _ := row.(map[string]any)
+		if intent == nil {
+			continue
+		}
+		switch intent["status"] {
+		case "requires_payment_method", "requires_action", "requires_confirmation":
+			meta, _ := intent["metadata"].(map[string]any)
+			invoiceID, _ := meta["lago_invoice_id"].(string)
+			id, _ := intent["id"].(string)
+			if invoiceID == "" {
+				continue
+			}
+			if id == "" {
+				return nil, fmt.Errorf("invoice-linked unsettled PaymentIntent has empty ID")
+			}
+			created, ok := intent["created"].(float64)
+			if !ok || created <= 0 || created != float64(int64(created)) {
+				return nil, fmt.Errorf("invoice-linked unsettled PaymentIntent %s has invalid created timestamp %v", id, intent["created"])
+			}
+			candidates[id] = paymentIntentCandidate{Created: int64(created), InvoiceID: invoiceID}
+		}
+	}
+	return candidates, nil
+}
+
+func expectedPaymentIntentID(candidates map[string]paymentIntentCandidate) (string, error) {
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no invoice-linked unsettled PaymentIntent candidates")
+	}
+	var latestID string
+	var latestCreated int64
+	tied := false
+	for id, candidate := range candidates {
+		if candidate.Created > latestCreated {
+			latestID, latestCreated, tied = id, candidate.Created, false
+		} else if candidate.Created == latestCreated {
+			tied = true
+		}
+	}
+	if tied {
+		return "", fmt.Errorf("multiple latest PaymentIntent candidates share created timestamp %d", latestCreated)
+	}
+	return latestID, nil
+}
+
+func succeededPaymentIntent(rows []any, expectedID string, preObservedIDs map[string]struct{}) (map[string]any, error) {
+	var observed []string
+	var unexpected []string
+	var selected map[string]any
+	for _, row := range rows {
+		intent, _ := row.(map[string]any)
+		if intent == nil || intent["status"] != "succeeded" {
+			continue
+		}
+		id, _ := intent["id"].(string)
+		observed = append(observed, id)
+		meta, _ := intent["metadata"].(map[string]any)
+		invoiceID, _ := meta["lago_invoice_id"].(string)
+		if id != "" && invoiceID != "" {
+			if _, wasObserved := preObservedIDs[id]; !wasObserved {
+				unexpected = append(unexpected, id)
+			}
+		}
+		if id == expectedID && id != "" && invoiceID != "" {
+			selected = intent
+		}
+	}
+	if len(unexpected) > 0 {
+		sort.Strings(unexpected)
+		return nil, fmt.Errorf("post-settle list contains newly appeared succeeded invoice-linked PaymentIntent IDs %v", unexpected)
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	return nil, fmt.Errorf("no succeeded PaymentIntent matched expected pre-settle ID %s; observed succeeded IDs %v", expectedID, observed)
+}
+
+func paymentIntentIDSet(rows []any) map[string]struct{} {
+	ids := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		intent, _ := row.(map[string]any)
+		if id, _ := intent["id"].(string); id != "" {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids
+}
+
+func paymentIntentIDs(body map[string]any) []string {
+	rows, _ := body["data"].([]any)
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		intent, _ := row.(map[string]any)
+		if id, _ := intent["id"].(string); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // deliverWebhookEvent POSTs the REAL PI event through the built-in webhook
@@ -250,29 +433,33 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		providerCustomerID := providerCustomerOf(t, a, extCustomer)
 		var status int
 		var body map[string]any
+		var candidates map[string]paymentIntentCandidate
+		var preObservedIDs map[string]struct{}
+		var expectedIntentID string
 		waitDeadline := time.Now().Add(60 * time.Second)
 		for {
 			status, body = stripeForm(t, stripeKey, http.MethodGet,
 				"/v1/payment_intents?customer="+url.QueryEscape(providerCustomerID)+"&limit=10", nil)
-			found := false
+			candidates = map[string]paymentIntentCandidate{}
 			if status == 200 {
 				rows, _ := body["data"].([]any)
-				for _, row := range rows {
-					intent, _ := row.(map[string]any)
-					if intent == nil {
-						continue
-					}
-					switch intent["status"] {
-					case "requires_payment_method", "requires_action":
-						meta, _ := intent["metadata"].(map[string]any)
-						if inv, _ := meta["lago_invoice_id"].(string); inv != "" {
-							found = true
-						}
-					}
+				preObservedIDs = paymentIntentIDSet(rows)
+				var err error
+				candidates, err = preSettlePaymentIntentCandidates(rows)
+				if err != nil {
+					t.Fatalf("invalid pre-settle PaymentIntent candidate: %v", err)
 				}
 			}
-			if found || time.Now().After(waitDeadline) {
+			if len(candidates) > 0 {
+				var err error
+				expectedIntentID, err = expectedPaymentIntentID(candidates)
+				if err != nil {
+					t.Fatalf("cannot resolve pre-settle PaymentIntent identity: %v", err)
+				}
 				break
+			}
+			if time.Now().After(waitDeadline) {
+				t.Fatalf("timed out waiting for an unsettled invoice-linked PaymentIntent; last HTTP %d, observed IDs %v", status, paymentIntentIDs(body))
 			}
 			time.Sleep(3 * time.Second)
 		}
@@ -299,28 +486,18 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			t.Fatalf("intent list: HTTP %d", status)
 		}
 		rows, _ := body["data"].([]any)
-		var event map[string]any
-		for _, row := range rows {
-			intent, _ := row.(map[string]any)
-			if intent == nil || intent["status"] != "succeeded" {
-				continue
-			}
-			meta, _ := intent["metadata"].(map[string]any)
-			if inv, _ := meta["lago_invoice_id"].(string); inv != "" {
-				event = map[string]any{
-					"id":          fmt.Sprintf("evt_t9_%d", time.Now().UnixNano()),
-					"object":      "event",
-					"api_version": "2024-06-20",
-					"created":     time.Now().Unix(),
-					"livemode":    false,
-					"type":        "payment_intent.succeeded",
-					"data":        map[string]any{"object": intent},
-				}
-				break
-			}
+		intent, err := succeededPaymentIntent(rows, expectedIntentID, preObservedIDs)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if event == nil {
-			t.Fatal("no succeeded intent carrying lago_invoice_id found after settle")
+		event := map[string]any{
+			"id":          fmt.Sprintf("evt_t9_%d", time.Now().UnixNano()),
+			"object":      "event",
+			"api_version": "2024-06-20",
+			"created":     time.Now().Unix(),
+			"livemode":    false,
+			"type":        "payment_intent.succeeded",
+			"data":        map[string]any{"object": intent},
 		}
 		providerCode := providerCodeOf(t, a)
 		if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
