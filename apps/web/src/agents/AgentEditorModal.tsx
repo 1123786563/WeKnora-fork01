@@ -90,6 +90,7 @@ import { usePreferredLocale } from '../locale.ts';
 import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
 import { AgentVersionActions } from '../agent-marketplace/AgentVersionActions.tsx';
 import './agents-u.css';
+import './agents.td.css';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -2110,16 +2111,18 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 <React.Fragment key={group.key}>
                   <div className="nav-group-title">{t(group.labelKey)}</div>
                   {group.items.map((item) => (
-                    <div
+                    <button
                       key={item.key}
+                      type="button"
                       className={`nav-item${section === item.key ? ' active' : ''}`}
                       data-guide={`agent-editor-nav-${item.key}`}
                       data-section-key={item.key}
+                      aria-current={section === item.key ? 'page' : undefined}
                       onClick={() => setSection(item.key)}
                     >
                       <TIcon name={navIconName(item.icon)} className="nav-icon" />
                       <span className="nav-label">{t(item.labelKey)}</span>
-                    </div>
+                    </button>
                   ))}
                 </React.Fragment>
               ))}

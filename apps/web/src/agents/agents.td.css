@@ -1771,6 +1771,12 @@
 }
 
 .settings-overlay .nav-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  width: 100%;
   display: flex;
   align-items: center;
   padding: 6px 12px;
@@ -1781,6 +1787,11 @@
   font-size: 14px;
   color: var(--td-text-color-primary);
   user-select: none;
+}
+
+.settings-overlay .nav-item:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
 }
 
 .settings-overlay .nav-item:hover {
