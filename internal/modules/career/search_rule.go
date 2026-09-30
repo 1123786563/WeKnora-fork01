@@ -47,6 +47,7 @@ const (
 )
 
 var ErrRuleNotFound = errors.New("career search rule not found")
+var errRuleChangedBeforeDispatch = errors.New("career search rule changed before dispatch")
 
 // SetRuleInput is the frozen request body of the set_rule seam. An empty
 // RuleID creates a rule; a non-empty one updates that rule under its scope.
@@ -124,6 +125,20 @@ type RuleView struct {
 	Estimate        RuleCostEstimate `json:"estimate"`
 	Runs            []RuleRunView    `json:"runs"`
 	Todos           []RuleTodoView   `json:"todos"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+}
+
+// RuleSummary is the bounded list representation. It intentionally excludes
+// run and todo history; clients fetch that only for an individual rule.
+type RuleSummary struct {
+	RuleID          string           `json:"ruleId"`
+	Query           string           `json:"query"`
+	IntervalMinutes uint64           `json:"intervalMinutes"`
+	Status          string           `json:"status"`
+	Revision        uint64           `json:"revision"`
+	NextDueAt       *time.Time       `json:"nextDueAt"`
+	Estimate        RuleCostEstimate `json:"estimate"`
 	CreatedAt       time.Time        `json:"createdAt"`
 	UpdatedAt       time.Time        `json:"updatedAt"`
 }
@@ -489,6 +504,30 @@ func (o *Office) Rule(ctx context.Context, ruleID string) (RuleView, error) {
 	return view, nil
 }
 
+// ListRules returns only rules in the authenticated personal scope, ordered
+// by most recently updated and then stable ID. It never loads run/todo history.
+func (o *Office) ListRules(ctx context.Context) ([]RuleSummary, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return nil, err
+	}
+	var rows []searchRuleRecord
+	if err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
+		Order("updated_at DESC, id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]RuleSummary, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, RuleSummary{RuleID: row.ID, Query: row.Query, IntervalMinutes: row.IntervalMinutes,
+			Status: row.Status, Revision: row.Revision, NextDueAt: row.NextDueAt,
+			Estimate: o.ruleEstimate(row.IntervalMinutes), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+	}
+	return out, nil
+}
+
 // TriggerDueRules is the explicit trigger seam: it evaluates the
 // authenticated scope's enabled rules against the injected clock and runs
 // every due rule exactly once per period. There is deliberately no resident
@@ -514,6 +553,9 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 	outcomes := []RuleRunSummary{}
 	for _, rule := range due {
 		outcome, triggerErr := o.triggerRulePeriod(ctx, s, rule, now)
+		if errors.Is(triggerErr, errRuleChangedBeforeDispatch) {
+			continue
+		}
 		if triggerErr != nil {
 			return nil, triggerErr
 		}
@@ -527,6 +569,14 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 // the T11 idempotency machinery instead of duplicating work. All network I/O
 // stays inside SearchOnce, outside any rule transaction.
 func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRuleRecord, now time.Time) (RuleRunSummary, error) {
+	current, err := o.currentDueRule(ctx, s, rule)
+	if err != nil {
+		return RuleRunSummary{}, err
+	}
+	if current == nil {
+		return RuleRunSummary{}, errRuleChangedBeforeDispatch
+	}
+	rule = *current
 	period := rule.LastPeriod + 1
 	requestID := fmt.Sprintf("rule:%s:%d", rule.ID, period)
 
@@ -549,6 +599,16 @@ func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRule
 		}
 	}
 	if blockedStatus == "" {
+		// Quota admission may take time or invoke a concurrent policy update.
+		// Re-read after admission as well, so a committed pause/edit cannot
+		// start an external search using the stale due-row snapshot.
+		current, err = o.currentDueRule(ctx, s, rule)
+		if err != nil {
+			return RuleRunSummary{}, err
+		}
+		if current == nil {
+			return RuleRunSummary{}, errRuleChangedBeforeDispatch
+		}
 		var head profile
 		err := o.db.WithContext(ctx).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
@@ -599,7 +659,7 @@ func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRule
 	}
 
 	var summary RuleRunSummary
-	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row searchRuleRecord
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, rule.ID).
@@ -674,4 +734,19 @@ func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRule
 		return RuleRunSummary{}, err
 	}
 	return summary, nil
+}
+
+func (o *Office) currentDueRule(ctx context.Context, s Scope, snapshot searchRuleRecord) (*searchRuleRecord, error) {
+	var current searchRuleRecord
+	err := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, snapshot.ID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if current.Status != RuleStatusEnabled || current.Revision != snapshot.Revision || current.Query != snapshot.Query {
+		return nil, nil
+	}
+	return &current, nil
 }

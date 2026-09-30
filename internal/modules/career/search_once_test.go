@@ -28,10 +28,14 @@ func (r *stubSearchRegistry) SearchSources() []VettedSearchSource { return r.sou
 type fakeSearchQuotaGate struct {
 	refused bool
 	calls   int
+	onAdmit func()
 }
 
 func (g *fakeSearchQuotaGate) AdmitSearch(context.Context, Scope, string, string) error {
 	g.calls++
+	if g.onAdmit != nil {
+		g.onAdmit()
+	}
 	if g.refused {
 		return ErrSearchQuotaRefused
 	}

@@ -797,6 +797,20 @@ func (h *Handler) RuleReceipt(c *gin.Context) {
 	c.JSON(http.StatusOK, receipt)
 }
 
+// ListRules returns the authenticated user's bounded rule summaries.
+func (h *Handler) ListRules(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	rules, err := h.office.ListRules(ctx)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"rules": rules})
+}
+
 // GetRule serves the live rule contract: configuration, deterministic
 // estimate, full run history (including blocked statuses), and discovery
 // todos.

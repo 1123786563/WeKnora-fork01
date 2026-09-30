@@ -691,6 +691,27 @@ func TestCareerRuleHTTPContract(t *testing.T) {
 	require.Equal(t, 200, viewRec.Code, viewRec.Body.String())
 	require.Contains(t, viewRec.Body.String(), `"estimate":`)
 
+	listRec := httptest.NewRecorder()
+	listCtx, _ := gin.CreateTestContext(listRec)
+	listCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules", nil).WithContext(base)
+	h.ListRules(listCtx)
+	require.Equal(t, 200, listRec.Code, listRec.Body.String())
+	var listed struct {
+		Rules []RuleSummary `json:"rules"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listed))
+	require.Len(t, listed.Rules, 1)
+	require.Equal(t, receipt.RuleID, listed.Rules[0].RuleID)
+	require.NotEmpty(t, listed.Rules[0].CreatedAt)
+	require.NotEmpty(t, listed.Rules[0].UpdatedAt)
+	require.Contains(t, listRec.Body.String(), `"rules":[`)
+
+	unauthRec := httptest.NewRecorder()
+	unauthCtx, _ := gin.CreateTestContext(unauthRec)
+	unauthCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules", nil)
+	h.ListRules(unauthCtx)
+	require.Equal(t, 403, unauthRec.Code)
+
 	// An intruder from the same tenant is rejected at the scope gate.
 	gin.SetMode(gin.TestMode)
 	intruderRec := httptest.NewRecorder()

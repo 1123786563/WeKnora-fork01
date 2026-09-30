@@ -87,6 +87,7 @@ func TestCareerSearchRuleRoutesAreRegistered(t *testing.T) {
 		paths[route.Method+" "+route.Path] = true
 	}
 	require.True(t, paths["POST /api/v1/career/rules"])
+	require.True(t, paths["GET /api/v1/career/rules"])
 	require.True(t, paths["GET /api/v1/career/rules/receipt"])
 	require.True(t, paths["GET /api/v1/career/rules/:ruleId"])
 }
