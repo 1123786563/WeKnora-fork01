@@ -412,29 +412,63 @@ func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) {
 	}
 }
 
-// (t10 flow evidence) The settle-vs-finalize WINDOW: an earlier settle
-// drive confirmed the gating intent (succeeded + invoice identity) while
-// the webhook chain has not activated the authority yet — a replay must
-// answer the idempotent receipt, never a second charge, never an error.
-func TestLagoSettleSettledWindowReplaysIdempotently(t *testing.T) {
+// TestLagoSettleEmptyCandidatesFailClosedEvenWithSettledHistory
+// (OCR84-R1-01 high, rewrites the former settled-window replay contract):
+// with NO unsettled candidate, the settled-invoice map alone proves nothing
+// about THIS order's gate — it collects invoice ids from ANY of the
+// customer's succeeded intents (a previous purchase's residue rides in it
+// beside the t10 settle-vs-finalize window's own, and the payload carries
+// no invoice identity to tell them apart). The empty-candidate branch must
+// therefore answer the definitive sentinel (fail closed, zero writes), NOT
+// mint an idempotent receipt on a bare len(settledInvoices) > 0 — a fake
+// receipt there masked the "gate never created / canceled" data anomaly as
+// a silent no-op the fulfiller replayed until D7 exhausted. The honest
+// settle-vs-finalize replay recovery is the pending event's next pass (the
+// authority activates via the webhook chain and the grant overwrites the
+// transient attention marker), never an unprovable receipt.
+func TestLagoSettleEmptyCandidatesFailClosedEvenWithSettledHistory(t *testing.T) {
 	intents := []stripeIntentRec{{
 		ID: "pi_done", Customer: "cus_stripe_1", Status: "succeeded", Created: 1000, LagoInvID: "inv_x",
 	}}
 	h := newSettleHarness(t, "incomplete", intents)
-	receipt, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
-	if err != nil {
-		t.Fatalf("the settled window must replay idempotently, got %v", err)
-	}
-	if receipt.ExternalID != commercial.ExternalPurchaseSubscriptionID(41) {
-		t.Fatalf("receipt identity = %q", receipt.ExternalID)
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("empty candidates with settled history must fail closed invalid_response, got %v", err)
 	}
 	paths := h.stripe.paths()
-	if len(paths) != 1 { // ONE locator list: unsettled candidates + settled window in a single read
-		t.Fatalf("the settled window must make no writes, got %v", paths)
+	if len(paths) != 1 || paths[0] != "GET /v1/payment_intents" {
+		t.Fatalf("the empty-candidate branch must be ONE locator read and zero writes, got %v", paths)
 	}
-	for _, p := range paths {
-		if !strings.HasPrefix(p, "GET /v1/payment_intents") {
-			t.Fatalf("the settled window must make no writes, got %v", paths)
+}
+
+// TestLagoSettleDrivesRequiresConfirmationReplayShape (OCR84-R1-02 high):
+// a settle that died between the pm update and the confirm leaves the
+// gating intent in requires_confirmation (pm attached, charge missing). The
+// replay must treat it as an unsettled candidate — the idempotent pm update
+// is a no-op and the confirm is the missing step — instead of skipping it
+// into the empty-candidate fail-closed branch where the deterministic
+// update/confirm keys would never run again.
+func TestLagoSettleDrivesRequiresConfirmationReplayShape(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_half", Customer: "cus_stripe_1", Status: "requires_confirmation", Created: 1000, LagoInvID: "inv_gating",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-rc")); err != nil {
+		t.Fatalf("a requires_confirmation gating intent must be driven to confirm, got %v", err)
+	}
+	paths := h.stripe.paths()
+	want := []string{
+		"GET /v1/payment_intents",
+		"POST /v1/payment_methods/pm_settle/attach",
+		"POST /v1/payment_intents/pi_half",
+		"POST /v1/payment_intents/pi_half/confirm",
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("call sequence mismatch:\n got %v\nwant %v", paths, want)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("call %d mismatch: got %q want %q (all: %v)", i, paths[i], want[i], paths)
 		}
 	}
 }

@@ -104,6 +104,14 @@ const MonthlyWalletPriority = 1
 // invariant's real guarantee.
 const TopUpWalletPriority = 2
 
+// MaxWalletPriority is the UPPER bound of the wallet priority domain
+// [1, MaxWalletPriority] — the same field GrantIncludedCreditsPayload.Validate
+// enforces at grant time (OCR84-R1-09: one shared constant, never two
+// copies of the domain). WalletRank answers ranks 1..n over the ACTIVE
+// batches; n beyond the bound means the rebalance would WRITE a priority
+// outside the documented domain, so the rank answer fails closed instead.
+const MaxWalletPriority = 50
+
 // MonthlyWalletPriorityFor computes a monthly wallet's CREATION-TIME
 // priority: MonthlyWalletPriority (1) unless some top-up batch expires
 // strictly before this period's end ("aging" — it must be consumed before
@@ -134,7 +142,30 @@ type WalletRankInput struct {
 // spec L132 mandates. WalletRef is the deterministic final tie-break. The
 // authority rebalance aligns each wallet's priority to its rank; Lago then
 // consumes `priority ASC, created_at ASC` = the intended total order.
-func WalletRank(batches []WalletRankInput) map[string]int {
+//
+// (OCR84-R1-09) Fail-closed guards: the 1..n answer must stay INSIDE the
+// documented priority domain [1, MaxWalletPriority] — the same bound
+// GrantIncludedCreditsPayload.Validate enforces on the creation-time value;
+// #86's 12-month top-up TTL lets active wallets accumulate, and a rebalance
+// that PUT rank 51+ out of the domain either bounces forever (authority
+// rejects → attention) or silently falsifies the local contract. A
+// DUPLICATE WalletRef (the map key) would silently overwrite one batch's
+// rank — the E3 recovery-anomaly shape — and is refused loudly instead.
+func WalletRank(batches []WalletRankInput) (map[string]int, error) {
+	if len(batches) > MaxWalletPriority {
+		return nil, fmt.Errorf("wallet rank overflow: %d active batches exceed the priority domain [1,%d]",
+			len(batches), MaxWalletPriority)
+	}
+	seen := make(map[string]bool, len(batches))
+	for _, b := range batches {
+		if b.WalletRef == "" {
+			return nil, errors.New("wallet rank input carries an empty wallet ref")
+		}
+		if seen[b.WalletRef] {
+			return nil, fmt.Errorf("wallet rank input carries duplicate wallet ref %q", b.WalletRef)
+		}
+		seen[b.WalletRef] = true
+	}
 	ordered := append([]WalletRankInput(nil), batches...)
 	sort.Slice(ordered, func(i, j int) bool {
 		if !ordered[i].ExpiresAt.Equal(ordered[j].ExpiresAt) {
@@ -149,7 +180,7 @@ func WalletRank(batches []WalletRankInput) map[string]int {
 	for i, b := range ordered {
 		ranks[b.WalletRef] = i + 1
 	}
-	return ranks
+	return ranks, nil
 }
 
 // GrantIncludedCreditsPayload is the typed payload of grant_included_credits.
@@ -205,8 +236,8 @@ func (p GrantIncludedCreditsPayload) Validate() error {
 	if p.CreditsMicro%10_000 != 0 {
 		return errors.New("invalid grant payload: credits_micro must be cent-aligned (% 10_000 == 0)")
 	}
-	if p.Priority < 1 || p.Priority > 50 {
-		return errors.New("invalid grant payload: priority must be within [1,50] (the consumption-order class)")
+	if p.Priority < 1 || p.Priority > MaxWalletPriority {
+		return fmt.Errorf("invalid grant payload: priority must be within [1,%d] (the consumption-order class)", MaxWalletPriority)
 	}
 	return nil
 }

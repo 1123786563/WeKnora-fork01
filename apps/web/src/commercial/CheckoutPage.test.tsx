@@ -341,13 +341,14 @@ test('the channel selector defaults to alipay and submits the selected provider'
   await act(async () => { root?.unmount(); });
 });
 
-// (#82 AC1) 三态数据源是 purchase 投影：paid_awaiting_activation →「已付款，
-// 权益处理中」；active →「权益已生效」。
-test('the three-state face rides the purchase projection', async () => {
+// (#82 AC1) 三态数据源是 purchase 投影——(OCR84-R1-15) 文案经共享词表
+// PURCHASE_STATE_LABEL（order-state.ts）：paid_awaiting_activation →「已付款待
+// 激活」；active →「已生效」；awaiting_payment →「待付款（权益未开放）」。
+test('the three-state face rides the purchase projection via the shared label vocabulary', async () => {
   for (const [purchaseState, want] of [
-    ['paid_awaiting_activation', '已付款，权益处理中'],
-    ['active', '权益已生效'],
-    ['awaiting_payment', '待付款（权益未开通）'],
+    ['paid_awaiting_activation', '已付款待激活'],
+    ['active', '已生效'],
+    ['awaiting_payment', '待付款（权益未开放）'],
   ] as const) {
     const client = {
       commercial: {
@@ -394,8 +395,91 @@ test('a paid order no longer shows the awaiting-payment label', async () => {
   });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   const text = document.body.textContent ?? '';
-  assert.doesNotMatch(text, /待付款（权益未开通）/, 'paid order must not show the awaiting-payment label');
-  assert.match(text, /已付款，权益处理中/);
+  assert.doesNotMatch(text, /待付款（权益未开放）/, 'paid order must not show the awaiting-payment label');
+  assert.match(text, /已付款待激活/);
+  await act(async () => { root?.unmount(); });
+});
+
+// (OCR84-R1-15) purchaseStateMessage 与 PURCHASE_STATE_LABEL 的同源性表测：
+// 每个闭合购买状态的页面文案必须与 Billing 行后缀用同一份词表（不再各持一套）。
+test('purchaseStateMessage consumes PURCHASE_STATE_LABEL verbatim for every closed purchase state', async () => {
+  const { purchaseStateMessage } = await import('./CheckoutPage.tsx');
+  const { PURCHASE_STATE_LABEL } = await import('./order-state.ts');
+  const anyOrder = order as never as import('@weknora/contracts').OrderView;
+  for (const state of Object.keys(PURCHASE_STATE_LABEL) as Array<keyof typeof PURCHASE_STATE_LABEL>) {
+    const label = PURCHASE_STATE_LABEL[state];
+    const purchase = { state } as never as import('@weknora/contracts').PurchaseView;
+    if (label === '') continue; // absent renders no label by construction
+    assert.equal(purchaseStateMessage(purchase, anyOrder), label, `state ${state} must use the shared label`);
+  }
+});
+
+// (OCR84-R1-06) restartCheckout 只清 refs、不 abort scope：重启前已发出的
+// getOrder 在途请求迟到解析时，不得把新订单覆盖回被放弃的旧 pending 订单及其
+// checkout_url（渠道切换场景下旧链接仍可付款 → 新旧两单重复付款）。
+test('a late refresh resolution never overwrites the restarted order', async () => {
+  const oldOrder = { ...order, id: 'ord_old', checkout_url: 'https://pay.example/old' };
+  const newOrder = { ...order, id: 'ord_new', checkout_url: 'https://pay.example/new' };
+  let releaseRefresh: (value: unknown) => void = () => {};
+  const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
+  let releasePurchase2: (value: unknown) => void = () => {};
+  const purchase2Gate = new Promise((resolve) => { releasePurchase2 = resolve; });
+  let purchaseCalls = 0;
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => {
+        purchaseCalls += 1;
+        if (purchaseCalls === 1) {
+          return { state: 'awaiting_payment', order: oldOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+        }
+        return purchase2Gate.then(() => ({ state: 'awaiting_payment', order: newOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }));
+      },
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
+      getOrder: async (id: string) => {
+        if (id === 'ord_old') return refreshGate.then(() => oldOrder);
+        return newOrder;
+      },
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '91' });
+  let root: Root | undefined;
+  document.body.innerHTML = '';
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // 旧 pending 订单在屏（无链接形态触发重启入口也可，这里用带链接形态）。
+  assert.match(document.body.textContent ?? '', /ord_old/);
+  // 手动刷新：getOrder('ord_old') 在途（受控门未放行）。
+  const refresh = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('刷新订单状态'));
+  assert.ok(refresh, 'the manual refresh button must render');
+  await act(async () => { refresh?.click(); });
+  // 切换渠道触发 restartCheckout：refs 清空 → 新报价新订单（新 purchase 受控）。
+  const wechatRadio = document.querySelector<HTMLInputElement>('input[value="wechat"]');
+  assert.ok(wechatRadio, 'the wechat radio must render');
+  await act(async () => { wechatRadio?.click(); });
+  const restart = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('改用微信支付重新发起支付'));
+  assert.ok(restart, 'the restart entry must render');
+  await act(async () => { restart?.click(); });
+  // 旧 refresh 迟到解析（带旧订单）——必须被订单身份守卫丢弃。
+  await act(async () => {
+    releaseRefresh(oldOrder);
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  // 放行新 purchase：新订单成为唯一在屏订单。
+  await act(async () => {
+    releasePurchase2(newOrder);
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /ord_new/);
+  assert.doesNotMatch(text, /ord_old/, 'a late resolution for the abandoned order must never overwrite the restarted order');
+  assert.ok(document.querySelector('a[href="https://pay.example/new"]'), 'the new order payment link must render');
+  assert.equal(document.querySelector('a[href="https://pay.example/old"]'), null, 'the abandoned order link must not render');
   await act(async () => { root?.unmount(); });
 });
 

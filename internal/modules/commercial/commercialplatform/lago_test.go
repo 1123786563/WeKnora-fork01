@@ -307,6 +307,34 @@ func TestNewPlatformRefusesLoopbackBypassForProductionAuthority(t *testing.T) {
 	}
 }
 
+// TestNewPlatformRefusesLoopbackBypassForProductionProviderBase
+// (OCR84-R1-11): the bypass loosens the PROVIDER leg's host policy too
+// (validateOutboundHostWithBypass admits loopback hosts whenever it is
+// set) — the posture guard must therefore also refuse a bypass paired with
+// a StripeAPIBase pointing at a REAL, non-loopback host, including when
+// the authority BaseURL is EMPTY (the blocked-env shape the authority half
+// of the guard admits). A loopback provider base (the stub shape) stays
+// legal.
+func TestNewPlatformRefusesLoopbackBypassForProductionProviderBase(t *testing.T) {
+	for _, stripe := range []string{
+		"https://api.stripe.com", // the provider's real public host
+		"http://10.0.0.7:12111",  // non-loopback internal host
+	} {
+		for _, base := range []string{"", "http://127.0.0.1:48889"} { // blocked-env AND loopback authority shapes
+			if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: base,
+				StripeAPIBase: stripe, OutboundAllowLoopback: true}); err == nil {
+				t.Fatalf("bypass + non-loopback provider base %q (authority %q) must refuse to build", stripe, base)
+			}
+		}
+	}
+	for _, stripe := range []string{"", "http://127.0.0.1:12112", "http://localhost:12112"} {
+		if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: "http://127.0.0.1:48889",
+			StripeAPIBase: stripe, OutboundAllowLoopback: true}); err != nil {
+			t.Fatalf("bypass + loopback/empty provider base %q must stay legal, got %v", stripe, err)
+		}
+	}
+}
+
 // customersStub stands in for the Lago customers API surface (the #73
 // runtime-proven contract: POST /api/v1/customers with
 // {"customer":{"external_id","name"}} echoes customer.external_id; Bearer

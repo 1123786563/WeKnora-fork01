@@ -75,6 +75,27 @@ def rsa_sign_sha256(priv_pem: str, content: bytes) -> bytes:
 
 
 def rsa_verify_sha256(pub_pem: str, content: bytes, sig: bytes) -> bool:
+    """True/False = the signature verdict; anything else RAISES.
+
+    (OCR84-R1-37) verify_request's (OCR r2) contract: only a genuine
+    cryptographic mismatch answers False — a key file missing/unreadable or
+    unparseable is a CONFIGURATION error and must raise (folding it into
+    False made the stub answer isv.invalid-signature for EVERY request
+    whenever FLOW82_KEY_DIR was misconfigured, sending the evidence round
+    chasing a phantom signature-chain bug). The split does NOT parse
+    openssl's stderr text — its wording varies across OpenSSL builds and
+    input modes (file vs stdin; "Verification Failure"/"failure"/raw rsa
+    routines errors all ride exit 1). Instead the key's READABILITY is
+    proven FIRST (openssl pkey -pubin, exit != 0 raises), so any later
+    non-zero verify exit is unambiguously the signature verdict."""
+    keychk = subprocess.run(
+        ["openssl", "pkey", "-pubin", "-in", pub_pem, "-noout"],
+        capture_output=True)
+    if keychk.returncode != 0:
+        raise RuntimeError(
+            "public key unreadable/unparseable (configuration, not a "
+            f"signature mismatch): {pub_pem}: "
+            f"{keychk.stderr.decode('utf-8', 'replace').strip()[:160]}")
     with tempfile.NamedTemporaryFile(suffix=".sig", delete=False) as f:
         f.write(sig)
         sig_path = f.name

@@ -132,9 +132,11 @@ const TEN = String(process.env.FLOW83_TENANT ?? MAIN_TENANT_JSON.active_tenant?.
 const LAGO_ID_RE = /^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|cus_[A-Za-z0-9]{10,30})$/;
 function sqlShape(name, value, re) {
   if (!re.test(value)) {
+    // (OCR84-R1-22) process.exit(2) 立即终止进程，绕过末尾的 writeFileSync 循环
+    // 与 RESULT 汇总——此前累积的全部证据文件（含本行的 sql-shape-failure.txt）
+    // 全部丢失。改为 throw 交给顶层 catch：证据落盘 + RESULT 打印 + 非零退出。
     files['sql-shape-failure.txt'] = `refusing to interpolate ${name} into SQL: ${JSON.stringify(value)}\n`;
-    console.error(`bad ${name} for SQL interpolation: ${JSON.stringify(value)}`);
-    process.exit(2);
+    throw new Error(`bad ${name} for SQL interpolation: ${JSON.stringify(value)}`);
   }
   return value;
 }
@@ -165,9 +167,13 @@ function deliverWebhook(customer, org) {
   } catch { return 'deliver-pending'; }
 }
 function lagoCustomer(tenant) {
+  // (OCR84-R1-26) C-02 不变量闭合：进入 docker psql 查询字符串的每个值都先过
+  // 白名单——act2/act4a 的 driveToActive 传入 u.tenant（registerAndLogin 只校验
+  // 字段存在），此路径此前是唯一未校验的 TEN 入口。
+  const t = tenantShape(tenant);
   try {
     return execFileSync('docker', ['exec', 'weknora-lago-82flow-db-1', 'psql', '-U', 'lago', '-tAc',
-      `select ppc.provider_customer_id from payment_provider_customers ppc join customers c on c.id=ppc.customer_id where c.external_id='weknora-tenant-${tenant}'`],
+      `select ppc.provider_customer_id from payment_provider_customers ppc join customers c on c.id=ppc.customer_id where c.external_id='weknora-tenant-${t}'`],
       { encoding: 'utf8' }).trim();
   } catch { return ''; }
 }
@@ -195,58 +201,71 @@ try {
     const act = 'act2-recovery';
     const u = await registerAndLogin('rec-a');
     const log = [`tenant=${u.tenant} (${u.email})`];
-    const q1 = await quote(u.token);
-    const p1 = await purchase(u.token, q1, 'wechat');
-    const orderID = p1.json?.data?.order?.id ?? '';
-    log.push(`purchase: HTTP ${p1.status} order=${orderID} url=${p1.json?.data?.order?.checkout_url ?? ''}`);
-    note(act, 'wechat-order', p1.status === 201 && (p1.json?.data?.order?.checkout_url ?? '').startsWith('weixin://'), `order=${orderID}`);
-    const mo = merchantOrderShape(await newestPendingOrder());
-    log.push(`stub NATIVE out_trade_no=${mo} (NOTPAY/9900-filtered)`);
-    // mark SUCCESS but NEVER push the notify (the missed-notification case)
-    await stubMark(mo, `wx_txn_83_rec_${u.tenant}`);
-    log.push('stub marked SUCCESS — NO notify pushed (missed notification)');
-    const before = await api('GET', `/api/v1/commercial/orders/${orderID}`, u.token);
-    log.push(`GET /orders/:id (recovery query): state=${before.json?.data?.state}`);
-    note(act, 'query-recovery-pays', before.json?.data?.state === 'paid', `order state after recovery=${before.json?.data?.state}`);
-    const mid = await api('GET', '/api/v1/commercial/purchase', u.token);
-    log.push(`purchase state: ${mid.json?.data?.state}`);
-    note(act, 'paid-awaiting', mid.json?.data?.state === 'paid_awaiting_activation', mid.json?.data?.state);
-    const active = await driveToActive(u.token, u.tenant, log);
-    note(act, 'recovered-active', active, 'purchase reached active after the missed-notify recovery');
-    log.push(`active=${active}`);
-    files['recovery-no-notify.txt'] = log.join('\n');
+    // (OCR84-R1-22) 本幕落盘兜底：块内任何 throw 不得丢失累积的诊断日志——
+    // finally 先落盘再重抛，顶层 catch 写 files + RESULT。
+    try {
+      // (OCR84-R1-27) act2 紧跟 act1 的 settle+webhook，正是共享 Lago 栈 503
+      // busy window 最易触发的位置——五幕中唯一没有落地保障的一手 purchase 改
+      // 用 purchaseUntilLanded（与 acts 4a/4b 同款）；失败时抛错终止本幕，不再
+      // 以 orderID='' 继续命中跨轮残留订单。
+      const p1 = await purchaseUntilLanded(u.token, 'wechat', log);
+      const orderID = orderShape(p1.order?.id ?? '');
+      note(act, 'wechat-order-landed', (p1.order?.checkout_url ?? '').startsWith('weixin://'), `order=${orderID}`);
+      const mo = merchantOrderShape(await newestPendingOrder());
+      log.push(`stub NATIVE out_trade_no=${mo} (NOTPAY/9900-filtered)`);
+      // mark SUCCESS but NEVER push the notify (the missed-notification case)
+      await stubMark(mo, `wx_txn_83_rec_${u.tenant}`);
+      log.push('stub marked SUCCESS — NO notify pushed (missed notification)');
+      const before = await api('GET', `/api/v1/commercial/orders/${orderID}`, u.token);
+      log.push(`GET /orders/:id (recovery query): state=${before.json?.data?.state}`);
+      note(act, 'query-recovery-pays', before.json?.data?.state === 'paid', `order state after recovery=${before.json?.data?.state}`);
+      const mid = await api('GET', '/api/v1/commercial/purchase', u.token);
+      log.push(`purchase state: ${mid.json?.data?.state}`);
+      note(act, 'paid-awaiting', mid.json?.data?.state === 'paid_awaiting_activation', mid.json?.data?.state);
+      const active = await driveToActive(u.token, u.tenant, log);
+      note(act, 'recovered-active', active, 'purchase reached active after the missed-notify recovery');
+      log.push(`active=${active}`);
+      files['recovery-no-notify.txt'] = log.join('\n');
+    } finally {
+      if (!files['recovery-no-notify.txt']) files['recovery-no-notify.txt'] = log.join('\n');
+    }
   }
 
   // ---- act 3: duplicate notify idempotence (act 1's order) ----
   {
     const act = 'act3-duplicate';
     const log = [];
-    const tokenF = TOKEN_MAIN;
-    const orders = await stubOrders();
-    const mo = Object.keys(orders).find((k) => orders[k].total === 9900 && (orders[k].transaction_id ?? '').startsWith('wx_txn_83_main_')) ?? '';
-    log.push(`tenant=${TEN} out_trade_no=${mo} state=${orders[mo]?.state} txn=${orders[mo]?.transaction_id}`);
-    const first = await stubNotify(merchantOrderShape(mo));
-    const second = await stubNotify(merchantOrderShape(mo));
-    log.push(`replay1: stub ok=${first.body.ok} detail=${first.body.detail}`);
-    log.push(`replay2: stub ok=${second.body.ok} detail=${second.body.detail}`);
-    note(act, 'both-ack-success', first.body.ok === true && second.body.ok === true, 'both replays answered WeKnora 200 {"code":"SUCCESS"}');
-    // The protagonist legitimately holds TWO order rows: the retired alipay order
-    // (closed by the channel switch, pending+channel_failed) and the paid
-    // wechat order — the exactly-once assertions are on the FULFILLED count
-    // and the single-channel-transaction bookkeeping, not the raw row count.
-    const fulfilledOrder = sql(`select id from commercial_orders where tenant_id=${TEN} and state='fulfilled'`);
-    // (C-02) A malformed answer TERMINATES the act — noting it and continuing
-    // used to interpolate the same broken value into two more queries.
-    orderShape(fulfilledOrder);
-    const counts = {
-      orders: sql(`select count(*) from commercial_orders where tenant_id=${TEN}`),
-      fulfilled: sql(`select count(*) from commercial_orders where tenant_id=${TEN} and state='fulfilled'`),
-      outboxFulfill: sql(`select count(*) from commercial_outbox_events where kind='fulfill' and event_key like '%${fulfilledOrder}'`),
-      attempts: sql(`select count(*) from commercial_payment_attempts where order_id='${fulfilledOrder}' and state='succeeded'`),
-    };
-    log.push(`fulfilled order=${fulfilledOrder} counts: ${JSON.stringify(counts)}`);
-    note(act, 'counts-unchanged', counts.fulfilled === '1' && counts.outboxFulfill === '1' && counts.attempts === '1',
-      'fulfilled/outbox-fulfill/succeeded-attempt all exactly 1 (plus the retired pre-switch alipay row)');
+    // (OCR84-R1-22) 本幕落盘兜底：任何 throw 先落盘再重抛。
+    try {
+      const tokenF = TOKEN_MAIN;
+      const orders = await stubOrders();
+      // (OCR84-R1-25) stub 跨轮存活（C-03），插入序 FIRST 命中的是旧轮的
+      // wx_txn_83_main_ 订单——notify 重放会作用于错误订单、后续计数断言却针对
+      // 本轮 TEN。与 newestPendingOrder 同形：过滤后取最后一个（本轮最新）。
+      const mo = Object.keys(orders).filter((k) => orders[k].total === 9900 && (orders[k].transaction_id ?? '').startsWith('wx_txn_83_main_')).pop() ?? '';
+      log.push(`tenant=${TEN} out_trade_no=${mo} state=${orders[mo]?.state} txn=${orders[mo]?.transaction_id}`);
+      const first = await stubNotify(merchantOrderShape(mo));
+      const second = await stubNotify(merchantOrderShape(mo));
+      log.push(`replay1: stub ok=${first.body.ok} detail=${first.body.detail}`);
+      log.push(`replay2: stub ok=${second.body.ok} detail=${second.body.detail}`);
+      note(act, 'both-ack-success', first.body.ok === true && second.body.ok === true, 'both replays answered WeKnora 200 {"code":"SUCCESS"}');
+      // The protagonist legitimately holds TWO order rows: the retired alipay order
+      // (closed by the channel switch, pending+channel_failed) and the paid
+      // wechat order — the exactly-once assertions are on the FULFILLED count
+      // and the single-channel-transaction bookkeeping, not the raw row count.
+      const fulfilledOrder = sql(`select id from commercial_orders where tenant_id=${TEN} and state='fulfilled'`);
+      // (C-02) A malformed answer TERMINATES the act — noting it and continuing
+      // used to interpolate the same broken value into two more queries.
+      orderShape(fulfilledOrder);
+      const counts = {
+        orders: sql(`select count(*) from commercial_orders where tenant_id=${TEN}`),
+        fulfilled: sql(`select count(*) from commercial_orders where tenant_id=${TEN} and state='fulfilled'`),
+        outboxFulfill: sql(`select count(*) from commercial_outbox_events where kind='fulfill' and event_key like '%${fulfilledOrder}'`),
+        attempts: sql(`select count(*) from commercial_payment_attempts where order_id='${fulfilledOrder}' and state='succeeded'`),
+      };
+      log.push(`fulfilled order=${fulfilledOrder} counts: ${JSON.stringify(counts)}`);
+      note(act, 'counts-unchanged', counts.fulfilled === '1' && counts.outboxFulfill === '1' && counts.attempts === '1',
+        'fulfilled/outbox-fulfill/succeeded-attempt all exactly 1 (plus the retired pre-switch alipay row)');
     // v1.53 provider payments carry no invoice_id — resolve the tenant's
     // provider customer binding (uuid) and count through it.
     const cus20 = uuidShape(lagoCustomer(TEN));
@@ -255,6 +274,9 @@ try {
     log.push(`lago payments succeeded (tenant ${TEN} purchase): ${lagoPayments}`);
     note(act, 'lago-payment-one', lagoPayments === '1', `lago succeeded payments = ${lagoPayments}`);
     files['duplicate-notify-idempotent.txt'] = log.join('\n');
+    } finally {
+      if (!files['duplicate-notify-idempotent.txt']) files['duplicate-notify-idempotent.txt'] = log.join('\n');
+    }
   }
 
   // ---- act 4a: close hits an in-flight payment (ORDER_PAID race) ----
@@ -262,6 +284,8 @@ try {
     const act = 'act4a-paid-race';
     const u = await registerAndLogin('race-a');
     const log = [`tenant=${u.tenant} (${u.email})`];
+    // (OCR84-R1-22) 本幕落盘兜底：任何 throw 先落盘再重抛。
+    try {
     const first = await purchaseUntilLanded(u.token, 'wechat', log);
     const orderID = orderShape(first.order?.id ?? '');
     note(act, 'wechat-order-landed', true, `order=${orderID}`);
@@ -286,6 +310,9 @@ try {
     const active = await driveToActive(u.token, u.tenant, log);
     note(act, 'race-active', active, 'the raced payment still reached active (exactly-once fulfillment)');
     files['close-race-paid.txt'] = log.join('\n');
+    } finally {
+      if (!files['close-race-paid.txt']) files['close-race-paid.txt'] = log.join('\n');
+    }
   }
 
   // ---- act 4b: clean channel switch + late success on the closed order ----
@@ -293,6 +320,8 @@ try {
     const act = 'act4b-switch';
     const u = await registerAndLogin('sw-a');
     const log = [`tenant=${u.tenant} (${u.email})`];
+    // (OCR84-R1-22) 本幕落盘兜底：任何 throw 先落盘再重抛。
+    try {
     const first = await purchaseUntilLanded(u.token, 'wechat', log);
     const orderID = orderShape(first.order?.id ?? '');
     const mo = merchantOrderShape(await newestPendingOrder());
@@ -321,12 +350,17 @@ try {
     log.push(`fulfill for closed order=${outboxFulfill} over_payment total=${overPaid}`);
     note(act, 'no-second-fulfillment', outboxFulfill === '1', 'the late success never minted a second fulfillment right');
     files['close-race-switch.txt'] = log.join('\n');
+    } finally {
+      if (!files['close-race-switch.txt']) files['close-race-switch.txt'] = log.join('\n');
+    }
   }
 
   // ---- act 5: the Lago four objects for act 1 (protagonist tenant) + product face ----
   {
     const act = 'act5-four-objects';
     const log = [];
+    // (OCR84-R1-22) 本幕落盘兜底：任何 throw 先落盘再重抛。
+    try {
     const lago = (q) => execFileSync('docker', ['exec', 'weknora-lago-82flow-db-1', 'psql', '-U', 'lago', '-tAc', q], { encoding: 'utf8' }).trim();
     const lagoAPI = async (path) => (await (await fetch(`http://127.0.0.1:48889${path}`, { headers: { Authorization: `Bearer ${LAGO_KEY}` } })).json());
     const sub = lago(`select status from subscriptions where external_id='weknora-tenant-${TEN}-purchase'`);
@@ -361,6 +395,9 @@ try {
     note(act, 'product-credits-feature', credits.includes('10900000'), `credits face carries the 1.0 base + 9.9 purchase balance: ${credits.slice(0, 80)}`);
     note(act, 'advanced-models', features.includes('"advanced_models":true'), `features face: ${features}`);
     files['lago-four-objects-wechat.txt'] = log.join('\n');
+    } finally {
+      if (!files['lago-four-objects-wechat.txt']) files['lago-four-objects-wechat.txt'] = log.join('\n');
+    }
   }
 
 } catch (err) {

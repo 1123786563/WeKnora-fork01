@@ -23,6 +23,22 @@ WeKnora 采用自托管 Lago Community 替代 OpenMeter，并让 Lago 成为 Cus
 
 ## 修订记录
 
+### 2026-09-29：收费维度归属与 R-3 Charges 边界（Issue #72/#87 用户裁决）
+
+**裁决**：每个已发布 Plan Version 的显式 Billable Metric→计费维度映射，确定该收费维度对应的唯一计费订阅与不可变套餐版本。Base 与付费订阅对同一维度重叠，或多个订阅重复声明同一维度时，对受影响维度 fail closed，禁止新付费调用，直至配置消除歧义；其他存在唯一有效 owner 的维度可以继续。不得依据订阅新旧、Base/付费偏好或价格混合推断 owner。待处理、取消、未激活、陈旧、不可读或其他不可用的权威价格继续 fail closed。
+
+**付款约束**：保留 `PurchaseService.ensureNoCharges`，首期付费套餐购买仅支持不含 Lago Usage Charge 的既有单行订阅费路径。只有另行批准的 R-3 相容契约明确金额、币种、购买金额中排除 Usage 行及付款时对 finalized Invoice 的完整比对后，才可重新考虑 Charges 路径。
+
+**取舍与后果**：歧义会阻断该维度的新付费操作，降低可用性，但避免错选订阅、错价和不可审计的收费；明确映射后恢复该维度。此裁决关闭 #87 业务规则歧义，不代表代码已实现，也不解除 #86 集成/验收和认证 Lago v1.53 契约证据门槛。
+
+**来源**：用户于 2026-09-29 在 Issue #72 执行对话中批准维度归属 fail closed，并选择继续排除 Charges。
+
+### 2026-09-28：Base 与付费订阅分别定价（Issue #72/#87 用户裁决）
+
+**裁决**：Base 订阅与付费订阅是独立的计费订阅，各自保留自己的价格；用户选择“Base 与付费订阅分别定价”不改变既有权益组合规则。一个收费维度不得把不同订阅的费率相加或混合。具体收费维度由哪条订阅计价、重复维度如何裁决，以及付费计划 Usage Charge 是否满足 R-3 Quote/Invoice 单行约束，仍须在实现前明确；无唯一有效价格时 fail closed。此裁决由用户在 Issue #72 执行中明确选择，并由 Spec 同日修订记录。
+
+**取舍与后果**：这取代升级/降级/返回 Base 全部沿用同一外部 subscription identity 的既有要求；付费订阅内部版本转换语义仍维持原规则。后续实现必须为 billable dimension 提供明确的 owning subscription/Plan Version 解析，不能靠“最新订阅”或价格混合猜测。`PurchaseService.ensureNoCharges` 是否与新价格身份相容仍受已批准的 R-3 Invoice 约束限制，须经独立规格审查后再改；不得把“分别定价”扩大解释成新增收费行的批准。
+
 ### 2026-09-23：澄清充值批次（top-up）的钱包写入时机与并发模型（75-a2 裁决）
 
 **背景**：Lago 实验栈（#75/T03）实测发现 Lago Community 对同时活跃的 wallet 批次存在并发保护——直接并发创建第 7 个活跃批次时返回 422（verdict a2 BLOCKED）。该限制若被理解为产品级充值并发上限，将迫使 WeKnora 设置人为闸门（活跃充值批次 ≤5）。

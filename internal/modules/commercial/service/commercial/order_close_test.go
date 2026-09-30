@@ -264,25 +264,65 @@ func TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment(t *testing.T) {
 	}
 
 	// Reverse order: a CLEAN close first, then the FIRST success arrives
-	// late — ConfirmPayment's idempotency still lands the payment exactly
-	// once.
-	order2, att2 := openRaceOrder(t, svc, db, 904, payment.ProviderWechat)
-	if _, err := svc.CloseChannelOrder(ctx, 904, order2.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
-		Provider: payment.ProviderWechat, Merchant: att2.Merchant,
-		AttemptID: att2.MerchantOrderID, OrderID: order2.ID, TenantID: 904,
-		Amount: domain.CNYFen(att2.AmountFen), Currency: att2.Currency,
-		Transaction: "wx_txn_late", State: payment.StateSucceeded.String(),
-	}); err != nil {
-		t.Fatalf("a late success after a clean close must still land the payment: %v", err)
-	}
-	if row := readOrder(t, db, order2.ID); row.State != domain.OrderStatePaid {
-		t.Fatalf("the fund fact survives the close, got %s", row.State)
-	}
-	if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 2 {
-		t.Fatalf("two orders paid ⇒ exactly two fulfill events, got %d", n)
+	// late. Drain both quoted top-up and legacy unquoted routes, and prove the
+	// winning transaction survives the drain and a later distinct success.
+	for i, quoted := range []bool{true, false} {
+		tenant := uint64(904 + i)
+		lateTxn := []string{"wx_txn_late_quoted", "wx_txn_late_unquoted"}[i]
+		laterTxn := []string{"wx_txn_later_quoted", "wx_txn_later_unquoted"}[i]
+		order2, att2 := openRaceOrder(t, svc, db, tenant, payment.ProviderWechat)
+		if quoted {
+			if err := db.Model(&repocommercial.QuoteRow{}).Where("id = ?", order2.QuoteID).
+				Update("snapshot_json", `{"line_items":[{"kind":"top_up"}]}`).Error; err != nil {
+				t.Fatal(err)
+			}
+		} else if err := db.Model(&repocommercial.OrderRow{}).Where("id = ?", order2.ID).
+			Update("quote_id", "").Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.CloseChannelOrder(ctx, tenant, order2.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+			Provider: payment.ProviderWechat, Merchant: att2.Merchant,
+			AttemptID: att2.MerchantOrderID, OrderID: order2.ID, TenantID: tenant,
+			Amount: domain.CNYFen(att2.AmountFen), Currency: att2.Currency,
+			Transaction: lateTxn, State: payment.StateSucceeded.String(),
+		}); err != nil {
+			t.Fatalf("a late success after a clean close must still land the payment: %v", err)
+		}
+		winner := readAttempt(t, db, att2.ID)
+		if winner.State != repocommercial.PaymentAttemptStateSucceeded || winner.ProviderTransactionID == nil || *winner.ProviderTransactionID != lateTxn {
+			t.Fatalf("late success must claim the immutable winner, got state=%s txn=%v", winner.State, winner.ProviderTransactionID)
+		}
+		fulfiller, err := NewFulfillmentService(db, &stubGateway{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fulfiller.Recover(ctx); err != nil {
+			t.Fatalf("fulfillment drain must validate the saved winner: %v", err)
+		}
+		if row := readOrder(t, db, order2.ID); row.State != domain.OrderStateFulfilled {
+			t.Fatalf("late verified payment must fulfill through quoted=%t route, got %s", quoted, row.State)
+		}
+		if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+			Provider: payment.ProviderWechat, Merchant: att2.Merchant,
+			AttemptID: att2.MerchantOrderID, OrderID: order2.ID, TenantID: tenant,
+			Amount: domain.CNYFen(att2.AmountFen), Currency: att2.Currency,
+			Transaction: laterTxn, State: payment.StateSucceeded.String(),
+		}); err != nil {
+			t.Fatalf("a later distinct success must be retained as over-payment: %v", err)
+		}
+		winner = readAttempt(t, db, att2.ID)
+		if winner.ProviderTransactionID == nil || *winner.ProviderTransactionID != lateTxn {
+			t.Fatalf("later success replaced first winner: %v", winner.ProviderTransactionID)
+		}
+		if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != int64(i+2) {
+			t.Fatalf("the late success adds one fulfill event and second success adds none, got %d", n)
+		}
+		if n := countOutbox(t, db, repocommercial.OutboxKindOverPaid); n != int64(i+2) {
+			t.Fatalf("second success must add one over-payment fact, got %d", n)
+		}
 	}
 }
 

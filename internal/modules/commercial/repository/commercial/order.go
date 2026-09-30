@@ -352,8 +352,13 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 		// real paid order of the same price face (the caller would project a
 		// permanently-pending dead order and MISS the paid_awaiting_activation
 		// synthesis window). The pending preference carries the SAME payable
-		// predicate as CurrentPendingPurchaseOrder.
-		if row.State == domain.OrderStatePending && !row.ChannelFailed {
+		// predicate as CurrentPendingPurchaseOrder — including the persisted
+		// checkout_url (OCR84-R1-03: a persistence-degraded row whose channel
+		// Create succeeded but whose SetCheckoutURL failed carries
+		// channel_failed=false with an EMPTY link and is just as unpayable;
+		// letting it win projected a link-less permanent pending order that
+		// shadowed a same-price paid order until the stale-linkless sweep).
+		if row.State == domain.OrderStatePending && !row.ChannelFailed && row.CheckoutURL != "" {
 			return row, nil
 		}
 	}
@@ -656,16 +661,21 @@ func registerAttemptTx(tx *gorm.DB, row PaymentAttemptRow) error {
 }
 
 type paymentEventPayload struct {
-	OrderID     string `json:"order_id"`
-	QuoteID     string `json:"quote_id"`
-	TenantID    uint64 `json:"tenant_id"`
-	AttemptID   string `json:"attempt_id"`
-	Provider    string `json:"provider"`
-	Merchant    string `json:"merchant"`
-	Transaction string `json:"transaction"`
-	AmountFen   int64  `json:"amount_fen"`
-	Currency    string `json:"currency"`
-	Reason      string `json:"reason,omitempty"`
+	OrderID   string `json:"order_id"`
+	QuoteID   string `json:"quote_id"`
+	TenantID  uint64 `json:"tenant_id"`
+	AttemptID string `json:"attempt_id"`
+	// MerchantOrderID (OCR84-R1-13) is the attempt's CHANNEL order identity
+	// (mo_…). ConfirmPayment stores it in PaymentAnomalyRow.AttemptID and
+	// the consumer validates it against the registered attempt. Legacy
+	// payloads without the field recover it from that validated attempt.
+	MerchantOrderID string `json:"merchant_order_id,omitempty"`
+	Provider        string `json:"provider"`
+	Merchant        string `json:"merchant"`
+	Transaction     string `json:"transaction"`
+	AmountFen       int64  `json:"amount_fen"`
+	Currency        string `json:"currency"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 func (p paymentEventPayload) toJSON() (string, error) {
@@ -680,13 +690,22 @@ func (p paymentEventPayload) toJSON() (string, error) {
 // validates the registered merchant and attempt, checks the order version,
 // saves the payment fact, marks the order paid, and inserts the unique
 // fulfillment outbox event. A replayed same-channel transaction returns the
-// original result with no second event. A different attempt succeeding after
-// the order is already paid only records an over-payment audit event; the
-// fulfillment event is never duplicated. A failure at any point — including
-// between the payment confirmation and the outbox write — rolls back the
-// whole transaction.
+// original result with no second event. A later distinct successful
+// collection atomically records an over-payment anomaly and its audit event;
+// the fulfillment event is never duplicated. A failure at any point rolls
+// back the whole transaction, including both audit records.
+//
+// (#84, spec L127) Two refused classes split: a NON-SUCCEEDED verified fact
+// answers ErrPaymentNotSucceeded with zero persistence (the channel's retry
+// is the correct posture for a not-yet/never collection), while an
+// AMOUNT/CURRENCY mismatch still rolls the confirmation back but its
+// external fund fact is retained — AFTER the transaction, in its own
+// RecordPaymentAnomaly transaction — as an awaiting-disposition anomaly.
+// A retention failure propagates over ErrPaymentMismatch so the callback
+// face answers non-2xx (never "acknowledged" without the fact).
 func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var anomaly *PaymentAnomalyRow
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var attempt PaymentAttemptRow
 		err := tx.Where("provider = ? AND merchant = ? AND merchant_order_id = ?",
 			fact.Provider, fact.Merchant, fact.AttemptID).First(&attempt).Error
@@ -696,8 +715,18 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 		if err != nil {
 			return err
 		}
+		// (#84 / Review Focus 1) A verified fact whose channel state is not
+		// succeeded is its own class: no anomaly (it is not a collection),
+		// no fulfillment, whole rollback. This fires BEFORE the identity /
+		// amount comparison so a "right amount, closed state" fact is never
+		// misfiled as an amount mismatch.
+		if fact.State != "succeeded" {
+			return domain.ErrPaymentNotSucceeded
+		}
 		if attempt.OrderID != fact.OrderID || attempt.TenantID != fact.TenantID ||
 			attempt.AmountFen != int64(fact.Amount) || attempt.Currency != fact.Currency {
+			snap := buildMismatchAnomaly(attempt, fact)
+			anomaly = &snap
 			return domain.ErrPaymentMismatch
 		}
 
@@ -709,21 +738,36 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			return err
 		}
 		if err := domain.ValidatePayment(row.Domain(), fact); err != nil {
+			snap := buildMismatchAnomaly(attempt, fact)
+			anomaly = &snap
 			return err
 		}
 
-		// Save the payment fact; a replay of the same provider transaction is
-		// detected instead of being written a second time.
+		// The first successful collection claims the attempt's transaction
+		// identity. Later distinct collections are retained by the over-payment
+		// path below without replacing that identity.
 		sameTxn := attempt.State == PaymentAttemptStateSucceeded &&
 			attempt.ProviderTransactionID != nil && *attempt.ProviderTransactionID == fact.Transaction
 		if !sameTxn {
 			txn := fact.Transaction
-			if err := tx.Model(&PaymentAttemptRow{}).Where("id = ?", attempt.ID).
+			claim := tx.Model(&PaymentAttemptRow{}).
+				Where("id = ? AND state IN ? AND provider_transaction_id IS NULL", attempt.ID,
+					[]string{PaymentAttemptStatePending, PaymentAttemptStateClosed}).
 				Updates(map[string]interface{}{
 					"state":                   PaymentAttemptStateSucceeded,
 					"provider_transaction_id": txn,
-				}).Error; err != nil {
-				return err
+				})
+			if claim.Error != nil {
+				return claim.Error
+			}
+			if claim.RowsAffected == 0 {
+				// A concurrent confirmation may have won since the initial read.
+				// Classify against the durable winner, never the stale snapshot.
+				if err := tx.Where("id = ?", attempt.ID).First(&attempt).Error; err != nil {
+					return err
+				}
+				sameTxn = attempt.State == PaymentAttemptStateSucceeded &&
+					attempt.ProviderTransactionID != nil && *attempt.ProviderTransactionID == fact.Transaction
 			}
 		}
 
@@ -748,6 +792,10 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			Transaction: fact.Transaction,
 			AmountFen:   int64(fact.Amount),
 			Currency:    fact.Currency,
+			// MerchantOrderID carries the registered channel identity. On a
+			// later successful collection, ConfirmPayment stores it in the
+			// anomaly fact in this transaction; the consumer validates it.
+			MerchantOrderID: attempt.MerchantOrderID,
 		}
 		if res.RowsAffected == 1 {
 			payloadJSON, err := payload.toJSON()
@@ -762,12 +810,27 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			})
 		}
 
-		// The order is already paid or fulfilled by another channel. A replay
-		// of the winning transaction returns the original success silently;
-		// any other late success only appends an over-payment audit event —
-		// a duplicate audit key means this replay was already recorded.
+		// The order is already paid or fulfilled. A replay of the winning
+		// transaction returns the original success silently. A later distinct
+		// successful collection gets an immutable anomaly fact plus its outbox
+		// event in this same transaction.
 		if sameTxn {
 			return nil
+		}
+		if err := recordPaymentAnomalyTx(tx, PaymentAnomalyRow{
+			TenantID:          attempt.TenantID,
+			OrderID:           row.ID,
+			AttemptID:         attempt.MerchantOrderID,
+			Provider:          fact.Provider,
+			Merchant:          fact.Merchant,
+			Transaction:       fact.Transaction,
+			Kind:              PaymentAnomalyKindOverPaid,
+			ExpectedAmountFen: 0,
+			ActualAmountFen:   int64(fact.Amount),
+			ExpectedCurrency:  fact.Currency,
+			ActualCurrency:    fact.Currency,
+		}); err != nil {
+			return err
 		}
 		payload.Reason = OutboxOverPaidState
 		payloadJSON, err := payload.toJSON()
@@ -785,6 +848,39 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 		}
 		return err
 	})
+	// (#84) The mismatch fund fact is retained OUTSIDE the rolled-back
+	// confirmation transaction, in its own transaction: the anomaly survives
+	// the rollback, and a retention failure overrides the mismatch sentinel
+	// so the callback face answers non-2xx (the channel retries — Review
+	// Focus 2).
+	if err != nil && anomaly != nil && errors.Is(err, domain.ErrPaymentMismatch) {
+		if rerr := s.RecordPaymentAnomaly(ctx, *anomaly); rerr != nil {
+			return rerr
+		}
+	}
+	return err
+}
+
+// buildMismatchAnomaly snapshots a refused amount/currency/identity mismatch
+// as an awaiting-disposition anomaly row (#84, spec L127): expected values
+// come from the REGISTERED attempt (the order's frozen face), actual values
+// from the verified fact. The row's ID is minted at insert time inside
+// RecordPaymentAnomaly — never here — so a rollback-and-retry keeps one
+// identity per (provider, merchant, transaction).
+func buildMismatchAnomaly(attempt PaymentAttemptRow, fact domain.PaymentFact) PaymentAnomalyRow {
+	return PaymentAnomalyRow{
+		TenantID:          attempt.TenantID,
+		OrderID:           attempt.OrderID,
+		AttemptID:         attempt.MerchantOrderID,
+		Provider:          fact.Provider,
+		Merchant:          fact.Merchant,
+		Transaction:       fact.Transaction,
+		Kind:              ClassifyPaymentAnomaly(attempt.AmountFen, int64(fact.Amount), attempt.Currency, fact.Currency),
+		ExpectedAmountFen: attempt.AmountFen,
+		ActualAmountFen:   int64(fact.Amount),
+		ExpectedCurrency:  attempt.Currency,
+		ActualCurrency:    fact.Currency,
+	}
 }
 
 // MarkFulfilled transitions a paid order to fulfilled once its benefit event

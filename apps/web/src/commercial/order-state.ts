@@ -1,5 +1,10 @@
 import type { OrderView, PurchaseView } from '@weknora/contracts';
 export function orderMessage(order:OrderView):string {
+ // (#84 / AC4) 付款异常是独立闭合状态（spec L169 operator attention）：
+ // 后端不变量保证 attention 只与 payment=pending 成对出现（与已付款/
+ // 已生效互斥），分支置于最前以防御后端误发错位组合。文案不含平台词汇
+ // （spec L210）。
+ if(order.fulfillment==='attention') return '付款异常（资金事实已记录，待处理）';
  if(order.fulfillment==='fulfilled') return '权益已生效';
  if(order.payment==='paid') return '已付款，权益处理中';
  if(order.payment==='closed') return '订单已关闭';

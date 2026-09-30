@@ -29,7 +29,8 @@ import (
 //	      zero outbound calls (a late replay never re-charges);
 //	(ii)  GET /v1/payment_intents?customer={pcid} — candidates are intents
 //	      in an UNSETTLED shape (requires_payment_method — t10/t11's only
-//	      observed shape — or requires_action) carrying a non-empty
+//	      observed shape — requires_action, or requires_confirmation: an
+//	      update-then-crash replay shape, OCR84-R1-02) carrying a non-empty
 //	      metadata.lago_invoice_id; the candidate set must span EXACTLY ONE
 //	      distinct invoice identity (D9 — more fails closed, never a
 //	      charge), then resolves to the LATEST created (ties or unparsable
@@ -37,7 +38,10 @@ import (
 //	      identities already carried to succeeded: when the invoice the
 //	      resolved candidate gates is already succeeded, the settle replays
 //	      idempotently (F-1 — the residual sibling of a settled invoice is
-//	      never driven, never re-keyed, never a second charge);
+//	      never driven, never re-keyed, never a second charge). An EMPTY
+//	      candidate set fails closed (OCR84-R1-01): the settled-invoice map
+//	      alone proves nothing about THIS order's gate — a previous
+//	      purchase's succeeded intent would otherwise mint a fake receipt.
 //	(iii) attach the configured settle pm (clone id); the customer default
 //	      payment method is NEVER rewritten (D10 — confirm carries the pm
 //	      explicitly, and a rewritten default would reroute renewal
@@ -121,15 +125,26 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		return commercial.CommandReceipt{}, err
 	}
 	if len(intents) == 0 {
-		// (t10 flow evidence) The settle-vs-finalize WINDOW: an earlier
-		// settle drive already confirmed the gating intent and the built-in
-		// webhook chain has not finalized the authority yet. A succeeded
-		// intent carrying the invoice identity means exactly that — the
-		// settle is DONE, the receipt replays idempotently (never a second
-		// charge, never a data-anomaly error that would park the order).
-		if len(settledInvoices) > 0 {
-			return receipt, nil
-		}
+		// (OCR84-R1-01) The empty-candidate branch makes NO invoice-ownership
+		// inference. settledInvoices is the set of invoice ids carried by ANY
+		// of this customer's succeeded intents — a previous purchase's
+		// residual succeeded intent sits in it beside the settle-vs-finalize
+		// window's own (t10), and the payload carries no invoice identity to
+		// tell them apart (SettlePurchasePaymentPayload has no invoice id; the
+		// awaiting-payment authority keeps open invoices invisible, F3-F5).
+		// A bare len(settledInvoices) > 0 check would therefore mint a FAKE
+		// receipt whenever the CURRENT gate was never created or was canceled
+		// while any historical succeeded intent exists — masking a fail-closed
+		// data anomaly as a silent no-op the fulfiller replays until D7
+		// exhausts. Fail closed instead: the invoice-bound idempotency window
+		// survives ONLY in its provable form below (F-1 — the unsettled
+		// sibling that carries the SAME invoice id as a succeeded intent).
+		// The honest narrow cost: a replay landing inside the settle-vs-
+		// finalize window (confirm succeeded, response lost, webhook not yet
+		// finalized) answers the definitive sentinel and parks attention —
+		// recoverable by design (the event stays pending; the APPLIED record
+		// overwrites the transient attention marker once the webhook lands,
+		// purchase_fulfillment.go grant step).
 		return commercial.CommandReceipt{}, fmt.Errorf(
 			"%w: no unsettled gating intent carries the invoice identity", commercial.ErrPlatformInvalidResponse)
 	}
@@ -315,7 +330,14 @@ func (a *LagoAdapter) stripeListGatingIntents(ctx context.Context, providerCusto
 				continue
 			}
 			switch row.Status {
-			case "requires_payment_method", "requires_action":
+			// (OCR84-R1-02) requires_confirmation is a REPLAY shape of this
+			// drive itself: a settle that died between the pm update and the
+			// confirm (process crash, budget expiry, lost response) leaves
+			// the intent requires_confirmation — re-running the idempotent
+			// pm update is a no-op and the confirm is exactly the missing
+			// step. Skipping it here would strand the empty-candidate
+			// branch's fail-closed error forever with no automatic drive.
+			case "requires_payment_method", "requires_action", "requires_confirmation":
 			default:
 				continue // canceled/processing… are not the stuck gate
 			}

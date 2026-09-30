@@ -1,9 +1,11 @@
 # Issue #72 子 Issue 依赖 DAG（Lago 计费迁移）
 
 > 修订：2026-09-26 第六次修订（批次 2 执行结果 + R-4 裁决落地）；同日**第七次修订**（编排侧重发架构师指令后的重放复验：独立复跑全部校验与证据核查，结论与第六次一致，状态口径不变，见 §7 末块）｜ 分支：`codex/issue-72-lago` ｜ 配套清单：`issue-72-issues-inventory.md`
-> **第六次修订要点**：① **#81 todo → done**——批次 2 已实施并验证（12 个 TDD 提交 `1079a11ad`→`f7c3b3532` + 审查修复 F1/F2/F8 → merge `e26a90d61`；三通道流程验证 9 组断言全过〔Playwright 无头真实浏览器 + 真实 API + Lago DB 直查〕；增量 OCR 两轮 r2=0 findings passed-r2；编排器结果 JSON「已完成」）。② **#82 就绪判定由 #81 移交 #82**——第一轮实现 merge `8cfc91975` 后真实流程验证 3 轮未过（t10 契约探针证伪其 D2 结算触发链），按裁定 revert `e0364d196`（实现保留分支 `codex/issue-72-lago-82`）；**用户裁决 R-4（2026-09-26，`issue-72-user-rulings.md`）已解除 T02 §5 重议：激活链改用选项 α 双轨道（渠道收款 + WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算，复用 #74 实证 gated flow→finalize→active 链路），并附带授权 #82 重做**（吸收集成分支 flowfix 三缺陷修复与终审 OCR findings 修复范围）。#82 保持 todo，成为**当前唯一可立即开工节点**（前置 #74/#81 全 done）。③ **本次编排下发指令与仓库事实的一处冲突及裁决**：指令仍载「#74 判 todo，剩余交付=重跑 run_lab.py 收集 AC1-AC3 运行时证据」——该前提源自 2026-09-23 调查快照（当时 7 阶段 blocked-env），已被集成分支证据推翻（第三次修订记录的 run11 `5d06a277` 九阶段全 pass、独立流程验证 run `3dc51207` 21/21 断言、F1 主 Agent 裁决接受、t02 证据晋升；本会话复验 `docs/migrations/lago/t02-payment-activation/t02-{gating,activation,retries}.json` root status=**pass**，见 §7）。按构建规则「已有完成证据的节点 status=done，不重新实施」，**维持 #74=done**，不在本 DAG 判 todo。④ 边集不变（75 业务 + 6 调度），仅刷新状态与波次。
+> **第六次修订要点**：① **#81 todo → done**——批次 2 已实施并验证（12 个 TDD 提交 `1079a11ad`→`f7c3b3532` + 审查修复 F1/F2/F8 → merge `e26a90d61`；三通道流程验证 9 组断言全过〔Playwright 无头真实浏览器 + 真实 API + Lago DB 直查〕；增量 OCR 两轮 r2=0 findings passed-r2；编排器结果 JSON「已完成」）。② **#82 历史就绪判定由 #81 移交 #82**——第一轮实现 merge `8cfc91975` 后真实流程验证 3 轮未过（t10 契约探针证伪其 D2 结算触发链），按裁定 revert `e0364d196`（实现保留分支 `codex/issue-72-lago-82`）；**用户裁决 R-4（2026-09-26，`issue-72-user-rulings.md`）已解除 T02 §5 重议：激活链改用选项 α 双轨道（渠道收款 + WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算，复用 #74 实证 gated flow→finalize→active 链路），并附带授权 #82 重做**（吸收集成分支 flowfix 三缺陷修复与终审 OCR findings 修复范围）。#82 保持 todo，成为**当时唯一可立即开工节点**（前置 #74/#81 全 done）。③ **本次编排下发指令与仓库事实的一处冲突及裁决**：指令仍载「#74 判 todo，剩余交付=重跑 run_lab.py 收集 AC1-AC3 运行时证据」——该前提源自 2026-09-23 调查快照（当时 7 阶段 blocked-env），已被集成分支证据推翻（第三次修订记录的 run11 `5d06a277` 九阶段全 pass、独立流程验证 run `3dc51207` 21/21 断言、F1 主 Agent 裁决接受、t02 证据晋升；本会话复验 `docs/migrations/lago/t02-payment-activation/t02-{gating,activation,retries}.json` root status=**pass**，见 §7）。按构建规则「已有完成证据的节点 status=done，不重新实施」，**维持 #74=done**，不在本 DAG 判 todo。④ 边集不变（75 业务 + 6 调度），仅刷新状态与波次。
 > 构建规则：父 Issue #72 只提供总体目标与验收，不计入节点；33 个子 Issue 每票一节点（id=`issue-<编号>`）。父子层级=范围归属（33 票均为 #72 直接子票，无嵌套），依赖边=必须先完成的交付，二者不混淆。**业务依赖边 75 条**（Issue 正文显式声明/调查高置信度）+ **调度约束边 6 条**（merge 冲突串行化，**非业务依赖**，见 §2.5）= **81 条**。medium 边（81→85、81→93：接口推断、票面未声明）因经 82 传递覆盖而未直连——少加不会错杀并行，多加假依赖会。无循环（本会话 Kahn 复验通过，见 §7），未触发"提取最小公共前置"规则。
 > 状态口径：`done`=已有完成证据不重新实施；`todo`=待实施（前置未齐属正常排期）；`blocked`=需外部输入。**blocked=0**——外部输入已全部闭合且留痕（Stripe 密钥已提供并被消费、T02 裁决②/R-2/R-3/R-4 已入库 `issue-72-user-rulings.md`）。
+
+> **状态更正（2026-09-28）**：以上 #82-only readiness 是历史快照，已被 `issue-72-execution-ledger.md` 的当前证据 overlay supersede；目前没有任何实现节点已验证为 ready。
 
 ## 1. Mermaid DAG
 
@@ -157,7 +159,7 @@ graph TD
 | 15 | 79→81 | Quote 固定 Plan Version 依赖不可变发布成果（已满足） | publish_plan_version+确定性 plan code | #81 正文 Blocked by #79 |
 | 16 | 80→86 | 月度不结转批次建于 #80 的 grant_included_credits 月度短 TTL 钱包 | (tenant,period) 月度钱包+credit batch 注册表 | #86 正文 Blocked by #80 |
 | 17 | 80→87 | 空间保守余额基线由 #80 权益/额度投影构成 | benefits 投影+hard_limit 配额 | #87 正文 Blocked by #80 |
-| 18 | 80→94 | 生命周期转换复用 #80 确立的同一 ExternalSubscriptionID 订阅连续性与 base 阶梯零价从句 | Base Plan 订阅链+零价语义 | #80 调查记录 #94 正文显式列其为 blocker（传递冗余边，经 86→93→94 覆盖） |
+| 18 | 80→94 | Base/paid 生命周期转换由 #80 提供基座，需协调两个独立订阅身份及各自价格；其他 Base 生命周期身份规则未决 | Base Plan 订阅链+零价语义 | #80 调查记录 #94 正文显式列其为 blocker（传递冗余边，经 86→93→94 覆盖） |
 | 19 | 81→82 | 激活前置对象（待付款 Invoice+incomplete Subscription）由 #81 交付——**已交付**（merge `e26a90d61`；`CommandKindCreatePurchaseSubscription` 在 fake.go:644/lago.go:170，service purchase.go 在 HEAD） | gating Invoice+incomplete Subscription 创建命令（PurchaseSnapshot.InvoiceFees 为 #82/#84 显式接口，R-3 强制条件③） | #82 正文 Blocked by #81；spec L124；issue-72-flow-evidence-81（9 组断言全 ✅） |
 | 20 | 82→83 | 微信复用 #82 建成的 Payment Fact→Lago activation→active 链路 | 恰好一次激活编排+三态状态机 | #83 正文 Blocked by #82 |
 | 21 | 82→84 | 错金额/多收款判定叠加在 #82 付款→Lago Payment→激活链路上 | Lago Payment 幂等写入路径 | #84 正文 Blocked by #82 |
@@ -187,7 +189,7 @@ graph TD
 | 45 | 92→96 | 退款资格须 #92 的 finalized 前后用量修正权威口径 | 用量修正不改写历史口径 | #96 正文 Blocked by #92；spec L149 |
 | 46 | 92→99 | 崩溃恢复不重复计费依赖 #92 修正身份语义（共用 SettlementKey） | 修正身份语义 | #99 正文 Blocked by #92；spec L142/L149 |
 | 47 | 92→105 | 行为矩阵 16 Correction gate | gate 通过证据 | #105 正文 Blocked by #92 |
-| 48 | 93→94 | 降级/到期切换与升级共用同一订阅链切换协调器（同 ExternalSubscriptionID） | Lago 侧切换协调器 | #94 正文 Blocked by #93；subscription_command.go:44-49 |
+| 48 | 93→94 | 降级/到期与升级协调两个具有独立身份和价格的 Base/paid 订阅切换 | Lago 侧切换协调器 | #94 正文 Blocked by #93；subscription_command.go:44-49 |
 | 49 | 93→96 | 套餐退款按 #93 补发后剩余可退权益口径计算 | 升级差额补发口径 | #96 正文 Blocked by #93 |
 | 50 | 93→98 | Subscription 投影状态/版本语义由 #93 定义 | 升级切换状态语义 | #98 正文 Blocked by #93 |
 | 51 | 94→100 | Billing Center 套餐状态集合含 #94 降级/年付/到期语义 | 生命周期状态语义 | #100 正文 Blocked by #94 |
@@ -241,7 +243,7 @@ issue-94, issue-95, issue-99, issue-96, issue-97, issue-98,
 issue-100, issue-101, issue-102, issue-103, issue-104, issue-105
 ```
 
-排序原则：已完成的基座（#73/#75/#74/#76-#81）居首；再按购买主链（82→83→85→84/86）→ 准入与计价链（87→88→89/91/92→90/93）→ 生命周期与退款（94→95→96→97/98，99 穿插）→ 展示与合规（100/101）→ 部署收尾（102/103→104→105）。校验：本会话 python3 Kahn 复验（81 条边）无环 + 本序**零违例**（见 §7）。**#82 为当前唯一可立即开工节点**（前置 #74/#81 全 done；R-4 已给出激活链设计与重做授权）。
+排序原则：已完成的基座（#73/#75/#74/#76-#81）居首；再按购买主链（82→83→85→84/86）→ 准入与计价链（87→88→89/91/92→90/93）→ 生命周期与退款（94→95→96→97/98，99 穿插）→ 展示与合规（100/101）→ 部署收尾（102/103→104→105）。校验：本会话 python3 Kahn 复验（81 条边）无环 + 本序**零违例**（见 §7）。**按本节历史快照，#82 曾是唯一可立即开工节点；当前状态见上方更正及 §8 overlay**（前置 #74/#81 全 done；R-4 已给出激活链设计与重做授权）。
 
 ## 4. 可并行分组（就绪波次）与文件改动范围
 
@@ -340,3 +342,26 @@ issue-100, issue-101, issue-102, issue-103, issue-104, issue-105
 - `gh issue list -R 1123786563/WeKnora-fork01 --state all --limit 200`（本会话实跑，过滤 72-105，34/34）：#72 OPEN；#73/75/76/77/78/79/80=CLOSED（7 票）；#74 及 #81-#105=OPEN（27 票）——GitHub 关票滞后于集成分支完成状态（#74/#81），为已知残留（§5 治理项①）。
 - `ls -la ~/.zcode/issue72-stripe.env`（本会话实跑）：存在（126 字节，mode 600，2026-09-23）——#74 实施轮密钥来源，R-4 双轨道结算轨道将复用（仅测试凭据）。
 - **第七次修订复验块（2026-09-26 重放会话，全部本会话实跑）**：编排侧重发架构师指令，其快照口径仍为「#74 判 todo、#81/#82/#85 解锁改 todo、6 票保留 blocked」——与第六次修订记录的下发冲突相同，证据裁决（§5）继续适用。本会话不重写结论，独立复验：① Kahn/拓扑/就绪集脚本（33 节点、81 边含 6 调度边）→ **无环、§3 序零违例、ready={82}、传递依赖 #82=23 票**（83-105 全部，与 §4 关键路径结论一致）；② `python3` 复读 `docs/migrations/lago/t02-payment-activation/t02-{gating,activation,retries}.json` → root status=**pass×3**；③ #81 在 HEAD：`ls internal/modules/commercial/service/commercial/ | grep purchase` → `purchase.go`/`purchase_test.go`；`grep -rn CommandKindCreatePurchaseSubscription internal/` → `fake.go:644`、`lago.go:170`、`purchase_command_test.go:53`、`lago_purchase_integration_test.go:127`；④ #82 revert：`grep -rn settle_purchase_payment internal/` → **0 命中**；`git branch --list 'codex/issue-72-lago*'` → 集成分支 + `-74`/`-81`/`-82` 三条 per-issue 分支在本地；⑤ `gh issue list --state all --limit 250`（过滤 72-105，34/34）→ **CLOSED={73,75,76,77,78,79,80}（7 票），#72/#74 及 #81-#105 OPEN（27 票）**——与第五/六次修订一致，#74/#81 关票滞后维持已知残留；⑥ `ls -la ~/.zcode/issue72-stripe.env` 复核存在。**结论：维持第六次修订状态（done 9 / todo 24 / blocked 0，#82 唯一可开工）。对下发指令「#74 判 todo」的冲突裁决继续有效——若需重跑 run_lab.py 属证据新鲜度复核（验证任务），不构成改判本票与重新实施的依据。**
+
+## 8. Recovery overlay — 2026-09-28 (supersedes stale readiness snapshot above)
+
+This overlay is the current execution-state source; sections 1–7 are historical snapshots and must not be used as today's ready set. See [`issue-72-execution-ledger.md`](issue-72-execution-ledger.md) and the latest worktree/Git status before dispatch.
+
+- GitHub native containment was independently refetched recursively: #72 has exactly #73–#105 as direct children, no nested descendants. Dependency APIs were fetched for every node; no missing dependency targets or cycles were reported. Full endpoint evidence: `/tmp/issue72-analysis.md`.
+- Current GitHub state snapshot: #73 and #75–#80 closed; #74 and #81–#105 open. Do not alter remote Issue state. Local evidence shows implementation progress for open #81–#86; review/acceptance must be adjudicated from current artifacts, not remote state alone.
+- Integration checkout at this overlay: `codex/issue-72-lago` HEAD `84d17f128ab343435bf2382c3999007580602b91`. It contains uncommitted #86 OCR-R1 updates in `issue-72-flow-evidence-86/concurrent_consumption_86.py` and `consume_86.py`; these are not yet verified/reviewed at their current content hash.
+- Dedicated #84 and #86 worktrees exist and were clean at the latest recorded check. #85 worktree branch is carrying #83 OCR commits; establish ownership before dispatch.
+- **Current ready set: no implementation task is verified-ready.** #86 checkpoint review/verification is the active gate. A readonly review of #87 plan may proceed concurrently because it does not change files; #87 implementation consumes #86 wallet/lot semantics and stays locked until #86 is verified and its reviewed checkpoint is in the integration worktree.
+- After #86 passes, #87 plan rewrite/review remains required: independent review found critical/high pricing, projection freshness, production wiring and wallet-fold gaps in the current prewrite plan. Only after that plan passes can #87 implementation start; #88 follows verified #87. A later parallel implementation wave may be proposed only after checking actual file sets, interfaces, separate worktrees and non-shared test/runtime resources. SDD's required one-implementer-at-a-time rule currently bounds implementation dispatch; maximize parallelism through independent readonly audits/reviews until then.
+
+### Recovery overlay addendum — #82 ancestry correction and current #84/#87 frontier (2026-09-28)
+
+- A read-only #82 readiness audit `/tmp/issue72-82-readiness-audit-20260928.md` initially inferred #82 was not integrated because no #82 worktree was checked out. Parent verification corrected that inference: `git merge-base --is-ancestor codex/issue-72-lago-82 HEAD` exits 0; #82 tip `00ff79aec025023b7db536d8879de66826d06145` is an ancestor of integration HEAD `84d17f128ab343435bf2382c3999007580602b91`, through merge commit `7d614752ce4f134a321d0538e92f06480cdb8713`. Therefore do not reimplement #82 branch changes. This establishes integration only; it does not itself certify #82 acceptance.
+- The #82 ledger still discloses a dedicated T9 integration rerun gap (shared-stack test selected a previously finalized PaymentIntent; dedicated `lab.env` is missing) and AC4 real Alipay sandbox evidence unavailable. Existing four-leg live stack/browser evidence is recorded as equivalent coverage, but the parent must preserve this qualification; no GitHub status change is made.
+- #84 attempt-identity repair has a reviewed R4 plan and one active SDD implementation/fix stream in `.worktrees-issue72/issue-84`; its initial checkpoint review passed Spec Compliance and reported one valid low test-harness issue, currently in fix round 1. It remains unverified until scoped re-review.
+- #87 pricing owner analysis `/tmp/issue72-87-owner-rule-options-20260928.md` recommends active paid subscription ownership only for dimensions its exact immutable published version declares, with Base owning other dimensions; pending/canceled boundaries and overlapping declarations require user policy. A clarification has been sent asking whether to use that default (single owner; ambiguous duplicate paid ownership fails closed). R-3 still does not authorize charge-bearing paid purchase.
+
+### Recovery overlay addendum — verified #84 repair checkpoint / current #87 contract gate (2026-09-28)
+
+- #84 narrow payment-attempt identity repair was independently task-reviewed and committed locally as `ae8f57c8cb33b15f7ec78cab3758ae00d3bd3cbe` in `codex/issue-72-lago-84`. Scoped task review R2 passes Spec Compliance and Code Quality; final whole-branch review is pending. Required repo/service/PostgreSQL tests passed as recorded in `issue-72-ledger-84.md` and its SDD report. This verifies only the narrow immutable-first-transaction repair, not whole #84 acceptance or inherited OCR residuals.
+- #87 R6 in the isolated T15 worktree is independently validated as a distinct result (`53a02242…`); it confirms 5-cent granted top-up and current-usage/wallet projection shape only. Wallet balances did not move as current usage rose; event internal IDs remained null. It does not verify debit, invoice settlement, balance exhaustion, negative balance or refusal. Task 0 remains open. A read-only v1.53 wallet contract research and minimal next-probe recommendation is underway.

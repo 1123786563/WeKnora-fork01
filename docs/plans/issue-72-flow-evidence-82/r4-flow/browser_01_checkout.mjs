@@ -32,8 +32,12 @@ const note = (step, ok, detail) => {
 };
 
 const browser = await chromium.launch();
+// (OCR84-R1-19) 基础设施失败（登录被拒/选择器超时/导航错误）必须可区分地落
+// note + 截图并仍打印 RESULT 汇总——裸栈退出会吞掉 RESULT 行，违背取证脚本
+// 「断言失败与基础设施失败可区分」的自身纪律（browser_02/04 已实现该契约）。
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   page.on('request', (req) => {
     if (req.method() === 'POST' && req.url().includes('/api/v1/commercial/purchases')) {
@@ -73,7 +77,10 @@ try {
   const checkoutHref = await page.locator('main a:has-text("前往支付")').first().getAttribute('href');
 
   // Wire assertion: the purchase submit body carried provider == alipay.
-  await page.waitForFunction(() => window.__r4PurchasesSeen > 0, null, { timeout: 1000 }).catch(() => {});
+  // (OCR84-R1-30) 删除恒假的 window.__r4PurchasesSeen 死等待（全仓库无任何赋值
+  // 点，1 秒必超时又被 catch 静默吞掉，伪装出「已等待抓包完成」的同步）——
+  // page.on('request') 在导航/断言之前已同步捕获 POST /purchases 体，此处直接
+  // 消费 purchases 数组。
   const providerOk = purchases.length >= 1 && purchases.every((p) => p.provider === 'alipay');
   note('purchase-wire-provider-alipay', providerOk,
     `POST /purchases bodies: ${JSON.stringify(purchases.map((p) => ({ provider: p.provider, quote_id: p.quote_id?.slice(0, 12) + '…' })))}`);
@@ -89,6 +96,9 @@ try {
 
   writeFileSync(`${EV}order-info.json`, JSON.stringify({ orderId, checkoutHref, purchases }, null, 2));
   console.log('ORDER ' + orderId);
+} catch (error) {
+  note('script-error', false, String(error?.stack ?? error));
+  try { if (page) await page.screenshot({ path: `${EV}01-script-error.png`, fullPage: true }); } catch { /* page may be unusable */ }
 } finally {
   await browser.close();
 }

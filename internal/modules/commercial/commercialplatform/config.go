@@ -159,13 +159,25 @@ func NewPlatform(cfg Config) (commercial.CommercialPlatform, error) {
 // guardLoopbackBypassPosture enforces the dev-only posture of the loopback
 // bypass (A-27): with the bypass on, an explicitly configured authority
 // BaseURL must be a loopback/localhost host. An empty BaseURL stays legal
-// (the blocked-env posture — no authority egress exists to bypass; the
-// provider egress keeps its full runtime host policy either way).
+// (the blocked-env posture — no authority egress exists to bypass).
+// (OCR84-R1-11) The bypass ALSO rides the provider leg —
+// validateOutboundHostWithBypass admits loopback hosts whenever it is set —
+// so an explicitly configured StripeAPIBase must be loopback too: with the
+// bypass on, StripeAPIBase pointing at a REAL, non-loopback host is the
+// same dev-env-copied-into-production shape the authority guard refuses,
+// and the provider egress host policy is otherwise silently loosened for
+// it (the former comment claimed the provider leg "keeps its full runtime
+// host policy either way" — false while the bypass bypasses it).
 func guardLoopbackBypassPosture(cfg Config) error {
 	if cfg.BaseURL != "" && !outboundHostIsLoopback(cfg.BaseURL) {
 		return fmt.Errorf("commercial loopback bypass (%s=true) requires a loopback %s, got %q — "+
 			"the bypass is dev/test-only and refuses to start against a production authority",
 			EnvOutboundAllowLoopback, EnvBaseURL, cfg.BaseURL)
+	}
+	if cfg.StripeAPIBase != "" && !outboundHostIsLoopback(cfg.StripeAPIBase) {
+		return fmt.Errorf("commercial loopback bypass (%s=true) requires a loopback %s, got %q — "+
+			"the bypass loosens the provider egress host policy too and only ever exists alongside loopback stubs",
+			EnvOutboundAllowLoopback, EnvStripeAPIBase, cfg.StripeAPIBase)
 	}
 	return nil
 }

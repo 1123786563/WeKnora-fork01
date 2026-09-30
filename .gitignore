@@ -104,5 +104,18 @@ apps/mobile/ios/
 # login answer here on every rerun — with live access/refresh JWTs. The
 # tracked copies are redacted (token fields = "REDACTED"); this rule keeps a
 # future rerun's live capture OUT of git status until it is redacted.
+# (OCR C-83 / C-01) Flow-evidence login captures. (OCR84-R1-36) 按实际机制
+# 如实描述：#83 批次后所有 seed 脚本已改为落盘前脱敏（token 字段落盘即
+# "REDACTED"，JWT 只存活于当轮 shell）——脚本内联脱敏是第一防线；本规则是
+# 针对新增未跟踪捕获文件的纵深防御。gitignore 对已跟踪的 12 个
+# seed-login-*.json 不生效（rerun 覆写仍会出现在 git status）；已跟踪文件的
+# 回归防护依赖 CI 侧凭据检查兜底。
 docs/plans/**/seed-login-*.json
-data/
+# (OCR84-R1-35) 锚定根目录：data/ 缺前导 / 会匹配仓库任意层级名为 data 的
+# 目录——internal/textconv/data/（被跟踪的简繁词典，CI paths-ignore 引用）下
+# 未来新增文件会被静默忽略，造成提交缺文件且难察觉。
+/data/
+# issue-72-unsupported-docs-r1 Step 5 的本地环境快照，值已就地脱敏为 <REDACTED>。
+# 落盘前脱敏是第一防线；此精确规则防止当前未跟踪快照被意外正常暂存。
+# Git ignore 不保护强制添加或已跟踪文件。
+docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot

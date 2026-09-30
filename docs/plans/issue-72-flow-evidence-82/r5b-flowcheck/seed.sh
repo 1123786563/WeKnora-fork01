@@ -14,8 +14,10 @@
 # Everything else (env-required credentials, REDACTED login captures,
 # asserted tenant serials, sqlite UUID-gated grant insert) is unchanged.
 set -euo pipefail
-cd "$(dirname "$0")/../../../.."   # worktree root
+# (OCR84-R1-18) EV 先于 cd 解析：cd 后基于相对 $0 的二次解析在 ./seed.sh 相对
+# 调用时会把 EV 静默变成仓库根，证据文件全部落错位置。
 EV="$(cd "$(dirname "$0")" && pwd)"
+cd "$EV/../../../.."   # worktree root
 BACKEND=http://127.0.0.1:8093
 PW="${FLOW82_R5_PW:?missing required env FLOW82_R5_PW}"
 DB="${DB_PATH:?missing required env DB_PATH (this round: data/issue82-r5b-verify.db)}"
@@ -85,9 +87,25 @@ uuid_shape() { [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA
 uuid_shape "$UID_B" || { say "FAIL: user id not a UUID ('$UID_B')"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-# STRICT uuid_shape whitelist is the injection gate ([0-9a-f-]{36} only).
-sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r5b', 1);"
-say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
+# (OCR84-R1-17 / safety constraint) 外部输入一律参数绑定：写入/计数改经 python3
+# sqlite3 的 ? 占位符——uuid_shape 白名单保留为纵深防御/快速失败前置。
+GRANT_N=$(python3 - "$DB" "$UID_B" <<'PY'
+import sqlite3, sys
+db, uid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+with conn:
+    conn.execute(
+        "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version)"
+        " values (0, ?, 'plan_publish', 'flow-verifier-r5b', 1)",
+        (uid,),
+    )
+print(conn.execute(
+    "select count(*) from commercial_grants where capability='plan_publish' and user_id = ?",
+    (uid,),
+).fetchone()[0])
+PY
+) || { say "FAIL: grant write/read failed (python3 sqlite3, db=$DB)"; exit 1; }
+say "granted: $GRANT_N row(s)"
 
 say "== read Lago plan baseline (BEFORE this round's publish) =="
 LAGO_KEY=$(docker exec weknora-lago-82r5-db-1 psql -U lago -tAc "select value from api_keys order by created_at desc limit 1" | tr -d '[:space:]')

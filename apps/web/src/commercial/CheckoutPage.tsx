@@ -6,7 +6,7 @@ import { isSafeCheckoutUrl } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
-import { orderMessage } from './order-state.ts';
+import { orderMessage, PURCHASE_STATE_LABEL } from './order-state.ts';
 
 const POLL_INTERVAL_MS = 3000;
 const DEFAULT_PLAN_KEY = 'pro';
@@ -24,21 +24,23 @@ type CheckoutState =
 // (#82 D3/审查 H1) The three product states the checkout surfaces:
 // awaiting payment / paid awaiting activation / active — driven by the
 // purchase projection (client.commercial.purchaseStatus), with the order's
-// channel face as the fallback.
+// channel face as the fallback. (OCR84-R1-15 / D15-f) The purchase-driven
+// branch consumes the ONE shared vocabulary PURCHASE_STATE_LABEL
+// (order-state.ts) — this page no longer keeps a private copy of the words
+// that had drifted from the Billing row's («已付款待激活» / «已生效» /
+// «待付款（权益未开放）»). The order channel-face FALLBACK branches keep
+// their own order-side wording unchanged (they describe the channel face,
+// not the purchase state).
 export function purchaseStateMessage(purchase: PurchaseView | undefined, order: OrderView): string {
-  switch (purchase?.state) {
-    case 'paid_awaiting_activation': return '已付款，权益处理中';
-    case 'active': return '权益已生效';
-    case 'awaiting_payment': return '待付款（权益未开通）';
-    // (D15-f) canceled 是闭合产品状态：专属文案 + 调用侧隐藏支付入口。
-    case 'canceled': return '该购买已取消，请重新发起购买';
-    default:
-      // (D15-f) default 改显式 if 链——三层嵌套三元不再积累。
-      if (order.payment === 'pending') return '待付款（权益未开通）';
-      if (order.payment === 'paid') return '已付款，权益处理中';
-      if (order.fulfillment === 'fulfilled') return '权益已生效';
-      return orderMessage(order);
+  if (purchase) {
+    const label = PURCHASE_STATE_LABEL[purchase.state];
+    if (label) return label;
   }
+  // (D15-f) 显式 if 链——三层嵌套三元不再积累。
+  if (order.payment === 'pending') return '待付款（权益未开通）';
+  if (order.payment === 'paid') return '已付款，权益处理中';
+  if (order.fulfillment === 'fulfilled') return '权益已生效';
+  return orderMessage(order);
 }
 
 function formatCny(amountFen: string): string {
@@ -260,8 +262,17 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
     // the order read stays the channel fallback. A purchaseStatus failure
     // degrades silently — it must never block the order poll. Late
     // resolutions are dropped by the scope guard pair (isCurrent + abort).
+    // (OCR84-R1-06) The scope pair alone does NOT cover restartCheckout: a
+    // restart clears/repins orderIdRef WITHOUT aborting the scope, so an
+    // in-flight getOrder issued for the ABANDONED order would still pass
+    // live() and overwrite the new order back onto the abandoned pending
+    // row (and its stale checkout link — a channel-switch user could pay
+    // BOTH orders). The order identity guard closes it: a resolution is
+    // live only while orderIdRef STILL pins the id it was issued for.
     const live = (): boolean =>
-      !currentScope.signal.aborted && scopeController.isCurrent(currentScope.scope);
+      !currentScope.signal.aborted &&
+      scopeController.isCurrent(currentScope.scope) &&
+      orderIdRef.current === id;
     void client.commercial.getOrder(id, currentScope.signal).then((order) => {
       if (live()) {
         setState((prev) => (prev.status === 'ready' ? { ...prev, order } : prev));

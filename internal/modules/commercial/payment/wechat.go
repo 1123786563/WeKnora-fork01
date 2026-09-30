@@ -449,7 +449,11 @@ func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptR
 	if id == "" {
 		id = providerID
 	}
-	return AttemptResult{State: mapWechatTradeState(out.TradeState), ProviderID: id}, nil
+	// (#84/G2) The collected amount AND its currency ride along so the
+	// recovery paths can compare what the channel ACTUALLY collected
+	// against the order face (amount and currency both).
+	return AttemptResult{State: mapWechatTradeState(out.TradeState), ProviderID: id,
+		AmountFen: out.Amount.Total, AmountCurrency: out.Amount.Currency}, nil
 }
 
 // Close cancels a pending channel order by its original identifier.

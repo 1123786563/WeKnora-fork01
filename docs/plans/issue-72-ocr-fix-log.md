@@ -1535,3 +1535,95 @@ A-16 首版（fixHint 强等校验）在真实 proration 场景把 settle 打死
 ### 提交
 
 - 提交 message 前缀：`issue-72(ocr-83-1):`（按本批 ask 指定）
+
+---
+
+# OCR 第 4 轮修复记录（ocr-84-1）——Issue #84 增量 OCR round 1（37 findings）
+
+- 日期：2026-09-28
+- worktree：`.worktrees-issue72/lago-int`（分支 `codex/issue-72-lago`）
+- 修复基线：`9c1c54b44`（issue-72: ocr issue-84 round 1 报告提交）
+- 修复人：修复员（dynamic workflow subagent）
+- 输入：`docs/plans/issue-72-ocr-issue-84-r1.md`（37 项 findings，high 8 / medium 29）
+- 处置：**修复 35 项，deferred 2 项**（R1-08、R1-12，理由见下）。
+
+## 修复清单（按 finding id）
+
+### Go 生产代码（high）
+
+- **R1-01（lago_settlement.go 空候选分支）**：删除 `len(settledInvoices) > 0 → 假回执` 的无归属幂等分支——settledInvoices 是该客户**任意** succeeded intent 携带的发票 id 集合，与本次订单无绑定，历史成功残留会铸造假结算回执掩盖「gate 未建/已取消」的数据异常。现按 ErrPlatformInvalidResponse fail closed；幂等窗口只保留 F-1 的按 `intent.LagoInvoiceID` 绑定检查。settle-vs-finalize 窗口内的回放落 attention 是**可恢复的**（事件保持 pending，权威激活后 APPLIED 记录覆盖早前 attention——purchase_fulfillment.go 既有设计）。既有测试 `TestLagoSettleSettledWindowReplaysIdempotently` 改写为 `TestLagoSettleEmptyCandidatesFailClosedEvenWithSettledHistory`。
+- **R1-02（lago_settlement.go 卡死门谓词）**：候选集合补入 `requires_confirmation`（update 后 confirm 前崩溃的重放形态——重放 update 幂等无害，confirm 才是缺的一步）。新增 `TestLagoSettleDrivesRequiresConfirmationReplayShape`。
+- **R1-03（repository order.go CurrentPurchaseOrder）**：pending 偏好谓词补 `row.CheckoutURL != ""`，与注释声明的 CurrentPendingPurchaseOrder「同一可付谓词」一致——R2-27 持久化降级行不再赢得偏好遮蔽同价位已支付订单。新增 `TestCurrentPurchaseOrderSkipsLinklessPendingDegradedRow`。
+- **R1-05（fulfillment.go isSubscriptionPurchase）**：三态化 `(bool, error)`——NotFound/无订阅费行=确定 (false,nil)（legacy top-up 语义）；其他读错误与快照解析失败=不可证明，fulfillEvent 以 completeEvent(Pending) 保留事件，绝不落穿进 TopUpOrderLines（误路由一次即不可恢复）。既有 5 个依赖「表缺失=吞错」形态的 worker 测试改为补迁移 QuoteRow 表（quote 行 NotFound 表达其真实意图）。新增 `TestFulfillEventKeepsPendingWhenDiscriminationUnprovable`。
+
+### Go 生产代码（medium）
+
+- **R1-09（WalletRank 域上界）**：新增共享常量 `MaxWalletPriority=50`，GrantIncludedCreditsPayload.Validate 与 WalletRank 统一消费；WalletRank 改 `(map, error)`——超界 fail closed（rebalance 不再写出文档域外优先级）、重复 WalletRef / 空 ref 显式报错（E3 恢复异常形态不再静默覆盖）。lago.go / fake.go 两个调用方同步分流。新增 `TestWalletRankFailsClosedOutsidePriorityDomain`。
+- **R1-10（alipay Query 货币）**：`ParseCNYAmount` 成功时一并上报 `AmountCurrency: "CNY"`（与 wechat 腿对齐）——恢复路径 collectedAmountMismatch 的 wrong-currency 防护对 Alipay 腿闭合。断言并入 `TestAlipayQueryReportsCollectedAmount`。
+- **R1-11（config.go 姿态守卫）**：guardLoopbackBypassPosture 增补 StripeAPIBase 分支（非空且非环回即拒绝启动——bypass 同样作用于 provider 腿），失实注释同步修正；validateOutboundHostWithBypass 的环回判定收敛到 outboundHostIsLoopback 单一事实源。新增 `TestNewPlatformRefusesLoopbackBypassForProductionProviderBase`。
+- **R1-13（over_payment 异常口径）**：paymentEventPayload 增 `MerchantOrderID`（ConfirmPayment 写入 attempt.MerchantOrderID）；disposeOverPayment 以 payload 携带值回填 PaymentAnomalyRow.AttemptID（列文档语义=merchant_order_id），无该键的旧载荷回读 attempt 行，回读失败保留事件 pending（异常写幂等锁定，错口径落库不可回改）。新增 `TestOverPaymentAnomalyCarriesMerchantOrderID`（新载荷内联 + 旧载荷回读双路径）。
+- **R1-14（succeededAttempt 错误分流）**：确定性形状（无 succeeded attempt / 无渠道流水，包级 sentinel）落 attention + nil；瞬时 DB 故障 Warn + nil 保留 pending；ctx 取消传播——不再整批中止共享 drain（违背 r2:119/A-32 纪律的裸 return err 消除）。新增 `TestPurchaseFulfillSucceededAttemptFailureClassified`。
+
+### TS 前端 / 契约
+
+- **R1-04（contracts commercial.ts）**：`projected_at` 与 granted_at 同等降级为展示性字段（缺省 ''），batches null/缺省视同空数组、非数组仍拒绝——后端 benefitsWire 在 credits==nil 链输出 batches:null 且无 projected_at 键时，account() 不再整体抛英文解析错误卡片。测试补于 BillingPage.test.ts。
+- **R1-06（CheckoutPage refreshOrder 竞态）**：live() 增补 `orderIdRef.current === id` 订单身份守卫（嵌套 purchaseStatus 同理）——restartCheckout 只清 refs 不 abort scope，重启前在途的旧 getOrder 迟到解析不再把新订单覆盖回被放弃的旧 pending 单及其 checkout_url（渠道切换双付款窗口）。新增组件级回归 `a late refresh resolution never overwrites the restarted order`。
+- **R1-15（purchaseStateMessage 私有文案）**：purchase 驱动分支直接消费 PURCHASE_STATE_LABEL（order 渠道面兜底分支按 fixHint 保持原措辞）；既有三态断言更新到共享词表（已付款待激活/已生效/待付款（权益未开放）），新增 PURCHASE_STATE_LABEL 同源性表测。
+- **R1-16（batchExpiringWithin 下界）**：`delta >= 0 && delta <= 30d`——后端投影保留的过期 top-up 行（balance=0、ExpiresAt 过去值）不再被负差值恒真地标成近到期。新增边界表测。
+
+### 取证/验收脚本
+
+- **R1-07（replay_03_restart.sh）**：健康轮询 curl 赋值补 `|| code=000`（kill 后冷启动窗口的连接拒绝退出码 7 不再触发 errexit 静默截断）；轮询落空强制 200 断言 + 重启日志尾部回显（不再落空后读旧 DB 产出假阳性）；头部补 FLOW82_KEY_DIR 必需校验；EV 解析顺序顺带修正（R1-18 同型）。
+- **R1-17（SQL 拼接红线族）**：五处 `$UID_B` 插值全部改 python3 sqlite3 `?` 参数绑定（seed_84.sh 双 capability、r4-flow、r4-flow2、r5b-flowcheck、r5-verify；**r4-flow3 与 seed_83.sh 同型缺陷未列入 finding 但属同一红线，一并收敛**）；uuid_shape 白名单保留为纵深防御前置；r5-verify 头注释「sqlite3 ?1 parameter binding」的失实断言改为如实描述。
+- **R1-18（EV 解析顺序族）**：r4-flow / r4-flow2 / r4-flow3 / r5-verify / r5b-flowcheck / seed_84 / replay_03_restart 全部改为 EV 先解析再 cd（round 目录内相对调用不再把证据静默落到仓库根）。
+- **R1-19（取证腿 catch 族）**：r4-flow/browser_01、browser_03、r4-flow3/browser_04 三腿补 catch（note('script-error') + 错误截图 + RESULT 仍打印），page 提升为 let。
+- **R1-20（ORDER 参数静默降级族）**：r5-verify 与 r5b-flowcheck 两个 browser_04 的 orderId 改必需参数（缺参 usage exit 2），A-12 身份断言恒执行，EXPECT_CNY 冗余校验移除。
+- **R1-21（phases.py 状态码丢弃族）**：gate 阶段 payments API 读取先断言 `_ok(ps)`（4xx/5xx → blocked-env，不再以空列表空转通过 exactly-once 断言）；retries 阶段 deferred 复查三处读取携带状态——瞬时 5xx 挂起判定（blocked-env，非 AC3 FAIL），404/非 2xx 计入真实漂移。
+- **R1-22（act 中止证据丢失族）**：sqlShape 校验失败 process.exit(2) 改 throw（顶层 catch 落盘 files + RESULT）；五幕各包 try/finally（finally 兜底落盘本幕日志后重抛）。
+- **R1-23（prepare_t9_env.sh 静默死亡族）**：三处纯赋值补 `|| true` 让显式守卫接管；webhook secret 读取保留 stderr（失败回显尾部再退出）。
+- **R1-24（gql GraphQL 层守卫）**：新增 gql_data 守卫（errors/data=None 打印摘要并退出），login/paymentProviders/addStripe 三处消费全部收口（半初始化环境不再只剩不可读 traceback）。
+- **R1-25（act3 find 顺序）**：跨轮存活的 stub 订单改 filter 后取最后一个（本轮最新），重放不再作用于旧轮订单。
+- **R1-26（lagoCustomer tenant 白名单）**：入口过 tenantShape，闭合 C-02「进 SQL 的值先过白名单」声明不变量的唯一遗漏路径。
+- **R1-27（act2 落地保障）**：一次性 quote+purchase 改 purchaseUntilLanded + orderShape（紧跟 act1 settle/webhook 的 503 busy window 最易触发位置）。
+- **R1-28（FLOW83_TOKEN 硬校验）**：browser_flow_83.mjs 入口与 EMAIL/PASSWORD/TENANT 一致 exit 2，purchaseState 软降级分支移除。
+- **R1-29（seed_83.sh PAD 前提断言）**：注册后断言主角租户号越过 `FLOW83_LAGO_OCCUPIED_MAX`（默认 12，env 可调），C-11「断言轮次特定事实」纪律落地。
+- **R1-30（死等待）**：browser_01 的 `window.__r4PurchasesSeen` 恒假 waitForFunction 删除（page.on('request') 已同步捕获，注释说明）。
+- **R1-31（prune 波及面）**：prepare_82flow_webhook_secret.sh 的 prune 收窄到本轮自己的标记（description 含 'weknora r4' 或 URL 以 /webhooks/stripe/r4 结尾），不再误删 t11/t9 实验端点。
+- **R1-32（BASE_N/N 形状校验）**：r4-flow2/seed.sh 两处计数先 `|| FAIL`（jq 解析失败）再 case 数值形状（空/非数字 FAIL），fail-honestly 姿态闭合。
+- **R1-33（detached 等待）**：两个 browser_04 的 Billing 投影等待改为周期驱动页面自身 Reload 按钮 + 3s detached 判定（上限 180s 不变）——BillingPage 无轮询，纯 detached 等待在投影未翻转时必烧满超时。
+- **R1-34（stub REQUIRED 块）**：wechat_native_stub_anomaly.py 按 83 原版恢复模块级必需 env 校验（缺失打印清单 + exit 2）。
+- **R1-37（rsa_verify 三态）**：alipay_gateway_stub.py 的 rsa_verify_sha256 先证公钥可解析（`openssl pkey -pubin`，不可读 raise 配置错误），随后验证退出码即签名裁决（True/False）——不再按 stderr 文本分类（实测本机 OpenSSL 3.x 同码不同文：文件模式 "Verification failure"、stdin 模式纯 rsa routines 错误），与 verify_request 注释契约对齐。三态已用真实密钥端到端实证（good→True / tampered→False / missing+garbage key→raise）。
+- **R1-35/36（.gitignore）**：`data/` 锚定为 `/data/`（internal/textconv/data/ 下新增词典不再被静默忽略，已实证 check-ignore 行为）；登录捕获注释按 #83 后实际机制改写（脚本内联脱敏第一防线、gitignore 仅纵深防御、对已跟踪文件无效）。
+
+## deferred（2 项）
+
+- **R1-08（r4-flow2 证据链自洽）**：修复需在重置后的 Lago 栈上重跑并提交本轮真实产物 + baseline 文件，或改用本轮专属 plan_key。82flow 栈（weknora-lago-82flow-db-1）已下线（宿主现仅 82r5 在跑），重置共享栈属破坏性操作且波及其他证据轮的记录；plan_key 改法会改变已验证流程的行为而本轮无法在同一栈上重放该轮脚本。留待专门证据轮处理（本批已在 r4-flow2/seed.sh 落实 R1-32 的计数形状校验，为重跑的前置修复）。
+- **R1-12（readPurchaseInvoiceFees N+1 热路径超时）**：finding 自述「属性能/容量类而非确定性 bug」（R-23 已披露 N+1 形态）。fixHint 提出的 gating invoice lago_id 持久化（outbox/缓存）是 settle seam 的存储结构变更，需独立设计决策（落点/失效/与 F-5 定位谓词的关系），不属于本批根因修复的安全范围。
+
+## 回归测试（新增/改写）
+
+Go：`TestLagoSettleEmptyCandidatesFailClosedEvenWithSettledHistory`（改写自 settled-window 旧行为）、`TestLagoSettleDrivesRequiresConfirmationReplayShape`、`TestCurrentPurchaseOrderSkipsLinklessPendingDegradedRow`、`TestFulfillEventKeepsPendingWhenDiscriminationUnprovable`、`TestWalletRankFailsClosedOutsidePriorityDomain`、`TestNewPlatformRefusesLoopbackBypassForProductionProviderBase`、`TestOverPaymentAnomalyCarriesMerchantOrderID`、`TestPurchaseFulfillSucceededAttemptFailureClassified`；既有 `TestAlipayQueryReportsCollectedAmount` / `TestWalletRankMixedFamilies` / `TestWalletRankSameExpiryEarliestGrant` / 三态文案断言随行为更新。TS：contracts 降级形态、batchExpiringWithin 边界、purchaseStateMessage 词表同源、迟到覆盖竞态（37 项 commercial node:test 全绿）。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| commercial 全量 | `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok |
+| 全仓构建 | `go build ./...` | ok（仅链接器重复库警告） |
+| web commercial 测试 | `node --import tsx --test 'src/commercial/*.test.ts' 'src/commercial/*.test.tsx'` | 37/37 pass |
+| web 全量 | `npm test`（apps/web） | 2281 pass / 38 fail——38 个失败全部位于 documents 模块（Vue 对照测试），git stash 对照实证为**既有失败**（干净状态同样 108 pass/38 fail），与本批无关 |
+| web 类型检查 | `npx tsc --noEmit -p apps/web/tsconfig.json` | 9 行既有错误（DevMarkdownPage/PlatformShell/mermaid.ts），与本批改动无关；commercial 零错误 |
+| 脚本语法 | `bash -n` ×10、`node --check` ×7、`python3 -m py_compile` ×3 | 全通过 |
+| stub 冒烟 | `--selftest` 正/负形态 | 缺 env exit 2 + 齐备 SELFTEST OK |
+| rsa_verify 三态 | 真实密钥端到端（openssl 实证） | True/False/raise 三态全部命中 |
+| **真栈重放** | run_84.sh 步骤 0-6 + 第二/三幕核心链路（82r5 栈 + 修复后后端 :8096） | SEED OK（参数绑定 grants 2 行）；订单 ord_cbc3fa07f8a1304b：通知→paid→drain→settle（真实 Stripe attach/update/confirm succeeded）→webhook 补投→Lago sub=1/invoice=1→**fulfilled + 事件 sent + purchase_activation applied（覆盖早前 attention）**；换交易号第二笔→over_payment→**anomaly attempt_id=mo_ 口径**。证据 `docs/plans/issue-72-flow-evidence-84/ocr84fix-replay/` |
+
+### 真栈重放披露
+
+1. 共享 Stripe TEST 账号存在历史残留 intent（挂在不存在的 Lago 发票 381b5764 上）——D9 distinct-invoice 闸**正确 fail-closed** 后人工作废该死对象重驱动（与 r2 轮披露①同类环境残留，非代码回归）。
+2. webhook 补投为既有裁决边界（Stripe 云→本地 Lago 不可达腿；secret 取 rails runner stdout 末行，README 既有披露）。
+3. 前端浏览器帧未重放（API 面已覆盖本批行为变更点，前端改动由 37 项 commercial node:test 覆盖）。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-84-1):`（按本批 ask 指定）

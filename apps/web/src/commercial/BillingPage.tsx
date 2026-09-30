@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow, PurchaseView } from '@weknora/contracts';
+import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow, OrderView, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
@@ -69,10 +69,15 @@ export function batchSourceLabel(source: string): string {
   return source === 'topup' ? '充值' : '套餐月度';
 }
 
-/** 批次是否在 30 天内到期（近到期行加标记）。 */
+/** 批次是否在 30 天内到期（近到期行加标记）。已过期（exp < now）不算近到期：
+ * 后端投影对过期 top-up 批次保留行（balance 置 0、ExpiresAt 为过去值仍输出），
+ * 无下界时这些行会被负差值恒真地标成「近到期」而非呈现已过期事实
+ * （OCR84-R1-16）。 */
 export function batchExpiringWithin(expiresAt: string, now: Date = new Date()): boolean {
   const exp = new Date(expiresAt).getTime();
-  return Number.isFinite(exp) && exp - now.getTime() <= 30 * 24 * 3600 * 1000;
+  if (!Number.isFinite(exp)) return false;
+  const delta = exp - now.getTime();
+  return delta >= 0 && delta <= 30 * 24 * 3600 * 1000;
 }
 
 /** 套餐行的显示名：已购空间显示 plan_key，base_tier 空间回退 base_tier_key 或「基础版」。 */
@@ -162,6 +167,18 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
                     (D15-f) 文案经共享词表 PURCHASE_STATE_LABEL——两页不再各持一套。 */}
                 {purchase?.state && purchase.state !== 'absent'
                   ? ` · ${PURCHASE_STATE_LABEL[purchase.state]}`
+                  : ''}
+                {/* (#84 / AC4) 付款异常后缀两种形态：①待付款异常单（order 子对象的
+                    fulfillment=attention——错额/部分/错币，订单无法正常推进）；
+                    ②已生效但仍带未处置多收款异常的单（payment_attention 附加字段，
+                    R4 裁决：多收款不改写用户主状态，只追加提示）。M1 类型裁决：
+                    契约 OrderView 无 payment_attention 字段（#85 并行期契约零改动），
+                    用局部类型断言读取加法字段——运行时由 parseOrderView 未知字段
+                    透传保证在位。 */}
+                {purchase?.order?.fulfillment === 'attention' ? ' · 付款异常（待处理）' : ''}
+                {purchase?.state === 'active'
+                  && (purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention
+                  ? ' · 付款异常（待处理）'
                   : ''}
               </span>
             </li>

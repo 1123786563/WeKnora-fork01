@@ -35,6 +35,16 @@ if (!/^\d+$/.test(TENANT)) {
   console.error(`bad FLOW83_TENANT for SQL interpolation: '${TENANT}' (must be the protagonist's numeric tenant id)`);
   process.exit(2);
 }
+// (OCR84-R1-28) FLOW83_TOKEN 与其他 env 一致入口硬校验（api_recovery_83.mjs
+// 对同名 env 已是入口即退）：软降级使 purchaseState 永远返回
+// 'env-missing-token'，settle-active 轮询空转约 4 分钟后以「后端未达 active」
+// 的失败证据收场——真实原因是环境变量缺失，且末端 checkout-active-face 可能
+// 反而 PASS，留下自相矛盾的证据。
+const TOKEN = process.env.FLOW83_TOKEN ?? '';
+if (!TOKEN) {
+  console.error('missing required env: FLOW83_TOKEN (the protagonist login token; the seed capture is redacted on disk)');
+  process.exit(2);
+}
 
 const results = [];
 const progression = [];
@@ -108,9 +118,7 @@ async function stubNotify(outTradeNo) {
     throw new Error(`stubNotify(${outTradeNo}): stub at ${STUB} unreachable (${String(err).split('\n')[0]})`);
   }
 }
-const TOKEN = process.env.FLOW83_TOKEN ?? '';
 async function purchaseState() {
-  if (!TOKEN) return { data: { state: 'env-missing-token' } };
   try {
     const res = await fetch(`${BACKEND}/api/v1/commercial/purchase`, {
       headers: { Authorization: `Bearer ${TOKEN}` },

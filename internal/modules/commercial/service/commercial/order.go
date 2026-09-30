@@ -102,7 +102,7 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	if err := normalizeMigratedCommercialUniques(db); err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		return nil, err
 	}
 	// (R3-26) Migration of PRE-INVARIANT rows, BEFORE the index is created:
@@ -285,16 +285,34 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 // the link for later replays failed (closed marker, raw error in the server
 // log only) — the answer itself stays a clean success.
 type OrderView struct {
-	ID                   string `json:"id"`
-	QuoteID              string `json:"quote_id"`
-	State                string `json:"state"`
-	AmountFen            int64  `json:"amount_fen"`
-	Currency             string `json:"currency"`
-	Provider             string `json:"provider,omitempty"`
-	CheckoutURL          string `json:"checkout_url,omitempty"`
+	ID        string `json:"id"`
+	QuoteID   string `json:"quote_id"`
+	State     string `json:"state"`
+	AmountFen int64  `json:"amount_fen"`
+	Currency  string `json:"currency"`
+	Provider  string `json:"provider,omitempty"`
+	// CheckoutURL carries the customer-facing payment link when a channel
+	// adapter produced one.
+	CheckoutURL string `json:"checkout_url,omitempty"`
+	// CheckoutError is non-empty when the channel call failed AFTER the order
+	// was durably opened: the pending order stays recoverable through
+	// GetOrder/RecoverOrderStatus, and the write answer still carries the
+	// operation ID and state as the product contract requires.
+	// CheckoutLinkDegraded (R2-27) marks a DIFFERENT posture: the channel call
+	// succeeded and the answer carries a working CheckoutURL, but persisting
+	// the link for later replays failed (closed marker, raw error in the
+	// server log only) — the answer itself stays a clean success.
 	CheckoutError        string `json:"checkout_error,omitempty"`
 	CheckoutLinkDegraded bool   `json:"checkout_link_degraded,omitempty"`
-	Version              int64  `json:"version"`
+	// PaymentAttention (#84, spec L169 operator attention) marks an
+	// unresolved retained payment anomaly on this order: an abnormal
+	// collection (mismatched / partial / wrong currency / multiple success)
+	// whose fund fact is recorded but which must never expand benefits. It
+	// rides along on every state (a fulfilled order with a pending
+	// over-payment disposition still carries it); the wire projection maps
+	// it onto fulfillment=attention ONLY for pending reads.
+	PaymentAttention bool  `json:"payment_attention,omitempty"`
+	Version          int64 `json:"version"`
 }
 
 // CreateOrder consumes the quote and opens one pending order with one
@@ -489,12 +507,69 @@ func (s *OrderService) ListOrders(ctx context.Context, tenantID uint64) ([]Order
 	return out, nil
 }
 
+// withAttention（#84 Task 5 / G4）decorates an order projection with the
+// unresolved-anomaly flag: one parameter-bound indexed read per order poll
+// (acceptable; no join). A read failure degrades to "no attention" — the
+// order's primary state must never 500 over the anomaly decoration.
+func (s *OrderService) withAttention(ctx context.Context, view OrderView) OrderView {
+	if ok, err := s.orders.HasUnresolvedPaymentAnomaly(ctx, view.ID); err == nil && ok {
+		view.PaymentAttention = true
+	}
+	return view
+}
+
+// collectedAmountMismatch（#84 / G2）reports whether the channel Query's
+// COLLECTED face contradicts the registered attempt face — amount OR
+// currency: the recovery paths refuse to confirm such a payment (confirming
+// at the attempt's face would silently absorb a wrong amount; building the
+// fact from the attempt's own currency would LAUNDER a wrong-currency
+// collection — the real-stack defect the #84 leg-1 currency variant caught)
+// and retain it as an anomaly instead. 0 / "" (= channel did not report)
+// never mismatches.
+func collectedAmountMismatch(reportedFen, attemptFen int64, reportedCurrency, attemptCurrency string) bool {
+	if reportedFen > 0 && reportedFen != attemptFen {
+		return true
+	}
+	return reportedCurrency != "" && reportedCurrency != attemptCurrency
+}
+
+// recoverMismatchedCollection retains a query-path collected-face mismatch
+// as an awaiting anomaly (#84, spec L127) and returns the pending order view
+// flagged for operator attention. The confirmation is skipped entirely: the
+// order keeps its payable entry (a correct later callback or retry still
+// confirms through the normal leg).
+func (s *OrderService) recoverMismatchedCollection(ctx context.Context, row repocommercial.OrderRow, att repocommercial.PaymentAttemptRow, txn string, collectedFen int64, collectedCurrency string) (OrderView, error) {
+	actualFen := collectedFen
+	if actualFen <= 0 {
+		actualFen = att.AmountFen // channel reported no amount: the currency is the contradiction
+	}
+	actualCurrency := collectedCurrency
+	if actualCurrency == "" {
+		actualCurrency = att.Currency // channel reported no currency: the amount is the contradiction
+	}
+	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
+		TenantID: row.TenantID, OrderID: row.ID, AttemptID: att.MerchantOrderID,
+		Provider: att.Provider, Merchant: att.Merchant, Transaction: txn,
+		Kind:              repocommercial.ClassifyPaymentAnomaly(att.AmountFen, actualFen, att.Currency, actualCurrency),
+		ExpectedAmountFen: att.AmountFen, ActualAmountFen: actualFen,
+		ExpectedCurrency: att.Currency, ActualCurrency: actualCurrency,
+	}); err != nil {
+		return OrderView{}, err
+	}
+	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: domain.OrderStatePending,
+		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
+		CheckoutURL: row.CheckoutURL, PaymentAttention: true, Version: row.Version}, nil
+}
+
 // RecoverOrderStatus is the payment state-recovery path for a PENDING order
 // whose channel result may have been missed (closed tab, lost callback): it
 // re-queries the provider by the ORIGINAL merchant order id and, on a
 // succeeded fact, confirms the payment through the SAME ConfirmPayment
-// transaction the callback path uses. Paid/fulfilled orders are returned
-// untouched; a pending order whose channel is still pending stays pending.
+// transaction the callback path uses. (#84/G2) A succeeded fact whose
+// COLLECTED amount contradicts the attempt face is never confirmed — the
+// mismatch is retained as an anomaly and the order surfaces operator
+// attention. Paid/fulfilled orders are returned untouched; a pending order
+// whose channel is still pending stays pending.
 func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, orderID string) (OrderView, error) {
 	row, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
@@ -504,17 +579,17 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		return OrderView{}, ErrOrderTenantMismatch
 	}
 	if row.State != domain.OrderStatePending {
-		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
-			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+		return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}), nil
 	}
 	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
 	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
 		// No attempt ever registered (e.g. channel unconfigured at creation):
 		// honestly pending, nothing to recover. The persisted checkout link
 		// (R1-35) still rides along so the customer keeps a payment entry.
-		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+		return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 			AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
-			Version: row.Version}, nil
+			Version: row.Version}), nil
 	}
 	if err != nil {
 		return OrderView{}, err
@@ -531,6 +606,12 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		txn := res.ProviderID
 		if txn == "" {
 			txn = att.MerchantOrderID
+		}
+		// (#84/G2) Compare what the channel ACTUALLY collected against the
+		// attempt face BEFORE confirming: a mismatched collection is an
+		// abnormal fact, never a fulfillment.
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,
@@ -549,9 +630,9 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 	// verbatim: the channel said pending (or the confirm re-read the row),
 	// and the customer must be able to reach the payment page again without
 	// a second checkout of the same consumed quote.
-	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+	return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
-		CheckoutURL: row.CheckoutURL, Version: row.Version}, nil
+		CheckoutURL: row.CheckoutURL, Version: row.Version}), nil
 }
 
 // CloseChannelOrder retires one pending order's channel entry in a
@@ -625,6 +706,13 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 		txn := res.ProviderID
 		if txn == "" {
 			txn = att.MerchantOrderID
+		}
+		// (#84/G2) The decisive query carries the COLLECTED amount: a
+		// mismatched collection is retained as an anomaly instead of being
+		// confirmed at the attempt's face (the fund fact survives the close,
+		// the fulfillment right is never minted from a wrong collection).
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,

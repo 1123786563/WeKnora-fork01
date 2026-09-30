@@ -27,9 +27,13 @@ env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//;
 # or an unready db container would silently export EMPTY values and the
 # tagged tests would skip on "env not configured", masking the real failure
 # (skip≠pass discipline). Values come ONLY from lab.env / the stack.
-_t9_base="$(env_value LAGO_API_URL)"
-_t9_orgcred="$(env_value LAGO_ORG_API_KEY)"
-_t9_org="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')"
+# (OCR84-R1-23①) 纯赋值语句的退出码即命令替换的退出码——set -euo pipefail 下
+# env_value 的 grep 未命中（pipefail 传播）或 docker/psql 失败直接 errexit，
+# 下方针对这些故障的显式守卫永远不可达（缺键场景连 stderr 都无输出）。每处
+# 追加 || true，让显式守卫接管失败路径（skip≠pass 诊断纪律）。
+_t9_base="$(env_value LAGO_API_URL)" || true
+_t9_orgcred="$(env_value LAGO_ORG_API_KEY)" || true
+_t9_org="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')" || true
 [ -n "$_t9_base" ] || { echo "LAGO_API_URL missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_orgcred" ] || { echo "LAGO_ORG_API_KEY missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
 [ -n "$_t9_org" ] || { echo "organization id unavailable (db container not ready?)" >&2; return 1 2>/dev/null || exit 1; }
@@ -76,9 +80,22 @@ def gql(query, variables, token=None, org=None):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(req, timeout=30) as r:
         return json.loads(r.read().decode())
+# (OCR84-R1-24) HTTP 200 不等于 GraphQL 成功：凭据失效/Lago 未就绪/schema 漂移
+# 时响应携带 errors 或 data=None，裸下标只剩不可读的 KeyError/TypeError traceback
+# 且环境停留在半初始化状态。集中守卫：errors 存在或 data 缺失时打印错误摘要并
+# 以非零退出。
+def gql_data(what, resp):
+    if resp.get("errors"):
+        print(f"{what}: GraphQL errors:", json.dumps(resp.get("errors"))[:400]); sys.exit(1)
+    if resp.get("data") is None:
+        print(f"{what}: GraphQL answered no data:", json.dumps(resp)[:400]); sys.exit(1)
+    return resp["data"]
 login = gql("mutation($e:String!,$p:String!){loginUser(input:{email:$e,password:$p}){token}}",
             {"e": email, "p": password})
-token = login["data"]["loginUser"]["token"]
+login_token = gql_data("loginUser", login).get("loginUser") or {}
+token = login_token.get("token")
+if not token:
+    print("loginUser answered no token:", json.dumps(login)[:300]); sys.exit(1)
 # v1.53.0 scopes GraphQL by the x-lago-organization header (the t10 lab's
 # RunContext precedent): resolve the operator org's lago_id once via REST.
 org_req = urllib.request.Request(base + "/api/v1/organizations",
@@ -86,14 +103,15 @@ org_req = urllib.request.Request(base + "/api/v1/organizations",
 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(org_req, timeout=30) as r:
     org_id = json.loads(r.read().decode())["organization"]["lago_id"]
 existing = gql('{ paymentProviders(limit: 50) { collection { ... on StripeProvider { code } } } }', {}, token, org_id)
+existing_data = gql_data("paymentProviders", existing)
 # (OCR r2) skip fragment faces without a code key instead of KeyError-ing —
 # a non-Stripe provider row (or a schema drift) must not abort the probe.
-codes = [c["code"] for c in (existing["data"]["paymentProviders"] or {}).get("collection") or [] if "code" in c]
+codes = [c["code"] for c in (existing_data.get("paymentProviders") or {}).get("collection") or [] if "code" in c]
 if "weknora-stripe" not in codes:
     add = gql('mutation($input: AddStripePaymentProviderInput!){addStripePaymentProvider(input:$input){id code}}',
               {"input": {"code": "weknora-stripe", "name": "WeKnora Stripe T9",
                          "secretKey": os.environ["STRIPE_SECRET_KEY"]}}, token, org_id)
-    got = (add.get("data") or {}).get("addStripePaymentProvider")
+    got = (gql_data("addStripePaymentProvider", add).get("addStripePaymentProvider"))
     if not got:
         print("provider registration failed:", json.dumps(add)[:300]); sys.exit(1)
     print("registered provider weknora-stripe")
@@ -109,9 +127,19 @@ PY
 # secret through the same Stripe API and stores it via the MODEL layer
 # (never SQL) — t11 DECISION.md, D8 spirit.
 STORED_FILE=$(mktemp)
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T api bin/rails runner \
+STORED_ERR=$(mktemp)
+# (OCR84-R1-23②) 读取存量 webhook secret 保留 stderr：`2>/dev/null` 又处 set -e
+# 之下，api 容器未就绪/rails 报错时脚本静默死亡，无法区分「读取失败」与「确无
+# 存量 secret」。失败时回显 stderr 尾部再退出。
+if ! docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T api bin/rails runner \
   "s = PaymentProviders::StripeProvider.where(deleted_at: nil).find_by(code: 'weknora-stripe').try(:webhook_secret).to_s; print '__T9SECRET__' + s" \
-  > "$STORED_FILE" 2>/dev/null
+  > "$STORED_FILE" 2> "$STORED_ERR"; then
+  echo "reading the stored webhook secret FAILED (api container ready? rails error follows):" >&2
+  tail -20 "$STORED_ERR" >&2
+  rm -f "$STORED_FILE" "$STORED_ERR"
+  return 1 2>/dev/null || exit 1
+fi
+rm -f "$STORED_ERR"
 STORED=$(sed -n 's/.*__T9SECRET__//p' "$STORED_FILE")
 rm -f "$STORED_FILE"
 if [ -n "$STORED" ]; then

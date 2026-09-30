@@ -431,3 +431,42 @@ func TestNewAlipayProviderRequiresKeyReference(t *testing.T) {
 		t.Fatal("missing public key reference accepted")
 	}
 }
+
+// TestAlipayQueryReportsCollectedAmount（#84 / G2）：Query 必须回传渠道实收额
+// （total_amount 解析为分）——恢复/关单路径据此比对开单面额。金额缺失或不可
+// 解析时 AmountFen=0（渠道未报告），比对跳过，绝不因金额缺失阻断状态映射。
+func TestAlipayQueryReportsCollectedAmount(t *testing.T) {
+	p, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
+		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_trade_no\":\"out-amt\",\"trade_no\":\"trade-amt\",\"trade_status\":\"TRADE_SUCCESS\",\"total_amount\":\"50.00\",\"seller_id\":\"2088000000000001\"}", nil
+	})
+	res, err := p.Query(context.Background(), "out-amt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.AmountFen != 5000 {
+		t.Fatalf("query must report total_amount as collected fen, got %d", res.AmountFen)
+	}
+	// (OCR84-R1-10) A parsed total_amount is by definition CNY — the currency
+	// rides along like the wechat leg so the recovery path's wrong-currency
+	// guard actually compares instead of skipping on an empty currency.
+	if res.AmountCurrency != "CNY" {
+		t.Fatalf("a parsed alipay amount must report currency CNY, got %q", res.AmountCurrency)
+	}
+	if res.State != StateSucceeded || res.ProviderID != "trade-amt" {
+		t.Fatalf("state/provider unchanged by the additive field: %+v", res)
+	}
+	// An unparsable amount degrades to AmountFen=0 without failing the query.
+	p2, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
+		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_trade_no\":\"out-bad\",\"trade_no\":\"trade-bad\",\"trade_status\":\"TRADE_SUCCESS\",\"total_amount\":\"not-a-number\",\"seller_id\":\"2088000000000001\"}", nil
+	})
+	res2, err := p2.Query(context.Background(), "out-bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.AmountFen != 0 {
+		t.Fatalf("an unparsable amount must degrade to 0 (not reported), got %d", res2.AmountFen)
+	}
+	if res2.AmountCurrency != "" {
+		t.Fatalf("an unparsable amount must not report a currency, got %q", res2.AmountCurrency)
+	}
+}
