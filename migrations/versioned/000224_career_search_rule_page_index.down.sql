@@ -1,0 +1,1 @@
+DROP INDEX idx_career_search_rule_page;

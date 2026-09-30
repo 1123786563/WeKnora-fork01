@@ -2,6 +2,7 @@ package career
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -560,6 +561,10 @@ func TestListRulesUsesStableBoundedOwnerScopedPages(t *testing.T) {
 	require.Equal(t, []string{"rule-list-050", "rule-list-051"}, []string{second.Rules[0].RuleID, second.Rules[1].RuleID})
 	_, err = o.ListRules(ctx, "not-a-cursor")
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	unknownVersion, err := json.Marshal(rulePageCursor{Version: 99, TenantID: 96, UserID: "rule-owner", Updated: searchRuleClockBase, RuleID: "rule-list-000"})
+	require.NoError(t, err)
+	_, err = o.ListRules(ctx, base64.RawURLEncoding.EncodeToString(unknownVersion))
+	require.ErrorIs(t, err, ErrInvalidRequest, "unknown cursor versions must fail closed")
 	other := WithScope(context.Background(), Scope{UserID: "neighbor", TenantID: 97})
 	require.NoError(t, o.ClaimSpace(other))
 	otherPage, err := o.ListRules(other, "")
@@ -578,6 +583,44 @@ func TestListRulesUsesStableBoundedOwnerScopedPages(t *testing.T) {
 	for _, key := range []string{"ruleId", "query", "intervalMinutes", "status", "revision", "nextDueAt", "estimate", "createdAt", "updatedAt"} {
 		require.Contains(t, fields, key)
 	}
+}
+
+func TestRuleEditDuringStartedRunPreservesEditedSchedule(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	o.searchRuleNow = func() time.Time { return searchRuleClockBase.Add(2 * time.Minute) }
+	created, err := o.SetRule(ctx, ruleInput("rule-edit-active-create", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("id=?", created.RuleID).Update("next_due_at", searchRuleClockBase.Add(-time.Minute)).Error)
+	var scanned searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&scanned).Error)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+	claim, existing, err := o.claimRulePeriod(ctx, scope, scanned, searchRuleClockBase)
+	require.NoError(t, err)
+	require.NotNil(t, existing)
+	require.Equal(t, RuleRunStatusStarted, existing.Status)
+	var claimRow lifecycleClaim
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND operation=? AND request_id=?", 96, "rule-owner", "rule_run", claim.Run.RequestID).First(&claimRow).Error)
+
+	edit := ruleInput("rule-edit-active-edit", 90, RuleStatusEnabled)
+	edit.RuleID = created.RuleID
+	edit.ExpectedRevision = 0
+	updated, err := o.SetRule(ctx, edit)
+	require.NoError(t, err)
+	var afterEdit searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&afterEdit).Error)
+	finished, err := o.executeClaimedRuleRun(ctx, scope, claim, searchRuleClockBase.Add(5*time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, claim.Run.RequestID, finished.RequestID)
+	var stored searchRuleRecord
+	require.NoError(t, o.db.Where("id=?", created.RuleID).First(&stored).Error)
+	require.Equal(t, updated.Revision, stored.Revision)
+	require.Equal(t, updated.NextDueAt, stored.NextDueAt)
+	require.Equal(t, afterEdit.Revision, stored.Revision)
+	require.Equal(t, afterEdit.UpdatedAt, stored.UpdatedAt) // Terminalization cannot rewrite the edit timestamp.
+	var claims int64
+	require.NoError(t, o.db.Model(&lifecycleClaim{}).Where("operation=? AND request_id=?", "rule_run", claim.Run.RequestID).Count(&claims).Error)
+	require.Zero(t, claims, "terminalization resolves the lifecycle claim")
 }
 
 func TestSecondStaleDueCandidateCannotClaimNextPeriodEarly(t *testing.T) {
@@ -611,6 +654,10 @@ func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, o.db.Create(&searchRuleRunRecord{ID: uuid.NewString(), TenantID: 96, UserID: "rule-owner", RuleID: rule.ID,
 		Period: 1, RequestID: run.RequestID, Status: RuleRunStatusStarted, Body: string(body), CreatedAt: searchRuleClockBase}).Error)
+	err = o.admitLifecycleClaim(ctx, Scope{TenantID: 96, UserID: "rule-owner"}, "rule_run", run.RequestID, rule.Query)
+	require.NoError(t, err, "restart re-admits the original request before its external recovery")
+	err = o.beginLifecycleDeletion(ctx, Scope{TenantID: 96, UserID: "rule-owner"}, "delete-in-progress", "delete-fingerprint")
+	require.ErrorIs(t, err, ErrCareerOperationsBusy, "recovery claim must retain deletion barrier until the run settles")
 
 	o2, err := NewOffice(o.db)
 	require.NoError(t, err)
@@ -635,6 +682,6 @@ func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
 	require.Equal(t, RuleRunStatusCompleted, recovered.Status)
 	var storedRule searchRuleRecord
 	require.NoError(t, o.db.Where("id=?", rule.ID).First(&storedRule).Error)
-	require.Equal(t, uint64(1), storedRule.LastPeriod)
+	require.Equal(t, uint64(0), storedRule.LastPeriod, "legacy started recovery must not fabricate a claim-time schedule advancement")
 	require.Nil(t, storedRule.NextDueAt)
 }
