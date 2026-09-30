@@ -178,8 +178,8 @@ func TestPurchaseRouteMismatchReturns409WithoutOrder(t *testing.T) {
 		Payload: commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: 42, ExternalCustomerID: commercial.ExternalCustomerID(42),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(42),
-			PlanCode: commercial.DeterministicPlanCode("pro", 1),
-			AmountFen: 8800, Currency: commercial.CurrencyCNY,
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      8800, Currency: commercial.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)

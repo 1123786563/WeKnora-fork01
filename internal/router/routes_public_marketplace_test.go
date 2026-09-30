@@ -373,16 +373,17 @@ func TestPublicMarketplaceCatalogAndAdoptAuthorization(t *testing.T) {
 // TestPublicMarketplaceCrossTenantEndToEndAndPrivacy 是 Issue #60 三条验收
 // 标准的最高稳定 Interface 证据（真实 sqlite 迁移流 + 真实服务栈 + 真实
 // HTTP）：
-//   AC1 跨 Tenant 只传播可移植 Release —— 发布者 Agent 的 KB/模型绑定
-//        （kb-publisher / model-publisher）不进入采用方本地 Agent；采用方
-//        的知识绑定完全来自本地映射（kb-tenant-2）。
-//   AC2 发布者和源 Tenant 无法读取采用方身份、映射或 Task 内容 ——
-//        发布者视角（tenant 1）全部可见响应不含任何采用方标识；公共目录
-//        行字段集被严格解码钉死。
-//   AC3 全链真实 HTTP：freeze → tenant release → tenant review → verify →
-//        public submit → platform review → catalog → adopt → variant →
-//        mapping → test → publish → GET /api/v1/agents（#33 移动 Resource
-//        Shelf wire）→ available-agents。
+//
+//	AC1 跨 Tenant 只传播可移植 Release —— 发布者 Agent 的 KB/模型绑定
+//	     （kb-publisher / model-publisher）不进入采用方本地 Agent；采用方
+//	     的知识绑定完全来自本地映射（kb-tenant-2）。
+//	AC2 发布者和源 Tenant 无法读取采用方身份、映射或 Task 内容 ——
+//	     发布者视角（tenant 1）全部可见响应不含任何采用方标识；公共目录
+//	     行字段集被严格解码钉死。
+//	AC3 全链真实 HTTP：freeze → tenant release → tenant review → verify →
+//	     public submit → platform review → catalog → adopt → variant →
+//	     mapping → test → publish → GET /api/v1/agents（#33 移动 Resource
+//	     Shelf wire）→ available-agents。
 func TestPublicMarketplaceCrossTenantEndToEndAndPrivacy(t *testing.T) {
 	r, _, db := newPublicMarketplaceTestApp(t)
 	listingID := publishTenantRelease(t, r)

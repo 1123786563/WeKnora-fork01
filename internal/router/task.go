@@ -14,10 +14,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware/asynqdl"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/hibiken/asynq"
 	"go.uber.org/dig"
 )

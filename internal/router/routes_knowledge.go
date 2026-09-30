@@ -24,7 +24,7 @@ func RegisterChunkerDebugRoutes(r *gin.RouterGroup, g *rbacGuards) {
 //
 // IB2 裁定（K5 Brief (a) 表 2 部分执行）：形参保持宿主 wrapper 类型——完整
 // 切换（*ingest.ChunkHandler）依赖 K1 Brief §9 四步序第 1 步 identity 去方法化
-//（rbac_lookups.go:103/:130 方法仍在 wrapper 类型上，未去方法化），超出 IB2
+// （rbac_lookups.go:103/:130 方法仍在 wrapper 类型上，未去方法化），超出 IB2
 // 单方面可切范围；ChunkerDebug 直引（表 1）与 worker 双栈/Start 切换（(b)/(c)）
 // 已执行。container 侧 ingest.NewChunkHandler 并存供给（门面用模块实例）。
 //

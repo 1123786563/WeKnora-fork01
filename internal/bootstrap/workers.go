@@ -8,6 +8,12 @@ import (
 	"sync"
 )
 
+// TaskHandlerRegistry 是任务处理器登记面的最小接口（sdd-bm 世代命名 WorkerRegistry；
+// 该名已由 IA 登记表占用，此处更名）。SyncTaskExecutor 与 asynq mux 适配器均满足本接口。
+type TaskHandlerRegistry interface {
+	Register(pattern string, handler TaskHandler) error
+}
+
 // TaskHandler 是后台任务处理器的统一签名（对齐 asynq 的 handler 形状），
 // Redis mux 与 Lite SyncTaskExecutor 两条装配路径共用。
 type TaskHandler func(context.Context, *asynq.Task) error

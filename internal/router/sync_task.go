@@ -9,9 +9,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/dig"
@@ -33,7 +33,7 @@ func NewSyncTaskExecutor() *SyncTaskExecutor {
 // Register registers a task handler for a given type pattern. First
 // registration wins: registering an already-installed pattern returns an
 // error and keeps the original handler. SyncTaskExecutor therefore
-// satisfies bootstrap.WorkerRegistry.
+// satisfies bootstrap.TaskHandlerRegistry.
 func (e *SyncTaskExecutor) Register(pattern string, handler bootstrap.TaskHandler) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()

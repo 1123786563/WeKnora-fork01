@@ -11,7 +11,7 @@ import (
 )
 
 // The Lite executor must satisfy the shared worker composition contract.
-var _ bootstrap.WorkerRegistry = (*SyncTaskExecutor)(nil)
+var _ bootstrap.TaskHandlerRegistry = (*SyncTaskExecutor)(nil)
 
 func TestSyncTaskExecutorRegisterDuplicate(t *testing.T) {
 	executor := NewSyncTaskExecutor()
