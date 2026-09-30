@@ -7,7 +7,7 @@
 #
 # ⚠️ ios/ 工程永不入库（根 .gitignore 的 `apps/mobile/ios/`；8d39806f4 曾提交、80fc3648a
 #    已移除，`git ls-files apps/mobile/ios` 恒为 0）——iOS 构建唯一受支持的入口就是本脚本
-#    （prebuild 重放 + pod install），后续批次任务书不得再写「ios 工程已生成并提交」。
+#    （clean prebuild + pod install），后续批次任务书不得再写「ios 工程已生成并提交」。
 #    直接对本地遗留 ios/ 跑裸 xcodebuild 会静默产出缺 expo-audio/expo-network 原生模块的
 #    包（B5 复验 important 发现，2026-09-28）；第 3.5 步的守卫会把这种漂移点名成硬失败。
 set -euo pipefail
@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="${1:-$(pwd)}"
 MOBILE="$ROOT/apps/mobile"
 IOS="$MOBILE/ios"
-EVIDENCE_DIR="$ROOT/docs/plans/issue30-sweep/ios-evidence/t39"
+EVIDENCE_DIR="${IOS_BUILD_EVIDENCE_DIR:-$ROOT/docs/plans/issue30-sweep/ios-evidence/t39}"
 mkdir -p "$EVIDENCE_DIR"
 cd "$MOBILE"
 
@@ -27,10 +27,11 @@ if command -v watchman >/dev/null 2>&1; then
   watchman watch-project "$ROOT" >/dev/null 2>&1 || true &
 fi
 
-# 1) prebuild 重新生成 ios/（.gitignore 不入库）并重放入库 plugin
-#    apps/mobile/plugins/ios-xcode27.js（scene 生命周期、splash wordmark、
-#    Podfile 部署目标钳制与告警抑制）——漂移防护的唯一事实源。
-npx expo prebuild -p ios --no-install
+# 1) clean prebuild 丢弃任何忽略的旧 SDK 输出并重新生成 ios/（.gitignore 不入库）。
+npx expo prebuild -p ios --clean --no-install
+
+# 1.5) 验证当前 Expo SDK 生成的 scene/delegate/link/deployment contract，再安装 Pods。
+pnpm exec tsx scripts/verify-ios-scene-project.ts "$IOS"
 
 # 2) pnpm 工作区下 babel-preset-expo 的符号链接在干净安装后缺失
 #    （B3 实测：Metro「Cannot find module 'babel-preset-expo'」失败于 RN bundle 阶段）——缺则重建。
@@ -40,7 +41,7 @@ if [ ! -e "$MOBILE/node_modules/babel-preset-expo" ]; then
   ln -s "$preset" "$MOBILE/node_modules/babel-preset-expo"
 fi
 
-# 3) Pods（含 plugin 写入的部署目标钳制与 inhibit_all_warnings!）
+# 3) Pods
 cd "$IOS"
 pod install
 
@@ -52,8 +53,8 @@ pod install
 cd "$MOBILE"
 pnpm exec tsx scripts/verify-ios-native-deps.ts
 
-# 4) 模拟器 Release 全量构建。注意：build/ 已存在时无需删除；确需删除则必须回到
-#    第 3 步重建（codegen 生成源码在 build/generated/ios/ReactCodegen 下，B4 实测）。
+# 4) 模拟器 Release 全量构建。clean prebuild 已重建 ios/ 并删除旧 build/ 与 codegen 输出，
+#    因此每次均为全量构建；codegen 源码会在本次构建中重新生成。
 cd "$IOS"
 xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator \
   -configuration Release -derivedDataPath build \
@@ -61,4 +62,5 @@ xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator \
 
 APP="$IOS/build/Build/Products/Release-iphonesimulator/WeKnora.app"
 test -d "$APP" || { echo "expected Release app missing: $APP" >&2; exit 1; }
+python3 "$MOBILE/scripts/verify-ios-framework-closure.py" "$APP" "$IOS/Podfile.properties.json"
 echo "RELEASE_APP=$APP"

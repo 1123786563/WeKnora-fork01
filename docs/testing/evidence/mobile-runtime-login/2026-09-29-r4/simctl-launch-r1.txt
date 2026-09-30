@@ -1,0 +1,8 @@
+2026-09-29 23:08:20.264 WeKnora[15175:4455099] You've implemented -[<UIApplicationDelegate> application:performFetchWithCompletionHandler:], but you still need to add "fetch" to the list of your supported UIBackgroundModes in your Info.plist.
+2026-09-29 23:08:20.265 WeKnora[15175:4455099] You've implemented -[<UIApplicationDelegate> application:didReceiveRemoteNotification:fetchCompletionHandler:], but you still need to add "remote-notification" to the list of your supported UIBackgroundModes in your Info.plist.
+2026-09-29 23:08:20.265 WeKnora[15175:4455099] _setUpFeatureFlags called with release level 2
+objc[15175]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_24A434/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.0.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x106fdc398) and /Library/Developer/CoreSimulator/Volumes/iOS_24A434/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.0.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1079d0310). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+W0929 23:08:22.545588 1809969152 ReactInstance.cpp:267] ReactInstance: evaluateJavaScript() with JS bundle
+com.weknora.mobile: 15175
+LAUNCH_COMMAND_EXIT=124

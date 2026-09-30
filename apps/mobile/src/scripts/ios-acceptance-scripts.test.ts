@@ -16,10 +16,14 @@ const scriptOf = (name: string): string =>
 test('the release build script is a reproducible prebuild -> pods -> Release pipeline', () => {
   const script = scriptOf('ios-release-build.sh');
   assert.match(script, /set -euo pipefail/, '任何一步失败必须中止（验收产物不可半成品）');
-  assert.match(script, /expo prebuild -p ios --no-install/, 'prebuild 重放入库 plugin（ios/ 不入库，漂移防护在这里）');
-  const podAt = script.indexOf('pod install');
-  const buildAt = script.indexOf('xcodebuild ');
+  assert.match(script, /expo prebuild -p ios --clean --no-install/, '必须清除 SDK55 遗留 ios/ 再生成 SDK57 工程');
+  assert.doesNotMatch(script, /ios-xcode27\.js|重放入库 plugin/);
+  const prebuildAt = script.indexOf('expo prebuild -p ios --clean --no-install');
+  const contractAt = script.indexOf('pnpm exec tsx scripts/verify-ios-scene-project.ts');
+  const podAt = script.search(/^pod install$/m);
+  const buildAt = script.search(/^xcodebuild /m);
   assert.ok(podAt >= 0, '必须执行 pod install');
+  assert.ok(contractAt > prebuildAt && podAt > contractAt, '生成工程契约必须在 clean prebuild 后、Pods 前执行');
   assert.ok(buildAt > podAt, 'xcodebuild 必须在 pod install 之后（rm -rf build 连带删 codegen 产物，B4 实测教训）');
   assert.match(script, /-configuration Release/, '证据口径是 Release 包，不是 Debug');
   assert.match(script, /-sdk iphonesimulator/, '模拟器 SDK 口径');
@@ -31,6 +35,7 @@ test('the release build script is a reproducible prebuild -> pods -> Release pip
   const xcodebuildCmdAt = script.search(/^xcodebuild -workspace /m);
   assert.ok(podCmdAt >= 0 && guardCmdAt > podCmdAt && xcodebuildCmdAt > guardCmdAt, 'B5 复验 important 发现：原生依赖漂移守卫必须夹在 pod install 与 xcodebuild 之间——旧 Podfile.lock 缺 expo-audio/expo-network 时裸 xcodebuild 静默产出缺模块的包');
   assert.match(script, /watchman watch-project/, 'B5 复验 minor 发现：watchman 预热缓解主仓库 .worktrees 初始 crawl 挤压构建预算');
+  assert.match(script, /verify-ios-framework-closure\.py" "\$APP" "\$IOS\/Podfile\.properties\.json"/, 'Release must invoke the tested checker with generated mode properties');
 });
 
 test('the acceptance probe script installs before probing and records the no-credential paths', () => {

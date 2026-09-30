@@ -1,0 +1,146 @@
+diff --git a/apps/mobile/src/delivery-integration-smoke.test.ts b/apps/mobile/src/delivery-integration-smoke.test.ts
+index f26ddbfcc..f2137ce32 100644
+--- a/apps/mobile/src/delivery-integration-smoke.test.ts
++++ b/apps/mobile/src/delivery-integration-smoke.test.ts
+@@ -1,6 +1,6 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { deliveryIntegrationConfig, deliveryRecoveryEvidenceOf } from './delivery-integration-smoke.ts';
++import { deliveryIntegrationConfig, deliveryRecoveryEvidenceOf, runDeliveryIntegration } from './delivery-integration-smoke.ts';
+ import { DeliveryRecoveryError } from '@weknora/mobile-core';
+ 
+ test('config is skipped without env and rejected on private hosts', () => {
+@@ -46,3 +46,118 @@ test('recovery results are recorded without hiding conflicts or failures', () =>
+   assert.deepEqual(deliveryRecoveryEvidenceOf(undefined, new DeliveryRecoveryError('DELIVERY_INVALID_INPUT', 'missing record')), { recovery: 'not-needed' });
+   assert.deepEqual(deliveryRecoveryEvidenceOf(undefined, new Error('deployment unavailable')), { recovery: 'failed', failure: 'recovery: deployment unavailable' });
+ });
++
++const runId = 'run-exact-42';
++const deliveryId = 'delivery-exact-99';
++const deliveryWire = (state: string) => ({
++  id: deliveryId, task_id: 'task-1', run_id: runId, state,
++  repo: 'octocat/hello', baseline_sha: 'b0000000000000000000000000000000000000000',
++  branch: 'weknora/task/task-1', commit_sha: 'c1', pr_number: 0, pr_url: '',
++  remote_login: 'octocat', action_id: 'action-1', action_state: 'dispatched',
++  digest: 'd1', approver: 'u1', failure: '', files: 1,
++  created_at: '2026-09-24T00:00:00Z', updated_at: '2026-09-24T00:00:30Z',
++});
++
++function installDeliveryFetch(options: {
++  tasks?: Array<{ run_id: string; session_id: string; status: string; created_at: string; updated_at: string }>;
++  deliveryReads?: Array<'read' | 'absent'>;
++  initialState?: string;
++  actionStatus?: number;
++  actionBody?: unknown;
++}) {
++  const calls: Array<{ method: string; url: string }> = [];
++  const previousFetch = globalThis.fetch;
++  let deliveryReadIndex = 0;
++  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
++    const url = String(input);
++    const method = (init?.method ?? 'GET').toUpperCase();
++    calls.push({ method, url });
++    const response = (status: number, body: unknown) => ({
++      status,
++      headers: { get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null },
++      json: async () => body,
++      text: async () => JSON.stringify(body),
++    }) as Response;
++    const path = new URL(url).pathname;
++    if (path === '/api/v1/auth/login') return response(200, { success: true, data: { token: 'access', refresh_token: 'refresh', user: { id: 'user-1' }, tenant: { id: 7 } } });
++    if (path === '/api/v1/auth/me') return response(200, { success: true, data: { user: { id: 'user-1' }, tenant: { id: 7 } } });
++    if (path === '/api/v1/system/capabilities') return response(200, { code: 0, data: { protocol_minimum: 3, protocol_maximum: 3 } });
++    if (path === '/api/v1/workbench/executions') return response(200, { success: true, data: { items: options.tasks ?? [{ run_id: runId, session_id: 'task-1', status: 'succeeded', created_at: '2026-09-24T00:00:00Z', updated_at: '2026-09-24T00:00:30Z' }] } });
++    if (path === `/api/v1/workbench/executions/${runId}/delivery`) {
++      const read = options.deliveryReads?.[deliveryReadIndex++] ?? 'read';
++      if (read === 'absent') return response(404, { code: 'code_delivery_not_found' });
++      return response(200, { success: true, data: { delivery: deliveryWire(options.initialState ?? 'pushed') } });
++    }
++    if (path.includes('/delivery/') && (path.endsWith('/dispatch') || path.endsWith('/resolve'))) {
++      if (options.actionStatus !== undefined && options.actionStatus >= 400) {
++        return response(options.actionStatus, options.actionBody ?? { code: 'code_delivery_state_conflict', message: 'state changed' });
++      }
++      return response(200, { success: true, data: { delivery: deliveryWire('delivered') } });
++    }
++    throw new Error(`unexpected fetch ${method} ${url}`);
++  }) as typeof fetch;
++  return { calls, restore: () => { globalThis.fetch = previousFetch; } };
++}
++
++const integrationConfig = (recover: boolean) => ({ enabled: true as const, deploymentOrigin: 'https://weknora.example.com', email: 'a@b.c', password: 'pw', recover });
++
++test('runDeliveryIntegration keeps recovery opt-in and skips recovery when no delivery was read', async () => {
++  for (const scenario of [
++    { recover: false, deliveryReads: ['read' as const] },
++    { recover: true, deliveryReads: ['absent' as const] },
++    { recover: true, tasks: [] },
++  ]) {
++    const fake = installDeliveryFetch(scenario);
++    try {
++      const evidence = await runDeliveryIntegration(integrationConfig(scenario.recover));
++      assert.equal(evidence.recovery, 'skipped');
++      assert.equal(fake.calls.filter(({ url }) => /\/delivery\/[^/]+\/(dispatch|resolve)$/.test(new URL(url).pathname)).length, 0);
++      assert.equal(fake.calls.filter(({ url }) => new URL(url).pathname.endsWith(`/executions/${runId}/delivery`)).length, scenario.tasks ? 0 : 1);
++    } finally { fake.restore(); }
++  }
++});
++
++test('runDeliveryIntegration uses the exact run and delivery IDs and dispatches pushed state', async () => {
++  const fake = installDeliveryFetch({});
++  try {
++    const evidence = await runDeliveryIntegration(integrationConfig(true));
++    assert.equal(evidence.deliveryRead, 'read', `evidence=${JSON.stringify(evidence)} calls=${JSON.stringify(fake.calls)}`);
++    assert.equal(evidence.recovery, 'recovered');
++    assert.equal(evidence.recoveryState, 'delivered');
++    assert.ok(fake.calls.some(({ method, url }) => method === 'POST' && new URL(url).pathname === `/api/v1/workbench/executions/${runId}/delivery/${deliveryId}/dispatch`));
++    assert.equal(fake.calls.some(({ url }) => new URL(url).pathname.endsWith('/resolve')), false);
++  } finally { fake.restore(); }
++});
++
++test('runDeliveryIntegration resolves unknown state and records state conflicts as not-needed', async () => {
++  const unknown = installDeliveryFetch({ initialState: 'unknown' });
++  try {
++    const evidence = await runDeliveryIntegration(integrationConfig(true));
++    assert.equal(evidence.recovery, 'recovered');
++    assert.ok(unknown.calls.some(({ method, url }) => method === 'POST' && new URL(url).pathname === `/api/v1/workbench/executions/${runId}/delivery/${deliveryId}/resolve`));
++    assert.equal(unknown.calls.some(({ url }) => new URL(url).pathname.endsWith('/dispatch')), false);
++  } finally { unknown.restore(); }
++
++  const conflict = installDeliveryFetch({ actionStatus: 409, actionBody: { code: 'code_delivery_state_conflict', message: 'state changed' } });
++  try {
++    const evidence = await runDeliveryIntegration(integrationConfig(true));
++    assert.equal(evidence.recovery, 'not-needed');
++    assert.equal(evidence.failure, undefined);
++  } finally { conflict.restore(); }
++});
++
++test('runDeliveryIntegration classifies recovery input errors and appends backend failure detail', async () => {
++  const invalid = installDeliveryFetch({ deliveryReads: ['read', 'absent'] });
++  try {
++    const evidence = await runDeliveryIntegration(integrationConfig(true));
++    assert.equal(evidence.recovery, 'not-needed');
++    assert.equal(evidence.failure, undefined);
++  } finally { invalid.restore(); }
++
++  const failed = installDeliveryFetch({ actionStatus: 503, actionBody: { code: 'service_unavailable', message: 'delivery service unavailable' } });
++  try {
++    const evidence = await runDeliveryIntegration(integrationConfig(true));
++    assert.equal(evidence.recovery, 'failed');
++    assert.match(evidence.failure ?? '', /recovery: delivery service unavailable/);
++  } finally { failed.restore(); }
++});
+diff --git a/apps/mobile/src/delivery-integration-smoke.ts b/apps/mobile/src/delivery-integration-smoke.ts
+index f247a223b..794d2f610 100644
+--- a/apps/mobile/src/delivery-integration-smoke.ts
++++ b/apps/mobile/src/delivery-integration-smoke.ts
+@@ -58,8 +58,8 @@ export function deliveryRecoveryEvidenceOf(result: { state: string } | undefined
+   return { recovery: 'failed', failure: `recovery: ${detail}` };
+ }
+ 
+-/** 真实 transport + Runtime 授权通道 + 交付读面。只读：不发起 prepare/dispatch
+- * （真实交付链证据由 Go 侧 blocked-env 测试承载）。装配与 material-integration-smoke.ts
++/** 真实 transport + Runtime 授权通道 + 交付读面。默认流程只读；显式启用 recovery 时
++ * 可通过授权通道发起 dispatch/resolve（真实交付链证据由 Go 侧 blocked-env 测试承载）。装配与 material-integration-smoke.ts
+  * 的 runMaterialIntegration 同构。 */
+ export async function runDeliveryIntegration(config: Extract<DeliveryIntegrationConfig, { enabled: true }>): Promise<DeliveryIntegrationEvidence> {
+   const evidence: DeliveryIntegrationEvidence = {

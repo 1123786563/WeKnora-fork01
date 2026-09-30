@@ -16,11 +16,19 @@
 | 评论数 | 0（API 字段 0，timeline commented 事件 0，三者一致） |
 | 原生 sub-issues | 无（`sub_issues` API 返回空数组） |
 | 声明式 Parent | 无（本 Issue 为根） |
-| timeline cross-referenced | 41 条，来源恰为 #31–#71（全部为 Issue，无 PR） |
+| timeline cross-referenced | 42 条：#31–#71 共 41 个 Issue，另有 PR #174 |
 | 声明式 Blocked by | 无 |
 | 正文中的 #引用 / T 编号 | 无（`grep -cE '#[0-9]+'` = 0） |
-| 关联 PR | 无（timeline 中无来自 PR 的 cross-referenced 事件；全仓库仅 PR #1、#2，均为 miniprogram QA 修复，与本 Issue 无关） |
+| 关联 PR | #174（open，非 draft；`codex/issue30-mobile-office` → `main`；head `06b92164c48e3a8d07cf2a6806a585bae4435b48`；GitHub `mergeable_state=dirty`；2026-09-29 API 复核） |
 | 任务清单 | 0 条 checkbox，已勾选 0 条 |
+
+## 实时复核（2026-09-29，GitHub API）
+
+- 来源：`GET /repos/1123786563/WeKnora-fork01/issues/30`、分页 `GET .../issues/30/timeline`、`GET .../pulls/174`；读取时间 2026-09-29（Asia/Shanghai）。
+- #30 仍为 open，标签 `ready-for-agent`，评论 0，更新时间仍是 `2026-09-20T13:28:18Z`；`sub_issues` 分页返回空数组，正文未引用其他编号。
+- Timeline 有 #31–#71 的 41 条 Issue cross-reference 和 PR #174 一条 cross-reference。各子 Issue 正文声明 `## Parent` → #30；这构成声明式父子范围，不是原生 sub-issue 关系。
+- PR #174 当前 open、非 draft，head 分支 `codex/issue30-mobile-office`，base `main`，head SHA `06b92164c48e3a8d07cf2a6806a585bae4435b48`，553 commits / 957 changed files，更新时间 `2026-09-28T04:52:27Z`，GitHub 报告 `mergeable_state=dirty`。只读取状态，未修改 PR。
+- 原快照中“无关联 PR”与“仅 PR #1/#2”已过时；保留时间戳事实，不把 PR #174 视为已满足验收的证据。其 head 从本轮起始 BASE `db234c5eb171f2dde7427d382b55b503a038f879` 延伸 372 commits；后续只在隔离本地集成分支评估该基线，不推送或合并。
 
 ## 正文全文
 
@@ -229,4 +237,4 @@ WeKnora 后端继续作为 Deployment、Tenant、Task、Run、权限、预算、
 
 ## 关联 PR
 
-无。本 Issue timeline 中 cross-referenced 事件来源均为 Issue（非 PR）；仓库全部 PR（#1、#2，MERGED）与 #30 移动 AI Office 系列无关。
+原始 2026-09-23 快照中无关联 PR；截至 2026-09-29，timeline 另有 PR #174 cross-reference，当前状态见上方实时复核。

@@ -3,7 +3,9 @@
 - 仓库: 1123786563/WeKnora-fork01
 - 父 Issue: #30 「Spec: WeKnora 移动 AI Office」（open，标签 ready-for-agent，无评论）
 - 下级 Issue: #31–#71（T01–T41，共 41 个），全部在正文中声明 `## Parent` → #30
-- 收集时间: 2026-09-23（UTC 时戳以各 Issue 文件内 API 数据为准）
+- 原始树快照: 2026-09-23（各 Issue 文件保存原始 API 数据）
+- 实时复核: 2026-09-29（GitHub API，repo `1123786563/WeKnora-fork01`）
+- 根 Issue 新增 cross-reference: PR #174（open，dirty mergeable state；详见 [issue-30.md](issue-30.md)）
 
 ## 层级树
 
@@ -56,7 +58,7 @@
 | 编号 | T | 标题 | URL | 父节点 | 状态 | Blocked by | 关联 PR | 处理决定（本次收集建议） |
 |---|---|---|---|---|---|---|---|---|
 | #30 | - | Spec: WeKnora 移动 AI Office | https://github.com/1123786563/WeKnora-fork01/issues/30 | -（根） | open | 无 | 无 | 作为父规格 Issue 保留为事实源；原生 sub-issues 为空，父子关系依赖 #31–#71 的声明式 `## Parent` |
-| #31 | T01 | 原生客户端登录并进入受支持的 Deployment | https://github.com/1123786563/WeKnora-fork01/issues/31 | #30 | open | 无 | 无 | 保持 open：实现已集成 feature/mobile-office@0c5a6bdc，但验收开放（iOS 27 Scene lifecycle 阻塞、HTTPS staging 登录/OIDC 与 Android 设备证据缺失）→ 待验收收口 |
+| #31 | T01 | 原生客户端登录并进入受支持的 Deployment | https://github.com/1123786563/WeKnora-fork01/issues/31 | #30 | open | 无 | 无 | 保持 open / blocked-external（部分）：本地 iOS 27 scene/startup 已修复，R4 Release 登录界面显示在状态栏下方；HTTPS staging 密码/OIDC、真实 Deployment capability 和 Android 真机证据仍待验收 → 待外部验收收口 |
 | #32 | T02 | Active Tenant 切换与 Scoped Vault 隔离 | https://github.com/1123786563/WeKnora-fork01/issues/32 | #30 | open | #31 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |
 | #33 | T03 | Resource Shelf 展示当前空间可用资源 | https://github.com/1123786563/WeKnora-fork01/issues/33 | #30 | open | #32 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |
 | #34 | T04 | 首页 Attention 与统一 Task 列表 | https://github.com/1123786563/WeKnora-fork01/issues/34 | #30 | open | #32 | 无 | open：无评论、无关联 PR、任务清单 0/3 勾选，未见实现痕迹 → 待处理（纳入 sweep 逐项规划） |
@@ -111,7 +113,7 @@
 2. #31–#71 各自的原生 sub-issues 也为空（无嵌套子 Issue），下级结构到 T01–T41 一层为止。
 3. `## Blocked by` 声明与 GitHub 原生 blocked-by 关系完全重合，无仅声明未建原生关系（或反之）的项。Blocked by 目标全部落在 #31–#70，即 #30 后代集合内部，无外部依赖 Issue。
 4. #30 正文与评论均无 `#NN` Issue 引用、无 T 编号引用，评论数为 0 → 无额外声明的子任务；#31–#71 正文除 Parent/Blocked by 段外亦无其它 `#NN` 引用。评论中仅 #58 第 4 条评论存在一处自引用（"Ticket #58"）。
-5. 关联 PR: #30–#71 的 timeline 中无任何来自 PR 的 cross-referenced 事件；仓库仅有的 PR #1、#2（MERGED，miniprogram QA 回归修复）与本系列无关。
+5. 关联 PR（原始 2026-09-23 快照）: 当时 #30–#71 的 timeline 无来自 PR 的 cross-reference；2026-09-29 复核发现根 Issue #30 新增 PR #174 cross-reference，当前状态见 [issue-30.md](issue-30.md)。子 Issue 的各自关联 PR 字段仍代表 2026-09-23 快照，尚未逐个重新轮询。
 6. #58（T28）为唯一 closed Issue，历经 关闭→重开→再关闭（详见 issue-58.md 评论摘要）；#31（T01）open 但评论表明实现已集成分支、验收开放。
 
 ## 下游产物

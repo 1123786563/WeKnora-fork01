@@ -17,6 +17,7 @@ import { createConfigurationApi } from './configuration.ts';
 import { createMbtiApi } from './mbti.ts';
 import { createExpertsApi } from './experts.ts';
 import { createSubagentsApi } from './subagents.ts';
+import { createUserFavoritesApi } from './user-favorites.ts';
 import { createMarketApi } from './market.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
@@ -33,7 +34,6 @@ import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
 import { createCareerApi } from './career.ts';
-import type { CareerObserver } from './career/types.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -58,8 +58,6 @@ export interface WeKnoraClientOptions {
   baseURL: string;
   transport: HttpTransport;
   timeoutMs?: number;
-  /** Runtime-owned Career revision-hint source. `career.observe()` throws CareerObservationUnavailableError when omitted. */
-  careerObserver?: CareerObserver;
 }
 
 export interface KnowledgeBaseListParams {
@@ -301,6 +299,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const mbti = createMbtiApi(request);
   const experts = createExpertsApi(request);
   const subagents = createSubagentsApi(request);
+  const userFavorites = createUserFavoritesApi(request);
   const market = createMarketApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
@@ -313,18 +312,6 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const analytics = createAnalyticsApi(request);
   const usage = createUsageApi(request, requestBinary);
   const queryHistory = createQueryHistoryApi(request, requestBinary);
-  function assertCareerDeployment(scope: { deploymentOrigin: string }): void {
-    let baseOrigin: string;
-    try { baseOrigin = new URL(options.baseURL).origin; } catch { throw new Error('Career API requires an absolute deployment base URL'); }
-    if (baseOrigin !== scope.deploymentOrigin) throw new Error('Career scope deployment does not match the authenticated API client');
-  }
-  const career = createCareerApi(input => {
-    assertCareerDeployment(input.scope);
-    return request(input);
-  }, options.careerObserver === undefined ? undefined : (scope, onRevision) => {
-    assertCareerDeployment(scope);
-    return options.careerObserver!(scope, onRevision);
-  });
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {
@@ -367,6 +354,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   return {
     request,
     requestBinary,
+    career: createCareerApi(request, requestBinary),
     knowledgeBases: {
       async list(params: KnowledgeBaseListParams = {}): Promise<KnowledgeBase[]> {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });
@@ -432,31 +420,15 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     analytics,
     usage,
     queryHistory,
-    career,
     embed,
     sessions,
-    // Per-user starred resources (DB-backed; Vue frontend/src/api/user-favorites.ts,
-    // migration 000047 + internal/handler/user_resource_favorite.go). The backend
-    // scopes rows to the active (user, tenant) pair from the auth context, so no
-    // user_id/tenant_id parameters cross the wire.
-    userFavorites: {
-      list: async (type: 'kb' | 'agent'): Promise<Array<{ resource_id: string; resource_type: string; created_at?: string }>> => {
-        const body = await request({ method: 'GET', path: `/api/v1/user/favorites?type=${encodeURIComponent(type)}` }) as { success?: boolean; data?: Array<{ resource_id: string; resource_type: string; created_at?: string }> } | null;
-        return body?.data ?? [];
-      },
-      add: async (type: 'kb' | 'agent', id: string): Promise<void> => {
-        await request({ method: 'POST', path: '/api/v1/user/favorites', body: { type, id } });
-      },
-      remove: async (type: 'kb' | 'agent', id: string): Promise<void> => {
-        await request({ method: 'DELETE', path: `/api/v1/user/favorites/${encodeURIComponent(type)}/${encodeURIComponent(id)}` });
-      },
-    },
     sandbox: { issueTicket: sandbox.issueTicket, skills: sandboxSkills },
     sandboxConfigurations,
     configuration,
     mbti,
     experts,
     subagents,
+    userFavorites,
     market,
     chat: {
       approvals: chatApprovals,

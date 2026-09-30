@@ -1,129 +1,62 @@
-# T01 iOS 27 Scene Lifecycle Follow-up Plan
+# T31 iOS 27 Scene Lifecycle Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to execute this plan task by task after approval. Each implementation task needs a fresh implementer and independent review.
 
-**Goal:** Ensure the T01 WeKnora iOS app launches to its Deployment Login surface on iOS 27 by adopting Expo's supported UIKit scene lifecycle.
+**Goal:** Restore Issue #31's native iOS 27 startup by generating Expo's supported UIKit scene lifecycle, building a coherent Release dependency graph, and rendering the Deployment Login surface below system safe areas.
 
-**Architecture:** Keep Expo Router and the existing Mobile Runtime composition. Upgrade the native toolchain from Expo SDK 55 to stable Expo SDK 57 scene support, opt in through Expo's `expo-build-properties` config plugin, and let Expo prebuild generate its supported `ExpoReactNativeFactoryProvider`/scene configuration. Do not maintain a hand-written SceneDelegate.
+**Architecture:** Preserve the WeKnora Mobile Runtime, auth/capability gates, app routes, and `weknora://` callback handling. Expo SDK 57 owns generated iOS scene configuration and native startup. `apps/mobile` remains the composition root; native project output is generated for verification and is not committed. The approved spec and ADR define product/runtime boundaries but do not prescribe Expo versions or an iOS minimum; those values follow the recorded SDK compatibility ruling below.
 
-**Tech Stack:** Expo SDK `~57.0.23` or newer within SDK 57; `expo-build-properties` `~57.0.20` or newer within SDK 57; React Native `0.86.3` and React `19.2.3` as resolved by `expo install --fix`; iOS Simulator SDK 27; Node/pnpm workspace.
+**Tech Stack:** Expo SDK 57 (resolved SDK-compatible patches), Expo Router, React 19.2.3, React Native 0.86.3, `expo-build-properties` 57, pnpm workspace, Xcode/iOS 27 simulator, generated CocoaPods project.
 
-**Spec:** `docs/specs/2026-09-20-mobile-ai-office-design.md`; parent Ticket plan: `docs/superpowers/plans/2026-09-20-t01-mobile-runtime-login.md`; GitHub Ticket #31.
+**Spec sources:** Approved [mobile AI Office product spec](../../../specs/2026-09-20-mobile-ai-office-design.md), [native mobile ADR 0005](../../../adr/0005-weknora-native-mobile-client.md), [Issue #31 snapshot](../issues/issue-31.md), [issue DAG](../dag.md), and [mobile product domain context](../../../../CONTEXT.md). The predecessor implementation record is [T01 mobile runtime login plan](../../../superpowers/plans/2026-09-20-t01-mobile-runtime-login.md); the iOS 27 follow-up predecessor is [2026-09-21 scene lifecycle plan](../../../superpowers/plans/2026-09-21-t01-ios27-scene-lifecycle.md).
 
 ## Global Constraints
 
-- WeKnora remains the only identity and Tenant authorization authority.
-- The iOS app must keep using the existing Mobile Runtime and may show an authorized surface only after login, `/auth/me`, and capability negotiation succeed.
-- Use Expo's supported scene lifecycle config plugin; do not hand-maintain generated `ios/` project files.
-- `ios.enableSceneSupport` requires Expo `57.0.23+` and `expo-build-properties` `57.0.20+`.
-- Set iOS deployment target to `16.4`, the minimum supported by Expo SDK 57 according to the current official Expo SDK reference.
-- Preserve Android support and all existing Expo app routes, custom URL scheme, SecureStore adapters, and package boundaries.
-- No staging credentials are added to tests, source, logs, or the plan.
+- WeKnora remains the identity and Tenant authorization authority. Do not expose an authorized surface before login, `/auth/me`, and capability negotiation succeed.
+- Preserve routes, URL forwarding, SecureStore integration, package boundaries, and Android compatibility.
+- Use Expo's generated scene delegate and project configuration. Do not hand-maintain generated `apps/mobile/ios` files or commit generated native output.
+- The approved SDK57 ruling is recorded in [T31 progress](../../../../.superpowers/sdd/plan-t31-ios27/progress.md): use SDK 57 scene support and top-level `expo.ios.deploymentTarget = "16.4"`. The older predecessor's 16.0 value is obsolete for current acceptance; the approved product spec is silent on these version values.
+- Keep staging credentials and secrets out of code, tests, logs, and documentation. Simulator startup does not establish external authentication or device acceptance.
 
 ## Review Focus
 
-- SDK drift must not leave any Expo module on an incompatible major; validate with `expo install --fix` and `expo-doctor`.
-- Prebuild must actually emit `UIApplicationSceneManifest` and the supported Expo scene delegate; validating only `app.json` is insufficient.
-- The scene delegate must still start the same `main` React Native module and route the custom `weknora://` auth callback once.
-- Raising the iOS minimum must be explicit in Expo config and generated Pod/Xcode settings, not only a one-off CLI override.
-- Native app startup must render Deployment Login; Expo JavaScript export success or a running process with a black screen does not count.
+- Generated output maps the application scene role to Expo's supported `EXExpoAppSceneDelegate`; generated AppDelegate conforms to `ExpoReactNativeFactoryProvider` and forwards both URL callback paths.
+- Every app-target Xcode configuration and effective generated deployment setting uses 16.4.
+- Clean prebuild removes stale ignored native output before contract checks and CocoaPods.
+- Release dependency validation checks the actual app executable and embedded frameworks, fails closed on missing dependencies or inspection errors, and matches its integration tests.
+- The iOS 27 Release app visibly renders Deployment Login with safe-area spacing; no simulator process-only or JS-export evidence is treated as visible startup.
+- Issue #31 remains open until external HTTPS staging login/OIDC/capability and Android device checks have evidence.
 
----
+## Task and Interface Coverage
 
-## File Structure
+Original acceptance is preserved from Issue #31 and the predecessor plans: SDK57 scene lifecycle; generated project contract; URL forwarding; visible iOS 27 startup; safe-area layout; Release dependency closure; Android compatibility checks; and external auth/capability/device checks. The exact original step sequence is not fully reconstructable from one durable task record; the established implementation and test slices below are grounded in `task-report.md` and the repair records rather than invented as an original sequence.
 
-| Path | Responsibility |
-|---|---|
-| `apps/mobile/package.json` | SDK 57 and matching React Native/React/native module versions. |
-| `apps/mobile/app.json` | Expo scene-support opt-in and explicit iOS deployment target. |
-| `pnpm-lock.yaml` | Resolved workspace dependency graph. |
-| `apps/mobile/src/native-project-config.test.ts` | Public config invariants for SDK floor, scene opt-in, and iOS minimum. |
-| `apps/mobile/src/android-release-config.test.ts` | Keep the release dependency contract aligned to the SDK57 versions selected by Expo. |
-| `apps/mobile/src/release-deps.test.ts` | Update the direct Expo 55 major-version assertions affected by the SDK upgrade. |
-| `apps/mobile/src/app-smoke.test.tsx` | Keep its React module stub compatible with SDK57 React 19.2.3 JSX runtime, preserving existing behavior assertions. |
-| `docs/testing/mobile-runtime-login-device-acceptance.md` | Add the iOS 27 simulator build/install/start evidence and remaining real staging-device cases. |
+| Task | Consumes → Produces | Verification and status at DOC1 base `1134dda07` |
+|---|---|---|
+| SDK/config and app contract | Expo app/package config → SDK57-compatible dependencies, explicit scene opt-in and iOS 16.4 target | Focused native config and Android release config tests; frozen install; Expo dependency check/doctor; mobile typecheck/tests and iOS/Android exports. Original implementation is present and reported verified in `task-report.md`. |
+| Generated native project and startup | SDK57 config → generated scene manifest/delegate, callback contract and visible simulator surface | Clean prebuild contract checker, Pods, Release build, iOS27 install/launch and screenshot. Initial startup evidence is recorded in `task-report.md`; later safe-area and generated-project repairs are in `fix-progress.md`. |
+| Safe-area login surface | Root navigation → protected safe-area content layout | App smoke tests and iOS27 Release screenshot. R2 verification is recorded in `fix-progress.md`; external auth remains pending. |
+| Release framework closure (R4) | Built `.app` and generated mode properties → fail-closed framework checker plus retained build/launch evidence | R4 rounds 1–3 and their scoped reviews are recorded in `fix-progress.md` and `fix-task-4-r*-review.md`; repair round 3 passed scoped review. |
+| Generated scene contract (R1/R3) | Clean prebuild output → structural scene, callback and target-setting verification | R1/R3 repair rounds and final scoped review are recorded in `fix-progress.md`; final R3 review passed with documented low limits. |
+| Integrated final review repairs | T31 integrated implementation → repaired framework validation and current durable records | At this plan's base, final review requests T31-F1 Medium (resolve `@loader_path`/`@executable_path` dependencies), T31-F2 Medium (this missing plan), and T31-F3 Low (stale device acceptance heading). The parent repair plan assigns these to FR1, DOC1, DOC2. F1 is not complete here. |
+| External acceptance | Authorized HTTPS deployment and Android device → real auth/OIDC/capability and device evidence | Pending; no credential, device, or external staging acceptance is claimed. |
 
-Generated `apps/mobile/ios/` output is verification-only and must not be committed.
+## Execution and Verification Records
 
-## Interface Contract
-
-The existing runtime API and app routes remain unchanged. Expo prebuild must generate:
-
-- `UIApplicationSceneManifest` with Expo's supported scene delegate class;
-- an AppDelegate conforming to `ExpoReactNativeFactoryProvider` and no longer creating the React Native `UIWindow` in `didFinishLaunchingWithOptions`;
-- iOS build settings with deployment target `16.4`.
-
-## Implementation Tasks
-
-### Task 1: Pin the scene-lifecycle config contract with a failing test
-
-**Files:**
-- Create: `apps/mobile/src/native-project-config.test.ts`
-- Test: `apps/mobile/src/native-project-config.test.ts`
-
-**Interfaces:**
-- Consumes: `apps/mobile/app.json` and `apps/mobile/package.json`.
-- Produces: a config-level assertion that SDK 57 scene support and the iOS 16 minimum are explicit.
-
-- [ ] **Step 1: Write the failing config test.** Load the package and Expo config as JSON. Assert Expo SDK major/minor is 57 with patch at least 23; `expo-build-properties` is declared; the build-properties plugin has `ios.enableSceneSupport === true` and the top-level Expo `ios.deploymentTarget === "16.4"`.
-- [ ] **Step 2: Run the test and verify RED.** Run `pnpm --filter @weknora/mobile exec tsx --test src/native-project-config.test.ts` from `apps/mobile`. It must fail on the current Expo 55 package and missing plugin config, not due to loader or path errors.
-- [ ] **Step 3: Commit the failing test only** as `test(mobile): pin iOS scene lifecycle config`.
-
-### Task 2: Upgrade to supported Expo scene lifecycle configuration
-
-**Files:**
-- Modify: `apps/mobile/package.json`
-- Modify: `apps/mobile/app.json`
-- Modify: `pnpm-lock.yaml`
-- Test: `apps/mobile/src/native-project-config.test.ts`
-
-**Interfaces:**
-- Consumes: Task 1 config contract.
-- Produces: SDK 57-compatible native dependencies; Expo prebuild opt-in for `EXExpoAppSceneDelegate`; explicit iOS 16 minimum.
-
-- [ ] **Step 1: Upgrade the Expo SDK to `~57.0.23` and add Expo's matching `expo-build-properties` plugin** using `pnpm --filter @weknora/mobile exec expo install expo@~57.0.23 expo-build-properties`.
-- [ ] **Step 2: Resolve compatible package versions** with `pnpm --filter @weknora/mobile exec expo install --fix`; keep all package versions in the same SDK 57 compatibility set.
-- [ ] **Step 3: Configure the plugin** in `apps/mobile/app.json` with `ios.enableSceneSupport: true`; set top-level Expo `ios.deploymentTarget: "16.4"`, then run the Task 1 test and verify GREEN.
-- [ ] **Step 4: Run `pnpm install --frozen-lockfile`, `pnpm --filter @weknora/mobile typecheck`, and `pnpm --filter @weknora/mobile test`**; all must pass.
-- [ ] **Step 5: Run `pnpm --filter @weknora/mobile exec expo-doctor`** and resolve SDK dependency compatibility findings without changing unrelated packages.
-- [ ] **Step 6: Commit** the SDK/config/lockfile change as `fix(mobile): enable supported iOS scene lifecycle`.
-
-### Task 3: Verify generated native project and iOS 27 startup
-
-**Files:**
-- Modify: `docs/testing/mobile-runtime-login-device-acceptance.md`
-- Test: generated native project in an isolated temporary worktree; no generated iOS files committed.
-
-**Interfaces:**
-- Consumes: the Expo config and SDK 57 package graph from Task 2.
-- Produces: evidence that generated scene configuration builds, installs, and renders Deployment Login on iOS 27.
-
-- [ ] **Step 1: Generate the native project** with `pnpm --filter @weknora/mobile exec expo prebuild --clean --platform ios --no-install` in a disposable worktree.
-- [ ] **Step 2: Assert the generated project contract.** `plutil` must find `UIApplicationSceneManifest`; generated `AppDelegate.swift` must use `ExpoReactNativeFactoryProvider`; generated native source must not create the legacy RN window in `didFinishLaunchingWithOptions`; the Pod/Xcode deployment target must be `16.4`.
-- [ ] **Step 3: Build and install.** Run `pod install`, `xcodebuild ... -sdk iphonesimulator -destination 'platform=iOS Simulator,id=<iOS27 simulator>' CODE_SIGNING_ALLOWED=NO build`, then `xcrun simctl install` and `simctl launch`.
-- [ ] **Step 4: Verify rendered surface.** Capture the simulator screen and assert visually that Deployment Login is visible rather than a black screen; inspect launch logs for absence of the UIScene lifecycle runtime issue.
-- [ ] **Step 5: Re-run the existing mobile tests, shared typecheck, mobile typecheck, iOS export, and Android export** against the upgraded lockfile.
-- [ ] **Step 6: Update the acceptance checklist** with iOS 27 simulator evidence, preserving real HTTPS staging password/OIDC tests and Android installation as pending if their environments remain unavailable.
-- [ ] **Step 7: Commit** the acceptance evidence update as `docs(mobile): record iOS 27 scene startup evidence`.
+- Original implementation evidence and limitations: [task brief](../../../../.superpowers/sdd/plan-t31-ios27/task-brief.md), [task report](../../../../.superpowers/sdd/plan-t31-ios27/task-report.md), and [progress ledger](../../../../.superpowers/sdd/plan-t31-ios27/progress.md).
+- Repair task ownership, dependencies, rounds, and current status: [T31 review repair plan](2026-09-29-t31-review-repairs.md) and [repair progress ledger](../../../../.superpowers/sdd/plan-t31-ios27/fix-progress.md).
+- Integrated findings: [T31 final review](../../../../.superpowers/sdd/plan-t31-ios27/final-review.md). Its T31-F1 and T31-F2 Medium findings require resolution before release; T31-F3 is a documentation correction.
+- At the plan's recorded base, original code and scoped R4 repairs are present. The final integrated review has requested new repairs; do not mark the integrated T31 slice complete until those are fixed and reviewed. This plan restores the execution record and does not self-approve implementation.
+- Later execution or resumption must use the current repair ledger and exact review packages. Run only the verification affected by each repair, bind results to the reviewed code snapshot, then perform the repository's final integrated review.
 
 ## Self-Review
 
-1. **Spec coverage:** The follow-up preserves Deployment, auth, capability, and safe-surface behavior from Ticket #31 while making native startup work on the current iOS SDK. It adds no product surface.
-2. **Scope:** Only Expo SDK compatibility, scene configuration, generated native verification, and the existing acceptance checklist change.
-3. **Plan amendment ruling:** The approved product spec does not pin Expo SDK or deployment target. The iOS 27 startup requirement requires Expo SDK 57 scene support, superseding the parent implementation plan’s SDK 55 pin. Current official Expo SDK 57 documentation states iOS 16.4+ and recommends the top-level Expo `ios.deploymentTarget` property (the build-properties `ios.deploymentTarget` option is deprecated). The execution plan therefore uses iOS 16.4 at the top-level Expo property. Ruling: proceed under the user’s full Issue #30 implementation authorization; cost if wrong is a visible SDK/minimum-target change that can be reviewed and reverted.
-4. **Placeholder scan:** No unassigned code task remains. The simulator identifier is selected from `xcrun simctl list devices available` during execution.
-5. **Review focus:** SDK compatibility, generated scene delegate, deep-link callback path, iOS minimum, and actual visible startup all have explicit verification owners.
+1. **Spec coverage:** Issue #31 acceptance and original iOS27 follow-up scope are captured; local simulator evidence is distinguished from external login/OIDC/capability/device acceptance.
+2. **Version ruling:** SDK57 and iOS 16.4 derive from the explicit T31 progress ruling and current generated-project checks, not from the obsolete 16.0 predecessor value.
+3. **Repair state:** R1/R3 and R4 scoped repair status follows `fix-progress.md`; the new integrated T31-F1 is expressly pending.
+4. **Provenance limitation:** The full original task step sequence is not present as a single durable record. This plan summarizes proven work and verification from execution reports and links the predecessor instead of asserting unrecoverable steps.
+5. **Placeholders:** None.
 
-## Handoff
+## Status and Limitations
 
-Please review this plan amendment. Does it capture the intended iOS 27 compatibility change? After approval, execute it with `superpowers:subagent-driven-development` on a dedicated branch/worktree. Do not update the parent Ticket as complete until real staging login/OIDC and Android acceptance are also resolved.
-
-## Issue #30 execution ledger linkage
-
-- Root scope: Issue #30 → Issue #31; DAG node #31 (T01, B0), local executable subset from `docs/plans/issue30-sweep/dag.md` and snapshot `docs/plans/issue30-sweep/issues/issue-31.md`.
-- Execution worktree: `.worktrees/issue30-b0-t31`; branch `codex/issue30-b0-t31`; starting BASE `db234c5eb171f2dde7427d382b55b503a038f879`.
-- This plan is an execution copy of `docs/superpowers/plans/2026-09-21-t01-ios27-scene-lifecycle.md`; the approved product spec remains authoritative. User authorized the full Issue #30 execution and supplied SDD; plan is being executed without a second confirmation request.
-- Ruling: the existing staging-login/OIDC/Android device checks remain blocked-env and are not simulated; continue only the independently verifiable scene lifecycle/config/build/startup subset and record those external cases pending.
-- Verification tasks 1–3 are one vertical task stream: config contract RED; SDK/config upgrade; generated iOS 27 project build/startup plus acceptance record. Do not commit generated `apps/mobile/ios/` output.
-
-- Ruling 2026-09-29: current official Expo SDK 57 reference says minimum iOS 16.4+ and docs deprecate plugin `ios.deploymentTarget` in favor of top-level Expo `ios.deploymentTarget`; update the original plan's iOS 16.0/plugin placement to 16.4/top-level property. Evidence: [Expo SDK reference](https://docs.expo.dev/versions/latest/) and [Expo BuildProperties docs](https://docs.expo.dev/versions/latest/sdk/build-properties/). Cost if wrong: an unnecessary 0.4 iOS minimum increase or config placement could reduce supported device range/build reproducibility; generated project verification will catch config drift.
+This is the restored current T31 implementation plan at the DOC1 starting revision. Implementation and scoped repair evidence exists, while the integrated final review is not yet clean. HTTPS staging authentication/OIDC/capability checks and Android device acceptance remain pending. This document does not claim external acceptance or approve its own completeness.

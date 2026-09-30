@@ -1,0 +1,8 @@
+# SDD Brief — OCR-R2 Task 2 (framework/native guard edges)
+
+Task worktree BASE: `1df6f5cb2cdfd4253941abc5b113e778248cd189`
+T31 source-review HEAD before plan: `860b84016c8c6c94edd8c8adcd1ca672132efd17`
+Plan: `docs/plans/issue30-sweep/plans/2026-09-30-t31-ocr-r2-repairs.md` (Task R2-2)
+Owned files: `apps/mobile/scripts/verify-ios-framework-closure.py`, `apps/mobile/src/ios-framework-closure.test.ts`, `apps/mobile/scripts/verify-ios-scene-project.ts`, rename `apps/mobile/src/plugins/ios-xcode27.test.ts` → `apps/mobile/src/scripts/verify-ios-scene-project.test.ts`, `.gitignore`, `.superpowers/sdd/plan-t31-ios27/ocr-r2-2-report.md`
+
+Read Task R2-2 in the plan for exact acceptance. This is a bounded T31 OCR repair. Keep checker fail-closed. Add a RED fixture for JSON/plist properties root that is not an object; implement the coded `FRAMEWORK_MODE_PROPERTIES_INVALID` error before `.get`. Add a RED fixture with `@executable_path/../Missing.framework/Missing` and assert `FRAMEWORK_LOAD_OUTSIDE_APP`. Simplify the nested Swift delimiter ternary using explicit branches without changing lexer behavior. Rename the generated-scene contract test to `src/scripts/verify-ios-scene-project.test.ts` and preserve the test glob/import. Update only `.gitignore` line 97's obsolete statement so clean Expo prebuild is identified as generating iOS native files; do not delete the historical plugin. Run focused framework and scene contract tests, mobile typecheck, git diff --check, and the production scene checker against both retained generated prebuild directories. Commit locally only owned files and report exact checks/results. No subagents. Do not modify task R2-1 files.

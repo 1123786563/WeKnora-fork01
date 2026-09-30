@@ -86,6 +86,12 @@ func (c *gitHubRestClient) BranchProtected(ctx context.Context, branch string) (
 	}
 	err := c.call(ctx, http.MethodGet, "/repos/"+c.repoString()+"/branches/"+branch, nil, &out)
 	if err != nil {
+		var apiErr *GitHubAPIError
+		if asGitHubAPIError(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			// GitHub returns 404 when the task branch has not been created yet;
+			// that is an unprotected branch, while every other response fails closed.
+			return false, nil
+		}
 		return false, err
 	}
 	return out.Protected, nil

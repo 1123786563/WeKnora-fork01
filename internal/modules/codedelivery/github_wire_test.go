@@ -129,6 +129,20 @@ func (e *githubEmulator) isProtected(branch string) bool {
 	return false
 }
 
+func (e *githubEmulator) branchExists(branch string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, exists := e.refs["refs/heads/"+branch]; exists {
+		return true
+	}
+	for _, protected := range e.protectedBranches {
+		if protected == branch {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 	e.mu.Lock()
 	blackout := e.blackout
@@ -163,6 +177,11 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/branches/"):
 		e.note("GET /branches")
 		branch := strings.TrimPrefix(path, "/repos/octocat/hello/branches/")
+		if !e.branchExists(branch) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "branch not found"})
+			return
+		}
 		writeJSON(w, map[string]any{"name": branch, "protected": e.isProtected(branch)})
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/git/commits/"):
 		e.note("GET /git/commits")
@@ -482,6 +501,42 @@ func TestGitHubClientWireChainCreatesBranchAndDraftPR(t *testing.T) {
 
 	require.Empty(t, e.Violations())
 	require.Zero(t, e.Calls()["PUT /pulls/merge"])
+}
+
+func TestGitHubClientBranchHeadTreatsOnlyNotFoundAsMissing(t *testing.T) {
+	e := newGitHubEmulator(t)
+	client := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)(e.token, RepoRef{Owner: "octocat", Name: "hello"})
+
+	sha, exists, err := client.BranchHead(context.Background(), "missing")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Empty(t, sha)
+
+	unauthorized := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)("invalid", RepoRef{Owner: "octocat", Name: "hello"})
+	sha, exists, err = unauthorized.BranchHead(context.Background(), "missing")
+	require.Error(t, err)
+	require.Empty(t, sha)
+	require.False(t, exists)
+	var apiErr *GitHubAPIError
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, http.StatusUnauthorized, apiErr.Status)
+}
+
+func TestGitHubClientBranchProtectedTreatsOnlyNotFoundAsUnprotected(t *testing.T) {
+	e := newGitHubEmulator(t)
+	client := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)(e.token, RepoRef{Owner: "octocat", Name: "hello"})
+
+	protected, err := client.BranchProtected(context.Background(), "missing")
+	require.NoError(t, err)
+	require.False(t, protected)
+
+	unauthorized := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)("invalid", RepoRef{Owner: "octocat", Name: "hello"})
+	protected, err = unauthorized.BranchProtected(context.Background(), "missing")
+	require.Error(t, err)
+	require.False(t, protected)
+	var apiErr *GitHubAPIError
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, http.StatusUnauthorized, apiErr.Status)
 }
 
 // TestGitHubClientCreateTreeDeleteEntryUsesEmptySHA 把 TreeEntry 的删除语义

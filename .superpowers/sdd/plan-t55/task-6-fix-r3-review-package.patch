@@ -1,0 +1,95 @@
+diff --git a/apps/mobile/src/app-smoke.test.tsx b/apps/mobile/src/app-smoke.test.tsx
+index 9920d3ee2..b252f9c29 100644
+--- a/apps/mobile/src/app-smoke.test.tsx
++++ b/apps/mobile/src/app-smoke.test.tsx
+@@ -1687,7 +1687,7 @@ test('the task detail route reports when recovery authorization disappears after
+   });
+   currentRecovery = undefined;
+   await assert.rejects(action({ runId: 'run-1', deliveryId: 'dlv-1' }));
+-  assert.ok(visibleError?.includes('授权或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
++  assert.ok(visibleError?.includes('登录状态或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
+ });
+ 
+ test('the task detail route ignores recovery completion after the run changes', async () => {
+@@ -1810,6 +1810,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
+   assert.equal(signedOut.props.recoveryError, undefined, 'sign-out hides prior scope error synchronously');
+   assert.equal(signedOut.props.onRecoverDelivery, undefined, 'sign-out removes the recovery action');
+   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
++  const afterStaleSignOut = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
++  assert.equal(afterStaleSignOut.props.delivery, undefined, 'sign-out never reveals the old receipt');
++  assert.match(String(afterStaleSignOut.props.error), /登录状态或活动空间已变化/, 'scope loss appears in the detail route general error surface');
+ 
+   snapshot = {
+     surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+@@ -1824,6 +1827,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
+   assert.equal(switchedTenant.props.delivery, undefined, 'tenant switch does not reveal the previous tenant receipt');
+   assert.equal(switchedTenant.props.recoveryError, undefined, 'tenant switch does not reveal the previous tenant error');
+   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
++  const afterStaleTenantAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
++  assert.equal(afterStaleTenantAction.props.delivery, undefined, 'tenant switch never reveals the old receipt');
++  assert.match(String(afterStaleTenantAction.props.error), /登录状态或活动空间已变化/, 'stale tenant action is visible on the current route');
+ 
+   snapshot = {
+     surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+@@ -1838,6 +1844,9 @@ test('the mounted task detail route invalidates delivery state and stale actions
+   assert.equal(reauthenticated.props.delivery, undefined, 'same origin/tenant with a new user and lease starts without prior receipt state');
+   assert.equal(reauthenticated.props.recoveryError, undefined, 'same origin/tenant reauthentication starts without prior error state');
+   await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
++  const afterStaleReauthAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
++  assert.equal(afterStaleReauthAction.props.delivery, undefined, 'reauthentication never reveals the previous user receipt');
++  assert.match(String(afterStaleReauthAction.props.error), /登录状态或活动空间已变化/, 'stale reauth action is visible without a delivery receipt section');
+   hooks().__unmount();
+   reactRuntime.useSyncExternalStore = originalUseSyncExternalStore;
+ });
+diff --git a/apps/mobile/src/app/tasks/detail.tsx b/apps/mobile/src/app/tasks/detail.tsx
+index 11a0da335..0f539bb26 100644
+--- a/apps/mobile/src/app/tasks/detail.tsx
++++ b/apps/mobile/src/app/tasks/detail.tsx
+@@ -24,6 +24,7 @@ export function taskDetailRouteIdentity(snapshot: RuntimeSnapshot, lease: ScopeL
+ function sameTaskDetailRouteIdentity(left: TaskDetailRouteIdentity | undefined, right: TaskDetailRouteIdentity | undefined): boolean {
+   return left === right || (left !== undefined && right !== undefined && left.deploymentOrigin === right.deploymentOrigin && left.userId === right.userId && left.tenantId === right.tenantId && left.lease === right.lease && left.taskId === right.taskId && left.runId === right.runId);
+ }
++const SCOPE_CHANGED_COPY = '登录状态或活动空间已变化，请重新进入任务详情后重试';
+ 
+ /** Recovery action is bound to the run and authorized module captured by its render. */
+ export function createDeliveryRecoveryAction(options: {
+@@ -36,6 +37,7 @@ export function createDeliveryRecoveryAction(options: {
+   setDelivery(view: DeliveryReceiptView): void;
+   clearError(): void;
+   setError(message: string): void;
++  setCurrentScopeError?(): void;
+ }): (input: { runId: string; deliveryId: string }) => Promise<DeliveryReceiptView> {
+   return async (input) => {
+     if (!options.isCurrentRun() || input.runId !== options.runId) {
+@@ -44,8 +46,8 @@ export function createDeliveryRecoveryAction(options: {
+     }
+     options.clearError();
+     if (options.currentRecovery() !== options.capturedRecovery || !sameTaskDetailRouteIdentity(options.currentIdentity?.(), options.capturedIdentity)) {
+-      const message = '授权或活动空间已变化，请重新进入任务详情后重试';
+-      options.setError(message);
++      if (options.setCurrentScopeError !== undefined) options.setCurrentScopeError();
++      else options.setError(SCOPE_CHANGED_COPY);
+       throw new Error('delivery recovery authorization changed');
+     }
+     try {
+@@ -55,7 +57,8 @@ export function createDeliveryRecoveryAction(options: {
+     } catch (error: unknown) {
+       if (!options.isCurrentRun()) throw error;
+       if (options.currentRecovery() !== options.capturedRecovery || !sameTaskDetailRouteIdentity(options.currentIdentity?.(), options.capturedIdentity)) {
+-        options.setError('授权或活动空间已变化，请重新进入任务详情后重试');
++        if (options.setCurrentScopeError !== undefined) options.setCurrentScopeError();
++        else options.setError(SCOPE_CHANGED_COPY);
+       } else {
+         options.setError(error instanceof DeliveryRecoveryError ? (DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')) : '恢复请求失败，请稍后重试');
+       }
+@@ -146,6 +149,10 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
+     setDelivery: (view) => { if (routeIdentity !== undefined) setDelivery({ identity: routeIdentity, view }); },
+     clearError: () => setRecoveryIssue(undefined),
+     setError: (message) => { if (routeIdentity !== undefined) setRecoveryIssue({ identity: routeIdentity, message }); },
++    setCurrentScopeError: () => {
++      const identity = taskDetailRouteIdentity(runtime.snapshot(), runtime.scopeLease(), taskId, runId);
++      setState({ identity, value: { loading: false, error: SCOPE_CHANGED_COPY } });
++    },
+   });
+   const visibleState = sameTaskDetailRouteIdentity(state.identity, routeIdentity) ? state.value : { loading: true };
+   return <TaskDetailScreen view={visibleState.view} loading={visibleState.loading} error={visibleState.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={deliveryForRoute(delivery, routeIdentity)} recoveryError={recoveryErrorForRoute(recoveryIssue, routeIdentity)} onRecoverDelivery={onRecoverDelivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;

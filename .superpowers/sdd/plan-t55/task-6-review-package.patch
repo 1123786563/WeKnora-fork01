@@ -1,0 +1,235 @@
+diff --git a/apps/mobile/src/app-smoke.test.tsx b/apps/mobile/src/app-smoke.test.tsx
+index 86e1002e6..bb908f827 100644
+--- a/apps/mobile/src/app-smoke.test.tsx
++++ b/apps/mobile/src/app-smoke.test.tsx
+@@ -1619,3 +1619,55 @@ test('the /new route wires dictation through the composition root; confirmed tex
+   assert.match(compositionSource, /createMobileVoiceTranscriptionRemote/, '转写 Remote 只在组合根装配');
+   assert.match(compositionSource, /createNativeDictationCaptureIfAvailable/, '原生捕获 Adapter 只在组合根探测');
+ });
++
++test('the delivery receipt section offers the recovery action for partial and unknown states only (T25 #55 AC1)', async () => {
++  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
++  const view: import('@weknora/mobile-core').TaskDetailView = {
++    taskId: 'task-1', runId: 'run-1', title: '交付', lifecycle: 'active', runStatus: 'running', attention: 'required',
++    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 2, incomplete: false, connection: 'live',
++    timeline: [], duplicateSeqs: [],
++  };
++  const pushedReceipt: import('@weknora/mobile-core').DeliveryReceiptView = {
++    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed',
++    repo: 'octocat/hello', branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40),
++    commitSha: 'c1', attention: true, updatedAt: '2026-09-24T00:00:30Z',
++  };
++  const withRecovery = render(TaskDetailScreen, {
++    view, loading: false, error: undefined, onRefresh: () => {},
++    delivery: pushedReceipt, onRecoverDelivery: async () => pushedReceipt,
++  });
++  const sectionOf = (tree: unknown) => {
++    const sectionElement = descendants(tree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
++    return sectionElement === undefined ? undefined : render(sectionElement.type as (props: unknown) => unknown, sectionElement.props);
++  };
++  const pushedJson = JSON.stringify(sectionOf(withRecovery));
++  assert.ok(pushedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'the honest partial-completion copy renders');
++  assert.ok(pushedJson.includes('恢复创建草稿 PR/MR'), 'the pushed state offers the recovery action');
++  const unknown: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'unknown' };
++  const unknownTree = render(TaskDetailScreen, {
++    view, loading: false, error: undefined, onRefresh: () => {}, delivery: unknown,
++    onRecoverDelivery: async () => unknown,
++  });
++  const unknownSection = sectionOf(unknownTree);
++  const unknownAction = descendants(unknownSection).find(({ type, props }) => type === 'Button' && props.title === '核对远端结果');
++  assert.ok(unknownAction, 'the unknown state offers the remote reconciliation action');
++  let recoveryInput: { runId: string; deliveryId: string } | undefined;
++  const wiredTree = render(TaskDetailScreen, {
++    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
++    onRecoverDelivery: async (input: { runId: string; deliveryId: string }) => { recoveryInput = input; return pushedReceipt; },
++  });
++  const wiredAction = descendants(sectionOf(wiredTree)).find(({ type, props }) => type === 'Button' && props.title === '恢复创建草稿 PR/MR');
++  assert.ok(wiredAction, 'the pushed recovery action is pressable');
++  (wiredAction!.props.onPress as () => void)();
++  assert.deepEqual(recoveryInput, { runId: 'run-1', deliveryId: 'dlv-1' }, 'recovery is bound to the displayed run and delivery');
++  const recovered: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'delivered' };
++  const settled = render(TaskDetailScreen, {
++    view, loading: false, error: undefined, onRefresh: () => {},
++    delivery: recovered,
++  });
++  assert.equal(JSON.stringify(sectionOf(settled)).includes('恢复创建草稿 PR/MR'), false, 'a delivered receipt offers no recovery action');
++  const noCallback = render(TaskDetailScreen, {
++    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
++  });
++  assert.equal(JSON.stringify(sectionOf(noCallback)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
++});
+diff --git a/apps/mobile/src/app/tasks/detail.tsx b/apps/mobile/src/app/tasks/detail.tsx
+index d6f9f87bc..38cd6d254 100644
+--- a/apps/mobile/src/app/tasks/detail.tsx
++++ b/apps/mobile/src/app/tasks/detail.tsx
+@@ -1,14 +1,15 @@
+ import { useEffect, useRef, useState } from 'react';
+ import { router, useLocalSearchParams } from 'expo-router';
+-import { TaskOfficeError, type DeliveryReceiptView } from '@weknora/mobile-core';
+-import { activeDeliveryReader, activeTaskOffice } from '../../composition.ts';
++import { DeliveryRecoveryError, TaskOfficeError, type DeliveryReceiptView } from '@weknora/mobile-core';
++import { activeDeliveryReader, activeDeliveryRecovery, activeTaskOffice } from '../../composition.ts';
+ import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailController, type TaskDetailViewState } from '../../task-detail-view.ts';
+-import { TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
++import { DELIVERY_RECOVERY_COPY, TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
+ 
+ /** /tasks/detail 挂载生命周期宿主：handle 在 effect 内创建、卸载即 dispose——与 /resources 同一模式。 */
+ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpenBudget, onOpenVoiceRoom }: { taskId: string; runId: string; onOpenMaterials?: () => void; onOpenBudget?: () => void; onOpenVoiceRoom?: () => void }) {
+   const [state, setState] = useState<TaskDetailViewState>({ loading: true });
+   const [delivery, setDelivery] = useState<DeliveryReceiptView | undefined>(undefined);
++  const [recoveryError, setRecoveryError] = useState<string | undefined>(undefined);
+   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
+   // 交付回执读一次（不阻塞详情渲染；失败静默——交付区块缺失是合法空态）。
+   // 刷新路径 onRefresh 不拉交付：回执不因刷新而变，重进页面即重读。
+@@ -47,7 +48,16 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
+       controllerRef.current = undefined;
+     };
+   }, [taskId, runId]);
+-  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={delivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
++  const onRecoverDelivery = activeDeliveryRecovery() === undefined ? undefined : (input: { runId: string; deliveryId: string }) => {
++    setRecoveryError(undefined);
++    const recovery = activeDeliveryRecovery();
++    if (recovery === undefined) return Promise.reject(new Error('unauthorized'));
++    return recovery.recover(input).then((view) => { setDelivery(view); return view; }, (error: unknown) => {
++      setRecoveryError(error instanceof DeliveryRecoveryError ? (DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')) : '恢复请求失败，请稍后重试');
++      throw error;
++    });
++  };
++  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={delivery} recoveryError={recoveryError} onRecoverDelivery={onRecoverDelivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
+ }
+ 
+ /** Expo Router 文件路由：/tasks/detail?taskId=..&runId=..。只消费 Task Office Interface。 */
+diff --git a/apps/mobile/src/composition.ts b/apps/mobile/src/composition.ts
+index f61bed444..6ee7c01af 100644
+--- a/apps/mobile/src/composition.ts
++++ b/apps/mobile/src/composition.ts
+@@ -14,6 +14,7 @@ import type { TaskMaterial } from '@weknora/mobile-core';
+ import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
+ import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
+ import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
++import { createDeliveryRecovery, type DeliveryRecovery } from '@weknora/mobile-core';
+ import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
+ import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
+ import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
+@@ -349,6 +350,25 @@ export function activeDeliveryReader(): DeliveryReader | undefined {
+   return deliveryFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
+ }
+ 
++const deliveryRecoveries = new Map<string, DeliveryRecovery>();
++
++/** Delivery recovery 按 deployment scope key 记忆化；同一 remote 结构实现读与恢复两端口
++ * （镜像 taskOfficeFor 的 `backend: remote, detail: remote` 范式，T05）。 */
++function deliveryRecoveryFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): DeliveryRecovery {
++  return cachePut(deliveryRecoveries, deploymentScopeKey(origin, tenantId), () => {
++    const remote = createMobileCodeDeliveryRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
++    return createDeliveryRecovery({ remote, lease: () => activeRuntime.scopeLease() });
++  });
++}
++
++/** 详情路由经此取当前授权 scope 的交付恢复器（无授权面返回 undefined）。 */
++export function activeDeliveryRecovery(): DeliveryRecovery | undefined {
++  const activeRuntime = runtime();
++  const snapshot = activeRuntime.snapshot();
++  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
++  return deliveryRecoveryFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
++}
++
+ const dictations = new Map<string, Dictation>();
+ 
+ /** 听写 Dictation 按 deployment scope key 记忆化（同 taskOfficeFor 模式）：转写 multipart
+diff --git a/apps/mobile/src/screens/TaskDetailScreen.tsx b/apps/mobile/src/screens/TaskDetailScreen.tsx
+index 36c8df470..fe9d76c85 100644
+--- a/apps/mobile/src/screens/TaskDetailScreen.tsx
++++ b/apps/mobile/src/screens/TaskDetailScreen.tsx
+@@ -15,6 +15,9 @@ export interface TaskDetailScreenProps {
+   /** T27 语音房入口；未提供时不渲染（组合根未装配或无捕获能力的呈现面）。 */
+   onOpenVoiceRoom?: () => void;
+   delivery?: DeliveryReceiptView;
++  /** T25 恢复入口；未提供时操作不渲染（通道缺失 fail closed 的呈现面）。 */
++  onRecoverDelivery?: (input: { runId: string; deliveryId: string }) => Promise<DeliveryReceiptView>;
++  recoveryError?: string;
+ }
+ 
+ const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
+@@ -52,12 +55,23 @@ export const DELIVERY_STATE_COPY: Record<DeliveryState, string> = {
+   unknown: '远端结果待确认',
+ };
+ 
++/** T25 (#55) 恢复操作文案：按状态给恰一个动作，失败态错误不粉饰。 */
++export const DELIVERY_RECOVERY_COPY = {
++  pushed: '恢复创建草稿 PR/MR',
++  unknown: '核对远端结果',
++  failed: '当前状态无法恢复：请刷新后查看最新交付状态',
++} as const;
++
+ /** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR·MR/远端身份/批准人）。 */
+-function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView }) {
++function DeliveryReceiptSection({ delivery, onRecover, recoveryError }: { delivery: DeliveryReceiptView; onRecover?: () => void; recoveryError?: string }) {
+   return (
+     <View style={{ marginTop: 16, padding: 12, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 }}>
+       <Text style={{ fontWeight: '600' }}>代码交付</Text>
+       <Text>{DELIVERY_STATE_COPY[delivery.state]}</Text>
++      {delivery.state === 'pushed' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.pushed} onPress={onRecover} /> : null}
++      {delivery.state === 'unknown' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.unknown} onPress={onRecover} /> : null}
++      {delivery.state === 'failed' ? <Text>{DELIVERY_RECOVERY_COPY.failed}</Text> : null}
++      {recoveryError !== undefined ? <Text>{recoveryError}</Text> : null}
+       <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
+       <Text numberOfLines={1}>分支：{delivery.branch}</Text>
+       {delivery.commitSha !== undefined ? <Text numberOfLines={1}>提交：{delivery.commitSha.slice(0, 12)}</Text> : null}
+@@ -69,7 +83,7 @@ function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView })
+ }
+ 
+ /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口与交付回执在底部操作区。 */
+-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onOpenVoiceRoom, onAct, delivery }: TaskDetailScreenProps) {
++export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onOpenVoiceRoom, onAct, delivery, onRecoverDelivery, recoveryError }: TaskDetailScreenProps) {
+   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+   const [draft, setDraft] = useState('');
+   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
+@@ -143,7 +157,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
+       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
+       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
+       {onOpenVoiceRoom !== undefined && <Button title="语音房" onPress={onOpenVoiceRoom} />}
+-      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}
++      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: view.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
+       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
+       {error !== undefined && <Text>{error}</Text>}
+     </ScrollView>
+diff --git a/apps/mobile/src/terminal-purity.test.ts b/apps/mobile/src/terminal-purity.test.ts
+new file mode 100644
+index 000000000..99d115daa
+--- /dev/null
++++ b/apps/mobile/src/terminal-purity.test.ts
+@@ -0,0 +1,33 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readdirSync, readFileSync, statSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = dirname(fileURLToPath(import.meta.url));
++
++function tsFiles(dir: string): string[] {
++  return readdirSync(dir).flatMap((name) => {
++    const full = join(dir, name);
++    if (statSync(full).isDirectory()) return name === 'node_modules' ? [] : tsFiles(full);
++    return /\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) ? [full] : [];
++  });
++}
++
++// T25 (#55) AC2：移动装配图结构性无终端输入通道——src 源树（除测试）零命中
++// terminal 门票签发与 WS 终端装配词。移动端的终端面只有材料域的只读投影
++// （MATERIAL_TERMINAL_READ_ONLY，task-material.ts:227）。
++test('the mobile source tree wires no terminal ticket or interactive terminal channel (T25 #55 AC2)', () => {
++  for (const file of tsFiles(here)) {
++    const source = readFileSync(file, 'utf8');
++    for (const marker of ['createSandboxTerminalApi', 'issueTicket', 'sandbox/terminal-ticket']) {
++      assert.equal(source.includes(marker), false, `${file} must not reference ${marker}: the mobile terminal is read-only by construction`);
++    }
++  }
++});
++
++test('the composition wires the delivery recovery interface (T25 #55 AC1)', () => {
++  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
++  assert.match(composition, /createDeliveryRecovery/, 'composition must wire the delivery recovery module');
++  assert.match(composition, /activeDeliveryRecovery/, 'composition must expose activeDeliveryRecovery for the detail route');
++});

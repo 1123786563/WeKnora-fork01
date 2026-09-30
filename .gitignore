@@ -99,6 +99,7 @@ migrations/
 config/casdoor/casdoor.db*
 config/casdoor/storage/
 # apps/mobile 为 CNG（expo prebuild）流程：ios/ 目录是生成产物，勿提交（ios-xcode27 插件负责生成内容）
+# apps/mobile 为 CNG（Expo prebuild）流程：clean prebuild 生成 iOS 原生文件，勿提交
 apps/mobile/ios/
 # (OCR C-83 / C-01) Flow-evidence login captures: seed scripts write the RAW
 # login answer here on every rerun — with live access/refresh JWTs. The

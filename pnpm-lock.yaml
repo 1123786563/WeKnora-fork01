@@ -3976,6 +3976,7 @@ packages:
   '@types/sockjs@0.3.36':
     resolution: {integrity: sha512-MK9V6NzAS1+Ud7JV9lJLFqW85VbC9dq3LmwZCuBe4wBDgKC0Kj/jd8Xl+nSviU+Qc3+m7umHHyHg//2KSa0a0Q==}
 
+<<<<<<< HEAD
   '@types/sortablejs@1.15.9':
     resolution: {integrity: sha512-7HP+rZGE2p886PKV9c9OJzLBI6BBJu1O7lJGYnPyG3fS4/duUCcngkNCjsLwIMV+WMqANe3tt4irrXHSIe68OQ==}
 <<<<<<< HEAD
@@ -3985,6 +3986,8 @@ packages:
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}
 >>>>>>> codex/issue-140-sweep-integration
 
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
@@ -12334,6 +12337,7 @@ snapshots:
       '@radix-ui/react-slot': 1.3.3(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12346,6 +12350,8 @@ snapshots:
       '@radix-ui/react-slot': 1.3.3(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12365,12 +12371,15 @@ snapshots:
   '@radix-ui/react-compose-refs@1.1.5(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-compose-refs@1.1.5(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12396,12 +12405,15 @@ snapshots:
   '@radix-ui/react-context@1.2.2(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-context@1.2.2(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12430,6 +12442,7 @@ snapshots:
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
       react-remove-scroll: 2.7.2(@types/react@19.2.18)(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12453,6 +12466,8 @@ snapshots:
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
       react-remove-scroll: 2.7.2(@types/react@19.2.18)(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12483,12 +12498,15 @@ snapshots:
   '@radix-ui/react-direction@1.1.4(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-direction@1.1.4(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12507,6 +12525,7 @@ snapshots:
       '@radix-ui/react-use-effect-event': 0.0.5(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12520,6 +12539,8 @@ snapshots:
       '@radix-ui/react-use-effect-event': 0.0.5(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12570,12 +12591,15 @@ snapshots:
   '@radix-ui/react-focus-guards@1.1.6(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-focus-guards@1.1.6(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12592,6 +12616,7 @@ snapshots:
       '@radix-ui/react-use-callback-ref': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12603,6 +12628,8 @@ snapshots:
       '@radix-ui/react-use-callback-ref': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12653,6 +12680,7 @@ snapshots:
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12660,6 +12688,8 @@ snapshots:
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -12872,6 +12902,7 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12882,6 +12913,8 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12901,6 +12934,7 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12910,6 +12944,8 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12928,6 +12964,7 @@ snapshots:
       '@radix-ui/react-slot': 1.3.3(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12937,6 +12974,8 @@ snapshots:
       '@radix-ui/react-slot': 1.3.3(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -12992,6 +13031,7 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -13011,6 +13051,8 @@ snapshots:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -13113,6 +13155,7 @@ snapshots:
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13120,6 +13163,8 @@ snapshots:
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13156,6 +13201,7 @@ snapshots:
       '@radix-ui/react-use-controllable-state': 1.2.6(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
       react-dom: 19.3.0(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -13172,6 +13218,8 @@ snapshots:
       '@radix-ui/react-use-controllable-state': 1.2.6(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
       '@types/react-dom': 19.3.0(@types/react@19.2.18)
@@ -13298,12 +13346,15 @@ snapshots:
   '@radix-ui/react-use-callback-ref@1.1.4(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-use-callback-ref@1.1.4(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13319,6 +13370,7 @@ snapshots:
       '@radix-ui/react-use-effect-event': 0.0.5(@types/react@19.2.18)(react@19.2.3)
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13328,6 +13380,8 @@ snapshots:
       '@radix-ui/react-use-effect-event': 0.0.5(@types/react@19.2.18)(react@19.3.0)
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13344,6 +13398,7 @@ snapshots:
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.2.3)
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13351,6 +13406,8 @@ snapshots:
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.2.18)(react@19.3.0)
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13371,12 +13428,15 @@ snapshots:
   '@radix-ui/react-use-is-hydrated@0.1.3(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-use-is-hydrated@0.1.3(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -13389,12 +13449,15 @@ snapshots:
   '@radix-ui/react-use-layout-effect@1.1.4(@types/react@19.2.18)(react@19.2.3)':
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
   '@radix-ui/react-use-layout-effect@1.1.4(@types/react@19.2.18)(react@19.3.0)':
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -14679,6 +14742,7 @@ snapshots:
     dependencies:
       '@types/node': 22.14.0
 
+<<<<<<< HEAD
   '@types/sortablejs@1.15.9': {}
 <<<<<<< HEAD
 =======
@@ -14686,6 +14750,8 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 >>>>>>> codex/issue-140-sweep-integration
 
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
   '@types/trusted-types@2.0.7':
     optional: true
 
@@ -19736,6 +19802,7 @@ snapshots:
     dependencies:
       react: 19.2.3
       react-style-singleton: 2.2.3(@types/react@19.2.18)(react@19.2.3)
+<<<<<<< HEAD
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -19744,6 +19811,8 @@ snapshots:
     dependencies:
       react: 19.3.0
       react-style-singleton: 2.2.3(@types/react@19.2.18)(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -19764,6 +19833,7 @@ snapshots:
       tslib: 2.8.1
       use-callback-ref: 1.3.3(@types/react@19.2.18)(react@19.2.3)
       use-sidecar: 1.1.3(@types/react@19.2.18)(react@19.2.3)
+<<<<<<< HEAD
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -19775,6 +19845,8 @@ snapshots:
       tslib: 2.8.1
       use-callback-ref: 1.3.3(@types/react@19.2.18)(react@19.3.0)
       use-sidecar: 1.1.3(@types/react@19.2.18)(react@19.3.0)
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
     optionalDependencies:
       '@types/react': 19.2.18
 
@@ -19793,6 +19865,7 @@ snapshots:
     dependencies:
       get-nonce: 1.0.1
       react: 19.2.3
+<<<<<<< HEAD
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -19801,6 +19874,8 @@ snapshots:
     dependencies:
       get-nonce: 1.0.1
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -20846,6 +20921,7 @@ snapshots:
   use-callback-ref@1.3.3(@types/react@19.2.18)(react@19.2.3):
     dependencies:
       react: 19.2.3
+<<<<<<< HEAD
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -20853,6 +20929,8 @@ snapshots:
   use-callback-ref@1.3.3(@types/react@19.2.18)(react@19.3.0):
     dependencies:
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -20891,6 +20969,7 @@ snapshots:
     dependencies:
       detect-node-es: 1.1.0
       react: 19.2.3
+<<<<<<< HEAD
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18
@@ -20899,6 +20978,8 @@ snapshots:
     dependencies:
       detect-node-es: 1.1.0
       react: 19.3.0
+=======
+>>>>>>> codex/issue31-ocr-fix-r3
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.18

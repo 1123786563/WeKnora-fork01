@@ -1,0 +1,72 @@
+diff --git a/apps/mobile/src/delivery-integration-smoke.test.ts b/apps/mobile/src/delivery-integration-smoke.test.ts
+index f2137ce32..0582c9dff 100644
+--- a/apps/mobile/src/delivery-integration-smoke.test.ts
++++ b/apps/mobile/src/delivery-integration-smoke.test.ts
+@@ -101,6 +101,15 @@ function installDeliveryFetch(options: {
+ 
+ const integrationConfig = (recover: boolean) => ({ enabled: true as const, deploymentOrigin: 'https://weknora.example.com', email: 'a@b.c', password: 'pw', recover });
+ 
++const actionRequests = (calls: Array<{ method: string; url: string }>) => calls
++  .map(({ method, url }) => ({ method, path: new URL(url).pathname }))
++  .filter(({ path }) => /\/delivery\/[^/]+\/(dispatch|resolve)$/.test(path));
++
++const expectedAction = (action: 'dispatch' | 'resolve') => [{
++  method: 'POST',
++  path: `/api/v1/workbench/executions/${runId}/delivery/${deliveryId}/${action}`,
++}];
++
+ test('runDeliveryIntegration keeps recovery opt-in and skips recovery when no delivery was read', async () => {
+   for (const scenario of [
+     { recover: false, deliveryReads: ['read' as const] },
+@@ -111,7 +120,7 @@ test('runDeliveryIntegration keeps recovery opt-in and skips recovery when no de
+     try {
+       const evidence = await runDeliveryIntegration(integrationConfig(scenario.recover));
+       assert.equal(evidence.recovery, 'skipped');
+-      assert.equal(fake.calls.filter(({ url }) => /\/delivery\/[^/]+\/(dispatch|resolve)$/.test(new URL(url).pathname)).length, 0);
++      assert.deepEqual(actionRequests(fake.calls), []);
+       assert.equal(fake.calls.filter(({ url }) => new URL(url).pathname.endsWith(`/executions/${runId}/delivery`)).length, scenario.tasks ? 0 : 1);
+     } finally { fake.restore(); }
+   }
+@@ -124,8 +133,7 @@ test('runDeliveryIntegration uses the exact run and delivery IDs and dispatches
+     assert.equal(evidence.deliveryRead, 'read', `evidence=${JSON.stringify(evidence)} calls=${JSON.stringify(fake.calls)}`);
+     assert.equal(evidence.recovery, 'recovered');
+     assert.equal(evidence.recoveryState, 'delivered');
+-    assert.ok(fake.calls.some(({ method, url }) => method === 'POST' && new URL(url).pathname === `/api/v1/workbench/executions/${runId}/delivery/${deliveryId}/dispatch`));
+-    assert.equal(fake.calls.some(({ url }) => new URL(url).pathname.endsWith('/resolve')), false);
++    assert.deepEqual(actionRequests(fake.calls), expectedAction('dispatch'));
+   } finally { fake.restore(); }
+ });
+ 
+@@ -134,8 +142,7 @@ test('runDeliveryIntegration resolves unknown state and records state conflicts
+   try {
+     const evidence = await runDeliveryIntegration(integrationConfig(true));
+     assert.equal(evidence.recovery, 'recovered');
+-    assert.ok(unknown.calls.some(({ method, url }) => method === 'POST' && new URL(url).pathname === `/api/v1/workbench/executions/${runId}/delivery/${deliveryId}/resolve`));
+-    assert.equal(unknown.calls.some(({ url }) => new URL(url).pathname.endsWith('/dispatch')), false);
++    assert.deepEqual(actionRequests(unknown.calls), expectedAction('resolve'));
+   } finally { unknown.restore(); }
+ 
+   const conflict = installDeliveryFetch({ actionStatus: 409, actionBody: { code: 'code_delivery_state_conflict', message: 'state changed' } });
+@@ -143,6 +150,7 @@ test('runDeliveryIntegration resolves unknown state and records state conflicts
+     const evidence = await runDeliveryIntegration(integrationConfig(true));
+     assert.equal(evidence.recovery, 'not-needed');
+     assert.equal(evidence.failure, undefined);
++    assert.deepEqual(actionRequests(conflict.calls), expectedAction('dispatch'));
+   } finally { conflict.restore(); }
+ });
+ 
+@@ -152,6 +160,7 @@ test('runDeliveryIntegration classifies recovery input errors and appends backen
+     const evidence = await runDeliveryIntegration(integrationConfig(true));
+     assert.equal(evidence.recovery, 'not-needed');
+     assert.equal(evidence.failure, undefined);
++    assert.deepEqual(actionRequests(invalid.calls), []);
+   } finally { invalid.restore(); }
+ 
+   const failed = installDeliveryFetch({ actionStatus: 503, actionBody: { code: 'service_unavailable', message: 'delivery service unavailable' } });
+@@ -159,5 +168,6 @@ test('runDeliveryIntegration classifies recovery input errors and appends backen
+     const evidence = await runDeliveryIntegration(integrationConfig(true));
+     assert.equal(evidence.recovery, 'failed');
+     assert.match(evidence.failure ?? '', /recovery: delivery service unavailable/);
++    assert.deepEqual(actionRequests(failed.calls), expectedAction('dispatch'));
+   } finally { failed.restore(); }
+ });
