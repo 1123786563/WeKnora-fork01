@@ -1666,6 +1666,23 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	intentBytes, _ := json.Marshal([]any{baseName, declaredMIME})
 	intentSum := sha256.Sum256(intentBytes)
+	scope, scopeErr := getScope(ctx)
+	if scopeErr != nil {
+		writeError(c, scopeErr)
+		return
+	}
+	ownerToken, unlockAttempt, guardErr := h.office.acquireLifecycleClaim(ctx, scope, "source_upload", requestID, hex.EncodeToString(intentSum[:]))
+	if guardErr != nil {
+		if errors.Is(guardErr, ErrCareerOperationsBusy) {
+			if pending, _, pendingErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: declaredMIME, Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision}); errors.Is(pendingErr, ErrUploadInProgress) {
+				c.JSON(http.StatusAccepted, UploadResponse{Source: pending})
+				return
+			}
+		}
+		writeError(c, guardErr)
+		return
+	}
+	defer unlockAttempt()
 	claim, terminal, claimErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: declaredMIME, Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision})
 	if errors.Is(claimErr, ErrUploadInProgress) {
 		c.JSON(202, UploadResponse{Source: claim})
@@ -1676,6 +1693,10 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	if terminal {
+		if releaseErr := h.office.resolveLifecycleClaimOwned(context.Background(), scope, "source_upload", requestID, ownerToken); releaseErr != nil {
+			writeError(c, &OutcomeUnknownError{RequestID: requestID})
+			return
+		}
 		var receipt *Receipt
 		if claim.Status == "ready" {
 			r, e := h.office.Receipt(ctx, claim.ID+":batch")
@@ -1688,7 +1709,7 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	var result UploadResult
 	if claim.ResourceRef == "" {
-		recovered, recoverErr := h.recoverCatalogRef(ctx, claim.ID, claim.ClaimToken, requestID)
+		recovered, recoverErr := h.recoverCatalogRef(ctx, claim.ID, claim.ClaimToken, requestID, ownerToken)
 		if errors.Is(recoverErr, ErrUploadClaimLost) {
 			if latest, lookupErr := h.office.GetSource(ctx, claim.ID); lookupErr == nil {
 				c.JSON(202, UploadResponse{Source: latest})
@@ -1705,7 +1726,7 @@ func (h *Handler) Upload(c *gin.Context) {
 		result, err = h.upload.ResumeAndParse(ctx, tenantID, claim.ID, baseName, declaredMIME, data, claim.ResourceRef)
 	} else {
 		result, err = h.upload.StoreAndParseWithID(ctx, tenantID, claim.ID, baseName, declaredMIME, data, func(upload UploadResult) error {
-			persistErr := h.office.PersistUploadResource(ctx, upload.SourceID, claim.ClaimToken, upload.Upload.ResourceRef)
+			persistErr := h.office.PersistUploadResourceOwned(ctx, upload.SourceID, claim.ClaimToken, ownerToken, upload.Upload.ResourceRef)
 			if persistErr == nil {
 				return nil
 			}
@@ -1733,6 +1754,10 @@ func (h *Handler) Upload(c *gin.Context) {
 			c.JSON(202, UploadResponse{Source: failed})
 			return
 		}
+		if releaseErr := h.office.resolveLifecycleClaimOwned(context.Background(), scope, "source_upload", requestID, ownerToken); releaseErr != nil {
+			writeError(c, &OutcomeUnknownError{RequestID: requestID})
+			return
+		}
 		c.JSON(200, UploadResponse{Source: failed})
 		return
 	}
@@ -1744,6 +1769,10 @@ func (h *Handler) Upload(c *gin.Context) {
 			if errors.Is(batchErr, ErrOutcomeUnknown) {
 				if source, sourceErr := h.office.GetSource(ctx, result.SourceID); sourceErr == nil && source.Status == "ready" {
 					if receipt, receiptErr := h.office.Receipt(ctx, batchID); receiptErr == nil {
+						if releaseErr := h.office.resolveLifecycleClaimOwned(context.Background(), scope, "source_upload", requestID, ownerToken); releaseErr != nil {
+							writeError(c, &OutcomeUnknownError{RequestID: requestID})
+							return
+						}
 						c.JSON(201, UploadResponse{Source: source, Receipt: &receipt})
 						return
 					}
@@ -1758,6 +1787,12 @@ func (h *Handler) Upload(c *gin.Context) {
 				if finishErr == nil && superseded {
 					c.JSON(202, UploadResponse{Source: failed})
 					return
+				}
+				if finishErr == nil {
+					if releaseErr := h.office.resolveLifecycleClaimOwned(context.Background(), scope, "source_upload", requestID, ownerToken); releaseErr != nil {
+						writeError(c, &OutcomeUnknownError{RequestID: requestID})
+						return
+					}
 				}
 			}
 			writeError(c, batchErr)
@@ -1779,6 +1814,10 @@ func (h *Handler) Upload(c *gin.Context) {
 			}
 		}
 		writeError(c, err)
+		return
+	}
+	if releaseErr := h.office.resolveLifecycleClaimOwned(context.Background(), scope, "source_upload", requestID, ownerToken); releaseErr != nil {
+		writeError(c, &OutcomeUnknownError{RequestID: requestID})
 		return
 	}
 	c.JSON(201, UploadResponse{Source: source, Receipt: receipt})
