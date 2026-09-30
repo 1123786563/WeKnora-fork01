@@ -472,12 +472,17 @@ func TestCareerProgressHTTPContract(t *testing.T) {
 
 	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress", appendBody("prog-http-1", ProgressEventSubmitted, 0),
 		gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "invalid_request")
+
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress", appendBody("prog-http-1", ProgressEventPendingSubmission, 0),
+		gin.Params{{Key: "applicationId", Value: applicationID}})
 	require.Equal(t, 200, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"kind":"progress_appended"`)
 	require.Contains(t, rec.Body.String(), `"confirmer":"progress-owner"`)
 	var appended ProgressReceipt
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &appended))
-	require.Equal(t, ProgressStageSubmitted, appended.Stage)
+	require.Equal(t, ProgressStagePendingSubmission, appended.Stage)
 
 	// A stale expected revision maps to the typed 409 with the current value.
 	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress", appendBody("prog-http-2", ProgressEventAssessment, 0),

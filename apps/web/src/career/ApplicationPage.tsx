@@ -270,7 +270,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
    {receipt ? <MaterialPage key={`material-${receipt.pinnedEvidence.opportunityId}-${receipt.pinnedEvidence.snapshotId}`} client={client} scopeController={scopeController} opportunityId={receipt.pinnedEvidence.opportunityId} snapshotId={receipt.pinnedEvidence.snapshotId} onMaterialId={setCareerMaterialId} /> : null}
    {/* T17: the timeline of this one application; keyed by application so
        another batch's application never inherits the previous events. */}
-   {receipt && progressOpen ? <ProgressPage key={`progress-${receipt.applicationId}`} client={client} scopeController={scopeController} applicationId={receipt.applicationId} /> : null}
+   {receipt && progressOpen ? <ProgressPage key={`progress-${receipt.applicationId}`} client={client} scopeController={scopeController} applicationId={receipt.applicationId} materialId={careerMaterialId} /> : null}
    {/* T18: the user-confirmed submission record of this application, with the
        bound material version reviewable; keyed by application so another
        batch's application never inherits the previous submission. */}

@@ -218,6 +218,12 @@ func (intent progressIntent) validate() error {
 	if _, ok := progressEventStage[intent.eventType]; !ok {
 		return ErrInvalidRequest
 	}
+	// Submission facts are recorded through RecordSubmission, which binds the
+	// user-confirmed channel, actual submission time, and material version (or
+	// an explicit unknown-version marker). The generic event contract cannot.
+	if intent.eventType == ProgressEventSubmitted || intent.eventType == ProgressEventResubmitted {
+		return ErrInvalidRequest
+	}
 	if len(intent.note) > maxProgressNoteBytes {
 		return ErrInvalidRequest
 	}

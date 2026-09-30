@@ -101,16 +101,35 @@ func readProgressRows(t *testing.T, db *gorm.DB) []storedProgressRow {
 	return rows
 }
 
+func TestGenericProgressRejectsSubmissionEvents(t *testing.T) {
+	o, db, ctx := newProgressOffice(t, "owner-1", 1920)
+	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "submission-binding", "batch-a")
+	for _, eventType := range []string{ProgressEventSubmitted, ProgressEventResubmitted} {
+		t.Run("append_"+eventType, func(t *testing.T) {
+			_, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "append-"+eventType, eventType, "已投递", 0))
+			require.ErrorIs(t, err, ErrInvalidRequest)
+		})
+		t.Run("correction_"+eventType, func(t *testing.T) {
+			_, err := o.CorrectProgress(ctx, CorrectProgressInput{
+				RequestID: "correct-" + eventType, ApplicationID: applicationID, CorrectsEventID: "00000000-0000-0000-0000-000000000000",
+				EventType: eventType, Source: Source{Kind: "manual"}, ExpectedRevision: 0,
+			})
+			require.ErrorIs(t, err, ErrInvalidRequest)
+		})
+	}
+	require.Empty(t, readProgressRows(t, db), "unbound submission claims must not persist")
+}
+
 func TestAppendProgressPersistsImmutableEventAndReplayIsIdempotent(t *testing.T) {
 	o, db, ctx := newProgressOffice(t, "owner-1", 1901)
 	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "imm", "batch-a")
 
-	receipt, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "imm-1", ProgressEventSubmitted, "通过官网投递", 0))
+	receipt, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "imm-1", ProgressEventPendingSubmission, "通过官网投递", 0))
 	require.NoError(t, err)
 	require.Equal(t, ProgressKindAppended, receipt.Kind)
 	require.Equal(t, applicationID, receipt.ApplicationID)
-	require.Equal(t, ProgressEventSubmitted, receipt.EventType)
-	require.Equal(t, ProgressStageSubmitted, receipt.Stage)
+	require.Equal(t, ProgressEventPendingSubmission, receipt.EventType)
+	require.Equal(t, ProgressStagePendingSubmission, receipt.Stage)
 	require.EqualValues(t, 1, receipt.Seq)
 	require.EqualValues(t, 1, receipt.Revision)
 	require.NotEmpty(t, receipt.EventID)
@@ -123,17 +142,17 @@ func TestAppendProgressPersistsImmutableEventAndReplayIsIdempotent(t *testing.T)
 	require.Equal(t, applicationID, rows[0].ApplicationID)
 	require.EqualValues(t, 1, rows[0].Seq)
 	require.Equal(t, ProgressKindAppended, rows[0].Kind)
-	require.Equal(t, ProgressEventSubmitted, rows[0].EventType)
+	require.Equal(t, ProgressEventPendingSubmission, rows[0].EventType)
 	require.Empty(t, rows[0].CorrectsEventID)
 
 	// Exact replay returns the stored receipt without a second event.
-	replayed, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "imm-1", ProgressEventSubmitted, "通过官网投递", 0))
+	replayed, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "imm-1", ProgressEventPendingSubmission, "通过官网投递", 0))
 	require.NoError(t, err)
 	require.Equal(t, receipt, replayed)
 	require.Len(t, readProgressRows(t, db), 1)
 
 	// The same request ID with different content is a typed conflict.
-	mutated := appendProgressInput(applicationID, "imm-1", ProgressEventSubmitted, "内容已变", 0)
+	mutated := appendProgressInput(applicationID, "imm-1", ProgressEventPendingSubmission, "内容已变", 0)
 	_, err = o.AppendProgress(ctx, mutated)
 	require.ErrorIs(t, err, ErrIdempotencyConflict)
 	require.Len(t, readProgressRows(t, db), 1)
@@ -143,7 +162,7 @@ func TestCorrectProgressAppendsCorrectionWithoutOverwritingOriginal(t *testing.T
 	o, db, ctx := newProgressOffice(t, "owner-1", 1902)
 	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "corr", "batch-a")
 
-	original, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "corr-1", ProgressEventSubmitted, "官网投递", 0))
+	original, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "corr-1", ProgressEventPendingSubmission, "官网投递", 0))
 	require.NoError(t, err)
 	snapshot := readProgressRows(t, db)[0]
 
@@ -184,7 +203,7 @@ func TestProgressProjectionDerivesStageDeterministicallyFromConfirmedEvents(t *t
 	o, db, ctx := newProgressOffice(t, "owner-1", 1903)
 	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "proj", "batch-a")
 
-	_, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "proj-1", ProgressEventSubmitted, "", 0))
+	_, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "proj-1", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 	_, err = o.AppendProgress(ctx, appendProgressInput(applicationID, "proj-2", ProgressEventAssessment, "", 1))
 	require.NoError(t, err)
@@ -251,7 +270,7 @@ func TestProgressProjectionReopenYieldsSameResult(t *testing.T) {
 	path := progressDBPath(t, db)
 	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "reopen", "batch-a")
 
-	_, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "reopen-1", ProgressEventSubmitted, "", 0))
+	_, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "reopen-1", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 	second, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "reopen-2", ProgressEventInterview, "一面", 1))
 	require.NoError(t, err)
@@ -318,7 +337,7 @@ func TestProgressEventsDoNotChainAcrossApplications(t *testing.T) {
 	applicationA := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "chain-a", "batch-a")
 	applicationB := seedProgressApplication(t, o, ctx, "招聘Go工程师。", "2027", "chain-b", "batch-b")
 
-	inA, err := o.AppendProgress(ctx, appendProgressInput(applicationA, "chain-1", ProgressEventSubmitted, "", 0))
+	inA, err := o.AppendProgress(ctx, appendProgressInput(applicationA, "chain-1", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 
 	// A correction inside B may never reference an event that belongs to A.
@@ -336,7 +355,7 @@ func TestProgressEventsDoNotChainAcrossApplications(t *testing.T) {
 	require.EqualValues(t, 0, viewB.Revision)
 
 	// B keeps its own independent sequence numbering.
-	inB, err := o.AppendProgress(ctx, appendProgressInput(applicationB, "chain-3", ProgressEventSubmitted, "", 0))
+	inB, err := o.AppendProgress(ctx, appendProgressInput(applicationB, "chain-3", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 	require.EqualValues(t, 1, inB.Seq)
 
@@ -355,7 +374,7 @@ func TestProgressScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	// owner-1's application.
 	intruder := WithScope(context.Background(), Scope{UserID: "owner-2", TenantID: 1909})
 	require.NoError(t, o.ClaimSpace(intruder))
-	_, err := o.AppendProgress(intruder, appendProgressInput(applicationID, "scope-1", ProgressEventSubmitted, "", 0))
+	_, err := o.AppendProgress(intruder, appendProgressInput(applicationID, "scope-1", ProgressEventPendingSubmission, "", 0))
 	require.ErrorIs(t, err, ErrApplicationNotFound)
 	_, err = o.ApplicationProgress(intruder, applicationID)
 	require.ErrorIs(t, err, ErrApplicationNotFound)
@@ -363,7 +382,7 @@ func TestProgressScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	// A second user of the same tenant has no personal space at all: the scope
 	// gate refuses them before any application access.
 	sameTenant := WithScope(context.Background(), Scope{UserID: "owner-3", TenantID: 1907})
-	_, err = o.AppendProgress(sameTenant, appendProgressInput(applicationID, "scope-2", ProgressEventSubmitted, "", 0))
+	_, err = o.AppendProgress(sameTenant, appendProgressInput(applicationID, "scope-2", ProgressEventPendingSubmission, "", 0))
 	require.ErrorIs(t, err, ErrUnauthorized)
 
 	// A missing application answers with the same error: no existence leak.
@@ -377,7 +396,7 @@ func TestProgressRevisionConflictReturnsCurrentRevision(t *testing.T) {
 	o, db, ctx := newProgressOffice(t, "owner-1", 1909)
 	applicationID := seedProgressApplication(t, o, ctx, "仅限2027届。", "2027", "rev", "batch-a")
 
-	first, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "rev-1", ProgressEventSubmitted, "", 0))
+	first, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "rev-1", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 	require.EqualValues(t, 1, first.Revision)
 
@@ -411,7 +430,7 @@ func TestProgressUnknownOutcomeRecoversViaReceipt(t *testing.T) {
 		cancel()
 		return writeCtx.Err()
 	}
-	_, err := o.AppendProgress(writeCtx, appendProgressInput(applicationID, "unknown-1", ProgressEventSubmitted, "", 0))
+	_, err := o.AppendProgress(writeCtx, appendProgressInput(applicationID, "unknown-1", ProgressEventPendingSubmission, "", 0))
 	require.ErrorIs(t, err, ErrOutcomeUnknown)
 	var unknown *OutcomeUnknownError
 	require.ErrorAs(t, err, &unknown)
@@ -423,7 +442,7 @@ func TestProgressUnknownOutcomeRecoversViaReceipt(t *testing.T) {
 
 	// Retrying the SAME request ID is safe and produces exactly one event.
 	o.afterProgressEventPersist = nil
-	recovered, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "unknown-1", ProgressEventSubmitted, "", 0))
+	recovered, err := o.AppendProgress(ctx, appendProgressInput(applicationID, "unknown-1", ProgressEventPendingSubmission, "", 0))
 	require.NoError(t, err)
 	require.Len(t, readProgressRows(t, db), 1)
 
