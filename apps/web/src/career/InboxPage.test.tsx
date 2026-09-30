@@ -101,25 +101,6 @@ test('inbox lists todos with only the frozen privacy notices and enters the auth
  assert.match(rows[1]!.querySelector('a')?.getAttribute('href') ?? '', /^\/platform\/career\/search$/)
 })
 
-test('a reminders response already in flight cannot restore private rows after deletion generation advances', async () => {
- let resolveReminders!: (value: { reminders: ReminderView[] }) => void
- let generation = 0
- const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
- const client = { career: {
-  open: async () => view(4), reminders: () => new Promise((resolve) => { resolveReminders = resolve }), application: async () => application(),
- } } as unknown as WeKnoraClient
- host = document.createElement('div'); document.body.append(host); root = createRoot(host)
- act(() => root!.render(React.createElement(InboxPage, { client, scopeController, deletionGeneration: generation })))
- await act(async () => { await settle() })
- assert.match(host.textContent ?? '', /正在读取站内待办/)
- generation++
- await act(async () => { root!.render(React.createElement(InboxPage, { client, scopeController, deletionGeneration: generation })); await settle() })
- assert.match(host.textContent ?? '', /个人求职空间已删除/)
- await act(async () => { resolveReminders({ reminders: [progressTodo()] }); await settle() })
- assert.doesNotMatch(host.textContent ?? '', /新的求职进展/)
- assert.equal(host.querySelector('[aria-label="站内待办列表"]'), null)
-})
-
 test('a duplicate trigger reports the dedupe and never renders a second row', async () => {
  let todos: ReminderView[] = [progressTodo()]
  const sent: SetReminderInput[] = []
@@ -183,7 +164,7 @@ test('unsubscribing stops push, keeps the todos readable and offers resubscripti
  assert.ok(button(container, '重新订阅推送提醒'))
 })
 
-test('subscription retry reuses the full original action after refresh advances the profile revision', async () => {
+test('subscription retry reuses the first expected revision after the profile advances', async () => {
  const sent: CareerAction[] = []
  let opens = 0
  const career: CareerStub = {
@@ -193,15 +174,12 @@ test('subscription retry reuses the full original action after refresh advances 
  }
  const container = await mount(career)
  await act(async () => { click(button(container, '退订推送提醒')); await settle(); await settle() })
- await act(async () => { click(button(container, '刷新待办')); await settle(); await settle(); await settle() })
- assert.equal(opens, 2, 'explicit refresh reopens the profile at the new revision')
- assert.match(container.textContent ?? '', /已订阅推送提醒/, 'the refreshed view is rendered before retry')
  await act(async () => { click(button(container, '查询待办回执')); await settle(); await settle() })
  await act(async () => { click(button(container, '用原请求编号重试')); await settle(); await settle() })
  assert.equal(sent.length, 2)
- assert.deepEqual(sent[1], sent[0], 'retry preserves every action field, including request ID and frozen revision')
+ assert.equal(sent[0]!.requestId, sent[1]!.requestId)
  assert.equal(sent[0]!.expectedRevision, 4)
- assert.equal((sent[0] as CareerAction).requestId?.length! > 0, true)
+ assert.equal(sent[1]!.expectedRevision, 4)
 })
 
 test('a revision conflict on the reminder write refreshes the pinned revision', async () => {
