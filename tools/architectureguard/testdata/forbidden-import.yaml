@@ -1,0 +1,20 @@
+schema_version: 1
+scope:
+  include: [internal]
+  exclude: []
+modules:
+  - {id: alpha, target_prefix: internal/modules/alpha}
+platform:
+  id: platform
+  target_prefixes: [internal/platform]
+assets:
+  - kind: package
+    id: pkg.internal.modules.alpha
+    owner: alpha
+    source: internal/modules/alpha
+    target: internal/modules/alpha
+temporary_exceptions:
+  - from: internal/modules/alpha/*
+    to: internal/application/repository
+    reason: wildcard exceptions are not exact prefixes
+    remove_in_wave: 2

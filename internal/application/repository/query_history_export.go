@@ -15,11 +15,9 @@ import (
 // produce the same error so a job id cannot be probed across workspaces.
 var ErrQueryHistoryExportJobNotFound = apperrors.NewNotFoundError("query history export job not found")
 
-// queryHistoryExportRowLimit caps one export at 10000 session rows. The CSV
-// is a per-session summary surface (message/feedback tallies), not a dump;
-// the cap keeps a runaway tenant export from pinning worker memory or
-// object-storage quota while still covering real audit windows.
-const queryHistoryExportRowLimit = 10000
+// queryHistoryExportRowLimit caps one export at 10000 session rows; the
+// constant and the shared SQL live in session_audit.go next to the other
+// audit predicates.
 
 // queryHistoryExportJobRepository implements
 // interfaces.QueryHistoryExportJobRepository.
@@ -78,52 +76,12 @@ func (r *queryHistoryExportJobRepository) UpdateStatus(
 }
 
 // ExportSessionRows returns the aggregated per-session rows of one export in
-// chronological order (oldest first — an audit artifact reads naturally
-// top-to-bottom). The row set reuses the audit-listing predicates via
-// applySessionAuditFilters, derives the origin classification the listing
-// exposes (IM platform / embed / api / web), and counts messages and
-// like/dislike feedback with correlated subqueries — one SQL statement
-// instead of a paging loop, so a filter change in one place cannot drift
-// between the listing and the export.
+// chronological order (oldest first). The SQL is the ONE shared predicate
+// implementation in session_audit.go (exportSessionRows), which the Query
+// History module's SessionAuditRepository.ExportRows entry lands on too, so
+// the legacy listing and the export can never drift.
 func (r *queryHistoryExportJobRepository) ExportSessionRows(
 	ctx context.Context, q *types.SessionListQuery,
 ) ([]types.QueryHistoryExportRow, error) {
-	if q == nil {
-		return nil, stderrors.New("session list query is required")
-	}
-	isPostgres := r.db.Dialector.Name() == "postgres"
-
-	rows := make([]types.QueryHistoryExportRow, 0)
-	err := applySessionAuditFilters(
-		r.db.WithContext(ctx).Table("sessions AS s"), q, isPostgres,
-	).
-		// Same one-row-per-session join contract as QueryPaged; soft-deleted
-		// mappings still classify the session as IM-origin.
-		Joins("LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id").
-		Select(`s.id AS session_id, s.title, s.user_id, s.engine_type,
-			s.created_at, s.updated_at,
-			CASE
-				WHEN ics.id IS NOT NULL THEN ics.platform
-				WHEN s.description LIKE ? THEN 'embed'
-				WHEN s.user_id LIKE ? OR s.user_id LIKE ? THEN 'api'
-				ELSE 'web'
-			END AS source,
-			(SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
-			(SELECT COUNT(*) FROM message_feedback f
-				WHERE f.session_id = s.id AND f.tenant_id = s.tenant_id AND f.rating = ?) AS like_count,
-			(SELECT COUNT(*) FROM message_feedback f
-				WHERE f.session_id = s.id AND f.tenant_id = s.tenant_id AND f.rating = ?) AS dislike_count`,
-			types.EmbedSessionMarkerPrefix+"%",
-			types.SessionOwnerAPITenantKeyPrefix+"%",
-			types.SessionOwnerAPIExternalUserPrefix+"%",
-			types.FeedbackRatingLike,
-			types.FeedbackRatingDislike,
-		).
-		Order("s.created_at ASC, s.id ASC").
-		Limit(queryHistoryExportRowLimit).
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return exportSessionRows(ctx, r.db, q)
 }

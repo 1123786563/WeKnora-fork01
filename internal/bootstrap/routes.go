@@ -7,9 +7,16 @@ package bootstrap
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"sort"
 	"sync"
 )
+
+// RouteModule 是路由装配面的最小接口（sdd-bm 世代）：模块自注册路由组，
+// 组合保持实例域、重复注册在装配期暴露。
+type RouteModule interface {
+	RegisterRoutes(group *gin.RouterGroup)
+}
 
 // Route 是一条 HTTP 路由注册的唯一标识（method + 完整挂载路径）。
 type Route struct {

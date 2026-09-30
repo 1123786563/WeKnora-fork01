@@ -16,6 +16,32 @@ type TaskHandlerRegistry interface {
 
 // TaskHandler 是后台任务处理器的统一签名（对齐 asynq 的 handler 形状），
 // Redis mux 与 Lite SyncTaskExecutor 两条装配路径共用。
+
+// AsynqWorkerRegistry 适配 *asynq.ServeMux 到 TaskHandlerRegistry：mux 自身
+// 会静默覆盖重复 handler，这里先登记 pattern 再触达 mux，重复即报错。
+type AsynqWorkerRegistry struct {
+	mu         sync.Mutex
+	mux        *asynq.ServeMux
+	registered map[string]struct{}
+}
+
+// NewAsynqWorkerRegistry 返回以 mux 为底的 TaskHandlerRegistry。
+func NewAsynqWorkerRegistry(mux *asynq.ServeMux) TaskHandlerRegistry {
+	return &AsynqWorkerRegistry{mux: mux, registered: make(map[string]struct{})}
+}
+
+// Register 安装 handler；pattern 已占用时保留首个并返回错误。
+func (r *AsynqWorkerRegistry) Register(pattern string, handler TaskHandler) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.registered[pattern]; exists {
+		return fmt.Errorf("worker %q already registered", pattern)
+	}
+	r.registered[pattern] = struct{}{}
+	r.mux.HandleFunc(pattern, handler)
+	return nil
+}
+
 type TaskHandler func(context.Context, *asynq.Task) error
 
 // WorkerRegistry 是 duplicate-safe 的任务处理器登记表。

@@ -16,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	sessionhandler "github.com/Tencent/WeKnora/internal/handler/session"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 )
 
 func TestRegisterSessionShareRoutes(t *testing.T) {
@@ -27,7 +28,7 @@ func TestRegisterSessionShareRoutes(t *testing.T) {
 	// The neighbouring surfaces sharing the verb trees.
 	RegisterSessionRoutes(v1, &sessionhandler.Handler{}, &handler.MessageSuggestionHandler{}, g)
 	RegisterFeedbackRoutes(v1, &handler.FeedbackHandler{}, g)
-	RegisterQueryHistoryAdminRoutes(v1, &sessionhandler.Handler{}, g)
+	RegisterQueryHistoryAdminRoutes(v1, queryhistory.NewModule(queryhistory.Dependencies{}), g)
 	RegisterSessionShareRoutes(v1, &sessionhandler.Handler{}, g)
 
 	seen := map[string]bool{}

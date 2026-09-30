@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -151,9 +152,10 @@ type SyncTaskParams struct {
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 	TemporaryDocument    interfaces.TemporaryDocumentService
 	MemoryService        interfaces.MemoryService
-	// QueryHistoryExport runs the Admin+ async query-history CSV export
+	// QueryHistory serves the Admin+ async query-history CSV export
 	// (SP13 Task 4); the Lite executor dispatches it inline like the rest.
 	QueryHistoryExport *service.QueryHistoryExportService
+	QueryHistory       *queryhistory.Module
 
 	// KnowledgeModule 是 knowledge 模块装配门面（IB2，K5 Brief (b)）：18 个
 	// knowledge 任务处理器的双栈注册经门面执行（RegisterSyncHandlers 内装配点，
@@ -171,10 +173,10 @@ func RegisterSyncHandlers(params SyncTaskParams) {
 		logger.Errorf(context.Background(), "register knowledge workers (lite): %v", err)
 		panic(err)
 	}
+	params.Executor.RegisterHandler(types.TypeQueryHistoryExport, params.QueryHistory.HandleExportTask)
 	params.Executor.RegisterHandler(types.TypeTemporaryDocumentProcess, params.TemporaryDocument.Process)
 	params.Executor.RegisterHandler(types.TypeDataSourceSync, params.DataSourceService.ProcessSync)
 	params.Executor.RegisterHandler(types.TypeDataSourcePurge, params.DataSourceService.ProcessDataSourcePurge)
 	params.Executor.RegisterHandler(types.TypeMemoryExtract, params.MemoryService.Handle)
-	params.Executor.RegisterHandler(types.TypeQueryHistoryExport, params.QueryHistoryExport.ProcessExport)
 	logger.Infof(context.Background(), "[SyncTask] All task handlers registered (Lite mode, no Redis)")
 }

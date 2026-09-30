@@ -73,6 +73,9 @@ import (
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/usage"
 	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
+	queryadapters "github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/adapters"
+	queryports "github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/ports"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	confluenceConnector "github.com/Tencent/WeKnora/internal/modules/datasource/connector/confluence"
@@ -88,13 +91,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
-	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
@@ -106,6 +108,7 @@ import (
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
+	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"
 	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
@@ -690,10 +693,31 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTemporaryDocumentService))
 	must(container.Invoke(startTemporaryDocumentCleanup))
 
-	// SP13 Task 4: the Admin+ async query-history CSV export service. It
-	// needs the task enqueuer registered above (asynq client or Lite sync
-	// executor), so it is provided after that block; the worker body is
-	// registered on both executors (router/task.go, router/sync_task.go).
+	// Query History module (Wave 1, Task 10): the Admin+ audit snapshot and
+	// the async CSV export now run on the conversation module's own
+	// assembly. The providers sit here — after the task enqueuer block
+	// above (asynq client or the Lite sync executor), the FileService, the
+	// TenantRepository, and the session audit seam — matching the dig
+	// ordering constraints documented throughout this build: the router's
+	// worker registration and NewRouter resolves the module near the end of
+	// the build, long after everything the module's adapters consume is
+	// registered. dig.As exposes each adapter under its port interface so
+	// the application layer inside the module stays framework-free; the
+	// PolicyReader port is ALWAYS backed by the TenantPolicy adapter (there
+	// is no nil-repo fallback behind the port in production wiring).
+	must(container.Provide(repository.NewSessionAuditRepository))
+	must(container.Provide(queryadapters.NewTenantPolicy, dig.As(new(queryports.PolicyReader))))
+	must(container.Provide(queryadapters.NewLegacyAudit, dig.As(new(queryports.AuditReader))))
+	must(container.Provide(queryadapters.NewGormExportJobStore, dig.As(new(queryports.ExportJobStore))))
+	must(container.Provide(queryadapters.NewPlatformFileStore, dig.As(new(queryports.FileStore))))
+	must(container.Provide(queryadapters.NewAsynqTaskQueue, dig.As(new(queryports.TaskQueue))))
+	must(container.Provide(newQueryHistoryModule))
+
+	// The legacy export service stays provided SOLELY as the legacy session
+	// handler's constructor dependency (session.NewHandler still takes
+	// *service.QueryHistoryExportService); its routes and worker are no
+	// longer registered anywhere in production. Task 11 deletes the legacy
+	// handler methods and this provider together.
 	must(container.Provide(service.NewQueryHistoryExportService))
 
 	// Chat pipeline components for processing chat requests
@@ -2935,7 +2959,6 @@ func registerArtifactPreviewHTTPHandlers(
 	handler.RegisterArtifactPreviewHandler(handler.NewArtifactPreviewHandler(sessions, tenants, files, storage, versions))
 }
 
-
 // knowledgeModuleParams 是 knowledge 模块门面的装配参数（IB2，K5 Brief (f) 表）。
 // 9 个 worker 分发面 + 7 个路由 handler 供给的构造仍在 dig 容器；门面只收
 // 已构造实例（conventions §3：共享装配为集成工程师独占）。
@@ -2956,9 +2979,9 @@ type knowledgeModuleParams struct {
 	ChunkHost           *handler.ChunkHandler
 	WikiPageHost        *handler.WikiPageHandler
 	FAQ                 *faq.FAQHandler
-	Tag                  *kbhandler.TagHandler
-	SemanticModelPolicy  *kbhandler.SemanticModelPolicyHandler
-	SemanticInternal     *kbhandler.SemanticInternalHandler
+	Tag                 *kbhandler.TagHandler
+	SemanticModelPolicy *kbhandler.SemanticModelPolicyHandler
+	SemanticInternal    *kbhandler.SemanticInternalHandler
 
 	DB   *gorm.DB
 	Task interfaces.TaskEnqueuer
@@ -2988,5 +3011,35 @@ func newKnowledgeModule(p knowledgeModuleParams) (*knowledge.Module, error) {
 		PendingWikiRecovery: func(ctx context.Context) {
 			recoverPendingWikiTasks(p.DB, p.Task)
 		},
+	})
+}
+
+// platformErrorLogger adapts the platform's structured logger onto the Query
+// History module's ErrorLogger boundary. The module's application layers are
+// logging-free by design; worker-side error emissions happen at the module's
+// assembly boundary and flow through this adapter so the module never
+// imports the global logger.
+type platformErrorLogger struct{}
+
+// ErrorWithFields mirrors logger.ErrorWithFields (the map[string]interface{}
+// and logrus.Fields types are assignment-compatible).
+func (platformErrorLogger) ErrorWithFields(ctx context.Context, err error, fields map[string]interface{}) {
+	logger.ErrorWithFields(ctx, err, fields)
+}
+
+func newQueryHistoryModule(
+	policy queryports.PolicyReader,
+	audit queryports.AuditReader,
+	jobs queryports.ExportJobStore,
+	files queryports.FileStore,
+	queue queryports.TaskQueue,
+) *queryhistory.Module {
+	return queryhistory.NewModule(queryhistory.Dependencies{
+		Policy: policy,
+		Audit:  audit,
+		Jobs:   jobs,
+		Files:  files,
+		Queue:  queue,
+		Logger: platformErrorLogger{},
 	})
 }

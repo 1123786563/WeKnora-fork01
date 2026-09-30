@@ -8,6 +8,10 @@ alias_obligations:
   - old_import_path: internal/application/service/chat_pipeline
     passb_task: B-conversation
 legacy_files:
+  - path: internal/application/repository/session_audit.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Session audit (application/repository)
+    passb_task: B-conversation
   - path: internal/application/repository/feedback.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Feedback (application/repository)

@@ -371,3 +371,7 @@ dev-app:
 
 dev-frontend:
 	./scripts/dev.sh frontend
+
+.PHONY: check-backend-architecture
+check-backend-architecture:
+	go run ./tools/architectureguard -root . -manifest docs/architecture/backend-modules.yaml -wave 1

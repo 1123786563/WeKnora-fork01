@@ -18,6 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 
@@ -163,6 +164,8 @@ type RouterParams struct {
 	// with exclusions / ordered execute / per-item projection) — its own
 	// handler over the same publish seam authority.
 	AppActionPlanHandler *handler.AppActionPlanHandler
+	// QueryHistory（Wave 1 Task 10）：Admin+ 审计快照与异步 CSV 导出的会话域装配。
+	QueryHistory *queryhistory.Module
 }
 
 // NewRouter 创建新的路由
@@ -416,7 +419,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterFeedbackRoutes(v1, params.FeedbackHandler, rbacGuards)
-		RegisterQueryHistoryAdminRoutes(v1, params.SessionHandler, rbacGuards)
+		RegisterQueryHistoryAdminRoutes(v1, params.QueryHistory, rbacGuards)
 		RegisterAnalyticsRoutes(v1, params.AnalyticsHandler, rbacGuards)
 		RegisterUsageRoutes(v1, params.UsageHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)

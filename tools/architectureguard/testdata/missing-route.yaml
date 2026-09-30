@@ -1,0 +1,22 @@
+schema_version: 1
+scope:
+  include: [internal]
+  exclude: []
+modules:
+  - {id: alpha, target_prefix: internal/modules/alpha}
+platform:
+  id: platform
+  target_prefixes: [internal/platform]
+assets:
+  - kind: route
+    id: alpha.owned-routes
+    owner: alpha
+    source: internal/router/routes.go
+    symbol: RegisterOwnedRoutes
+    target: internal/modules/alpha/transport/http
+  - kind: package
+    id: pkg.internal.router
+    owner: platform
+    source: internal/router
+    target: internal/platform/router
+temporary_exceptions: []
