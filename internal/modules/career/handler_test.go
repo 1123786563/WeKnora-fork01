@@ -719,8 +719,8 @@ func TestCareerRuleHTTPContract(t *testing.T) {
 	require.Equal(t, 200, viewRec.Code, viewRec.Body.String())
 	require.Contains(t, viewRec.Body.String(), `"estimate":`)
 
-	listRec := httptest.NewRecorder()
-	listCtx, _ := gin.CreateTestContext(listRec)
+	listRec = httptest.NewRecorder()
+	listCtx, _ = gin.CreateTestContext(listRec)
 	listCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules", nil).WithContext(base)
 	h.ListRules(listCtx)
 	require.Equal(t, 200, listRec.Code, listRec.Body.String())
