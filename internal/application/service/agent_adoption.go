@@ -49,20 +49,14 @@ type AgentAdoptionService struct {
 	repo                repository.AgentAdoptionRepository
 	agents              AdoptionAgentSource
 	versions            interfaces.AgentVersionService
-	releaseSecurityGate ReleaseSecurityGate
 	now                 func() time.Time
+	releaseSecurityGate ReleaseSecurityGate
 }
 
 var _ interfaces.AgentAdoptionService = (*AgentAdoptionService)(nil)
 
 func NewAgentAdoptionService(repo repository.AgentAdoptionRepository, agents AdoptionAgentSource, versions interfaces.AgentVersionService) *AgentAdoptionService {
 	return &AgentAdoptionService{repo: repo, agents: agents, versions: versions, now: time.Now}
-}
-
-// SetReleaseSecurityGate installs the optional security admission check used
-// before a release is newly adopted or materialized as a local variant.
-func (s *AgentAdoptionService) SetReleaseSecurityGate(gate ReleaseSecurityGate) {
-	s.releaseSecurityGate = gate
 }
 
 func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actorID string, input interfaces.AdoptInput) (interfaces.AdoptionView, bool, error) {
@@ -92,22 +86,11 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 	if release == nil || release.ListingID != listing.ID {
 		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: release does not belong to listing", ErrAgentAdoptionInvalidInput)
 	}
-	if s.releaseSecurityGate != nil {
-		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
-			return interfaces.AdoptionView{}, false, err
-		}
-	}
-	if release.DeprecatedAt != nil {
-		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))
-	}
 	row, created, err := s.repo.AdoptListing(ctx, &types.AgentAdoptionEntity{
 		TenantID: tenantID, ListingID: listing.ID, AcceptedReleaseID: releaseID,
 		State: AgentAdoptionStateActive, CreatedBy: actorID,
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
-			return interfaces.AdoptionView{}, false, fmt.Errorf("%w: adoption is no longer active", ErrAgentAdoptionStateConflict)
-		}
 		return interfaces.AdoptionView{}, false, err
 	}
 	view, err := s.adoptionView(ctx, tenantID, row)
@@ -157,22 +140,11 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 	if release == nil || release.ListingID != adoption.ListingID {
 		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: release does not belong to the adopted listing", ErrAgentAdoptionInvalidInput)
 	}
-	if s.releaseSecurityGate != nil {
-		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
-			return interfaces.AdoptionVariantView{}, err
-		}
-	}
-	if release.DeprecatedAt != nil {
-		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))
-	}
 	created, err := s.repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{
 		TenantID: tenantID, AdoptionID: adoption.ID, ReleaseID: releaseID,
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
-			return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: adoption state changed before variant creation", ErrAgentAdoptionStateConflict)
-		}
 		return interfaces.AdoptionVariantView{}, err
 	}
 	return s.variantView(ctx, tenantID, created)
@@ -278,11 +250,6 @@ func (s *AgentAdoptionService) PublishVariant(ctx context.Context, tenantID uint
 	}
 	if variant == nil {
 		return interfaces.PublishVariantResult{}, ErrAgentAdoptionNotFound
-	}
-	if s.releaseSecurityGate != nil {
-		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, variant.ReleaseID); err != nil {
-			return interfaces.PublishVariantResult{}, err
-		}
 	}
 	if len(missing) > 0 {
 		return interfaces.PublishVariantResult{}, notRunnable(missing)
@@ -554,4 +521,10 @@ func buildLocalAgent(variant *types.AgentAdoptionVariantEntity, payload types.Ag
 		Description: manifest.Summary,
 		Config:      config,
 	}
+}
+
+// SetReleaseSecurityGate installs the optional security admission check used
+// before a release is newly adopted or materialized as a local variant.
+func (s *AgentAdoptionService) SetReleaseSecurityGate(gate ReleaseSecurityGate) {
+	s.releaseSecurityGate = gate
 }

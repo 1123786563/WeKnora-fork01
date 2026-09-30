@@ -27,7 +27,7 @@ func TestCraftRunCaptureRunnerRecoversStrandedReceiptsAfterProcessRestart(t *tes
 	seedCraftCaptureWiringDB(t, db)
 	ctx := context.Background()
 	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		SandboxID: "sbx-restart", Generation: "0",
 		OpenCodeSessionID: "oc-restart", RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -143,7 +143,7 @@ func TestQuiescenceProofRejectsSameSizeInPlaceRewrite(t *testing.T) {
 	seedCraftCaptureWiringDB(t, db)
 	ctx := context.Background()
 	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		SandboxID: "sbx-quiesce", Generation: "0",
 		OpenCodeSessionID: "oc-quiesce", RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -180,7 +180,7 @@ func TestQuiescenceProofRejectsSameSizeInPlaceRewrite(t *testing.T) {
 	material, err := provider.MaterialHandleForCapture(ctx, views, key)
 	require.NoError(t, err)
 	task := craft.Task{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:       craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		WorkspaceID: materialWorkspaceID(t, db, "s-wiring"),
 		Fence:       runtime.Fence{RunKey: runtime.RunKey{TenantID: 1, RunID: "run-quiesce-a"}, Epoch: claimFence.Epoch},
 	}
@@ -255,7 +255,7 @@ func seedPendingCaptureReceipt(t *testing.T, db *gorm.DB, provider *CraftRunView
 	t.Helper()
 	ctx := context.Background()
 	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: sessionID},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: sessionID},
 		SandboxID: "sbx-" + runID, Generation: "0",
 		OpenCodeSessionID: "oc-" + runID, RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -360,7 +360,7 @@ func TestCraftRunViewCandidateStagesWithNonDefaultOutputDirEnv(t *testing.T) {
 	seedCraftCaptureWiringDB(t, db)
 	ctx := context.Background()
 	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		SandboxID: "sbx-candenv", Generation: "0",
 		OpenCodeSessionID: "oc-candenv", RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -406,7 +406,7 @@ func TestCraftRunViewCandidateStagesWithNonDefaultOutputDirEnv(t *testing.T) {
 	material, err := provider.MaterialHandleForCapture(ctx, views, key)
 	require.NoError(t, err)
 	task := craft.Task{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:       craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		WorkspaceID: materialWorkspaceID(t, db, "s-wiring"),
 		Fence:       runtime.Fence{RunKey: runtime.RunKey{TenantID: 1, RunID: "run-candenv-a"}, Epoch: claimFence.Epoch},
 	}

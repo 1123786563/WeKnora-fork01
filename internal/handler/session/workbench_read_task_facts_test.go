@@ -12,10 +12,10 @@ import (
 )
 
 type stubTaskFactsReader struct {
-	facts         repository.WorkbenchTaskFacts
-	err           error
-	calls         int
-	seenOwnerIDs  []string
+	facts        repository.WorkbenchTaskFacts
+	err          error
+	calls        int
+	seenOwnerIDs []string
 }
 
 // ReadTaskFactsForRun records the ownerID argument: the owner-field mismatch

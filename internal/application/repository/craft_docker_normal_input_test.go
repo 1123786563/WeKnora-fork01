@@ -360,7 +360,7 @@ func TestCraftDockerNormalInputMigrationUpDownUp(t *testing.T) {
 		engine := db.Name()
 		if engine == "sqlite" {
 			for _, direction := range []string{"down", "up"} {
-				body, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000125_craft_docker_normal_input."+direction+".sql"))
+				body, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000176_craft_docker_normal_input."+direction+".sql"))
 				require.NoError(t, err)
 				require.NoError(t, db.Exec(string(body)).Error)
 			}

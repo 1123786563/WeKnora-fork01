@@ -118,7 +118,7 @@ func TestCraftArchiveReplayIsIdempotentWithNondeterministicObjectRefs(t *testing
 func TestCraftArchiveRollbackSurvivesCanceledRequestContext(t *testing.T) {
 	env := newCraftSessionEnv(t, openGate)
 	files := &craftT02NondeterministicFiles{
-		blobs:                        map[string][]byte{},
+		blobs:                         map[string][]byte{},
 		refuseDeleteOnCanceledContext: true,
 	}
 	env.svc.files = files

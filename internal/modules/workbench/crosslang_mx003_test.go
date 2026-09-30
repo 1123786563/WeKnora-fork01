@@ -12,11 +12,11 @@ import (
 
 type mx003Fixture struct {
 	ExecutionUnavailableCancel ExecutionDTO          `json:"execution_unavailable_cancel"`
-	EventsValid                []ExecutionEvent       `json:"events_valid"`
-	EventsInvalid              []ExecutionEvent       `json:"events_invalid"`
-	DecisionsValid             []InteractionDecision  `json:"decisions_valid"`
-	DecisionsInvalid           []InteractionDecision  `json:"decisions_invalid"`
-	SnapshotGoShaped           ExecutionSnapshot      `json:"snapshot_go_shaped"`
+	EventsValid                []ExecutionEvent      `json:"events_valid"`
+	EventsInvalid              []ExecutionEvent      `json:"events_invalid"`
+	DecisionsValid             []InteractionDecision `json:"decisions_valid"`
+	DecisionsInvalid           []InteractionDecision `json:"decisions_invalid"`
+	SnapshotGoShaped           ExecutionSnapshot     `json:"snapshot_go_shaped"`
 }
 
 func loadMX003Fixture(t *testing.T) *mx003Fixture {

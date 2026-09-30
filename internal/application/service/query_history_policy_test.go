@@ -72,12 +72,12 @@ func TestCheckQueryHistoryAccessModes(t *testing.T) {
 			wantMode: types.QueryHistoryModeAnonymized,
 		},
 		{
-			name:       "disabled is forbidden",
-			repo:       &stubTenantRepoForHistory{tenant: tenantWithQueryHistoryMode(t, types.QueryHistoryModeDisabled)},
-			wantMode:   types.QueryHistoryModeDisabled,
-			wantErr:    true,
+			name:        "disabled is forbidden",
+			repo:        &stubTenantRepoForHistory{tenant: tenantWithQueryHistoryMode(t, types.QueryHistoryModeDisabled)},
+			wantMode:    types.QueryHistoryModeDisabled,
+			wantErr:     true,
 			wantErrCode: apperrors.ErrForbidden,
-			wantErrMsg: "query history is disabled for this tenant",
+			wantErrMsg:  "query history is disabled for this tenant",
 		},
 		{
 			name:    "repository error propagates",

@@ -130,7 +130,7 @@ func TestCraftRunCaptureRunnerAdvancesTerminalBoundRunAndUnblocksNextRun(t *test
 	seedCraftCaptureWiringDB(t, db)
 	ctx := context.Background()
 	workspace, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		SandboxID: "sbx-capture", Generation: "0",
 		OpenCodeSessionID: "oc-capture", RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -185,9 +185,9 @@ func TestCraftRunCaptureRunnerAdvancesTerminalBoundRunAndUnblocksNextRun(t *test
 		Where("tenant_id = ? AND run_id = ?", 1, "run-capture-a").Scan(&state).Error)
 	require.Equal(t, "advanced", state, "the post-terminal coordinator must seal and advance the capture")
 	var head struct {
-		Revision     int64
-		State        string
-		SourceRunID  string `gorm:"column:source_run_id"`
+		Revision    int64
+		State       string
+		SourceRunID string `gorm:"column:source_run_id"`
 	}
 	require.NoError(t, db.Table("craft_workspace_draft_heads").Select("revision, state, source_run_id").
 		Where("workspace_id = ?", workspace.ID).Scan(&head).Error)
@@ -221,7 +221,7 @@ func TestCraftRunViewExecuteStagesPrivateCandidateNotVersion(t *testing.T) {
 	seedCraftCaptureWiringDB(t, db)
 	ctx := context.Background()
 	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:     craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		SandboxID: "sbx-candidate", Generation: "0",
 		OpenCodeSessionID: "oc-candidate", RuntimeDigest: "sha256:runtime",
 	}, 0)
@@ -270,7 +270,7 @@ func TestCraftRunViewExecuteStagesPrivateCandidateNotVersion(t *testing.T) {
 	require.NoError(t, err)
 	epoch = claimFence.Epoch
 	task := craft.Task{
-		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		Scope:       craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
 		WorkspaceID: materialWorkspaceID(t, db, "s-wiring"),
 		Fence:       agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 1, RunID: "run-candidate-a"}, Epoch: epoch},
 	}

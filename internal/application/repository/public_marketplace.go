@@ -15,12 +15,14 @@ import (
 )
 
 var (
-	ErrPublicMarketplaceNotFound        = errors.New("public marketplace resource not found")
-	ErrPublicMarketplaceInvalidDecision = errors.New("invalid public marketplace review decision")
-	ErrPublicMarketplaceReviewConflict  = errors.New("public marketplace submission already has a review")
-	ErrPublicMarketplaceDigestMismatch  = errors.New("public marketplace reviewed digest does not match submission")
-	ErrPublicMarketplacePointerConflict = errors.New("public marketplace listing pointer changed")
-	ErrPublicMarketplaceReleaseConflict = errors.New("public marketplace release conflict")
+	ErrPublicMarketplaceNotFound            = errors.New("public marketplace resource not found")
+	ErrPublicMarketplaceInvalidDecision     = errors.New("invalid public marketplace review decision")
+	ErrPublicMarketplaceReviewConflict      = errors.New("public marketplace submission already has a review")
+	ErrPublicMarketplaceDigestMismatch      = errors.New("public marketplace reviewed digest does not match submission")
+	ErrPublicMarketplacePointerConflict     = errors.New("public marketplace listing pointer changed")
+	ErrPublicMarketplaceReleaseConflict     = errors.New("public marketplace release conflict")
+	ErrPublicMarketplaceLifecycleTransition = errors.New("public marketplace lifecycle transition failed")
+	ErrPublicMarketplaceLifecycleInvalid    = errors.New("invalid public marketplace lifecycle request")
 )
 
 // PublicCatalogRow pairs a discoverable public listing with its current
@@ -48,12 +50,83 @@ type PublicMarketplaceRepository interface {
 	ReviewAndPublishPublicTx(ctx context.Context, expectedPriorReleaseID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (*types.PublicReleaseReviewEntity, *types.PublicAgentReleaseEntity, error)
 	ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error)
 	IntroduceRelease(ctx context.Context, adopterTenantID uint64, actorID string, listing *types.PublicMarketplaceListingEntity, release *types.PublicAgentReleaseEntity) (*types.TenantIntroducedReleaseEntity, *types.AgentAdoptionEntity, bool, error)
+	UnlistPublicListing(ctx context.Context, listingID, actorID, reason string) (*types.PublicMarketplaceListingEntity, error)
+	DeprecatePublicRelease(ctx context.Context, releaseID, replacementReleaseID, actorID, reason string) (*types.PublicAgentReleaseEntity, error)
 }
 
 type publicMarketplaceRepository struct{ db *gorm.DB }
 
 func NewPublicMarketplaceRepository(db *gorm.DB) PublicMarketplaceRepository {
 	return &publicMarketplaceRepository{db: db}
+}
+
+// UnlistPublicListing records a platform catalog transition without changing
+// the publisher's tenant Listing, Releases, or existing introductions.
+func (r *publicMarketplaceRepository) UnlistPublicListing(ctx context.Context, listingID, actorID, reason string) (*types.PublicMarketplaceListingEntity, error) {
+	listingID, actorID, reason = strings.TrimSpace(listingID), strings.TrimSpace(actorID), strings.TrimSpace(reason)
+	if listingID == "" || actorID == "" || reason == "" {
+		return nil, ErrPublicMarketplaceLifecycleInvalid
+	}
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&types.PublicMarketplaceListingEntity{}).
+		Where("id = ? AND state = ?", listingID, "listed").
+		Updates(map[string]any{"state": "unlisted", "unlisted_by": actorID, "unlisted_at": now, "unlist_reason": reason, "updated_at": now})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		var count int64
+		if err := r.db.WithContext(ctx).Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listingID).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			return nil, ErrPublicMarketplaceNotFound
+		}
+		return nil, ErrPublicMarketplaceLifecycleTransition
+	}
+	return r.GetPublicListing(ctx, listingID)
+}
+
+// DeprecatePublicRelease writes lane-specific platform lifecycle metadata.
+// The public Release content remains immutable and the replacement must have
+// the same Public Listing key.
+func (r *publicMarketplaceRepository) DeprecatePublicRelease(ctx context.Context, releaseID, replacementID, actorID, reason string) (*types.PublicAgentReleaseEntity, error) {
+	releaseID, replacementID = strings.TrimSpace(releaseID), strings.TrimSpace(replacementID)
+	actorID, reason = strings.TrimSpace(actorID), strings.TrimSpace(reason)
+	if releaseID == "" || replacementID == "" || releaseID == replacementID || actorID == "" || reason == "" {
+		return nil, ErrPublicMarketplaceLifecycleInvalid
+	}
+	var changed types.PublicAgentReleaseEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current types.PublicAgentReleaseEntity
+		if err := tx.Where("id = ?", releaseID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPublicMarketplaceNotFound
+			}
+			return err
+		}
+		var replacement types.PublicAgentReleaseEntity
+		if err := tx.Where("listing_id = ? AND id = ?", current.ListingID, replacementID).First(&replacement).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPublicMarketplaceLifecycleInvalid
+			}
+			return err
+		}
+		now := time.Now().UTC()
+		updated := tx.Model(&types.PublicAgentReleaseEntity{}).Where("id = ? AND deprecated_at IS NULL", releaseID).
+			Updates(map[string]any{"deprecated_by": actorID, "deprecated_at": now, "deprecation_reason": reason, "replacement_release_id": replacementID})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrPublicMarketplaceLifecycleTransition
+		}
+		return tx.Where("id = ?", releaseID).First(&changed).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &changed, nil
 }
 
 func (r *publicMarketplaceRepository) VerifyPublisher(ctx context.Context, row *types.VerifiedPublisherEntity) (*types.VerifiedPublisherEntity, bool, error) {
@@ -325,12 +398,25 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 	var adoption *types.AgentAdoptionEntity
 	created := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := guardAdoptionListingScopeTx(tx, adopterTenantID, listing.ID); err != nil {
-			return err
+		// Listing is always the first lifecycle gate. UnlistPublicListing CASes
+		// this exact row, so PostgreSQL serializes the operations and SQLite
+		// holds its writer lock until the full transaction commits.
+		listingGate := tx.Model(&types.PublicMarketplaceListingEntity{}).
+			Where("id = ? AND state = ?", listing.ID, "listed").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if listingGate.Error != nil {
+			return listingGate.Error
+		}
+		if listingGate.RowsAffected != 1 {
+			return ErrPublicMarketplaceLifecycleTransition
+		}
+		var persistedRelease types.PublicAgentReleaseEntity
+		if err := tx.Where("listing_id = ? AND id = ?", listing.ID, release.ID).Take(&persistedRelease).Error; err != nil {
+			return ErrPublicMarketplaceReleaseConflict
 		}
 		err := tx.Where("tenant_id = ? AND public_release_id = ?", adopterTenantID, release.ID).First(&introduced).Error
 		if err == nil {
-			adoption, _, err = adoptListingAfterScopeGuardTx(tx, &types.AgentAdoptionEntity{
+			adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
 				TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
 				State: "active", CreatedBy: actorID,
 			})
@@ -359,7 +445,7 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 			}
 			introduced = winner
 		}
-		adoption, _, err = adoptListingAfterScopeGuardTx(tx, &types.AgentAdoptionEntity{
+		adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
 			TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
 			State: "active", CreatedBy: actorID,
 		})

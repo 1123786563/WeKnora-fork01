@@ -11,8 +11,8 @@ package publish
 import (
 	"context"
 
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 )
 
 // ConfluenceRemoteReader is the plan-formation pre-read port (satisfied

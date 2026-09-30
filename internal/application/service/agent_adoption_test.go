@@ -232,7 +232,7 @@ func TestAgentAdoptionServiceMapsEndedAdoptionConflict(t *testing.T) {
 	ctx := context.Background()
 	adoption, _, err := svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
 	require.NoError(t, err)
-	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "admin", "ended")
 	require.NoError(t, err)
 	_, _, err = svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
 	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)

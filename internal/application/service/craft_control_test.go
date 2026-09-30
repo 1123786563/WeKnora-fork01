@@ -802,7 +802,6 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 	require.Equal(t, 2, exec.AbortCount())
 }
 
-
 // ---- T17 round-2 OCR regressions ---------------------------------------------
 
 // TestControlStopExecutorCanceledResultConverges pins the round-2 high fix:
@@ -826,14 +825,14 @@ func TestControlStopExecutorCanceledResultConverges(t *testing.T) {
 	runs := NewAgentRunService(repository.NewAgentRunStore(db))
 	const runID = "run-t17r2"
 	_, err := runs.Submit(ctx, agentruntime.Admission{
-		Key:                agentruntime.RunKey{TenantID: 1, RunID: runID},
-		SessionID:          sessionID, UserID: "u1",
-		RequestID:          "r-" + runID, AssistantMessageID: "a-" + runID,
-		RequestHash:        "h-" + runID,
-		Snapshot:           json.RawMessage(`{"version":1,"craft":true}`),
-		UserMessage:        json.RawMessage(`{"role":"user","content":"r2"}`),
-		AssistantMessage:   json.RawMessage(`{"role":"assistant","content":""}`),
-		Deadline:           time.Now().Add(time.Hour),
+		Key:       agentruntime.RunKey{TenantID: 1, RunID: runID},
+		SessionID: sessionID, UserID: "u1",
+		RequestID: "r-" + runID, AssistantMessageID: "a-" + runID,
+		RequestHash:      "h-" + runID,
+		Snapshot:         json.RawMessage(`{"version":1,"craft":true}`),
+		UserMessage:      json.RawMessage(`{"role":"user","content":"r2"}`),
+		AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`),
+		Deadline:         time.Now().Add(time.Hour),
 	})
 	require.NoError(t, err)
 	_, err = delegations.PutWorkspace(ctx, craft.Workspace{

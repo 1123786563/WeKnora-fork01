@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	ErrAgentAdoptionNotFound                 = errors.New("agent adoption resource not found")
-	ErrAgentAdoptionVariantIdentityImmutable = errors.New("published agent variant identity is immutable")
-	ErrAgentAdoptionVariantTransition        = errors.New("agent adoption variant state transition failed")
+	ErrAgentAdoptionNotFound          = errors.New("agent adoption resource not found")
+	ErrAgentAdoptionVariantTransition = errors.New("agent adoption variant state transition failed")
+	ErrAgentAdoptionTransition        = errors.New("agent adoption state transition failed")
 	// ErrAgentAdoptionRemapStateConflict marks a ReplaceCapabilityMappings
 	// whose guarded state UPDATE lost to a concurrent transition (e.g.
 	// publish landing between the service's pre-check and this write): the
@@ -31,6 +31,13 @@ var (
 type AgentAdoptionPublishedRow struct {
 	Variant types.AgentAdoptionVariantEntity
 	Agent   *types.CustomAgent
+}
+
+// AgentTaskAdmission is the narrow persistence seam used when admitting a new
+// Task from a tenant-owned local Agent. Ordinary Agents without a marketplace
+// Variant return false.
+type AgentTaskAdmission interface {
+	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
 }
 
 // AgentAdoptionRepository owns the Adoption/Variant/mapping SQL. All reads
@@ -47,11 +54,105 @@ type AgentAdoptionRepository interface {
 	ReplaceCapabilityMappings(context.Context, uint64, string, []types.AgentVariantCapabilityMappingEntity, string) error
 	ListCapabilityMappings(context.Context, uint64, string) ([]types.AgentVariantCapabilityMappingEntity, error)
 	UpdateVariantState(context.Context, uint64, string, []string, string, map[string]any) (*types.AgentAdoptionVariantEntity, error)
+	RetireVariant(context.Context, uint64, string, string, string) (*types.AgentAdoptionVariantEntity, error)
+	EndAdoption(context.Context, uint64, string, string, string) (*types.AgentAdoptionEntity, error)
+	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
 	PublishedAvailableAgents(context.Context, uint64) ([]AgentAdoptionPublishedRow, error)
 	GetMarketplaceListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
-	EndAdoption(context.Context, uint64, string, string, string, map[string]any) (*types.AgentAdoptionEntity, error)
 	RetiredVariantAgentExists(context.Context, uint64, string) (bool, error)
+}
+
+// RetireVariant is a tenant-scoped, one-way compare-and-set transition. The
+// Variant row and its pinned local Agent Version are retained for history.
+func (r *agentAdoptionRepository) RetireVariant(ctx context.Context, tenantID uint64, variantID, actorID, reason string) (*types.AgentAdoptionVariantEntity, error) {
+	variantID = strings.TrimSpace(variantID)
+	if tenantID == 0 || variantID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
+		return nil, ErrAgentAdoptionVariantTransition
+	}
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, variantID, []string{"draft", "mapped", "tested", "published"}).
+		Updates(map[string]any{"state": "retired", "retired_by": strings.TrimSpace(actorID), "retired_at": now, "retirement_reason": strings.TrimSpace(reason), "updated_at": now})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		var count int64
+		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", tenantID, variantID).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			return nil, ErrAgentAdoptionNotFound
+		}
+		return nil, ErrAgentAdoptionVariantTransition
+	}
+	return r.GetVariant(ctx, tenantID, variantID)
+}
+
+// EndAdoption is a one-way CAS that also enforces the aggregate invariant:
+// every Variant must already be retired before the Adoption can end.
+func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID, actorID, reason string) (*types.AgentAdoptionEntity, error) {
+	adoptionID = strings.TrimSpace(adoptionID)
+	if tenantID == 0 || adoptionID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
+		return nil, ErrAgentAdoptionTransition
+	}
+	now := time.Now().UTC()
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// This conditional no-op UPDATE is the same parent-row gate used by
+		// CreateVariant. Keep the child check in a later command so PostgreSQL
+		// READ COMMITTED takes a fresh snapshot after any gate wait.
+		gate := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, "active").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
+		}
+		if gate.RowsAffected != 1 {
+			var count int64
+			if err := tx.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND id = ?", tenantID, adoptionID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return ErrAgentAdoptionNotFound
+			}
+			return ErrAgentAdoptionTransition
+		}
+		var variants int64
+		if err := tx.Model(&types.AgentAdoptionVariantEntity{}).
+			Where("tenant_id = ? AND adoption_id = ? AND state <> ?", tenantID, adoptionID, "retired").Count(&variants).Error; err != nil {
+			return err
+		}
+		if variants != 0 {
+			return ErrAgentAdoptionTransition
+		}
+		ended := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, "active").
+			Updates(map[string]any{"state": "ended", "ended_by": strings.TrimSpace(actorID), "ended_at": now, "end_reason": strings.TrimSpace(reason), "updated_at": now})
+		if ended.Error != nil {
+			return ended.Error
+		}
+		if ended.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.GetAdoption(ctx, tenantID, adoptionID)
+}
+
+// IsRetiredMarketplaceAgent implements the Task admission lookup. An Agent
+// with no marketplace Variant is ordinary local content and is admitted.
+func (r *agentAdoptionRepository) IsRetiredMarketplaceAgent(ctx context.Context, tenantID uint64, localAgentID string) (bool, error) {
+	if tenantID == 0 || strings.TrimSpace(localAgentID) == "" {
+		return false, nil
+	}
+	var count int64
+	err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND local_agent_id = ? AND state = ?", tenantID, strings.TrimSpace(localAgentID), "retired").Count(&count).Error
+	return count > 0, err
 }
 
 type agentAdoptionRepository struct{ db *gorm.DB }
@@ -68,57 +169,58 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 // reconciles the accepted pointer, so both callers get an idempotent result
 // instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	var result *types.AgentAdoptionEntity
-	created := false
-	err := withTenantSecurityGuard(ctx, r.db, adoption.TenantID, func(tx *gorm.DB) error {
+	if adoption == nil || adoption.TenantID == 0 || strings.TrimSpace(adoption.ListingID) == "" || strings.TrimSpace(adoption.AcceptedReleaseID) == "" || (adoption.State != "" && adoption.State != "active") {
+		return nil, false, ErrAgentAdoptionTransition
+	}
+	var row *types.AgentAdoptionEntity
+	var created bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := checkReleaseAdmissionTx(tx, adoption.TenantID, adoption.AcceptedReleaseID); err != nil {
 			return err
 		}
+		gate := tx.Model(&types.AgentMarketplaceListingEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", adoption.TenantID, adoption.ListingID, "listed").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
+		}
+		if gate.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
+		}
+		var release types.AgentReleaseEntity
+		if err := tx.Where("tenant_id = ? AND listing_id = ? AND id = ?", adoption.TenantID, adoption.ListingID, adoption.AcceptedReleaseID).Take(&release).Error; err != nil {
+			return ErrAgentAdoptionTransition
+		}
 		var err error
-		result, created, err = adoptListingTx(tx, adoption)
+		row, created, err = adoptListingTx(tx, adoption)
 		return err
 	})
-	if err != nil {
-		return nil, false, err
-	}
-	return result, created, nil
+	return row, created, err
 }
 
 // adoptListingTx is the transaction-bound adopt upsert, shared with the
-// public-marketplace IntroduceRelease transaction (T30 #60). Active existing
-// rows reconcile their accepted pointer; terminal rows refuse re-adoption.
-// A first insert races on uq_agent_adoptions_scope and converges to the winner.
+// public-marketplace IntroduceRelease transaction (T30 #60). Semantics are
+// identical to the pre-refactor AdoptListing: an existing (tenant,
+// listing) row reconciles its accepted pointer; a first insert races on
+// uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	if err := guardAdoptionListingScopeTx(tx, adoption.TenantID, adoption.ListingID); err != nil {
-		return nil, false, err
-	}
-	return adoptListingAfterScopeGuardTx(tx, adoption)
-}
-
-// guardAdoptionListingScopeTx takes the writer guard for one tenant/listing
-// scope before any introduction/adoption reads. Existing adoption rows are
-// locked against EndAdoption; on SQLite, even a no-match UPDATE obtains the
-// transaction's writer reservation before public introduction ledger access.
-func guardAdoptionListingScopeTx(tx *gorm.DB, tenantID uint64, listingID string) error {
-	locked := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND listing_id = ?", tenantID, listingID).
+	// A state-guarded parent UPDATE is the durable serialization point shared
+	// by reconciliation and EndAdoption. Keep it tenant scoped.
+	gate := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND listing_id = ? AND state = ?", adoption.TenantID, adoption.ListingID, "active").
 		UpdateColumn("updated_at", gorm.Expr("updated_at"))
-	return locked.Error
-}
-
-// adoptListingAfterScopeGuardTx resolves/reconciles the unique Adoption row.
-// The caller must already have acquired guardAdoptionListingScopeTx in this
-// same transaction.
-func adoptListingAfterScopeGuardTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	// Lock an existing scope row before reading it. This serializes accepted-
-	// pointer reconciliation with EndAdoption: a caller arriving after the
-	// terminal transition waits, then observes ended instead of reviving it.
-	// When no Adoption exists yet there is no row to lock; the unique index
-	// remains the first-adopt arbiter and the conflict loser below re-reads the
-	// winner before deciding.
+	if gate.Error != nil {
+		return nil, false, gate.Error
+	}
+	if gate.RowsAffected > 1 {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	var existing types.AgentAdoptionEntity
 	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
+		if gate.RowsAffected != 1 {
+			return nil, false, ErrAgentAdoptionTransition
+		}
 		return reconcileAdoptionTx(tx, &existing, adoption.AcceptedReleaseID)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -144,6 +246,9 @@ func adoptListingAfterScopeGuardTx(tx *gorm.DB, adoption *types.AgentAdoptionEnt
 	if err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
 		return nil, false, err
 	}
+	if winner.State != "active" {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	return reconcileAdoptionTx(tx, &winner, adoption.AcceptedReleaseID)
 }
 
@@ -152,17 +257,21 @@ func adoptListingAfterScopeGuardTx(tx *gorm.DB, adoption *types.AgentAdoptionEnt
 // pointer (last write wins, matching sequential adopt semantics).
 func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
 	if existing.State != "active" {
-		return nil, false, fmt.Errorf("%w: state is %q", ErrAgentAdoptionTransition, existing.State)
+		return nil, false, ErrAgentAdoptionTransition
 	}
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil
 	}
 	existing.AcceptedReleaseID = acceptedReleaseID
 	existing.UpdatedAt = time.Now().UTC()
-	if err := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
-		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt}).Error; err != nil {
-		return nil, false, err
+	updated := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", existing.TenantID, existing.ID, "active").
+		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt})
+	if updated.Error != nil {
+		return nil, false, updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return nil, false, ErrAgentAdoptionTransition
 	}
 	return existing, false, nil
 }
@@ -197,12 +306,15 @@ func (r *agentAdoptionRepository) CreateVariant(ctx context.Context, variant *ty
 	}
 	created.CreatedAt = time.Now().UTC()
 	created.UpdatedAt = created.CreatedAt
-	err := withTenantSecurityGuard(ctx, r.db, created.TenantID, func(tx *gorm.DB) error {
-		if err := checkReleaseAdmissionTx(tx, created.TenantID, created.ReleaseID); err != nil {
-			return err
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		gate := tx.Model(&types.AgentAdoptionEntity{}).
+			Where("tenant_id = ? AND id = ? AND state = ?", created.TenantID, created.AdoptionID, "active").
+			UpdateColumn("updated_at", gorm.Expr("updated_at"))
+		if gate.Error != nil {
+			return gate.Error
 		}
-		if err := guardAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
-			return err
+		if gate.RowsAffected != 1 {
+			return ErrAgentAdoptionTransition
 		}
 		return tx.Create(&created).Error
 	})
@@ -286,16 +398,6 @@ func (r *agentAdoptionRepository) ListCapabilityMappings(ctx context.Context, te
 // only when the current state is one of expectedFrom, so a concurrent or
 // repeated transition fails loudly instead of double-applying.
 func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenantID uint64, variantID string, expectedFrom []string, nextState string, updates map[string]any) (*types.AgentAdoptionVariantEntity, error) {
-	identityChanging := false
-	for _, key := range []string{"local_agent_id", "local_agent_version_id", "release_id"} {
-		if _, changing := updates[key]; changing {
-			identityChanging = true
-			break
-		}
-	}
-	if containsState(expectedFrom, "published") && identityChanging {
-		return nil, ErrAgentAdoptionVariantIdentityImmutable
-	}
 	set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
 	for key, value := range updates {
 		set[key] = value
@@ -311,37 +413,6 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 		if _, ok := set[at]; !ok {
 			set[at] = time.Now().UTC()
 		}
-	}
-	if nextState == "published" {
-		var updated *types.AgentAdoptionVariantEntity
-		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
-			variant, err := lockVariantForStateUpdate(tx, tenantID, variantID)
-			if err != nil {
-				return err
-			}
-			if identityChanging && variant.PublishedAt != nil {
-				return ErrAgentAdoptionVariantIdentityImmutable
-			}
-			if err := checkReleaseAdmissionTx(tx, tenantID, variant.ReleaseID); err != nil {
-				return err
-			}
-			return updateVariantStateTx(tx, tenantID, variantID, expectedFrom, nextState, set, &updated)
-		})
-		return updated, err
-	}
-	if identityChanging {
-		var updated *types.AgentAdoptionVariantEntity
-		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
-			variant, err := lockVariantForStateUpdate(tx, tenantID, variantID)
-			if err != nil {
-				return err
-			}
-			if variant.PublishedAt != nil {
-				return ErrAgentAdoptionVariantIdentityImmutable
-			}
-			return updateVariantStateTx(tx, tenantID, variantID, expectedFrom, nextState, set, &updated)
-		})
-		return updated, err
 	}
 	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
 		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(variantID), expectedFrom).
@@ -361,50 +432,6 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 		return nil, fmt.Errorf("%w: variant %s is %q, expected one of %v", ErrAgentAdoptionVariantTransition, variantID, current.State, expectedFrom)
 	}
 	return r.GetVariant(ctx, tenantID, variantID)
-}
-
-func lockVariantForStateUpdate(tx *gorm.DB, tenantID uint64, variantID string) (types.AgentAdoptionVariantEntity, error) {
-	var variant types.AgentAdoptionVariantEntity
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&variant).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return variant, ErrAgentAdoptionNotFound
-	}
-	return variant, err
-}
-
-func containsState(states []string, wanted string) bool {
-	for _, state := range states {
-		if state == wanted {
-			return true
-		}
-	}
-	return false
-}
-
-func updateVariantStateTx(tx *gorm.DB, tenantID uint64, variantID string, expectedFrom []string, nextState string, set map[string]any, updated **types.AgentAdoptionVariantEntity) error {
-	result := tx.Model(&types.AgentAdoptionVariantEntity{}).
-		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(variantID), expectedFrom).
-		Updates(set)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		var current types.AgentAdoptionVariantEntity
-		err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrAgentAdoptionNotFound
-		}
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("%w: variant %s is %q, expected one of %v", ErrAgentAdoptionVariantTransition, variantID, current.State, expectedFrom)
-	}
-	var current types.AgentAdoptionVariantEntity
-	if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&current).Error; err != nil {
-		return err
-	}
-	*updated = &current
-	return nil
 }
 
 // PublishedAvailableAgents returns the adoption-aware available-agent read

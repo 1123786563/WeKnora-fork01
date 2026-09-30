@@ -129,9 +129,9 @@ func TestAccountCreditsBreakdownArithmetic(t *testing.T) {
 					AvailableMicro    string `json:"available_micro"`
 					ProjectedAt       string `json:"projected_at"`
 					Batches           []struct {
-						Source      string `json:"source"`
-						Period      string `json:"period"`
-						GrantedAt   string `json:"granted_at"`
+						Source       string `json:"source"`
+						Period       string `json:"period"`
+						GrantedAt    string `json:"granted_at"`
 						BalanceMicro string `json:"balance_micro"`
 						ExpiresAt    string `json:"expires_at"`
 					} `json:"batches"`
@@ -209,11 +209,11 @@ func TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt(t *testing.T) {
 				// grant instant from the REGISTRY row (snapshot absent).
 				{Period: "2026-09", BalanceMicro: 0,
 					ExpiresAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
-					Source: "monthly", GrantedAt: registryGrant},
+					Source:    "monthly", GrantedAt: registryGrant},
 				// The current October batch.
 				{Period: "2026-10", BalanceMicro: 1_000_000,
 					ExpiresAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
-					Source: "monthly", GrantedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+					Source:    "monthly", GrantedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
 			},
 		},
 	}
@@ -242,7 +242,7 @@ func TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt(t *testing.T) {
 	status.Credits.Batches = append(status.Credits.Batches, commercialsvc.BatchView{
 		Period: "2026-08", BalanceMicro: 0,
 		ExpiresAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		Source: "monthly", GrantedAt: time.Time{},
+		Source:    "monthly", GrantedAt: time.Time{},
 	})
 	wire = benefitsWire(status)
 	if _, err := json.Marshal(wire); err != nil {

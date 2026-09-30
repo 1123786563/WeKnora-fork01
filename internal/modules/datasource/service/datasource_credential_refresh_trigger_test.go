@@ -12,9 +12,9 @@ import (
 	"github.com/hibiken/asynq"
 
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	apprepo "github.com/Tencent/WeKnora/internal/modules/datasource/repository"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/moauth"
+	apprepo "github.com/Tencent/WeKnora/internal/modules/datasource/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"

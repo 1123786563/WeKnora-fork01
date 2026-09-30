@@ -64,7 +64,7 @@ func TestInputCodePolicyDeniesShellWithoutAdapterEvidence(t *testing.T) {
 	// that is not uploaded material) the screened layers above decide.
 	evidence := policy.Review(InputExecutionRequest{
 		Shell: true, CommandText: "run-task.sh",
-		WorkingDir: "/workspace/rv-abc/output",
+		WorkingDir:         "/workspace/rv-abc/output",
 		ResolvedTargetPath: "/workspace/rv-abc/output/run-task.sh",
 		TargetSHA256:       strings.Repeat("f", 64),
 	})
@@ -148,7 +148,7 @@ func TestInputCodeShellTokenNormalizationCatchesIndirection(t *testing.T) {
 	// Token normalization used by the embedded-command screening: adjacent
 	// quote splices expose the real path after quote removal.
 	spliced := policy.Review(InputExecutionRequest{
-		Command: []string{"bash", "-c", "python3 " + strings.ReplaceAll(script, "inputs", `in"pu"ts`)},
+		Command:    []string{"bash", "-c", "python3 " + strings.ReplaceAll(script, "inputs", `in"pu"ts`)},
 		WorkingDir: "/workspace",
 	})
 	if spliced.Allowed {
@@ -238,15 +238,15 @@ func TestInputCodePolicyScreensWrapperPrefixAssignmentsAndPathLists(t *testing.T
 	// Path-list environment entries are screened per colon segment, in both
 	// the argv prefix and the environment map.
 	argvPathList := policy.Review(InputExecutionRequest{
-		Command: []string{"env", "PYTHONPATH=/usr/lib/python3:" + path.Dir(script), "python3", "/workspace/gen.py"},
+		Command:    []string{"env", "PYTHONPATH=/usr/lib/python3:" + path.Dir(script), "python3", "/workspace/gen.py"},
 		WorkingDir: "/workspace",
 	})
 	if argvPathList.Allowed {
 		t.Fatalf("argv path-list containing the inputs tree must be denied: %+v", argvPathList)
 	}
 	envPathList := policy.Review(InputExecutionRequest{
-		Command:    []string{"python3", "/workspace/gen.py"},
-		WorkingDir: "/workspace",
+		Command:     []string{"python3", "/workspace/gen.py"},
+		WorkingDir:  "/workspace",
 		Environment: map[string]string{"PYTHONPATH": "/usr/lib/python3:" + path.Dir(script)},
 	})
 	if envPathList.Allowed {

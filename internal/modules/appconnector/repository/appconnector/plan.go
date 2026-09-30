@@ -41,7 +41,7 @@ type ActionPlanRow struct {
 	// ExcludedJSON is the approval-time exclusion set ('' or "[]" = none);
 	// it is frozen at first approval — a rewrite after execution started
 	// is refused at the service layer.
-	ExcludedJSON string `gorm:"column:excluded_json;not null;default:''"`
+	ExcludedJSON string     `gorm:"column:excluded_json;not null;default:''"`
 	ApprovedBy   string     `gorm:"column:approved_by;not null;default:''"`
 	ApprovedAt   *time.Time `gorm:"column:approved_at"`
 	CreatedAt    time.Time
@@ -54,10 +54,10 @@ func (ActionPlanRow) TableName() string { return "app_action_plans" }
 // item (1-based, contiguous); action_id references the authoritative
 // app_actions row the item dispatches through.
 type ActionPlanItemRow struct {
-	TenantID uint64 `gorm:"primaryKey;column:tenant_id"`
-	PlanID   string `gorm:"primaryKey;column:plan_id"`
-	Seq      int    `gorm:"primaryKey;column:seq"`
-	ActionID string `gorm:"column:action_id;not null"`
+	TenantID  uint64 `gorm:"primaryKey;column:tenant_id"`
+	PlanID    string `gorm:"primaryKey;column:plan_id"`
+	Seq       int    `gorm:"primaryKey;column:seq"`
+	ActionID  string `gorm:"column:action_id;not null"`
 	CreatedAt time.Time
 }
 

@@ -167,8 +167,8 @@ func TestTranscribeProxiesThroughServerKey(t *testing.T) {
 	}))
 	defer srv.Close()
 	p, err := NewManagedProvider(Config{
-		LongLivedAPIKey:   longLived,
-		Model:             "voice-1",
+		LongLivedAPIKey:    longLived,
+		Model:              "voice-1",
 		TranscribeEndpoint: srv.URL,
 	})
 	if err != nil {
@@ -197,8 +197,8 @@ func TestTranscribeFailureKeepsPartialUsage(t *testing.T) {
 	}))
 	defer srv.Close()
 	p, err := NewManagedProvider(Config{
-		LongLivedAPIKey:   "sk-x",
-		Model:             "voice-1",
+		LongLivedAPIKey:    "sk-x",
+		Model:              "voice-1",
 		TranscribeEndpoint: srv.URL,
 	})
 	if err != nil {

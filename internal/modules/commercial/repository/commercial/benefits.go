@@ -61,15 +61,15 @@ func (BenefitsRow) TableName() string { return "commercial_tenant_benefits" }
 // slots — current month + the just-expired one awaiting the authority's
 // hourly termination tick).
 type CreditBatchRow struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement"`
-	TenantID    uint64    `gorm:"column:tenant_id;uniqueIndex:uq_credit_batch_tenant_period"`
-	Period      string    `gorm:"column:period;uniqueIndex:uq_credit_batch_tenant_period"`
-	CommandKey  string    `gorm:"column:command_key;not null"` // grant_included_credits:<ext>:<period>
-	WalletRef   string    `gorm:"column:wallet_ref;not null;default ''"` // seam-internal deterministic wallet name (E3 recovery identity); empty until the grant completes
-	GrantedMicro int64    `gorm:"column:granted_micro;not null"`
-	ExpiresAt   time.Time `gorm:"column:expires_at;not null"`
-	State       string    `gorm:"column:state;not null"` // granted|expired (advisory; expiry is decided by ExpiresAt)
-	CreatedAt   time.Time `gorm:"column:created_at;not null"`
+	ID           int64     `gorm:"primaryKey;autoIncrement"`
+	TenantID     uint64    `gorm:"column:tenant_id;uniqueIndex:uq_credit_batch_tenant_period"`
+	Period       string    `gorm:"column:period;uniqueIndex:uq_credit_batch_tenant_period"`
+	CommandKey   string    `gorm:"column:command_key;not null"`           // grant_included_credits:<ext>:<period>
+	WalletRef    string    `gorm:"column:wallet_ref;not null;default ''"` // seam-internal deterministic wallet name (E3 recovery identity); empty until the grant completes
+	GrantedMicro int64     `gorm:"column:granted_micro;not null"`
+	ExpiresAt    time.Time `gorm:"column:expires_at;not null"`
+	State        string    `gorm:"column:state;not null"` // granted|expired (advisory; expiry is decided by ExpiresAt)
+	CreatedAt    time.Time `gorm:"column:created_at;not null"`
 }
 
 func (CreditBatchRow) TableName() string { return "commercial_credit_batches" }

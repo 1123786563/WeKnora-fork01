@@ -20,9 +20,9 @@ type fakeTaskGrantManager struct {
 	list      []types.TaskGrant
 	listErr   error
 	lastGrant struct {
-		taskID   string
+		taskID    string
 		granteeID string
-		role     types.TaskGrantRole
+		role      types.TaskGrantRole
 	}
 	lastRevoke struct{ taskID, granteeID string }
 }

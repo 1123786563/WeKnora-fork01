@@ -210,8 +210,8 @@ type PluginDriftDetailDTO struct {
 // deviates from. No credentials ever appear here — by construction this type
 // has none.
 type PluginDriftReportResponse struct {
-	InstallationID    string               `json:"installation_id"`
-	DriftState        string               `json:"drift_state"`
+	InstallationID    string                `json:"installation_id"`
+	DriftState        string                `json:"drift_state"`
 	Detail            *PluginDriftDetailDTO `json:"detail,omitempty"`
-	SnapshotToolNames []string             `json:"snapshot_tool_names"`
+	SnapshotToolNames []string              `json:"snapshot_tool_names"`
 }

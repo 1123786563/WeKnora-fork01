@@ -29,8 +29,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/stretchr/testify/require"
@@ -255,7 +255,7 @@ func TestCraftT16Journey(t *testing.T) {
 		files := []craft.File{{
 			Path: "index.html", Ref: "resource://out/" + runID + "-index.html",
 			SHA256: strings.Repeat(string(rune('a'+shaSeed)), 64),
-			MIME: "text/html", Bytes: int64(len(content)),
+			MIME:   "text/html", Bytes: int64(len(content)),
 		}}
 		head, err := repository.NewCraftDraftHeadStore(db).Advance(ctx, scope, workspace.ID, expectedRevision, runID, files)
 		require.NoError(t, err, "a terminal Run advances the workspace draft")

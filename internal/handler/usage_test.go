@@ -102,7 +102,7 @@ func TestUsageHandler_MyUsageScopedToCaller(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
 	var body struct {
-		Success bool                         `json:"success"`
+		Success bool                        `json:"success"`
 		Data    []interfaces.UsageAggregate `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))

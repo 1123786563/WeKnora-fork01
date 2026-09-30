@@ -1,0 +1,786 @@
+diff --git a/internal/application/repository/agent_adoption.go b/internal/application/repository/agent_adoption.go
+index b45752664..5ae333348 100644
+--- a/internal/application/repository/agent_adoption.go
++++ b/internal/application/repository/agent_adoption.go
+@@ -17,6 +17,7 @@ import (
+ var (
+ 	ErrAgentAdoptionNotFound          = errors.New("agent adoption resource not found")
+ 	ErrAgentAdoptionVariantTransition = errors.New("agent adoption variant state transition failed")
++	ErrAgentAdoptionTransition        = errors.New("agent adoption state transition failed")
+ 	// ErrAgentAdoptionRemapStateConflict marks a ReplaceCapabilityMappings
+ 	// whose guarded state UPDATE lost to a concurrent transition (e.g.
+ 	// publish landing between the service's pre-check and this write): the
+@@ -32,6 +33,13 @@ type AgentAdoptionPublishedRow struct {
+ 	Agent   *types.CustomAgent
+ }
+ 
++// AgentTaskAdmission is the narrow persistence seam used when admitting a new
++// Task from a tenant-owned local Agent. Ordinary Agents without a marketplace
++// Variant return false.
++type AgentTaskAdmission interface {
++	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
++}
++
+ // AgentAdoptionRepository owns the Adoption/Variant/mapping SQL. All reads
+ // and writes are tenant-scoped and parameter-bound; the two marketplace
+ // getters are read-only proxies so the adoption service never re-implements
+@@ -46,11 +54,80 @@ type AgentAdoptionRepository interface {
+ 	ReplaceCapabilityMappings(context.Context, uint64, string, []types.AgentVariantCapabilityMappingEntity, string) error
+ 	ListCapabilityMappings(context.Context, uint64, string) ([]types.AgentVariantCapabilityMappingEntity, error)
+ 	UpdateVariantState(context.Context, uint64, string, []string, string, map[string]any) (*types.AgentAdoptionVariantEntity, error)
++	RetireVariant(context.Context, uint64, string, string, string) (*types.AgentAdoptionVariantEntity, error)
++	EndAdoption(context.Context, uint64, string, string, string) (*types.AgentAdoptionEntity, error)
++	IsRetiredMarketplaceAgent(context.Context, uint64, string) (bool, error)
+ 	PublishedAvailableAgents(context.Context, uint64) ([]AgentAdoptionPublishedRow, error)
+ 	GetMarketplaceListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
+ 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+ }
+ 
++// RetireVariant is a tenant-scoped, one-way compare-and-set transition. The
++// Variant row and its pinned local Agent Version are retained for history.
++func (r *agentAdoptionRepository) RetireVariant(ctx context.Context, tenantID uint64, variantID, actorID, reason string) (*types.AgentAdoptionVariantEntity, error) {
++	variantID = strings.TrimSpace(variantID)
++	if tenantID == 0 || variantID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
++		return nil, ErrAgentAdoptionVariantTransition
++	}
++	now := time.Now().UTC()
++	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
++		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, variantID, []string{"draft", "mapped", "tested", "published"}).
++		Updates(map[string]any{"state": "retired", "retired_by": strings.TrimSpace(actorID), "retired_at": now, "retirement_reason": strings.TrimSpace(reason), "updated_at": now})
++	if result.Error != nil {
++		return nil, result.Error
++	}
++	if result.RowsAffected != 1 {
++		var count int64
++		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", tenantID, variantID).Count(&count).Error; err != nil {
++			return nil, err
++		}
++		if count == 0 {
++			return nil, ErrAgentAdoptionNotFound
++		}
++		return nil, ErrAgentAdoptionVariantTransition
++	}
++	return r.GetVariant(ctx, tenantID, variantID)
++}
++
++// EndAdoption is a one-way CAS that also enforces the aggregate invariant:
++// every Variant must already be retired before the Adoption can end.
++func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID, actorID, reason string) (*types.AgentAdoptionEntity, error) {
++	adoptionID = strings.TrimSpace(adoptionID)
++	if tenantID == 0 || adoptionID == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" {
++		return nil, ErrAgentAdoptionTransition
++	}
++	now := time.Now().UTC()
++	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
++		Where("tenant_id = ? AND id = ? AND state = ? AND NOT EXISTS (SELECT 1 FROM agent_adoption_variants v WHERE v.tenant_id = agent_adoptions.tenant_id AND v.adoption_id = agent_adoptions.id AND v.state <> ?)", tenantID, adoptionID, "active", "retired").
++		Updates(map[string]any{"state": "ended", "ended_by": strings.TrimSpace(actorID), "ended_at": now, "end_reason": strings.TrimSpace(reason), "updated_at": now})
++	if result.Error != nil {
++		return nil, result.Error
++	}
++	if result.RowsAffected != 1 {
++		var count int64
++		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND id = ?", tenantID, adoptionID).Count(&count).Error; err != nil {
++			return nil, err
++		}
++		if count == 0 {
++			return nil, ErrAgentAdoptionNotFound
++		}
++		return nil, ErrAgentAdoptionTransition
++	}
++	return r.GetAdoption(ctx, tenantID, adoptionID)
++}
++
++// IsRetiredMarketplaceAgent implements the Task admission lookup. An Agent
++// with no marketplace Variant is ordinary local content and is admitted.
++func (r *agentAdoptionRepository) IsRetiredMarketplaceAgent(ctx context.Context, tenantID uint64, localAgentID string) (bool, error) {
++	if tenantID == 0 || strings.TrimSpace(localAgentID) == "" {
++		return false, nil
++	}
++	var count int64
++	err := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
++		Where("tenant_id = ? AND local_agent_id = ? AND state = ?", tenantID, strings.TrimSpace(localAgentID), "retired").Count(&count).Error
++	return count > 0, err
++}
++
+ type agentAdoptionRepository struct{ db *gorm.DB }
+ 
+ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
+diff --git a/internal/application/repository/agent_lifecycle_test.go b/internal/application/repository/agent_lifecycle_test.go
+new file mode 100644
+index 000000000..8297d1812
+--- /dev/null
++++ b/internal/application/repository/agent_lifecycle_test.go
+@@ -0,0 +1,174 @@
++package repository
++
++import (
++	"context"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/Tencent/WeKnora/internal/types"
++	"github.com/stretchr/testify/require"
++)
++
++func TestAgentLifecycleRepositoryTenantCASAndAdmission(t *testing.T) {
++	db := openRunTestDB(t)
++	ctx := context.Background()
++	listingID, releaseID := seedAdoptionRelease(t, db, 1, "lifecycle-agent", "1.0.0")
++	adoptions := NewAgentAdoptionRepository(db)
++	adoption, _, err := adoptions.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active"})
++	require.NoError(t, err)
++	variant, err := adoptions.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Lifecycle", State: "published", LocalAgentID: "local-lifecycle", LocalAgentVersionID: "local-v1"})
++	require.NoError(t, err)
++
++	_, err = adoptions.RetireVariant(ctx, 2, variant.ID, "admin-2", "wrong tenant")
++	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
++	_, err = adoptions.RetireVariant(ctx, 1, "missing", "admin", "missing")
++	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
++	retired, err := adoptions.RetireVariant(ctx, 1, variant.ID, "admin", "replaced")
++	require.NoError(t, err)
++	require.Equal(t, "retired", retired.State)
++	require.Equal(t, "admin", retired.RetiredBy)
++	require.Equal(t, "replaced", retired.RetirementReason)
++	require.NotNil(t, retired.RetiredAt)
++	require.Equal(t, time.UTC, retired.RetiredAt.Location())
++	_, err = adoptions.RetireVariant(ctx, 1, variant.ID, "other", "repeat")
++	require.ErrorIs(t, err, ErrAgentAdoptionVariantTransition)
++	invalid, err := adoptions.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Invalid", State: "unknown"})
++	require.NoError(t, err)
++	_, err = adoptions.RetireVariant(ctx, 1, invalid.ID, "admin", "invalid state")
++	require.ErrorIs(t, err, ErrAgentAdoptionVariantTransition)
++	require.NoError(t, db.Delete(&types.AgentAdoptionVariantEntity{}, "tenant_id = ? AND id = ?", 1, invalid.ID).Error)
++
++	retiredAdmission, err := adoptions.IsRetiredMarketplaceAgent(ctx, 1, "local-lifecycle")
++	require.NoError(t, err)
++	require.True(t, retiredAdmission)
++	ordinaryAdmission, err := adoptions.IsRetiredMarketplaceAgent(ctx, 1, "ordinary-agent")
++	require.NoError(t, err)
++	require.False(t, ordinaryAdmission, "an ordinary local Agent must not require a marketplace row")
++	otherTenantAdmission, err := adoptions.IsRetiredMarketplaceAgent(ctx, 2, "local-lifecycle")
++	require.NoError(t, err)
++	require.False(t, otherTenantAdmission)
++
++	_, err = adoptions.EndAdoption(ctx, 1, adoption.ID, "admin", "done")
++	require.NoError(t, err)
++	ended, err := adoptions.GetAdoption(ctx, 1, adoption.ID)
++	require.NoError(t, err)
++	require.Equal(t, "ended", ended.State)
++	require.Equal(t, "admin", ended.EndedBy)
++	require.Equal(t, "done", ended.EndReason)
++	require.NotNil(t, ended.EndedAt)
++	_, err = adoptions.EndAdoption(ctx, 1, adoption.ID, "other", "repeat")
++	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
++}
++
++func TestAgentLifecycleRepositoryAdoptionEndRequiresRetiredVariants(t *testing.T) {
++	db := openRunTestDB(t)
++	ctx := context.Background()
++	listingID, releaseID := seedAdoptionRelease(t, db, 1, "active-variant-agent", "1.0.0")
++	repo := NewAgentAdoptionRepository(db)
++	adoption, _, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID})
++	require.NoError(t, err)
++	_, err = repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Draft", State: "draft"})
++	require.NoError(t, err)
++	_, err = repo.EndAdoption(ctx, 1, adoption.ID, "admin", "done")
++	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
++}
++
++func TestAgentLifecycleRepositoryConcurrentVariantRetirementCAS(t *testing.T) {
++	db := openRunTestDB(t)
++	ctx := context.Background()
++	listingID, releaseID := seedAdoptionRelease(t, db, 1, "race-agent", "1.0.0")
++	repo := NewAgentAdoptionRepository(db)
++	adoption, _, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID})
++	require.NoError(t, err)
++	variant, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "Race", State: "published", LocalAgentID: "race-local"})
++	require.NoError(t, err)
++
++	var wg sync.WaitGroup
++	results := make(chan error, 2)
++	for _, actor := range []string{"a", "b"} {
++		wg.Add(1)
++		go func(actor string) {
++			defer wg.Done()
++			_, err := repo.RetireVariant(ctx, 1, variant.ID, actor, "retired")
++			results <- err
++		}(actor)
++	}
++	wg.Wait()
++	close(results)
++	successes, conflicts := 0, 0
++	for err := range results {
++		if err == nil {
++			successes++
++		} else if err == ErrAgentAdoptionVariantTransition {
++			conflicts++
++		} else {
++			require.NoError(t, err)
++		}
++	}
++	require.Equal(t, 1, successes)
++	require.Equal(t, 1, conflicts)
++	stored, err := repo.GetVariant(ctx, 1, variant.ID)
++	require.NoError(t, err)
++	require.Contains(t, []string{"a", "b"}, stored.RetiredBy)
++}
++
++func TestAgentLifecycleMarketplaceAndPublicCASPreserveReleaseBytes(t *testing.T) {
++	db := openRunTestDB(t)
++	ctx := context.Background()
++	listingID, releaseID := seedAdoptionRelease(t, db, 1, "tenant-listing-agent", "1.0.0")
++	var tenantRelease types.AgentReleaseEntity
++	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, releaseID).First(&tenantRelease).Error)
++	secondTenantRelease := tenantRelease
++	secondTenantRelease.ID = "tenant-replacement"
++	secondTenantRelease.ReleaseNumber = tenantRelease.ReleaseNumber + 1
++	secondTenantRelease.SemanticVersion = "2.0.0"
++	secondTenantRelease.BundleDigest = "digest-tenant-replacement"
++	require.NoError(t, db.Create(&secondTenantRelease).Error)
++
++	tenantRepo := NewAgentMarketplaceRepository(db)
++	_, err := tenantRepo.UnlistTenantListing(ctx, 2, listingID, "tenant-admin", "paused")
++	require.ErrorIs(t, err, ErrAgentMarketplaceNotFound)
++	_, err = tenantRepo.UnlistTenantListing(ctx, 1, listingID, "tenant-admin", "paused")
++	require.NoError(t, err)
++	_, err = tenantRepo.UnlistTenantListing(ctx, 1, listingID, "tenant-admin", "again")
++	require.ErrorIs(t, err, ErrAgentMarketplaceLifecycleTransition)
++	_, err = tenantRepo.DeprecateTenantRelease(ctx, 1, releaseID, releaseID, "tenant-admin", "replaced")
++	require.ErrorIs(t, err, ErrAgentMarketplaceLifecycleInvalid)
++	deprecated, err := tenantRepo.DeprecateTenantRelease(ctx, 1, releaseID, secondTenantRelease.ID, "tenant-admin", "replaced")
++	require.NoError(t, err)
++	require.Equal(t, secondTenantRelease.ID, deprecated.ReplacementReleaseID)
++	require.Equal(t, "tenant-admin", deprecated.DeprecatedBy)
++	require.Equal(t, "replaced", deprecated.DeprecationReason)
++	require.NotNil(t, deprecated.DeprecatedAt)
++	_, err = tenantRepo.DeprecateTenantRelease(ctx, 1, releaseID, secondTenantRelease.ID, "other", "repeat")
++	require.ErrorIs(t, err, ErrAgentMarketplaceLifecycleTransition)
++	storedTenantRelease, err := tenantRepo.GetRelease(ctx, 1, releaseID)
++	require.NoError(t, err)
++	require.Equal(t, tenantRelease.Bundle, storedTenantRelease.Bundle)
++	require.Equal(t, tenantRelease.BundleDigest, storedTenantRelease.BundleDigest)
++
++}
++
++func TestAgentLifecyclePublicMarketplaceCASPreservesReleaseBytes(t *testing.T) {
++	db := openPublicMarketplaceDB(t)
++	ctx := context.Background()
++	publicListing, publicRelease := seedApprovedPublicRelease(t, db, "1.0.0")
++	_, replacement := seedApprovedPublicRelease(t, db, "2.0.0")
++	publicRepo := NewPublicMarketplaceRepository(db)
++	var err error
++	_, err = publicRepo.UnlistPublicListing(ctx, "missing-listing", "platform-admin", "paused")
++	require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
++	_, err = publicRepo.UnlistPublicListing(ctx, publicListing.ID, "platform-admin", "paused")
++	require.NoError(t, err)
++	_, err = publicRepo.UnlistPublicListing(ctx, publicListing.ID, "platform-admin", "again")
++	require.ErrorIs(t, err, ErrPublicMarketplaceLifecycleTransition)
++	_, err = publicRepo.DeprecatePublicRelease(ctx, publicRelease.ID, replacement.ID, "platform-admin", "replaced")
++	require.NoError(t, err)
++	_, err = publicRepo.DeprecatePublicRelease(ctx, publicRelease.ID, replacement.ID, "other", "repeat")
++	require.ErrorIs(t, err, ErrPublicMarketplaceLifecycleTransition)
++	storedPublicRelease, err := publicRepo.GetPublicRelease(ctx, publicRelease.ID)
++	require.NoError(t, err)
++	require.Equal(t, publicRelease.Bundle, storedPublicRelease.Bundle)
++	require.Equal(t, publicRelease.BundleDigest, storedPublicRelease.BundleDigest)
++}
+diff --git a/internal/application/repository/agent_marketplace.go b/internal/application/repository/agent_marketplace.go
+index 0602600da..3b6a7e171 100644
+--- a/internal/application/repository/agent_marketplace.go
++++ b/internal/application/repository/agent_marketplace.go
+@@ -22,6 +22,8 @@ var (
+ 	ErrAgentMarketplaceReviewConflict       = errors.New("agent marketplace submission already has a review")
+ 	ErrAgentMarketplaceVersionAgentMismatch = errors.New("agent marketplace version does not belong to source agent")
+ 	ErrAgentLicenseIDRequired               = errors.New("agent marketplace license id is required")
++	ErrAgentMarketplaceLifecycleTransition  = errors.New("agent marketplace lifecycle transition failed")
++	ErrAgentMarketplaceLifecycleInvalid     = errors.New("invalid agent marketplace lifecycle request")
+ )
+ 
+ const reviewAndPublishAttempts = 5
+@@ -43,6 +45,8 @@ type AgentMarketplaceRepository interface {
+ 	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
+ 	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
+ 	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
++	UnlistTenantListing(context.Context, uint64, string, string, string) (*types.AgentMarketplaceListingEntity, error)
++	DeprecateTenantRelease(context.Context, uint64, string, string, string, string) (*types.AgentReleaseEntity, error)
+ }
+ 
+ func (r *agentMarketplaceRepository) GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error) {
+@@ -63,6 +67,74 @@ func NewAgentMarketplaceRepository(db *gorm.DB) AgentMarketplaceRepository {
+ 	return &agentMarketplaceRepository{db: db}
+ }
+ 
++// UnlistTenantListing records a tenant-owned catalog transition by CAS. The
++// Listing and its immutable Releases remain present for existing Adoptions.
++func (r *agentMarketplaceRepository) UnlistTenantListing(ctx context.Context, tenantID uint64, listingID, actorID, reason string) (*types.AgentMarketplaceListingEntity, error) {
++	listingID, actorID, reason = strings.TrimSpace(listingID), strings.TrimSpace(actorID), strings.TrimSpace(reason)
++	if tenantID == 0 || listingID == "" || actorID == "" || reason == "" {
++		return nil, ErrAgentMarketplaceLifecycleInvalid
++	}
++	now := time.Now().UTC()
++	result := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).
++		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, "listed").
++		Updates(map[string]any{"state": "unlisted", "unlisted_by": actorID, "unlisted_at": now, "unlist_reason": reason, "updated_at": now})
++	if result.Error != nil {
++		return nil, result.Error
++	}
++	if result.RowsAffected != 1 {
++		var count int64
++		if err := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", tenantID, listingID).Count(&count).Error; err != nil {
++			return nil, err
++		}
++		if count == 0 {
++			return nil, ErrAgentMarketplaceNotFound
++		}
++		return nil, ErrAgentMarketplaceLifecycleTransition
++	}
++	return r.GetListing(ctx, tenantID, listingID)
++}
++
++// DeprecateTenantRelease appends lifecycle metadata to an immutable Release.
++// A replacement must be a different Release from the same tenant Listing.
++func (r *agentMarketplaceRepository) DeprecateTenantRelease(ctx context.Context, tenantID uint64, releaseID, replacementID, actorID, reason string) (*types.AgentReleaseEntity, error) {
++	releaseID, replacementID = strings.TrimSpace(releaseID), strings.TrimSpace(replacementID)
++	actorID, reason = strings.TrimSpace(actorID), strings.TrimSpace(reason)
++	if tenantID == 0 || releaseID == "" || replacementID == "" || releaseID == replacementID || actorID == "" || reason == "" {
++		return nil, ErrAgentMarketplaceLifecycleInvalid
++	}
++	var changed types.AgentReleaseEntity
++	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		var current types.AgentReleaseEntity
++		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&current).Error; err != nil {
++			if errors.Is(err, gorm.ErrRecordNotFound) {
++				return ErrAgentMarketplaceNotFound
++			}
++			return err
++		}
++		var replacement types.AgentReleaseEntity
++		if err := tx.Where("tenant_id = ? AND listing_id = ? AND id = ?", tenantID, current.ListingID, replacementID).First(&replacement).Error; err != nil {
++			if errors.Is(err, gorm.ErrRecordNotFound) {
++				return ErrAgentMarketplaceLifecycleInvalid
++			}
++			return err
++		}
++		now := time.Now().UTC()
++		updated := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ? AND deprecated_at IS NULL", tenantID, releaseID).
++			Updates(map[string]any{"deprecated_by": actorID, "deprecated_at": now, "deprecation_reason": reason, "replacement_release_id": replacementID})
++		if updated.Error != nil {
++			return updated.Error
++		}
++		if updated.RowsAffected != 1 {
++			return ErrAgentMarketplaceLifecycleTransition
++		}
++		return tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&changed).Error
++	})
++	if err != nil {
++		return nil, err
++	}
++	return &changed, nil
++}
++
+ func (r *agentMarketplaceRepository) CreateSubmission(ctx context.Context, listing *types.AgentMarketplaceListingEntity, submission *types.AgentReleaseSubmissionEntity) (*types.AgentReleaseSubmissionEntity, error) {
+ 	if submission == nil || submission.TenantID == 0 || strings.TrimSpace(submission.AgentVersionID) == "" || strings.TrimSpace(submission.SourceAgentID) == "" || strings.TrimSpace(submission.BundleDigest) == "" || len(submission.Bundle) == 0 {
+ 		return nil, fmt.Errorf("invalid agent marketplace submission")
+diff --git a/internal/application/repository/public_marketplace.go b/internal/application/repository/public_marketplace.go
+index 17ccff9f7..9bd98f9e3 100644
+--- a/internal/application/repository/public_marketplace.go
++++ b/internal/application/repository/public_marketplace.go
+@@ -15,12 +15,14 @@ import (
+ )
+ 
+ var (
+-	ErrPublicMarketplaceNotFound        = errors.New("public marketplace resource not found")
+-	ErrPublicMarketplaceInvalidDecision = errors.New("invalid public marketplace review decision")
+-	ErrPublicMarketplaceReviewConflict  = errors.New("public marketplace submission already has a review")
+-	ErrPublicMarketplaceDigestMismatch  = errors.New("public marketplace reviewed digest does not match submission")
+-	ErrPublicMarketplacePointerConflict = errors.New("public marketplace listing pointer changed")
+-	ErrPublicMarketplaceReleaseConflict = errors.New("public marketplace release conflict")
++	ErrPublicMarketplaceNotFound            = errors.New("public marketplace resource not found")
++	ErrPublicMarketplaceInvalidDecision     = errors.New("invalid public marketplace review decision")
++	ErrPublicMarketplaceReviewConflict      = errors.New("public marketplace submission already has a review")
++	ErrPublicMarketplaceDigestMismatch      = errors.New("public marketplace reviewed digest does not match submission")
++	ErrPublicMarketplacePointerConflict     = errors.New("public marketplace listing pointer changed")
++	ErrPublicMarketplaceReleaseConflict     = errors.New("public marketplace release conflict")
++	ErrPublicMarketplaceLifecycleTransition = errors.New("public marketplace lifecycle transition failed")
++	ErrPublicMarketplaceLifecycleInvalid    = errors.New("invalid public marketplace lifecycle request")
+ )
+ 
+ // PublicCatalogRow pairs a discoverable public listing with its current
+@@ -48,6 +50,8 @@ type PublicMarketplaceRepository interface {
+ 	ReviewAndPublishPublicTx(ctx context.Context, expectedPriorReleaseID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (*types.PublicReleaseReviewEntity, *types.PublicAgentReleaseEntity, error)
+ 	ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error)
+ 	IntroduceRelease(ctx context.Context, adopterTenantID uint64, actorID string, listing *types.PublicMarketplaceListingEntity, release *types.PublicAgentReleaseEntity) (*types.TenantIntroducedReleaseEntity, *types.AgentAdoptionEntity, bool, error)
++	UnlistPublicListing(ctx context.Context, listingID, actorID, reason string) (*types.PublicMarketplaceListingEntity, error)
++	DeprecatePublicRelease(ctx context.Context, releaseID, replacementReleaseID, actorID, reason string) (*types.PublicAgentReleaseEntity, error)
+ }
+ 
+ type publicMarketplaceRepository struct{ db *gorm.DB }
+@@ -56,6 +60,75 @@ func NewPublicMarketplaceRepository(db *gorm.DB) PublicMarketplaceRepository {
+ 	return &publicMarketplaceRepository{db: db}
+ }
+ 
++// UnlistPublicListing records a platform catalog transition without changing
++// the publisher's tenant Listing, Releases, or existing introductions.
++func (r *publicMarketplaceRepository) UnlistPublicListing(ctx context.Context, listingID, actorID, reason string) (*types.PublicMarketplaceListingEntity, error) {
++	listingID, actorID, reason = strings.TrimSpace(listingID), strings.TrimSpace(actorID), strings.TrimSpace(reason)
++	if listingID == "" || actorID == "" || reason == "" {
++		return nil, ErrPublicMarketplaceLifecycleInvalid
++	}
++	now := time.Now().UTC()
++	result := r.db.WithContext(ctx).Model(&types.PublicMarketplaceListingEntity{}).
++		Where("id = ? AND state = ?", listingID, "listed").
++		Updates(map[string]any{"state": "unlisted", "unlisted_by": actorID, "unlisted_at": now, "unlist_reason": reason, "updated_at": now})
++	if result.Error != nil {
++		return nil, result.Error
++	}
++	if result.RowsAffected != 1 {
++		var count int64
++		if err := r.db.WithContext(ctx).Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listingID).Count(&count).Error; err != nil {
++			return nil, err
++		}
++		if count == 0 {
++			return nil, ErrPublicMarketplaceNotFound
++		}
++		return nil, ErrPublicMarketplaceLifecycleTransition
++	}
++	return r.GetPublicListing(ctx, listingID)
++}
++
++// DeprecatePublicRelease writes lane-specific platform lifecycle metadata.
++// The public Release content remains immutable and the replacement must have
++// the same Public Listing key.
++func (r *publicMarketplaceRepository) DeprecatePublicRelease(ctx context.Context, releaseID, replacementID, actorID, reason string) (*types.PublicAgentReleaseEntity, error) {
++	releaseID, replacementID = strings.TrimSpace(releaseID), strings.TrimSpace(replacementID)
++	actorID, reason = strings.TrimSpace(actorID), strings.TrimSpace(reason)
++	if releaseID == "" || replacementID == "" || releaseID == replacementID || actorID == "" || reason == "" {
++		return nil, ErrPublicMarketplaceLifecycleInvalid
++	}
++	var changed types.PublicAgentReleaseEntity
++	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		var current types.PublicAgentReleaseEntity
++		if err := tx.Where("id = ?", releaseID).First(&current).Error; err != nil {
++			if errors.Is(err, gorm.ErrRecordNotFound) {
++				return ErrPublicMarketplaceNotFound
++			}
++			return err
++		}
++		var replacement types.PublicAgentReleaseEntity
++		if err := tx.Where("listing_id = ? AND id = ?", current.ListingID, replacementID).First(&replacement).Error; err != nil {
++			if errors.Is(err, gorm.ErrRecordNotFound) {
++				return ErrPublicMarketplaceLifecycleInvalid
++			}
++			return err
++		}
++		now := time.Now().UTC()
++		updated := tx.Model(&types.PublicAgentReleaseEntity{}).Where("id = ? AND deprecated_at IS NULL", releaseID).
++			Updates(map[string]any{"deprecated_by": actorID, "deprecated_at": now, "deprecation_reason": reason, "replacement_release_id": replacementID})
++		if updated.Error != nil {
++			return updated.Error
++		}
++		if updated.RowsAffected != 1 {
++			return ErrPublicMarketplaceLifecycleTransition
++		}
++		return tx.Where("id = ?", releaseID).First(&changed).Error
++	})
++	if err != nil {
++		return nil, err
++	}
++	return &changed, nil
++}
++
+ func (r *publicMarketplaceRepository) VerifyPublisher(ctx context.Context, row *types.VerifiedPublisherEntity) (*types.VerifiedPublisherEntity, bool, error) {
+ 	if row == nil || row.TenantID == 0 {
+ 		return nil, false, fmt.Errorf("invalid verified publisher row")
+diff --git a/internal/database/agent_marketplace_lifecycle_migration_test.go b/internal/database/agent_marketplace_lifecycle_migration_test.go
+new file mode 100644
+index 000000000..94c9bb0f8
+--- /dev/null
++++ b/internal/database/agent_marketplace_lifecycle_migration_test.go
+@@ -0,0 +1,59 @@
++package database
++
++import (
++	"database/sql"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/stretchr/testify/require"
++)
++
++var agentMarketplaceLifecycleColumns = map[string][]string{
++	"agent_adoptions":             {"ended_by", "ended_at", "end_reason"},
++	"agent_adoption_variants":     {"retired_by", "retired_at", "retirement_reason"},
++	"agent_marketplace_listings":  {"unlisted_by", "unlisted_at", "unlist_reason"},
++	"agent_releases":              {"deprecated_by", "deprecated_at", "deprecation_reason", "replacement_release_id"},
++	"public_marketplace_listings": {"unlisted_by", "unlisted_at", "unlist_reason"},
++	"public_agent_releases":       {"deprecated_by", "deprecated_at", "deprecation_reason", "replacement_release_id"},
++}
++
++func TestAgentMarketplaceLifecycleMigrationSQLiteUpDownUp(t *testing.T) {
++	root := sqliteRepoRoot(t)
++	chdirAndRestore(t, root)
++	dbPath := filepath.Join(t.TempDir(), "agent-lifecycle-migration.db")
++	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
++	db := openSQLiteDB(t, dbPath)
++	assertAgentMarketplaceLifecycleColumns(t, db, true)
++
++	sqliteUp, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000124_agent_marketplace_lifecycle.up.sql"))
++	require.NoError(t, err)
++	versionedUp, err := os.ReadFile(filepath.Join(root, "migrations/versioned/000203_agent_marketplace_lifecycle.up.sql"))
++	require.NoError(t, err)
++	for table, columns := range agentMarketplaceLifecycleColumns {
++		for _, column := range columns {
++			require.Containsf(t, string(sqliteUp), "ALTER TABLE "+table+" ADD COLUMN "+column, "SQLite migration missing %s.%s", table, column)
++			require.Containsf(t, string(versionedUp), "ALTER TABLE "+table+" ADD COLUMN "+column, "versioned migration missing %s.%s", table, column)
++		}
++	}
++
++	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), dbPath, "", true)
++	require.NoError(t, err)
++	t.Cleanup(func() { _, _ = m.Close() })
++	require.NoError(t, m.Steps(-sqliteMigrationStepsAfter(t, root, 123)))
++	assertAgentMarketplaceLifecycleColumns(t, db, false)
++	require.NoError(t, m.Up())
++	assertAgentMarketplaceLifecycleColumns(t, db, true)
++}
++
++func assertAgentMarketplaceLifecycleColumns(t *testing.T, db *sql.DB, expected bool) {
++	t.Helper()
++	for table, columns := range agentMarketplaceLifecycleColumns {
++		for _, column := range columns {
++			var found int
++			row := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column)
++			require.NoError(t, row.Scan(&found))
++			require.Equalf(t, expected, found == 1, "%s.%s presence", table, column)
++		}
++	}
++}
+diff --git a/internal/types/agent_adoption_persistence.go b/internal/types/agent_adoption_persistence.go
+index 52bed3b68..fb92d6142 100644
+--- a/internal/types/agent_adoption_persistence.go
++++ b/internal/types/agent_adoption_persistence.go
+@@ -20,6 +20,9 @@ type AgentAdoptionEntity struct {
+ 	AcceptedReleaseID string `gorm:"type:varchar(36);not null"`
+ 	State             string `gorm:"type:varchar(32);not null;default:'active'"`
+ 	CreatedBy         string `gorm:"type:varchar(255);not null;default:''"`
++	EndedBy           string `gorm:"type:varchar(255);not null;default:''"`
++	EndedAt           *time.Time
++	EndReason         string `gorm:"type:text;not null;default:''"`
+ 	CreatedAt         time.Time
+ 	UpdatedAt         time.Time
+ }
+@@ -44,6 +47,9 @@ type AgentAdoptionVariantEntity struct {
+ 	TestedAt            *time.Time
+ 	PublishedBy         string `gorm:"type:varchar(255);not null;default:''"`
+ 	PublishedAt         *time.Time
++	RetiredBy           string `gorm:"type:varchar(255);not null;default:''"`
++	RetiredAt           *time.Time
++	RetirementReason    string `gorm:"type:text;not null;default:''"`
+ 	CreatedAt           time.Time
+ 	UpdatedAt           time.Time
+ }
+@@ -66,4 +72,6 @@ type AgentVariantCapabilityMappingEntity struct {
+ 	UpdatedAt        time.Time
+ }
+ 
+-func (AgentVariantCapabilityMappingEntity) TableName() string { return "agent_variant_capability_mappings" }
++func (AgentVariantCapabilityMappingEntity) TableName() string {
++	return "agent_variant_capability_mappings"
++}
+diff --git a/internal/types/agent_marketplace_persistence.go b/internal/types/agent_marketplace_persistence.go
+index fdb4dbc94..f7dfb6ad6 100644
+--- a/internal/types/agent_marketplace_persistence.go
++++ b/internal/types/agent_marketplace_persistence.go
+@@ -10,6 +10,9 @@ type AgentMarketplaceListingEntity struct {
+ 	Summary          string  `gorm:"type:text;not null;default:''"`
+ 	State            string  `gorm:"type:varchar(32);not null;default:'listed'"`
+ 	CurrentReleaseID *string `gorm:"type:varchar(36)"`
++	UnlistedBy       string  `gorm:"type:varchar(255);not null;default:''"`
++	UnlistedAt       *time.Time
++	UnlistReason     string `gorm:"type:text;not null;default:''"`
+ 	CreatedAt        time.Time
+ 	UpdatedAt        time.Time
+ }
+@@ -71,13 +74,17 @@ type AgentReleaseEntity struct {
+ 	// Fork lineage (T32 #62): set when the submitted agent derives from an
+ 	// adopted Release (spec §5/§9). Zero-value rows (original content or
+ 	// pre-#62 history) carry no lineage and are never gated.
+-	IsFork              bool   `gorm:"not null;default:false"`
+-	ForkSourceListingID string `gorm:"type:varchar(36);not null;default:''"`
+-	ForkSourceReleaseID string `gorm:"type:varchar(36);not null;default:''"`
+-	ForkNotes           string `gorm:"type:text;not null;default:''"`
+-	LineageLicenseID    string `gorm:"type:varchar(64);not null;default:''"`
+-	PublishedBy         string `gorm:"type:varchar(255);not null;default:''"`
+-	CreatedAt           time.Time
++	IsFork               bool   `gorm:"not null;default:false"`
++	ForkSourceListingID  string `gorm:"type:varchar(36);not null;default:''"`
++	ForkSourceReleaseID  string `gorm:"type:varchar(36);not null;default:''"`
++	ForkNotes            string `gorm:"type:text;not null;default:''"`
++	LineageLicenseID     string `gorm:"type:varchar(64);not null;default:''"`
++	PublishedBy          string `gorm:"type:varchar(255);not null;default:''"`
++	DeprecatedBy         string `gorm:"type:varchar(255);not null;default:''"`
++	DeprecatedAt         *time.Time
++	DeprecationReason    string `gorm:"type:text;not null;default:''"`
++	ReplacementReleaseID string `gorm:"type:varchar(36);not null;default:''"`
++	CreatedAt            time.Time
+ }
+ 
+ func (AgentReleaseEntity) TableName() string { return "agent_releases" }
+diff --git a/internal/types/public_marketplace_persistence.go b/internal/types/public_marketplace_persistence.go
+index 4b31f1e5e..a295acbfb 100644
+--- a/internal/types/public_marketplace_persistence.go
++++ b/internal/types/public_marketplace_persistence.go
+@@ -38,6 +38,9 @@ type PublicMarketplaceListingEntity struct {
+ 	Summary           string  `gorm:"type:text;not null;default:''"`
+ 	State             string  `gorm:"type:varchar(32);not null;default:'listed'"`
+ 	CurrentReleaseID  *string `gorm:"type:varchar(36)"`
++	UnlistedBy        string  `gorm:"type:varchar(255);not null;default:''"`
++	UnlistedAt        *time.Time
++	UnlistReason      string `gorm:"type:text;not null;default:''"`
+ 	CreatedAt         time.Time
+ 	UpdatedAt         time.Time
+ }
+@@ -85,18 +88,22 @@ func (PublicReleaseReviewEntity) TableName() string { return "public_release_rev
+ // the tenant release it pins semantic version, digest, Manifest, Dependency
+ // Lock and the portable bundle bytes.
+ type PublicAgentReleaseEntity struct {
+-	ID                 string `gorm:"type:varchar(36);primaryKey"`
+-	ListingID          string `gorm:"type:varchar(36);not null"`
+-	SubmissionID       string `gorm:"type:varchar(36);not null"`
+-	PublisherTenantID  uint64 `gorm:"not null"`
+-	ReleaseNumber      int    `gorm:"not null"`
+-	SemanticVersion    string `gorm:"type:varchar(64);not null"`
+-	BundleDigest       string `gorm:"type:varchar(64);not null"`
+-	ManifestJSON       string `gorm:"type:text;not null"`
+-	DependencyLockJSON string `gorm:"type:text;not null"`
+-	Bundle             []byte `gorm:"type:blob;not null"`
+-	PublishedBy        string `gorm:"type:varchar(255);not null;default:''"`
+-	CreatedAt          time.Time
++	ID                   string `gorm:"type:varchar(36);primaryKey"`
++	ListingID            string `gorm:"type:varchar(36);not null"`
++	SubmissionID         string `gorm:"type:varchar(36);not null"`
++	PublisherTenantID    uint64 `gorm:"not null"`
++	ReleaseNumber        int    `gorm:"not null"`
++	SemanticVersion      string `gorm:"type:varchar(64);not null"`
++	BundleDigest         string `gorm:"type:varchar(64);not null"`
++	ManifestJSON         string `gorm:"type:text;not null"`
++	DependencyLockJSON   string `gorm:"type:text;not null"`
++	Bundle               []byte `gorm:"type:blob;not null"`
++	PublishedBy          string `gorm:"type:varchar(255);not null;default:''"`
++	DeprecatedBy         string `gorm:"type:varchar(255);not null;default:''"`
++	DeprecatedAt         *time.Time
++	DeprecationReason    string `gorm:"type:text;not null;default:''"`
++	ReplacementReleaseID string `gorm:"type:varchar(36);not null;default:''"`
++	CreatedAt            time.Time
+ }
+ 
+ func (PublicAgentReleaseEntity) TableName() string { return "public_agent_releases" }
+diff --git a/migrations/sqlite/000124_agent_marketplace_lifecycle.down.sql b/migrations/sqlite/000124_agent_marketplace_lifecycle.down.sql
+new file mode 100644
+index 000000000..a09963de1
+--- /dev/null
++++ b/migrations/sqlite/000124_agent_marketplace_lifecycle.down.sql
+@@ -0,0 +1,20 @@
++ALTER TABLE public_agent_releases DROP COLUMN replacement_release_id;
++ALTER TABLE public_agent_releases DROP COLUMN deprecation_reason;
++ALTER TABLE public_agent_releases DROP COLUMN deprecated_at;
++ALTER TABLE public_agent_releases DROP COLUMN deprecated_by;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlist_reason;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlisted_at;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlisted_by;
++ALTER TABLE agent_releases DROP COLUMN replacement_release_id;
++ALTER TABLE agent_releases DROP COLUMN deprecation_reason;
++ALTER TABLE agent_releases DROP COLUMN deprecated_at;
++ALTER TABLE agent_releases DROP COLUMN deprecated_by;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlist_reason;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_at;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_by;
++ALTER TABLE agent_adoption_variants DROP COLUMN retirement_reason;
++ALTER TABLE agent_adoption_variants DROP COLUMN retired_at;
++ALTER TABLE agent_adoption_variants DROP COLUMN retired_by;
++ALTER TABLE agent_adoptions DROP COLUMN end_reason;
++ALTER TABLE agent_adoptions DROP COLUMN ended_at;
++ALTER TABLE agent_adoptions DROP COLUMN ended_by;
+diff --git a/migrations/sqlite/000124_agent_marketplace_lifecycle.up.sql b/migrations/sqlite/000124_agent_marketplace_lifecycle.up.sql
+new file mode 100644
+index 000000000..d90a5517c
+--- /dev/null
++++ b/migrations/sqlite/000124_agent_marketplace_lifecycle.up.sql
+@@ -0,0 +1,22 @@
++-- T33 (#63): durable lifecycle audit metadata for tenant and public
++-- marketplace records. Release content columns remain unchanged.
++ALTER TABLE agent_adoptions ADD COLUMN ended_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_adoptions ADD COLUMN ended_at DATETIME;
++ALTER TABLE agent_adoptions ADD COLUMN end_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_adoption_variants ADD COLUMN retired_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_adoption_variants ADD COLUMN retired_at DATETIME;
++ALTER TABLE agent_adoption_variants ADD COLUMN retirement_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_at DATETIME;
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlist_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN deprecated_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN deprecated_at DATETIME;
++ALTER TABLE agent_releases ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN replacement_release_id VARCHAR(36) NOT NULL DEFAULT '';
++ALTER TABLE public_marketplace_listings ADD COLUMN unlisted_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE public_marketplace_listings ADD COLUMN unlisted_at DATETIME;
++ALTER TABLE public_marketplace_listings ADD COLUMN unlist_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN deprecated_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN deprecated_at DATETIME;
++ALTER TABLE public_agent_releases ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN replacement_release_id VARCHAR(36) NOT NULL DEFAULT '';
+diff --git a/migrations/versioned/000203_agent_marketplace_lifecycle.down.sql b/migrations/versioned/000203_agent_marketplace_lifecycle.down.sql
+new file mode 100644
+index 000000000..a09963de1
+--- /dev/null
++++ b/migrations/versioned/000203_agent_marketplace_lifecycle.down.sql
+@@ -0,0 +1,20 @@
++ALTER TABLE public_agent_releases DROP COLUMN replacement_release_id;
++ALTER TABLE public_agent_releases DROP COLUMN deprecation_reason;
++ALTER TABLE public_agent_releases DROP COLUMN deprecated_at;
++ALTER TABLE public_agent_releases DROP COLUMN deprecated_by;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlist_reason;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlisted_at;
++ALTER TABLE public_marketplace_listings DROP COLUMN unlisted_by;
++ALTER TABLE agent_releases DROP COLUMN replacement_release_id;
++ALTER TABLE agent_releases DROP COLUMN deprecation_reason;
++ALTER TABLE agent_releases DROP COLUMN deprecated_at;
++ALTER TABLE agent_releases DROP COLUMN deprecated_by;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlist_reason;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_at;
++ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_by;
++ALTER TABLE agent_adoption_variants DROP COLUMN retirement_reason;
++ALTER TABLE agent_adoption_variants DROP COLUMN retired_at;
++ALTER TABLE agent_adoption_variants DROP COLUMN retired_by;
++ALTER TABLE agent_adoptions DROP COLUMN end_reason;
++ALTER TABLE agent_adoptions DROP COLUMN ended_at;
++ALTER TABLE agent_adoptions DROP COLUMN ended_by;
+diff --git a/migrations/versioned/000203_agent_marketplace_lifecycle.up.sql b/migrations/versioned/000203_agent_marketplace_lifecycle.up.sql
+new file mode 100644
+index 000000000..826161020
+--- /dev/null
++++ b/migrations/versioned/000203_agent_marketplace_lifecycle.up.sql
+@@ -0,0 +1,21 @@
++-- T33 (#63): lifecycle metadata is separate from immutable Release content.
++ALTER TABLE agent_adoptions ADD COLUMN ended_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_adoptions ADD COLUMN ended_at TIMESTAMPTZ;
++ALTER TABLE agent_adoptions ADD COLUMN end_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_adoption_variants ADD COLUMN retired_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_adoption_variants ADD COLUMN retired_at TIMESTAMPTZ;
++ALTER TABLE agent_adoption_variants ADD COLUMN retirement_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlisted_at TIMESTAMPTZ;
++ALTER TABLE agent_marketplace_listings ADD COLUMN unlist_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN deprecated_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN deprecated_at TIMESTAMPTZ;
++ALTER TABLE agent_releases ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE agent_releases ADD COLUMN replacement_release_id VARCHAR(36) NOT NULL DEFAULT '';
++ALTER TABLE public_marketplace_listings ADD COLUMN unlisted_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE public_marketplace_listings ADD COLUMN unlisted_at TIMESTAMPTZ;
++ALTER TABLE public_marketplace_listings ADD COLUMN unlist_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN deprecated_by VARCHAR(255) NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN deprecated_at TIMESTAMPTZ;
++ALTER TABLE public_agent_releases ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT '';
++ALTER TABLE public_agent_releases ADD COLUMN replacement_release_id VARCHAR(36) NOT NULL DEFAULT '';

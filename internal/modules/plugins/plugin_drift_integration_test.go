@@ -322,7 +322,7 @@ func TestDriftScopedToSingleInstallation(t *testing.T) {
 // 测试命令 `-run 'TestDrift'` 覆盖全部三用例）：手工服务（无插件关联）
 // 工具 schema 变化后：Agent 目录正常反映远端现状（schema 变化直接生效
 // ——无快照基线可比对），调用成功；守卫 provider 对手工服务返回 nil
-//（不治理）；无 drift 状态可查（GetByServiceID 无安装行、drift API 对
+// （不治理）；无 drift 状态可查（GetByServiceID 无安装行、drift API 对
 // 不存在的安装 ID 一律 not found）。
 func TestDriftManualServiceNotGoverned(t *testing.T) {
 	db := openPluginDB(t)

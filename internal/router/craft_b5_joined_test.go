@@ -185,14 +185,14 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 		return w
 	}
 	denialRows := func() []struct {
-		ID                                                               uint64
-		TenantID                                                         uint64
+		ID                                                                  uint64
+		TenantID                                                            uint64
 		ActorUserID, Action, ScopeType, ScopeID, TargetID, Outcome, Details string
 	} {
 		t.Helper()
 		var rows []struct {
-			ID                                                               uint64
-			TenantID                                                         uint64
+			ID                                                                  uint64
+			TenantID                                                            uint64
 			ActorUserID, Action, ScopeType, ScopeID, TargetID, Outcome, Details string
 		}
 		if err := db.Table("audit_logs").Where("action = ? AND scope_id = ?", "craft.access_denied", "task-b5").Order("id").Scan(&rows).Error; err != nil {

@@ -391,7 +391,7 @@ func TestLinkLessPendingOrderDoesNotBlockFreshQuote(t *testing.T) {
 	// mid-landing) must NOT be swept — covered by the ordering test below.
 	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url, channel_failed)
 		VALUES ('ord_zombie', 49, 'qt_zombie', 'purchase', 9900, 'CNY', 'pending', 1, ?, '', 0)`,
-		time.Now().UTC().Add(-repocommercial.SweepStaleAge - time.Minute)).Error; err != nil {
+		time.Now().UTC().Add(-repocommercial.SweepStaleAge-time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
 	q := purchaseQuote(t, svc.orders, 49, "pro")
@@ -713,7 +713,7 @@ func TestPurchaseDisambiguationCoversActiveConflict(t *testing.T) {
 		Payload: commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: 81, ExternalCustomerID: commercial.ExternalCustomerID(81),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(81),
-			PlanCode: other, AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			PlanCode:                       other, AmountFen: 9900, Currency: commercial.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -740,8 +740,8 @@ func TestPurchaseStatusSkipsForeignPlanOrder(t *testing.T) {
 		Payload: commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: 82, ExternalCustomerID: commercial.ExternalCustomerID(82),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(82),
-			PlanCode: commercial.DeterministicPlanCode("pro", 1),
-			AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -789,8 +789,8 @@ func TestPurchaseMismatchWritesAttentionAudit(t *testing.T) {
 		Payload: commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: 83, ExternalCustomerID: commercial.ExternalCustomerID(83),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(83),
-			PlanCode: commercial.DeterministicPlanCode("pro", 1),
-			AmountFen: 12345, Currency: commercial.CurrencyCNY,
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      12345, Currency: commercial.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatal(err)

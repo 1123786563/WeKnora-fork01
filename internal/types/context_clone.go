@@ -70,12 +70,12 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// context so MCP approval projection remains bound to the claimed run.
 	// It is intentionally distinct from RequestID, which is only an
 	// idempotency key.
-	RunIDContextKey:         true,
+	RunIDContextKey: true,
 	// CredentialVersionContextKey is the trusted target authorization
 	// snapshot; detached work must retain the same fence used at admission.
 	CredentialVersionContextKey: true,
-	LanguageContextKey:      true,
-	LangfuseTraceContextKey: true,
+	LanguageContextKey:          true,
+	LangfuseTraceContextKey:     true,
 
 	// The agent-level opt-out from long-term memory. Recall is gated inside
 	// the QA services, but extraction, the explicit "remember this" route and

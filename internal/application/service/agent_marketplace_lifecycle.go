@@ -57,7 +57,7 @@ func (s *AgentMarketplaceLifecycleService) EndAdoption(ctx context.Context, tena
 	if tenantID == 0 || actorID == "" || adoptionID == "" {
 		return interfaces.AdoptionView{}, ErrAgentMarketplaceLifecycleInvalidInput
 	}
-	row, err := s.adoptions.EndAdoption(ctx, tenantID, adoptionID, AgentAdoptionStateActive, AgentAdoptionStateEnded, map[string]any{"ended_by": actorID})
+	row, err := s.adoptions.EndAdoption(ctx, tenantID, adoptionID, actorID, "ended")
 	if err != nil {
 		if errors.Is(err, repository.ErrAgentAdoptionEndPrecondition) || errors.Is(err, repository.ErrAgentAdoptionTransition) {
 			return interfaces.AdoptionView{}, fmt.Errorf("%w: %v", ErrAgentAdoptionStateConflict, err)
@@ -72,7 +72,7 @@ func (s *AgentMarketplaceLifecycleService) UnlistListing(ctx context.Context, te
 	if tenantID == 0 || actorID == "" || listingID == "" {
 		return interfaces.TenantListingView{}, ErrAgentMarketplaceLifecycleInvalidInput
 	}
-	row, err := s.listings.TransitionListingState(ctx, tenantID, listingID, "listed", "unlisted", map[string]any{"unlisted_by": actorID})
+	row, err := s.listings.UnlistTenantListing(ctx, tenantID, listingID, actorID, "unlisted")
 	if err != nil {
 		return interfaces.TenantListingView{}, err
 	}
@@ -106,7 +106,7 @@ func (s *AgentMarketplaceLifecycleService) DeprecateRelease(ctx context.Context,
 	if successor.DeprecatedAt != nil {
 		return nil, fmt.Errorf("%w: successor release %s is already deprecated", ErrAgentMarketplaceLifecycleInvalidInput, successorReleaseID)
 	}
-	return s.listings.DeprecateRelease(ctx, tenantID, releaseID, actorID, successorReleaseID)
+	return s.listings.DeprecateTenantRelease(ctx, tenantID, releaseID, actorID, successorReleaseID, "deprecated")
 }
 
 func (s *AgentMarketplaceLifecycleService) adoptionViewOf(ctx context.Context, tenantID uint64, row *types.AgentAdoptionEntity) (interfaces.AdoptionView, error) {

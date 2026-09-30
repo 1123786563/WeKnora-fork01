@@ -13,13 +13,13 @@
 package craft
 
 import (
-	"io"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	stdhtml "html"
+	"io"
 	"regexp"
 	"strings"
 	"unicode/utf8"

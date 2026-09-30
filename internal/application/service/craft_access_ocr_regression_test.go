@@ -95,7 +95,7 @@ func TestCraftAuditActorUserIDHelper(t *testing.T) {
 	require.Equal(t, "owner", column)
 	require.Empty(t, full)
 
-	column, full = craftAuditActorUserID("api_external_user:1:"+strings.Repeat("x", 128))
+	column, full = craftAuditActorUserID("api_external_user:1:" + strings.Repeat("x", 128))
 	require.NotEqual(t, "", full)
 	require.Equal(t, full, "api_external_user:1:"+strings.Repeat("x", 128))
 	require.LessOrEqual(t, len(column), 36)

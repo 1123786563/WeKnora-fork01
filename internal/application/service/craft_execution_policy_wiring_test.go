@@ -324,7 +324,6 @@ func TestCraftRestrictedExecResumeBoundIsGated(t *testing.T) {
 	require.ErrorIs(t, err, craft.ErrForbidden, "the recovery send path must refuse unreviewable commands")
 }
 
-
 // TestCraftDelegateExecutionPolicyRefusesExplicitDigestPlusStdin is the
 // round-2 medium finding regression: carrying BOTH an explicit
 // TargetSHA256 and stdin bytes would silently disable the stdin channel's

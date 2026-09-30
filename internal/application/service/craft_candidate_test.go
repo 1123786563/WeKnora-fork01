@@ -136,18 +136,17 @@ func TestCraftArtifactCollectCandidateValidationFailureLeavesNoCandidate(t *test
 	require.Empty(t, candidates.byRun)
 }
 
-
 // TestCraftArtifactWebHTMLScreenRejectsScriptShapes is the round-3 build-log
 // trust regression: whatever a forged build-log.json claims, a staged web
 // HTML member carrying script/event/egress shapes refuses the WHOLE round
 // server-side before any byte is uploaded.
 func TestCraftArtifactWebHTMLScreenRejectsScriptShapes(t *testing.T) {
 	malformed := []string{
-		`<h1>ok</h1><img src="a>b" onerror="alert(1)">`,            // quoted ">" bypass of naive regexes
-		"<h1>ok</h1><img/onerror=alert(1)>",                        // "/" tag separator
+		`<h1>ok</h1><img src="a>b" onerror="alert(1)">`,                           // quoted ">" bypass of naive regexes
+		"<h1>ok</h1><img/onerror=alert(1)>",                                       // "/" tag separator
 		`<div style="&#92;75 rl&#40;&#92;2f&#92;2fevil&#46;example&#41;">x</div>`, // entity×CSS smuggle
-		`<a href="https://evil.example">x</a>`,                      // external URL
-		`<iframe src="x"></iframe>`,                                 // embedding tag
+		`<a href="https://evil.example">x</a>`,                                    // external URL
+		`<iframe src="x"></iframe>`,                                               // embedding tag
 	}
 	for index, content := range malformed {
 		files := newDirBackedFileService(t)

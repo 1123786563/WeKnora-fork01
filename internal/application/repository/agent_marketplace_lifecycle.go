@@ -12,61 +12,11 @@ import (
 )
 
 var (
-	ErrAgentAdoptionEndPrecondition      = errors.New("agent adoption cannot end while variants remain active")
-	ErrAgentAdoptionTransition           = errors.New("agent adoption state transition failed")
+	ErrAgentAdoptionEndPrecondition = errors.New("agent adoption cannot end while variants remain active")
+
 	ErrAgentMarketplaceListingTransition = errors.New("agent marketplace listing state transition failed")
 	ErrAgentReleaseDeprecateConflict     = errors.New("agent release deprecation conflict")
 )
-
-// EndAdoption ends an Adoption only after every Variant is retired. The
-// precondition query and guarded update share one transaction so a concurrent
-// Variant creation cannot slip between the check and the state transition.
-func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID string, expectedFrom, nextState string, updates map[string]any) (*types.AgentAdoptionEntity, error) {
-	var result types.AgentAdoptionEntity
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := guardAdoptionState(tx, tenantID, adoptionID, expectedFrom); err != nil {
-			return err
-		}
-
-		var remaining int64
-		if err := tx.Model(&types.AgentAdoptionVariantEntity{}).
-			Where("tenant_id = ? AND adoption_id = ? AND state <> ?", tenantID, adoptionID, "retired").
-			Count(&remaining).Error; err != nil {
-			return err
-		}
-		if remaining > 0 {
-			var first types.AgentAdoptionVariantEntity
-			if err := tx.Select("id").Where("tenant_id = ? AND adoption_id = ? AND state <> ?", tenantID, adoptionID, "retired").
-				Order("id ASC").First(&first).Error; err != nil {
-				return err
-			}
-			return fmt.Errorf("%w: %d variant(s) remain, first variant %s", ErrAgentAdoptionEndPrecondition, remaining, first.ID)
-		}
-
-		values := cloneLifecycleUpdates(updates)
-		values["state"] = nextState
-		now := time.Now().UTC()
-		values["ended_at"] = now
-		values["updated_at"] = now
-		updated := tx.Model(&types.AgentAdoptionEntity{}).
-			Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, expectedFrom).
-			Updates(values)
-		if updated.Error != nil {
-			return updated.Error
-		}
-		if updated.RowsAffected != 1 {
-			return ErrAgentAdoptionTransition
-		}
-		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, adoptionID).First(&result).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
 
 // guardAdoptionState is the shared lock-first write used by every operation
 // that can add a Variant or end its parent Adoption. The guarded no-op UPDATE

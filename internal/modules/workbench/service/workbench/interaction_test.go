@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -240,7 +241,7 @@ func TestGormCancelPortDefersUnresolvedCraftStart(t *testing.T) {
 	require.NoError(t, db.Create(&craftCancelAdapterSessionRow{TenantID: 7, ID: "s1", ActiveAgentRunID: &activeRun}).Error)
 	require.NoError(t, db.Create(&craftCancelAdapterJournalRow{TenantID: 7, RunID: activeRun, State: "intent"}).Error)
 
-	port := NewGormCancelPort(db)
+	port := NewGormCancelPort(repository.NewAgentRunStore(db))
 	require.ErrorIs(t, port.Cancel(context.Background(), 7, "other", activeRun, 4), agentruntime.ErrConflict)
 	require.ErrorIs(t, port.Cancel(context.Background(), 7, "u1", activeRun, 3), agentruntime.ErrConflict)
 	require.NoError(t, port.Cancel(context.Background(), 7, "u1", activeRun, 4))

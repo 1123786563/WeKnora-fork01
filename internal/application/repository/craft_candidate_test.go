@@ -120,7 +120,7 @@ func TestCraftCandidateMigrationSQLiteUpDownUp(t *testing.T) {
 	require.NoError(t, err)
 	singleMigrationDir := t.TempDir()
 	for _, direction := range []string{"up", "down"} {
-		contents, readErr := os.ReadFile(filepath.Join(root, "migrations/sqlite/000122_craft_candidate."+direction+".sql"))
+		contents, readErr := os.ReadFile(filepath.Join(root, "migrations/sqlite/000173_craft_candidate."+direction+".sql"))
 		require.NoError(t, readErr)
 		require.NoError(t, os.WriteFile(filepath.Join(singleMigrationDir, "000001_craft_candidate."+direction+".sql"), contents, 0o600))
 	}

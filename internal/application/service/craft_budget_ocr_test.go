@@ -12,7 +12,7 @@ import (
 // TestCraftBudgetSandboxSecondDistinctActivitySucceeds is the OCR
 // high-finding regression: the sandbox facet namespace must allow the
 // SECOND distinct activity of one run. The pre-fix fresh branch wrote every
-// sandbox activity into the empty-facet tuple (run,'','',0) and the unique
+// sandbox activity into the empty-facet tuple (run,”,”,0) and the unique
 // index rejected the second distinct sandbox/<activityID> with a raw
 // constraint error.
 func TestCraftBudgetSandboxSecondDistinctActivitySucceeds(t *testing.T) {

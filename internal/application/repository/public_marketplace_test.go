@@ -260,6 +260,12 @@ func TestPublicMarketplaceRepositoryIntroduceReleaseCopiesPortableBundleAndAdopt
 	require.NoError(t, db.Where("tenant_id = ? AND public_release_id = ?", 2, release2.ID).First(&advancedIntroduced).Error)
 	require.Equal(t, advancedIntroduced.ID, advanced.AcceptedReleaseID)
 	require.Equal(t, release2.ID, advancedIntroduced.PublicReleaseID)
+	_, err = NewAgentAdoptionRepository(db).EndAdoption(ctx, 2, adoption.ID, "tenant-admin", "closed")
+	require.NoError(t, err)
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition, "same-release re-introduction cannot revive an ended Adoption")
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, release2)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition, "a different Release cannot advance an ended Adoption")
 
 	// 其他租户互不可见
 	var count int64
@@ -267,66 +273,18 @@ func TestPublicMarketplaceRepositoryIntroduceReleaseCopiesPortableBundleAndAdopt
 	require.Zero(t, count)
 }
 
-func TestPublicMarketplaceIntroduceReleaseAgainstEndedAdoptionRollsBack(t *testing.T) {
+func TestPublicMarketplaceRepositoryRejectsIntroductionAfterUnlist(t *testing.T) {
 	db := openPublicMarketplaceDB(t)
 	repo := NewPublicMarketplaceRepository(db)
 	ctx := context.Background()
-	listing, firstRelease := seedApprovedPublicRelease(t, db, "1.0.0")
-	introduced, adoption, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
+	listing, release := seedApprovedPublicRelease(t, db, "1.0.0")
+	_, err := repo.UnlistPublicListing(ctx, listing.ID, "platform-admin", "closed")
 	require.NoError(t, err)
-	require.True(t, created)
-	_, err = NewAgentAdoptionRepository(db).EndAdoption(ctx, 2, adoption.ID, "active", "ended", map[string]any{"ended_by": "adopter-admin"})
-	require.NoError(t, err)
-
-	// A new public Release creates a fresh tenant introduction before calling
-	// the shared adoption upsert; the enclosing transaction must roll it back.
-	listing2, secondRelease := seedApprovedPublicRelease(t, db, "2.0.0")
-	require.Equal(t, listing.ID, listing2.ID)
-	ctx = context.WithValue(ctx, publicIntroductionOrderContextKey{}, true)
-	var events []string
-	guardName := "test:public-intro-order-guard:" + t.Name()
-	readName := "test:public-intro-order-read:" + t.Name()
-	createName := "test:public-intro-order-create:" + t.Name()
-	require.NoError(t, db.Callback().Update().After("gorm:update").Before("gorm:after_update").Register(guardName, func(tx *gorm.DB) {
-		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "agent_adoptions" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
-			events = append(events, "tenant-listing-guard")
-		}
-	}))
-	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(readName, func(tx *gorm.DB) {
-		if tx.Statement != nil && tx.Statement.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
-			events = append(events, "introduction-read")
-		}
-	}))
-	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(createName, func(tx *gorm.DB) {
-		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
-			events = append(events, "introduction-write")
-		}
-	}))
-	t.Cleanup(func() { _ = db.Callback().Update().Remove(guardName) })
-	t.Cleanup(func() { _ = db.Callback().Query().Remove(readName) })
-	t.Cleanup(func() { _ = db.Callback().Create().Remove(createName) })
-	createdIntroduction, _, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, secondRelease)
-	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
-	require.Equal(t, []string{"tenant-listing-guard", "introduction-read", "introduction-write"}, events,
-		"tenant/listing writer guard must be acquired before introduction ledger reads or writes")
-	require.Nil(t, createdIntroduction)
-	require.False(t, created)
-	var introductionCount int64
-	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ? AND public_listing_id = ?", 2, listing.ID).Count(&introductionCount).Error)
-	require.EqualValues(t, 1, introductionCount, "the failed introduction must not leave a partial row")
-	stored, err := NewAgentAdoptionRepository(db).GetAdoption(ctx, 2, adoption.ID)
-	require.NoError(t, err)
-	require.NotNil(t, stored)
-	require.Equal(t, "ended", stored.State)
-	require.Equal(t, introduced.ID, stored.AcceptedReleaseID)
-
-	// An already introduced Release also cannot make the ended Adoption look
-	// successful when the requested accepted pointer is unchanged.
-	events = nil
-	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
-	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
-	require.Equal(t, []string{"tenant-listing-guard", "introduction-read"}, events,
-		"the existing-introduction branch must also take the guard before reading the ledger")
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrPublicMarketplaceLifecycleTransition)
+	var introductions, adoptions int64
+	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ?", 2).Count(&introductions).Error)
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ?", 2).Count(&adoptions).Error)
+	require.Zero(t, introductions)
+	require.Zero(t, adoptions)
 }
-
-type publicIntroductionOrderContextKey struct{}

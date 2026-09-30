@@ -193,10 +193,10 @@ func resolveExecutionRecovery(
 
 // AgentRuntime owns the durable worker lifecycle independently from HTTP.
 type AgentRuntime struct {
-	Runs        *service.AgentRunService
-	Worker      *service.AgentRunWorker
+	Runs         *service.AgentRunService
+	Worker       *service.AgentRunWorker
 	craftCapture *CraftRunCaptureRunner
-	once        sync.Once
+	once         sync.Once
 }
 
 // SetRecoveryHook wires sandbox reconciliation into the worker before it

@@ -159,7 +159,6 @@ func TestSkillPythonVerifier(t *testing.T) {
 		wantProblem: "",
 	}}
 
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if strings.Contains(tc.wantProblem, "pyproject.toml") && !pythonCanParsePyproject(t) {

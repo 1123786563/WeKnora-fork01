@@ -33,9 +33,9 @@ type stubArtifactVersionSource struct {
 	version  repository.ArtifactVersion
 	calls    int
 	lastCall struct {
-		tenant   uint64
-		session  string
-		version  string
+		tenant  uint64
+		session string
+		version string
 	}
 }
 
@@ -139,7 +139,7 @@ func TestDownloadArtifactVersion_CrossWorkspaceIs404(t *testing.T) {
 	// The version exists in tenant 42, but the caller authenticates as
 	// tenant 7: the tenant-scoped read must be a plain 404.
 	source := &stubArtifactVersionSource{
-		tenant: 42,
+		tenant:  42,
 		session: "sess-1",
 		version: repository.ArtifactVersion{ID: "v1", ObjectKey: "artifact-versions/42/r1/" + strings.Repeat("a", 64)},
 	}

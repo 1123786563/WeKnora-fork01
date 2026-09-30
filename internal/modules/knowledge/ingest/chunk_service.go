@@ -30,10 +30,10 @@ type chunkService struct {
 	// Pass B K1.2 R2 seam（plan 21 §6.3）：writeGuard 承载 K4 属主写授权族，
 	// spanTrace/enqueueSummaryRefresh/indexContentFn 承载 SpanTracker/
 	// enqueueSummaryRefresh/buildKnowledgeIndexContent 的构造注入，禁包级 var。
-	writeGuard             KnowledgeWriteGuard
-	spanTrace              SpanTraceSeam
-	enqueueSummaryRefresh  func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, KBByIDLookup, *types.Knowledge) error
-	indexContentFn         func(knowledge *types.Knowledge, content string) string
+	writeGuard            KnowledgeWriteGuard
+	spanTrace             SpanTraceSeam
+	enqueueSummaryRefresh func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, KBByIDLookup, *types.Knowledge) error
+	indexContentFn        func(knowledge *types.Knowledge, content string) string
 }
 
 // NewChunkService creates a new chunk service
@@ -322,8 +322,8 @@ func (s *chunkService) DeleteChunks(ctx context.Context, ids []string) error {
 	err = s.chunkRepository.DeleteChunks(ctx, tenantID, ids)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"chunk_ids":    ids,
-			"tenant_id":    tenantID,
+			"chunk_ids": ids,
+			"tenant_id": tenantID,
 		})
 		return err
 	}

@@ -494,7 +494,4 @@ func TestAlipayQueryPendingAndClosedAllowMissingCollectedAmount(t *testing.T) {
 			}
 		})
 	}
-	if res2.AmountCurrency != "" {
-		t.Fatalf("an unparsable amount must not report a currency, got %q", res2.AmountCurrency)
-	}
 }

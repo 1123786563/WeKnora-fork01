@@ -204,7 +204,7 @@ func (r *shimSyncLogRepo) UpdateHeartbeat(context.Context, string, time.Time) er
 	return nil
 }
 func (r *shimSyncLogRepo) UpdateAsynqTaskID(context.Context, string, string) error { return nil }
-func (r *shimSyncLogRepo) RequestCancel(context.Context, string) error            { return nil }
+func (r *shimSyncLogRepo) RequestCancel(context.Context, string) error             { return nil }
 
 var _ interfaces.SyncLogRepository = (*shimSyncLogRepo)(nil)
 

@@ -42,7 +42,7 @@ func TestDeliveryStoreLifecycleAndCAS(t *testing.T) {
 		ID: "dlv-1", TenantID: 7, TaskID: "s-1", RunID: "r-1", OwnerID: "u1",
 		ActionID: "act-1", ConnectionID: "conn-1", Repo: "octocat/hello",
 		BaselineSHA: "b0000000000000000000000000000000000000000",
-		Branch: "weknora/task/s-1", State: "prepared",
+		Branch:      "weknora/task/s-1", State: "prepared",
 	}
 	require.NoError(t, store.CreateDelivery(ctx, row))
 

@@ -40,11 +40,11 @@ func NewWikiPageHandler(
 	recordWikiContentActivity RecordWikiContentActivityFn,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
-		wikiService:              wikiService,
-		kbService:                kbService,
-		lintService:              lintService,
-		auditService:             auditService,
-		memoryService:            memoryService,
+		wikiService:               wikiService,
+		kbService:                 kbService,
+		lintService:               lintService,
+		auditService:              auditService,
+		memoryService:             memoryService,
 		recordWikiContentActivity: recordWikiContentActivity,
 	}
 }

@@ -124,5 +124,9 @@ func TestCraftChargeStartSequenceContentionIsBoundedDomainConflict(t *testing.T)
 // construction must explicitly opt in.
 type permissiveExecPolicyGate struct{}
 
-func (permissiveExecPolicyGate) ReviewNormalExec(context.Context, repository.CraftDockerNormalInputRequest) error { return nil }
-func (permissiveExecPolicyGate) ReviewOutputlessExec(context.Context, CraftCallBinding, CraftDockerOutputlessRequest) error { return nil }
+func (permissiveExecPolicyGate) ReviewNormalExec(context.Context, repository.CraftDockerNormalInputRequest) error {
+	return nil
+}
+func (permissiveExecPolicyGate) ReviewOutputlessExec(context.Context, CraftCallBinding, CraftDockerOutputlessRequest) error {
+	return nil
+}

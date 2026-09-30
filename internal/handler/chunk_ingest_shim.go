@@ -55,7 +55,9 @@ func (h *ChunkHandler) ListChunkRevisions(c *gin.Context) { h.delegate().ListChu
 func (h *ChunkHandler) RevertChunk(c *gin.Context) { h.delegate().RevertChunk(c) }
 
 // UpsertGeneratedQuestion 转发（routes_knowledge.go PUT /chunks/by-id/:id/questions）。
-func (h *ChunkHandler) UpsertGeneratedQuestion(c *gin.Context) { h.delegate().UpsertGeneratedQuestion(c) }
+func (h *ChunkHandler) UpsertGeneratedQuestion(c *gin.Context) {
+	h.delegate().UpsertGeneratedQuestion(c)
+}
 
 // RegenerateGeneratedQuestions 转发（routes_knowledge.go POST /chunks/by-id/:id/questions/regenerate）。
 func (h *ChunkHandler) RegenerateGeneratedQuestions(c *gin.Context) {

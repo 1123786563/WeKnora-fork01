@@ -62,10 +62,10 @@ type OrderRequest struct {
 // contradicts the attempt face must never be laundered into a confirmation
 // built from the attempt's own currency (spec L127 wrong-currency).
 type AttemptResult struct {
-	State         AttemptState
-	ProviderID    string
-	CheckoutURL   string
-	AmountFen     int64
+	State          AttemptState
+	ProviderID     string
+	CheckoutURL    string
+	AmountFen      int64
 	AmountCurrency string
 }
 

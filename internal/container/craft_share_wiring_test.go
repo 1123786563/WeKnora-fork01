@@ -23,12 +23,12 @@ func newTestCraftShareService(t *testing.T) *service.CraftShareService {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	svc, err := service.NewCraftShareService(service.CraftShareConfig{
-		DB: db,
-		Versions: shareStubVersions{},
-		Files:    shareStubFiles{},
-		Records:  shareStubRecords{},
+		DB:         db,
+		Versions:   shareStubVersions{},
+		Files:      shareStubFiles{},
+		Records:    shareStubRecords{},
 		TaskAccess: shareStubAccess{},
-		Now:      func() time.Time { return time.Now() },
+		Now:        func() time.Time { return time.Now() },
 	})
 	require.NoError(t, err)
 	return svc

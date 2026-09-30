@@ -22,6 +22,7 @@ type AgentAdoptionEntity struct {
 	CreatedBy         string `gorm:"type:varchar(255);not null;default:''"`
 	EndedBy           string `gorm:"type:varchar(255);not null;default:''"`
 	EndedAt           *time.Time
+	EndReason         string `gorm:"type:text;not null;default:''"`
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -48,6 +49,7 @@ type AgentAdoptionVariantEntity struct {
 	PublishedAt         *time.Time
 	RetiredBy           string `gorm:"type:varchar(255);not null;default:''"`
 	RetiredAt           *time.Time
+	RetirementReason    string `gorm:"type:text;not null;default:''"`
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

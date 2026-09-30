@@ -32,7 +32,6 @@ func NewWorkbenchReadHandler(
 	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
 }
 
-
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
 // to the same owned-run store as the read handler. The signing secret is read
 // from the environment per request; deployments without the key get an

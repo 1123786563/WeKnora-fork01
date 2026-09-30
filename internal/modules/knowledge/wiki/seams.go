@@ -85,7 +85,7 @@ type RemoveSourceRefFn = func(refs types.StringArray, knowledgeID string) types.
 type RecordWikiContentActivityFn = func(ctx context.Context, audit interfaces.AuditLogService, tenantID uint64, kbID string, actions map[string]int)
 
 // Span 是 wiki 摄取管线内部传递的 span 不透明句柄。真实 *Span 结构体
-//（含全部字段语义）仍驻宿主 service 包（K4 属主 knowledge_span_tracker.go:72，
+// （含全部字段语义）仍驻宿主 service 包（K4 属主 knowledge_span_tracker.go:72，
 // ib2 迁移）；wiki 代码从不构造或读取句柄字段——开启后仅原样回传 tracker
 // 方法——因此以最小包装保持类型边界而不复制实现。宿主侧适配器（W2
 // wikiK3SpanAdapter）负责装卸底层 *Span。
@@ -126,8 +126,8 @@ func (s *Span) Raw() any {
 // 的调用子集窄端口（LatestAttempt/LookupStage/BeginSubSpan/EndSpan/FailSpan/
 // SkipSpan——wiki 文件实际调用的 6 方法，照录签名）。因 Span 为具名类型且
 // 宿主实现返回宿主 *Span，K4 实现无法结构性满足本接口：宿主适配器
-//（W2 wikiK3SpanAdapter，包装 NewSpan/Raw）承担签名转换，行为等价
-//（句柄原样回传，nil 语义保持）。
+// （W2 wikiK3SpanAdapter，包装 NewSpan/Raw）承担签名转换，行为等价
+// （句柄原样回传，nil 语义保持）。
 type SpanTracker interface {
 	// LatestAttempt returns the highest attempt number recorded for the
 	// knowledge, or 0 if it's never been parsed.

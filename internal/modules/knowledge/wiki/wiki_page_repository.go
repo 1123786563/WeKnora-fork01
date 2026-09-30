@@ -20,11 +20,11 @@ import (
 // repository.ErrWikiPageNotFound 做 errors.Is；且 repository→wiki import
 // 会经 agentruntime 传递成环）。此处别名保持同一错误实例，包内引用零语义变化。
 var (
-	ErrWikiPageNotFound    = apprepo.ErrWikiPageNotFound
-	ErrWikiPageConflict    = apprepo.ErrWikiPageConflict
-	ErrWikiFolderNotFound  = apprepo.ErrWikiFolderNotFound
-	ErrWikiFolderConflict  = apprepo.ErrWikiFolderConflict
-	ErrWikiFolderNotEmpty  = apprepo.ErrWikiFolderNotEmpty
+	ErrWikiPageNotFound   = apprepo.ErrWikiPageNotFound
+	ErrWikiPageConflict   = apprepo.ErrWikiPageConflict
+	ErrWikiFolderNotFound = apprepo.ErrWikiFolderNotFound
+	ErrWikiFolderConflict = apprepo.ErrWikiFolderConflict
+	ErrWikiFolderNotEmpty = apprepo.ErrWikiFolderNotEmpty
 )
 
 // wikiPageRepository implements the WikiPageRepository interface
@@ -867,7 +867,7 @@ func (r *wikiPageRepository) ListSummariesByKnowledgeIDs(
 			prefixStr = prefixStr[:len(prefixStr)-1]
 		}
 		clauses = append(clauses, "source_refs::text LIKE ?")
-			args = append(args, "%"+EscapeLikePattern(prefixStr)+"%")
+		args = append(args, "%"+EscapeLikePattern(prefixStr)+"%")
 	}
 	if len(clauses) == 0 {
 		return nil, nil

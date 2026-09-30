@@ -49,7 +49,8 @@ func (s *stubMessageServiceForCompletion) UpdateMessage(_ context.Context, m *ty
 	return nil
 }
 
-func (s *stubMessageServiceForCompletion) IndexMessageToKB(context.Context, string, string, string, string) {}
+func (s *stubMessageServiceForCompletion) IndexMessageToKB(context.Context, string, string, string, string) {
+}
 
 func (s *stubMessageServiceForCompletion) updatedCount() int {
 	s.mu.Lock()

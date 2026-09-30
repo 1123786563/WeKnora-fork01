@@ -73,4 +73,3 @@ func TestCraftArtifactWebCitationGateRunsBeforeUpload(t *testing.T) {
 		require.NoError(t, err, "without the gate a marker-free page still collects (unwired legacy)")
 	})
 }
-

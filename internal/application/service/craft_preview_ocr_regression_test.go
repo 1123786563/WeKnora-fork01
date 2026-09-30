@@ -153,8 +153,8 @@ func (previewInspectorFake) NetworkMode(context.Context, *sandbox.Config, string
 
 type previewCountingAccess struct {
 	craft.TaskAccessChecker
-	calls    int
-	allowed  bool
+	calls   int
+	allowed bool
 }
 
 func (a *previewCountingAccess) CheckTaskAccess(context.Context, craft.Scope, craft.TaskAction) error {
@@ -175,7 +175,6 @@ func (previewCountingChecker) CheckPreviewNoEgress(context.Context, craft.Scope)
 	previewCountingCheckerCalls++
 	return nil
 }
-
 
 // TestCraftPreviewOriginPortSpellingOverlapIsRefused is the round-3 OCR
 // security regression: a preview origin that differs from the app origin

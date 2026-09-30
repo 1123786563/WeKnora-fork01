@@ -18,7 +18,7 @@ import (
 const (
 	// AuditScopeKnowledgeBase 为 KB 活动审计条的 ScopeType 常量；
 	// 导出供宿主 compat 常量别名与宿主特征化测试锚定（原未导出 auditScopeKnowledgeBase）。
-	AuditScopeKnowledgeBase  = "knowledge_base"
+	AuditScopeKnowledgeBase    = "knowledge_base"
 	kbActivitySampleTitleLimit = 5
 )
 

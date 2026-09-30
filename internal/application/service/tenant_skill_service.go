@@ -5,8 +5,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
@@ -126,9 +126,9 @@ func NewTenantSkillService(
 			ResolveConfigManager: func(ctx context.Context, tenantID uint64, configID string) (sandbox.Manager, error) {
 				return resolveTenantSandboxForConfig(ctx, sandboxes, nil, tenantID, configID, sandboxPolicy)
 			},
-			InstallShellExecutor: sessionSandboxInstallShellExecutor,
-			SessionUserID:        nil, // nil → 新包缺省 types.SessionOwnerIDFromContext（与 session.go:26 等价）
-			SkillManifestParser:  parseSkillManifest,
+			InstallShellExecutor:     sessionSandboxInstallShellExecutor,
+			SessionUserID:            nil, // nil → 新包缺省 types.SessionOwnerIDFromContext（与 session.go:26 等价）
+			SkillManifestParser:      parseSkillManifest,
 			FrontmatterVersionParser: skills.UnmarshalSkillFrontmatter,
 			InstallerToolNames: func() [3]string {
 				return [3]string{agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile}

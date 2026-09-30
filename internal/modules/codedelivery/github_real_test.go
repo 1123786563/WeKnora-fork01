@@ -3,6 +3,7 @@ package codedelivery
 import (
 	"context"
 	"fmt"
+	repository "github.com/Tencent/WeKnora/internal/application/repository"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,15 +81,30 @@ func (t *realWriteCountingTransport) writeSnapshot() map[string]int {
 	return out
 }
 
-func (s *realLoopConnections) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
-	var row appconnectorrepo.ConnectionRow
-	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+// appConnAdapter 把 realLoopConnections 适配为 appconnector 侧的
+// ConnectionCredentialSource（两侧接口的 FindConnectionByID 返回类型不同）。
+type appConnAdapter struct{ base *realLoopConnections }
+
+func (a appConnAdapter) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
+	ident, err := a.base.FindConnectionByID(ctx, id)
+	if err != nil {
 		return appconnector.Connection{}, err
 	}
 	return appconnector.Connection{
+		ID: ident.ID, InstallationID: ident.InstallationID, Kind: ident.Kind,
+		OwnerID: ident.OwnerID, State: ident.State, TenantID: ident.TenantID, AuthVersion: ident.AuthVersion,
+	}, nil
+}
+
+func (s *realLoopConnections) FindConnectionByID(ctx context.Context, id string) (ConnectionIdentity, error) {
+	var row appconnectorrepo.ConnectionRow
+	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		return ConnectionIdentity{}, err
+	}
+	return ConnectionIdentity{
 		ID: row.ID, InstallationID: row.InstallationID, Kind: row.Kind,
-		OwnerID: row.OwnerID, CredentialRef: row.CredentialRef,
-		State: row.State, TenantID: row.TenantID, AuthVersion: row.AuthVersion,
+		OwnerID: row.OwnerID,
+		State:   row.State, TenantID: row.TenantID, AuthVersion: row.AuthVersion,
 	}, nil
 }
 
@@ -176,17 +192,17 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	actionStore := appconnectorrepo.NewActionStore(db)
 	store := deliveryrepo.NewDeliveryStore(db)
 	connections := &realLoopConnections{db: db, members: map[string]bool{"u1": true}}
-	guard := appconnectorsvc.NewSubjectGuard(connections)
+	guard := appconnectorsvc.NewSubjectGuard(appConnAdapter{base: connections})
 	dispatcher := NewDeliveryDispatcher(DispatcherDeps{
-		Connections: connections, Creds: connections, Guard: guard,
+		Connections: connections, Creds: connections, Guard: guardAdapter{g: guard},
 		GitHub: factory, Workspace: workspace, Store: store,
-		ActionRows: actionStore, Runs: fixtureRun{sessionID: sessionID},
+		ActionRows: actionStoreAdapter{s: actionStore}, Runs: fixtureRun{sessionID: sessionID},
 	})
-	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
+	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcherAdapter{d: dispatcher}, dispatcherAdapter{d: dispatcher})
 	svc := NewCodeDeliveryService(CodeDeliveryDeps{
-		Store: store, Actions: actions, ActionRows: actionStore,
+		Store: store, Actions: lifecycleAdapter{s: actions}, ActionRows: actionStoreAdapter{s: actionStore},
 		Connections: connections, Creds: connections,
-		GitHub: factory, Providers: appconnectorrepo.NewInstallationStore(db),
+		GitHub: factory, Providers: installStoreAdapter{s: appconnectorrepo.NewInstallationStore(db)},
 		Workspace: workspace, Runs: fixtureRun{sessionID: sessionID}, Dispatcher: dispatcher,
 	})
 
@@ -239,4 +255,103 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	require.Equal(t, string(DeliveryDelivered), again.State, "the read face stays idempotent after the refused duplicate")
 	require.Equal(t, view.CommitSHA, again.CommitSHA)
 	require.Equal(t, view.PRNumber, again.PRNumber)
+}
+
+func (a appConnAdapter) LoadCredential(ctx context.Context, c appconnector.Connection) ([]byte, error) {
+	return a.base.LoadCredential(ctx, c)
+}
+func (a appConnAdapter) MemberActive(ctx context.Context, tenantID uint64, userID string) (bool, error) {
+	return a.base.MemberActive(ctx, tenantID, userID)
+}
+func (a appConnAdapter) TryAcquireRefreshLease(ctx context.Context, c appconnector.Connection, leaseID string, until time.Time) (bool, error) {
+	return a.base.TryAcquireRefreshLease(ctx, c, leaseID, until)
+}
+
+// guardAdapter 把 appconnectorsvc.A02Guard 适配为 A02Guard（subject 类型名不同、字段同构）。
+type guardAdapter struct{ g appconnectorsvc.A02Guard }
+
+func (a guardAdapter) Check(ctx context.Context, s ActionSubject, actionID string, authVersion int64) error {
+	return a.g.Check(ctx, appconnector.OCSubject{TenantID: s.TenantID, ActorID: s.ActorID}, actionID, authVersion)
+}
+
+// actionStoreAdapter 把 appconnectorrepo.ActionStore 适配为 ActionStoreSource。
+type actionStoreAdapter struct{ s *appconnectorrepo.ActionStore }
+
+func (a actionStoreAdapter) FindAction(ctx context.Context, id string) (ActionRecord, error) {
+	r, err := a.s.FindAction(ctx, id)
+	if err != nil {
+		return ActionRecord{}, err
+	}
+	return ActionRecord{
+		ID: r.ID, TenantID: r.TenantID, ActorID: r.ActorID, ConnectionID: r.ConnectionID,
+		AppVersion: r.AppVersion, Target: r.Target, Risk: r.Risk, ArgsDigest: r.ArgsDigest,
+		State: r.State, Fence: r.Fence, ArgsSnapshot: r.ArgsSnapshot, AuthVersion: r.AuthVersion,
+		DigestVersion: int(r.DigestVersion), ProviderResult: r.ProviderResult,
+	}, nil
+}
+
+// runsAdapter 把 AgentRunStore 适配为 RunReader。
+type runsAdapter struct{ r *repository.AgentRunStore }
+
+func (a runsAdapter) GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (RunIdentity, error) {
+	run, err := a.r.GetOwnedRun(ctx, tenantID, ownerID, runID)
+	if err != nil {
+		return RunIdentity{}, err
+	}
+	return RunIdentity{SessionID: run.SessionID}, nil
+}
+
+// dispatcherAdapter 把 DeliveryDispatcher 适配为 appconnectorsvc.ActionDispatcher。
+type dispatcherAdapter struct {
+	d *DeliveryDispatcher
+}
+
+func (a dispatcherAdapter) Dispatch(ctx context.Context, s appconnectorsvc.ActionSnapshot, reservationID string) (appconnectorsvc.DispatchOutcome, error) {
+	out, err := a.d.Dispatch(ctx, ActionSnapshot{
+		ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target,
+		AuthVersion: s.AuthVersion, Args: s.Args,
+	}, reservationID)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	return appconnectorsvc.DispatchOutcome{Status: out.Status, ProviderResult: out.ProviderResult}, nil
+}
+func (a dispatcherAdapter) QueryProvider(ctx context.Context, s appconnectorsvc.ActionSnapshot, executionID string) (appconnectorsvc.DispatchOutcome, error) {
+	out, err := a.d.QueryProvider(ctx, ActionSnapshot{
+		ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target,
+		AuthVersion: s.AuthVersion, Args: s.Args,
+	}, executionID)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, err
+	}
+	return appconnectorsvc.DispatchOutcome{Status: out.Status, ProviderResult: out.ProviderResult}, nil
+}
+
+// lifecycleAdapter 把 appconnectorsvc.ActionService 适配为 ActionLifecycle。
+type lifecycleAdapter struct {
+	s *appconnectorsvc.ActionService
+}
+
+func (a lifecycleAdapter) Prepare(ctx context.Context, in ActionInput) (string, error) {
+	return a.s.Prepare(ctx, appconnector.Action{
+		TenantID: in.TenantID, ActorID: in.ActorID, ConnectionID: in.ConnectionID,
+		Target: in.Target, Risk: in.Risk, Args: in.Args, AuthVersion: in.AuthVersion,
+	})
+}
+func (a lifecycleAdapter) Execute(ctx context.Context, id string) error { return a.s.Execute(ctx, id) }
+func (a lifecycleAdapter) ResolveUnknown(ctx context.Context, id string) error {
+	return a.s.ResolveUnknown(ctx, id)
+}
+
+// installStoreAdapter 把 appconnectorrepo.InstallationStore 适配为 ProviderSource。
+type installStoreAdapter struct {
+	s *appconnectorrepo.InstallationStore
+}
+
+func (a installStoreAdapter) GetInstallationByID(ctx context.Context, tenantID uint64, id string) (ProviderInstallation, error) {
+	inst, err := a.s.GetInstallationByID(ctx, tenantID, id)
+	if err != nil {
+		return ProviderInstallation{}, err
+	}
+	return ProviderInstallation{AppID: inst.AppID}, nil
 }
