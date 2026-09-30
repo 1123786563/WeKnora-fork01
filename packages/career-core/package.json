@@ -1,0 +1,9 @@
+{
+  "name": "@weknora/career-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "tsx --test test/*.test.ts" },
+  "dependencies": { "@weknora/api-client": "workspace:*", "@weknora/contracts": "workspace:*" }
+}

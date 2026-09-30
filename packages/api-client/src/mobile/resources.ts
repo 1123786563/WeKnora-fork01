@@ -1,4 +1,5 @@
 import type { ClientRequest } from '../client.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
@@ -20,21 +21,6 @@ export interface MobileResourceRemote {
   availableAgents(accessToken: string): Promise<{ rows: ReadonlyArray<Record<string, unknown>>; disabledOwnAgentIds: ReadonlySet<string> }>;
   knowledgeBases(accessToken: string): Promise<ReadonlyArray<Record<string, unknown>>>;
   connections(accessToken: string): Promise<ReadonlyArray<Record<string, unknown>>>;
-}
-
-function requireDeploymentOrigin(origin: string): void {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try {
-    parsed = new URL(origin);
-  } catch {
-    throw new Error(`deployment origin must be an absolute URL: ${origin}`);
-  }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.hostname === '') throw new Error('deployment origin must include a host');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
 }
 
 function requireAccessToken(accessToken: string): string {

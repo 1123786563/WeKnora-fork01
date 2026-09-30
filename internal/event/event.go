@@ -55,6 +55,7 @@ const (
 	EventAgentToolResult    EventType = "tool_result"    // 工具结果
 	EventAgentReflection    EventType = "reflection"     // Agent 反思
 	EventAgentReferences    EventType = "references"     // 知识引用
+	EventAgentEvidence      EventType = "evidence"       // 答案证据信封（T15：版本/时间证据 + 三类结论区分）
 	EventAgentFinalAnswer   EventType = "final_answer"   // 最终答案
 
 	// MCP tool human approval (issue #1173)

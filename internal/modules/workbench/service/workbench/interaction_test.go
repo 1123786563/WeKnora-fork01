@@ -307,11 +307,12 @@ func TestToolApprovalWithoutGateFailsBeforeDurableCommit(t *testing.T) {
 
 func TestInteractionServiceDoesNotFallbackForUnavailableCommand(t *testing.T) {
 	svc := NewInteractionService(nil, nil, nil)
-	err := svc.Command(interactionContext(), "r1", contract.ExecutionCommand{Action: "cancel"})
+	_, err := svc.Command(interactionContext(), "r1", contract.ExecutionCommand{Action: "cancel"})
 	require.ErrorIs(t, err, ErrCapabilityUnavailable)
 	steer := &commandPortStub{}
 	svc = NewInteractionService(nil, steer, nil)
-	require.NoError(t, svc.Command(interactionContext(), "r1", contract.ExecutionCommand{Action: "steer", Text: "continue"}))
+	_, err = svc.Command(interactionContext(), "r1", contract.ExecutionCommand{Action: "steer", Text: "continue"})
+	require.NoError(t, err)
 	require.True(t, steer.called)
 }
 

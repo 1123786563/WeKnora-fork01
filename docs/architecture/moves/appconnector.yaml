@@ -24,6 +24,26 @@ alias_obligations:
   - old_import_path: internal/connectorcontrol
     passb_task: B-appconnector
 legacy_files:
+  - path: internal/handler/app_connection_grants.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: app_connection_grants (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_action_plan.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: app_connector_action_plan (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_confluence_publish.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: app_connector_confluence_publish (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_feishu_publish.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: app_connector_feishu_publish (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_notion_publish.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: app_connector_notion_publish (handler)
+    passb_task: B-appconnector
   - path: internal/application/repository/plugin.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Plugin (application/repository)
@@ -105,6 +125,22 @@ test_commands:
   - go test ./internal/modules/appconnector/... -count=1
 integration_points:
   routes:
+  - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:20
+  - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:21
+  - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:22
+  - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:23
+  - RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:18
+  - RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:19
+  - RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:20
+  - RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:21
+  - RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:20
+  - RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:21
+  - RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:22
+  - RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:23
+  - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:21
+  - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:22
+  - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:23
+  - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:24
   - RegisterAppConnectorRoutes — internal/router/routes_app_connectors.go:20
   - RegisterPluginRoutes — internal/router/routes_plugins.go:16
   workers:

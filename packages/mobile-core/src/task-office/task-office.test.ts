@@ -142,3 +142,18 @@ test('queries are normalized before they reach the backend', async () => {
   assert.ok(blank.kind === 'list');
   assert.equal(blank.input.search, undefined, 'blank search is normalized away');
 });
+
+test('a successful archive rejects in-flight tasks() with SUPERSEDED and clears accumulation (R1-F19)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const pending = deferred<TaskBackendPage>();
+  const { office } = officeWith(leaseRef, {
+    list: () => pending.promise,
+    archive: async () => undefined,
+  });
+  const inflight = office.tasks({});
+  await office.archive('task-1'); // 在途 list 尚未 resolve：写成功即作废在途读
+  pending.resolve({ items: [backendRun('r-archived')] }); // 迟到的归档前快照不得被采纳
+  await assert.rejects(inflight, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SUPERSEDED');
+  await assert.rejects(office.moreTasks(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_NO_ACTIVE_QUERY');
+});

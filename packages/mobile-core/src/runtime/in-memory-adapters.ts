@@ -15,9 +15,11 @@ export function createInMemoryDeploymentRegistry(initial: Deployment[] = []): De
   return {
     async list() { return records.map((deployment) => ({ ...deployment })); },
     async upsert(deployment) {
-      // 前移语义：最近登记的实例排最前——与 Task 3 createSecureDeploymentRegistry 的顺序契约一致
+      // 前移语义：最近登记的实例排最前——与 createSecureDeploymentRegistry 的顺序契约一致
       // （同一 DeploymentRegistry 端口下两个 Adapter 的顺序语义必须统一）。
-      const next = { origin: deployment.origin, label: deployment.label };
+      // label 归一化与 SecureStore 版一致：trim + origin 兜底（B2-F21）。
+      const label = deployment.label.trim() !== '' ? deployment.label.trim() : deployment.origin;
+      const next = { origin: deployment.origin, label };
       const rest = records.filter((record) => record.origin !== next.origin);
       records.splice(0, records.length, next, ...rest);
     },

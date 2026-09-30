@@ -20,6 +20,7 @@ func TestExecutionCommandIsAClosedUnion(t *testing.T) {
 	for _, command := range []ExecutionCommand{
 		{Action: "cancel", Text: "unexpected"},
 		{Action: "steer"},
+		{Action: "queue_next"},
 		{Action: "shell", Text: "rm -rf /"},
 	} {
 		if !errors.Is(command.Validate(), ErrCommandActionMismatch) {
@@ -30,6 +31,9 @@ func TestExecutionCommandIsAClosedUnion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := (ExecutionCommand{Action: "steer", Text: "continue with sources"}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (ExecutionCommand{Action: "queue_next", Text: "run the follow-up step"}).Validate(); err != nil {
 		t.Fatal(err)
 	}
 }

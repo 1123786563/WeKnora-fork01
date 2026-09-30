@@ -5,6 +5,8 @@ import type { TaskCard, TaskListPage, TaskOffice, TaskStatusFilter } from '@wekn
 export interface TasksScreenProps {
   taskOffice: TaskOffice;
   onOpenTask?: (card: TaskCard) => void;
+  onOpenLegacy?: () => void;
+  onOpenTaskOffice?: () => void;
 }
 
 const STATUS_FILTERS: Array<{ id: '' | TaskStatusFilter; label: string }> = [
@@ -20,7 +22,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Tasks 一级入口：搜索/筛选/归档与翻页；cursor 与查询身份归 Task Office，本屏只持有渲染态。 */
-export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
+export function TasksScreen({ taskOffice, onOpenTask, onOpenLegacy, onOpenTaskOffice }: TasksScreenProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | TaskStatusFilter>('');
   const [archived, setArchived] = useState(false);
@@ -64,6 +66,7 @@ export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
   return (
     <View>
       <Text>Tasks</Text>
+      {onOpenTaskOffice !== undefined && <Button title="Task Office" onPress={onOpenTaskOffice} />}
       <TextInput value={search} onChangeText={setSearch} placeholder="Search tasks" />
       {STATUS_FILTERS.map((filter) => (
         <Button key={filter.id} title={filter.label} onPress={() => { setStatus(filter.id); }} />
@@ -78,10 +81,11 @@ export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
         <View key={card.runId}>
           <Text>{`${card.title || card.taskId} · ${card.runStatus}${card.attention === 'required' ? ' · needs you' : ''}`}</Text>
           <Button title={archived ? 'Restore' : 'Archive'} onPress={() => { archive(card.taskId, archived); }} />
-          {onOpenTask !== undefined && <Button title="详情" onPress={() => onOpenTask(card)} />}
+          {onOpenTask !== undefined && <Button title="Details" onPress={() => onOpenTask(card)} />}
         </View>
       ))}
       {hasMore && <Button title="Load more" onPress={loadMore} />}
+      {onOpenLegacy !== undefined && <Button title="Legacy tasks" onPress={onOpenLegacy} />}
     </View>
   );
 }

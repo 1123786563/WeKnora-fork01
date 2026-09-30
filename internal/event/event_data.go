@@ -315,3 +315,10 @@ type CommandOutputData struct {
 	Output     string    `json:"output"`
 	Done       bool      `json:"done"`
 }
+
+// AgentEvidenceData carries the answer evidence envelope (T15). Evidence is
+// types.AnswerEvidence, kept as interface{} for the same reason
+// AgentReferencesData does: the event package stays free of a types import.
+type AgentEvidenceData struct {
+	Evidence interface{} `json:"evidence"`
+}

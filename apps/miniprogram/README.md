@@ -24,14 +24,6 @@ pnpm --filter @weknora/miniprogram build:weapp
 
 构建命令会生成本工程的 `project.config.json` 与 `dist/`；导入微信开发者工具后仍需完成域名配置、基础库与真机验证。
 
-## 测试分层
-
-`pnpm --filter @weknora/miniprogram test` 在纯 Node 中运行三层测试，无需模拟器：
-
-- **核心逻辑**（`tests/core.test.mjs`、`tests/auth.test.mjs`）：纯函数与协调器单测。
-- **装配**（`tests/assembly.test.mjs`、`tests/transport.test.mjs`）：真实 transport/runtime/workbench 通过 `tests/helpers/taro-stub.mjs` 的契约级 Taro 替身走完整网络栈（含 SSE 分帧）。
-- **页面渲染级**（`tests/pages.test.mjs`）：真实 `src/features` 页面组件经 `module.registerHooks` 重定向 `@tarojs/taro`/`@tarojs/components` 后，由 `tests/helpers/host-render.mjs`（react-reconciler 自定义渲染器）挂载为纯对象树，驱动输入/点击/页面生命周期并断言渲染内容、导航与 wire 请求；`.tsx` 由 esbuild 现场编译，不引入 DOM 或 jsdom 依赖。
-
 ## 本版本边界
 
 已有源码覆盖平台账号登录、刷新、空间切换、Agent 浏览、聊天与引用、临时附件、知识上传、执行启动/恢复/命令、用量和订单双状态查询。接口失败不会回退到虚构业务数据。

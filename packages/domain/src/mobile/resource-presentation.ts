@@ -24,7 +24,8 @@ export type ConnectionLifecycleState = 'active' | 'revoked' | 'pending_reauthori
 
 export interface ConnectionResource {
   id: string;
-  kind: 'personal' | 'space';
+  /** 三态（R1-F3）：未知 kind 映射 'unknown'，与同函数 state 的 fail-closed 对齐——不静默猜 personal。 */
+  kind: 'personal' | 'space' | 'unknown';
   state: ConnectionLifecycleState;
   connected: boolean;
   capability: { state: AgentCapabilityState; reason: string };
@@ -50,7 +51,7 @@ export function toConnectionResource(row: Record<string, unknown>): ConnectionRe
     row.state === 'active' || row.state === 'revoked' || row.state === 'pending_reauthorization' ? row.state : 'unknown';
   return {
     id: String(row.id ?? ''),
-    kind: row.kind === 'space' ? 'space' : 'personal',
+    kind: row.kind === 'space' ? 'space' : row.kind === 'personal' ? 'personal' : 'unknown',
     state,
     connected: state === 'active',
     capability: connectionCapability(state),

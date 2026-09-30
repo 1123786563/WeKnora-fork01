@@ -23,6 +23,14 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestQueueNextAgentUseDeniedMapsConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	writeWorkbenchCommandError(ctx, workbenchservice.ErrAgentUseDenied)
+	require.Equal(t, http.StatusConflict, response.Code)
+}
+
 type approvalHTTPChecker struct{}
 
 func (approvalHTTPChecker) IsRequired(context.Context, uint64, string, string) (bool, error) {

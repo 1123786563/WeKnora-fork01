@@ -62,6 +62,7 @@ type CreateKnowledgeQARequest struct {
 	AttachmentUploads     []AttachmentUpload           `json:"attachment_uploads,omitempty"`          // Attached files (documents, audio, etc.)
 	AttachmentIDs         []string                     `json:"attachment_ids,omitempty"`              // Pre-uploaded session-scoped document IDs
 	Channel               string                       `json:"channel"`                               // Source channel: "web", "api", "im", etc.
+	ReasoningMode         string                       `json:"reasoning_mode,omitempty"`              // Explicit reasoning request: "rules" | "model" (T15)
 	SuggestionAttribution *types.SuggestionAttribution `json:"suggestion_attribution,omitempty"`
 }
 

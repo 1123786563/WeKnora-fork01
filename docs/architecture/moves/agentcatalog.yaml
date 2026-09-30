@@ -6,6 +6,66 @@ move_packages:
 alias_obligations:
   []
 legacy_files:
+  - path: internal/application/repository/agent_adoption.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_adoption (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_adoption.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_adoption (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_adoption.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_adoption (handler)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_marketplace_lifecycle.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_marketplace_lifecycle (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_marketplace_lifecycle.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_marketplace_lifecycle (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_marketplace_lifecycle.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_marketplace_lifecycle (handler)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_marketplace_lineage.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_marketplace_lineage (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_upgrade.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_upgrade (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_upgrade.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_upgrade (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_upgrade.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_upgrade (handler)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_upgrade_diff.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_upgrade_diff (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_fork_lineage.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_fork_lineage (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/public_marketplace.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: public_marketplace (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/public_marketplace.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: public_marketplace (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/handler/public_marketplace.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: public_marketplace (handler)
+    passb_task: B-agentcatalog
   - path: internal/application/repository/agent_marketplace.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Agent marketplace (application/repository)
@@ -241,6 +301,31 @@ test_commands:
   - go test ./internal/modules/agentcatalog/... -count=1
 integration_points:
   routes:
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:30
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:31
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:32
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:33
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:34
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:35
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:36
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:37
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:38
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:39
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:21
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:22
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:23
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:24
+  - RegisterAgentMarketplaceLifecycleRoutes — internal/router/routes_agent_marketplace_lifecycle.go:19
+  - RegisterAgentMarketplaceLifecycleRoutes — internal/router/routes_agent_marketplace_lifecycle.go:20
+  - RegisterAgentMarketplaceLifecycleRoutes — internal/router/routes_agent_marketplace_lifecycle.go:21
+  - RegisterAgentMarketplaceLifecycleRoutes — internal/router/routes_agent_marketplace_lifecycle.go:22
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:23
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:24
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:25
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:26
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:27
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:28
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:34
   - RegisterCustomAgentRoutes — internal/router/routes_agent.go:22
   - RegisterUserFavoriteRoutes — internal/router/routes_agent.go:61
   - RegisterSkillRoutes — internal/router/routes_agent.go:76

@@ -4,7 +4,8 @@ import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
-import type { TaskBackendDetail, TaskBackendEvent, TaskProjectionStore } from './task-detail.ts';
+import { createTaskDetail } from './task-detail.ts';
+import type { OfflineTaskSnapshot, TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskDetailView, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -89,6 +90,33 @@ test('hydrate renders the three layers result-first and keeps the timeline factu
   handle.close();
 });
 
+test('MobileTaskOffice_PublicSeam_RejectsCrossTenantAndRestoresSameTask', async () => {
+  const firstScope = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: firstScope.lease };
+  const { backend, office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
+
+  const first = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const original = await first.hydrate();
+  assert.equal(original.taskId, 'task-1');
+  first.close();
+
+  const restored = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const restoredView = await restored.hydrate();
+  assert.equal(restoredView.taskId, original.taskId, 'restoring reopens the same authorized Task');
+  assert.deepEqual(backend.detailCalls, ['run-1', 'run-1']);
+  restored.close();
+
+  const openedInFirstTenant = office.open({ taskId: 'task-1', runId: 'run-1' });
+  firstScope.revocable.revoke();
+  leaseRef.lease = new RuntimeScopeLease({ deploymentOrigin: 'https://weknora.example.test', userId: 'user-1', tenantId: 'tenant-2' }).asScopeLease();
+  await assert.rejects(
+    openedInFirstTenant.hydrate(),
+    (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED',
+    'a handle created in tenant-1 must not adopt tenant-2 authorization later',
+  );
+  assert.deepEqual(backend.detailCalls, ['run-1', 'run-1'], 'cross-tenant continuation must be denied before network read');
+});
+
 test('a terminal or archived task drains without opening a stream', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
@@ -133,6 +161,81 @@ test('a revoked scope lease rejects hydration with foreign data never rendered',
   assert.equal(handle.view(), undefined);
 });
 
+test('lease replacement while projection load is pending rejects and clears the handle', async () => {
+  const first = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: first.lease };
+  const gate = deferred<undefined>();
+  const base = createInMemoryTaskProjectionStore();
+  const store: TaskProjectionStore = { load: () => gate.promise, save: (projection) => base.save(projection) };
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$({ title: 'tenant one' }) }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const pending = handle.hydrate();
+  await settle();
+  leaseRef.lease = leased().lease;
+  gate.resolve(undefined);
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(handle.view(), undefined);
+});
+
+test('lease replacement while projection save is pending rejects and clears the handle', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const gate = deferred<void>();
+  const base = createInMemoryTaskProjectionStore();
+  const store: TaskProjectionStore = { load: (runId) => base.load(runId), save: async (projection) => { await gate.promise; await base.save(projection); } };
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$({ title: 'tenant one' }) }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const pending = handle.hydrate();
+  await settle();
+  leaseRef.lease = leased().lease;
+  gate.resolve();
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(handle.view(), undefined);
+});
+
+test('a hydrated handle drops stream events after its opening lease is replaced', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => { emit = onEvent; signal.addEventListener('abort', () => resolve()); }),
+  };
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store: createInMemoryTaskProjectionStore() });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const views: Array<TaskDetailView | undefined> = [];
+  handle.updates((view) => views.push(view));
+  leaseRef.lease = leased().lease;
+  emit!(event$(3));
+  await settle();
+  assert.equal(handle.view(), undefined);
+  assert.deepEqual(views, [undefined], 'replacement immediately clears subscribed projections');
+});
+
+test('close and interruption skip a pending projection flush after lease replacement', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const saves: Array<{ cursor: number; taskId: string }> = [];
+  const store: TaskProjectionStore = {
+    load: async () => undefined,
+    save: async (projection) => { saves.push({ cursor: projection.cursor, taskId: projection.taskId }); },
+  };
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => { emit = onEvent; signal.addEventListener('abort', () => resolve()); }),
+  };
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const baseline = saves.length;
+  emit!(event$(3)); // below stride: memory cursor advances but no save has started
+  await settle();
+  assert.equal(saves.length, baseline);
+  leaseRef.lease = leased().lease; // old lease remains active; only exact-current comparison detects replacement
+  handle.close('tenant-switch');
+  await settle();
+  assert.equal(saves.length, baseline, 'close must not flush the old projection through a store using the new lease');
+});
+
 test('live events append serially, duplicates are idempotent and observable', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
@@ -145,13 +248,15 @@ test('live events append serially, duplicates are idempotent and observable', as
   await settle();
   assert.equal(handle.view()!.cursor, 3);
   assert.deepEqual(handle.view()!.timeline.map((entry) => entry.seq), [1, 2, 3]);
-  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 3, 'each commit persists before the cursor advances');
   stream.emit(event$(3)); // 服务端重复投递
   stream.emit(event$(2));
   await settle();
   assert.equal(handle.view()!.cursor, 3, 'duplicates never advance the cursor');
   assert.deepEqual(handle.view()!.duplicateSeqs, [3, 2], 'idempotent skips stay observable');
   assert.equal(handle.view()!.timeline.filter((entry) => entry.seq === 3).length, 1, 'no double render');
+  stream.emit(event$(4, 'run.completed')); // 终态强制 flush（R1-F23：stride 内合并，终态必落盘）
+  await settle();
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'terminal events are durable before drain');
   handle.close();
 });
 
@@ -251,7 +356,7 @@ test('cursor trimming (409 or control frame) resyncs from a fresh snapshot', asy
   }
 });
 
-test('a persist failure never advances the committed cursor', async () => {
+test('a stride-boundary persist failure surfaces and recovers via authoritative resync (R1-F23 语义)', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
   const baseStore = createInMemoryTaskProjectionStore();
@@ -259,7 +364,7 @@ test('a persist failure never advances the committed cursor', async () => {
   const store: TaskProjectionStore = {
     load: (runId) => baseStore.load(runId),
     save: (projection) => {
-      if (!failedOnce && projection.cursor === 3) { failedOnce = true; return Promise.reject(new Error('quota exceeded')); }
+      if (!failedOnce && projection.cursor === 52) { failedOnce = true; return Promise.reject(new Error('quota exceeded')); }
       return baseStore.save(projection);
     },
   };
@@ -270,13 +375,14 @@ test('a persist failure never advances the committed cursor', async () => {
   const reasons: Array<string | undefined> = [];
   handle.updates((view) => reasons.push(view.interruption?.reason));
   await handle.hydrate();
-  backend.streams[0]!.emit(event$(3));
-  await settle();
+  for (let seq = 3; seq <= 52; seq += 1) backend.streams[0]!.emit(event$(seq)); // 50 事件跨度触发 stride persist
+  await settle(30);
   assert.ok(reasons.includes('persist-failed'), 'the failure is surfaced, never silent');
-  assert.equal(handle.view()!.cursor, 2, 'the committed cursor stays at the last persisted value while the resync is gated');
-  resyncGate.resolve(detail$({ watermark: 3, events: [event$(3, 'text.delta')] }));
+  assert.equal(handle.view()!.cursor, 52, 'R1-F23 语义：内存游标推进不再以 persist 成功为前提');
+  resyncGate.resolve(detail$({ watermark: 52, events: [] }));
   await settle();
-  assert.equal(handle.view()!.cursor, 3, 'the automatic resync re-persists authoritatively');
+  assert.equal(handle.view()!.cursor, 52, 'the automatic resync re-persists authoritatively');
+  assert.equal(baseStore.snapshot().find((row) => row.runId === 'run-1')!.cursor, 52);
   handle.close();
 });
 
@@ -353,6 +459,7 @@ test('scenario: app restart resumes from the persisted projection across server-
   backend.streams[0]!.emit(event$(4));
   await settle();
   first.close('app-killed');
+  await settle(); // close 的 best-effort flush 是异步落盘（R1-F23）
   assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'the killed session leaves a durable projection');
   // 会话 2（同一 office 默认共享 store，模拟重启后读回持久化投影）
   const second = office.open({ taskId: 'task-1', runId: 'run-1' });
@@ -409,11 +516,745 @@ test('a revoked lease after hydration stops notifications and rejects resync', a
   const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
   const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
   await handle.hydrate();
-  const views: number[] = [];
-  handle.updates(() => views.push(1));
+  const views: Array<number | undefined> = [];
+  handle.updates((view) => views.push(view === undefined ? undefined : 1));
   revocable.revoke();
   await settle();
-  assert.deepEqual(views, [], 'no notifications after the scope died');
+  assert.deepEqual(views, [undefined], 'scope revocation publishes immediate projection clearing');
   await assert.rejects(handle.resync(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
   handle.close();
+});
+
+test('a slower stale hydrate does not roll back the committed cursor or the event set', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  let call = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      call += 1;
+      if (call === 1) { await settle(8); return detail$(); } // 旧响应：慢，watermark 2
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'run.completed')] }); // 新响应：watermark 4
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();                     // 旧请求先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                              // 新请求后发先回：watermark 4 已提交
+  await stale.catch(() => undefined);                 // 旧响应迟到到达（修复后被 epoch 守卫拒绝）
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '迟到的旧 hydrate 不得回退 committedCursor');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2, 3, 4], '不得以旧响应的事件集覆写新事件集');
+  handle.close();
+});
+
+test('events from a superseded stream are dropped after resync', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  // 模拟「abort 后仍有在途投递」的传输层：直接持有每条流的回调（reader 已缓冲的 chunk 在 cancel 后才送达）。
+  // createScriptedTaskStream 在 abort 后 emit 是 no-op，无法覆盖该竞态。
+  const sinks: Array<{ onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }> = [];
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$({ watermark: 2 }),
+    stream: ({ signal, onEvent, onControl }) => {
+      sinks.push({ onEvent, onControl });
+      return new Promise<void>((resolve) => { signal.addEventListener('abort', () => resolve()); });
+    },
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    store: createInMemoryTaskProjectionStore(),
+    detail: detailBackend,
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const reasons: Array<string | undefined> = [];
+  handle.updates((view) => reasons.push(view.interruption?.reason));
+  await handle.hydrate();                              // 开流 A = sinks[0]
+  await handle.resync();                               // 开流 B = sinks[1]，A 被取代
+  sinks[0]!.onEvent(event$(9, 'tool.started'));        // 旧流迟到事件（seq 错位）：enqueue 前必须丢弃
+  sinks[0]!.onControl({ code: 'cursor_expired', message: 'late frame' }); // 旧流迟到控制帧：同样丢弃
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.connection, 'live', '被取代流的迟到事件/控制帧不得打断新流');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2]);
+  assert.equal(reasons.includes('gap'), false, '迟到事件不得触发 gap interrupt');
+  assert.equal(reasons.includes('cursor-expired'), false, '迟到控制帧不得触发 cursor-expired interrupt');
+  handle.close();
+});
+
+test('an unavailable stream channel interrupts without futile auto-resyncs', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  let detailCalls = 0;
+  const { backend, office } = officeWithDetail(leaseRef, {
+    detail: async () => { detailCalls += 1; return detail$(); },
+    stream: () => {
+      const failing = createScriptedTaskStream();
+      queueMicrotask(() => failing.fail(new Error('RUNTIME_STREAM_UNAVAILABLE')));
+      return failing;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle(30);                                   // 给自动 resync 的窗口（对照既有 bounded-resync 用例的 settle(30)）
+  assert.equal(handle.view()!.connection, 'interrupted');
+  assert.equal(handle.view()!.interruption?.reason, 'stream-unavailable');
+  assert.equal(backend.streams.length, 1, '流通道不可用不是瞬时故障：不得触发 AUTO_RESYNC_LIMIT 次徒劳 resync');
+  assert.equal(detailCalls, 1);
+  handle.close();
+});
+
+test('stream-unavailable is detected by error code, not message text (R1-F22)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: async () => { throw Object.assign(new Error('wrapped: RUNTIME_STREAM_UNAVAILABLE'), { code: 'RUNTIME_STREAM_UNAVAILABLE' }); },
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    detail: detailBackend,
+    store: createInMemoryTaskProjectionStore(),
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  assert.equal(handle.view()!.connection, 'interrupted');
+  assert.equal(handle.view()!.interruption?.reason, 'stream-unavailable');
+  handle.close();
+});
+
+test('a throwing listener does not starve later subscribers (R1-F24)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const seen: number[] = [];
+  handle.updates(() => { throw new Error('listener boom'); });
+  handle.updates(() => { seen.push(1); });
+  await handle.resync(); // 触发 notify（resync 期间 syncing + live 两次广播）
+  // 隔离语义：抛错的订阅者不得截断广播——后续订阅者每次广播都收到（修复前 resync 直接 reject 且 seen=0）。
+  assert.ok(seen.length >= 1, `later subscriber must be notified on every broadcast, got ${seen.length}`);
+  handle.close();
+});
+
+test('events arriving after lease revocation are dropped, not merged (R1-F44)', async () => {
+  const { revocable, lease } = leased();
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = lease;
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => {
+      emit = onEvent;
+      signal.addEventListener('abort', () => resolve());
+    }),
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    detail: detailBackend,
+    store: createInMemoryTaskProjectionStore(),
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  revocable.revoke();
+  emit!(event$(3));
+  await settle();
+  assert.equal(handle.view(), undefined); // 撤销后事件未合并，且缓存视图 fail closed
+  handle.close();
+});
+
+test('a stale processEvent does not rewind the cursor after resync (R1-F43)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const gate = deferred<void>(); // 卡住 cursor=3 的 persist（hydrate 首次 persist cursor=2 不卡）
+  const store = createInMemoryTaskProjectionStore();
+  const gatedStore: TaskProjectionStore = {
+    load: (runId) => store.load(runId),
+    save: async (projection) => { if (projection.cursor === 3) await gate.promise; await store.save(projection); },
+  };
+  let detailCalls = 0;
+  const secondDetail = deferred<TaskBackendDetail>();
+  const laterDetail = deferred<TaskBackendDetail>(); // 第三次起卡住：旧实现中陈旧回写+自动 resync 会先暴露回退的游标
+  const detailBackend = createScenarioTaskDetailBackend({
+    detail: async () => {
+      detailCalls += 1;
+      return detailCalls <= 1 ? detail$() : detailCalls === 2 ? secondDetail.promise : laterDetail.promise;
+    },
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.emit(event$(3)); scripted.end(); });
+      return scripted;
+    },
+  });
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store: gatedStore });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate(); // events 推进到 3 的 processEvent 挂起在 gatedStore.save 上
+  const resynced = handle.resync(); // 挂起期间 resync：watermark=10 的新 detail
+  secondDetail.resolve(detail$({ watermark: 10, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3), event$(10, 'text.delta')] }));
+  await resynced;
+  gate.resolve(); // 放行陈旧 persist → 旧 processEvent 恢复，不得把游标回退到 3
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 10);
+  assert.notEqual(view.interruption?.reason, 'gap'); // 无陈旧赋值引发的 gap 连锁抖动
+  handle.close();
+});
+
+test('terminal run settles the execution view without waiting for resync (R1-F27)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.emit(event$(3, 'run.completed')); scripted.end(); });
+      return scripted;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.runStatus, 'succeeded');
+  assert.equal(view.settlementStatus, 'settled'); // 当前保持快照 'pending' → 失败
+  assert.equal(view.executionStatus, 'succeeded');
+  handle.close();
+});
+
+test('heartbeat control frames are benign (R1-F45)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.control({ code: 'heartbeat', message: '' }); });
+      return scripted;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  assert.equal(handle.view()?.connection, 'live'); // 心跳不打断流
+  handle.close();
+});
+
+test('persist coalesces bursts: one save per 50-event stride plus terminal flush (R1-F23)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  let saves = 0;
+  const counting: TaskProjectionStore = {
+    load: (runId) => store.load(runId),
+    save: async (projection) => { saves += 1; await store.save(projection); },
+  };
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => {
+        for (let seq = 3; seq <= 62; seq += 1) scripted.emit(event$(seq, seq === 62 ? 'run.completed' : 'text.delta'));
+        scripted.end();
+      });
+      return scripted;
+    },
+  }, counting);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle(60);
+  assert.ok(saves <= 3, `expected coalesced saves, got ${saves}`); // 60 事件 ≤ hydrate 1 + stride 1 + 终态 flush 1
+  assert.equal(handle.view()?.cursor, 62);
+  assert.equal(handle.view()?.connection, 'drained');
+  const persisted = await store.load('run-1');
+  assert.equal(persisted?.cursor, 62); // 终态必已 flush
+  handle.close();
+});
+
+test('persist failure stays observable when the store keeps failing (R1-F23 语义保留)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const failing: TaskProjectionStore = { load: async () => undefined, save: async () => { throw new Error('disk full'); } };
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => createScriptedTaskStream(),
+  }, failing);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate(); // hydrate 内 persist 失败 → persist-failed interruption
+  const view = handle.view()!;
+  assert.equal(view.interruption?.reason, 'persist-failed');
+  assert.equal(view.connection, 'interrupted'); // 不静默
+  handle.close();
+});
+
+// —— T07（#37）：TaskHandle.act 干预合同（三态停止 / unknown 门 / parked queue-next） ——
+// helper 与任务简报原文的差异点（按本文件既有惯例对齐）：
+// 1) 工厂不自动 hydrate：用例显式 await（简报括注要求，保证断言时序确定）；
+// 2) stream stub 用永不 resolve 的流（活动 Run 的真实 SSE 语义）：立即 resolve 的空流会让
+//    每个非终态 hydrate 触发 stream-ended → 有界自动重连级联，与用例的 resync 时序竞争；
+// 3) lease 复用本文件既有 leased() 的 RuntimeScopeLease（leaseActive 只认该实例），
+//    用例经返回的 revocable 撤销（简报的 revokeLease() helper 本文件不存在）；
+// 4) 简报用例 2 未复位 script.error——重试要得到 accepted 必须切回成功脚本（对齐冲突用例
+//    的 script 切换惯例）；空数组字段断言补 `?? 0`（buildView 对空集省略字段的既有惯例）。
+interface RecordedCommand { runId: string; action: 'steer' | 'queue_next' | 'cancel'; text?: string; expectedRevision: number; intentId?: string }
+interface CommandScript { result?: { runId: string; action: RecordedCommand['action']; nextRunId?: string }; error?: unknown }
+
+function scriptedCommandPort(initial: CommandScript = {}) {
+  const calls: RecordedCommand[] = [];
+  const script: CommandScript = { ...initial };
+  return {
+    calls,
+    script,
+    port: {
+      async command(input: RecordedCommand): Promise<{ runId: string; action: RecordedCommand['action']; nextRunId?: string }> {
+        calls.push(input);
+        if (script.error !== undefined) throw script.error;
+        return script.result ?? { runId: input.runId, action: input.action };
+      },
+    },
+  };
+}
+
+const codedError = (code: string): Error => Object.assign(new Error(code), { code });
+
+function interventionDetail(execution: { runStatus: string; revision: number; watermark?: number }): TaskBackendDetail {
+  return {
+    taskId: 's1', runId: 'run-1', title: 't', attention: 'none',
+    execution: { runStatus: execution.runStatus, executionStatus: execution.runStatus, settlementStatus: 'pending', revision: execution.revision, seq: 0 },
+    watermark: execution.watermark ?? 0, incomplete: false, events: [],
+  };
+}
+
+function newHandleForIntervention(execution: { runStatus: string; revision: number }, commands?: TaskCommandPort) {
+  const { revocable, lease } = leased();
+  const detailBackend = {
+    detailResult: interventionDetail(execution),
+    async detail(): Promise<TaskBackendDetail> { return this.detailResult; },
+    stream(): Promise<void> { return new Promise<void>(() => undefined); }, // 活动 Run 的流保持打开，直至 resync/close abort
+  };
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    { backend: detailBackend, store: createInMemoryTaskProjectionStore(), lease: () => lease, ...(commands === undefined ? {} : { commands }) },
+  );
+  return { handle, detailBackend, revocable };
+}
+
+test('act(stop) presents requested, then confirmed when the projection observes canceled', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 4 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.revision, 4, 'the command must carry the observed revision');
+  assert.equal(commands.calls[0]?.action, 'cancel');
+  assert.equal(commands.calls[0]?.expectedRevision, 4);
+  assert.equal(handle.view()?.stop?.phase, 'requested');
+  // 快照观察到 canceled → confirmed（AC1）。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 5 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('act(stop) with an unknown delivery outcome gates further writes until a resync reconciles', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // AC2：unknown 未核对前，同句柄后续写意图一律拒绝。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await assert.rejects(() => handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  // 核对：仍 running ⇒ 取消未落地 ⇒ 门解除、停止卡清除。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop, undefined);
+  commands.script.error = undefined; // 简报原文缺此行：重试要走通必须切回成功脚本（见上方差异点 4）
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(stop) unknown reconciles to confirmed when the run was actually canceled', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  await handle.act({ kind: 'stop' });
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('the unknown gate reconciles on the merged caliber: an in-stream cancel lands confirmed (R1-F2)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  let detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => detailResult,
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  // 取消先经流落地并持久化（终态 → processEvent 立即落盘）——真实时序：服务端已取消、
+  // 事件先送达，随后取消命令的回执丢失。R1-F3 的置门自动核对会同步 abort 流，
+  // 因此流内事件只能在 act() 之前到达（之后流已被 aborted，emit 不再可达）。
+  scripted.emit(event$(1, 'run.canceled')); // seq 必须 = committedCursor + 1（差异记录 6）
+  await settle();
+  assert.equal(handle.view()?.runStatus, 'canceled', '合并口径下视图已推进取消（R1-F27 语义）');
+  // 快照滞后：服务端事件水位已含取消事件（watermark 1 ≥ seq 1，mergeEventHistory 才会保留），
+  // 但 runStatus 投影字段滞后仍报 running——核对必须按合并口径判 confirmed（R1-F27 语义）。
+  detailResult = interventionDetail({ runStatus: 'running', revision: 2, watermark: 1 });
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await handle.resync();
+  assert.equal(handle.view()?.runStatus, 'canceled', '持久化事件主导合并口径');
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '已落地取消必须核对为 confirmed——不得因快照滞后被误判未落地');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: a landed cancel settles confirmed without resync (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 }); // 服务端其实已落地取消
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await settle(); // 置门后安排的核对（无外部操作、无 resync）
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '门不得滞留：置门后自动核对，取消其实已落地');
+  assert.equal(handle.view()?.runStatus, 'canceled');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: not landed releases the gate for a retry (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // 核对窗口内写意图仍被阻止（AC2 不放松）。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await settle(); // 置门后安排的核对：快照仍 running ⇒ 未落地 ⇒ 门解除
+  assert.equal(handle.view()?.stop, undefined, '未落地则门解除、停止卡清除——滞留窗口收敛为一次核对');
+  commands.script.error = undefined;
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted', '门解除后写意图恢复');
+  handle.close('done');
+});
+
+test('a 409 conflict is a receipt, not the unknown gate', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_CONFLICT') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 1 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'conflict');
+  assert.equal(handle.view()?.stop, undefined, 'a conflict leaves no stop card');
+  // 冲突不进门：后续意图仍可发出。
+  commands.script.error = undefined;
+  const next = await handle.act({ kind: 'steer', text: 'go' });
+  assert.equal(next.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(queue-next) on an active run parks locally and flushes on terminal observation', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 7 }, commands.port);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked', 'never claim a server queue that does not exist');
+  assert.equal(commands.calls.length, 0);
+  assert.deepEqual(handle.view()?.queuedNext?.map((q) => q.text), ['next instruction']);
+  // 观察到终态 → flush 发出 queue_next，服务端准入下一 Run。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 7 });
+  await handle.resync();
+  await handle.flushQueuedIntents();
+  assert.equal(commands.calls.length, 1, 'hydrate 内的自动 flush 与显式 flush 合流，绝不重复派发');
+  assert.equal(commands.calls[0]?.action, 'queue_next');
+  assert.equal(commands.calls[0]?.intentId !== undefined, true, 'parked intents fire with a stable idempotency id');
+  const receipt = handle.view()?.interventions?.at(-1);
+  assert.equal(receipt?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0, '空队列按字段省略呈现（buildView 空集省略惯例）');
+  handle.close('done');
+});
+
+test('act(queue-next) on a terminal run dispatches immediately', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { handle } = newHandleForIntervention({ runStatus: 'canceled', revision: 6 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'queue-next', text: 'restart now' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.nextRunId, 'run-2');
+  handle.close('done');
+});
+
+test('act before hydrate and a missing commands port fail closed', async () => {
+  const noPort = newHandleForIntervention({ runStatus: 'running', revision: 1 });
+  await assert.rejects(() => noPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNAVAILABLE/);
+  const withPort = newHandleForIntervention({ runStatus: 'running', revision: 1 }, scriptedCommandPort().port);
+  await assert.rejects(() => withPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_NO_SNAPSHOT/);
+  noPort.handle.close('done'); withPort.handle.close('done');
+});
+
+test('a command landing while the lease died is rejected, never silently recorded', async () => {
+  // Scope Lease 失效后丢弃迟到结果（module-seams §5.3）：lease 在命令在途时撤销 → SCOPE_CHANGED。
+  let release: (() => void) | undefined;
+  type CancelAck = { runId: string; action: 'cancel' };
+  const slowPort = { command: (): Promise<CancelAck> => new Promise((resolve) => { release = () => resolve({ runId: 'run-1', action: 'cancel' }); }) };
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 9 }, slowPort);
+  await handle.hydrate();
+  const pending = handle.act({ kind: 'stop' });
+  revocable.revoke();
+  release!();
+  await assert.rejects(() => pending, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view()?.interventions?.length ?? 0, 0, 'a late result must not be recorded as an intervention');
+  handle.close('done');
+});
+
+test('act acknowledgement from a replaced but still active opening lease is rejected', async () => {
+  let release: (() => void) | undefined;
+  const slowPort: TaskCommandPort = { command: (input) => new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: input.action }); }) };
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const { backend, store } = (() => {
+    const detailBackend = createScenarioTaskDetailBackend({ detail: async () => interventionDetail({ runStatus: 'running', revision: 9 }) });
+    const sharedStore = createInMemoryTaskProjectionStore();
+    return { backend: detailBackend, store: sharedStore };
+  })();
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: backend, store, commands: slowPort });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const pending = handle.act({ kind: 'stop' });
+  leaseRef.lease = leased().lease;
+  release!();
+  await assert.rejects(pending, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view(), undefined);
+  handle.close();
+});
+
+test('a flush racing a dead scope lease is rejected, never silently recorded (§5.3)', async () => {
+  // 与 act() 同一竞态同一处理：flush 的 queue_next 在 lease 死亡后，迟到 ack 绝不记 accepted 回执。
+  let release: (() => void) | undefined;
+  const calls: RecordedCommand[] = [];
+  const gatedPort: TaskCommandPort = {
+    command: (input) => {
+      calls.push(input);
+      return new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: 'queue_next' }); });
+    },
+  };
+  const { handle, detailBackend, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 5 }, gatedPort);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 5 });
+  await handle.resync(); // 终态观察：hydrate 自动放行 flush，命令在 gatedPort 处挂起（在途）
+  assert.equal(calls.length, 1, '自动 flush 已派发且尚未返回');
+  const flushing = handle.flushQueuedIntents(); // 合流到同一在途 flush
+  revocable.revoke();
+  release!(); // 迟到 ack
+  await assert.rejects(() => flushing, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view(), undefined, 'scope loss invalidates the cached view, including parked receipts');
+  handle.close('done');
+});
+
+test('queued command acknowledgement requires the exact opening lease', async () => {
+  let release: (() => void) | undefined;
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const commands: TaskCommandPort = { command: (input) => new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: input.action }); }) };
+  let currentDetail = interventionDetail({ runStatus: 'running', revision: 5 });
+  const handle = createTaskDetail({ taskId: 'task-1', runId: 'run-1' }, {
+    lease: () => leaseRef.lease,
+    store: createInMemoryTaskProjectionStore(),
+    commands,
+    backend: { detail: async () => currentDetail, stream: () => new Promise<void>(() => undefined) },
+  });
+  await handle.hydrate();
+  await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  currentDetail = interventionDetail({ runStatus: 'succeeded', revision: 5 });
+  await handle.resync();
+  await settle(); // terminal hydration starts the queued flush asynchronously
+  const pendingFlush = handle.flushQueuedIntents();
+  leaseRef.lease = leased().lease;
+  release!();
+  await assert.rejects(pendingFlush, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view(), undefined);
+  handle.close();
+});
+
+test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'canceled', revision: 3 }, commands.port);
+  await handle.hydrate(); // 终态：drained（自动 flush 在 revoke 前已无队列空转）
+  revocable.revoke();
+  await assert.rejects(() => handle.flushQueuedIntents(), /TASK_OFFICE_SCOPE_CHANGED/);
+  handle.close('done');
+});
+
+test('a naturally ended stream releases parked queue-next without an explicit flush (R1-F1)', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => interventionDetail({ runStatus: 'running', revision: 7 }),
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  assert.equal(commands.calls.length, 0);
+  // 自然完成主路径：流内终态事件先到（seq 必须 = committedCursor + 1，见差异记录 6），
+  // 随后服务端正常结束流——期间无 hydrate/resync 参与，放行只能来自 streamEnded 终态分支。
+  scripted.emit(event$(1, 'run.completed'));
+  scripted.end();
+  await settle();
+  assert.equal(handle.view()?.connection, 'drained', 'streamEnded 终态分支已执行（前置：确认走的是自然完成路径）');
+  assert.equal(handle.view()?.runStatus, 'succeeded');
+  assert.equal(commands.calls.length, 1, '自然完成必须兑现「已排队（等待当前 Run 结束后发出）」承诺——parked 项自动放行');
+  assert.equal(handle.view()?.interventions?.at(-1)?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0);
+  handle.close('done');
+});
+
+// ── T10（#40）：detail 通道失败时的离线降级（加密投影渲染）──
+
+const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
+  const { events: _events, ...snapshot } = source;
+  return snapshot;
+};
+
+test('offline degradation renders the persisted snapshot when the detail channel fails, and resync recovers', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  // 预置带快照的投影（模拟此前在线会话经 persist 落盘的形态）
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let reachable = false;
+  const { office } = officeWithDetail(
+    leaseRef,
+    { detail: async () => { if (!reachable) throw new Error('network unreachable'); return detail$(); }, stream: () => createScriptedTaskStream() },
+    store,
+  );
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const view = await handle.hydrate();
+  assert.equal(view.connection, 'interrupted');
+  assert.equal(view.interruption?.reason, 'offline');
+  assert.equal(view.taskId, 'task-1');
+  assert.equal(view.title, '季度竞品报告', 'the offline card comes from the snapshot, not the network');
+  assert.equal(view.runStatus, 'running');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2], 'the offline timeline comes from the persisted projection');
+  assert.equal(view.cursor, 2);
+  // 联网后显式 resync 恢复权威同步，offline 标记被清除
+  reachable = true;
+  const recovered = await handle.resync();
+  assert.notEqual(recovered.interruption?.reason, 'offline');
+  assert.notEqual(recovered.connection, 'interrupted');
+  handle.close();
+});
+
+test('detail failure without a snapshotted projection stays an honest error', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({ taskId: 'task-1', runId: 'run-1', cursor: 0, events: [], savedAt: '2026-09-24T00:00:00Z' }); // 旧格式：无 snapshot
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_BACKEND');
+  handle.close();
+});
+
+test('a revoked lease never degrades to the offline projection', async () => {
+  const leasedScope = leased();
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leasedScope.lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2, events: [event$(1), event$(2)],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  leasedScope.revocable.revoke(); // 撤权发生在 detail 失败之前：不得用旧 scope 投影降级
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  handle.close();
+});
+
+test('persist carries the offline snapshot so a later offline hydrate can degrade', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  handle.close();
+  const persisted = store.snapshot().find((row) => row.runId === 'run-1');
+  assert.ok(persisted, 'hydrate persists the projection');
+  assert.equal(persisted!.snapshot?.title, '季度竞品报告', 'the persisted row carries the offline snapshot');
+  assert.equal(persisted!.snapshot?.attention, 'required');
+  assert.equal(persisted!.snapshot?.watermark, 2);
+  assert.ok(persisted!.snapshot !== undefined);
+  assert.equal('events' in persisted!.snapshot, false, 'the snapshot must not duplicate the event log');
+});
+
+test('a stale offline degradation never overwrites a newer authoritative state (R1-F43 对齐)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let detailCalls = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      detailCalls += 1;
+      if (detailCalls === 1) { await settle(8); throw new Error('network unreachable'); } // A：慢且失败（迟到拒绝）
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'text.delta')] }); // B：后发先回
+    },
+    stream: () => createScriptedTaskStream(),
+  }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();              // A 先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                       // B 后发先回：watermark 4 已提交并开流
+  await stale.catch(() => undefined);          // A 的 detail 失败迟到落地：降级分支必须被 epoch 守卫拒绝
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '陈旧离线降级不得回退 committedCursor');
+  assert.notEqual(view.interruption?.reason, 'offline', 'B 已成功同步，不得被迟到降级错标 offline');
+  assert.equal(view.connection, 'live');
+  handle.close();
+  await settle(); // close 的 best-effort flush 异步落盘
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'close flush 不得把磁盘投影回退到旧游标');
 });

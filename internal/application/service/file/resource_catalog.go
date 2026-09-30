@@ -135,6 +135,22 @@ func (s *resourceCatalogFileService) GetFile(ctx context.Context, filePath strin
 	return s.inner.GetFile(ctx, physical)
 }
 
+// PrepareGetFile resolves database-backed resource metadata now and returns an
+// opener that performs only provider I/O. Callers may prepare before entering
+// a transaction, then invoke the opener while holding an authorization lock.
+func (s *resourceCatalogFileService) PrepareGetFile(ctx context.Context, filePath string) (func(context.Context) (io.ReadCloser, error), error) {
+	physical, _, err := s.resolve(ctx, filePath)
+	if err != nil {
+		return nil, err
+	}
+	if preparer, ok := s.inner.(interface {
+		PrepareGetFile(context.Context, string) (func(context.Context) (io.ReadCloser, error), error)
+	}); ok {
+		return preparer.PrepareGetFile(ctx, physical)
+	}
+	return func(openCtx context.Context) (io.ReadCloser, error) { return s.inner.GetFile(openCtx, physical) }, nil
+}
+
 func (s *resourceCatalogFileService) GetFileURL(ctx context.Context, filePath string) (string, error) {
 	physical, isResource, err := s.resolve(ctx, filePath)
 	if err != nil {

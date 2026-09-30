@@ -98,3 +98,5 @@ migrations/
 # Casdoor runtime artifacts (SQLite db and object storage)
 config/casdoor/casdoor.db*
 config/casdoor/storage/
+# apps/mobile 为 CNG（expo prebuild）流程：ios/ 目录是生成产物，勿提交（ios-xcode27 插件负责生成内容）
+apps/mobile/ios/

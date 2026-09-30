@@ -105,6 +105,54 @@ type importException struct {
 // 前缀或子串匹配；一条豁免只压制该精确 file→package 对的 forbidden-import。
 var importExceptions = []importException{
 	{
+		ImporterFile: "internal/modules/codedelivery/code_platform.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/gitlab_client.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason:       "issue30 codedelivery 消费 agentruntime 内部 runtime 包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
+		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/command_queue_next.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason:       "issue30 workbench 命令队列消费 agentruntime 内部 runtime 包（预存耦合，Pass B 收口）",
+		PassBTask:    "B-agentruntime",
+	},
+	{
 		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
 		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +

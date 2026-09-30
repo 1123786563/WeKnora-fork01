@@ -6,6 +6,18 @@ move_packages:
 alias_obligations:
   []
 legacy_files:
+  - path: internal/application/service/casdoor_client.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: casdoor_client (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/wechat_client.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: wechat_client (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/wechat_login.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: wechat_login (application/service)
+    passb_task: B-identity
   - path: internal/application/repository/audit_log.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Audit log (application/repository)

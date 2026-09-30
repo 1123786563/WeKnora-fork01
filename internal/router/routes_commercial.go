@@ -57,12 +57,26 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		// context. The request registers intent only — money moves solely
 		// through the admin review path below.
 		commercialGroup.POST("/refunds", commercialHandler.CreateRefund)
-		// W05: raise one task run's budget limit. Calls the U04
-		// BudgetService.Extend semantics (exactly-once per idempotency key,
-		// explicit pause reasons); a budget extension never authorizes an
-		// external write action — that approval lives on /apps/actions.
-		commercialGroup.POST("/tasks/:id/budget/extend", commercialHandler.ExtendTaskBudget)
 	}
+
+	// W05 → T12 (#42): raising one task run's budget admits the TASK OWNER
+	// as well as billing authority (CONTEXT.md 任务预算：只有任务所有者或获
+	// 授权的账单管理员可以增加上限). The owner arm lives inside the handler
+	// (it needs the run row), so this route leaves the group-level billing
+	// write gate and keeps only the explicit commercial capability gate —
+	// the same direct-on-parent shape the platform refund review uses below.
+	// Calls the U04 BudgetService.Extend semantics (exactly-once per
+	// idempotency key, explicit pause reasons); a budget extension never
+	// authorizes an external write action — that approval lives on
+	// /apps/actions.
+	budgetGroup := r.Group("/commercial", commercialHandler.RequireExplicitCommercialCapability())
+	budgetGroup.POST("/tasks/:id/budget/extend", commercialHandler.ExtendTaskBudget)
+	// T09 (#39): the task budget readout (estimated/used/reserved/remaining
+	// from the ROOT budget row — delegated runs charge it exactly once) plus
+	// delegated/paused run lists and the caller's own can_extend verdict.
+	// Read gate lives in the handler: billing authority, the task owner
+	// (sessions.user_id) or a #42 task-grant holder.
+	budgetGroup.GET("/tasks/:id/budget", commercialHandler.GetTaskBudget)
 
 	// C05: platform refund REVIEW — a separate permission path from the
 	// tenant billing gate above (review moves money out of the space, so

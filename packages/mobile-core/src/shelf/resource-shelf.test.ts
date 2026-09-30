@@ -200,8 +200,7 @@ test('selection explains allowed, unavailable and forbidden without guessing', a
   assert.deepEqual(handle.selection({ knowledgeId: 'missing' }), { allowed: false, state: 'unavailable', reason: 'knowledge_not_found' });
 });
 
-test('browse queries narrow display without changing verdicts', async () => {
-  const { handle } = openShelf({
+test('browse queries narrow display without changing verdicts', async () => {  const { handle } = openShelf({
     agents: [
       { id: 'agent-1', name: 'Research Bot', summary: 'deep research', kind: 'custom', capability: { state: 'supported', reason: '' } },
       { id: 'agent-2', name: 'Writer', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } },
@@ -221,4 +220,46 @@ test('browse queries narrow display without changing verdicts', async () => {
   assert.deepEqual(keyword.agents.map((agent) => agent.id), [], 'filterAgents matches name+summary only — no agent contains "hand"');
   assert.deepEqual(keyword.knowledge.map((resource) => resource.id), ['kb-1'], 'keyword narrows knowledge by title');
   assert.deepEqual(keyword.connections, []);
+});
+
+test('a slower stale browse cannot overwrite a newer snapshot or fire bogus revocations (R1-F2)', async () => {
+  const { handle, remote } = openShelf({
+    agents: [{ id: 'builtin-quick-answer', name: 'Quick Answer', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }],
+    knowledgeBases: [{ id: 'kb-1', title: 'Handbook', scan_status: 'indexed', document_count: 1, updated_at: '2026-09-01T00:00:00Z' }],
+    connections: [],
+  });
+  // 第一次 browse 的 knowledge 慢且返回 403（旧请求：撤权后又快速恢复权限的场景）；
+  // 第二次（用户 refresh）立即成功。后完成者为旧请求 → forbidden 快照覆盖成功快照 + 误报 revocation。
+  let knowledgeCalls = 0;
+  const originalKnowledge = remote.knowledgeBases.bind(remote);
+  (remote as { knowledgeBases: (token: string) => Promise<Array<Record<string, unknown>>> }).knowledgeBases = async (token: string) => {
+    knowledgeCalls += 1;
+    if (knowledgeCalls === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      throw Object.assign(new Error('HTTP 403'), { status: 403 });
+    }
+    return originalKnowledge(token);
+  };
+  const events: unknown[] = [];
+  handle.subscribe((event) => events.push(event));
+  const stale = handle.browse({});
+  const fresh = handle.browse({});
+  await Promise.all([stale, fresh]);
+  // 区分度：旧实现中迟到的 403 会覆盖 fresh 的 supported 快照并误发 authorization-revoked；
+  // 新实现丢弃迟到写回，共享快照保持 fresh 的 supported，selection 基于新快照裁决。
+  assert.deepEqual(handle.selection({ knowledgeId: 'kb-1' }).allowed, true);
+  assert.deepEqual(events.filter((event) => (event as { type?: string }).type === 'authorization-revoked'), []); // 无误报
+});
+
+test('blank-id dirty rows never enter the projection (R1-F35)', async () => {
+  const { handle } = openShelf({
+    knowledgeBases: [
+      { id: '', title: 'Dirty', scan_status: 'indexed', document_count: 1, updated_at: '' }, // 服务端脏行
+      { id: 'kb-1', title: 'Handbook', scan_status: 'indexed', document_count: 1, updated_at: '' },
+    ],
+    connections: [{ id: '', kind: 'personal', state: 'active' }],
+  });
+  const page = await handle.browse();
+  assert.deepEqual(page.knowledge.map((resource) => resource.id), ['kb-1'], '空 id 知识行不得进入投影（selection 才不会放行空引用）');
+  assert.deepEqual(page.connections.map((connection) => connection.id), [], '空 id 连接行不得进入投影');
 });

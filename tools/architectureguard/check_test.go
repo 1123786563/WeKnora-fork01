@@ -552,8 +552,8 @@ func TestGuardCleanAtHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mods) != 16 {
-		t.Fatalf("应加载 16 份 manifest, got %d", len(mods))
+	if len(mods) != 17 {
+		t.Fatalf("应加载 17 份 manifest（含 career）, got %d", len(mods))
 	}
 
 	rep, err := Run(root, mods)

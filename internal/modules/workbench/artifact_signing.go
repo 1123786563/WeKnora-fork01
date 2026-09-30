@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -25,6 +26,124 @@ type ArtifactGrant struct {
 	Index     int
 	// ExpiresAt is unix seconds; enforced by VerifyArtifactGrantAt.
 	ExpiresAt int64
+}
+
+// VersionArtifactGrant is a short-lived authority for one immutable artifact
+// version. Unlike ArtifactGrant (the legacy Task/message link contract), it
+// binds the authenticated owner, resource and exact version. It is deliberately
+// a separate wire contract so existing Task download URLs remain valid.
+type VersionArtifactGrant struct {
+	TenantID   uint64
+	OwnerID    string
+	ResourceID string
+	VersionID  string
+	Digest     string
+	ExpiresAt  int64 // unix nanoseconds
+}
+
+func (g VersionArtifactGrant) Canonical() (string, error) {
+	if g.TenantID == 0 || strings.TrimSpace(g.OwnerID) == "" || strings.TrimSpace(g.ResourceID) == "" || strings.TrimSpace(g.VersionID) == "" || strings.TrimSpace(g.Digest) == "" || g.ExpiresAt <= 0 {
+		return "", errors.New("version artifact grant: tenant, owner, resource, version, digest and expiry required")
+	}
+	digest, err := hex.DecodeString(g.Digest)
+	if err != nil || len(digest) != sha256.Size {
+		return "", errors.New("version artifact grant: digest must be SHA-256 hex")
+	}
+	parts := []string{"wk-version-artifact-v2", strconv.FormatUint(g.TenantID, 10), g.OwnerID, g.ResourceID, g.VersionID, strings.ToLower(g.Digest), strconv.FormatInt(g.ExpiresAt, 10)}
+	for _, part := range parts[2:6] {
+		if strings.ContainsAny(part, "|\r\n") || strings.TrimSpace(part) != part {
+			return "", errors.New("version artifact grant: invalid field")
+		}
+	}
+	return strings.Join(parts, "|"), nil
+}
+
+// NewVersionArtifactGrant constructs a server-issued grant with a bounded TTL.
+// Callers must take all identity and version fields from authenticated context
+// and the authoritative artifact catalog.
+func NewVersionArtifactGrant(tenantID uint64, ownerID, resourceID, versionID, digest string, now time.Time, ttl time.Duration) (VersionArtifactGrant, error) {
+	if ttl <= 0 || ttl < time.Second {
+		return VersionArtifactGrant{}, errors.New("artifact grant TTL must be at least one second")
+	}
+	if ttl > MaxArtifactGrantTTL {
+		ttl = MaxArtifactGrantTTL
+	}
+	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).UnixNano()}
+	_, err := g.Canonical()
+	return g, err
+}
+
+// SignVersionArtifactGrant signs an exact immutable version grant.
+func SignVersionArtifactGrant(secret []byte, grant VersionArtifactGrant) (string, error) {
+	if len(secret) < 32 {
+		return "", errors.New("artifact signing key too short")
+	}
+	canonical, err := grant.Canonical()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(canonical))
+	return hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+// VerifyVersionArtifactGrantAt checks signature and expiry. Download callers
+// must also invoke VersionArtifactGrantAuthorizer.AuthorizeVersionGrant on
+// every request to recheck ownership, existence, digest and revocation.
+func VerifyVersionArtifactGrantAt(secret []byte, grant VersionArtifactGrant, signature string, now time.Time) error {
+	if grant.ExpiresAt <= now.UnixNano() {
+		return errors.New("artifact grant expired")
+	}
+	expected, err := SignVersionArtifactGrant(secret, grant)
+	if err != nil {
+		return err
+	}
+	if !hmac.Equal([]byte(strings.ToLower(signature)), []byte(expected)) {
+		return errors.New("artifact grant signature mismatch")
+	}
+	return nil
+}
+
+// VersionArtifactGrantAuthorizer is implemented by the owner of the artifact
+// resource catalog. It must deny deleted/revoked versions and require an exact
+// match of tenant, owner, resource, version and digest.
+type VersionArtifactGrantAuthorizer interface {
+	AuthorizeVersionGrant(ctx context.Context, grant VersionArtifactGrant) error
+}
+
+// VersionArtifactGrantAuthority combines cryptographic verification with the
+// required live owner/resource check. Call Authorize for every download.
+type VersionArtifactGrantAuthority struct {
+	Secret     []byte
+	Authorizer VersionArtifactGrantAuthorizer
+}
+
+func (a VersionArtifactGrantAuthority) Issue(ctx context.Context, tenantID uint64, ownerID, resourceID, versionID, digest string, now time.Time, ttl time.Duration) (VersionArtifactGrant, string, error) {
+	grant, err := NewVersionArtifactGrant(tenantID, ownerID, resourceID, versionID, digest, now, ttl)
+	if err != nil {
+		return VersionArtifactGrant{}, "", err
+	}
+	if a.Authorizer == nil {
+		return VersionArtifactGrant{}, "", errors.New("artifact grant authorizer unavailable")
+	}
+	if err := a.Authorizer.AuthorizeVersionGrant(ctx, grant); err != nil {
+		return VersionArtifactGrant{}, "", err
+	}
+	sig, err := SignVersionArtifactGrant(a.Secret, grant)
+	if err != nil {
+		return VersionArtifactGrant{}, "", err
+	}
+	return grant, sig, nil
+}
+
+func (a VersionArtifactGrantAuthority) Authorize(ctx context.Context, grant VersionArtifactGrant, signature string, now time.Time) error {
+	if err := VerifyVersionArtifactGrantAt(a.Secret, grant, signature, now); err != nil {
+		return err
+	}
+	if a.Authorizer == nil {
+		return errors.New("artifact grant authorizer unavailable")
+	}
+	return a.Authorizer.AuthorizeVersionGrant(ctx, grant)
 }
 
 // MaxArtifactGrantTTL caps how far in the future a grant may be issued. The

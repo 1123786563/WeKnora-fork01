@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from './mobile-runtime.ts';
 import { createInMemoryDeploymentRegistry } from './in-memory-adapters.ts';
-import type { CredentialStore, RuntimeRemote, StoredCredential } from './ports.ts';
+import type { CredentialStore, DeploymentRegistry, RuntimeRemote, StoredCredential } from './ports.ts';
 import type { ResourceRemote } from '../shelf/ports.ts';
 import type { Deployment } from './types.ts';
 
@@ -236,8 +236,116 @@ test('forgetting the active deployment signs out and clears its registration', a
   assert.equal(runtime.scopeLease(), undefined);
 });
 
+// registry 读取/写入失败的注入夹具（async throw 推断 Promise<never>，结构兼容 DeploymentRegistry）
+function failingRegistry(): DeploymentRegistry {
+  const failure = async (): Promise<never> => { throw new Error('SECURESTORE_UNAVAILABLE'); };
+  return { list: failure, upsert: failure, remove: failure };
+}
+
+test('listDeployments resolves to an empty list when the registry read rejects', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(),
+  });
+  assert.deepEqual(await runtime.listDeployments(), []);
+});
+
+test('switchDeployment keeps the current surface when the registry read rejects', async () => {
+  const remoteCalls: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote({ passwordLogin: async () => { remoteCalls.push('login'); return { ...DEFAULT_GRANT }; } }),
+    deploymentRegistry: { list: async () => { throw new Error('SECURESTORE_UNAVAILABLE'); }, upsert: async () => {}, remove: async () => {} },
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  const before = runtime.snapshot();
+  const after = await runtime.switchDeployment(SECOND.origin); // registry.list reject —— 不得 reject、不得扰动当前面
+  assert.equal(after.surface, before.surface);
+  assert.equal(after.deployment?.origin, FIRST.origin);
+  assert.deepEqual(remoteCalls, ['login'], '未对目标实例发出任何远程调用');
+});
+
+test('an authorized sign-in survives a registry write failure', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(), // upsert reject
+  });
+  const snapshot = await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  assert.equal(snapshot.surface, 'authorized', 'registry 是 presentation 辅助数据，写失败不得把登录裁决为 authentication-required');
+});
+
+test('forgetDeployment resolves when persistence fails', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(),
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  await runtime.forgetDeployment(FIRST.origin); // 不得 reject（mutateCredential/registry.remove 失败均包含）
+});
+
+test('switchDeployment onto the active origin short-circuits without re-authentication', async () => {
+  const remoteCalls: string[] = [];
+  const deployments = createInMemoryDeploymentRegistry();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote({ passwordLogin: async () => { remoteCalls.push('login'); return { ...DEFAULT_GRANT }; } }),
+    deploymentRegistry: deployments,
+  });
+  const signedIn = await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  const switched = await runtime.switchDeployment(FIRST.origin);
+  assert.equal(switched.surface, 'authorized');
+  assert.equal(switched.deployment?.origin, FIRST.origin);
+  assert.deepEqual(remoteCalls, ['login'], '同 origin 且当前会话有效时不得重走 begin/authenticate');
+  assert.equal(switched, signedIn, '快照对象不重建（短路返回当前 state）');
+});
+
+test('the in-memory registry normalizes labels like the secure adapter', async () => {
+  const deployments = createInMemoryDeploymentRegistry();
+  await deployments.upsert({ origin: 'https://weknora.example.test', label: '  ' }); // 空白 label → 兜底 origin
+  assert.deepEqual(await deployments.list(), [{ origin: 'https://weknora.example.test', label: 'https://weknora.example.test' }]);
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => { resolve = next; });
   return { promise, resolve };
 }
+
+test('re-selecting the same origin from upgrade-required retries authentication instead of short-circuiting (R1-F46)', async () => {
+  let healthy = false;
+  const failingThenHealthy = remote({
+    me: async () => {
+      if (!healthy) throw Object.assign(new Error('server exploded'), { name: 'ApiError', status: 500 });
+      return { user: { id: 'user-1' }, tenant: { id: 'tenant-1' } };
+    },
+  });
+  const registry = createInMemoryDeploymentRegistry();
+  await registry.upsert(FIRST); // signIn 失败不会登记：预置使 switchDeployment 可找到目标
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    deploymentRegistry: registry,
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => failingThenHealthy,
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'u@example.test', password: 'pw' });
+  assert.equal(runtime.snapshot().surface, 'upgrade-required'); // 首次 authenticate 失败
+  healthy = true; // 服务端恢复
+  await runtime.switchDeployment(FIRST.origin);
+  assert.equal(runtime.snapshot().surface, 'authorized'); // 当前被静默短路 → FAIL
+});
+
+test('forgetDeployment removes the registry entry even when credential clearing fails (R1-F47)', async () => {
+  const locked = fakeStore();
+  const originalClear = locked.clear.bind(locked);
+  locked.clear = async (deployment: string) => { if (deployment === FIRST.origin) throw new Error('secure store locked'); return originalClear(deployment); };
+  const registry = createInMemoryDeploymentRegistry();
+  await registry.upsert(FIRST);
+  const runtime = createMobileRuntime({
+    credentialStore: locked,
+    deploymentRegistry: registry,
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote(),
+  });
+  await runtime.forgetDeployment(FIRST.origin);
+  assert.deepEqual(await registry.list(), [], '清理失败不得吞掉登记移除');
+});

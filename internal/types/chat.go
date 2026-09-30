@@ -215,6 +215,11 @@ const (
 	ResponseTypeAnswer ResponseType = "answer"
 	// References response type
 	ResponseTypeReferences ResponseType = "references"
+	// ResponseTypeEvidence is the T15 evidence envelope frame: per-citation
+	// version and retrieval-time provenance plus the fact / rule-derived /
+	// model-inferred classification of conclusions. Emitted before the answer
+	// streams so clients can bind citations to the answer they ground.
+	ResponseTypeEvidence ResponseType = "evidence"
 	// Thinking response type (for agent thought process)
 	ResponseTypeThinking ResponseType = "thinking"
 	// Tool call response type (for agent tool invocations)

@@ -1,6 +1,7 @@
 import { createAuthApi, type AuthMe, type AuthSession, type OIDCConfig, type OIDCURL } from '../auth/endpoints.ts';
 import { createOIDCApi } from '../auth/oidc.ts';
 import type { ClientRequest } from '../client.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
@@ -16,6 +17,7 @@ export interface MobileRuntimeRemoteOptions {
 
 export interface MobileRuntimeRemote {
   passwordLogin(input: { email: string; password: string }): Promise<AuthSession>;
+  wechatLogin(input: { code: string }): Promise<AuthSession>;
   me(accessToken: string): Promise<AuthMe>;
   oidcConfig(): Promise<OIDCConfig>;
   oidcUrl(redirectURI: string, frontendRedirectURI?: string, codeChallenge?: string): Promise<OIDCURL>;
@@ -35,21 +37,6 @@ export interface MobileRuntimeRemote {
    * Runtime 的 clientGate 决定，适配器绝不判定。
    */
   deploymentCapabilities(accessToken: string): Promise<Record<string, unknown>>;
-}
-
-function requireDeploymentOrigin(origin: string): void {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try {
-    parsed = new URL(origin);
-  } catch {
-    throw new Error(`deployment origin must be an absolute URL: ${origin}`);
-  }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.hostname === '') throw new Error('deployment origin must include a host');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
 }
 
 function requireAccessToken(accessToken: string): string {
@@ -82,6 +69,9 @@ export function createMobileRuntimeRemote(options: MobileRuntimeRemoteOptions): 
   return {
     passwordLogin(input) {
       return auth.login(input);
+    },
+    wechatLogin(input) {
+      return auth.wechatLogin(input.code);
     },
     async me(accessToken: string) {
       return createAuthApi(bearerRequest(request, requireAccessToken(accessToken))).me();

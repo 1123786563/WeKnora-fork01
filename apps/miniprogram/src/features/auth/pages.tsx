@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { View, Text } from '@tarojs/components';
-import { Screen, Card, Action, Notice, Empty, Badge, useSession, useAction, confirmAction } from '../../components/ui.tsx';
+import { View, Text, Checkbox, CheckboxGroup } from '@tarojs/components';
+import { Screen, Card, Action, Field, Notice, Empty, Badge, useSession, useAction, confirmAction } from '../../components/ui.tsx';
 import { auth } from '../../services/runtime.ts';
 import { navigate } from '../../platform/navigation.ts';
 import { memberSpaces } from '../../services/views.ts';
-// 静默登录页：进入即 wx.login 换平台会话，失败保留“立即登录”重试，不再渲染账密表单。
 export function LoginPage(){
- const action=useAction();const start=()=>void action.run(async()=>{await auth.wxLogin();await navigate('workspace')});
- useEffect(()=>{start()},[]);
- return <Screen title='WeKnora' publicPage><View className='wk-login-hero'><View className='wk-orbit'/><Text className='wk-eyebrow'>WORK, WITH A LITTLE MORE SPACE</Text><Text className='wk-display'>你的随身{ '\n' }AI 工作台</Text><Text className='wk-muted'>将使用你的微信身份自动登录平台账号</Text></View><Card><Text className='wk-h2'>微信快捷登录</Text><Text className='wk-muted'>同一账号，同一空间。登录即表示同意平台的数据使用与服务说明。</Text><Action loading={action.busy} onClick={start}>立即登录</Action>{action.error&&<Notice tone='danger'>{action.error}</Notice>}</Card><Action secondary onClick={()=>void navigate('states',{kind:'privacy'})}>隐私与数据使用说明</Action></Screen>;
+ const action=useAction();const [booted,setBooted]=useState(false);
+ const tryLogin=()=>void action.run(async()=>{await auth.wxLogin();await navigate('workspace')});
+ useEffect(()=>{ if(booted)return; setBooted(true); void tryLogin(); },[booted]);
+ return <Screen title='WeKnora' publicPage><View className='wk-login-hero'><View className='wk-orbit'/><Text className='wk-eyebrow'>WORK, WITH A LITTLE MORE SPACE</Text><Text className='wk-display'>你的随身{ '\n' }AI 工作台</Text><Text className='wk-muted'>同一账号，同一空间。在微信里，让工作继续向前。</Text></View><Card><Text className='wk-h2'>微信一键登录</Text><Text className='wk-muted'>正在通过微信身份静默登录…若长时间无响应或登录失败，请点击重试。</Text><Action loading={action.busy} onClick={tryLogin}>立即登录</Action>{action.error&&<Notice tone='danger'>{action.error}</Notice>}</Card><Action secondary onClick={()=>void navigate('states',{kind:'privacy'})}>隐私与数据使用说明</Action></Screen>;
 }
 export function WorkspacePage(){
  const session=useSession(),action=useAction();const choices=memberSpaces(session.memberships);const [selected,select]=useState(session.tenantId??'');

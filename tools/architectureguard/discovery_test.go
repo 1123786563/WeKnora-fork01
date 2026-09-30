@@ -190,12 +190,12 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // worker 23+23 两侧一致；hooks 58。 ----
 
 const (
-	wantRouteLiteral  = 579
-	wantRouteAPIKey   = 69
+	wantRouteLiteral  = 631
+	wantRouteAPIKey   = 95
 	wantRouteHandle   = 0
-	wantRouteTotal    = 648
+	wantRouteTotal    = 726
 	wantWorkersPerMix = 23
-	wantHooks         = 58
+	wantHooks         = 62
 )
 
 func repoRoot(t *testing.T) string {
@@ -273,6 +273,6 @@ func TestDiscoverRealRepoHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(hooks) != wantHooks {
-		t.Errorf("container.Invoke 挂点 = %d, want %d（F0 基线）", len(hooks), wantHooks)
+		t.Errorf("container.Invoke 挂点 = %d, want %d（合并 issue30 后基线）", len(hooks), wantHooks)
 	}
 }

@@ -150,7 +150,7 @@ type interactionRow struct {
 func (interactionRow) TableName() string { return "workbench_interactions" }
 
 func (r interactionRow) decision() workbench.InteractionDecision {
-	return workbench.InteractionDecision{ID: r.ID, RunID: r.RunID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision, ExternalPendingID: r.ExternalPendingID, CredentialVersion: r.CredentialVersion}
+	return workbench.InteractionDecision{ID: r.ID, RunID: r.RunID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision, ExternalPendingID: r.ExternalPendingID, CredentialVersion: r.CredentialVersion, CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339)}
 }
 
 // GormInteractionStore is the production persistence adapter. All reads are
@@ -177,7 +177,10 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 		return ErrCapabilityUnavailable
 	}
 	hash := sha256.Sum256(req.Args)
-	expires := time.Now().Add(10 * time.Minute)
+	// SQLite serializes time.Time as offset-bearing text; the expiry predicate
+	// below compares that text. Both ends must share the UTC offset or rows
+	// written in one zone get misjudged in another (see mobile_notification.go).
+	expires := time.Now().UTC().Add(10 * time.Minute)
 	credentialVersion := req.CredentialVersion
 	// Keep an unresolved version visible in the durable projection. The
 	// decision path rejects non-positive snapshots; persisting zero here lets
@@ -199,6 +202,43 @@ func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerI
 	}
 	out := make([]workbench.InteractionDecision, 0, len(rows))
 	for _, row := range rows {
+		if err := validateInteractionRow(row); err != nil {
+			return nil, err
+		}
+		out = append(out, row.decision())
+	}
+	return out, nil
+}
+
+// ListPending returns the owner's open interactions across runs: the Attention
+// Inbox read (T08). It reuses the overview's archived-task LEFT JOIN so the
+// inbox and the home projection never disagree, and expired prompts are pruned
+// by a bound SQL predicate so they can never fill the LIMIT window and starve
+// live prompts; a Go-side skip remains as a clock-skew guard between the
+// predicate and the scan. Interactions whose run row is dangling stay visible:
+// the LEFT JOIN keeps sessions.archived_at NULL, matching the overview
+// semantics exactly.
+func (s *GormInteractionStore) ListPending(ctx context.Context, tenantID uint64, ownerID string, limit int) ([]workbench.InteractionDecision, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var rows []interactionRow
+	err := s.db.WithContext(ctx).
+		Table("workbench_interactions").
+		Select("workbench_interactions.*").
+		Joins("LEFT JOIN agent_runs ar ON ar.tenant_id = workbench_interactions.tenant_id AND ar.run_id = workbench_interactions.run_id").
+		Joins("LEFT JOIN sessions ON sessions.tenant_id = ar.tenant_id AND sessions.id = ar.session_id").
+		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL AND (workbench_interactions.expires_at IS NULL OR workbench_interactions.expires_at > ?)", tenantID, ownerID, "pending", time.Now().UTC()).
+		Order("workbench_interactions.created_at ASC, workbench_interactions.id ASC").
+		Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]workbench.InteractionDecision, 0, len(rows))
+	for _, row := range rows {
+		if row.ExpiresAt != nil && time.Now().After(*row.ExpiresAt) {
+			continue
+		}
 		if err := validateInteractionRow(row); err != nil {
 			return nil, err
 		}
@@ -335,19 +375,22 @@ type RemoteInteractionPort interface {
 	SubmitInteraction(context.Context, uint64, string, string, string, string, string, string, int64, int64) error
 }
 
-// GormCancelPort is the durable cancel command. It only transitions the
-// authenticated run and fences on its revision; unknown or already-terminal
+// GormCancelPort is the durable cancel command. It delegates to the
+// repository's CancelOwnedRun so cancellation keeps its full fidelity: the
+// revision-CAS terminal transition, the cancellation_requested run event and
+// the session-slot release land in one transaction. Unknown or already-terminal
 // runs are conflicts and never mutate a different run.
-type GormCancelPort struct{ db *gorm.DB }
+type GormCancelPort struct{ runs *repository.AgentRunStore }
 
-func NewGormCancelPort(db *gorm.DB) *GormCancelPort { return &GormCancelPort{db: db} }
+func NewGormCancelPort(runs *repository.AgentRunStore) *GormCancelPort {
+	return &GormCancelPort{runs: runs}
+}
+
 func (p *GormCancelPort) Cancel(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64) error {
-	if p == nil || p.db == nil {
+	if p == nil || p.runs == nil {
 		return ErrCapabilityUnavailable
 	}
-	return repository.NewAgentRunStore(p.db).CancelRunOwnedAtRevision(
-		ctx, tenantID, ownerID, runID, expectedRevision, "workbench_cancel_requested",
-	)
+	return p.runs.CancelOwnedRun(ctx, tenantID, ownerID, runID, expectedRevision, "user_requested")
 }
 
 // GormSteerPort resolves the run owner and assistant message from the durable
@@ -402,6 +445,7 @@ type Service struct {
 	steer             SteerPort
 	cancel            CancelPort
 	approval          *approval.Gate
+	restart           RunRestartPort
 	remoteInteraction RemoteInteractionPort
 }
 
@@ -431,6 +475,17 @@ func NewInteractionServiceWithApproval(store InteractionStore, steer SteerPort, 
 	return &Service{store: store, steer: steer, cancel: cancel, approval: gate}
 }
 
+// NewInteractionServiceWithRestart installs the queue_next re-admission port.
+// A nil restart keeps queue_next fail-closed (capability_unavailable) — the
+// same discipline as a missing steer or cancel port.
+func NewInteractionServiceWithRestart(store InteractionStore, steer SteerPort, cancel CancelPort, gate *approval.Gate, restart RunRestartPort) *Service {
+	svc := NewInteractionServiceWithApproval(store, steer, cancel, gate)
+	if svc != nil {
+		svc.restart = restart
+	}
+	return svc
+}
+
 func identity(ctx context.Context) (uint64, string, error) {
 	tenant, ok := types.TenantIDFromContext(ctx)
 	if !ok || tenant == 0 {
@@ -454,6 +509,19 @@ func canonicalOwnerID(ctx context.Context, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
+// runOwnerID is the owner projection for run-keyed commands (cancel/steer/
+// queue_next): agent_runs.owner_id is written by admission's contextIdentity
+// via UserIDFromContext, so the command predicate must read the same value.
+// The principal storage id (web_user:<id>) belongs to the interaction rows,
+// not to run rows — mixing them made cancel/steer never match web-admitted
+// runs (T37 difference record 6).
+func runOwnerID(ctx context.Context) string {
+	if uid, ok := types.UserIDFromContext(ctx); ok && strings.TrimSpace(uid) != "" {
+		return strings.TrimSpace(uid)
+	}
+	return canonicalOwnerID(ctx, "")
+}
+
 func (s *Service) List(ctx context.Context, runID string) ([]workbench.InteractionDecision, error) {
 	tenant, owner, err := identity(ctx)
 	if err != nil {
@@ -463,6 +531,29 @@ func (s *Service) List(ctx context.Context, runID string) ([]workbench.Interacti
 		return nil, ErrInteractionNotFound
 	}
 	return s.store.List(ctx, tenant, owner, strings.TrimSpace(runID))
+}
+
+// pendingLister is the narrowed inbox capability: only durable stores that can
+// serve the cross-run pending read answer it; anything else fails closed.
+type pendingLister interface {
+	ListPending(ctx context.Context, tenantID uint64, ownerID string, limit int) ([]workbench.InteractionDecision, error)
+}
+
+// ListInbox serves the Attention Inbox: the caller's open interactions across
+// runs, ordered oldest-first. Identity always comes from the context.
+func (s *Service) ListInbox(ctx context.Context, limit int) ([]workbench.InteractionDecision, error) {
+	tenant, owner, err := identity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.store == nil {
+		return nil, ErrInteractionNotFound
+	}
+	lister, ok := s.store.(pendingLister)
+	if !ok {
+		return nil, ErrCapabilityUnavailable
+	}
+	return lister.ListPending(ctx, tenant, owner, limit)
 }
 
 func (s *Service) Decide(ctx context.Context, id string, input workbench.InteractionDecision) (workbench.InteractionDecision, error) {
@@ -538,29 +629,57 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	return result, nil
 }
 
-func (s *Service) Command(ctx context.Context, runID string, command workbench.ExecutionCommand) error {
-	tenant, owner, err := identity(ctx)
+func (s *Service) Command(ctx context.Context, runID string, command workbench.ExecutionCommand) (workbench.CommandAck, error) {
+	tenant, _, err := identity(ctx) // tenant + actor existence (web_user:<id> synthesized from UserID when no principal)
 	if err != nil {
-		return err
+		return workbench.CommandAck{}, err
 	}
+	owner := runOwnerID(ctx)
 	if err := command.Validate(); err != nil {
-		return err
+		return workbench.CommandAck{}, err
 	}
 	if s == nil || strings.TrimSpace(runID) == "" {
-		return ErrInteractionNotFound
+		return workbench.CommandAck{}, ErrInteractionNotFound
 	}
 	switch command.Action {
 	case "cancel":
 		if s.cancel == nil {
-			return ErrCapabilityUnavailable
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
 		}
-		return s.cancel.Cancel(ctx, tenant, owner, runID, command.ExpectedRevision)
+		if err := s.cancel.Cancel(ctx, tenant, owner, runID, command.ExpectedRevision); err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "cancel"}, nil
 	case "steer":
 		if s.steer == nil {
-			return ErrCapabilityUnavailable
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
 		}
-		return s.steer.Steer(ctx, tenant, owner, runID, command.Text, command.ExpectedRevision)
+		if err := s.steer.Steer(ctx, tenant, owner, runID, command.Text, command.ExpectedRevision); err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "steer"}, nil
+	case "queue_next":
+		if s.restart == nil {
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
+		}
+		next, err := s.restart.Restart(ctx, tenant, owner, runID, command.Text, queueNextRequestID(command), command.ExpectedRevision)
+		if err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "queue_next", NextRunID: next}, nil
 	default:
-		return workbench.ErrCommandActionMismatch
+		return workbench.CommandAck{}, workbench.ErrCommandActionMismatch
 	}
+}
+
+// queueNextRequestID derives the admission request id from the command's
+// idempotency id, so a network-retried queue_next reconciles onto the same
+// follow-up run (spec: every unknown-outcome command carries a durable
+// idempotency identity). The "queue-" prefix keeps the namespace disjoint
+// from start request ids in workbench_requests.
+func queueNextRequestID(command workbench.ExecutionCommand) string {
+	if id := strings.TrimSpace(command.ExternalPendingID); id != "" {
+		return "queue-" + id
+	}
+	return "queue-" + uuid.NewString()
 }

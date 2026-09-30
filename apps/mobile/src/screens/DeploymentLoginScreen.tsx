@@ -34,14 +34,24 @@ export function DeploymentLoginScreen({ officialCloudOrigin, deployments, onSign
     return undefined;
   };
 
+  // 切换目标实例（B2-F10）：表单先对齐目标 origin 并清空凭据——无凭据时 runtime 会回到
+  // deployment-login 面，组件实例复用而表单已指向目标，Sign in 不会登录旧 origin。
+  const switchTo = (deployment: { origin: string }): void => {
+    setOrigin(deployment.origin);
+    setEmail('');
+    setPassword('');
+    setError(undefined);
+    void onSwitchDeployment?.(deployment.origin);
+  };
+
   return (
     <View>
       <Text>Sign in to WeKnora</Text>
-      {deployments && deployments.length > 0 ? (
+      {deployments && deployments.length > 0 && onSwitchDeployment ? (
         <View>
           <Text>Registered deployments</Text>
           {deployments.map((deployment) => (
-            <Button key={deployment.origin} title={deployment.label} onPress={() => { void onSwitchDeployment?.(deployment.origin); }} />
+            <Button key={deployment.origin} title={deployment.label} onPress={() => { switchTo(deployment); }} />
           ))}
         </View>
       ) : null}

@@ -32,6 +32,8 @@ import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
+import { createCareerApi } from './career/index.ts';
+import type { CareerObserver } from './career/types.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -56,6 +58,8 @@ export interface WeKnoraClientOptions {
   baseURL: string;
   transport: HttpTransport;
   timeoutMs?: number;
+  /** Runtime-owned Career revision-hint source. `career.observe()` throws CareerObservationUnavailableError when omitted. */
+  careerObserver?: CareerObserver;
 }
 
 export interface KnowledgeBaseListParams {
@@ -309,6 +313,18 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const analytics = createAnalyticsApi(request);
   const usage = createUsageApi(request, requestBinary);
   const queryHistory = createQueryHistoryApi(request, requestBinary);
+  function assertCareerDeployment(scope: { deploymentOrigin: string }): void {
+    let baseOrigin: string;
+    try { baseOrigin = new URL(options.baseURL).origin; } catch { throw new Error('Career API requires an absolute deployment base URL'); }
+    if (baseOrigin !== scope.deploymentOrigin) throw new Error('Career scope deployment does not match the authenticated API client');
+  }
+  const career = createCareerApi(input => {
+    assertCareerDeployment(input.scope);
+    return request(input);
+  }, options.careerObserver === undefined ? undefined : (scope, onRevision) => {
+    assertCareerDeployment(scope);
+    return options.careerObserver!(scope, onRevision);
+  });
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {
@@ -416,6 +432,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     analytics,
     usage,
     queryHistory,
+    career,
     embed,
     sessions,
     // Per-user starred resources (DB-backed; Vue frontend/src/api/user-favorites.ts,

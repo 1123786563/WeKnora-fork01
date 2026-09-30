@@ -28,7 +28,7 @@ function userId(value: unknown): string | undefined {
 
 function tenantId(value: unknown): string | undefined {
   const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
-  if (typeof id === 'string' && id.trim() !== '') return id;
+  if (typeof id === 'string' && id.trim() !== '') return id.trim(); // R1-F33：字符串 id 归一（与 membershipTenantId 对齐）
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
 }
 
@@ -102,6 +102,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let credentialMutation: Promise<void> = Promise.resolve();
   let pendingOidcMutation: Promise<void> = Promise.resolve();
   const refreshFlights = new Map<string, { requestEpoch: number; promise: Promise<StoredCredential | undefined> }>();
+  // 在途授权流（R1-F32）：scope 撤销时全部 abort——SSE 挂在服务器侧不出 chunk 就不会回到
+  // guardedChunk 的 epoch 检查，必须由 runtime 主动断开传输层。
+  const activeStreams = new Set<AbortController>();
   let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -120,6 +123,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     vaultTail = next.then(() => {}, () => {});
   };
   const revoke = (vaultReason: VaultRevokeReason): void => {
+    for (const controller of activeStreams) controller.abort();
+    activeStreams.clear();
     queueVaultRevoke(vaultReason);
     revocableLease?.revoke();
     revocableLease = undefined;
@@ -203,8 +208,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     const deployment = activeDeployment;
     if (!deployment || deployment.origin !== origin || (state.surface !== 'authorized' && state.surface !== 'read-only') || !activeCredential) throw new Error('SHELF_SCOPE');
     if (!options?.refresh) return activeCredential.token;
-    const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
+    const requestEpoch = epoch;
+    const refreshed = await refreshedCredential(requestEpoch, deployment, activeCredential);
     if (!refreshed) throw new Error('SHELF_AUTH');
+    // R1-F31：refresh 跨越了 scope 变化（切部署/切租户/登出）时，旧部署凭据不得写回活动态——
+    // 新 scope 的 shelf 请求必须继续拿到新部署自己的凭据，而不是被迟到的轮换结果污染。
+    if (!current(requestEpoch, deployment)) throw new Error('SHELF_SCOPE');
     activeCredential = refreshed;
     return refreshed.token;
   };
@@ -235,8 +244,11 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
       const surface: RuntimeSurface = gate.mode === 'full' ? 'authorized' : 'read-only';
       await mutateDeployment(async () => {
+        // deploymentStore.write 是活动实例记忆（授权主流程），失败语义保持；
+        // registry.upsert 是 presentation 辅助数据，失败单独包含，不得把已验证的
+        // 授权拖入外层 catch 而呈现 authentication-required（B2-F32）。
         await ports.deploymentStore?.write(deployment);
-        await ports.deploymentRegistry?.upsert(deployment);
+        try { await ports.deploymentRegistry?.upsert(deployment); } catch { /* presentation 辅助：写失败不阻塞授权 */ }
       });
       if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
@@ -293,6 +305,22 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         const requestEpoch = begin(deployment);
         try {
           const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
+          if (!current(requestEpoch, deployment)) return state;
+          if (!await persistCredential(requestEpoch, deployment, credential)) return state;
+          return await authenticate(requestEpoch, deployment, credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
+      }
+    },
+    async wxSignIn(input): Promise<RuntimeSnapshot> {
+      try {
+        const deployment = normalizeDeployment(input.deployment);
+        const requestEpoch = begin(deployment);
+        try {
+          const credential = await ports.remoteFor(deployment.origin).wechatLogin({ code: input.code });
           if (!current(requestEpoch, deployment)) return state;
           if (!await persistCredential(requestEpoch, deployment, credential)) return state;
           return await authenticate(requestEpoch, deployment, credential);
@@ -376,14 +404,27 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     },
     async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
       const deployment = activeDeployment;
-      const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
-      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      if (deployment === undefined || state.surface !== 'authorized') throw new Error('RUNTIME_UNAUTHORIZED');
+      // 已授权但平台/该实例无流通道（authorizedStream 工厂返回 undefined，fail closed）：
+      // 与未授权分流（B2-F34）——REST 详情仍可用，错误语义不得误导为「请先登录」。
+      // code 化（R1-F22）：与 TASK_STREAM_CURSOR_EXPIRED 同形态的结构化契约，消费方不读 message 文本。
+      const transport = ports.authorizedStream?.(deployment.origin);
+      if (!transport) throw Object.assign(new Error('RUNTIME_STREAM_UNAVAILABLE'), { code: 'RUNTIME_STREAM_UNAVAILABLE' as const });
       const requestEpoch = epoch;
       const guardedChunk = (chunk: string): void => {
         if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
         onChunk(chunk);
       };
-      await sendWithCredential(requestEpoch, deployment, (token) => transport(input, token, guardedChunk));
+      // 无 signal 的调用也要纳入 revoke 中止（R1-F32）：controller 桥接调用方 signal 与在途流。
+      const controller = new AbortController();
+      activeStreams.add(controller);
+      controller.signal.addEventListener('abort', () => activeStreams.delete(controller), { once: true });
+      input.signal?.addEventListener('abort', () => controller.abort(input.signal!.reason), { once: true });
+      try {
+        await sendWithCredential(requestEpoch, deployment, (token) => transport({ ...input, signal: controller.signal }, token, guardedChunk));
+      } finally {
+        activeStreams.delete(controller);
+      }
     },
     scopeLease: () => lease,
     resourceShelf: () => activeShelf,
@@ -410,7 +451,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     async listDeployments(): Promise<Deployment[]> {
-      return ports.deploymentRegistry ? await ports.deploymentRegistry.list() : [];
+      // 失败包含（B2-F42）：registry 读取失败按 fail-closed 语义返回空数组，与端口缺失一致，从不 reject。
+      if (!ports.deploymentRegistry) return [];
+      try { return await ports.deploymentRegistry.list(); } catch { return []; }
     },
     async switchDeployment(origin: string): Promise<RuntimeSnapshot> {
       try {
@@ -419,7 +462,13 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         let target: Deployment | undefined;
         try { target = normalizeDeployment({ origin }); } catch { target = undefined; }
         if (!target) return state;
-        const record = (await ports.deploymentRegistry.list()).find((entry) => entry.origin === target!.origin);
+        // 同 origin 短路（B2-F44，收窄 R1-F46）：只覆盖已授权/只读面；upgrade-required 等失败面
+        // 必须允许重试完整认证——服务端恢复后重选同实例不能被静默短路在失败状态。
+        if ((state.surface === 'authorized' || state.surface === 'read-only') && state.deployment?.origin === target.origin) return state;
+        // 失败包含（B2-F17）：SecureStore 读取失败按未登记处理，保持当前面，不得 reject。
+        let entries: Deployment[] | undefined;
+        try { entries = await ports.deploymentRegistry.list(); } catch { entries = undefined; }
+        const record = entries?.find((entry) => entry.origin === target!.origin);
         if (!record) return state;
         const deployment = normalizeDeployment({ origin: record.origin, label: record.label });
         const requestEpoch = begin(deployment);
@@ -440,13 +489,23 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       try { if (typeof origin === 'string' && origin.trim() !== '') target = normalizeDeployment({ origin }); } catch { target = undefined; }
       if (!target) return;
       const deployment = target;
+      // R1-F47：凭据清理与登记移除各自包含——SecureStore 清理失败不得吞掉 registry.remove
+      // （残留登记会让实例继续出现在可切换列表）。整体仍从不 reject（B2-F43 约定）。
       try {
         if (activeDeployment?.origin === deployment.origin) {
           await signOut();
         } else {
-          await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
+          try {
+            await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
+          } catch {
+            /* 清理失败：继续移除登记 */
+          }
         }
-        await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
+        try {
+          await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
+        } catch {
+          /* 登记移除失败：整体 resolve，不 reject */
+        }
       } finally {
         await vaultTail;
       }

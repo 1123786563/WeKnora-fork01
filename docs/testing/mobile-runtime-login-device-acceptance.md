@@ -60,16 +60,39 @@ device evidence file.
 }
 ```
 
-## Current Task 7 status (2026-09-21): unresolved native acceptance
+## Current Task 7 status (2026-09-29): native build passed; JS startup unresolved
 
-Neither platform is accepted. This checkout has iOS simulators and Xcode, but
-does not contain an iOS/Android native project or an installed WeKnora
-development build. `adb` and the EAS CLI are unavailable. No staging
-deployment or mobile test credential variable is configured. Consequently no
-password or OIDC flow, callback behavior, or protocol gate has been exercised
-on an installed native build.
+The Expo SDK 57 generated iOS project contract passes in the isolated prebuild
+at `/tmp/weknora-issue31-final-prebuild-_x7w61dy/ios`: its
+`UIApplicationSceneManifest` names `EXExpoAppSceneDelegate`, AppDelegate
+conforms to `ExpoReactNativeFactoryProvider` without creating a React Native
+window in `didFinishLaunchingWithOptions`, generated Xcode/Pod deployment
+targets are all 16.4, and `pod install` completed. A full-source iOS 27
+simulator Release build also completed successfully with `** BUILD SUCCEEDED **`
+in `/tmp/issue31-fullsrc-xcodebuild-release.log`; it embeds a 4.0 MB
+`main.jsbundle`. Installed on the booted iPhone 18 Pro simulator
+(`0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`), the app launched and rendered the
+Deployment Login screen. The visually inspected screenshot is
+`docs/testing/evidence/mobile-runtime-login/2026-09-29/ios27-release-deployment-login.png`;
+the captured simulator log is `/tmp/issue31-fullsrc-release-startup.log` and
+shows the `com.weknora.mobile-default` app scene becoming active without a
+React Native startup exception.
 
+The first two Debug simulator attempts are retained as harness diagnostics,
+not acceptance failures: the initial incomplete disposable project omitted
+the app `src` tree and had no embedded bundle (`ios27-no-script-url-redbox.png`),
+and a full-source Debug bundle hit the expected devtools websocket error when
+it was embedded without Metro (`ios27-debug-embedded-devtools-redbox.png`).
+The final Release build is the startup acceptance evidence; it requires no
+Metro process and successfully rendered the app route.
+
+JavaScript exports are build evidence only: iOS output is under
+`/tmp/issue31-ios-export` and Android output is under
+`/tmp/issue31-android-export`. The simulator gate also does not exercise a real
+staging login. No staging Deployment or short-lived mobile credentials are
+configured, and no Android device acceptance has been performed. Password,
+OIDC and capability flows on staging and Android installation remain Pending.
 Task 6 also found no local HTTPS fixture or protected staging credentials; see
-`.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for
-the safe opt-in HTTP harness and its limitation. The Expo exports and local
-test/typecheck results must remain build evidence only.
+`.superpowers/sdd/2026-09-20-t01-mobile-runtime-login/task-6-report.md` for the
+safe opt-in HTTP harness and its limitation. No credentials were inspected or
+added to source, logs, screenshots or evidence.

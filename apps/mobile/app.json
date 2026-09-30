@@ -6,22 +6,44 @@
     "orientation": "portrait",
     "scheme": "weknora",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "platforms": [
       "ios",
       "android"
     ],
     "ios": {
       "bundleIdentifier": "com.weknora.mobile",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "deploymentTarget": "16.4"
     },
     "android": {
-      "package": "com.weknora.mobile"
+      "package": "com.weknora.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "VIBRATE",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "WeKnora uses the microphone for voice dictation and live voice sessions."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

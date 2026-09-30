@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { streamAuthorizedSse } from './sse-stream.ts';
+import { ApiError } from '@weknora/api-client';
+import { streamAuthorizedSse, type SseFetchLike } from './sse-stream.ts';
 
 const encoder = new TextEncoder();
 const streamOf = (parts: string[]) => new ReadableStream<Uint8Array>({
@@ -31,4 +32,54 @@ test('a non-200 stream rejects in the ApiError shape (401 refresh / 409 cursor m
     streamAuthorizedSse('https://weknora.example.test', { method: 'GET', path: '/p' }, 't', () => {}, async () => new Response('gone', { status: 409 })),
     (error: unknown) => (error as { name?: string; status?: number }).name === 'ApiError' && (error as { status?: number }).status === 409,
   );
+});
+
+test('a non-2xx response rejects with a real ApiError carrying code', async () => {
+  const fetchLike = async () => new Response('nope', { status: 503 });
+  await assert.rejects(
+    streamAuthorizedSse('https://weknora.example.test', { method: 'GET', path: '/api/x' }, 'token', () => {}, fetchLike),
+    (error: unknown) => error instanceof ApiError && error.status === 503 && error.code === 'HTTP_503',
+  );
+});
+
+test('a throwing onChunk cancels the reader before the error propagates', async () => {
+  const cancelled: boolean[] = [];
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(encoder.encode('data: x\n\n')); /* 保持打开：只有 cancel 能释放 */ },
+    cancel() { cancelled.push(true); },
+  });
+  const fetchLike = async () => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  await assert.rejects(
+    streamAuthorizedSse('https://weknora.example.test', { method: 'GET', path: '/api/x' }, 'token', () => { throw new Error('RUNTIME_SCOPE_CHANGED'); }, fetchLike),
+    /RUNTIME_SCOPE_CHANGED/,
+  );
+  assert.deepEqual(cancelled, [true], 'onChunk 同步抛出时 reader 必须 cancel，连接不得保持打开');
+});
+
+test('a failed SSE response releases its body (R1-F50)', async () => {
+  let cancelled = 0;
+  const fake = { ok: false, status: 409, body: { cancel: async () => { cancelled += 1; } } } as unknown as Response;
+  const failing = (async () => fake) as SseFetchLike;
+  await assert.rejects(
+    streamAuthorizedSse('https://x.example.test', { method: 'GET', path: '/api/v1/events' }, 'token', () => {}, failing),
+    (error: unknown) => (error as { code?: string }).code === 'HTTP_409',
+  );
+  assert.equal(cancelled, 1, '非 2xx 分支也必须 cancel body（401 刷新重试反复放大连接占用）');
+});
+
+test('a POST stream carries the JSON body and content-type for chat follow-ups', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  await streamAuthorizedSse(
+    'https://weknora.example.test',
+    { method: 'POST', path: '/api/v1/knowledge-chat/lg-1', body: { query: '继续这个话题' } },
+    'access-1',
+    () => undefined,
+    async (url, init) => { calls.push({ url, init: init as RequestInit }); return new Response(streamOf(['data: {"response_type":"complete"}\n\n'])); },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.init!.method, 'POST');
+  assert.equal(calls[0]!.init!.body, '{"query":"继续这个话题"}');
+  const headers = calls[0]!.init!.headers as Record<string, string>;
+  assert.equal(headers['content-type'], 'application/json');
+  assert.equal(headers.accept, 'text/event-stream');
 });

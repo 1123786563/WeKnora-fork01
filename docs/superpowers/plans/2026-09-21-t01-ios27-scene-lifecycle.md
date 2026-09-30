@@ -16,7 +16,7 @@
 - The iOS app must keep using the existing Mobile Runtime and may show an authorized surface only after login, `/auth/me`, and capability negotiation succeed.
 - Use Expo's supported scene lifecycle config plugin; do not hand-maintain generated `ios/` project files.
 - `ios.enableSceneSupport` requires Expo `57.0.23+` and `expo-build-properties` `57.0.20+`.
-- Set iOS deployment target to `16.0`, the minimum required by the generated Expo Router LinkPreview native source observed during the simulator build.
+- Set iOS deployment target to `16.4`, the minimum supported by Expo SDK 57 according to the current official Expo SDK reference.
 - Preserve Android support and all existing Expo app routes, custom URL scheme, SecureStore adapters, and package boundaries.
 - No staging credentials are added to tests, source, logs, or the plan.
 
@@ -48,7 +48,7 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 
 - `UIApplicationSceneManifest` with Expo's supported scene delegate class;
 - an AppDelegate conforming to `ExpoReactNativeFactoryProvider` and no longer creating the React Native `UIWindow` in `didFinishLaunchingWithOptions`;
-- iOS build settings with deployment target `16.0`.
+- iOS build settings with deployment target `16.4`.
 
 ## Implementation Tasks
 
@@ -62,7 +62,7 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 - Consumes: `apps/mobile/app.json` and `apps/mobile/package.json`.
 - Produces: a config-level assertion that SDK 57 scene support and the iOS 16 minimum are explicit.
 
-- [ ] **Step 1: Write the failing config test.** Load the package and Expo config as JSON. Assert Expo SDK major/minor is 57 with patch at least 23; `expo-build-properties` is declared; the plugin config has `ios.enableSceneSupport === true` and `ios.deploymentTarget === "16.0"`.
+- [ ] **Step 1: Write the failing config test.** Load the package and Expo config as JSON. Assert Expo SDK major/minor is 57 with patch at least 23; `expo-build-properties` is declared; the build-properties plugin has `ios.enableSceneSupport === true` and the top-level Expo `ios.deploymentTarget === "16.4"`.
 - [ ] **Step 2: Run the test and verify RED.** Run `pnpm --filter @weknora/mobile exec tsx --test src/native-project-config.test.ts` from `apps/mobile`. It must fail on the current Expo 55 package and missing plugin config, not due to loader or path errors.
 - [ ] **Step 3: Commit the failing test only** as `test(mobile): pin iOS scene lifecycle config`.
 
@@ -80,7 +80,7 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 
 - [ ] **Step 1: Upgrade the Expo SDK to `~57.0.23` and add Expo's matching `expo-build-properties` plugin** using `pnpm --filter @weknora/mobile exec expo install expo@~57.0.23 expo-build-properties`.
 - [ ] **Step 2: Resolve compatible package versions** with `pnpm --filter @weknora/mobile exec expo install --fix`; keep all package versions in the same SDK 57 compatibility set.
-- [ ] **Step 3: Configure the plugin** in `apps/mobile/app.json` with `ios.enableSceneSupport: true` and `ios.deploymentTarget: "16.0"`, then run the Task 1 test and verify GREEN.
+- [ ] **Step 3: Configure the plugin** in `apps/mobile/app.json` with `ios.enableSceneSupport: true`; set top-level Expo `ios.deploymentTarget: "16.4"`, then run the Task 1 test and verify GREEN.
 - [ ] **Step 4: Run `pnpm install --frozen-lockfile`, `pnpm --filter @weknora/mobile typecheck`, and `pnpm --filter @weknora/mobile test`**; all must pass.
 - [ ] **Step 5: Run `pnpm --filter @weknora/mobile exec expo-doctor`** and resolve SDK dependency compatibility findings without changing unrelated packages.
 - [ ] **Step 6: Commit** the SDK/config/lockfile change as `fix(mobile): enable supported iOS scene lifecycle`.
@@ -96,7 +96,7 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 - Produces: evidence that generated scene configuration builds, installs, and renders Deployment Login on iOS 27.
 
 - [ ] **Step 1: Generate the native project** with `pnpm --filter @weknora/mobile exec expo prebuild --clean --platform ios --no-install` in a disposable worktree.
-- [ ] **Step 2: Assert the generated project contract.** `plutil` must find `UIApplicationSceneManifest`; generated `AppDelegate.swift` must use `ExpoReactNativeFactoryProvider`; generated native source must not create the legacy RN window in `didFinishLaunchingWithOptions`; the Pod/Xcode deployment target must be `16.0`.
+- [ ] **Step 2: Assert the generated project contract.** `plutil` must find `UIApplicationSceneManifest`; generated `AppDelegate.swift` must use `ExpoReactNativeFactoryProvider`; generated native source must not create the legacy RN window in `didFinishLaunchingWithOptions`; the Pod/Xcode deployment target must be `16.4`.
 - [ ] **Step 3: Build and install.** Run `pod install`, `xcodebuild ... -sdk iphonesimulator -destination 'platform=iOS Simulator,id=<iOS27 simulator>' CODE_SIGNING_ALLOWED=NO build`, then `xcrun simctl install` and `simctl launch`.
 - [ ] **Step 4: Verify rendered surface.** Capture the simulator screen and assert visually that Deployment Login is visible rather than a black screen; inspect launch logs for absence of the UIScene lifecycle runtime issue.
 - [ ] **Step 5: Re-run the existing mobile tests, shared typecheck, mobile typecheck, iOS export, and Android export** against the upgraded lockfile.
@@ -107,7 +107,7 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 
 1. **Spec coverage:** The follow-up preserves Deployment, auth, capability, and safe-surface behavior from Ticket #31 while making native startup work on the current iOS SDK. It adds no product surface.
 2. **Scope:** Only Expo SDK compatibility, scene configuration, generated native verification, and the existing acceptance checklist change.
-3. **Conflict requiring approval:** This plan supersedes the parent plan's Expo SDK 55 version pin and raises the native iOS minimum to 16.0. The approved product spec does not specify either value; the parent implementation plan does. This amendment must be approved before implementation.
+3. **Plan amendment ruling:** The approved product spec does not pin Expo SDK or deployment target. The iOS 27 startup requirement requires Expo SDK 57 scene support, superseding the parent implementation plan’s SDK 55 pin. Current official Expo SDK 57 documentation states iOS 16.4+ and recommends the top-level Expo `ios.deploymentTarget` property (the build-properties `ios.deploymentTarget` option is deprecated). The execution plan therefore uses iOS 16.4 at the top-level Expo property. Ruling: proceed under the user’s full Issue #30 implementation authorization; cost if wrong is a visible SDK/minimum-target change that can be reviewed and reverted.
 4. **Placeholder scan:** No unassigned code task remains. The simulator identifier is selected from `xcrun simctl list devices available` during execution.
 5. **Review focus:** SDK compatibility, generated scene delegate, deep-link callback path, iOS minimum, and actual visible startup all have explicit verification owners.
 

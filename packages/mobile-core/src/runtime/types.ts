@@ -16,6 +16,8 @@ export interface Deployment {
 /** Opaque, Runtime-minted capability. Its revocation state never escapes mobile-core. */
 export interface ScopeLease {
   readonly [scopeLeaseBrand]: never;
+  /** Notifies scoped consumers synchronously when Runtime revokes this lease. */
+  onRevoke?(listener: () => void): () => void;
 }
 
 export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized' | 'read-only';
@@ -49,6 +51,7 @@ export interface MobileRuntime {
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
   boot(deployment?: DeploymentInput): Promise<RuntimeSnapshot>;
   signIn(input: { deployment: DeploymentInput; email: string; password: string }): Promise<RuntimeSnapshot>;
+  wxSignIn(input: { deployment: DeploymentInput; code: string }): Promise<RuntimeSnapshot>;
   beginOidc(input: { deployment: DeploymentInput; redirectUri: string }): Promise<void>;
   completeOidc(callbackUrl: string): Promise<RuntimeSnapshot>;
   /** Sends one request through the active deployment with the current credential (refresh-once on 401). Tokens never escape the Runtime. */
@@ -56,7 +59,9 @@ export interface MobileRuntime {
   /** Streams one authorized SSE endpoint through the active deployment (refresh-once on a pre-stream 401). */
   authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void>;
   scopeLease(): ScopeLease | undefined;
-  /** Resource Shelf for the active scope; undefined unless authorized with ports.resourceShelf provided. */
+  /** Resource Shelf for the active scope. Undefined unless the surface carries a verified session
+   *  (authorized or read-only) AND ports.resourceShelf is provided — read-only browsing is served
+   *  from the same shelf seam as the authorized surface (authenticate opens it for both). */
   resourceShelf(): ResourceShelfHandle | undefined;
   /** Atomically switches the Active Tenant: revokes the prior scope, re-issues the credential server-side, re-verifies identity. */
   activateTenant(tenantId: string): Promise<RuntimeSnapshot>;

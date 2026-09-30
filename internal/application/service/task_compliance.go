@@ -1,0 +1,320 @@
+package service
+
+// Task compliance & retention (T13, #43).
+//
+// Compliance access is an INDEPENDENT flow (CONTEXT.md 合规访问): an
+// administrator sees task METADATA by default; private content requires a
+// reasoned, time-limited window that is fully audited BEFORE anything opens
+// or reads. The service deliberately holds NO TaskGrantStorePort — a
+// compliance window can never join the task collaboration list (AC1 is
+// enforced at the type level).
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+)
+
+// MaxComplianceAccessTTL bounds one compliance window's lifetime (Spec story
+// 54 "time-limited"; the concrete ceiling is a plan-level decision).
+const MaxComplianceAccessTTL = 7 * 24 * time.Hour
+
+// TaskComplianceStorePort is the persistence seam for the T13 lanes
+// (implemented by repository.TaskComplianceStore).
+type TaskComplianceStorePort interface {
+	GetTaskPolicy(ctx context.Context, tenantID uint64) (*types.TenantTaskPolicy, error)
+	UpsertTaskPolicy(ctx context.Context, policy types.TenantTaskPolicy) (types.TenantTaskPolicy, error)
+	TaskMetadataFacts(ctx context.Context, tenantID uint64, taskID string) (*types.TaskMetadataFacts, error)
+	OpenComplianceAccess(ctx context.Context, access types.TaskComplianceAccess) (types.TaskComplianceAccess, error)
+	ActiveComplianceAccess(ctx context.Context, tenantID uint64, taskID, adminID string, now time.Time) (*types.TaskComplianceAccess, error)
+	ListTaskMessages(ctx context.Context, taskID string, limit int) ([]types.TaskMessageFact, error)
+	// PurgeTask is the retention purge transaction (added in Task 6 as
+	// planned; the port grows with implemented capability — ruling via
+	// escalation, t13 #43 task 4).
+	PurgeTask(ctx context.Context, tenantID uint64, taskID string) error
+}
+
+// TaskComplianceService carries the compliance surface and the deletion
+// gates. audit may be nil only in mis-assembled deployments — every audited
+// operation then fails closed with 503 instead of proceeding unrecorded.
+type TaskComplianceService struct {
+	store TaskComplianceStorePort
+	audit interfaces.AuditLogService
+	now   func() time.Time
+}
+
+// NewTaskComplianceService constructs the production service.
+func NewTaskComplianceService(store TaskComplianceStorePort, audit interfaces.AuditLogService) *TaskComplianceService {
+	return NewTaskComplianceServiceWithClock(store, audit, time.Now)
+}
+
+// NewTaskComplianceServiceWithClock is the test/e2e constructor with an
+// injectable clock (retention-horizon time travel).
+func NewTaskComplianceServiceWithClock(store TaskComplianceStorePort, audit interfaces.AuditLogService, now func() time.Time) *TaskComplianceService {
+	return &TaskComplianceService{store: store, audit: audit, now: now}
+}
+
+// requireAdmin enforces the compliance lane's role floor: TenantRole admin
+// or above (admin and owner both pass; contributors and viewers do not).
+func (s *TaskComplianceService) requireAdmin(caller types.Caller) error {
+	if caller.TenantID == 0 || strings.TrimSpace(caller.UserID) == "" {
+		return apperrors.NewForbiddenError("authenticated tenant identity is required")
+	}
+	if caller.Role.Level() < types.TenantRoleAdmin.Level() {
+		return apperrors.NewForbiddenError("compliance access requires the tenant admin role")
+	}
+	return nil
+}
+
+// audited writes one audit entry or fails closed.
+func (s *TaskComplianceService) audited(ctx context.Context, entry *types.AuditLog) error {
+	if s.audit == nil {
+		return apperrors.NewServiceUnavailableError("compliance audit trail is required")
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = s.now().UTC()
+	}
+	return s.audit.Log(ctx, entry)
+}
+
+// GetTaskPolicy reads the tenant's policy (admin-only).
+func (s *TaskComplianceService) GetTaskPolicy(ctx context.Context, caller types.Caller) (*types.TenantTaskPolicy, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return nil, err
+	}
+	return s.store.GetTaskPolicy(ctx, caller.TenantID)
+}
+
+// SetTaskPolicy rewrites the tenant's retention policy (admin-only,
+// negative retention refused, audited before the write).
+func (s *TaskComplianceService) SetTaskPolicy(ctx context.Context, caller types.Caller, retentionDays int, legalHold bool) (*types.TenantTaskPolicy, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return nil, err
+	}
+	if retentionDays < 0 {
+		return nil, apperrors.NewBadRequestError("retention_days must be >= 0")
+	}
+	policyDetails, err := json.Marshal(map[string]any{"retention_days": retentionDays, "legal_hold": legalHold})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.audited(ctx, &types.AuditLog{
+		TenantID:    caller.TenantID,
+		ActorUserID: caller.UserID,
+		ActorRole:   string(caller.Role),
+		Action:      types.AuditActionTaskPolicyUpdated,
+		TargetType:  "tenant",
+		TargetID:    "task-policy",
+		Outcome:     types.AuditOutcomeSuccess,
+		Details:     types.JSON(policyDetails),
+	}); err != nil {
+		return nil, err
+	}
+	policy, err := s.store.UpsertTaskPolicy(ctx, types.TenantTaskPolicy{
+		TenantID: caller.TenantID, RetentionDays: retentionDays, LegalHold: legalHold, UpdatedBy: caller.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &policy, nil
+}
+
+// TaskMetadata is the administrator's default view: metadata + policy, no
+// content (the view type carries no content field at all).
+func (s *TaskComplianceService) TaskMetadata(ctx context.Context, caller types.Caller, taskID string) (types.TaskMetadataView, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return types.TaskMetadataView{}, err
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return types.TaskMetadataView{}, apperrors.NewBadRequestError("task id is required")
+	}
+	facts, err := s.store.TaskMetadataFacts(ctx, caller.TenantID, taskID)
+	if err != nil {
+		return types.TaskMetadataView{}, normalizeComplianceMiss(err)
+	}
+	policy, err := s.store.GetTaskPolicy(ctx, caller.TenantID)
+	if err != nil {
+		return types.TaskMetadataView{}, err
+	}
+	return types.TaskMetadataView{Metadata: *facts, Policy: policy}, nil
+}
+
+// RequestContentAccess opens one time-limited window after the audit row is
+// durably written (reason + horizon in the entry). An audit failure refuses
+// the window — fail closed.
+func (s *TaskComplianceService) RequestContentAccess(ctx context.Context, caller types.Caller, taskID, reason string, ttl time.Duration) (types.TaskComplianceAccess, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return types.TaskComplianceAccess{}, err
+	}
+	taskID = strings.TrimSpace(taskID)
+	reason = strings.TrimSpace(reason)
+	if taskID == "" {
+		return types.TaskComplianceAccess{}, apperrors.NewBadRequestError("task id is required")
+	}
+	if reason == "" {
+		return types.TaskComplianceAccess{}, apperrors.NewBadRequestError("an access reason is required")
+	}
+	if ttl <= 0 || ttl > MaxComplianceAccessTTL {
+		return types.TaskComplianceAccess{}, apperrors.NewBadRequestError("ttl must be between 1 hour and 168 hours")
+	}
+	facts, err := s.store.TaskMetadataFacts(ctx, caller.TenantID, taskID)
+	if err != nil {
+		return types.TaskComplianceAccess{}, normalizeComplianceMiss(err)
+	}
+	now := s.now().UTC()
+	access := types.TaskComplianceAccess{
+		TenantID: caller.TenantID, TaskID: facts.TaskID, AdminID: caller.UserID,
+		Reason: reason, ExpiresAt: now.Add(ttl), CreatedAt: now,
+	}
+	details, _ := json.Marshal(map[string]any{"reason": reason, "expires_at": access.ExpiresAt})
+	if err := s.audited(ctx, &types.AuditLog{
+		TenantID: caller.TenantID, ActorUserID: caller.UserID, ActorRole: string(caller.Role),
+		Action:     types.AuditActionComplianceAccessRequested,
+		TargetType: "task", TargetID: facts.TaskID, TargetUserID: facts.OwnerID,
+		Outcome: types.AuditOutcomeSuccess, Details: types.JSON(details),
+	}); err != nil {
+		return types.TaskComplianceAccess{}, err
+	}
+	return s.store.OpenComplianceAccess(ctx, access)
+}
+
+// ReadTaskContent returns the private content projection only under the
+// caller's own unexpired window, and only after its read is audited.
+func (s *TaskComplianceService) ReadTaskContent(ctx context.Context, caller types.Caller, taskID string) (types.TaskContentView, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return types.TaskContentView{}, err
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return types.TaskContentView{}, apperrors.NewBadRequestError("task id is required")
+	}
+	facts, err := s.store.TaskMetadataFacts(ctx, caller.TenantID, taskID)
+	if err != nil {
+		return types.TaskContentView{}, normalizeComplianceMiss(err)
+	}
+	window, err := s.store.ActiveComplianceAccess(ctx, caller.TenantID, facts.TaskID, caller.UserID, s.now().UTC())
+	if err != nil {
+		return types.TaskContentView{}, err
+	}
+	if window == nil {
+		return types.TaskContentView{}, apperrors.NewForbiddenError("an active compliance access window is required")
+	}
+	readDetails, err := json.Marshal(map[string]any{"window_id": window.ID})
+	if err != nil {
+		return types.TaskContentView{}, err
+	}
+	if err := s.audited(ctx, &types.AuditLog{
+		TenantID: caller.TenantID, ActorUserID: caller.UserID, ActorRole: string(caller.Role),
+		Action:     types.AuditActionComplianceContentRead,
+		TargetType: "task", TargetID: facts.TaskID, TargetUserID: facts.OwnerID,
+		Outcome: types.AuditOutcomeSuccess,
+		Details: types.JSON(readDetails),
+	}); err != nil {
+		return types.TaskContentView{}, err
+	}
+	messages, err := s.store.ListTaskMessages(ctx, facts.TaskID, 200)
+	if err != nil {
+		return types.TaskContentView{}, err
+	}
+	return types.TaskContentView{TaskID: facts.TaskID, Window: *window, Messages: messages}, nil
+}
+
+// normalizeComplianceMiss maps the store's uniform miss to a uniform 404 and
+// passes everything else through untouched (a 5xx must never masquerade as
+// a miss — B3-F82 convention).
+func normalizeComplianceMiss(err error) error {
+	if errors.Is(err, types.ErrTaskComplianceNotFound) {
+		return apperrors.NewNotFoundError("task not found")
+	}
+	return err
+}
+
+// ErrTaskLegalHold refuses internal deletion lanes under the tenant legal
+// hold (users cannot bypass organizational obligations — Spec story 55).
+var ErrTaskLegalHold = apperrors.NewConflictError("task deletion is blocked by the tenant legal hold")
+
+// AllowsTaskDeletion is the T13 deletion gate (session.TaskDeletionGuard).
+// No policy or hold off → nil (today's flow). Hold on → ErrTaskLegalHold
+// with an audit row; the refusal stands even when its audit write fails
+// (deletion is already denied — the audit is the trail, not the authority).
+// Unlike the audited paths this gate is best-effort on the audit write: a
+// nil audit (mis-assembled deployment) skips the row but still refuses —
+// it never panics and never un-gates the hold.
+func (s *TaskComplianceService) AllowsTaskDeletion(ctx context.Context, tenantID uint64, actorUserID, sessionID string) error {
+	policy, err := s.store.GetTaskPolicy(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if policy == nil || !policy.LegalHold {
+		return nil
+	}
+	if s.audit == nil {
+		return ErrTaskLegalHold
+	}
+	_ = s.audit.Log(ctx, &types.AuditLog{
+		TenantID: tenantID, ActorUserID: actorUserID,
+		Action:     types.AuditActionTaskDeleteDenied,
+		TargetType: "task", TargetID: sessionID,
+		Outcome: types.AuditOutcomeDenied,
+	})
+	return ErrTaskLegalHold
+}
+
+// ErrTaskNotSoftDeleted refuses purging a task the user still sees.
+var ErrTaskNotSoftDeleted = apperrors.NewConflictError("task must be soft-deleted before permanent deletion")
+
+// ErrTaskRetentionActive refuses purging inside the tenant retention window.
+var ErrTaskRetentionActive = apperrors.NewConflictError("task is still inside the tenant retention window")
+
+// PurgeTask is the permanent-deletion lane (admin-only). The check chain is
+// fixed: task exists (uniform 404) → legal hold off → already soft-deleted
+// → past the retention horizon. The authorization audit row is written
+// BEFORE the destructive transaction (fail closed); if the transaction then
+// fails the row remains as the authorization event, never as proof of
+// deletion (the receipt is the proof).
+func (s *TaskComplianceService) PurgeTask(ctx context.Context, caller types.Caller, taskID string) (types.TaskPurgeReceipt, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return types.TaskPurgeReceipt{}, apperrors.NewBadRequestError("task id is required")
+	}
+	facts, err := s.store.TaskMetadataFacts(ctx, caller.TenantID, taskID)
+	if err != nil {
+		return types.TaskPurgeReceipt{}, normalizeComplianceMiss(err)
+	}
+	policy, err := s.store.GetTaskPolicy(ctx, caller.TenantID)
+	if err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	if policy != nil && policy.LegalHold {
+		return types.TaskPurgeReceipt{}, ErrTaskLegalHold
+	}
+	if facts.DeletedAt == nil {
+		return types.TaskPurgeReceipt{}, ErrTaskNotSoftDeleted
+	}
+	now := s.now().UTC()
+	if policy != nil && policy.RetentionDays > 0 && now.Sub(*facts.DeletedAt) < time.Duration(policy.RetentionDays)*24*time.Hour {
+		return types.TaskPurgeReceipt{}, ErrTaskRetentionActive
+	}
+	if err := s.audited(ctx, &types.AuditLog{
+		TenantID: caller.TenantID, ActorUserID: caller.UserID, ActorRole: string(caller.Role),
+		Action:     types.AuditActionTaskPurged,
+		TargetType: "task", TargetID: facts.TaskID, TargetUserID: facts.OwnerID,
+		Outcome: types.AuditOutcomeSuccess,
+	}); err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	if err := s.store.PurgeTask(ctx, caller.TenantID, facts.TaskID); err != nil {
+		return types.TaskPurgeReceipt{}, normalizeComplianceMiss(err)
+	}
+	return types.TaskPurgeReceipt{TaskID: facts.TaskID, PurgedAt: now}, nil
+}

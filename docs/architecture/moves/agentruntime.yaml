@@ -84,6 +84,34 @@ alias_obligations:
   - old_import_path: internal/modelcontext
     passb_task: B-agentruntime
 legacy_files:
+  - path: internal/application/service/agent_security.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: Agent security (application/service)
+    passb_task: B-agentruntime
+  - path: internal/handler/agent_security.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: Agent security (handler)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_chat_turn_claim.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_chat_turn_claim (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_security_cancel.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_run_security_cancel (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_terminal.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_run_terminal (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_security.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_security (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_security_guard.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: agent_security_guard (application/repository)
+    passb_task: B-agentruntime
   - path: internal/application/repository/agent_checkpoint.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Agent checkpoint (application/repository)
@@ -359,6 +387,10 @@ test_commands:
   - "go test -race ./internal/modules/agentruntime/agent/recoverytest -count=1 -v  # mirrors .github/workflows/agent-recovery.yml"
 integration_points:
   routes:
+  - RegisterAgentSecurityRoutes — internal/router/routes_agent_security.go:17
+  - RegisterAgentSecurityRoutes — internal/router/routes_agent_security.go:18
+  - RegisterAgentSecurityRoutes — internal/router/routes_agent_security.go:19
+  - RegisterAgentSecurityRoutes — internal/router/routes_agent_security.go:20
   - RegisterMemoryRoutes — internal/router/routes_memory.go:17
   - RegisterNativeArchiveRoutes — internal/router/routes_native_archive.go:11
   - "agent-run session 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内 /sessions/:id/runs/*)"

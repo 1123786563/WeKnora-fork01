@@ -21,6 +21,7 @@ var (
 	ErrAgentMarketplaceInvalidDecision      = errors.New("invalid agent marketplace review decision")
 	ErrAgentMarketplaceReviewConflict       = errors.New("agent marketplace submission already has a review")
 	ErrAgentMarketplaceVersionAgentMismatch = errors.New("agent marketplace version does not belong to source agent")
+	ErrAgentLicenseIDRequired               = errors.New("agent marketplace license id is required")
 )
 
 const reviewAndPublishAttempts = 5
@@ -33,7 +34,17 @@ type AgentMarketplaceRepository interface {
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
 	GetSubmission(context.Context, uint64, string) (*types.AgentReleaseSubmissionEntity, error)
 	GetReleaseBySubmission(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+	// FindDerivation resolves the adoption lineage of a variant-published
+	// local agent (T32 #62): nil when the agent is not derived from an
+	// adopted Release — original content has no lineage.
+	FindDerivation(context.Context, uint64, string) (*types.AgentForkDerivation, error)
+	// GetLicense returns the deployment license row, nil when unregistered.
+	GetLicense(context.Context, string) (*types.AgentLicenseEntity, error)
+	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
+	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
 	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
+	TransitionListingState(context.Context, uint64, string, string, string, map[string]any) (*types.AgentMarketplaceListingEntity, error)
+	DeprecateRelease(context.Context, uint64, string, string, string) (*types.AgentReleaseEntity, error)
 }
 
 func (r *agentMarketplaceRepository) GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error) {
@@ -138,11 +149,20 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 				return err
 			}
 			if decision.Decision == "approved" {
+				// The redistribution gate is enforced at Submission time
+				// (service resolveSubmissionLineage) and re-checked LIVE at
+				// every lane boundary (public lane SubmitPublicRelease reads
+				// release.LineageLicenseID); this approval deliberately does
+				// NOT re-check it — a flip between submit and approve still
+				// publishes here, and the released row is blocked from the
+				// public lane by the live gate. Approval-time enforcement is
+				// a follow-up enhancement. Pinned by the router test
+				// TestAgentForkLineageLicenseFlipBeforeApprove.
 				var max int
 				if err := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND listing_id = ?", tenantID, submission.ListingID).Select("COALESCE(MAX(release_number), 0)").Scan(&max).Error; err != nil {
 					return err
 				}
-				release = &types.AgentReleaseEntity{ID: uuid.NewString(), TenantID: tenantID, ListingID: submission.ListingID, SubmissionID: submission.ID, AgentVersionID: submission.AgentVersionID, SourceAgentID: submission.SourceAgentID, ReleaseNumber: max + 1, SemanticVersion: submission.SemanticVersion, BundleDigest: submission.BundleDigest, ManifestJSON: submission.ManifestJSON, DependencyLockJSON: submission.DependencyLockJSON, Bundle: append([]byte(nil), submission.Bundle...), PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC()}
+				release = &types.AgentReleaseEntity{ID: uuid.NewString(), TenantID: tenantID, ListingID: submission.ListingID, SubmissionID: submission.ID, AgentVersionID: submission.AgentVersionID, SourceAgentID: submission.SourceAgentID, ReleaseNumber: max + 1, SemanticVersion: submission.SemanticVersion, BundleDigest: submission.BundleDigest, ManifestJSON: submission.ManifestJSON, DependencyLockJSON: submission.DependencyLockJSON, Bundle: append([]byte(nil), submission.Bundle...), IsFork: submission.IsFork, ForkSourceListingID: submission.ForkSourceListingID, ForkSourceReleaseID: submission.ForkSourceReleaseID, ForkNotes: submission.ForkNotes, LineageLicenseID: submission.LineageLicenseID, PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC()}
 				if err := tx.Create(release).Error; err != nil {
 					return err
 				}

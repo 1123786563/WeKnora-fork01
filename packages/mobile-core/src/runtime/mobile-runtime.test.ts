@@ -770,3 +770,31 @@ test('a stream still open when the scope dies stops delivering chunks and settle
   await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
   assert.deepEqual(chunks, ['id: 1\nevent: run.started\n\n'], 'pre-death frames were delivered; the post-death frame never flushes');
 });
+
+test('authorizedEventStream distinguishes an unavailable stream channel from unauthorized', async () => {
+  // 无 authorizedStream 端口（ports() 夹具不提供）：面已授权，仅流通道不可用
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await assert.rejects(
+    runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, () => {}),
+    /RUNTIME_STREAM_UNAVAILABLE/,
+  );
+});
+
+test('revoking the scope aborts an in-flight authorized stream without waiting for the next chunk (R1-F32)', async () => {
+  let aborted = false;
+  const streamPorts = ports(fakeStore(), () => remote());
+  streamPorts.authorizedStream = () => async (input) => {
+    await new Promise<void>((_resolve, reject) => {
+      input.signal?.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')); });
+    });
+  };
+  const streaming = createMobileRuntime(streamPorts);
+  await streaming.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const reading = streaming.authorizedEventStream({ method: 'GET', path: '/api/v1/events' }, () => {});
+  const settled = reading.catch(() => undefined); // 先挂 catch：signOut 触发的 rejection 不得落入 unhandled
+  await new Promise((resolve) => setImmediate(resolve));
+  await streaming.signOut(); // revoke 路径（begin/reserve/dispose 共用）
+  await settled;
+  assert.ok(aborted, 'scope 撤销必须主动 abort 传输 signal，而不是等下一个 chunk 的守卫拒绝');
+});

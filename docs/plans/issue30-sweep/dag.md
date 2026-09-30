@@ -366,20 +366,20 @@ graph TD
 | #49 | T19 | 飞书文档发布端到端 | open | absent | B5 | 1 (#48) | docx 创建/更新零实现 |
 | #50 | T20 | Confluence 页面发布端到端 | open | absent | B5 | 1 (#48) | 写能力零实现 |
 | #51 | T21 | 多操作 Action Plan | open | partial | B5 | 1 (#48) | ActionPlan 实体不存在；计划级失效/恢复未实现 |
-| #52 | T22 | GitHub 个人连接到草稿 PR | open | absent | B4 | 3 (#36,#38,#46) | OAuth/Workspace/git 链路零实现 |
+| #52 | T22 | GitHub 个人连接到草稿 PR | open | verified at local task/evidence level; live provider E2E blocked-env | B4 | 3 (#36,#38,#46) | Delivery Tasks 1–11 are integrated and reviewed; real GitHub provider leg requires unavailable credentials. Keep Issue open; prerequisite Issues #36/#38/#46 remain independently tracked. |
 | #53 | T23 | GitHub 空间连接与团队归因 | open | partial | B5 | 2 (#42,#52) | GitHub App 形态零实现 |
-| #54 | T24 | GitLab 草稿 MR | open | absent | B5 | 1 (#52) | Delivery seam 零实现 |
-| #55 | T25 | 交付部分成功/未知结果/凭据隔离 | open | absent | B6 | 2 (#52,#54) | 步骤化状态机/凭据隔离零实现 |
+| #54 | T24 | GitLab 草稿 MR | open | verified at local task/evidence level; live provider E2E blocked-env | B5 | 1 (#52) | Provider-neutral adapter and local HTTP emulator evidence are integrated/reviewed; real GitLab OAuth/repository E2E is environment-gated. Keep Issue open. |
+| #55 | T25 | 交付部分成功/未知结果/凭据隔离 | open | verified at local task/evidence level; live provider leg blocked-env | B6 | 2 (#52,#54 verified locally) | Task 1–8 implementation/review/validation evidence is recorded in B6; T7 live provider requires unavailable credentials and is not claimed as executed. |
 | #56 | T26 | 可编辑语音转写草稿 | open | partial | B4 | 1 (#36) | 移动端无录音/转写 UI（旧实现已删） |
 | #57 | T27 | Task 内实时语音会话 | open | partial | B5 | 2 (#35,#56) | 无 WebRTC/WS voice 通道 |
 | #58 | T28 | Tenant Catalog 不可变 Release | **closed** | done-evidenced | -（完成） | 0 | 不重新实施；PG 迁移复跑为残余缺口（不阻塞） |
-| #59 | T29 | Adoption/Variant/移动 Available Agent | open | absent | B3 | 1 (#33)（#58 已满足） | Adoption/Variant 零命中 |
-| #60 | T30 | Public Marketplace 审核/跨 Tenant | open | absent | B4 | 1 (#59)（#58 已满足） | Public Marketplace 体系零命中 |
-| #61 | T31 | Upgrade Proposal 与渐进升级 | open | absent | B5 | 2 (#59,#60) | 升级建议零命中 |
+| #59 | T29 | Adoption/Variant/移动 Available Agent | open | verified at local task/evidence level; #33 remains open | B3 | 1 (#33)（#58 已满足） | Adoption/Variant contracts, persistence, lifecycle, and mobile projection are integrated with evidence in `plan-t59.md-report.md`; #33 remains a declared predecessor and is not silently marked complete. |
+| #60 | T30 | Public Marketplace 审核/跨 Tenant | open | verified at local task/evidence level | B4 | 1 (#59 verified locally; #58 已满足） | Review/publish CAS, privacy boundary, cross-tenant adoption, and HTTP evidence are integrated; GitHub Issue remains open. |
+| #61 | T31 | Upgrade Proposal 与渐进升级 | open | verified at local task/evidence level | B5 | 2 (#59,#60 verified locally) | Upgrade proposal lifecycle, reconciliation, routes, and HTTP/SQLite evidence are integrated; PostgreSQL runtime was unavailable; GitHub Issue remains open. |
 | #62 | T32 | Fork lineage/许可证/再发布 | open | absent | B5 | 2 (#59,#60) | Fork 实体与再分发校验不存在 |
-| #63 | T33 | 退役/终止/Listing 生命周期 | open | absent | B6 | 2 (#59,#61) | 四类生命周期操作无路由/接口 |
-| #64 | T34 | Release 安全撤回传播 | open | absent | B6 | 2 (#60,#61) | 撤回状态与准入拦截零实现 |
-| #65 | T35 | Evaluation/隐私指标/Custody | open | absent | B7 | 3 (#60,#63,#64) | 三大机制均 absent |
+| #63 | T33 | 退役/终止/Listing 生命周期 | open | verified at local task/evidence level; Issue remains open | B6 | 2 (#59,#61 verified locally) | T1–T6 review/validation/integration evidence is recorded in B6. The integrated Task2 patch matches the reviewed patch exactly; PostgreSQL runtime is not available. |
+| #64 | T34 | Release 安全撤回传播 | open | partial: Tasks 1–7 and 8A–8B verified/integrated; 8C–8E pending; Task9 pending | B6 | 2 (#60,#61 verified) | Task7 HTTP/container repair has independent review/validation evidence in `evidence/t64-task7-r1/`. Task8 plan/ADR passed plan review R6 and interface audit R4. Task8A is integrated through `6d2ea7998` + `43100052b`; evidence and fix-r1 Spec/Quality PASS are in `evidence/t64-task8-8a/`. Task8B implementation commits `43c77e21d` + R1 fix `17f0006f3` passed independent review and exact-HEAD validation at `ebb439454`; coordination integration is `235f9274d`, `0426c6645`, `d966a6ec4`, `ea3710aa6`, `2e6b8b4ed`. Integrated focused repository/service/database tests, `go build ./...`, and diff check passed at coordination HEAD `2e6b8b4ed`. Evidence: `evidence/t64-task8-8b/`. #64 still blocks #65 until 8C–8E and Task9 are verified and integrated. PostgreSQL migration runtime remains unverified. |
+| #65 | T35 | Evaluation/隐私指标/Custody | open | blocked by incomplete #64 Tasks 7–9; T1–T3 source task reviews/validation pass but are not Issue-verified; T4 not dispatched | B7 | 3 (#60,#63 verified,#64 incomplete) | Keep T65 source work in isolated worktrees until #64 is verified/integrated. Approved Spec §12 adopter error-category metrics also lack immutable Run→Adoption/Release attribution; never infer from raw Task/Run errors. |
 | #66 | T36 | 多 Deployment 切换与降级 | open | partial | B2 | 1 (#32) | 仅单实例存储；无只读降级面 |
 | #67 | T37 | 自托管盲推送/自签名 | open | partial | B4 | 2 (#41,#66) | 仅 Expo/HTTP 网关；无企业 Provider |
 | #68 | T38 | Taro Adapter 复用深 Module | open | partial | B4 | 5 (#34,#35,#36,#38,#46) | mobile-core 仅 Runtime 一模块；两棵小程序树并存 |

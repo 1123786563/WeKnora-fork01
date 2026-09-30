@@ -13,7 +13,7 @@ import type {
   ShelfInvalidationEvent,
 } from './types.ts';
 
-const SUPPORTED: ResourceClassVerdict = { state: 'supported', reason: '' };
+const SUPPORTED: ResourceClassVerdict = Object.freeze({ state: 'supported', reason: '' }); // R1-F36：共享对象冻结
 const RESOURCE_CLASSES: readonly ResourceClass[] = ['agent', 'knowledge', 'connection'];
 
 function httpStatus(error: unknown): number | undefined {
@@ -32,7 +32,9 @@ export function createResourceShelf(ports: ResourceShelfPorts): ResourceShelf {
       let agents = toAgentOptions([]);
       let knowledge: Array<ReturnType<typeof toKnowledgeResource>> = [];
       let connections: Array<ReturnType<typeof toConnectionResource>> = [];
-      let verdicts: Record<ResourceClass, ResourceClassVerdict> = { agent: SUPPORTED, knowledge: SUPPORTED, connection: SUPPORTED };
+      // 装配即复制（R1-F36）：冻结的 SUPPORTED 模板不得被三个 verdict 共享引用。
+      let verdicts: Record<ResourceClass, ResourceClassVerdict> = { agent: { ...SUPPORTED }, knowledge: { ...SUPPORTED }, connection: { ...SUPPORTED } };
+      let browseEpoch = 0;
 
       const notify = (event: ShelfInvalidationEvent): void => {
         for (const listener of [...listeners]) listener(event);
@@ -65,30 +67,42 @@ export function createResourceShelf(ports: ResourceShelfPorts): ResourceShelf {
       const handle: ResourceShelfHandle = {
         async browse(query: ResourceQuery = {}) {
           guard();
+          // 代次（R1-F2）：写共享快照前复验，迟到请求丢弃结果且不触发 authorization-revoked 误报
+          // （UI 层 resources-view 的 generation 只保护页面态，共享快照的保护必须在 shelf 层）。
+          const epoch = ++browseEpoch;
           const [agentResult, knowledgeResult, connectionResult] = await Promise.all([
             loadClass((token) => ports.remote.availableAgents(token)),
             loadClass((token) => ports.remote.knowledgeBases(token)),
             loadClass((token) => ports.remote.connections(token)),
           ]);
           guard(); // 在途期间 scope 已关闭/撤销 → 丢弃迟到结果（spec §5.3 不变量同源）
-          const previous = verdicts;
-          // 失败类必须清空旧投影（resource-presentation.ts:4 冻结规则：撤权后敏感字段立即
-          // 不可见，展示模型从服务端事实重建，不从缓存回填）——forbidden/unavailable 均为空列表。
-          agents = agentResult.ok
-            ? toAgentOptions([...agentResult.value.rows]).filter((option) => !agentResult.value.disabledOwnAgentIds.has(option.id))
-            : [];
-          knowledge = knowledgeResult.ok ? knowledgeResult.value.map((row) => toKnowledgeResource(row)) : [];
-          connections = connectionResult.ok ? connectionResult.value.map((row) => toConnectionResource(row)) : [];
-          verdicts = {
-            agent: agentResult.ok ? SUPPORTED : agentResult.verdict,
-            knowledge: knowledgeResult.ok ? SUPPORTED : knowledgeResult.verdict,
-            connection: connectionResult.ok ? SUPPORTED : connectionResult.verdict,
-          };
-          for (const resourceClass of RESOURCE_CLASSES) {
-            if (verdicts[resourceClass].state === 'forbidden' && previous[resourceClass].state !== 'forbidden') {
-              notify({ type: 'authorization-revoked', resourceClass });
+          if (epoch === browseEpoch) {
+            const previous = verdicts;
+            // 失败类必须清空旧投影（resource-presentation.ts 冻结规则：撤权后敏感字段立即
+            // 不可见，展示模型从服务端事实重建，不从缓存回填）——forbidden/unavailable 均为空列表。
+            agents = agentResult.ok
+              ? toAgentOptions([...agentResult.value.rows]).filter((option) => !agentResult.value.disabledOwnAgentIds.has(option.id))
+              : [];
+            // 脏行过滤（R1-F35）：knowledgeRefForPrompt 不拒空 id，过滤必须在 shelf 层。
+            knowledge = knowledgeResult.ok
+              ? knowledgeResult.value.map((row) => toKnowledgeResource(row)).filter((resource) => resource.id !== '')
+              : [];
+            connections = connectionResult.ok
+              ? connectionResult.value.map((row) => toConnectionResource(row)).filter((connection) => connection.id !== '')
+              : [];
+            verdicts = {
+              agent: agentResult.ok ? { ...SUPPORTED } : agentResult.verdict,
+              knowledge: knowledgeResult.ok ? { ...SUPPORTED } : knowledgeResult.verdict,
+              connection: connectionResult.ok ? { ...SUPPORTED } : connectionResult.verdict,
+            };
+            for (const resourceClass of RESOURCE_CLASSES) {
+              if (verdicts[resourceClass].state === 'forbidden' && previous[resourceClass].state !== 'forbidden') {
+                notify({ type: 'authorization-revoked', resourceClass });
+              }
             }
           }
+          // 迟到分支：以当前（更新）共享快照构造返回页——语义为「你看到的是最新已知状态」，
+          // 与 resources-view 的 latest-wins 一致。
           const keyword = query.keyword?.trim().toLowerCase() ?? '';
           const page: ResourcePage = {
             tenantId: scope.tenantId,

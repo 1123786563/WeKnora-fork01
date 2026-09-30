@@ -331,6 +331,25 @@ func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) (string, 
 	return dest, syntheticVersion
 }
 
+func migrateSQLiteToVersion(repoRoot, dbPath string, version uint) error {
+	sqlDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return err
+	}
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	if err != nil {
+		_ = sqlDB.Close()
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(repoRoot, "migrations", "sqlite"), "sqlite3", driver)
+	if err != nil {
+		_ = sqlDB.Close()
+		return err
+	}
+	defer func() { _, _ = m.Close() }()
+	return m.Migrate(version)
+}
+
 func runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath string, steps int) error {
 	sqlDB, err := sql.Open("sqlite3", dbPath)
 	if err != nil {

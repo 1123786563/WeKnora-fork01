@@ -58,3 +58,31 @@ func TestWorkbenchTaskStateArchiveOwnershipAndIsolation(t *testing.T) {
 	require.ErrorIs(t, store.SetTaskArchived(ctx, 1, "u1", "  ", true, now), agentruntime.ErrNotFound)
 	require.False(t, errors.Is(ErrWorkbenchTaskNotFound, agentruntime.ErrNotFound), "sentinel must stay distinct from ErrNotFound")
 }
+
+// TestWorkbenchTaskStateArchiveLegacySessionBySessionOwner：T14——从未有过
+// run 的旧会话（Legacy Task）由 session 归属者归档/恢复（同身份生命周期）；
+// 他人/异租户依旧 ErrWorkbenchTaskNotFound，不写任何行。
+func TestWorkbenchTaskStateArchiveLegacySessionBySessionOwner(t *testing.T) {
+	db := openRunTestDB(t)
+	seedWorkbenchListFixtures(t, db)
+	store := NewWorkbenchTaskStateStore(db)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
+
+	// s2 属于 u1 且 0 run（seedRunFixtures 未给 s2 加 run）——Legacy Task。
+	require.NoError(t, store.SetTaskArchived(ctx, 1, "u1", "s2", true, now))
+	at := archivedAt(t, db, "s2")
+	require.NotNil(t, at)
+	require.Equal(t, now.UTC(), at.UTC())
+	require.NoError(t, store.SetTaskArchived(ctx, 1, "u1", "s2", false, now))
+	require.Nil(t, archivedAt(t, db, "s2"))
+
+	// s3 属于 u2 且 0 run：他人不可归档；t1 属于异租户 v1：同样拒绝。
+	require.ErrorIs(t, store.SetTaskArchived(ctx, 1, "u1", "s3", true, now), ErrWorkbenchTaskNotFound)
+	require.ErrorIs(t, store.SetTaskArchived(ctx, 2, "v1", "s2", true, now), ErrWorkbenchTaskNotFound)
+	require.Nil(t, archivedAt(t, db, "s3"))
+
+	// 软删除的 session 不再是可归档的任务。
+	require.NoError(t, db.Exec("UPDATE sessions SET deleted_at = ? WHERE id = 's2'", now).Error)
+	require.ErrorIs(t, store.SetTaskArchived(ctx, 1, "u1", "s2", true, now), ErrWorkbenchTaskNotFound)
+}

@@ -193,6 +193,28 @@ const (
 	AuditActionFAQImportFailed    AuditAction = "faq.import_failed"
 )
 
+// T13 (#43) compliance & retention actions. compliance.access_requested /
+// compliance.content_read are the "reasoned, time-limited, audited" trail;
+// task_policy.updated records who changed the retention/hold switches;
+// task.delete_denied is the legal-hold refusal trail; task.purged is the
+// permanent-deletion authorization trail.
+const (
+	AuditActionTaskPolicyUpdated         AuditAction = "task_policy.updated"
+	AuditActionComplianceAccessRequested AuditAction = "compliance.access_requested"
+	AuditActionComplianceContentRead     AuditAction = "compliance.content_read"
+	AuditActionTaskDeleteDenied          AuditAction = "task.delete_denied"
+	AuditActionTaskPurged                AuditAction = "task.purged"
+)
+
+// T34 (#64) agent security revocation actions. release_revoked /
+// dependency_revoked record the governance act (who, why, replacement,
+// in-flight disposition) alongside the append-only revocation ledgers; the
+// rows are written in the SAME transaction as the ledger insert.
+const (
+	AuditActionAgentReleaseRevoked    AuditAction = "agent_security.release_revoked"
+	AuditActionAgentDependencyRevoked AuditAction = "agent_security.dependency_revoked"
+)
+
 // AuditOutcome separates asynchronous acceptance from terminal business
 // results and middleware-level rejections. The UI can therefore avoid
 // presenting a queued operation as already completed.

@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMobileRuntime } from './mobile-runtime.ts';
+import { createInMemoryDeploymentRegistry } from './in-memory-adapters.ts';
 import { createInMemoryResourceRemote, type ResourceRemoteScript } from '../shelf/in-memory-resource-remote.ts';
 import type { ResourceRemote } from '../shelf/ports.ts';
 import type { CredentialStore, RuntimeRemote, StoredCredential } from './ports.ts';
 import type { DeploymentInput } from './types.ts';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
 
 const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
 const OTHER: DeploymentInput = { origin: 'https://other.example.test', label: 'Other' };
@@ -13,6 +20,9 @@ const CAPABILITIES = { protocol_minimum: 2, protocol_maximum: 3 };
 /** 假凭据夹具（非真实凭据）：refresh 单飞轮换后的下一对 token，取值即简报逐字值。 */
 function rotatedAccess(): string { return 'access-2'; }
 function rotatedRefresh(): string { return 'refresh-2'; }
+/** R1-F31 场景：迟到刷新的轮换产物（同样为 *.example.test 保留域测试假凭据，经函数封装避免内联字面量）。 */
+function lateRotatedAccess(): string { return `late-${rotatedAccess()}`; }
+function lateRotatedRefresh(): string { return `late-${rotatedRefresh()}`; }
 
 function fakeStore(initial: Record<string, StoredCredential | undefined> = {}): CredentialStore {
   const values = new Map(Object.entries(initial));
@@ -137,8 +147,7 @@ test('sign-out and deployment changes close the shelf with their reasons', async
   assert.deepEqual(secondEvents, [{ type: 'scope-closed', reason: 'deployment-change' }]);
 });
 
-test('browse retries once through the runtime refresh seam and persists the rotated credential', async () => {
-  const script: ResourceRemoteScript = {
+test('browse retries once through the runtime refresh seam and persists the rotated credential', async () => {  const script: ResourceRemoteScript = {
     agents: [{ id: 'builtin-quick-answer', name: 'Quick Answer', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }],
   };
   script.status = { agents: (token: string) => (token === 'access-1' ? 401 : undefined) };
@@ -157,6 +166,36 @@ test('browse retries once through the runtime refresh seam and persists the rota
   assert.deepEqual(page.agents.map((agent) => agent.id), ['builtin-quick-answer']);
   assert.deepEqual(resource.calls.filter((call) => call.kind === 'agents').map((call) => call.token), ['access-1', 'access-2']);
   assert.equal((await store.read(DEPLOYMENT.origin))?.token, 'access-2', 'the rotated credential must be persisted through the runtime single-flight');
+});
+
+test('a refresh crossing a scope change never writes back the stale credential (R1-F31)', async () => {
+  const refreshGate = deferred<{ access_token: string; refresh_token: string }>();
+  const script: ResourceRemoteScript = {
+    agents: [{ id: 'builtin-quick-answer', name: 'Quick Answer', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }],
+  };
+  script.status = { agents: (token: string) => (token === 'access-1' ? 401 : undefined) };
+  const resource = createInMemoryResourceRemote(script);
+  const store = fakeStore({ [OTHER.origin]: { token: 'other-access', refreshToken: 'other-refresh' } });
+  const registry = createInMemoryDeploymentRegistry();
+  await registry.upsert({ ...DEPLOYMENT });
+  await registry.upsert({ ...OTHER });
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: (origin) => origin === OTHER.origin ? baseRemote() : { ...baseRemote(), refresh: () => refreshGate.promise },
+    clientVersion: 3,
+    deploymentRegistry: registry,
+    resourceShelf: { remoteFor: () => resource },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const staleBrowse = runtime.resourceShelf()!.browse(); // 401 → 刷新在途（挂在 refreshGate）
+  await new Promise((resolve) => setImmediate(resolve)); // 让 401 与 refresh 已发出
+  const snapshot = await runtime.switchDeployment(OTHER.origin); // 刷新在途时切换：epoch 已变
+  assert.equal(snapshot.surface, 'authorized');
+  assert.equal(snapshot.deployment?.origin, OTHER.origin);
+  refreshGate.resolve({ access_token: lateRotatedAccess(), refresh_token: lateRotatedRefresh() }); // 迟到刷新
+  await staleBrowse.catch(() => undefined); // 旧 scope 的 browse 终止（结果丢弃）
+  assert.equal((await store.read(DEPLOYMENT.origin))?.token, 'access-1', '迟到刷新不得写回旧部署凭据');
+  assert.equal((await store.read(OTHER.origin))?.token, 'other-access', '新部署凭据不受旧刷新污染');
 });
 
 test('a server-behind downgrade serves a read-only shelf and an app-behind downgrade opens none', async () => {

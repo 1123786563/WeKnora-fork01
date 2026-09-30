@@ -39,6 +39,13 @@ type OwnedTaskFactsReader interface {
 	ReadTaskFactsForRun(ctx context.Context, tenantID uint64, ownerID, runID string) (repository.WorkbenchTaskFacts, error)
 }
 
+// GrantedRunReader resolves a run for a task-grant holder (Viewer or
+// Collaborator) after the strict owner predicate misses. Nil (not wired)
+// keeps every read owner-only — the fail-closed default.
+type GrantedRunReader interface {
+	GetRunForGrantedReader(ctx context.Context, tenantID uint64, readerID, runID string) (agentruntime.Run, error)
+}
+
 // WorkbenchReadHandler is the ownership boundary for the mobile workbench.
 // Every operation resolves the run through GetOwnedRun before reading a
 // snapshot or event projection.
@@ -47,6 +54,7 @@ type WorkbenchReadHandler struct {
 	snapshots WorkbenchSnapshotReader
 	ingestor  WorkbenchSourceIngestor
 	taskFacts OwnedTaskFactsReader
+	granted   GrantedRunReader
 }
 
 const (
@@ -68,6 +76,15 @@ func NewWorkbenchReadHandler(runs OwnedRunReader, snapshots WorkbenchSnapshotRea
 // snapshot shape.
 func (h *WorkbenchReadHandler) WithTaskFacts(facts OwnedTaskFactsReader) *WorkbenchReadHandler {
 	h.taskFacts = facts
+	return h
+}
+
+// WithGrantedRuns attaches the task-grant fallback for the task detail and
+// snapshot reads (T12): a Viewer/Collaborator grant holder may READ the task
+// while run submission, SSE recovery and source-event ingestion stay
+// owner-only. Nil keeps the strict owner predicate.
+func (h *WorkbenchReadHandler) WithGrantedRuns(reader GrantedRunReader) *WorkbenchReadHandler {
+	h.granted = reader
 	return h
 }
 
@@ -116,38 +133,104 @@ func (h *WorkbenchReadHandler) owned(c *gin.Context) (agentruntime.RunKey, bool)
 	return run.Key, ok
 }
 
+// workbenchCaller resolves the authenticated tenant and actor for the
+// workbench ownership predicates: the request context first, then the gin
+// keys the auth middleware writes in lockstep (middleware/auth_context.go).
+// One shared helper keeps every predicate reading identity the same way so
+// the two surfaces can never drift apart.
+func workbenchCaller(c *gin.Context) (uint64, string) {
+	tenantID, ok := types.TenantIDFromContext(c.Request.Context())
+	if !ok || tenantID == 0 {
+		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
+			tenantID, _ = value.(uint64)
+		}
+	}
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok || userID == "" {
+		if value, exists := c.Get(types.UserIDContextKey.String()); exists {
+			userID, _ = value.(string)
+		}
+	}
+	return tenantID, userID
+}
+
+// strictOwnedRun resolves the strict owner predicate through GetOwnedRun so
+// tenant/owner scoping is enforced by the durable store, not by URL trust.
+// It writes the 500 for storage errors itself (handled=true) and reports
+// miss=true for a plain ErrNotFound WITHOUT touching the response, so each
+// caller decides whether to answer 404 immediately or fall through to a
+// granted reader.
+func strictOwnedRun(
+	c *gin.Context, runs OwnedRunReader, tenantID uint64, ownerID, runID string,
+) (run agentruntime.Run, miss, handled bool) {
+	run, err := runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
+	if errors.Is(err, agentruntime.ErrNotFound) {
+		return agentruntime.Run{}, true, false
+	}
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return agentruntime.Run{}, false, true
+	}
+	return run, false, false
+}
+
 // resolveOwnedRun is the shared ownership predicate for workbench read
 // surfaces. It re-reads the run through GetOwnedRun so tenant/owner scoping
 // is enforced by the durable store, not by URL trust. The full run is
 // returned because artifact surfaces additionally need the session binding.
 func resolveOwnedRun(c *gin.Context, runs OwnedRunReader) (agentruntime.Run, bool) {
-	tenantID, ok := types.TenantIDFromContext(c.Request.Context())
-	if !ok || tenantID == 0 {
-		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
-			tenantID, ok = value.(uint64)
-		}
+	tenantID, ownerID := workbenchCaller(c)
+	if tenantID == 0 || ownerID == "" || runs == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return agentruntime.Run{}, false
 	}
-	ownerID, ownerOK := types.UserIDFromContext(c.Request.Context())
-	if !ownerOK || ownerID == "" {
-		if value, exists := c.Get(types.UserIDContextKey.String()); exists {
-			ownerID, ownerOK = value.(string)
-		}
+	run, miss, handled := strictOwnedRun(c, runs, tenantID, ownerID, strings.TrimSpace(c.Param("run_id")))
+	if handled {
+		return agentruntime.Run{}, false
 	}
-	if !ok || !ownerOK || tenantID == 0 || ownerID == "" || runs == nil {
+	if miss {
+		c.AbortWithStatus(http.StatusNotFound)
+		return agentruntime.Run{}, false
+	}
+	return run, true
+}
+
+// resolveReadableRun is the read-only ownership predicate: the strict owner
+// first, then — only when a granted reader is wired — the task-grant
+// fallback for Viewer/Collaborator holders. Write surfaces (source-event
+// ingestion, SSE recovery) keep resolveOwnedRun directly. A missing identity
+// aborts 401 and a storage error aborts 500 exactly like resolveOwnedRun;
+// the 404 is written only after BOTH paths miss, because gin commits the
+// status header on AbortWithStatus — an owner-miss 404 written before the
+// fallback could never be overridden by the grantee's 200 (or a 500).
+func (h *WorkbenchReadHandler) resolveReadableRun(c *gin.Context) (agentruntime.Run, bool) {
+	tenantID, readerID := workbenchCaller(c)
+	if tenantID == 0 || readerID == "" || h.runs == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return agentruntime.Run{}, false
 	}
 	runID := strings.TrimSpace(c.Param("run_id"))
-	run, err := runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
-	if errors.Is(err, agentruntime.ErrNotFound) {
-		c.AbortWithStatus(http.StatusNotFound)
+	run, miss, handled := strictOwnedRun(c, h.runs, tenantID, readerID, runID)
+	if handled {
 		return agentruntime.Run{}, false
 	}
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return agentruntime.Run{}, false
+	if !miss {
+		return run, true
 	}
-	return run, true
+	// The strict owner predicate missed. Engage the task-grant fallback only
+	// when a granted reader is wired: nil keeps every read owner-only.
+	if h.granted != nil {
+		grantedRun, grantedErr := h.granted.GetRunForGrantedReader(c.Request.Context(), tenantID, readerID, runID)
+		if grantedErr != nil && !errors.Is(grantedErr, agentruntime.ErrNotFound) {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": grantedErr.Error()})
+			return agentruntime.Run{}, false
+		}
+		if grantedErr == nil {
+			return grantedRun, true
+		}
+	}
+	c.AbortWithStatus(http.StatusNotFound)
+	return agentruntime.Run{}, false
 }
 
 func writeWorkbenchJSON(c *gin.Context, value any) {
@@ -155,11 +238,11 @@ func writeWorkbenchJSON(c *gin.Context, value any) {
 }
 
 func (h *WorkbenchReadHandler) GetWorkbenchExecution(c *gin.Context) {
-	key, ok := h.owned(c)
+	run, ok := h.resolveReadableRun(c)
 	if !ok || h.snapshots == nil {
 		return
 	}
-	snapshot, err := h.snapshots.ReadRunSnapshot(c.Request.Context(), key)
+	snapshot, err := h.snapshots.ReadRunSnapshot(c.Request.Context(), run.Key)
 	if err != nil {
 		writeWorkbenchError(c, err)
 		return
@@ -168,7 +251,7 @@ func (h *WorkbenchReadHandler) GetWorkbenchExecution(c *gin.Context) {
 }
 
 func (h *WorkbenchReadHandler) GetWorkbenchSnapshot(c *gin.Context) {
-	run, ok := resolveOwnedRun(c, h.runs)
+	run, ok := h.resolveReadableRun(c)
 	if !ok || h.snapshots == nil {
 		return
 	}
@@ -178,7 +261,10 @@ func (h *WorkbenchReadHandler) GetWorkbenchSnapshot(c *gin.Context) {
 		return
 	}
 	if h.taskFacts != nil {
-		facts, factsErr := h.taskFacts.ReadTaskFactsForRun(c.Request.Context(), run.Key.TenantID, run.Owner, run.Key.RunID)
+		// Facts are scoped by the business owner (agent_runs.owner_id). run.Owner
+		// is the lease owner: empty once settled, a worker id while leased — it
+		// never matches the facts guard and would 404 every request.
+		facts, factsErr := h.taskFacts.ReadTaskFactsForRun(c.Request.Context(), run.Key.TenantID, run.UserID, run.Key.RunID)
 		if factsErr != nil {
 			writeWorkbenchError(c, factsErr)
 			return

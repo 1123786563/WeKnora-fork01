@@ -115,6 +115,22 @@ func (f *marketplaceRepoFake) GetListing(_ context.Context, _ uint64, id string)
 	return &row, nil
 }
 
+func (f *marketplaceRepoFake) FindDerivation(context.Context, uint64, string) (*types.AgentForkDerivation, error) {
+	return nil, nil
+}
+
+func (f *marketplaceRepoFake) GetLicense(context.Context, string) (*types.AgentLicenseEntity, error) {
+	return nil, nil
+}
+
+func (f *marketplaceRepoFake) UpsertLicense(_ context.Context, license *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error) {
+	return license, nil
+}
+
+func (f *marketplaceRepoFake) ListLicenses(context.Context) ([]types.AgentLicenseEntity, error) {
+	return nil, nil
+}
+
 func marketplaceTestSnapshot() types.AgentVersionSnapshot {
 	return types.AgentVersionSnapshot{AgentVersionView: types.AgentVersionView{ID: "version-1", AgentID: "agent-1", VersionNumber: 1, SourceSHA256: "source-digest"}, Agent: &types.CustomAgent{ID: "agent-1", Config: types.CustomAgentConfig{SystemPrompt: "help", SelectedSkills: []string{"skill-a"}, Subagents: []string{"agent-a"}}}}
 }
@@ -249,6 +265,22 @@ func (f *concurrentApprovalRepo) GetListing(_ context.Context, _ uint64, id stri
 	}
 	row := f.listing
 	return &row, nil
+}
+
+func (f *concurrentApprovalRepo) FindDerivation(context.Context, uint64, string) (*types.AgentForkDerivation, error) {
+	return nil, nil
+}
+
+func (f *concurrentApprovalRepo) GetLicense(context.Context, string) (*types.AgentLicenseEntity, error) {
+	return nil, nil
+}
+
+func (f *concurrentApprovalRepo) UpsertLicense(_ context.Context, license *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error) {
+	return license, nil
+}
+
+func (f *concurrentApprovalRepo) ListLicenses(context.Context) ([]types.AgentLicenseEntity, error) {
+	return nil, nil
 }
 
 func (f *concurrentApprovalRepo) ReviewAndPublishTx(_ context.Context, _ uint64, _, _, digest string, decision types.AgentReleaseReviewDecision) (*types.AgentReleaseReviewEntity, *types.AgentReleaseEntity, error) {

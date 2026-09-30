@@ -260,6 +260,7 @@ type MobileNotificationConfig struct {
 	Provider    string        `yaml:"provider" json:"provider"`
 	ProviderURL string        `yaml:"provider_url" json:"provider_url"`
 	AccessToken string        `yaml:"access_token" json:"-"`
+	Payload     string        `yaml:"payload" json:"payload"`
 	RetryBase   time.Duration `yaml:"retry_base" json:"retry_base"`
 	RetryMax    time.Duration `yaml:"retry_max" json:"retry_max"`
 }
@@ -1092,6 +1093,9 @@ func applyMobileNotificationEnvOverrides(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN")); value != "" {
 		cfg.MobileNotification.AccessToken = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PAYLOAD")); value != "" {
+		cfg.MobileNotification.Payload = value
 	}
 	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_RETRY_BASE")); value != "" {
 		if d, err := time.ParseDuration(value); err == nil && d > 0 {

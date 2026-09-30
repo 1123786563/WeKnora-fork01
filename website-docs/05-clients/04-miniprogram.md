@@ -1,108 +1,37 @@
-# 微信小程序客户端
+# 微信小程序客户端（Taro）
 
-微信小程序提供移动端知识库问答和网页导入入口，连接已有 WeKnora 服务。源码位于 `miniprogram/`。使用时先配置 API 地址和 API Key，再选择知识库：
+微信小程序客户端源码位于 `apps/miniprogram`，基于 Taro 4.2.1 + React 18，覆盖 home/chat/auth/knowledge/execution/account 六个域。它与 Expo 原生 App（`apps/mobile`）共享同一套业务深 Module：
 
-- 将网页 URL 导入所选知识库。
-- 围绕所选知识库发起问答。
+- `@weknora/mobile-core`：Mobile Runtime（会话编排）、Task Office（任务列表/详情/发起/审批收件箱）、Resource Shelf（Agent/知识库/连接）、Task Material（产物/预览/终端）；
+- `@weknora/api-client`：`mobile/*` remote Adapter（复用既有 ClientRequest 通道，不新建 HTTP client）；
+- `@weknora/contracts` / `@weknora/domain`：wire 契约与纯领域策略。
 
-## 后端地址与认证配置
+小程序只提供平台 Adapter：`src/platform/transport.ts`（wx.request/uploadFile 的 HTTP/SSE 传输）、`src/platform/credential-store.ts`（本地存储凭据仓——只有 MobileRuntime 一个写者）、`src/platform/authorized-channels.ts`（授权 REST/SSE 通道与免凭据 blob 抓取）、`src/platform/intent-log.ts`（耐久任务意图）。组合根在 `src/services/runtime.ts`（MobileRuntime 装配）与 `src/services/mobile-office.ts`（深模块记忆化工厂）。
 
-小程序**不在代码中硬编码后端地址**，一切连接信息由用户在「Settings」页填写，存储于 `wx.setStorageSync` 的本地存储键 `weknora_settings` 中，结构包含三个字段：
+## 迁移记录（replace-dont-layer）
 
-```js
-{
-  baseUrl: "http://localhost:8080",   // app.js onLaunch 写入的默认值
-  apiKey: "",
-  selectedKnowledgeBaseId: ""
-}
-```
+仓库根原有的原生微信小程序 `miniprogram/`（无框架、API Key 直连、仅知识库问答）已于本迁移中**整体删除**：Taro 编排器经同一 Task/Resource/Material Interface 覆盖其能力后，旧树按「replace-don't-layer」退出（见 `docs/specs/2026-09-20-mobile-module-seams.md` §14）。删除的门槛由 `apps/miniprogram/tests/orchestrator.test.mjs` 长期守卫：旧树不得复活、workspace 恰一个 miniprogram 条目、存续编排器必须依赖 `@weknora/mobile-core`。旧的 `tests/miniprogram/*.test.js` 白盒测试随旧树一并退出，其行为由 mobile-core Interface 级测试与 `apps/miniprogram/tests/office-assembly.test.mjs` 场景测试承接。
 
-- **默认值**：`miniprogram/app.js` 在 `onLaunch` 中若发现本地无设置，会写入默认 `baseUrl: "http://localhost:8080"`、空 `apiKey`。默认值仅便于本地开发，实际使用必须在 Settings 页改为真实地址。
-- **读写与规范化**：`miniprogram/utils/config.js` 提供 `getSettings()` / `saveSettings()`，并通过 `normalizeBaseUrl()` 去除首尾空白与末尾 `/`。
-- **认证方式为 API Key**：`miniprogram/utils/request.js` 中所有请求统一携带请求头：
-  - `X-API-Key: <用户填写的 API Key>`（来自 WeKnora 租户设置页，形如 `sk-...`）；
-  - `X-Request-ID: mp-<时间戳>-<随机串>`（便于服务端追踪）；
-  - `Content-Type: application/json`。
-- **前置校验**：`baseUrl` 或 `apiKey` 任一缺失时，请求会直接以错误 Promise 拒绝（"Please configure the WeKnora API base URL / API key first."）；`pages/index/index.js` 的 `onShow` 也会据此显示引导用户去 Settings 页的提示。
-- **AppID 配置**：微信小程序 AppID 不放在共享的 `project.config.json` 中，而是复制 `miniprogram/project.private.config.json.example` 为 `project.private.config.json` 并填入真实 AppID（示例文件内容为 `{"appid": "your-wechat-mini-program-appid"}`）。
+## 认证与连接
 
-调用到的后端接口（均定义在 `miniprogram/utils/request.js`）：
+- 后端地址来自构建期注入的 `__API_ORIGIN__`（见 `config/index.ts` 与 `.env.example`）；host 大小写归一化后作为唯一会话身份键。
+- 登录走 MobileRuntime（邮箱+密码，Bearer + refresh 单飞轮换）；凭据只存于本机 storage 的 `wk:auth:<origin>` 键，**只有 Runtime 一个写者**，UI 与快照视图永不包含 token。
+- 切换工作空间 = `MobileRuntime.activateTenant`（服务端重新签发并复核身份）；登出撤销本地 scope 与私有缓存，远端吊销尽力而为。
 
-| 函数 | 方法与路径 |
-| --- | --- |
-| `listKnowledgeBases()` | `GET /api/v1/knowledge-bases` |
-| `createKnowledgeFromURL(kbId, url, enableMultimodel)` | `POST /api/v1/knowledge-bases/{kbId}/knowledge/url` |
-| `createSession(kbId)` | `POST /api/v1/sessions` |
-| `knowledgeChat(sessionId, query, kbId)` | `POST /api/v1/knowledge-chat/{sessionId}` |
-
-## 中英文与本地设置
-
-设置页可选择中文或 English，默认中文；locale 以 zh/en 保存在本地设置。切换后页面文案、导航标题和底部 tab 标签立即更新，重启仍保留选择。词条集中在 `utils/i18n.js`，新增页面应复用该模块。
-
-在微信开发者工具中复制 project.private.config.json.example 为 project.private.config.json 并填写自己的 AppID；共享 project.config.json 不固定 AppID。聊天客户端目前解析请求完成后的 SSE 文本并累计 answer 片段，不代表小程序已实现逐块实时传输。正式发布需把 API 域名加入 request 合法域名。
-
-## 构建与发布流程
-
-小程序无需编译步骤（原生开发、无构建工具链），直接用微信开发者工具（WeChat DevTools）打开即可：
-
-1. **导入项目**：在微信开发者工具中选择「导入项目」，目录指向仓库的 `miniprogram/`。工具会读取 `project.config.json`（项目名 "WeKnora Mini Program"）。
-2. **配置 AppID**：复制 `miniprogram/project.private.config.json.example` 为 `project.private.config.json`，将 `appid` 替换为实际小程序 AppID。共享的 `project.config.json` 不保存 AppID；`project.private.config.json` 属于个人私有配置，不应提交。
-3. **配置后端连接**：运行后进入 **Settings** tab，填写 API Base URL（如 `https://weknora.example.com`）与从 WeKnora 租户设置页获取的 API Key，保存。
-4. **本地调试注意**：`project.config.json` 开启了 `urlCheck: true`，开发者工具默认会拦截 `localhost` 等非合法域名请求。本地测试可在 DevTools 中勾选「不校验合法域名」，或通过 HTTPS 开发域名暴露 WeKnora 服务。
-5. **发布**：正式发布前，需在微信公众平台的小程序管理后台，把 WeKnora API 域名（必须为 HTTPS）加入 request 合法域名（request 域名白名单）；随后在开发者工具中点击「上传」提交代码，再在管理后台提交审核并发布。
-
-### 测试
-
-`miniprogram/package.json` 定义了唯一脚本：
+## 本地开发与测试
 
 ```bash
-cd miniprogram
-npm test    # 实际执行 node --test ../tests/miniprogram/*.test.js
+pnpm install
+pnpm --filter @weknora/miniprogram run dev:weapp    # 微信开发者工具导入 dist/
+pnpm --filter @weknora/miniprogram run test         # node --experimental-transform-types --test tests/*.test.mjs
+pnpm --filter @weknora/miniprogram run typecheck
+pnpm --filter @weknora/miniprogram run tokens:check
 ```
 
-即使用 Node.js 内置 test runner 运行仓库 `tests/miniprogram/miniprogram.test.js` 中的单元测试（覆盖 `utils/` 下的纯函数逻辑），无需安装任何依赖。
+测试在 Node 内以契约级 Taro 替身（`tests/helpers/taro-stub.mjs`）装配真实源码：`tests/assembly.test.mjs` 验证 Runtime 编排（登录恢复/401 单飞刷新/迟到丢弃/SSE 装配），`tests/office-assembly.test.mjs` 在最高稳定 Interface 上跑关键 scenario（home 聚合/列表分页/耐久发起/详情快照+SSE/审批四态/资源三态/材料预览）。真实后端集成证据为 opt-in：设置 `WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD`（可选 `WEKNORA_MOBILE_TEST_START_TASK=1`）后运行 `tests/integration/miniprogram-office-integration.test.mjs`。
 
-## 实现参考
+## 边界与诚实声明
 
-### 技术栈
-
-该客户端是**原生微信小程序**（native Mini Program），未使用 Taro / uni-app / mpvue 等跨端框架，也没有任何 npm 运行时依赖：
-
-- `miniprogram/app.js` — 标准的 `App({...})` 入口，`onLaunch` 时向本地存储写入默认设置；
-- `miniprogram/app.json` — 标准小程序全局配置（`pages`、`window`、`tabBar`）；
-- `miniprogram/app.wxss` — 全局样式；页面均为 `js / wxml / wxss / json` 四件套；
-- `miniprogram/package.json` — 包名 `weknora-miniprogram`（version `0.1.0`），`description` 为 "WeChat Mini Program plugin for WeKnora"，**没有 `dependencies`**，仅有一个测试脚本（见下文「测试」）；
-- `miniprogram/project.config.json` — `compileType: "miniprogram"`，`libVersion: "latest"`（基础库使用最新版），编译选项开启 `es6`、`enhance`、`postcss`、`minified`，并开启 `urlCheck: true`（合法域名校验）。该文件不包含 `appid` 字段，AppID 通过私有配置文件提供（见「构建与发布」）。
-
-全局窗口样式：导航栏标题 `WeKnora`，背景色 `#0d3b2a`（深绿），文字白色。
-
-### 页面清单
-
-`miniprogram/app.json` 中注册了 3 个页面，且三者同时构成底部 `tabBar`（选中色 `#07c05f`）：
-
-| 页面路径 | 名称（tabBar 文案） | 功能 |
-| --- | --- | --- |
-| `pages/index/index` | Knowledge（知识库） | 首页。检测是否已配置 baseUrl / API Key，未配置时提示并可一键跳转 Settings；调用 `GET /api/v1/knowledge-bases` 加载知识库列表，通过 `picker` 或列表点选知识库（选择结果持久化到本地存储）；输入网页 URL 后调用 `POST /api/v1/knowledge-bases/{id}/knowledge/url` 将该 URL 导入选中知识库（`enable_multimodel` 固定为 `false`） |
-| `pages/chat/chat` | Chat（问答） | 知识问答页。首次提问时通过 `POST /api/v1/sessions` 懒创建会话（携带选中的 `knowledge_base_id`），随后调用 `POST /api/v1/knowledge-chat/{sessionId}` 提问；返回体为 SSE 文本，客户端用 `utils/sse.js` 解析并拼接 `response_type === "answer"` 的分片后整体展示（解析失败则回退展示原始响应） |
-| `pages/settings/settings` | Settings（设置） | 连接配置页。填写 API Base URL 与 API Key（密码输入框），保存到本地存储 `weknora_settings` |
-
-### utils/ 工具模块
-
-| 文件 | 职责 |
-| --- | --- |
-| `miniprogram/utils/config.js` | 设置的持久化层：定义存储键 `STORAGE_KEY = "weknora_settings"`，提供 `getSettings()`、`saveSettings()`（合并式更新）与 `normalizeBaseUrl()`（trim 并去除末尾斜杠） |
-| `miniprogram/utils/request.js` | 基于 `wx.request` 的 Promise 化 HTTP 封装：拼接 `baseUrl + path`、注入 `X-API-Key` / `X-Request-ID` 头、统一 2xx 判定与错误消息提取（优先 `error.message`，其次 `message`，兜底 `HTTP <status>`）；并导出上表 4 个业务 API 函数 |
-| `miniprogram/utils/sse.js` | Server-Sent Events 文本解析器：`parseSSE(raw)` 按空行切分事件块、解析 `event:` / `data:` 行；`collectAnswerFromSSE(raw)` 将各事件的 `data` 按 JSON 解析并累加 `response_type === "answer"` 的 `content`，得到最终答案文本。注意小程序端**不做流式渲染**，而是等 `wx.request` 拿到完整 SSE 文本后一次性解析展示 |
-
-### 数据流概览
-
-```mermaid
-flowchart LR
-    S["Settings 页<br/>(baseUrl + API Key)"] -->|"wx.setStorageSync(weknora_settings)"| C["utils/config.js"]
-    K["Knowledge 页<br/>(pages/index)"] -->|"listKnowledgeBases / createKnowledgeFromURL"| R["utils/request.js<br/>(X-API-Key 头)"]
-    Q["Chat 页<br/>(pages/chat)"] -->|"createSession / knowledgeChat"| R
-    R -->|"wx.request"| B["WeKnora 后端<br/>/api/v1/*"]
-    B -->|"SSE 文本"| P["utils/sse.js<br/>collectAnswerFromSSE"]
-    P --> Q
-    C --> R
-```
+- steer/cancel 命令暂经授权 API 直发（统一 Task 意图通道属后续 Issue）；审批页在 wire 提供动作详情前仅支持安全拒绝。
+- 小程序不执行 HTML/脚本/终端输入；材料下载以短时效签名链接提供。
+- 支付通道未接入；订单与权益页如实展示服务端状态。

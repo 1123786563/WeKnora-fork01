@@ -1,8 +1,39 @@
-import { leaseActive } from '../runtime/scope-lease.ts';
+import {
+  createInMemorySubmissionStore,
+  createSubmissionCoordinator,
+  evaluateSubmitReadiness,
+  inputDigest,
+  toStartInput,
+  SubmissionConflictError,
+  type NewTaskDraft,
+  type SubmissionEntry,
+  type SubmissionScope,
+  type SubmissionStore,
+  type SubmissionTransport,
+  type TaskAttachmentRef,
+} from '@weknora/domain/mobile';
+import { leaseActive, leaseScopeOf } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
+import type { OfflineGate } from '../offline/offline-gate.ts';
+import { createAttentionDecider } from './attention-inbox.ts';
+import type { AttentionDecisionInput, AttentionDecisionReceipt, InboxView, InteractionBackendPort } from './attention-inbox.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
+import { createTaskBudgetOps } from './task-budget.ts';
+import type { TaskBudgetBackendPort, TaskBudgetExtendInput, TaskBudgetExtendReceipt, TaskBudgetFacts } from './task-budget.ts';
+import { legacyTaskGates } from './legacy-tasks.ts';
+import type {
+  LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
+  LegacyTaskCard, LegacyTaskListPage,
+} from './legacy-tasks.ts';
+// T15 追加区（#45）：知识问答端口与回合类型。
+import type { KnowledgeQABackendPort, KnowledgeQATurn } from './knowledge-qa.ts';
 import { createTaskDetail } from './task-detail.ts';
-import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
+import type { TaskCommandPort, TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
+import { TaskOfficeError } from './task-office-errors.ts';
+import type { AttentionState } from './task-office-errors.ts';
+
+export { TaskOfficeError } from './task-office-errors.ts';
+export type { AttentionState, TaskOfficeErrorCode } from './task-office-errors.ts';
 
 /**
  * Task Office 深模块（module-seams §5）——T04 交付读侧与归档生命周期：
@@ -15,7 +46,6 @@ import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './t
  * open(taskId, runId) 已由 T05（#35）交付详情句柄；start(goal) 属 #36。
  */
 
-export type AttentionState = 'none' | 'required';
 export type TaskStatusFilter = 'running' | 'waiting_user' | 'succeeded' | 'failed' | 'canceled';
 
 export interface TaskCard {
@@ -86,11 +116,57 @@ export interface TaskBackendListInput {
   limit?: number;
 }
 
+/** T06 Start wire 输入：七字段冻结（与 api-client StartExecutionInput / domain MobileStartInput 逐字一致）。 */
+export interface TaskBackendStartInput {
+  request_id: string;
+  session_id: string;
+  agent_id: string;
+  target_id: string;
+  workspace_ref: string;
+  text: string;
+  budget_upper: number;
+}
+
+export interface TaskBackendStartAck {
+  run_id: string;
+  request_id: string;
+  status: string;
+}
+
+export interface TaskBackendLookup {
+  state: 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown';
+  run_id?: string;
+  reason?: string;
+}
+
+/** 一次用户目标的完整形态：附件/知识只参与就绪裁决与草稿，绝不进入 Start body。 */
+export interface TaskOfficeGoal {
+  text: string;
+  agentId: string;
+  budgetUpper: number;
+  knowledgeIds?: string[];
+  attachments?: TaskAttachmentRef[];
+}
+
+/** module-seams §5.2：start(goal) 持久化意图并返回 TaskStartReceipt。 */
+export interface TaskStartReceipt {
+  requestId: string;
+  phase: SubmissionEntry['phase'];
+  runId?: string;
+  dispatched: boolean;
+}
+
 export interface TaskBackendPort {
   overview(): Promise<TaskBackendOverview>;
   list(input: TaskBackendListInput): Promise<TaskBackendPage>;
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
+  /** T06：一个初始目标创建 Task 前的目标会话（taskId = sessionId，ADR-0004）。 */
+  createSession(input: { title: string }): Promise<{ sessionId: string }>;
+  /** T06：持久幂等 Start（POST /api/v1/workbench/executions；七字段 wire）。 */
+  start(input: TaskBackendStartInput): Promise<TaskBackendStartAck>;
+  /** T06：request 对账（GET /api/v1/workbench/executions/requests/:request_id）。 */
+  lookup(requestId: string): Promise<TaskBackendLookup>;
 }
 
 export interface TaskOfficePorts {
@@ -100,22 +176,32 @@ export interface TaskOfficePorts {
   detail?: TaskDetailBackendPort;
   /** 持久化投影存储（App 重启恢复）；缺省为 office 内共享的 in-memory store。 */
   store?: TaskProjectionStore;
-}
-
-export type TaskOfficeErrorCode =
-  | 'TASK_OFFICE_SCOPE_CHANGED'
-  | 'TASK_OFFICE_SUPERSEDED'
-  | 'TASK_OFFICE_NO_ACTIVE_QUERY'
-  | 'TASK_OFFICE_INVALID_INPUT'
-  | 'TASK_OFFICE_BACKEND'
-  | 'TASK_OFFICE_DETAIL_UNAVAILABLE'
-  | 'TASK_OFFICE_DETAIL_CLOSED';
-
-export class TaskOfficeError extends Error {
-  constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {
-    super(code, options);
-    this.name = 'TaskOfficeError';
-  }
+  /** T06 进程内提交存储（domain SubmissionStore 的同步契约：save 失败必须同步抛出且不发送）；
+   *  缺省 office 内 in-memory。不得注入异步实现——耐久层是下面的 intentLog。 */
+  submissionStore?: SubmissionStore;
+  /** T06 耐久意图日志：office 在 Start POST 前 await save；重入/重启恢复时 load/listScope
+   *  复用原 sessionId 与 goal。缺省 office 内 in-memory（进程内）——持久化是组合根的显式决策。 */
+  intentLog?: SubmissionIntentLog;
+  /** T06：一次用户意图的新 request_id 生成器；缺省 crypto.randomUUID（平台无实现时必须显式注入）。 */
+  newRequestId?: () => string;
+  /** T08: 类型化交互端口（Attention Inbox 读 + 决定）。缺失时 inbox()/decide() fail closed。 */
+  interactions?: InteractionBackendPort;
+  /** T07 干预通道（steer/queue_next/cancel）：注入后 open() 返回的句柄具备 act()/flushQueuedIntents()；
+   *  缺失时句柄的写意图 fail closed（TASK_OFFICE_COMMAND_UNAVAILABLE）。 */
+  commands?: TaskCommandPort;
+  /** T10（#40）AC3 收口（final review）：新意图 start 的首笔网络派发（createSession）之前
+   *  经 Offline Gate 结构化拒绝（OFFLINE_ACTION_BLOCKED:run，零后端派发）——guardTaskBackend
+   *  只拦 Start POST，createSession 是它未拦截的前置调用，离线时会以 transport 错误伪装成
+   *  TASK_OFFICE_BACKEND。缺省无门（端口级 guard 仍是组合根契约，此处为纵深防御的第一道）。 */
+  gate?: OfflineGate;
+  /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
+  legacy?: LegacyTaskBackendPort;
+  /** T09（#39）预算端口：四数字读 + 授权扩额。缺失时 budget()/extendBudget()
+   *  fail closed（TASK_OFFICE_BUDGET_UNAVAILABLE）——预算扩展归 Task Office 所有
+   *  （module-seams §5.1），幂等键由 office 内 task-budget 深模块持有。 */
+  budget?: TaskBudgetBackendPort;
+  /** T15 追加区（#45）知识问答端口；缺失时 askKnowledge() fail closed（TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE）。 */
+  knowledgeQA?: KnowledgeQABackendPort;
 }
 
 export interface TaskOffice {
@@ -124,11 +210,60 @@ export interface TaskOffice {
   moreTasks(): Promise<TaskListPage>;
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
+  /** T08: 收件箱读——本人全部待处理交互（跨 run、含决定上下文）。 */
+  inbox(): Promise<InboxView>;
+  /** T08: 类型化决定——冻结 decision_id 幂等重放；receipt 如实区分 recorded / delivery-unknown / superseded / gone。 */
+  decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt>;
+  /** T09（#39）：一个 Task 的预算四数字（预计/已用/预占/剩余，根行聚合含委派 Run）。 */
+  budget(taskId: string): Promise<TaskBudgetFacts>;
+  /** T09（#39）：授权扩额（幂等键模块内保持，失败重试同键）；receipt 携带本次唤醒的 run 数。 */
+  extendBudget(input: TaskBudgetExtendInput): Promise<TaskBudgetExtendReceipt>;
   open(input: { taskId: string; runId: string }): TaskHandle;
+  start(goal: TaskOfficeGoal, options?: { requestId?: string }): Promise<TaskStartReceipt>;
+  reconcilePending(): Promise<TaskStartReceipt[]>;
+  /** T14（#44）追加区：Legacy Task 读投影与普通追问。history 的分页参数（B3-F24）透传适配层。 */
+  legacyTasks(query: { search?: string; archived?: boolean; limit?: number }): Promise<LegacyTaskListPage>;
+  moreLegacyTasks(): Promise<LegacyTaskListPage>;
+  legacyHistory(taskId: string, options?: { limit?: number; before?: string }): Promise<LegacyMessage[]>;
+  followUp(input: LegacyFollowUpInput): Promise<void>;
+  /** T15 追加区（#45）：一次知识问答回合。无 sessionId 时先创建目标会话（快速问题也是 Task，ADR-0004），
+   *  同一 Task 的追问传入原 sessionId（绝不新建 session）。答案携带版本/时间/三类证据。 */
+  askKnowledge(input: { question: string; sessionId?: string; knowledgeBaseIds?: string[]; signal?: AbortSignal }): Promise<KnowledgeQATurn>;
+}
+
+/** T06 耐久意图记录：重启后用原 session 与原 goal 重建 digest 一致的 Start 输入。 */
+export interface SubmissionIntentRecord {
+  requestId: string;
+  sessionId: string;
+  goal: TaskOfficeGoal;
+  scope: SubmissionScope;
+  persistedAt: string;
+}
+
+/** 耐久意图日志（office await；RN SecureStore 等异步持久层的忠实契约）。 */
+export interface SubmissionIntentLog {
+  save(record: SubmissionIntentRecord): Promise<void>;
+  load(requestId: string): Promise<SubmissionIntentRecord | undefined>;
+  listScope(scope: SubmissionScope): Promise<SubmissionIntentRecord[]>;
+  /** bound/rejected 后清理；不实现则记录留存（reconcile 幂等无害，仅列表增长）。 */
+  remove?(requestId: string): Promise<void>;
+}
+
+export function createInMemoryIntentLog(): SubmissionIntentLog {
+  const records = new Map<string, SubmissionIntentRecord>();
+  const sameScope = (a: SubmissionScope, b: SubmissionScope): boolean => a.origin === b.origin && a.tenantID === b.tenantID && a.userID === b.userID;
+  return {
+    async save(record) { records.set(record.requestId, record); },
+    async load(requestId) { return records.get(requestId); },
+    async listScope(scope) { return [...records.values()].filter((record) => sameScope(record.scope, scope)); },
+    async remove(requestId) { records.delete(requestId); },
+  };
 }
 
 const searchMaxLen = 200;
 const statusFilters: ReadonlySet<TaskStatusFilter> = new Set(['running', 'waiting_user', 'succeeded', 'failed', 'canceled']);
+const QUESTION_MAX_LEN = 8000; // legacy followUp 与 askKnowledge 共用的提问长度上限（R1-F8）
+const SESSION_TITLE_MAX_LEN = 60; // 目标会话标题截断（start 与 askKnowledge 共用）（R1-F8）
 
 function normalizeQuery(query: TaskOfficeQuery): TaskBackendListInput {
   const search = typeof query.search === 'string' ? query.search.trim().replace(/\s+/g, ' ').slice(0, searchMaxLen) : '';
@@ -156,6 +291,113 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
   let listEpoch = 0;
   let accumulated: listAccumulation | undefined;
   const defaultDetailStore = createInMemoryTaskProjectionStore();
+  const submissionStore = ports.submissionStore ?? createInMemorySubmissionStore();
+  const intentLog = ports.intentLog ?? createInMemoryIntentLog();
+  const submissionTransport: SubmissionTransport = {
+    start: (input) => ports.backend.start(input),
+    lookup: async (requestId) => {
+      try {
+        return await ports.backend.lookup(requestId);
+      } catch (error) {
+        if (error instanceof TaskOfficeError) throw error;
+        throw new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
+      }
+    },
+  };
+  const submissions = createSubmissionCoordinator(submissionStore, submissionTransport);
+  const submissionScopeOf = (lease: ScopeLease): SubmissionScope => {
+    const scope = leaseScopeOf(lease);
+    if (!scope) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    return { origin: scope.deploymentOrigin, tenantID: scope.tenantId, userID: scope.userId };
+  };
+  const receiptOf = (entry: SubmissionEntry, dispatched: boolean): TaskStartReceipt => ({
+    requestId: entry.request_id,
+    phase: entry.phase,
+    ...(entry.run_id === undefined ? {} : { runId: entry.run_id }),
+    dispatched,
+  });
+  const nextRequestId = (): string => {
+    if (ports.newRequestId) return ports.newRequestId();
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT', { cause: new Error('newRequestId port is required on platforms without crypto.randomUUID') });
+  };
+  const budgetOps = ports.budget === undefined ? undefined : createTaskBudgetOps({
+    backend: ports.budget,
+    lease: ports.lease,
+    newIdempotencyKey: ports.newRequestId,
+  });
+  const goalDraftOf = (goal: TaskOfficeGoal): NewTaskDraft => ({
+    text: goal.text,
+    agentId: goal.agentId,
+    budgetUpper: goal.budgetUpper,
+    attachments: goal.attachments ?? [],
+    knowledgeIds: goal.knowledgeIds ?? [],
+  });
+  // 意图一致性比较键：覆盖影响意图的字段（text/agentId/budgetUpper/knowledgeIds 排序）。
+  // attachments 的 readiness 是状态不是意图（scanning→ready 不构成「换意图」），不进比较键。
+  const goalKeyOf = (goal: TaskOfficeGoal): string => JSON.stringify({
+    agentId: goal.agentId,
+    budgetUpper: goal.budgetUpper,
+    knowledgeIds: [...(goal.knowledgeIds ?? [])].sort(),
+    text: goal.text,
+  });
+  // bound 后 intentLog 记录即被 remove；同进程内重放一个已 bound 的 requestId 时，
+  // 用这里记住的 goalKey 区分「同一意图的幂等重放」与「换意图复用已 bound 的 ID」（后者仍 CONFLICT）。
+  // remove 不清除本表——它只服务重放判定，不承载恢复语义（恢复走 reconcilePending）。
+  const replayGoalKeys = new Map<string, string>();
+  const attention = createAttentionDecider({
+    interactions: () => ports.interactions,
+    lease: ports.lease,
+    // 决定终态失效一切在途聚合读（与 archive/restore 的 R1-F19 同语义）：
+    // 迟到的 home()/inbox() 不得把已决定行回填为 pending。
+    onDecided: () => {
+      homeEpoch += 1;
+      listEpoch += 1;
+      accumulated = undefined;
+    },
+  });
+
+  let legacyListEpoch = 0;
+  let legacyAccumulated: legacyListAccumulation | undefined;
+
+  interface legacyListAccumulation {
+    input: { search?: string; archived?: boolean; limit?: number };
+    cursor?: string;
+    seen: Set<string>;
+    duplicates: string[];
+  }
+
+  const requireLegacy = (): LegacyTaskBackendPort => {
+    if (ports.legacy === undefined) throw new TaskOfficeError('TASK_OFFICE_LEGACY_UNAVAILABLE');
+    return ports.legacy;
+  };
+  const toLegacyCard = (task: LegacyBackendTask): LegacyTaskCard => ({
+    taskId: task.taskId,
+    title: task.title,
+    attention: 'none',
+    ...(task.archivedAt === undefined ? {} : { archivedAt: task.archivedAt }),
+    updatedAt: task.updatedAt,
+    kind: 'legacy',
+    gates: legacyTaskGates(),
+  });
+  const accumulateLegacy = (state: legacyListAccumulation, page: LegacyTaskBackendPage): LegacyTaskListPage => {
+    const items: LegacyTaskCard[] = [];
+    for (const task of page.items) {
+      if (state.seen.has(task.taskId)) {
+        state.duplicates.push(task.taskId);
+        continue;
+      }
+      state.seen.add(task.taskId);
+      items.push(toLegacyCard(task));
+    }
+    state.cursor = page.nextCursor;
+    return { items, ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }), duplicateTaskIds: [...state.duplicates] };
+  };
+  const normalizeLegacyQuery = (query: { search?: string; archived?: boolean; limit?: number }): { search?: string; archived?: boolean; limit?: number } => {
+    const search = typeof query.search === 'string' ? query.search.trim().replace(/\s+/g, ' ').slice(0, searchMaxLen) : '';
+    const limit = typeof query.limit === 'number' && Number.isSafeInteger(query.limit) && query.limit > 0 ? Math.min(query.limit, 100) : 20;
+    return { ...(search === '' ? {} : { search }), ...(query.archived === true ? { archived: true } : {}), limit };
+  };
 
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
@@ -170,8 +412,8 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       throw new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
     }
   };
-  const settle = <T>(epoch: number, kind: 'home' | 'list', lease: ScopeLease, value: T): T => {
-    const currentEpoch = kind === 'home' ? homeEpoch : listEpoch;
+  const settle = <T>(epoch: number, kind: 'home' | 'list' | 'legacy', lease: ScopeLease, value: T): T => {
+    const currentEpoch = kind === 'home' ? homeEpoch : kind === 'list' ? listEpoch : legacyListEpoch;
     if (epoch !== currentEpoch) throw new TaskOfficeError('TASK_OFFICE_SUPERSEDED');
     if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     return value;
@@ -196,7 +438,13 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     if (trimmed === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
     await callBackend(() => action(trimmed));
     if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    // 写成功作废一切在途读（R1-F19）：settle 比对 epoch，旧查询按 SUPERSEDED 拒绝，
+    // 不得以归档前快照重建 accumulated。home 同理失效。
+    listEpoch += 1;
+    homeEpoch += 1;
+    legacyListEpoch += 1;
     accumulated = undefined;
+    legacyAccumulated = undefined;
   };
 
   return {
@@ -236,12 +484,211 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     restore(taskId: string): Promise<void> {
       return mutate(taskId, (id) => ports.backend.restore(id));
     },
+    inbox(): Promise<InboxView> {
+      return attention.inbox();
+    },
+    decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt> {
+      return attention.decide(input);
+    },
+    budget(taskId: string): Promise<TaskBudgetFacts> {
+      if (budgetOps === undefined) return Promise.reject(new TaskOfficeError('TASK_OFFICE_BUDGET_UNAVAILABLE'));
+      return budgetOps.budget(taskId);
+    },
+    extendBudget(input: TaskBudgetExtendInput): Promise<TaskBudgetExtendReceipt> {
+      if (budgetOps === undefined) return Promise.reject(new TaskOfficeError('TASK_OFFICE_BUDGET_UNAVAILABLE'));
+      return budgetOps.extendBudget(input);
+    },
     open(taskOpen: { taskId: string; runId: string }): TaskHandle {
       const taskId = taskOpen.taskId.trim();
       const runId = taskOpen.runId.trim();
       if (taskId === '' || runId === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
       if (ports.detail === undefined) throw new TaskOfficeError('TASK_OFFICE_DETAIL_UNAVAILABLE');
-      return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease });
+      return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease, ...(ports.commands === undefined ? {} : { commands: ports.commands }) });
+    },
+    async start(startGoal: TaskOfficeGoal, options: { requestId?: string } = {}): Promise<TaskStartReceipt> {
+      const lease = requireLease();
+      const scope = submissionScopeOf(lease);
+      const draft = goalDraftOf(startGoal);
+      const readiness = evaluateSubmitReadiness(draft);
+      if (!readiness.ready) {
+        if (readiness.reason === 'attachments_not_ready') throw new TaskOfficeError('TASK_OFFICE_ATTACHMENTS_NOT_READY');
+        throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      }
+      const requestId = options.requestId ?? nextRequestId();
+      const record = await intentLog.load(requestId);
+      let sessionId: string;
+      if (record === undefined) {
+        // 记录缺失时先查进程内权威（B3-F78）：bound 后 intentLog.remove 已执行，
+        // 同 requestId 重放不得 createSession 换 session（新 session_id 进 digest 会
+        // 伪造成新意图并撞 CONFLICT，requestId 永久毒化）。store 的 bound entry 是凭据。
+        const settled = submissionStore.load(requestId);
+        const sameScope = settled !== undefined
+          && settled.scope.origin === scope.origin && settled.scope.tenantID === scope.tenantID && settled.scope.userID === scope.userID;
+        if (sameScope && settled!.phase === 'bound' && settled!.run_id !== undefined) {
+          // 同一意图（goalKey 一致或跨重启无记忆）的幂等重放：零网络返回原 bound 回执；
+          // 换意图复用已 bound 的 ID 仍是对冲突的诚实回答。
+          const rememberedGoalKey = replayGoalKeys.get(requestId);
+          if (rememberedGoalKey !== undefined && rememberedGoalKey !== goalKeyOf(startGoal)) {
+            throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} was already bound to a different goal`) });
+          }
+          return receiptOf(settled!, false); // 幂等重放：零网络返回原 bound 回执
+        }
+        if (sameScope) {
+          // 记录缺失且非 bound：sessionId 只能从 intentLog 重建，绝不能换 session（D5）。
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} has no durable session record for replay`) });
+        }
+        // 新意图：目标会话是前置网络调用（无 Task/预算副作用，与 miniprogram AgentPage 同序），
+        // 随后在 Start POST 之前耐久落盘意图记录——intentLog 写失败（磁盘满等）上抛且零 Start 派发。
+        // AC3（final review critical）：首笔网络派发前经 Offline Gate——离线时新意图在
+        // createSession 之前即以 OFFLINE_ACTION_BLOCKED:run 原样上抛（不经 callBackend
+        // 包装），零后端派发；上方 bound 幂等重放（零网络）不受影响，仍可离线返回回执。
+        // if 形式而非 ?.：gate 缺省时不引入额外微任务（start 的 mid-start 撤权时序语义不变）。
+        if (ports.gate !== undefined) await ports.gate.assertOnline('run');
+        const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, SESSION_TITLE_MAX_LEN) }));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        sessionId = session.sessionId;
+        await intentLog.save({ requestId, sessionId, goal: startGoal, scope, persistedAt: new Date().toISOString() });
+        replayGoalKeys.set(requestId, goalKeyOf(startGoal));
+      } else {
+        // 重入/重启恢复：绝不新建 session——inputDigest 覆盖 session_id（submission.ts:65-74），
+        // 换 session 会伪造成新意图并撞 digest 冲突。借旧 ID 发新意图零网络拒绝。
+        if (record.scope.origin !== scope.origin || record.scope.tenantID !== scope.tenantID || record.scope.userID !== scope.userID) {
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} belongs to a different scope`) });
+        }
+        if (goalKeyOf(record.goal) !== goalKeyOf(startGoal)) {
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} was persisted with a different goal`) });
+        }
+        sessionId = record.sessionId;
+        replayGoalKeys.set(requestId, goalKeyOf(record.goal));
+      }
+      // targetId 'platform' 与 workspaceRef '' 是移动 Start wire 的固定业务语义
+      // （平台级目标、无工作区限定——与 miniprogram 先例一致），非可配置参数（B3-F68）。
+      const input = toStartInput(draft, { requestID: requestId, sessionId, targetId: 'platform', workspaceRef: '' });
+      try {
+        const outcome = await submissions.resume(input, scope);
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        if (outcome.entry.phase === 'bound') {
+          // 端口契约：记录留存幂等无害——remove 失败不把已 bound 的成功伪装成失败（B3-F64）。
+          try { await intentLog.remove?.(requestId); } catch { /* best-effort：记录留存无害 */ }
+          // 创建了新任务：与 followUp/archive 同规则作废在途读与累积缓存（B3-F79）。
+          listEpoch += 1;
+          homeEpoch += 1;
+          legacyListEpoch += 1;
+          accumulated = undefined;
+          legacyAccumulated = undefined;
+        }
+        return receiptOf(outcome.entry, outcome.dispatched);
+      } catch (error) {
+        if (error instanceof TaskOfficeError) throw error;
+        if (error instanceof SubmissionConflictError) throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: error });
+        throw error;
+      }
+    },
+    async reconcilePending(): Promise<TaskStartReceipt[]> {
+      const lease = requireLease();
+      const scope = submissionScopeOf(lease);
+      const records = await intentLog.listScope(scope);
+      const receipts: TaskStartReceipt[] = [];
+      for (const record of records) {
+        // 恢复是部分成功语义（B3-F65）：单条毒记录（lookup 5xx 等）只跳过该条，
+        // 不得中断整批并丢弃已收集的回执。
+        try {
+          // 重启恢复：进程内 store 为空时按意图记录预建 awaiting_reconciliation entry
+          // （digest 与原提交一致——同一 sessionId + 同一 goal），再走 lookup 对账。
+          if (submissionStore.load(record.requestId) === undefined) {
+            // targetId 'platform' 与 workspaceRef ''：移动 Start wire 的固定业务语义（B3-F68）。
+            const input = toStartInput(goalDraftOf(record.goal), { requestID: record.requestId, sessionId: record.sessionId, targetId: 'platform', workspaceRef: '' });
+            submissionStore.save({ request_id: record.requestId, input_digest: inputDigest(input), scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() });
+          }
+          const entry = await submissions.reconcile(record.requestId, scope);
+          if (entry.phase === 'bound') {
+            try { await intentLog.remove?.(record.requestId); } catch { /* best-effort（B3-F64） */ }
+          }
+          receipts.push(receiptOf(entry, false));
+        } catch { /* 毒记录：跳过并继续 */ }
+      }
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      return receipts;
+    },
+    /** T14（#44）追加区。 */
+    async legacyTasks(query: { search?: string; archived?: boolean; limit?: number }): Promise<LegacyTaskListPage> {
+      const epoch = ++legacyListEpoch;
+      const lease = requireLease();
+      const input = normalizeLegacyQuery(query);
+      const page = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().list(input)));
+      const state: legacyListAccumulation = { input, seen: new Set<string>(), duplicates: [] };
+      legacyAccumulated = state;
+      return accumulateLegacy(state, page);
+    },
+    async moreLegacyTasks(): Promise<LegacyTaskListPage> {
+      const state = legacyAccumulated;
+      if (state === undefined) throw new TaskOfficeError('TASK_OFFICE_NO_ACTIVE_QUERY');
+      if (state.cursor === undefined) return { items: [], duplicateTaskIds: [...state.duplicates] };
+      const epoch = ++legacyListEpoch;
+      const lease = requireLease();
+      const page = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().list({ ...state.input, cursor: state.cursor })));
+      return accumulateLegacy(state, page);
+    },
+    async legacyHistory(taskId: string, options: { limit?: number; before?: string } = {}): Promise<LegacyMessage[]> {
+      // 与 legacyTasks/moreLegacyTasks 同规则（B3-F66）：epoch 失效保护——写操作
+      // 作废在途读，迟到的旧历史不覆盖新状态。
+      const epoch = ++legacyListEpoch;
+      const lease = requireLease();
+      const trimmed = taskId.trim();
+      if (trimmed === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      const messages = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().history(trimmed, options)));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      return messages;
+    },
+    async followUp(input: LegacyFollowUpInput): Promise<void> {
+      const lease = requireLease();
+      const taskId = (input?.taskId ?? '').trim();
+      const question = (input?.question ?? '').trim();
+      if (taskId === '' || question === '' || question.length > QUESTION_MAX_LEN) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      await callBackend(() => requireLegacy().followUp({ taskId, question, ...(input.signal === undefined ? {} : { signal: input.signal }) }));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      // 追问改变了会话 updated_at：一切在途读失效（与 archive/restore 同规则）。
+      listEpoch += 1;
+      homeEpoch += 1;
+      legacyListEpoch += 1;
+      accumulated = undefined;
+      legacyAccumulated = undefined;
+    },
+    /** T15 追加区（#45）：知识问答回合。 */
+    async askKnowledge(askInput: { question: string; sessionId?: string; knowledgeBaseIds?: string[]; signal?: AbortSignal }): Promise<KnowledgeQATurn> {
+      const lease = requireLease();
+      const question = (askInput?.question ?? '').trim();
+      if (question === '' || question.length > QUESTION_MAX_LEN) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      if (ports.knowledgeQA === undefined) throw new TaskOfficeError('TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE');
+      // R1-F7：与 start() 同款纵深防御第一道——askKnowledge 的两笔网络派发（无 sessionId
+      // 时的 createSession、knowledgeQA.ask）都触发服务端执行，离线时在首笔之前结构化拒绝。
+      // 在 callBackend 之外直接上抛（不被包装成 TASK_OFFICE_BACKEND）；if 形式而非 ?.：gate
+      // 缺省时不引入额外微任务（与 start 同一注释约定）。
+      if (ports.gate !== undefined) await ports.gate.assertOnline('run');
+      let sessionId = (askInput?.sessionId ?? '').trim();
+      if (sessionId === '') {
+        // 快速知识问题也是 Task（spec 故事 12/24）：一次初始提问创建目标会话。
+        const session = await callBackend(() => ports.backend.createSession({ title: question.slice(0, SESSION_TITLE_MAX_LEN) }));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        sessionId = session.sessionId;
+      }
+      const knowledgeBaseIds = Array.isArray(askInput.knowledgeBaseIds)
+        ? askInput.knowledgeBaseIds.map((id) => id.trim()).filter((id) => id !== '')
+        : undefined;
+      const turn = await callBackend(() => ports.knowledgeQA!.ask({
+        sessionId,
+        question,
+        ...(knowledgeBaseIds === undefined || knowledgeBaseIds.length === 0 ? {} : { knowledgeBaseIds }),
+        ...(askInput.signal === undefined ? {} : { signal: askInput.signal }),
+      }));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      // 新会话/新追问都改变了列表事实：与 start/followUp 同规则作废在途读。
+      listEpoch += 1;
+      homeEpoch += 1;
+      legacyListEpoch += 1;
+      accumulated = undefined;
+      legacyAccumulated = undefined;
+      return { ...turn, sessionId };
     },
   };
 }

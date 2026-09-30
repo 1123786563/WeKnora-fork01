@@ -8,6 +8,8 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -345,6 +347,16 @@ func durableWaitReason(err error) (string, bool) {
 		return "tool_outcome_query_required", true
 	case errors.Is(err, ErrSandboxUnavailable):
 		return "sandbox_unavailable", true
+	case errors.Is(err, repocommercial.ErrTaskBudgetExhausted),
+		errors.Is(err, craft.ErrBudgetDenied),
+		errors.Is(err, craft.ErrGrantExhausted):
+		// T09 (#39)：达限是持久暂停（CONTEXT.md「任务预算」），不是终态失败。
+		// 与 durableRunFailureEvent（agent_run_graph.go）同一错误集；此时
+		// budget_exhausted 持久事件已先行落盘，授权扩额后由
+		// RequeueBudgetPausedRuns 把同一 Run 翻回 queued 继续执行。
+		// 过期类错误（ErrGrantExpired/ErrTaskBudgetExpired）刻意不进此集：
+		// 扩额不延长 deadline，重排只会形成 park 循环。
+		return "budget_exhausted", true
 	default:
 		return "", false
 	}

@@ -57,6 +57,25 @@ modules:
   # Business modules (16)
   # =========================================================================
 
+  career:
+    description: 单成员私有求职空间、确认事实、申请证据与求职工作流（Issue #140；ADR 0015–0019）
+    packages:
+      - internal/modules/career
+    routes:
+      - name: RegisterCareerArtifactRoutes
+        source: internal/router/routes_career_artifacts.go
+      - name: RegisterCareerArtifactDownloadRoute
+        source: internal/router/routes_career_artifacts.go
+    workers: []
+    hooks: []
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000128_career_foundation"
+        - "migrations/sqlite/000129_career_artifact_bindings"
+      versioned:
+        - "migrations/versioned/000207_career_foundation"
+        - "migrations/versioned/000208_career_artifact_bindings"
+
   identity:
     description: 认证、用户、Tenant、成员、邀请、API Key、Organization、RBAC、审计日志（§5.1/§5.18）
     packages: []                  # 无独立包；代码位于横向包（见 shared_assets 拆分注记）
@@ -1052,7 +1071,7 @@ coverage:
   container_invoke_hooks: { total: 58, by_owner: { conversation: 19, craft: 9, commercial: 6, appconnector: 5,
     airesource: 3, platform: 2, agentruntime: 2, datasource: 2, identity: 2, bootstrap: 2, workbench: 2,
     system: 1, agentcatalog: 1, channels: 1, knowledge: 1 } }
-  migrations: { files: 537, assets: 270, by_owner_assets: { execution: 29, knowledge: 42, commercial: 26,
+  migrations: { files: 541, assets: 272, by_owner_assets: { career: 2, execution: 29, knowledge: 42, commercial: 26,
     agentruntime: 23, agentcatalog: 21, airesource: 20, workbench: 20, conversation: 19, craft: 18,
     identity: 16, appconnector: 14, channels: 8, datasource: 3, platform: 4, bootstrap: 3, insights: 2,
     system: 2 } }

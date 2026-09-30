@@ -3,6 +3,7 @@ packages:
   - packages/api-client
   - packages/domain
   - packages/mobile-core
+  - packages/career-core
   - packages/core
   - packages/design-tokens
   - packages/i18n

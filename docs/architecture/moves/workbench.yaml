@@ -20,6 +20,54 @@ alias_obligations:
   - old_import_path: internal/workbench
     passb_task: B-workbench
 legacy_files:
+  - path: internal/application/service/task_compliance.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: Task compliance (application/service)
+    passb_task: B-workbench
+  - path: internal/application/repository/task_compliance_store.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: task_compliance_store (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/task_research.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: task_research (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_legacy_list.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_legacy_list (application/repository)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_delivery.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_delivery (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_legacy_list.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_legacy_list (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_research.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_research (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_task_compliance.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_task_compliance (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_terminal_log.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_terminal_log (handler/session)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_task_facts.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_task_facts (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_task_state.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_task_state (application/repository)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_task_state.go
+    reason: trapped in horizontal package (Pass B file split)
+    navigation_label: workbench_task_state (handler/session)
+    passb_task: B-workbench
   - path: internal/application/repository/artifact_version.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Artifact version (application/repository)
@@ -36,6 +84,10 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Mobile notification provider (application/repository)
     passb_task: B-workbench
+  - path: internal/application/repository/task_grant_store.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Task grant store (application/repository)
+    passb_task: B-workbench
   - path: internal/application/repository/voice_session.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Voice session (application/repository)
@@ -47,6 +99,18 @@ legacy_files:
   - path: internal/application/repository/workbench_request.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Workbench request (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_task_facts.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Workbench task facts (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_task_state.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Workbench task state store (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/service/task_grant.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Task grant service (application/service)
     passb_task: B-workbench
   - path: internal/handler/artifact_preview.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
@@ -95,6 +159,14 @@ legacy_files:
   - path: internal/handler/session/workbench_start.go
     reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
     navigation_label: Workbench start (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_task_grants.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench task grants (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_task_state.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench task state (handler/session)
     passb_task: B-workbench
 owned_files:
   move_sources:

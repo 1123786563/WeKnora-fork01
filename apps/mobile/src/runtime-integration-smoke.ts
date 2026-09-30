@@ -44,6 +44,12 @@ function disallowedIpv4Octets(octets: number[], variable: string): string | unde
   if (a === 172 && b >= 16 && b <= 31) return `${variable} must not target private addresses`;
   if (a === 192 && b === 168) return `${variable} must not target private addresses`;
   if (a === 169 && b === 254) return `${variable} must not target link-local addresses`;
+  if (a === 100 && b >= 64 && b <= 127) return `${variable} must not target carrier-grade NAT addresses`; // 100.64/10（R1-F37）
+  if (a === 198 && (b === 18 || b === 19)) return `${variable} must not target benchmarking addresses`; // 198.18/15（R1-F37）
+  if (a === 192 && b === 0 && octets[2] === 0) return `${variable} must not target reserved addresses`; // 192.0.0/24（R1-F37）
+  if (a === 192 && b === 0 && octets[2] === 2) return `${variable} must not target documentation addresses`; // 192.0.2/24 TEST-NET-1（R1-F37）
+  if (a === 198 && b === 51 && octets[2] === 100) return `${variable} must not target documentation addresses`; // 198.51.100/24 TEST-NET-2（R1-F37）
+  if (a === 203 && b === 0 && octets[2] === 113) return `${variable} must not target documentation addresses`; // 203.0.113/24 TEST-NET-3（R1-F37）
   return undefined;
 }
 
@@ -108,7 +114,8 @@ function disallowedIpv6Bytes(bytes: number[], variable: string): string | undefi
   return undefined;
 }
 
-function disallowedDeploymentHost(hostname: string, variable: string): string | undefined {
+/** 部署主机防线：拒绝 localhost/环回/私网/链路本地/保留地址。导出供 task-detail smoke 复用（B2-F15）。 */
+export function disallowedDeploymentHost(hostname: string, variable: string): string | undefined {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return `${variable} must not target localhost`;
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);

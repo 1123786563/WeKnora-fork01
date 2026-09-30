@@ -1,0 +1,9 @@
+ALTER TABLE agent_adoption_variants DROP COLUMN retired_by;
+ALTER TABLE agent_adoption_variants DROP COLUMN retired_at;
+ALTER TABLE agent_adoptions DROP COLUMN ended_by;
+ALTER TABLE agent_adoptions DROP COLUMN ended_at;
+ALTER TABLE agent_releases DROP COLUMN successor_release_id;
+ALTER TABLE agent_releases DROP COLUMN deprecated_by;
+ALTER TABLE agent_releases DROP COLUMN deprecated_at;
+ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_by;
+ALTER TABLE agent_marketplace_listings DROP COLUMN unlisted_at;

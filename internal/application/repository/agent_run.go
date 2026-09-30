@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
@@ -39,18 +40,19 @@ func (s *AgentRunStore) DB() *gorm.DB {
 }
 
 type agentRunRow struct {
-	TenantID                                                              uint64
-	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
-	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason           string
-	Snapshot                                                              string
-	GraphVersion, SDKVersion                                              string
-	SchemaVersion                                                         int
-	LeaseOwner                                                            string
-	LeaseUntil                                                            *time.Time
-	Epoch, Revision                                                       int64
-	MaxRounds, MaxToolCalls                                               int
-	TokenBudget                                                           int64
-	Deadline, CreatedAt, UpdatedAt                                        time.Time
+	TenantID                                                                           uint64
+	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash              string
+	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason                        string
+	Snapshot                                                                           string
+	GraphVersion, SDKVersion                                                           string
+	SchemaVersion                                                                      int
+	LeaseOwner                                                                         string
+	SecurityAgentID, SecurityLocalAgentVersionID, SecurityReleaseID, SecurityPinSource string
+	LeaseUntil                                                                         *time.Time
+	Epoch, Revision                                                                    int64
+	MaxRounds, MaxToolCalls                                                            int
+	TokenBudget                                                                        int64
+	Deadline, CreatedAt, UpdatedAt                                                     time.Time
 }
 
 func (agentRunRow) TableName() string { return "agent_runs" }
@@ -113,6 +115,39 @@ func (s *AgentRunStore) GetOwnedRun(
 	return row.view(), err
 }
 
+// GetRunForGrantedReader reads a run for a task-grant holder: a Viewer or
+// Collaborator whose grant row exists for the run's task (= session, ADR-0004)
+// AND whose tenant membership is still active. The membership join makes a
+// suspended or removed member's read fail closed on the very next request,
+// without needing a grant sweep. Owners keep using GetOwnedRun; the owner
+// holds no grant row by construction. The complete predicate is one query so
+// no unscoped run can leak between checks.
+func (s *AgentRunStore) GetRunForGrantedReader(
+	ctx context.Context, tenantID uint64, readerID, runID string,
+) (agentruntime.Run, error) {
+	if tenantID == 0 || readerID == "" || runID == "" {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
+	var row agentRunRow
+	err := s.db.WithContext(ctx).Table("agent_runs").
+		Where(`tenant_id = ? AND run_id = ? AND EXISTS (
+			SELECT 1 FROM task_grants tg
+			WHERE tg.tenant_id = agent_runs.tenant_id
+			  AND tg.task_id = agent_runs.session_id
+			  AND tg.grantee_id = ?
+			  AND EXISTS (
+				SELECT 1 FROM tenant_members tm
+				WHERE tm.tenant_id = tg.tenant_id
+				  AND tm.user_id = tg.grantee_id
+				  AND tm.status = 'active'
+				  AND tm.deleted_at IS NULL))`, tenantID, runID, readerID).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
+	return row.view(), err
+}
+
 // Admit atomically reserves a session, creates both business messages and
 // persists the immutable request snapshot. Request retries are scoped to the
 // authenticated tenant and owner; session validation precedes idempotency reads.
@@ -149,7 +184,7 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		user.ID = in.UserMessageID
 	}
 	var result agentruntime.Run
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = withTenantSecurityGuard(ctx, s.db, in.Key.TenantID, func(tx *gorm.DB) error {
 		// The write locks this session before any reads. This also avoids a
 		// deferred SQLite read transaction trying to upgrade to a write lock.
 		lock := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL",
@@ -186,6 +221,46 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if in.AgentID == "" && (in.LocalAgentVersionID != "" || in.ReleaseID != "") {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
+		if strings.TrimSpace(in.AgentID) != "" {
+			// Serialize against RetireVariant before reading lifecycle state. The
+			// no-op UPDATE locks every matching tenant-local variant row on
+			// PostgreSQL and acquires SQLite's writer reservation. RetireVariant
+			// updates the same row, so one transaction must observe the other's
+			// committed state before deciding whether NEW work can be admitted.
+			lockAgent := tx.Table("agent_adoption_variants").
+				Where("tenant_id = ? AND local_agent_id = ?", in.Key.TenantID, in.AgentID).
+				UpdateColumn("state", gorm.Expr("state"))
+			if lockAgent.Error != nil {
+				return lockAgent.Error
+			}
+			var retired int64
+			if err := tx.Table("agent_adoption_variants").
+				Where("tenant_id = ? AND local_agent_id = ? AND state = ?", in.Key.TenantID, in.AgentID, "retired").
+				Count(&retired).Error; err != nil {
+				return err
+			}
+			if retired > 0 {
+				return agentruntime.ErrAgentUseDenied
+			}
+		}
+		var releaseID string
+		var adopted bool
+		if in.AgentID != "" {
+			var admissionErr error
+			releaseID, adopted, admissionErr = checkLocalAgentReleaseAdmissionTx(tx, in.Key.TenantID, in.AgentID, in.LocalAgentVersionID)
+			if admissionErr != nil {
+				return admissionErr
+			}
+			if adopted && (in.ReleaseID == "" || releaseID != in.ReleaseID) {
+				return ErrAgentSecurityReleaseUnresolvable
+			}
+			if !adopted && in.ReleaseID != "" {
+				return ErrAgentSecurityReleaseUnresolvable
+			}
+		}
 		slot := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id IS NULL",
 			in.Key.TenantID, in.SessionID).UpdateColumn("active_agent_run_id", in.Key.RunID)
 		if slot.Error != nil {
@@ -202,12 +277,24 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 			Status: "queued", Snapshot: string(in.Snapshot),
 			GraphVersion: "1", SchemaVersion: 1, Deadline: in.Deadline,
 		}
+		if adopted {
+			row.SecurityAgentID = in.AgentID
+			row.SecurityLocalAgentVersionID = in.LocalAgentVersionID
+			row.SecurityReleaseID = releaseID
+			row.SecurityPinSource = "admission"
+		}
 		if in.Driver == "platform" {
 			row.EngineType = "trpc"
 		}
 		// A concurrent request may target a different session: the database
 		// unique key is the final arbiter and the slot reservation rolls back.
-		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		createRun := tx.Clauses(clause.OnConflict{DoNothing: true})
+		if !adopted {
+			// These columns are nullable as a four-column tuple. Omitting them
+			// preserves SQL NULL for ordinary Runs instead of GORM's empty strings.
+			createRun = createRun.Omit("SecurityAgentID", "SecurityLocalAgentVersionID", "SecurityReleaseID", "SecurityPinSource")
+		}
+		created := createRun.Create(&row)
 		if created.Error != nil {
 			return created.Error
 		}
@@ -231,6 +318,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		result = row.view()
 		return nil
 	})
+	if errors.Is(err, ErrTenantNotFound) {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
 	return result, err
 }
 
@@ -520,6 +610,33 @@ func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence,
 		}
 		return nil
 	})
+}
+
+// RequeueBudgetPausedRuns resumes the runs durably parked at
+// waiting_user/budget_exhausted under one task budget — the root run plus
+// every attached child run — flipping them back to claimable queued. The
+// guarded UPDATE mirrors ApplyDecision's waiting_user→queued transition
+// (revision advances; lease fields clear); rows parked for any other wait
+// reason, other budget roots, or non-parked states are untouched, and a
+// replay affecting already-queued rows is a no-op. T09 (#39): called from
+// the authorized budget-extension success path.
+func (s *AgentRunStore) RequeueBudgetPausedRuns(ctx context.Context, tenantID uint64, budgetRootRunID string) (int64, error) {
+	if tenantID == 0 || budgetRootRunID == "" {
+		return 0, agentruntime.ErrConflict
+	}
+	result := s.db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND status = ? AND wait_reason = ?",
+			tenantID, "waiting_user", "budget_exhausted").
+		Where("run_id = ? OR run_id IN (SELECT run_id FROM commercial_task_budgets WHERE tenant_id = ? AND root_run_id = ?)",
+			budgetRootRunID, tenantID, budgetRootRunID).
+		Updates(map[string]any{
+			"status": "queued", "wait_reason": "", "lease_owner": "", "lease_until": nil,
+			"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 // LoadCheckpoint returns the latest committed graph snapshot for one tenant/run.
