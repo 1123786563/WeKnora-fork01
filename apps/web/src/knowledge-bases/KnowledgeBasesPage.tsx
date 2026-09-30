@@ -378,27 +378,27 @@ function ListSpaceSidebar({ t, items, onSelect }: { t: Translate; items: KbRailI
         <div className="icon-strip">
           {baseItems.map((item) => (
             <Tooltip key={item.key} content={tooltipText(item.label, item.count)} placement="right" showArrow={false}>
-              <div
+              <button type="button" aria-pressed={item.active}
                 className={`icon-item-labeled${item.key === 'mine' ? ' workspace-item' : ''}${item.active ? ' active' : ''}`}
                 data-space-key={item.key}
                 onClick={() => onSelect(item.key)}
               >
                 <TIcon name={RAIL_ICON_NAME[item.icon ?? 'layers']} size="16px" />
                 <span className="icon-label">{item.label}</span>
-              </div>
+              </button>
             </Tooltip>
           ))}
           {orgItems.length > 0 ? <div className="icon-strip-divider" /> : null}
           {orgItems.map((item) => (
             <Tooltip key={item.key} content={tooltipText(item.label, item.count)} placement="right" showArrow={false}>
-              <div
+              <button type="button" aria-pressed={item.active}
                 className={`icon-item-labeled${item.active ? ' active' : ''}`}
                 data-space-key={item.key}
                 onClick={() => onSelect(item.key)}
               >
                 <SpaceAvatar name={item.org?.name ?? item.label} size="small" />
                 <span className="icon-label">{truncateLabel(item.org?.name ?? item.label)}</span>
-              </div>
+              </button>
             </Tooltip>
           ))}
         </div>
@@ -408,13 +408,13 @@ function ListSpaceSidebar({ t, items, onSelect }: { t: Translate; items: KbRailI
             <Fragment key={item.key}>
               {/* Vue :103：favorites/recents 与 workspace 之间分隔线。 */}
               {index === 3 ? <div className="sidebar-divider" /> : null}
-              <div className={`sidebar-item${item.active ? ' active' : ''}`} data-space-key={item.key} onClick={() => onSelect(item.key)}>
+              <button type="button" aria-pressed={item.active} className={`sidebar-item${item.active ? ' active' : ''}`} data-space-key={item.key} onClick={() => onSelect(item.key)}>
                 <div className="item-left">
                   <TIcon name={RAIL_ICON_NAME[item.icon ?? 'layers']} className="item-icon" />
                   <span className="item-label">{item.label}</span>
                 </div>
                 {countVisible(item) ? <span className="item-count">{item.count}</span> : null}
-              </div>
+              </button>
             </Fragment>
           ))}
           {orgItems.length > 0 ? (
@@ -423,13 +423,13 @@ function ListSpaceSidebar({ t, items, onSelect }: { t: Translate; items: KbRailI
                 <span className="section-title">{t('listSpaceSidebar.spaces')}</span>
               </div>
               {orgItems.map((item) => (
-                <div key={item.key} className={`sidebar-item org-item${item.active ? ' active' : ''}`} data-space-key={item.key} onClick={() => onSelect(item.key)}>
+                <button key={item.key} type="button" aria-pressed={item.active} className={`sidebar-item org-item${item.active ? ' active' : ''}`} data-space-key={item.key} onClick={() => onSelect(item.key)}>
                   <div className="item-left">
                     <SpaceAvatar name={item.org?.name ?? item.label} size="small" className="item-avatar" />
                     <span className="item-label" title={item.org?.name}>{item.org?.name ?? item.label}</span>
                   </div>
                   {item.count !== undefined ? <span className="item-count">{item.count}</span> : null}
-                </div>
+                </button>
               ))}
             </>
           ) : null}

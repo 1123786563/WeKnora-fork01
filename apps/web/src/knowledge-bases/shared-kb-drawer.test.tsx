@@ -179,11 +179,24 @@ test('(a) shared card badge shows - for an empty count like Vue', async () => {
 
 test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
+  const scopeChoices = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-space-key]'));
+  assert.ok(scopeChoices.length > 0 && scopeChoices.every((choice) => choice.tagName === 'BUTTON'), 'scope choices are native buttons');
+  assert.ok(scopeChoices.every((choice) => choice.hasAttribute('aria-pressed')), 'scope choices expose selected state');
   assert.equal(document.querySelector('.kb-shared-detail-drawer'), null, 'drawer closed initially');
-  await click(container.querySelector('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!);
+  const trigger = container.querySelector<HTMLElement>('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!;
+  await click(trigger);
   const drawer = document.querySelector('.shared-detail-drawer');
   assert.ok(drawer, 'drawer opens (KnowledgeBaseList.vue:712 shared-detail-drawer, createPortal body)');
   assert.equal(drawer.getAttribute('role'), 'dialog', 'drawer is a dialog');
+  assert.equal(drawer.getAttribute('aria-modal'), 'true', 'drawer is modal');
+  assert.equal(document.activeElement?.className, 'shared-detail-drawer-close', 'opening focuses the first drawer action');
+  const buttons = Array.from(drawer.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+  buttons[buttons.length - 1].focus();
+  await act(async () => document.activeElement?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })));
+  assert.equal(document.activeElement, buttons[0], 'Tab wraps from last to first drawer action');
+  buttons[0].focus();
+  await act(async () => document.activeElement?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })));
+  assert.equal(document.activeElement, buttons[buttons.length - 1], 'Shift+Tab wraps from first to last drawer action');
   const text = drawer.textContent ?? '';
   assert.ok(text.includes('共享知识库'), 'title = knowledgeList.detail.title');
   assert.ok(text.includes('名称'), 'row label knowledgeBase.name');
@@ -211,6 +224,9 @@ test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   const headerClose = drawer.querySelector('.shared-detail-drawer-close');
   assert.ok(headerClose, 'header × close button renders (.shared-detail-drawer-close)');
   assert.equal(headerClose.getAttribute('aria-label'), '关闭设置', 'header close aria-label = general.close (关闭设置)');
+  await act(async () => document.activeElement?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+  assert.equal(document.querySelector('.shared-detail-drawer'), null, 'Escape closes drawer');
+  assert.equal(document.activeElement, trigger, 'closing restores focus to the opener');
 });
 
 test('(b) viewer permission renders the read-only role label', async () => {
