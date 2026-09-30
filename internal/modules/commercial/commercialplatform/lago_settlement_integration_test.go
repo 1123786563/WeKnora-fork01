@@ -32,6 +32,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+<<<<<<< HEAD
+=======
+	"os/exec"
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 	"sort"
 	"strings"
 	"testing"
@@ -55,6 +59,7 @@ func integrationEnv(names ...string) map[string]string {
 	return out
 }
 
+<<<<<<< HEAD
 func TestPaymentIntentCandidateSelection(t *testing.T) {
 	preSettleRows := []any{
 		map[string]any{"id": "pi_older", "created": float64(100), "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "inv_current"}},
@@ -135,6 +140,386 @@ func TestPaymentIntentCandidateSelection(t *testing.T) {
 	}
 }
 
+=======
+func TestInboundWebhookReplayGateAndCanonicalCollection(t *testing.T) {
+	if paymentProviderCode != "weknora-stripe" {
+		t.Fatalf("payment provider code changed: %q", paymentProviderCode)
+	}
+	// psql runs with -t -A, so the query must return one JSON array cell,
+	// including [] when no rows match, rather than delimiter-separated columns.
+	if !strings.Contains(inboundWebhookSQL, "json_agg(json_build_object") || !strings.Contains(inboundWebhookSQL, "'[]'") {
+		t.Fatalf("inbound webhook SQL must return a JSON array: %s", inboundWebhookSQL)
+	}
+	emptyRows, err := parseInboundWebhookRows([]byte("[]\n"))
+	if err != nil || len(emptyRows) != 0 {
+		t.Fatalf("empty SQL result: %#v %v", emptyRows, err)
+	}
+	rowsFromSQL, err := parseInboundWebhookRows([]byte("[{\"id\":\"base\",\"status\":\"succeeded\"}]\n"))
+	if err != nil || len(rowsFromSQL) != 1 || rowsFromSQL[0].ID != "base" {
+		t.Fatalf("JSON SQL result: %#v %v", rowsFromSQL, err)
+	}
+	rows, err := parseInboundWebhookRows([]byte(`[ {"id":"base","status":"succeeded"} ]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := requireBaselineWebhook(rows)
+	if err != nil || base != "base" {
+		t.Fatalf("baseline: %q %v", base, err)
+	}
+	rows, err = parseInboundWebhookRows([]byte(`[{"id":"base","status":"succeeded"},{"id":"new","status":"pending"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRow, err := requireReplayWebhook(rows, "base")
+	if err != nil || newRow.Status != "pending" {
+		t.Fatalf("replay: %+v %v", newRow, err)
+	}
+	if _, err := requireReplayWebhook([]inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: "failed"}}, "base"); err == nil {
+		t.Fatal("failed replay accepted")
+	}
+	input := []any{map[string]any{"lago_id": "b"}, map[string]any{"lago_id": "a"}}
+	got, err := canonicalCollection(input, true)
+	if err != nil || string(got) != `[{"lago_id":"a"},{"lago_id":"b"}]` {
+		t.Fatalf("canonical: %s %v", got, err)
+	}
+	if _, err := canonicalCollection(input, false); err == nil {
+		t.Fatal("incomplete collection accepted")
+	}
+	for _, status := range []string{"processing", "succeeded"} {
+		rows := []inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: status}}
+		row, err := requireReplayWebhook(rows, "base")
+		if err != nil || row.Status != status {
+			t.Fatalf("status %s: %+v %v", status, row, err)
+		}
+	}
+	if _, err := requireReplayWebhook(nil, "base"); err == nil {
+		t.Fatal("missing rows accepted")
+	}
+	if _, err := requireReplayWebhook([]inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "x", Status: "pending"}, {ID: "y", Status: "pending"}}, "base"); err == nil {
+		t.Fatal("duplicate replay rows accepted")
+	}
+	if _, err := parseInboundWebhookRows([]byte(`[{}]`)); err == nil {
+		t.Fatal("malformed status row accepted")
+	}
+}
+
+func TestPaymentsForInvoiceUsesInvoiceIDsMembership(t *testing.T) {
+	rows := []any{
+		map[string]any{"lago_id": "pay-target", "invoice_ids": []any{"inv-other", "inv-target"}},
+		map[string]any{"lago_id": "pay-other", "invoice_ids": []any{"inv-other"}},
+	}
+	got, err := paymentsForInvoice(rows, "inv-target")
+	if err != nil || len(got) != 1 || got[0].(map[string]any)["lago_id"] != "pay-target" {
+		t.Fatalf("target invoice membership: %#v %v", got, err)
+	}
+	if _, err := paymentsForInvoice([]any{map[string]any{"lago_id": "bad", "invoice_id": "inv-target"}}, "inv-target"); err == nil {
+		t.Fatal("malformed invoice_ids accepted")
+	}
+	if _, err := paymentsForInvoice([]any{map[string]any{"lago_id": "bad", "invoice_ids": []any{7}}}, "inv-target"); err == nil {
+		t.Fatal("non-string invoice ID accepted")
+	}
+}
+
+func TestWaitForReplayWebhookFailsImmediatelyOnFailedRow(t *testing.T) {
+	calls := 0
+	err := waitForReplayWebhook(context.Background(), func(context.Context) ([]inboundWebhookRow, error) {
+		calls++
+		return []inboundWebhookRow{{ID: "base", Status: "succeeded"}, {ID: "new", Status: "failed"}}, nil
+	}, "base")
+	if err == nil || calls != 1 {
+		t.Fatalf("failed row must fail immediately, err=%v calls=%d", err, calls)
+	}
+}
+
+type inboundWebhookRow struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+func parseInboundWebhookRows(blob []byte) ([]inboundWebhookRow, error) {
+	var rows []inboundWebhookRow
+	if err := json.Unmarshal(blob, &rows); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.ID == "" || row.Status == "" {
+			return nil, fmt.Errorf("inbound webhook row missing id/status")
+		}
+	}
+	return rows, nil
+}
+
+func requireBaselineWebhook(rows []inboundWebhookRow) (string, error) {
+	if len(rows) != 1 {
+		return "", fmt.Errorf("expected one baseline inbound webhook row, got %d", len(rows))
+	}
+	if rows[0].Status != "succeeded" {
+		return "", fmt.Errorf("baseline webhook %s status is %q", rows[0].ID, rows[0].Status)
+	}
+	return rows[0].ID, nil
+}
+
+func requireReplayWebhook(rows []inboundWebhookRow, baselineID string) (inboundWebhookRow, error) {
+	if len(rows) != 2 {
+		return inboundWebhookRow{}, fmt.Errorf("expected baseline plus one replay row, got %d", len(rows))
+	}
+	var replay inboundWebhookRow
+	for _, row := range rows {
+		if row.ID != baselineID {
+			if replay.ID != "" {
+				return inboundWebhookRow{}, fmt.Errorf("multiple replay rows")
+			}
+			replay = row
+		}
+	}
+	if replay.ID == "" {
+		return inboundWebhookRow{}, fmt.Errorf("new replay row missing")
+	}
+	if replay.Status == "failed" {
+		return replay, fmt.Errorf("replay webhook %s failed", replay.ID)
+	}
+	return replay, nil
+}
+
+const inboundWebhookSQL = `SELECT COALESCE(json_agg(json_build_object('id', id::text, 'status', status::text) ORDER BY created_at, id)::text, '[]') FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND payload->>'id' = :'event_id';`
+
+func readInboundWebhookRows(ctx context.Context, dbContainer, dbUser, dbName, orgID, providerCode, eventID string) ([]inboundWebhookRow, error) {
+	args := []string{"exec", "-i", dbContainer, "psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-U", dbUser, "-d", dbName,
+		"-v", "organization_id=" + orgID, "-v", "provider_code=" + providerCode, "-v", "event_id=" + eventID, "-f", "-"}
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdin = strings.NewReader(inboundWebhookSQL)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("read inbound webhook rows: docker/psql failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return parseInboundWebhookRows(stdout.Bytes())
+}
+
+func waitForReplayWebhook(ctx context.Context, read func(context.Context) ([]inboundWebhookRow, error), baselineID string) error {
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		rows, err := read(ctx)
+		if err != nil {
+			return err
+		}
+		row, gateErr := requireReplayWebhook(rows, baselineID)
+		if gateErr == nil && row.Status == "succeeded" {
+			return nil
+		}
+		if gateErr != nil && row.Status == "failed" {
+			return gateErr
+		}
+		if gateErr != nil && len(rows) > 2 {
+			return gateErr
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for replay webhook: %w", ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func normalizeObject(v any) ([]byte, error) { return json.Marshal(v) }
+
+func canonicalCollection(rows []any, complete bool) ([]byte, error) {
+	if !complete {
+		return nil, fmt.Errorf("collection pagination incomplete")
+	}
+	for _, row := range rows {
+		m, ok := row.(map[string]any)
+		if !ok || m["lago_id"] == nil {
+			return nil, fmt.Errorf("collection row missing lago_id")
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return fmt.Sprint(rows[i].(map[string]any)["lago_id"]) < fmt.Sprint(rows[j].(map[string]any)["lago_id"])
+	})
+	return json.Marshal(rows)
+}
+
+func paymentsForInvoice(rows []any, invoiceID string) ([]any, error) {
+	if invoiceID == "" {
+		return nil, fmt.Errorf("target invoice ID missing")
+	}
+	selected := make([]any, 0)
+	for _, item := range rows {
+		row, ok := item.(map[string]any)
+		if !ok || row["lago_id"] == nil {
+			return nil, fmt.Errorf("payment missing lago_id")
+		}
+		ids, ok := row["invoice_ids"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("payment %v has malformed invoice_ids", row["lago_id"])
+		}
+		for _, id := range ids {
+			value, ok := id.(string)
+			if !ok {
+				return nil, fmt.Errorf("payment %v has non-string invoice ID", row["lago_id"])
+			}
+			if value == invoiceID {
+				selected = append(selected, row)
+				break
+			}
+		}
+	}
+	return selected, nil
+}
+
+type t9ObjectSnapshot struct {
+	Subscription json.RawMessage `json:"subscription"`
+	Invoice      json.RawMessage `json:"invoice"`
+	Payments     json.RawMessage `json:"payments"`
+	Wallets      json.RawMessage `json:"wallets"`
+}
+
+func canonicalAPIObject(body []byte, root string) (map[string]any, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	obj, ok := envelope[root].(map[string]any)
+	if !ok || obj["lago_id"] == nil {
+		return nil, fmt.Errorf("%s object missing lago_id", root)
+	}
+	return obj, nil
+}
+
+func apiCollection(ctx context.Context, a *LagoAdapter, path, root string) ([]any, error) {
+	all := []any{}
+	for page := 1; page <= 10000; page++ {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		status, body, err := a.do(ctx, http.MethodGet, fmt.Sprintf("%s%spage=%d&per_page=100", path, sep, page), nil)
+		if err != nil || status != http.StatusOK {
+			return nil, fmt.Errorf("%s page %d HTTP %d: %v", root, page, status, err)
+		}
+		var envelope struct {
+			Meta struct {
+				TotalCount *int `json:"total_count"`
+			} `json:"meta"`
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw["meta"], &envelope.Meta); err != nil || envelope.Meta.TotalCount == nil {
+			return nil, fmt.Errorf("%s page %d missing pagination total_count", root, page)
+		}
+		collection, ok := raw[root]
+		if !ok {
+			return nil, fmt.Errorf("%s response missing collection", root)
+		}
+		var batch []any
+		if err := json.Unmarshal(collection, &batch); err != nil {
+			return nil, fmt.Errorf("%s collection malformed: %w", root, err)
+		}
+		all = append(all, batch...)
+		if len(all) == *envelope.Meta.TotalCount {
+			return all, nil
+		}
+		if len(all) > *envelope.Meta.TotalCount || len(batch) == 0 {
+			return nil, fmt.Errorf("%s pagination count inconsistent: received %d of %d", root, len(all), *envelope.Meta.TotalCount)
+		}
+	}
+	return nil, fmt.Errorf("%s pagination exceeded safety bound", root)
+}
+
+func t9LagoSnapshot(ctx context.Context, a *LagoAdapter, extPurchase, extCustomer, invoiceID string) ([]byte, error) {
+	status, body, err := a.do(ctx, http.MethodGet, "/api/v1/subscriptions/"+url.PathEscape(extPurchase), nil)
+	if err != nil || status != http.StatusOK {
+		return nil, fmt.Errorf("subscription read HTTP %d: %v", status, err)
+	}
+	sub, err := canonicalAPIObject(body, "subscription")
+	if err != nil {
+		return nil, err
+	}
+	if sub["status"] != "active" {
+		return nil, fmt.Errorf("purchase subscription not active")
+	}
+	status, body, err = a.do(ctx, http.MethodGet, "/api/v1/invoices/"+url.PathEscape(invoiceID), nil)
+	if err != nil || status != http.StatusOK {
+		return nil, fmt.Errorf("invoice read HTTP %d: %v", status, err)
+	}
+	inv, err := canonicalAPIObject(body, "invoice")
+	if err != nil {
+		return nil, err
+	}
+	if inv["lago_id"] != invoiceID || inv["status"] != "finalized" || inv["payment_status"] != "succeeded" {
+		return nil, fmt.Errorf("target invoice is not exact finalized+succeeded invoice")
+	}
+	payments, err := apiCollection(ctx, a, "/api/v1/payments?external_customer_id="+url.QueryEscape(extCustomer), "payments")
+	if err != nil {
+		return nil, err
+	}
+	filteredPayments, err := paymentsForInvoice(payments, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	succeededPayments := 0
+	if len(filteredPayments) == 0 {
+		return nil, fmt.Errorf("target invoice has no payment records")
+	}
+	for _, item := range filteredPayments {
+		if item.(map[string]any)["status"] == "succeeded" {
+			succeededPayments++
+		}
+	}
+	if succeededPayments != 1 {
+		return nil, fmt.Errorf("target invoice must have exactly one succeeded payment, got %d", succeededPayments)
+	}
+	paymentJSON, err := canonicalCollection(filteredPayments, true)
+	if err != nil {
+		return nil, err
+	}
+	wallets, err := apiCollection(ctx, a, "/api/v1/wallets?external_customer_id="+url.QueryEscape(extCustomer), "wallets")
+	if err != nil {
+		return nil, err
+	}
+	if len(wallets) == 0 {
+		return nil, fmt.Errorf("customer wallets missing")
+	}
+	purchaseWalletFound := false
+	for _, item := range wallets {
+		wallet, ok := item.(map[string]any)
+		if !ok || wallet["lago_id"] == nil {
+			return nil, fmt.Errorf("wallet missing lago_id")
+		}
+		name, _ := wallet["name"].(string)
+		if strings.HasPrefix(name, extPurchase+"-") {
+			if wallet["status"] != "active" {
+				return nil, fmt.Errorf("purchase wallet %s is not active", name)
+			}
+			purchaseWalletFound = true
+		}
+		txPath := "/api/v1/wallets/" + url.PathEscape(fmt.Sprint(wallet["lago_id"])) + "/wallet_transactions"
+		txs, err := apiCollection(ctx, a, txPath, "wallet_transactions")
+		if err != nil {
+			return nil, err
+		}
+		txJSON, err := canonicalCollection(txs, true)
+		if err != nil {
+			return nil, err
+		}
+		wallet["wallet_transactions"] = json.RawMessage(txJSON)
+	}
+	if !purchaseWalletFound {
+		return nil, fmt.Errorf("active purchase wallet for %q missing", extPurchase)
+	}
+	walletJSON, err := canonicalCollection(wallets, true)
+	if err != nil {
+		return nil, err
+	}
+	subJSON, _ := normalizeObject(sub)
+	invJSON, _ := normalizeObject(inv)
+	return json.Marshal(t9ObjectSnapshot{Subscription: subJSON, Invoice: invJSON, Payments: paymentJSON, Wallets: walletJSON})
+}
+
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 // stripeForm issues one form-encoded Stripe API call with the credential
 // ONLY in the Authorization header.
 func stripeForm(t *testing.T, apiKey, method, path string, form url.Values) (int, map[string]any) {
@@ -193,6 +578,7 @@ func base64Header(apiKey string) string {
 }
 
 type paymentIntentCandidate struct {
+<<<<<<< HEAD
 	Created   int64
 	InvoiceID string
 }
@@ -253,10 +639,68 @@ func succeededPaymentIntent(rows []any, expectedID string, preObservedIDs map[st
 	var selected map[string]any
 	for _, row := range rows {
 		intent, _ := row.(map[string]any)
+=======
+	id        string
+	status    string
+	invoiceID string
+}
+
+// selectExpectedPaymentIntent picks only the exact succeeded, invoice-linked
+// intent that was observed before settlement.
+func selectExpectedPaymentIntent(expectedID string, rows []paymentIntentCandidate) (paymentIntentCandidate, error) {
+	for _, row := range rows {
+		if row.id == expectedID && row.status == "succeeded" && row.invoiceID != "" {
+			return row, nil
+		}
+	}
+	return paymentIntentCandidate{}, fmt.Errorf("expected succeeded invoice-linked PaymentIntent %q not found", expectedID)
+}
+
+func paymentIntentCandidates(rows []any) ([]paymentIntentCandidate, map[string]struct{}) {
+	var eligible []paymentIntentCandidate
+	observed := make(map[string]struct{})
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		if row == nil {
+			continue
+		}
+		id, _ := row["id"].(string)
+		if id != "" {
+			observed[id] = struct{}{}
+		}
+		meta, _ := row["metadata"].(map[string]any)
+		invoiceID, _ := meta["lago_invoice_id"].(string)
+		status, _ := row["status"].(string)
+		if id == "" || invoiceID == "" {
+			continue
+		}
+		switch status {
+		case "requires_payment_method", "requires_action", "requires_confirmation":
+			eligible = append(eligible, paymentIntentCandidate{id: id, status: status, invoiceID: invoiceID})
+		}
+	}
+	return eligible, observed
+}
+
+func requireUniquePaymentIntentCandidate(candidates []paymentIntentCandidate) (paymentIntentCandidate, error) {
+	if len(candidates) != 1 {
+		return paymentIntentCandidate{}, fmt.Errorf("expected exactly one pre-settle invoice-linked unsettled PaymentIntent, found %d: %+v", len(candidates), candidates)
+	}
+	return candidates[0], nil
+}
+
+func succeededPaymentIntent(expectedID string, preSettleIDs map[string]struct{}, rows []any) (map[string]any, error) {
+	candidates := make([]paymentIntentCandidate, 0, len(rows))
+	intents := make(map[string]map[string]any)
+	var observed []string
+	for _, raw := range rows {
+		intent, _ := raw.(map[string]any)
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 		if intent == nil || intent["status"] != "succeeded" {
 			continue
 		}
 		id, _ := intent["id"].(string)
+<<<<<<< HEAD
 		observed = append(observed, id)
 		meta, _ := intent["metadata"].(map[string]any)
 		invoiceID, _ := meta["lago_invoice_id"].(string)
@@ -301,6 +745,138 @@ func paymentIntentIDs(body map[string]any) []string {
 	}
 	sort.Strings(ids)
 	return ids
+=======
+		meta, _ := intent["metadata"].(map[string]any)
+		invoiceID, _ := meta["lago_invoice_id"].(string)
+		if invoiceID == "" {
+			continue
+		}
+		observed = append(observed, id)
+		if _, existed := preSettleIDs[id]; !existed {
+			return nil, fmt.Errorf("new succeeded invoice-linked PaymentIntent %q appeared after settle; pre-settle IDs=%v", id, sortedPaymentIntentIDs(preSettleIDs))
+		}
+		candidates = append(candidates, paymentIntentCandidate{id: id, status: "succeeded", invoiceID: invoiceID})
+		intents[id] = intent
+	}
+	selected, err := selectExpectedPaymentIntent(expectedID, candidates)
+	if err != nil {
+		return nil, fmt.Errorf("%w; observed succeeded invoice-linked IDs=%v", err, observed)
+	}
+	return intents[selected.id], nil
+}
+
+func sortedPaymentIntentIDs(ids map[string]struct{}) []string {
+	out := make([]string, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestPaymentIntentCandidatesCaptureAllIDsAndFilterEligibility(t *testing.T) {
+	rows := []any{
+		map[string]any{"id": "pi_method", "status": "requires_payment_method", "metadata": map[string]any{"lago_invoice_id": "in_1"}},
+		map[string]any{"id": "pi_action", "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_2"}},
+		map[string]any{"id": "pi_confirmation", "status": "requires_confirmation", "metadata": map[string]any{"lago_invoice_id": "in_3"}},
+		map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+		map[string]any{"id": "pi_unlinked", "status": "requires_action"},
+		map[string]any{"id": "pi_other_status", "status": "processing", "metadata": map[string]any{"lago_invoice_id": "in_4"}},
+		map[string]any{"status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_missing_id"}},
+	}
+	eligible, observed := paymentIntentCandidates(rows)
+	if len(eligible) != 3 {
+		t.Fatalf("eligible candidates = %+v, want exactly the three unsettled invoice-linked candidates", eligible)
+	}
+	wantEligible := map[string]string{"pi_method": "requires_payment_method", "pi_action": "requires_action", "pi_confirmation": "requires_confirmation"}
+	for _, candidate := range eligible {
+		if wantEligible[candidate.id] != candidate.status || candidate.invoiceID == "" {
+			t.Errorf("unexpected eligible candidate: %+v", candidate)
+		}
+	}
+	for _, id := range []string{"pi_method", "pi_action", "pi_confirmation", "pi_old", "pi_unlinked", "pi_other_status"} {
+		if _, ok := observed[id]; !ok {
+			t.Errorf("pre-settle ID %q not captured; observed=%v", id, sortedPaymentIntentIDs(observed))
+		}
+	}
+	if _, ok := observed[""]; ok {
+		t.Fatal("empty PaymentIntent ID was captured")
+	}
+}
+
+func TestPaymentIntentCandidatesExposeAmbiguity(t *testing.T) {
+	single := paymentIntentCandidate{id: "pi_unique", status: "requires_action", invoiceID: "in_unique"}
+	got, err := requireUniquePaymentIntentCandidate([]paymentIntentCandidate{single})
+	if err != nil {
+		t.Fatalf("unique candidate error = %v, want nil", err)
+	}
+	if got != single {
+		t.Fatalf("unique candidate = %+v, want exact candidate %+v", got, single)
+	}
+
+	rows := []any{
+		map[string]any{"id": "pi_a", "status": "requires_action", "metadata": map[string]any{"lago_invoice_id": "in_a"}},
+		map[string]any{"id": "pi_b", "status": "requires_confirmation", "metadata": map[string]any{"lago_invoice_id": "in_b"}},
+	}
+	eligible, _ := paymentIntentCandidates(rows)
+	if len(eligible) != 2 {
+		t.Fatalf("ambiguous candidates = %+v, want both candidates exposed", eligible)
+	}
+	if _, err := requireUniquePaymentIntentCandidate(eligible); err == nil || !strings.Contains(err.Error(), "found 2") {
+		t.Fatalf("ambiguous candidate error = %v, want count diagnostic", err)
+	}
+	if _, err := requireUniquePaymentIntentCandidate(nil); err == nil || !strings.Contains(err.Error(), "found 0") {
+		t.Fatalf("missing candidate error = %v, want count diagnostic", err)
+	}
+}
+
+func TestSucceededPaymentIntentEnforcesPreSettleIdentity(t *testing.T) {
+	tests := []struct {
+		name      string
+		expected  string
+		preSettle []string
+		rows      []any
+		wantID    string
+		wantErr   string
+	}{
+		{name: "expected plus older captured success", expected: "pi_expected", preSettle: []string{"pi_expected", "pi_old"}, rows: []any{
+			map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+		}, wantID: "pi_expected"},
+		{name: "new linked success rejected", expected: "pi_expected", preSettle: []string{"pi_expected"}, rows: []any{
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+			map[string]any{"id": "pi_new", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_new"}},
+		}, wantErr: "pi_new"},
+		{name: "new unlinked success ignored", expected: "pi_expected", preSettle: []string{"pi_expected"}, rows: []any{
+			map[string]any{"id": "pi_new", "status": "succeeded"},
+			map[string]any{"id": "pi_expected", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_expected"}},
+		}, wantID: "pi_expected"},
+		{name: "absent expected reports expected and observed", expected: "pi_expected", preSettle: []string{"pi_expected", "pi_old"}, rows: []any{
+			map[string]any{"id": "pi_old", "status": "succeeded", "metadata": map[string]any{"lago_invoice_id": "in_old"}},
+		}, wantErr: "expected succeeded invoice-linked PaymentIntent \"pi_expected\" not found; observed succeeded invoice-linked IDs=[pi_old]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			preSettle := make(map[string]struct{}, len(tt.preSettle))
+			for _, id := range tt.preSettle {
+				preSettle[id] = struct{}{}
+			}
+			got, err := succeededPaymentIntent(tt.expected, preSettle, tt.rows)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want error containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("selection error = %v", err)
+			}
+			if got == nil || got["id"] != tt.wantID {
+				t.Fatalf("selected intent ID = %v, want %q", got["id"], tt.wantID)
+			}
+		})
+	}
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 }
 
 // deliverWebhookEvent POSTs the REAL PI event through the built-in webhook
@@ -337,11 +913,13 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		"LAGO_INTEGRATION_STRIPE_KEY", "LAGO_INTEGRATION_STRIPE_SETTLE_PM",
 		"LAGO_INTEGRATION_WEBHOOK_SECRET", "LAGO_INTEGRATION_ORG_ID",
 		"LAGO_INTEGRATION_GATE_PM",
+		"LAGO_INTEGRATION_DB_CONTAINER", "LAGO_INTEGRATION_DB_USER", "LAGO_INTEGRATION_DB_NAME",
 	)
 	for _, name := range []string{
 		"LAGO_INTEGRATION_BASE_URL", "LAGO_INTEGRATION_API_KEY",
 		"LAGO_INTEGRATION_STRIPE_KEY", "LAGO_INTEGRATION_STRIPE_SETTLE_PM",
 		"LAGO_INTEGRATION_WEBHOOK_SECRET", "LAGO_INTEGRATION_ORG_ID",
+		"LAGO_INTEGRATION_DB_CONTAINER", "LAGO_INTEGRATION_DB_USER", "LAGO_INTEGRATION_DB_NAME",
 	} {
 		if env[name] == "" {
 			t.Skip("lago integration env not configured")
@@ -442,9 +1020,14 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		providerCustomerID := providerCustomerOf(t, a, extCustomer)
 		var status int
 		var body map[string]any
+<<<<<<< HEAD
 		var candidates map[string]paymentIntentCandidate
 		var preObservedIDs map[string]struct{}
 		var expectedIntentID string
+=======
+		var expectedID string
+		var preSettleIDs map[string]struct{}
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 		waitDeadline := time.Now().Add(60 * time.Second)
 		for {
 			status, body = stripeForm(t, stripeKey, http.MethodGet,
@@ -452,11 +1035,22 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			candidates = map[string]paymentIntentCandidate{}
 			if status == 200 {
 				rows, _ := body["data"].([]any)
+<<<<<<< HEAD
 				preObservedIDs = paymentIntentIDSet(rows)
 				var err error
 				candidates, err = preSettlePaymentIntentCandidates(rows)
 				if err != nil {
 					t.Fatalf("invalid pre-settle PaymentIntent candidate: %v", err)
+=======
+				eligible, observed := paymentIntentCandidates(rows)
+				candidate, candidateErr := requireUniquePaymentIntentCandidate(eligible)
+				if candidateErr == nil {
+					found = true
+					expectedID = candidate.id
+					preSettleIDs = observed
+				} else if time.Now().After(waitDeadline) {
+					t.Fatalf("pre-settle PaymentIntent identity unresolved: %v", candidateErr)
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 				}
 			}
 			if len(candidates) > 0 {
@@ -471,6 +1065,9 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 				t.Fatalf("timed out waiting for an unsettled invoice-linked PaymentIntent; last HTTP %d, observed IDs %v", status, paymentIntentIDs(body))
 			}
 			time.Sleep(3 * time.Second)
+		}
+		if expectedID == "" {
+			t.Fatalf("no unique pre-settle invoice-linked unsettled PaymentIntent found before settle (HTTP %d)", status)
 		}
 		if _, err := a.SubmitCommand(ctx, commercial.Command{
 			Kind:  commercial.CommandKindSettlePurchasePayment,
@@ -495,7 +1092,11 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			t.Fatalf("intent list: HTTP %d", status)
 		}
 		rows, _ := body["data"].([]any)
+<<<<<<< HEAD
 		intent, err := succeededPaymentIntent(rows, expectedIntentID, preObservedIDs)
+=======
+		intent, err := succeededPaymentIntent(expectedID, preSettleIDs, rows)
+>>>>>>> codex/issue-72-82-t9-fixture-r2
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -508,7 +1109,7 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			"type":        "payment_intent.succeeded",
 			"data":        map[string]any{"object": intent},
 		}
-		providerCode := providerCodeOf(t, a)
+		providerCode := paymentProviderCode
 		if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
 			t.Fatalf("webhook delivery answered HTTP %d", code)
 		}
@@ -526,6 +1127,49 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 					snap.Purchase.InvoiceFees[0].AmountFen > 9900 ||
 					snap.Purchase.InvoicePaymentStatus != "succeeded" {
 					t.Fatalf("D6' re-check failed: %+v", snap.Purchase)
+				}
+				invoiceID := fmt.Sprint(intent["metadata"].(map[string]any)["lago_invoice_id"])
+				beforeReplay, snapshotErr := t9LagoSnapshot(ctx, a, extPurchase, extCustomer, invoiceID)
+				if snapshotErr != nil {
+					t.Fatalf("capture complete pre-replay Lago snapshot: %v", snapshotErr)
+				}
+				authorityBeforeReplay := purchaseSnapshotJSON(t, a, tenant)
+				webhookRows, readErr := readInboundWebhookRows(ctx, env["LAGO_INTEGRATION_DB_CONTAINER"], env["LAGO_INTEGRATION_DB_USER"], env["LAGO_INTEGRATION_DB_NAME"], orgID, providerCode, event["id"].(string))
+				if readErr != nil {
+					t.Fatalf("read baseline inbound webhook: %v", readErr)
+				}
+				baselineWebhookID, gateErr := requireBaselineWebhook(webhookRows)
+				if gateErr != nil {
+					t.Fatalf("baseline inbound webhook gate: %v", gateErr)
+				}
+				paymentsBeforeReplay := countLagoSucceededPayments(t, a, extCustomer)
+				if paymentsBeforeReplay != 1 {
+					t.Fatalf("setup: exactly one succeeded Lago payment expected before webhook replay, got %d", paymentsBeforeReplay)
+				}
+				if code := deliverWebhookEvent(t, baseURL, orgID, providerCode, webhookSecret, event); code != 200 {
+					t.Fatalf("duplicate webhook delivery answered HTTP %d", code)
+				}
+				replayCtx, replayCancel := context.WithTimeout(ctx, 90*time.Second)
+				gateErr = waitForReplayWebhook(replayCtx, func(readCtx context.Context) ([]inboundWebhookRow, error) {
+					return readInboundWebhookRows(readCtx, env["LAGO_INTEGRATION_DB_CONTAINER"], env["LAGO_INTEGRATION_DB_USER"], env["LAGO_INTEGRATION_DB_NAME"], orgID, providerCode, event["id"].(string))
+				}, baselineWebhookID)
+				replayCancel()
+				if gateErr != nil {
+					t.Fatalf("duplicate inbound webhook did not complete: %v", gateErr)
+				}
+				afterReplay, snapshotErr := t9LagoSnapshot(ctx, a, extPurchase, extCustomer, invoiceID)
+				if snapshotErr != nil {
+					t.Fatalf("capture complete post-replay Lago snapshot: %v", snapshotErr)
+				}
+				if !bytes.Equal(afterReplay, beforeReplay) {
+					t.Fatalf("duplicate webhook changed the authority state:\nbefore %s\nafter  %s", beforeReplay, afterReplay)
+				}
+				if authorityAfterReplay := purchaseSnapshotJSON(t, a, tenant); authorityAfterReplay != authorityBeforeReplay {
+					t.Fatalf("duplicate webhook changed authority state:\nbefore %s\nafter %s", authorityBeforeReplay, authorityAfterReplay)
+				}
+				paymentsAfterReplay := countLagoSucceededPayments(t, a, extCustomer)
+				if paymentsAfterReplay != 1 {
+					t.Fatalf("duplicate webhook must leave exactly one succeeded Lago payment: before=%d after=%d", paymentsBeforeReplay, paymentsAfterReplay)
 				}
 				return
 			}
@@ -637,22 +1281,6 @@ func providerCustomerOf(t *testing.T, a *LagoAdapter, extCustomer string) string
 		t.Fatalf("customer binding malformed")
 	}
 	return parsed.Customer.BillingConfiguration.ProviderCustomerID
-}
-
-func providerCodeOf(t *testing.T, a *LagoAdapter) string {
-	t.Helper()
-	status, body, err := a.do(context.Background(), http.MethodGet, "/api/v1/organizations", nil)
-	if err != nil || status != 200 {
-		t.Fatalf("organizations read: HTTP %d err=%v", status, err)
-	}
-	_ = body
-	// The lab seeds exactly one provider; its code is the settle path's own
-	// binding source — the adapter's providerCustomerPrefix env carries it
-	// on lab stacks. Fall back to the well-known lab code.
-	if a.cfg.ProviderCustomerPrefix != "" {
-		return a.cfg.ProviderCustomerPrefix
-	}
-	return "weknora-stripe"
 }
 
 func purchaseSnapshotJSON(t *testing.T, a *LagoAdapter, tenant uint64) string {

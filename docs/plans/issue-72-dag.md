@@ -7,6 +7,8 @@
 
 > **状态更正（2026-09-28）**：以上 #82-only readiness 是历史快照，已被 `issue-72-execution-ledger.md` 的当前证据 overlay supersede；目前没有任何实现节点已验证为 ready。
 
+> **T9 replay evidence overlay（2026-09-30）**：环境门控 T9 测试现含激活后的同一 webhook 事件重复投递断言（HTTP 200、authority snapshot byte-identical、Lago succeeded payment 恰 1）；本轮离线编译/包测试不等于 live acceptance。非 skip 的 live T9 仍开放，AC4 沙箱证据仍不可用；见 `issue-72-execution-ledger.md`。
+
 ## 1. Mermaid DAG
 
 实线=业务依赖边（75 条）；**虚线 `-.->` =调度约束边（6 条，非业务依赖，仅为 merge 冲突串行化，§2.5）**。
@@ -365,30 +367,10 @@ This overlay is the current execution-state source; sections 1–7 are historica
 
 - #84 narrow payment-attempt identity repair was independently task-reviewed and committed locally as `ae8f57c8cb33b15f7ec78cab3758ae00d3bd3cbe` in `codex/issue-72-lago-84`. Scoped task review R2 passes Spec Compliance and Code Quality; final whole-branch review is pending. Required repo/service/PostgreSQL tests passed as recorded in `issue-72-ledger-84.md` and its SDD report. This verifies only the narrow immutable-first-transaction repair, not whole #84 acceptance or inherited OCR residuals.
 - #87 R6 in the isolated T15 worktree is independently validated as a distinct result (`53a02242…`); it confirms 5-cent granted top-up and current-usage/wallet projection shape only. Wallet balances did not move as current usage rose; event internal IDs remained null. It does not verify debit, invoice settlement, balance exhaustion, negative balance or refusal. Task 0 remains open. A read-only v1.53 wallet contract research and minimal next-probe recommendation is underway.
+# T9 fixture repair checkpoint — 2026-09-30
 
+- Task 1 implemented in test harness only: synthetic webhook is bound to unique pre-settle invoice-linked unsettled PI identity; historical or newly appeared PI cannot be selected. Production code unchanged.
+- RED reproduced: assertion selected `pi_old` over expected `pi_expected`, and accepted a newly appearing linked ID. GREEN: focused tagged regression, package suite, tagged compile-only, and `git diff --check` passed.
+- Live T9 and real Alipay AC4 remain open and unverified; this task did not access external services.
 
-### Recovery overlay addendum — live tree and approved Rulings (2026-09-30)
-
-This addendum supersedes earlier pending-language about R-6/R-3 and readiness where it conflicts with the evidence below. The dated [live tree refresh](issue-72-live-tree-refresh-2026-09-30.md) records the source timestamps and limitations.
-
-- **Tree:** authenticated full traversal at 2026-09-29 23:49:35 CST found 33 unique native direct children (#73–#105), no grandchildren, 7 closed children and 26 open children; root #72 was open, so root plus children count 7 closed / 27 open. The 2026-09-30 00:00 read was a root/#74/count spot check, not a second full traversal. Native containment is not dependency.
-- **Rulings:** R-6 is settled: explicit immutable published-version dimension ownership, fail closed only for the ambiguous dimension, and continue excluding Usage Charges from paid purchases. R-3's approved #81 timing deviation is settled; finalized Invoice line items are fully reviewed at payment time, while R-6 preserves the no-charges purchase boundary. Neither ruling establishes implementation acceptance.
-- **#82:** remains not accepted. Existing AC1/AC2 and qualified AC3 evidence does not close the dedicated live T9 rerun gap; AC4 real Alipay sandbox evidence is unavailable. The reviewed T9 harness repair branch is not integrated and is not live acceptance evidence.
-- **#86:** remains not accepted (checkpoint verdict FAIL). The 110 helper tests/compilation do not cover full current-hash Lago acceptance; runtime gaps include cross-month expiry, current-hash rank/amount and reconciliation evidence, and race/expiry behavior. #85 paid-top-up and #75 expiry evidence remain dependencies.
-- **#87:** R16 plan review passed at the recorded plan hash, but implementation remains gated by verified #86 and Lago Task 0 live contract evidence. R-6/R-3 are not pending user decisions. No downstream node is promoted to ready or verified here.
-- **Reference-cycle adjudication:** timeline cross-references suggest `73 -> 77 -> 73`, but the supplied timeline audit found no dependency evidence in those records. Treat it as a reference-only cycle, not a DAG dependency cycle; retain actual body/API-backed dependency edges.
-- **Worktree/resource boundary:** the #82 audit reports its T9 fixture branch clean and unintegrated; its integration checkpoint `8329b85d4dfff301d03f94406dfc829d87cb5b26` was reported clean. Separately, the #86 checkpoint audit reports `.worktrees-issue72/lago-int` was already dirty at its audit start and that it modified no files. This refresh did not inspect or modify owner-controlled files, integrate the fixture branch, start services, or change shared resource ownership. The older full-traversal note saying the inventory/DAG were absent referred to its checked-out workspace; both paths are present and validated in this worktree.
-
-No acceptance, integration, or remote Issue status is promoted by this documentation update. The 2026-09-30 next safe task is to continue only with evidence work whose prerequisites and isolated resources are confirmed; do not dispatch #87 implementation until its #86 and Lago Task 0 gates pass.
-
-### Recovery overlay addendum — parallel lane and Lago Task 0 refresh (2026-09-30)
-
-The durable lane/source snapshot is [`issue-72-parallel-lane-readiness-2026-09-30.md`](issue-72-parallel-lane-readiness-2026-09-30.md). The complete native tree remains the 2026-09-29 audit of 33 direct children (#73–#105) and no grandchildren; the 2026-09-30 00:42 CST API reads for #72, #74, and #82–#87 are only a status spot check (all OPEN at read time). They do not replace the full traversal or establish acceptance.
-
-- Current status sampling found clean isolated #82 T9 fixture, #84, #85, and #86 worktrees; owner-controlled `lago-int` remains dirty at `8329b85d4dfff301d03f94406dfc829d87cb5b26`; the shared root checkout is dirty with unrelated changes. R8 Task 2 supplemental worktree is clean at `32aadf55ca19a08e6ae845431024c753d54fe5bb`; R8 Task 8 runbook worktree is dirty with an untracked draft at `85fd67f7f8be9d39d7f9f30b9a439524866fcffe`. See the report for paths, boundaries, and source qualifications.
-- Process/Paseo observations are timestamped 00:34 CST: four reported live Codex shells, unrelated live #140 OCR, one unrelated idle Paseo agent, and shared Docker/PostgreSQL capacity still held by Craft #107. Root-cwd shells cannot be mapped to a specific worktree/task; no lane/service/process is deemed released. No process, lane, or service was changed.
-- Pinned Lago v1.53.0 source research resolves package formula/cents handling, wallet equations, draft-fee participation, asynchronous refresh scheduling, negative ongoing balance behavior, and traceable transaction validation error mapping. It does not establish target configuration, runtime timing, observed endpoint/payload cause, or expiry-boundary runtime behavior.
-- R-6 and R-3 remain settled as recorded above. #82 remains incomplete (dedicated T9 live rerun and AC4 real sandbox evidence open); #86 remains not accepted (exact-current-hash runtime, expiry/race/rank/amount and reconciliation evidence open); R16 Task 0 remains blocked/incomplete. **#87 implementation is not ready.** No acceptance, integration, or remote state is promoted.
-- Next safe sequence: continue read-only evidence/source work using isolated resources; obtain #75 expiry and #85 paid-top-up prerequisites and exact-checkpoint #86 runtime proof in an isolated pinned Lago stack; dispatch #87 only after #86 is verified/integrated and R16 Task 0's runtime gates pass. Do not consume the shared Docker/PostgreSQL slot without explicit release.
-
-This is a recovery overlay only; it adds no node or dependency edge and does not change R-6/R-3 or any acceptance gate.
+> **T9 replay repair overlay (2026-09-30):** The webhook replay assertion now waits for the exact new pinned Lago inbound-webhook row to reach `succeeded`, then compares canonical complete subscription, invoice, invoice payments, customer wallets, and all wallet transactions. Offline verification does not constitute live T9/AC3 or AC4 evidence; see #82 ledger/report.

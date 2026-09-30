@@ -1,5 +1,23 @@
 # Issue #82 执行 Ledger（Lago 10 · 支付宝付款后恰好一次激活套餐 · R-4 重做轮）
 
+## T9 OCR r3 diagnostic repair — 2026-09-30
+
+- Updated only the empty DB-container guard diagnostic in `prepare_t9_env.sh`: it now says the local stack may not be running and suggests `lab.sh up`. The existing `return 1` / `exit 1` path remains intact. No live stack was used; this does not claim live T9/AC3/AC4 evidence.
+- Static checks: `bash -n docs/plans/issue-72-flow-evidence-82/settle-evidence/prepare_t9_env.sh` and `git diff --check`.
+- SDD report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r3/task-1-report.md`.
+
+## T9 duplicate webhook replay assertion — 2026-09-30
+
+- After activation and InvoiceFees validation, the test captures the active authority snapshot and requires exactly one succeeded Lago payment, redelivers the same event object through the same route/provider/secret, requires HTTP 200, then requires a byte-identical authority snapshot and exactly one succeeded payment.
+- Offline verification covers selector regressions, package tests, and integration-tag compilation only. The environment-gated live T9 replay was not run; AC3 replay acceptance remains OPEN pending a non-skip run. AC4 real Alipay sandbox evidence remains unavailable.
+
+## T9 fixture identity repair — 2026-09-30
+
+- Test-only repair in `lago_settlement_integration_test.go`: the synthetic success webhook now uses only the exact invoice-linked unsettled PaymentIntent captured before settle; unrelated historical successes are not fallback candidates. Missing or ambiguous pre-settle identity and missing post-settle match fail closed. No production source changed.
+- RED evidence: focused tagged selector test failed by assertion for the old succeeded PI (`pi_old` selected instead of `pi_expected`) and for newly appearing linked PI (unexpected success accepted).
+- GREEN evidence: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1`; `go test ./internal/modules/commercial/commercialplatform`; `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'`; `git diff --check` all pass. The tagged full live T9 flow was not run.
+- Residuals remain OPEN: live T9 acceptance still requires an environment-backed non-skip run; AC4 real Alipay sandbox evidence remains unavailable (`ac4-sandbox-credentials-unavailable`). This test-harness repair does not close either gate.
+
 ## 计划身份
 
 | 项 | 值 |
@@ -243,6 +261,7 @@
 2. AC4 沙箱残余 `ac4-sandbox-credentials-unavailable`（不变，R-4 已披露边界）。
 3. #84/#92 已移交项不变（废弃 pending 单回收、cancel 命令、续期收款路由）；D16 不修项不变。
 
+<<<<<<< HEAD
 ## T9 synthetic webhook candidate identity repair — 2026-09-29
 
 - Repaired only the tagged integration harness in `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`: the bounded pre-settle Stripe list captures IDs and creation times only for invoice-linked `requires_payment_method`, `requires_action`, or `requires_confirmation` intents; the unique greatest positive timestamp mirrors production `latestIntent`, and invalid/tied candidates fail closed. After settle, the synthetic event requires that exact succeeded PI ID with nonempty invoice metadata. No historical or other-candidate fallback remains.
@@ -266,3 +285,38 @@
 - Evidence at implementation commit `11abb192a36eef9526ad3134d29385163fc310f6`: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run 'Test.*PaymentIntent.*(Candidate|Selection)' -count=1` PASS before and after negative control; temporary helper mutant filtering `pi_unlinked` and `pi_already_done` FAILED with both missing IDs and 2-vs-4 count; helper restored byte-for-byte to BASE helper SHA-256 `c30f71b65fb2c8af44ded2abcac00479ae8af299d0fc45f6cd0e271d686235d7`; `go test ./internal/modules/commercial/commercialplatform -count=1` PASS (72.497s); `go test -tags lago_integration ./internal/modules/commercial/commercialplatform -run '^$'` PASS; `gofmt -w internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go` PASS; `git diff --check` PASS. No services/network used.
 - Independent backend validator reran the focused tagged test at `11abb192a36eef9526ad3134d29385163fc310f6` — PASS (`ok ... 1.441s`). Independent task review: Spec compliance PASS, code quality PASS. OCR range `d8d21cd967c94c09d32c34a2981904758f442330..11abb192a36eef9526ad3134d29385163fc310f6` selected zero files (`Review skipped: no items were selected`); OCR coverage is unavailable, not passed.
 - L1 is addressed; live dedicated-stack T9 and AC4 sandbox gates remain open and are not claimed complete.
+=======
+## T9 webhook replay review repair — 2026-09-30
+
+- Fixed the async false-pass window by reading the pinned Lago `inbound_webhooks` row through the local DB container, scoped by organization, source, provider code, and exact Stripe event ID. The test verifies one succeeded baseline row and waits under a bounded context for exactly one additional row to become succeeded before post-state reads.
+- Added canonical API snapshots of the exact active purchase subscription and finalized+succeeded invoice from `PaymentIntent.metadata.lago_invoice_id`, all invoice-filtered payments (exactly one succeeded), all customer wallets, and every wallet’s transactions. Paginated collections require `meta.total_count` consistency and are sorted by Lago ID before JSON byte comparison. Existing authority snapshot/payment count assertions remain additional checks.
+- Test remains env-gated. No live services were started; T9 replay/AC3 and AC4 remain unverified. Source contract pin: Lago API `591ae9005110346f1c6034ec72ea9046625668cf`.
+- Verification and commit evidence: `.superpowers/sdd/issue-72-plan-82-t9-fixture-r1/t9-webhook-replay-fix-task-1-report.md`.
+
+- Fix-round contract correction: Lago PaymentSerializer exposes `invoice_ids`; exact target invoice selection now uses array membership with malformed shape rejection. Additional validator fixes send psql SQL over stdin, parse pagination metadata independently of collection arrays, fail immediately on terminal failed rows, assert the active purchase wallet, and use effective DB labels for the prep organization query. See Task 1 report for fix-round checks and hashes.
+
+## T9 OCR finding repair r2 — 2026-09-30
+
+- `prepare_t9_env.sh` now selects the first `docker compose ps -q db` result before removing whitespace, and documents that `POSTGRES_USER` / `POSTGRES_DB` fallbacks track `deploy/lago/compose.yaml` defaults.
+- `bash -n` and `git diff --check` passed. No services or live T9 were started. Independent review and final OCR remain pending.
+- Task evidence: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r2/task-1-report.md`.
+
+## T9 OCR finding repair r4 — 2026-09-30
+
+- `prepare_t9_env.sh` now resolves `POSTGRES_USER` and `POSTGRES_DB` using Compose precedence: set shell value first (including empty, which reaches the `${VAR:-lago}` fallback), then the selected `lab.env`, then `lago`. The organization query and polling exports share the resolved labels.
+- Verification: `bash -n`, `git diff --check`, source wiring assertions, and deterministic shell resolver cases for nonempty overrides, set-empty overrides, env-file-only values, and final defaults all passed. No services or live T9 were started.
+- SDD task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r4/task-1-report.md`. Independent validation/review and final OCR remain pending.
+
+## T9 OCR finding repair r5 — 2026-09-30
+
+- Task 1 changes `prepare_t9_env.sh` so only exported `POSTGRES_USER` / `POSTGRES_DB` shell variables override `lab.env`; unexported values are ignored for Compose parity. Empty exported values still reach the existing `lago` fallback. The organization query and integration polling exports continue to share the resolved labels.
+- Verification: `bash -n`, `git diff --check`, five deterministic resolver cases (both DB variables checked per case), and static checks for organization-query/export wiring passed. No services or live T9 were started.
+- Task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r5/task-1-report.md`. Independent validation/review and final OCR remain pending.
+
+## T9 OCR finding repair r6 — Task 1 (2026-09-30)
+
+- Adapter and T9 webhook replay now share `paymentProviderCode = "weknora-stripe"`; the test no longer probes organizations or derives provider code from `ProviderCustomerPrefix`.
+- Failed replay rows are detected by `row.Status == "failed"` and return the existing actionable diagnostic immediately. Added a constant contract assertion; existing single-read failed-status test covers immediate exit.
+- Focused tagged helper tests, tagged compile-only, `bash -n` for the existing T9 preparation script, and `git diff --check` passed, as did `go test ./internal/modules/commercial/commercialplatform/ -count=1` (72.565s). No live stack/T9 run.
+- Task report: `.superpowers/sdd/issue-72-plan-82-t9-ocr-fix-r6/task-1-report.md`. Independent review/validation and final OCR pending.
+>>>>>>> codex/issue-72-82-t9-fixture-r2
