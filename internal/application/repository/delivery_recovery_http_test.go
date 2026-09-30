@@ -1,8 +1,11 @@
 package repository_test
 
-// T25 (#55) recovery evidence over the highest-stable interface: real HTTP
-// delivery handlers, a fully migrated sqlite database and the real A03
-// approval chain. GitHub HTTP is the only boundary stub.
+// T25 (#55) recovery evidence over real delivery/A03 handlers and services
+// through path-equivalent Gin HTTP mounts, a fully migrated sqlite database,
+// and a GitHub HTTP boundary stub. Identity values are injected into request
+// context; production router middleware and authentication are not exercised.
+// Production route declarations live in router/routes_workbench.go and
+// router/routes_app_connectors.go.
 import (
 	"context"
 	"encoding/base64"
@@ -42,13 +45,17 @@ type recoveryGitHubStub struct {
 	prs             []map[string]any
 	prSeq           int64
 	calls           map[string]int
+	writeRequests   []string
+	getFacts        []string
+	refFacts        map[string]string
+	prFactCounts    map[string]int
 	probeHeaders    int
 	failPRCreations int
 	failPRTransport bool
 }
 
 func newRecoveryGitHubStub(t *testing.T) *recoveryGitHubStub {
-	s := &recoveryGitHubStub{blobs: map[string][]byte{"blob-main": []byte("package main\n")}, refs: map[string]string{}, calls: map[string]int{}}
+	s := &recoveryGitHubStub{blobs: map[string][]byte{"blob-main": []byte("package main\n")}, refs: map[string]string{}, calls: map[string]int{}, refFacts: map[string]string{}, prFactCounts: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.serve)
 	s.srv = httptest.NewServer(mux)
@@ -70,6 +77,29 @@ func (s *recoveryGitHubStub) snapshotCalls() map[string]int {
 	}
 	return out
 }
+func (s *recoveryGitHubStub) snapshotFacts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.getFacts...)
+}
+func (s *recoveryGitHubStub) snapshotWriteRequests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.writeRequests...)
+}
+func (s *recoveryGitHubStub) snapshotRemoteFacts() (map[string]string, map[string]int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	refs := map[string]string{}
+	for k, v := range s.refFacts {
+		refs[k] = v
+	}
+	prs := map[string]int{}
+	for k, v := range s.prFactCounts {
+		prs[k] = v
+	}
+	return refs, prs
+}
 func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 	if got := r.Header.Get("Authorization"); got == "Bearer "+t25ProbeToken {
 		s.mu.Lock()
@@ -80,6 +110,20 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		s.mu.Lock()
+		s.writeRequests = append(s.writeRequests, r.Method+" "+path)
+		s.mu.Unlock()
+	}
+	if r.Method == http.MethodGet && (strings.HasPrefix(path, "/repos/octocat/hello/git/ref/heads/") || path == "/repos/octocat/hello/pulls") {
+		key := r.Method + " " + path
+		if path == "/repos/octocat/hello/pulls" {
+			key += "?head=" + r.URL.Query().Get("head")
+		}
+		s.mu.Lock()
+		s.getFacts = append(s.getFacts, key)
+		s.mu.Unlock()
+	}
 	switch {
 	case r.Method == http.MethodGet && path == "/user":
 		s.writeJSON(w, 200, map[string]any{"login": "octocat-remote"})
@@ -99,8 +143,12 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.writeJSON(w, 200, map[string]any{"encoding": "base64", "content": base64.StdEncoding.EncodeToString(content)})
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/git/ref/heads/"):
+		branch := strings.TrimPrefix(path, "/repos/octocat/hello/git/ref/heads/")
 		s.mu.Lock()
-		sha, ok := s.refs[strings.TrimPrefix(path, "/repos/octocat/hello/git/ref/heads/")]
+		sha, ok := s.refs[branch]
+		if ok {
+			s.refFacts[branch] = sha
+		}
 		s.mu.Unlock()
 		if !ok {
 			s.writeJSON(w, 404, map[string]any{"message": "no such ref"})
@@ -139,6 +187,7 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 				out = append(out, pr)
 			}
 		}
+		s.prFactCounts[head] = len(out)
 		s.mu.Unlock()
 		s.writeJSON(w, 200, out)
 	case r.Method == http.MethodPost && path == "/repos/octocat/hello/pulls":
@@ -246,14 +295,21 @@ func (e *recoveryEnv) do(t *testing.T, method, path, body string) *httptest.Resp
 	return w
 }
 func (e *recoveryEnv) seedApprovedDelivery(t *testing.T) string {
+	_, _, _, id := e.seedApprovedDeliveryResponses(t)
+	return id
+}
+
+func (e *recoveryEnv) seedApprovedDeliveryResponses(t *testing.T) (baselineBody, prepareBody, approveBody, deliveryID string) {
 	t.Helper()
 	w := e.do(t, "POST", "/api/v1/workbench/executions/r1/baseline", `{"connection_id":"conn-gh","repo":"octocat/hello","baseline_sha":"`+t25BaseSHA+`"}`)
 	require.Equal(t, 201, w.Code, w.Body.String())
+	baselineBody = w.Body.String()
 	target := filepath.Join(e.wsRoot, "octocat/hello")
 	require.NoError(t, os.MkdirAll(target, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(target, "main.go"), []byte("package main\n\nfunc main() { println(\"t25\") }\n"), 0644))
 	w = e.do(t, "POST", "/api/v1/workbench/executions/r1/delivery", `{"connection_id":"conn-gh","repo":"octocat/hello","baseline_sha":"`+t25BaseSHA+`","commit_message":"fix: t25 recovery","pr_title":"WeKnora t25 recovery"}`)
 	require.Equal(t, 201, w.Code, w.Body.String())
+	prepareBody = w.Body.String()
 	var out struct {
 		Data struct {
 			Delivery codedelivery.DeliveryView `json:"delivery"`
@@ -266,7 +322,9 @@ func (e *recoveryEnv) seedApprovedDelivery(t *testing.T) string {
 	require.NoError(t, e.db.Raw(`SELECT fence FROM app_actions WHERE id = ?`, out.Data.Delivery.ActionID).Scan(&fence).Error)
 	w = e.do(t, "POST", "/api/v1/apps/actions/"+out.Data.Delivery.ActionID+"/approve", fmt.Sprintf(`{"digest":%q,"expected_version":%d}`, out.Data.Delivery.Digest, fence))
 	require.Equal(t, 200, w.Code, w.Body.String())
-	return out.Data.Delivery.ID
+	approveBody = w.Body.String()
+	deliveryID = out.Data.Delivery.ID
+	return
 }
 func (e *recoveryEnv) dispatchState(t *testing.T, id string) (int, codedelivery.DeliveryView) {
 	t.Helper()
@@ -323,8 +381,13 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	code, view := env.dispatchState(t, id)
 	require.Equal(t, 200, code)
 	require.Equal(t, "unknown", view.State)
+	beforeCalls := env.github.snapshotCalls()
+	beforeFacts := env.github.snapshotFacts()
+	beforeRefs, beforePRs := env.github.snapshotRemoteFacts()
+	beforeWrites := env.github.snapshotWriteRequests()
 	w := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", "")
 	require.Equal(t, 200, w.Code, w.Body.String())
+	require.NotContains(t, w.Body.String(), t25ProbeToken)
 	var resolved struct {
 		Data struct {
 			Delivery codedelivery.DeliveryView `json:"delivery"`
@@ -332,26 +395,96 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resolved))
 	require.Equal(t, "pushed", resolved.Data.Delivery.State)
+	afterCalls := env.github.snapshotCalls()
+	afterFacts := env.github.snapshotFacts()
+	afterRefs, afterPRs := env.github.snapshotRemoteFacts()
+	afterWrites := env.github.snapshotWriteRequests()
+	branch := "weknora/task/s1"
+	branchRead := "/repos/octocat/hello/git/ref/heads/" + branch
+	prRead := "/repos/octocat/hello/pulls?head=octocat:" + branch
+	require.Contains(t, afterFacts[len(beforeFacts):], "GET "+branchRead)
+	require.Contains(t, afterFacts[len(beforeFacts):], "GET "+prRead)
+	require.NotEmpty(t, resolved.Data.Delivery.CommitSHA)
+	require.Equal(t, resolved.Data.Delivery.CommitSHA, afterRefs[branch], "resolver must accept the expected remote branch commit")
+	require.Equal(t, 0, afterPRs["octocat:"+branch], "resolver must observe no matching PR")
+	require.Equal(t, beforeRefs, afterRefs, "resolve is read-only for branch facts")
+	require.Equal(t, beforePRs, afterPRs, "resolve is read-only for PR facts")
+	require.Equal(t, beforeWrites, afterWrites, "resolve must not emit any provider write method or path")
+	require.Equal(t, beforeCalls["POST /git/blobs"], afterCalls["POST /git/blobs"])
+	require.Equal(t, beforeCalls["POST /git/trees"], afterCalls["POST /git/trees"])
+	require.Equal(t, beforeCalls["POST /git/commits"], afterCalls["POST /git/commits"])
+	require.Equal(t, beforeCalls["POST /git/refs"], afterCalls["POST /git/refs"])
+	require.Equal(t, beforeCalls["PATCH /git/refs"], afterCalls["PATCH /git/refs"])
+	require.Equal(t, beforeCalls["POST /pulls"], afterCalls["POST /pulls"])
 	env.github.mu.Lock()
 	env.github.failPRTransport = false
 	env.github.mu.Unlock()
+	beforeRecoveryCalls := env.github.snapshotCalls()
+	beforeRecoveryWrites := env.github.snapshotWriteRequests()
 	code, view = env.dispatchState(t, id)
 	require.Equal(t, 200, code)
 	require.Equal(t, "delivered", view.State)
 	require.NotZero(t, view.PRNumber)
+	afterRecoveryCalls := env.github.snapshotCalls()
+	afterRecoveryWrites := env.github.snapshotWriteRequests()
+	require.Equal(t, beforeRecoveryCalls["POST /pulls"]+1, afterRecoveryCalls["POST /pulls"])
+	for _, key := range []string{"POST /git/blobs", "POST /git/trees", "POST /git/commits", "POST /git/refs", "PATCH /git/refs"} {
+		require.Equal(t, beforeRecoveryCalls[key], afterRecoveryCalls[key], "recovery may not add Git write %s", key)
+	}
+	require.Equal(t, append(beforeRecoveryWrites, "POST /repos/octocat/hello/pulls"), afterRecoveryWrites,
+		"post-resolve recovery dispatch must create only the PR")
 }
 func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	env := newRecoveryEnv(t)
 	env.github.mu.Lock()
-	env.github.failPRCreations = 1
+	env.github.failPRTransport = true
 	env.github.mu.Unlock()
-	id := env.seedApprovedDelivery(t)
-	bodies := []string{}
+	baselineBody, prepareBody, approveBody, id := env.seedApprovedDeliveryResponses(t)
+	bodies := []string{baselineBody, prepareBody, approveBody}
 	capture := func(w *httptest.ResponseRecorder) { bodies = append(bodies, w.Body.String()) }
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", ""))
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", ""))
-	capture(env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", ""))
-	capture(env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", ""))
+	first := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", "")
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	var initial struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &initial))
+	require.Equal(t, "unknown", initial.Data.Delivery.State)
+	capture(first)
+	resolve := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", "")
+	require.Equal(t, http.StatusOK, resolve.Code, resolve.Body.String())
+	var resolved struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(resolve.Body.Bytes(), &resolved))
+	require.Equal(t, "pushed", resolved.Data.Delivery.State)
+	capture(resolve)
+	env.github.mu.Lock()
+	env.github.failPRTransport = false
+	env.github.mu.Unlock()
+	retry := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", "")
+	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
+	var retried struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(retry.Body.Bytes(), &retried))
+	require.Equal(t, "delivered", retried.Data.Delivery.State)
+	capture(retry)
+	finalGet := env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", "")
+	require.Equal(t, http.StatusOK, finalGet.Code, finalGet.Body.String())
+	var final struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(finalGet.Body.Bytes(), &final))
+	require.Equal(t, "delivered", final.Data.Delivery.State)
+	capture(finalGet)
 	for i, b := range bodies {
 		require.NotContains(t, b, t25ProbeToken, "response %d leaks credential", i)
 	}
@@ -369,6 +502,15 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	for _, row := range rows {
 		for _, field := range []string{row.ID, row.TaskID, row.RunID, row.OwnerID, row.ActionID, row.ConnectionID, row.Repo, row.BaselineSHA, row.Branch, row.CommitSHA, row.PRURL, row.RemoteLogin, row.State, row.Failure} {
 			require.NotContains(t, field, t25ProbeToken, "delivery row leaks credential")
+		}
+	}
+	var actions []appconnectorrepo.ActionRow
+	require.NoError(t, env.db.Where("tenant_id = ?", 1).Find(&actions).Error)
+	require.NotEmpty(t, actions, "the A03 approval action must be persisted")
+	for _, action := range actions {
+		for _, field := range []string{action.ID, action.ActorID, action.ConnectionID, action.AppVersion, action.Target, action.Risk,
+			action.ArgsSnapshot, action.ArgsDigest, action.State, action.ProviderKey, action.ProviderResult, action.ReservationID, action.OCBindingJSON} {
+			require.NotContains(t, field, t25ProbeToken, "A03 action value leaks credential")
 		}
 	}
 	require.NotZero(t, env.github.snapshotCalls()["POST /git/blobs"])
