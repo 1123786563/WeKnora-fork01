@@ -1,0 +1,17 @@
+# 合法事件 fixture：事实型 id（过去时/名词），含租户元数据五要素。
+events:
+  - id: conversation.message.appended
+    version: 1
+    producer: conversation
+    meaning: 会话已追加一条消息（事实记录，非命令）
+    ordering: per-session append order
+    replay: source-query
+    transport: in_process
+    consumers:
+      - internal/modules/insights
+    required_metadata:
+      - tenant_id
+      - occurred_at
+      - event_id
+      - idempotency_key
+      - actor_origin

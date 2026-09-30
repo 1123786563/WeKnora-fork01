@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Tencent/WeKnora/tools/internal/movemanifest"
 )
 
 // writeTree 在临时目录中落一批文件（目录自动创建）。
@@ -107,7 +109,7 @@ func loadDemoManifest(t *testing.T) *MoveManifest {
 	if err := os.WriteFile(path, []byte(demoManifestYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadManifestStrict(path)
+	m, err := movemanifest.LoadManifestStrict(path)
 	if err != nil {
 		t.Fatalf("LoadManifestStrict: %v", err)
 	}
@@ -334,7 +336,7 @@ func TestVerifyAllRejectsDuplicateOwnership(t *testing.T) {
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b, err := LoadManifestStrict(bPath)
+	b, err := movemanifest.LoadManifestStrict(bPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +359,7 @@ func TestVerifyAllRejectsDuplicateTarget(t *testing.T) {
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b, err := LoadManifestStrict(bPath)
+	b, err := movemanifest.LoadManifestStrict(bPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +382,7 @@ func TestVerifyAllRejectsDuplicateLegacyPath(t *testing.T) {
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b, err := LoadManifestStrict(bPath)
+	b, err := movemanifest.LoadManifestStrict(bPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +407,7 @@ func TestVerifyAllRejectsNestedFromAcrossManifests(t *testing.T) {
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b, err := LoadManifestStrict(bPath)
+	b, err := movemanifest.LoadManifestStrict(bPath)
 	if err != nil {
 		t.Fatal(err)
 	}

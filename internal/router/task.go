@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/hibiken/asynq"
 	"go.uber.org/dig"
 )
@@ -51,6 +52,12 @@ type AsynqTaskParams struct {
 	QueryHistoryExport *service.QueryHistoryExportService
 	DeadLetterRepo     interfaces.TaskDeadLetterRepository
 	SpanTracker        service.SpanTracker
+
+	// KnowledgeModule 是 knowledge 模块装配门面（IB2，K5 Brief (b)）：18 个
+	// knowledge 任务处理器的双栈注册经门面执行（RunAsynqServer 内装配点，
+	// 见 workers_knowledge.go）。9 个 knowledge 分发面字段保留为注入源
+	// （container 构造仍在 dig；门面只收已构造实例）。
+	KnowledgeModule *knowledge.Module
 }
 
 // defaultRedisOpTimeout is the previous hard-coded read timeout. The 100ms
@@ -262,62 +269,22 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// chat / rerank / ASR) nest correctly in the Langfuse UI.
 	mux.Use(langfuse.AsynqMiddleware())
 
+	// Register the 18 knowledge task handlers via the module facade
+	// (IB2, K5 Brief (b)): RegisterKnowledgeWorkersRedis swaps out the 18
+	// former mux.HandleFunc lines one-for-one (same task types, same method
+	// values — see module.workerHandlers parity anchors).
+	if err := RegisterKnowledgeWorkersRedis(mux, params.KnowledgeModule); err != nil {
+		log.Fatalf("register knowledge workers (redis): %v", err)
+	}
+
 	// Register extract handlers - router will dispatch to appropriate handler
-	mux.HandleFunc(types.TypeChunkExtract, params.ChunkExtractor.Handle)
-	mux.HandleFunc(types.TypeDataTableSummary, params.DataTableSummary.Handle)
-
-	// Register document processing handler
-	mux.HandleFunc(types.TypeDocumentProcess, params.KnowledgeService.ProcessDocument)
 	mux.HandleFunc(types.TypeTemporaryDocumentProcess, params.TemporaryDocument.Process)
-
-	// Register manual knowledge processing handler (cleanup + re-indexing)
-	mux.HandleFunc(types.TypeManualProcess, params.KnowledgeService.ProcessManualUpdate)
-
-	// Register FAQ import handler (includes dry run mode)
-	mux.HandleFunc(types.TypeFAQImport, params.KnowledgeService.ProcessFAQImport)
-
-	// Register question generation handler
-	mux.HandleFunc(types.TypeQuestionGeneration, params.KnowledgeService.ProcessQuestionGeneration)
-
-	// Register summary generation handler
-	mux.HandleFunc(types.TypeSummaryGeneration, params.KnowledgeService.ProcessSummaryGeneration)
-
-	// Register KB clone handler
-	mux.HandleFunc(types.TypeKBClone, params.KnowledgeService.ProcessKBClone)
-
-	// Register knowledge move handler
-	mux.HandleFunc(types.TypeKnowledgeMove, params.KnowledgeService.ProcessKnowledgeMove)
-
-	// Register knowledge list delete handler
-	mux.HandleFunc(types.TypeKnowledgeListDelete, params.KnowledgeService.ProcessKnowledgeListDelete)
 
 	// Register data source purge handler (SP2-a Task 8: delete-source cascade)
 	mux.HandleFunc(types.TypeDataSourcePurge, params.DataSourceService.ProcessDataSourcePurge)
 
-	// Register knowledge list reparse handler
-	mux.HandleFunc(types.TypeKnowledgeListReparse, params.KnowledgeService.ProcessKnowledgeListReparse)
-
-	// Register index delete handler
-	mux.HandleFunc(types.TypeIndexDelete, params.TagService.ProcessIndexDelete)
-
-	// Register KB delete handler
-	mux.HandleFunc(types.TypeKBDelete, params.KnowledgeBaseService.ProcessKBDelete)
-
-	// Register image multimodal handler
-	mux.HandleFunc(types.TypeImageMultimodal, params.ImageMultimodal.Handle)
-
-	// Register knowledge post process handler
-	mux.HandleFunc(types.TypeKnowledgePostProcess, params.KnowledgePostProcess.Handle)
-	mux.HandleFunc(types.TypeKnowledgeAutoTag, params.KnowledgeAutoTag.Handle)
-
 	// Register data source sync handler
 	mux.HandleFunc(types.TypeDataSourceSync, params.DataSourceService.ProcessSync)
-
-	// Register wiki ingest handler + the debounced KB-global finalize handler.
-	// Both route to the same dispatch (WikiIngest.Handle switches on task type)
-	// and both land on QueueWiki, so the dedicated wiki pool serves them.
-	mux.HandleFunc(types.TypeWikiIngest, params.WikiIngest.Handle)
-	mux.HandleFunc(types.TypeWikiFinalize, params.WikiIngest.Handle)
 
 	// Register long-term memory distillation handler
 	mux.HandleFunc(types.TypeMemoryExtract, params.MemoryService.Handle)

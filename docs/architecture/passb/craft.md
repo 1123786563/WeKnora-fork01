@@ -1,8 +1,9 @@
 # Pass B Brief — B-craft（craft 模块收尾：别名删除 + 横向包遗留文件拆分）
 
-Manifest：`docs/architecture/moves/craft.yaml`（模块 craft）。本 brief 覆盖 B-craft 的
-全部义务：别名删除、container 切换、30 个 legacy 文件的域拆分。文件明细与
-`internal/modules/craft/legacy/README.md` 逐条镜像。
+> child plan：**41-craft**（B0.3 裁定标注，framework:71）。
+> Manifest：`docs/architecture/moves/craft.yaml`（模块 craft）。本 brief 覆盖 B-craft 的
+> 全部义务：别名删除、container 切换、30 个 legacy 文件的域拆分。文件明细与
+> `internal/modules/craft/legacy/README.md` 逐条镜像。
 
 ## Scope（legacy_files，30 文件）
 
@@ -48,10 +49,11 @@ service/repository/handler 层衔接为完整模块栈。建议结构 `internal/
 
 ## 集成点迁移（随文件拆分一并处理）
 
-- 路由：`internal/handler/session/{craft,craft_interaction,craft_scheduled,craft_preview}.go`
-  的 RegisterCraftXxx 委托（共 12+4+7+3 条 + 1 休眠挂载）与
+- 路由：`internal/handler/session/craft.go`、`craft_interaction.go`、
+  `craft_scheduled.go`、`craft_preview.go`（及用量面 craft_usage.go）的
+  RegisterCraftXxx 委托（共 12+4+7+3 条 + 1 休眠挂载）与
   `internal/handler/craft_model_gateway.go` 顶层 pre-auth 网关（router.go:262-265 挂载、
-  routes_chat.go:103/123/135 三分组挂载点保持挂载语句不动，委托目标改指模块内部）；
+  routes_chat.go:103/123/135 三分组挂载点保持挂载语句不动，委托目标改指模块内部）。
 - 生命周期：container 侧 9 个挂点（container.go:665/668/680/684/1038 +
   internal/container/craft_interaction.go:81/92、craft_lifecycle.go:101/116/136）随
   B-container/bootstrap 收敛任务处理，本任务只保证模块侧提供等价构造函数；

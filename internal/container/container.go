@@ -90,6 +90,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
+	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
+	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
@@ -340,7 +345,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWebSearchStateService))
 	must(container.Provide(repository.NewDataSourceRepository))
 	must(container.Provide(repository.NewSyncLogRepository))
-	must(container.Provide(repository.NewWikiPageRepository))
+	// K3.1（Ruling 2026-09-25-CYCLE-FORCED-COMPOSITION）：provider 目标由
+	// repository.NewWikiPageRepository 切至 wiki 包——repository 侧转发 shim
+	// 因 wiki→agentruntime（prompt 常量）→agent/tools→repository import 环不可
+	// 编译；本行即 K3.3 Brief (a) 为 IB2 排期的同款切换提前落地，IB2 转核验项。
+	must(container.Provide(knowledgeWiki.NewWikiPageRepository))
 	must(container.Provide(repository.NewMemoryRepository))
 	must(container.Provide(repository.NewTaskPendingOpsRepository))
 	must(container.Provide(repository.NewTaskDeadLetterRepository))
@@ -781,6 +790,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewSemanticModelPolicyHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
+	// IB2（K5 Brief (f)）：模块直构造并存供给——knowledge 门面 Dependencies
+	// 收 *ingest.ChunkHandler 模块实例；路由/rbac 面继续用宿主 wrapper
+	//（完整切换依赖 identity 去方法化前置，见 routes_knowledge.go IB2 裁定注）。
+	must(container.Provide(ingest.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
 	must(container.Provide(handler.NewTagHandler))
 	// Session fork (A11) + pinned session sandbox (A17): the runner, ID
@@ -920,7 +933,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// Data source handler
 	must(container.Provide(handler.NewDataSourceHandler))
-	// Wiki page handler
+	// Wiki page handler（wrapper 构造器内已直构造 wiki.NewWikiPageHandler 模块实例
+	// 并内嵌导出——门面 Dependencies 经 wrapper.WikiPageHandler 取模块实例；IB2 裁定：
+	// wrapper 保留（rbac_lookups.go:105/:183 方法依赖 wrapper 类型，identity 去方法化前置未就绪）。
 	must(container.Provide(handler.NewWikiPageHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
@@ -1152,11 +1167,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	} else {
 		must(container.Invoke(router.RegisterSyncHandlers))
 	}
-	// Wiki operation rows are durable, while their wake-up triggers may be
-	// lost across a process restart (always in Lite mode, and in Redis mode if
-	// persistence succeeded immediately before trigger enqueue failed). Re-arm
-	// them only after the matching handlers are ready.
-	must(container.Invoke(recoverPendingWikiTasks))
+	// IB2（K5 Brief (b)/(c)）：knowledge 模块门面装配——18 worker 双栈注册的
+	// 处理器集合与 recoverPendingWikiTasks 生命周期挂点改经模块门面单一注册
+	//（原 :1058 直接 invoke 撤销，spec §4.3 单一注册点；恢复函数幂等，
+	// recover_pending_wiki_tasks.go:27-30）。
+	must(container.Provide(newKnowledgeModule))
+	must(container.Invoke(func(mod *knowledge.Module) error {
+		return mod.Start(context.Background())
+	}))
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
@@ -2915,4 +2933,60 @@ func registerArtifactPreviewHTTPHandlers(
 	versions *repository.ArtifactVersionStore,
 ) {
 	handler.RegisterArtifactPreviewHandler(handler.NewArtifactPreviewHandler(sessions, tenants, files, storage, versions))
+}
+
+
+// knowledgeModuleParams 是 knowledge 模块门面的装配参数（IB2，K5 Brief (f) 表）。
+// 9 个 worker 分发面 + 7 个路由 handler 供给的构造仍在 dig 容器；门面只收
+// 已构造实例（conventions §3：共享装配为集成工程师独占）。
+type knowledgeModuleParams struct {
+	dig.In
+
+	KnowledgeService     interfaces.KnowledgeService
+	KnowledgeBaseService interfaces.KnowledgeBaseService
+	TagService           interfaces.KnowledgeTagService
+	ChunkExtractor       interfaces.TaskHandler `name:"chunkExtractor"`
+	DataTableSummary     interfaces.TaskHandler `name:"dataTableSummary"`
+	ImageMultimodal      interfaces.TaskHandler `name:"imageMultimodal"`
+	KnowledgePostProcess interfaces.TaskHandler `name:"knowledgePostProcess"`
+	KnowledgeAutoTag     interfaces.TaskHandler `name:"knowledgeAutoTag"`
+	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
+
+	Chunk               *ingest.ChunkHandler
+	ChunkHost           *handler.ChunkHandler
+	WikiPageHost        *handler.WikiPageHandler
+	FAQ                 *faq.FAQHandler
+	Tag                  *kbhandler.TagHandler
+	SemanticModelPolicy  *kbhandler.SemanticModelPolicyHandler
+	SemanticInternal     *kbhandler.SemanticInternalHandler
+
+	DB   *gorm.DB
+	Task interfaces.TaskEnqueuer
+}
+
+// newKnowledgeModule 构造 knowledge 模块门面（K5.1 已实装五操作）。ChunkerDebug
+// 生产值 = ingest.PreviewChunking（K1 §6.3 R1）；PendingWikiRecovery = 原
+// recoverPendingWikiTasks 等价闭包（K5 Brief (c)）。
+func newKnowledgeModule(p knowledgeModuleParams) (*knowledge.Module, error) {
+	return knowledge.NewModule(knowledge.Dependencies{
+		KnowledgeService:     p.KnowledgeService,
+		KnowledgeBaseService: p.KnowledgeBaseService,
+		TagService:           p.TagService,
+		ChunkExtractor:       p.ChunkExtractor,
+		DataTableSummary:     p.DataTableSummary,
+		ImageMultimodal:      p.ImageMultimodal,
+		KnowledgePostProcess: p.KnowledgePostProcess,
+		KnowledgeAutoTag:     p.KnowledgeAutoTag,
+		WikiIngest:           p.WikiIngest,
+		Chunk:                p.Chunk,
+		ChunkerDebug:         ingest.PreviewChunking,
+		WikiPage:             p.WikiPageHost.WikiPageHandler,
+		FAQ:                  p.FAQ,
+		Tag:                  p.Tag,
+		SemanticModelPolicy:  p.SemanticModelPolicy,
+		SemanticInternal:     p.SemanticInternal,
+		PendingWikiRecovery: func(ctx context.Context) {
+			recoverPendingWikiTasks(p.DB, p.Task)
+		},
+	})
 }

@@ -75,11 +75,8 @@ func newSQLiteDataSourceDeleteFixture(t *testing.T) *sqliteDataSourceDeleteFixtu
 
 func TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete(t *testing.T) {
 	fixture := newSQLiteDataSourceDeleteFixture(t)
-	svc := &DataSourceService{
-		dsRepo:      fixture.dsRepo,
-		syncLogRepo: fixture.syncLogRepo,
-		scheduler:   fixture.scheduler,
-	}
+	svc := NewDataSourceService(fixture.dsRepo, fixture.syncLogRepo, nil, nil, nil, nil,
+		fixture.scheduler, nil, nil, nil).(*DataSourceService)
 
 	require.NoError(t, svc.DeleteDataSource(context.Background(), fixture.ds.ID, false))
 
@@ -106,11 +103,8 @@ func TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails(t *testing.
 			SELECT RAISE(FAIL, 'forced soft delete failure');
 		END;
 	`).Error)
-	svc := &DataSourceService{
-		dsRepo:      fixture.dsRepo,
-		syncLogRepo: fixture.syncLogRepo,
-		scheduler:   fixture.scheduler,
-	}
+	svc := NewDataSourceService(fixture.dsRepo, fixture.syncLogRepo, nil, nil, nil, nil,
+		fixture.scheduler, nil, nil, nil).(*DataSourceService)
 
 	err := svc.DeleteDataSource(context.Background(), fixture.ds.ID, false)
 	require.ErrorContains(t, err, "forced soft delete failure")

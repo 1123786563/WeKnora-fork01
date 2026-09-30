@@ -1,7 +1,8 @@
 # Pass B Brief — B-knowledge-wikifaq（knowledge Wiki/FAQ 域文件拆分）
 
-Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 brief 只覆盖
-其 legacy_files 的 **Wiki+FAQ 子集**（18 文件）。
+> child plan：**23-knowledge-wikifaq**（B0.3 裁定标注，framework:71）。
+> Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 brief 只覆盖
+> 其 legacy_files 的 **Wiki+FAQ 子集**（18 文件）。
 
 ## Scope（legacy_files 子集，18 文件）
 
@@ -24,9 +25,16 @@ Wiki 域（批量摄取 TypeWikiIngest/TypeWikiFinalize、citation、去重、ta
 lint、slug 体系、页面存储）与 FAQ 域（FAQ 导入 TypeFAQImport、批量、创建守卫、克隆同步）
 归入 `internal/modules/knowledge`（建议 `…/knowledge/wiki` 与 `…/knowledge/faq` 两个包）。
 `internal/handler/session/wiki_fixer_scope.go` 在横向 session handler 包内（plurality owner
-conversation），Pass B 细分时随本域拆出。生命周期挂点 `recoverPendingWikiTasks`
-（container/recover_pending_wiki_tasks.go:32，container.go:1052 Invoke）的挂接改为模块
-Start/Stop 语义时保持恢复行为不变。
+conversation），**B0.3 Step 3 裁定独占归本域/23-knowledge-wikifaq**，Pass B 细分时随本域
+拆出；其挂在 conversation 属主 `*Handler`（handler.go:24）上的方法拆出时必须去方法化
+（自带 receiver/独立构造），确无法当场消除的残差登记 Integration Brief 推迟 IB1 收口
+（B0.3 Step 3 + IB1 裁定，conventions §7.4）。K3 迁移后宿主侧遗留过渡 shim
+`internal/handler/session/wiki_fixer_scope_compat.go`（S1，resolveWikiFixerTenantScope
+方法化保持；删除点=ib2 随 A11 qa.go:205 改 `wiki.ResolveBuiltinWikiFixerTenantScope`
+直引后同 commit 删行）同属本域认领（IB2 回写批登记，2026-09-27）。生命周期挂点
+`recoverPendingWikiTasks`（container/recover_pending_wiki_tasks.go:32，container.go:1052
+Invoke）的挂接改为模块 Start/Stop 语义时保持恢复行为不变（IB2 已切换为模块 Start
+单一注册点，2026-09-27）。
 
 ## 删除义务
 

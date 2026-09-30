@@ -73,13 +73,16 @@ B5 aliases/exceptions/host-package cleanup + final review      [SERIAL]
 
 **Produces:** immutable Pass B file owner, public façade signatures, event versions, integration ownership, and exact exception-removal owner for every child plan.
 
-- [ ] Import all 396 manifest entries and 105 exceptions; reject duplicate/missing child-plan owners.
-- [ ] Resolve Agent Runtime engine/protocol overlap: engine owns native persistence/service state; protocol owns wire packages and `native_archive` transport; no “first merged wins” wording remains.
-- [ ] Resolve shared `internal/handler/session`, repository, service, and container integration ownership by exact path.
-- [ ] Freeze Identity actor/tenant access, AI Resource capability resolution, Commercial admission/usage, Execution workspace, Knowledge retrieval, Conversation turn/session, and Task/Artifact contracts.
-- [ ] Record event names/schema versions for Agent Run, Conversation, Knowledge processing, Craft, Usage, Workbench, and Insights projections.
-- [ ] Add guard tests that fail on unowned legacy files, overlapping owners, changed frozen signatures, or expired exceptions.
+- [x] Import all 396 manifest entries and 105 exceptions; reject duplicate/missing child-plan owners.
+- [x] Resolve Agent Runtime engine/protocol overlap: engine owns native persistence/service state; protocol owns wire packages and `native_archive` transport; no “first merged wins” wording remains.
+- [x] Resolve shared `internal/handler/session`, repository, service, and container integration ownership by exact path.
+- [x] Freeze Identity actor/tenant access, AI Resource capability resolution, Commercial admission/usage, Execution workspace, Knowledge retrieval, Conversation turn/session, and Task/Artifact contracts.
+- [x] Record event names/schema versions for Agent Run, Conversation, Knowledge processing, Craft, Usage, Workbench, and Insights projections.
+- [x] Add guard tests that fail on unowned legacy files, overlapping owners, changed frozen signatures, or expired exceptions.
 - [ ] Commit and obtain architecture review before starting B1.
+
+**B0 完成记录（2026-09-23，status: implemented / awaiting architecture review）：**
+实施计划 `docs/plans/passb/00-contract-and-ownership-freeze.md`（B0.1–B0.6）已全部完成，节点分支 `codex/passb-b0`，节点基线（DAG base_sha）`b1a3d6dd8`。逐任务提交：B0.1 `9f87a809d`（严格 schema 加载器）、F1-a `a83d18b2c`（movemanifest 共享库）、B0.2 `0bee2f239`（396 legacy + 105 exception 台账）、B0.3 `5cfa5bc02`（共享宿主与 Agent Runtime 裁定）、B0.4 `fac268d41`（125 条能力/组合契约）、B0.5 `3583773da`（29 条版本化事件）、B0.6（本记录所在提交：CLI + `make check-passb-readiness` + 证据）。守卫实现为 `tools/passbguard`（本框架登记的 architectureguard ownership/exception/contract checks 由该专用工具承载），证据与命令输出见 `docs/architecture/passb/b0-evidence.md`。**B1 详细计划的起点 SHA = 本分支评审合并后的头**，由协调者按 DAG head_sha 规则回填（conventions §9）；契约/事件/所有权冻结后任何漂移由 `make check-passb-readiness` 在 CI 阶段拦截。
 
 ---
 
@@ -241,4 +244,3 @@ Integrate Workbench → Craft → System+Policy, run Task/Artifact/notification/
 - **Parallel safety:** Only file-disjoint work with frozen contracts is parallel; all shared composition, contracts, migrations, and cleanup remain serialized.
 - **No invented interfaces:** This framework names contract categories; exact Go signatures are produced and reviewed in B0 before child implementation plans are written.
 - **Review Focus coverage:** ownership overlap, boundary workarounds, registration parity, high-risk differentials, and zero-debt cleanup each have a dedicated gate.
-
