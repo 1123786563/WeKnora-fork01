@@ -186,7 +186,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     return promise;
   };
   /** Shared authorized-send core: reads the active credential, guards scope at every step, and replays exactly once through a single-flight refresh on a pre-send 401. */
-  const sendWithCredential = async <R>(requestEpoch: number, deployment: Deployment, send: (token: string) => Promise<R>): Promise<R> => {
+  const sendWithCredential = async <R>(requestEpoch: number, deployment: Deployment, send: (token: string) => Promise<R>, retryUnauthorized = true): Promise<R> => {
     const credential = await ports.credentialStore.read(deployment.origin);
     if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
     if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
@@ -196,6 +196,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       return response;
     } catch (error) {
       if (!unauthorizedStatus(error)) throw error;
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      if (!retryUnauthorized) throw error;
       const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
       if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
       if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
@@ -400,7 +402,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       const deployment = activeDeployment;
       const transport = deployment && state.surface === 'authorized' ? ports.authorizedTransport?.(deployment.origin) : undefined;
       if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
-      return await sendWithCredential(epoch, deployment, (token) => transport(input, token));
+      const readOnly = ['GET', 'HEAD', 'OPTIONS'].includes(input.method.toUpperCase());
+      return await sendWithCredential(epoch, deployment, (token) => transport(input, token), readOnly);
     },
     async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
       const deployment = activeDeployment;

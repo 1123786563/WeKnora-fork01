@@ -130,8 +130,6 @@ export type SteerDeleteResponse =
 
 export type { ChatResponseType, ChatStreamEvent } from './chat/events.ts';
 export { responseType } from './chat/events.ts';
-export type * from './career/index.ts';
-export { parseCareerProfile, parseCareerOpportunity, parseCareerSearchRequest, parseCareerSearchReceipt, parseCareerEvaluation, parseCareerApplication, parseCareerMaterialVersion, parseCareerSubmission, parseCareerTimelineEvent, parseCareerReminder, parseCareerExportReceipt, parseCareerDeleteReceipt, parseCareerEnvelope } from './career/index.ts';
 
 export type KnowledgeProcessingStatus =
   | 'pending'

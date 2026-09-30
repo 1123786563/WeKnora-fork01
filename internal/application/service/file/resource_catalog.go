@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -180,6 +181,30 @@ func (s *resourceCatalogFileService) DeleteFile(ctx context.Context, filePath st
 	return nil
 }
 
+// DeleteUnbound is intentionally separate from ordinary DeleteFile: the
+// catalog claim and Bind use the same database serialization point, so a new
+// owner cannot appear between the zero-binding check and physical deletion.
+func (s *resourceCatalogFileService) DeleteUnbound(ctx context.Context, tenantID uint64, reference string) (bool, error) {
+	guarded, ok := s.catalog.(interfaces.GuardedResourceDeleteCatalog)
+	if !ok {
+		return false, fmt.Errorf("guarded resource deletion unavailable")
+	}
+	resource, claimed, err := guarded.ClaimUnbound(ctx, tenantID, reference)
+	if err != nil {
+		return false, err
+	}
+	if !claimed {
+		return guarded.IsDeleted(ctx, tenantID, reference)
+	}
+	if err = s.inner.DeleteFile(ctx, resource.PhysicalPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, errors.Join(err, guarded.RetryUnboundDelete(ctx, tenantID, resource.ID))
+	}
+	if err = guarded.FinishUnboundDelete(ctx, tenantID, resource.ID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *resourceCatalogFileService) CopyFile(
 	ctx context.Context,
 	filePath string,
@@ -208,3 +233,4 @@ func (s *resourceCatalogFileService) CopyFile(
 }
 
 var _ interfaces.FileService = (*resourceCatalogFileService)(nil)
+var _ interfaces.UnboundResourceDeleter = (*resourceCatalogFileService)(nil)

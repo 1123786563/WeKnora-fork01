@@ -57,6 +57,7 @@ type ArtifactVersion struct {
 	ObjectKey string
 	MIME      string
 	ScanState string
+	Revoked   bool
 	Size      int64
 }
 
@@ -82,6 +83,7 @@ type artifactVersionRow struct {
 	ObjectKey string `gorm:"column:object_key"`
 	MIME      string `gorm:"column:mime"`
 	ScanState string `gorm:"column:scan_state"`
+	Revoked   bool   `gorm:"column:revoked;not null;default:false"`
 	Size      int64  `gorm:"column:size"`
 }
 
@@ -97,6 +99,7 @@ func (r artifactVersionRow) view() ArtifactVersion {
 		ObjectKey: r.ObjectKey,
 		MIME:      r.MIME,
 		ScanState: r.ScanState,
+		Revoked:   r.Revoked,
 		Size:      r.Size,
 	}
 }
@@ -264,7 +267,7 @@ func (s *ArtifactVersionStore) ReadableArtifactVersion(ctx context.Context, tena
 	}
 	var row artifactVersionRow
 	err := s.db.WithContext(ctx).Table("artifact_versions").
-		Where("tenant_id = ? AND session_id = ? AND id = ? AND scan_state = ?", tenantID, sessionID, id, ArtifactScanReady).
+		Where("tenant_id = ? AND session_id = ? AND id = ? AND scan_state = ? AND revoked = ?", tenantID, sessionID, id, ArtifactScanReady, false).
 		Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ArtifactVersion{}, ErrArtifactVersionNotFound
@@ -273,6 +276,32 @@ func (s *ArtifactVersionStore) ReadableArtifactVersion(ctx context.Context, tena
 		return ArtifactVersion{}, err
 	}
 	return row.view(), nil
+}
+
+// Revoke makes a version permanently unreadable while preserving its
+// immutable metadata and scan lifecycle. Callers must authorize the actor to
+// revoke this version before invoking the tenant-scoped mutation.
+func (s *ArtifactVersionStore) Revoke(ctx context.Context, tenantID uint64, id string) error {
+	if tenantID == 0 || id == "" {
+		return ErrArtifactVersionNotFound
+	}
+	updated := s.db.WithContext(ctx).Table("artifact_versions").
+		Where("tenant_id = ? AND id = ? AND revoked = ?", tenantID, id, false).
+		Updates(map[string]any{"revoked": true, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected == 1 {
+		return nil
+	}
+	current, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if current.Revoked {
+		return nil
+	}
+	return ErrArtifactVersionNotFound
 }
 
 // ListByRun returns every version of a run inside one tenant, in creation

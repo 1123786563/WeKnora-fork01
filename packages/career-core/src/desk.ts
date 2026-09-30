@@ -1,0 +1,198 @@
+import { decodeCareerChangeSet, decodeCareerReceipt, decodeCareerView, type CareerAction, type CareerChangeSet, type CareerReceipt, type CareerView } from './contracts.ts'
+
+export interface CareerRemote {
+ open(signal?: AbortSignal): Promise<CareerView>
+ list(signal?: AbortSignal): Promise<CareerView>
+ changes(since: number, signal?: AbortSignal): Promise<CareerChangeSet>
+ act(action: CareerAction, signal?: AbortSignal): Promise<CareerReceipt>
+ receipt(requestId: string, signal?: AbortSignal): Promise<CareerReceipt>
+}
+
+export interface CareerPendingStore { read(key: string): unknown; write(key: string, value: unknown): void; remove(key: string): void }
+export type CareerPendingKey = (scope: CareerScope) => string
+
+export interface CareerScope { userId: string | null; tenantId: string | null }
+type OutcomeUnknown = Error & { code: 'outcome_unknown'; requestId: string; safeToRetry: boolean }
+function outcomeUnknown(action: CareerAction, cause: unknown, safeToRetry: boolean): OutcomeUnknown {
+ const error = new Error('Career action outcome is unknown; reconcile the original request before retrying', { cause }) as OutcomeUnknown
+ error.code = 'outcome_unknown'; error.requestId = action.requestId; error.safeToRetry = safeToRetry
+ return error
+}
+function errorCode(error: unknown): string | undefined { return typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined }
+function isAmbiguousOutcome(error: unknown): boolean {
+ const code = errorCode(error)
+ if (code === 'outcome_unknown' || code === 'TIMEOUT' || code === 'NETWORK_ERROR' || code === 'CANCELLED') return true
+ if (code && ['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved'].includes(code)) return false
+ const status = typeof error === 'object' && error !== null && 'status' in error ? Number((error as { status: unknown }).status) : undefined
+ return status === undefined || status >= 500
+}
+function sameAction(left: CareerAction, right: CareerAction): boolean { return JSON.stringify(left) === JSON.stringify(right) }
+
+export class CareerDesk {
+ private epoch = 0
+ private controller?: AbortController
+ private currentScope?: CareerScope
+ private currentView?: CareerView
+ private unresolved?: CareerAction
+ private receiptMissing = false
+ private readonly remote: CareerRemote
+ private readonly pendingStore?: CareerPendingStore
+ private readonly pendingKeyFor: CareerPendingKey
+ // 显式赋值而非 constructor 参数属性：小程序端 node --experimental-strip-types
+ // （strip-only，无 transform）不支持 parameter property 语法，共享包需保持可直载。
+ constructor(remote: CareerRemote, pendingStore?: CareerPendingStore, pendingKeyFor: CareerPendingKey = scope => `career-action:${scope.userId}:${scope.tenantId}`) { this.remote = remote; this.pendingStore = pendingStore; this.pendingKeyFor = pendingKeyFor }
+ get snapshot(): CareerView | undefined { return this.currentView }
+ get pendingAction(): CareerAction | undefined { return this.unresolved }
+ get safeToRetry(): boolean { return this.receiptMissing }
+ activate(userId: string | null, tenantId: string | null): void {
+  if (this.currentScope?.userId === userId && this.currentScope.tenantId === tenantId) return
+  this.epoch += 1
+  this.controller?.abort()
+  this.controller = new AbortController()
+  this.currentScope = { userId, tenantId }
+  this.currentView = undefined
+  this.unresolved = this.readPending()
+  this.receiptMissing = false
+ }
+ clear(): void { this.activate(null, null) }
+ private clearPrivateState(): void { this.currentView = undefined; this.unresolved = undefined; this.receiptMissing = false }
+ private pendingKey(): string | undefined { return this.currentScope?.userId && this.currentScope.tenantId ? this.pendingKeyFor(this.currentScope) : undefined }
+ private readPending(): CareerAction | undefined {
+  const key = this.pendingKey(); if (!key) return undefined
+  const value = this.pendingStore?.read(key)
+  if (!value || typeof value !== 'object' || typeof (value as CareerAction).requestId !== 'string') return undefined
+  return value as CareerAction
+ }
+ private savePending(action: CareerAction): void { const key = this.pendingKey(); if (key) this.pendingStore?.write(key, action); this.unresolved = action }
+ private clearPending(): void { const key = this.pendingKey(); if (key) this.pendingStore?.remove(key); this.unresolved = undefined }
+ private invalidatePrivateState(): void {
+  this.epoch += 1
+  this.controller?.abort()
+  this.controller = new AbortController()
+  this.clearPrivateState()
+ }
+ private capture(): { epoch: number; signal: AbortSignal } {
+  if (!this.currentScope?.userId || !this.currentScope.tenantId) throw Object.assign(new Error('Career workspace requires an active user and tenant'), { code: 'forbidden' })
+  if (!this.controller || this.controller.signal.aborted) this.controller = new AbortController()
+  return { epoch: this.epoch, signal: this.controller.signal }
+ }
+ private current(epoch: number): boolean { return epoch === this.epoch }
+ private async read<T>(operation: (signal: AbortSignal) => Promise<T>, commit: (value: T) => void, result: () => T): Promise<T | undefined> {
+  const { epoch, signal } = this.capture()
+  try {
+   const value = await operation(signal)
+   if (!this.current(epoch)) return undefined
+   commit(value)
+   return result()
+  } catch (error) {
+   if (this.current(epoch) && errorCode(error) === 'forbidden') this.invalidatePrivateState()
+   throw error
+  }
+ }
+ async open(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.open(signal).then(decodeCareerView), (candidate) => this.applyView(candidate), () => this.currentView!) }
+ async refresh(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.list(signal).then(decodeCareerView), (candidate) => this.applyView(candidate), () => this.currentView!) }
+ async syncChanges(): Promise<CareerChangeSet | undefined> {
+  let response: CareerChangeSet | undefined
+  const since = this.currentView?.revision ?? 0
+  return this.read((signal) => this.remote.changes(since, signal).then(decodeCareerChangeSet), (set) => {
+   response = set
+   if (!this.currentView || set.revision < this.currentView.revision) return
+   const facts = [...this.currentView.facts]
+   const proposals = [...this.currentView.proposals]
+   for (const change of set.changes) {
+    if (change.fact) mergeFact(facts, change.fact)
+    if (change.proposal) mergeProposal(proposals, change.proposal)
+   }
+   this.currentView = { revision: Math.max(this.currentView.revision, set.revision), facts, proposals }
+  }, () => response!)
+ }
+ async reconcile(requestId: string): Promise<CareerReceipt | undefined> {
+  let reconciled: CareerReceipt | undefined
+  try { return await this.read((signal) => this.remote.receipt(requestId, signal).then(decodeCareerReceipt), (receipt) => {
+   reconciled = receipt
+   if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
+   if (this.unresolved?.requestId === requestId) { this.clearPending(); this.receiptMissing = false }
+  }, () => reconciled!) } catch (error) { if (errorCode(error) === 'not_found' && this.unresolved?.requestId === requestId) this.receiptMissing = true; throw error }
+ }
+ async mutate(action: CareerAction): Promise<CareerReceipt | undefined> {
+  if (this.unresolved) throw Object.assign(new Error('Resolve the pending Career action before starting another mutation'), { code: 'unresolved_action', requestId: this.unresolved.requestId })
+  return this.send(action)
+ }
+ async retryUnknown(action: CareerAction): Promise<CareerReceipt | undefined> {
+  if (!this.unresolved || !sameAction(this.unresolved, action)) throw Object.assign(new Error('Retry must use the exact pending action and request ID'), { code: 'retry_payload_mismatch' })
+  // ocr3-141：捕获本空间的 epoch。await reconcile 期间若发生 activate()/
+  // invalidatePrivateState()（空间切换/失效），unresolved 已被清空、epoch 已
+  // 前进——read() 返回 undefined 被当作「未找到回执」继续 send，会把旧空间
+  // action 用同一 requestId 提交到新空间，违反空间切换红线。send 前重新校验
+  // epoch 与 unresolved 归属。
+  const epoch = this.epoch
+  const stillOwned = (): boolean => this.current(epoch) && this.unresolved?.requestId === action.requestId
+  if (!this.receiptMissing) {
+   try {
+    const existing = await this.reconcile(action.requestId)
+    if (existing) return existing
+   } catch (error) {
+    if (errorCode(error) === 'forbidden') throw error
+    if (errorCode(error) !== 'not_found') throw outcomeUnknown(action, error, false)
+   }
+   if (!stillOwned()) return undefined
+  }
+  try { return await this.send(action) } catch (error) {
+    if (['revision_conflict', 'invalid_request', 'proposal_resolved', 'not_found'].includes(errorCode(error) ?? '')) { this.clearPending(); this.receiptMissing = false }
+   throw error
+  }
+ }
+ private async send(action: CareerAction): Promise<CareerReceipt | undefined> {
+  const { epoch, signal } = this.capture()
+  try {
+   const receipt = decodeCareerReceipt(await this.remote.act(action, signal))
+   if (!this.current(epoch)) return undefined
+   if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
+   if (this.unresolved?.requestId === action.requestId) { this.clearPending(); this.receiptMissing = false }
+   return receipt
+  } catch (error) {
+   if (!this.current(epoch)) return undefined
+   if (errorCode(error) === 'forbidden') this.invalidatePrivateState()
+   if (!isAmbiguousOutcome(error)) throw error
+   this.savePending(action)
+   this.receiptMissing = false
+   try {
+    const receipt = decodeCareerReceipt(await this.remote.receipt(action.requestId, signal))
+    if (!this.current(epoch)) return undefined
+    if (this.currentView) this.currentView = applyReceipt(this.currentView, receipt)
+    this.clearPending(); this.receiptMissing = false
+    return receipt
+   } catch (receiptError) {
+    if (!this.current(epoch)) return undefined
+    if (errorCode(receiptError) === 'forbidden') { this.invalidatePrivateState(); throw receiptError }
+    const missing = errorCode(receiptError) === 'not_found'
+    this.receiptMissing = missing
+    throw outcomeUnknown(action, receiptError, missing)
+   }
+  }
+ }
+ private applyView(candidate: CareerView): void {
+  if (!this.currentView || candidate.revision >= this.currentView.revision) this.currentView = candidate
+ }
+}
+function mergeFact(facts: CareerView['facts'], incoming: CareerView['facts'][number]): void {
+ const index = facts.findIndex((fact) => fact.key === incoming.key)
+ if (index < 0) facts.push(incoming)
+ else if (incoming.revision >= facts[index]!.revision) facts[index] = incoming
+}
+function mergeProposal(proposals: CareerView['proposals'], incoming: CareerView['proposals'][number]): void {
+ const index = proposals.findIndex((proposal) => proposal.id === incoming.id)
+ if (index < 0) { proposals.push(incoming); return }
+ const current = proposals[index]!
+ if (current.status !== 'pending' && incoming.status === 'pending') return
+ if (current.status === 'pending' || incoming.status !== 'pending' || (incoming.revision ?? 0) >= (current.revision ?? 0)) proposals[index] = incoming
+}
+function applyReceipt(view: CareerView, receipt: CareerReceipt): CareerView {
+ const facts = [...view.facts]
+ const proposals = [...view.proposals]
+ if (receipt.kind === 'confirmed') {
+  mergeFact(facts, receipt.fact)
+  if (receipt.proposal) mergeProposal(proposals, receipt.proposal)
+ } else mergeProposal(proposals, receipt.proposal)
+ return { revision: Math.max(view.revision, receipt.revision), facts, proposals }
+}

@@ -10,6 +10,8 @@ export type RouteMatch =
   | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
   | { kind: 'knowledge-faq'; path: string; knowledgeBaseId: string }
   | { kind: 'knowledge-settings'; path: string; knowledgeBaseId: string }
+  | { kind: 'career-opportunity'; path: string; opportunityId: string; snapshotId: string }
+  | { kind: 'career-evaluation'; path: string; evaluationId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
   | { kind: 'apps'; path: string; mode: 'catalog' | 'connections' | 'authorization' | 'action'; id?: string }
@@ -50,6 +52,17 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
     const id = decodeSegment(appAction[1]!);
     return id === undefined ? { kind: 'not-found', path } : { kind: 'apps', path, mode: 'action', id };
   }
+  const careerOpportunity = path.match(/^\/platform\/career\/opportunities\/([^/]+)$/);
+  if (careerOpportunity) {
+    const opportunityId = decodeSegment(careerOpportunity[1]!);
+    const snapshotId = query.get('snapshotId')?.trim();
+    return opportunityId && snapshotId ? { kind: 'career-opportunity', path, opportunityId, snapshotId } : { kind: 'not-found', path };
+  }
+  const careerEvaluation = path.match(/^\/platform\/career\/evaluations\/([^/]+)$/);
+  if (careerEvaluation) {
+    const evaluationId = decodeSegment(careerEvaluation[1]!);
+    return evaluationId ? { kind: 'career-evaluation', path, evaluationId } : { kind: 'not-found', path };
+  }
   if (path === '/craft' || path.startsWith('/craft/')) return { kind: 'craft', path };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
@@ -77,7 +90,7 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
   // (SP13 Task 8) previously reached the guard only through the not-found
   // fallback; the explicit entries keep the platform allowlist authoritative.
   // /platform/billing/refund stays out on purpose (RefundPage unrouted, Ruling P-1).
-  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/experts' || path === '/platform/market' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/analytics' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || path === '/platform/billing' || path === '/platform/billing/checkout' || path === '/platform/billing/admin' || (development && path === '/platform/dev/markdown') || path.startsWith('/platform/chat/') || path.startsWith('/platform/shared/')) return { kind: 'platform', path };
+  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/career' || path === '/platform/career/search' || path === '/platform/career/rules' || path === '/platform/agents' || path === '/platform/experts' || path === '/platform/market' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/analytics' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || path === '/platform/billing' || path === '/platform/billing/checkout' || path === '/platform/billing/admin' || (development && path === '/platform/dev/markdown') || path.startsWith('/platform/chat/') || path.startsWith('/platform/shared/')) return { kind: 'platform', path };
   // Preserve the historical flat chat entry point while converging on the
   // Vue-compatible creatChat route used by the current shell.
   if (path === '/platform/chat') return { kind: 'platform', path: '/platform/creatChat' };

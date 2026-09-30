@@ -143,6 +143,10 @@ integration_points:
   - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:24
   - RegisterAppConnectorRoutes — internal/router/routes_app_connectors.go:20
   - RegisterPluginRoutes — internal/router/routes_plugins.go:16
+  - RegisterAppActionPlanRoutes — internal/router/routes_app_action_plan.go:15
+  - RegisterAppConfluencePublishRoutes — internal/router/routes_app_confluence_publish.go:14
+  - RegisterAppFeishuPublishRoutes — internal/router/routes_app_feishu_publish.go:12
+  - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:14
   workers:
     []
   lifecycle_hooks:

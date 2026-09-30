@@ -1,5 +1,5 @@
 import { defineConfig } from '@tarojs/cli';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const origin=(process.env.WEKNORA_API_ORIGIN??'').replace(/\/+$/,'');
 // 生产强制固定 HTTPS origin；本地回环的 http（localhost/127.0.0.1 带端口）仅用于开发
@@ -9,6 +9,49 @@ if(origin && !LOCAL_HTTP_ORIGIN.test(origin) && !/^https:\/\/[^/?#]+$/.test(orig
 const appid=process.env.WEKNORA_WEAPP_APPID??'touristappid';
 // Public build metadata; credentials belong exclusively on the Go server.
 writeFileSync(resolve(process.cwd(),'project.config.json'),JSON.stringify({miniprogramRoot:'dist/',projectname:'weknora-miniprogram',appid,compileType:'miniprogram',setting:{es6:true,minified:true,urlCheck:true}},null,2));
+// TDesign Miniprogram 以“预编译原生组件”方式接入（Spec：小程序使用 TDesign Miniprogram）。
+// 不能用 npm 包名引用（usingComponents: 'tdesign-miniprogram/button/button'）：Taro 会把它
+// 解析成 node_modules 绝对路径并重写为 /npm/.pnpm/.../node_modules/...——DevTools 拒绝任何
+// 含 node_modules 段的组件路径且 dist 从不产出 dist/npm（task-6-live-validation D1）。
+// 因此这里把 tdesign-miniprogram 的 miniprogram_dist 拷入 dist/npm/tdesign，页面
+// usingComponents 直接引用 dist 根的绝对路径 /npm/tdesign/button/button。
+// realpath 解开 pnpm 符号链接，避免 copy 依据变化。
+const tdesignDist=realpathSync(resolve(process.cwd(),'node_modules/tdesign-miniprogram/miniprogram_dist'));
+if(!existsSync(resolve(tdesignDist,'button/button.js')))throw new Error(`tdesign-miniprogram miniprogram_dist not found at ${tdesignDist} — run pnpm install first`);
+// F1（评审第 1 轮）：只拷 button 的运行时闭包，禁止全量拷贝——整个 miniprogram_dist 会把
+// 主包推到 2285KB，超过微信 2MB 单包/主包上限（真机上传被拒）；.d.ts 纯类型文件也不入包。
+// 闭包在构建期按各组件 json 的 usingComponents 递归收集，TDesign 升级新增依赖自动跟进。
+// common 与 miniprogram_npm 必须随闭包：组件 JS 以裸模块名 require（如 require("tslib")），
+// 微信按向上查找 miniprogram_npm/<name> 解析；缺了它组件初始化直接 module not defined，
+// 页面 "has not been registered yet" 白屏（第 2 轮 DevTools 实测定位）。
+function tdesignClosure(entry:string):Set<string>{
+ const seen=new Set<string>(),queue=[entry];
+ while(queue.length){
+  const stem=queue.pop()!;
+  if(seen.has(stem))continue;
+  seen.add(stem);
+  const cfgPath=resolve(tdesignDist,`${stem}.json`);
+  if(!existsSync(cfgPath))throw new Error(`tdesign closure: missing ${cfgPath}`);
+  const cfg=JSON.parse(readFileSync(cfgPath,'utf8')) as {usingComponents?:Record<string,string>};
+  for(const ref of Object.values(cfg.usingComponents??{})){
+   // ref 形如 '../icon/icon'，相对当前组件 json 所在目录
+   const parts=stem.split('/');parts.pop();
+   const base=parts.join('/');
+   const segs=[...base.split('/'),...ref.split('/')];
+   const out:string[]=[];
+   for(const s of segs){if(s==='.'||s==='')continue;if(s==='..')out.pop();else out.push(s)}
+   queue.push(out.join('/'));
+  }
+ }
+ return seen;
+}
+const tdesignDirs=['common','miniprogram_npm',...new Set([...tdesignClosure('button/button')].map(stem=>stem.split('/')[0]))];
+for(const dir of tdesignDirs){
+ if(!readdirSync(resolve(tdesignDist,dir)).length)throw new Error(`tdesign closure: empty dir ${dir}`);
+}
+// Taro 4.2.1 的 IMiniAppConfig 类型声明缺 copy 字段（运行时支持：MiniWebpackPlugin
+// getCopyWebpackPlugin 消费 config.copy）。用展开注入，绕开对象字面量的多余属性检查。
+const withTdesignCopy={copy:{patterns:tdesignDirs.map(dir=>({from:resolve(tdesignDist,dir),to:`dist/npm/tdesign/${dir}`,ignore:['**/*.d.ts']})),options:{}}};
 export default defineConfig({
   projectName:'weknora-miniprogram',date:'2026-09-17',designWidth:375,deviceRatio:{375:2},
   sourceRoot:'src',outputRoot:'dist',framework:'react',
@@ -20,6 +63,9 @@ export default defineConfig({
   // watch 构建本身很快；显式关闭持久化缓存，避免规则调整后坏模块被缓存复活。
   cache:{enable:false},
   mini:{
+    // 见上方 tdesignDist 注释：官方构建必须产出 dist/npm/tdesign（D1 修复的另一半在
+    // src/subpackages/execution/artifact/index.config.ts 的 /npm/tdesign/... 引用）。
+    ...withTdesignCopy,
     postcss:{pxtransform:{enable:true,config:{}},url:{enable:true,config:{limit:1024}}},
     // Workspace 包以 .ts 源码直出（exports 指向 src/*.ts），真实路径在仓库 packages/ 下，
     // 不命中 Taro script rule 默认 include（sourceDir + *taro*）。用单个判定函数接管：

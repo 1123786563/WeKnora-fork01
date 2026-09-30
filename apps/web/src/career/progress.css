@@ -1,0 +1,100 @@
+/* Career application progress timeline (T17). TDesign light theme tokens
+   with the #07c05f brand green for the current stage projection. */
+.wk-progress {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-progress h3 { margin: 0; }
+.wk-progress > p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-progress__stage {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #07c05f;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--td-brand-color-light, #e8f8ef);
+  font-size: 1rem;
+}
+.wk-progress__stage strong { color: #07c05f; }
+.wk-progress__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wk-progress button {
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  cursor: pointer;
+}
+.wk-progress button:hover:not(:disabled) { border-color: #07c05f; color: #07c05f; }
+.wk-progress button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-progress__submit { border-color: #07c05f; background: #07c05f; color: #fff; }
+.wk-progress__submit:hover:not(:disabled) { color: #fff; opacity: .9; }
+.wk-progress__compose,
+.wk-progress__correct {
+  margin: 14px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-progress__compose legend,
+.wk-progress__correct legend { padding: 0 4px; font-weight: 600; font-size: .9rem; }
+.wk-progress__label { display: grid; gap: 6px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+.wk-progress select,
+.wk-progress textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-progress textarea { min-height: 72px; resize: vertical; }
+.wk-progress__message {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  color: var(--td-text-color-secondary, #666);
+}
+.wk-progress__message--error {
+  background: var(--td-error-color-1, #ffece7);
+  color: var(--td-error-color, #d54941);
+}
+.wk-progress__events { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.wk-progress__event {
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 3px solid #07c05f;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+}
+.wk-progress__event--corrected { border-left-color: var(--td-warning-color, #ed7b2f); }
+.wk-progress__event--correction { border-left-color: var(--td-brand-color, #07c05f); background: var(--td-brand-color-light, #e8f8ef); }
+.wk-progress__event-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: .82rem;
+  color: var(--td-text-color-secondary, #666);
+}
+.wk-progress__seq { font-variant-numeric: tabular-nums; }
+.wk-progress__event-body { margin: 6px 0 0; overflow-wrap: anywhere; }
+.wk-progress__event-flag { margin: 4px 0 0; font-size: .82rem; color: var(--td-warning-color, #ed7b2f); }
+.wk-progress__event--correction .wk-progress__event-flag { color: #07c05f; }
+.wk-progress__event button { margin-top: 8px; font-size: .85rem; padding: 6px 10px; }
+.wk-progress code { overflow-wrap: anywhere; }
+.wk-progress__state { margin: 12px 0 0; color: var(--td-text-color-secondary, #666); }
+
+@media (max-width: 640px) {
+  .wk-progress { padding: 14px; }
+  .wk-progress__event-head { gap: 4px 10px; }
+}

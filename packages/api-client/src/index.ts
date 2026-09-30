@@ -1,6 +1,4 @@
 export { createWeKnoraClient } from './client.ts';
-export { createCareerApi, CareerObservationUnavailableError } from './career/index.ts';
-export type { CareerApi, CareerObserver, CareerRequest, CareerRequester } from './career/index.ts';
 export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput, KnowledgeChunkSearchParams, KnowledgeChunkSearchHit } from './client.ts';
 export { ApiError, createAbortError, isNamedError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource, NativeMultipartFileRequest, UploadProgressEvent } from './ports.ts';
@@ -152,6 +150,8 @@ export type {
   PublishedExpertView,
   PublishExpertInput,
 } from './market.ts';
+export { createUserFavoritesApi } from './user-favorites.ts';
+export type { UserFavoritesApi, UserFavorite, UserFavoriteResourceType } from './user-favorites.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';
@@ -205,3 +205,7 @@ export type {
   SteerMutationResponse,
   SteerQueueItem,
 } from '@weknora/contracts';
+
+export { createCareerApi } from './career.ts';
+export type { CareerRequest } from './career.ts';
+export type { CareerAction, CareerView, CareerFact, CareerProposal, CareerReceipt, CareerChangeSet, CareerChange, CareerSource } from '../../career-core/src/contracts.ts';

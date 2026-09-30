@@ -238,3 +238,63 @@ func VerifyArtifactGrantAt(secret []byte, g ArtifactGrant, signature string, now
 	}
 	return nil
 }
+
+// Canonical returns a versioned, unambiguous representation of the grant.
+func (g ArtifactVersionGrant) Canonical() (string, error) {
+	if g.TenantID == 0 || g.OwnerID == "" || g.RunID == "" || g.SessionID == "" || g.VersionID == "" || g.ExpiresAt <= 0 {
+		return "", errors.New("artifact version grant: tenant, owner, run, session, version and expiry required")
+	}
+	for _, value := range []string{g.OwnerID, g.RunID, g.SessionID, g.VersionID} {
+		if strings.ContainsAny(value, "|") {
+			return "", errors.New("artifact version grant: field contains forbidden character")
+		}
+	}
+	return strings.Join([]string{
+		"wk-artifact-version-v1",
+		strconv.FormatUint(g.TenantID, 10), g.OwnerID, g.RunID, g.SessionID, g.VersionID,
+		strconv.FormatInt(g.ExpiresAt, 10),
+	}, "|"), nil
+}
+
+// ---- issue-140 世代契约（run/session 签名下载链接），与 VersionArtifactGrant 并存 ----
+
+// ArtifactVersionGrant binds a download capability to one immutable artifact
+// version and the run owner who received it. The owner is rechecked against
+// the durable run record when the link is used.
+type ArtifactVersionGrant struct {
+	TenantID  uint64
+	OwnerID   string
+	RunID     string
+	SessionID string
+	VersionID string
+	ExpiresAt int64
+}
+
+// SignArtifactVersionGrant returns the lowercase hex HMAC-SHA256 signature.
+func SignArtifactVersionGrant(secret []byte, grant ArtifactVersionGrant) (string, error) {
+	if len(secret) < 32 {
+		return "", errors.New("artifact signing key too short")
+	}
+	canonical, err := grant.Canonical()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(canonical))
+	return hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+// VerifyArtifactVersionGrantAt checks signature and expiry in constant time.
+func VerifyArtifactVersionGrantAt(secret []byte, grant ArtifactVersionGrant, signature string, now time.Time) error {
+	if grant.ExpiresAt <= now.Unix() {
+		return errors.New("artifact grant expired")
+	}
+	expected, err := SignArtifactVersionGrant(secret, grant)
+	if err != nil {
+		return err
+	}
+	if !hmac.Equal([]byte(strings.ToLower(signature)), []byte(expected)) {
+		return errors.New("artifact grant signature mismatch")
+	}
+	return nil
+}

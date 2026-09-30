@@ -1,0 +1,19 @@
+/* Career usage estimate panel (T21). WeKnora TDesign light theme with the
+   #07c05f brand accent; light-only by design (career office constraint). */
+.wk-career-usage {
+  box-sizing: border-box;
+}
+.wk-career-usage h2,
+.wk-career-usage h3 { margin: 0 0 6px; }
+.wk-career-usage__cost { margin: 6px 0; color: var(--td-text-color-primary, #222); }
+.wk-career-usage__balance { margin: 6px 0; color: var(--td-text-color-secondary, #555); font-size: .9rem; }
+.wk-career-usage__overage { border-left: 3px solid var(--td-error-color, #d54941); padding-left: 10px; margin: 10px 0; }
+.wk-career-usage__overage p { margin: 6px 0 0; color: var(--td-text-color-secondary, #555); }
+.wk-career-usage__conditions { margin: 10px 0 0; }
+.wk-career-usage__conditions ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; color: var(--td-text-color-secondary, #555); font-size: .85rem; }
+.wk-career-usage__conditions li { border-left: 2px solid #07c05f; padding-left: 8px; }
+.wk-career-usage__note { margin: 8px 0 0; color: var(--td-text-color-secondary, #999); font-size: .8rem; }
+.wk-career-usage__status { margin: 0; color: var(--td-text-color-secondary, #666); }
+.wk-career-usage__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.wk-career-usage [role='alert'] { border-left: 3px solid var(--td-error-color, #d54941); padding-left: 10px; margin: 10px 0; }
+.wk-career-usage [role='alert'] p { margin: 6px 0 0; color: var(--td-text-color-secondary, #555); }

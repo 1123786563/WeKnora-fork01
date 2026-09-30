@@ -43,6 +43,16 @@ export default defineAppConfig({
       ]
     },
     {
+      "root": "career",
+      "pages": [
+        "discovery",
+        "application-material",
+        "export-deletion",
+        "progress-preparation",
+        "rules-usage-reminders"
+      ]
+    },
+    {
       "root": "subpackages/account",
       "pages": [
         "usage/index",

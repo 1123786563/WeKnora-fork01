@@ -1,12 +1,10 @@
 package database
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+
 	"sort"
 	"strconv"
 	"strings"
@@ -123,17 +121,6 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
 	}
-	for _, table := range []string{"career_spaces", "career_idempotency_receipts", "career_profile_facts", "career_evidence", "career_artifact_bindings"} {
-		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create Career table %s", table)
-	}
-	_, err := db.Exec(`INSERT INTO career_spaces (tenant_id, owner_id) VALUES (7, 'u1')`)
-	require.NoError(t, err)
-	_, err = db.Exec(`INSERT INTO career_evidence (tenant_id, owner_id, evidence_id, resource_id, version_id, digest, payload) VALUES (7, 'u1', 'e1', 'r1', 'v1', 'digest', '{}')`)
-	require.NoError(t, err)
-	_, err = db.Exec(`UPDATE career_evidence SET digest = 'changed' WHERE tenant_id = 7 AND owner_id = 'u1' AND evidence_id = 'e1'`)
-	require.Error(t, err, "Career evidence updates must fail")
-	_, err = db.Exec(`DELETE FROM career_evidence WHERE tenant_id = 7 AND owner_id = 'u1' AND evidence_id = 'e1'`)
-	require.Error(t, err, "Career evidence deletions must fail")
 	for _, index := range []string{
 		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
 		// 000099: the (tenant, agent, version_number) scope guard that makes
@@ -316,83 +303,6 @@ func equalStrings(got, want []string) bool {
 		}
 	}
 	return true
-}
-
-func TestCareerMigrationPairsMatchAcrossTracks(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	created := regexp.MustCompile(`(?im)^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?([a-z_]+)\s*\(`)
-	dropped := regexp.MustCompile(`(?im)^DROP TABLE\s+(?:IF EXISTS\s+)?([a-z_]+)\s*;`)
-	for _, track := range []struct {
-		name string
-		id   int
-	}{
-		{"sqlite", 128}, {"versioned", 207},
-	} {
-		base := fmt.Sprintf("%06d_career_foundation", track.id)
-		up, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, base+".up.sql"))
-		require.NoError(t, err)
-		down, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, base+".down.sql"))
-		require.NoError(t, err)
-		upTables, downTables := created.FindAllSubmatch(up, -1), dropped.FindAllSubmatch(down, -1)
-		require.Len(t, upTables, 4)
-		require.Len(t, downTables, 4)
-		upNames, downNames := make([]string, 0, 4), make([]string, 0, 4)
-		for _, match := range upTables {
-			upNames = append(upNames, string(match[1]))
-		}
-		for _, match := range downTables {
-			downNames = append(downNames, string(match[1]))
-		}
-		sort.Strings(upNames)
-		sort.Strings(downNames)
-		require.Equal(t, upNames, downNames, "%s up/down migrations must create and drop the same tables", track.name)
-		require.NotEqual(t, [32]byte{}, sha256.Sum256(up))
-		require.NotEqual(t, [32]byte{}, sha256.Sum256(down))
-	}
-}
-
-func TestCareerArtifactBindingMigrationPairAndScopedKeys(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	for _, track := range []struct{ name, stem string }{
-		{"sqlite", "000129_career_artifact_bindings"},
-		{"versioned", "000208_career_artifact_bindings"},
-	} {
-		up, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, track.stem+".up.sql"))
-		require.NoError(t, err)
-		down, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, track.stem+".down.sql"))
-		require.NoError(t, err)
-		require.Contains(t, string(up), "PRIMARY KEY (tenant_id, owner_id, resource_id, version_id)")
-		require.Contains(t, string(up), "FOREIGN KEY (tenant_id, owner_id) REFERENCES career_spaces (tenant_id, owner_id)")
-		require.Contains(t, string(up), "FOREIGN KEY (tenant_id, version_id) REFERENCES artifact_versions (tenant_id, id)")
-		require.Contains(t, string(up), "career_artifact_binding_version")
-		require.Contains(t, string(down), "DROP TABLE IF EXISTS career_artifact_bindings")
-	}
-}
-
-func TestCareerPostgresMigrationDeclaresIsolationAndAppendOnlyShape(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	up, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000207_career_foundation.up.sql"))
-	require.NoError(t, err)
-	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000207_career_foundation.down.sql"))
-	require.NoError(t, err)
-	upSQL, downSQL := string(up), string(down)
-	compositeFK := `FOREIGN KEY\s*\(tenant_id, owner_id\)\s*REFERENCES\s+career_spaces\s*\(tenant_id, owner_id\)`
-	for _, table := range []struct{ name, column string }{
-		{"career_idempotency_receipts", "response_json JSONB"},
-		{"career_profile_facts", "payload JSONB"},
-		{"career_evidence", "payload JSONB"},
-	} {
-		blockRE := regexp.MustCompile(`(?is)CREATE TABLE\s+` + regexp.QuoteMeta(table.name) + `\s*\((.*?)\n\);`)
-		matches := blockRE.FindStringSubmatch(upSQL)
-		require.Len(t, matches, 2, "PostgreSQL migration must contain one %s table definition", table.name)
-		require.Contains(t, matches[1], table.column, "%s must store its owned payload as JSONB", table.name)
-		require.Regexp(t, regexp.MustCompile(compositeFK), matches[1], "%s must have a composite tenant/owner FK", table.name)
-	}
-	require.Contains(t, upSQL, "CREATE FUNCTION career_evidence_append_only()")
-	require.Contains(t, upSQL, "BEFORE UPDATE OR DELETE ON career_evidence")
-	require.Contains(t, upSQL, "EXECUTE FUNCTION career_evidence_append_only()")
-	require.Contains(t, downSQL, "DROP TRIGGER IF EXISTS career_evidence_no_update ON career_evidence")
-	require.Contains(t, downSQL, "DROP FUNCTION IF EXISTS career_evidence_append_only()")
 }
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {

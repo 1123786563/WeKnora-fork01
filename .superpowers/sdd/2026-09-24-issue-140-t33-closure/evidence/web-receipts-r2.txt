@@ -1,0 +1,112 @@
+# T33 fix round 1 — M1 receipt-archive rerun (2026-09-27, Asia/Shanghai)
+# Purpose: launch-matrix.md §0 cited six receipt-style identifiers whose verbatim
+# response bodies were never archived in the evidence pack (Wave-15 review M1).
+# The 2026-09-26 browser session ran on a disposable SQLite DB that was destroyed,
+# so the ORIGINAL ids (d2e5d8bb…, 441a6c02…, c666ff58…, 8a333f7f…, a65d6bd4…, and the
+# §1.2 Task(session) ef1125b7…) are NOT reproducible verbatim — recorded as such.
+# This file archives an EQUIVALENT rerun of the same real chain, same server binary,
+# same HEAD (92718d338 worktree), so every receipt class now has a verbatim body on file.
+# Environment: go run ./cmd/server @127.0.0.1:57828, DB_DRIVER=sqlite disposable DB
+# /tmp/wk-t33fix-20260927-004238/weknora.db, STORAGE_TYPE=local (disposable dir),
+# disposable JWT/AES/export-signing keys (not persisted anywhere), GIN_MODE=release.
+# Driver: python3 stdlib HTTP probe (/tmp/wk-t33fix-20260927-004238/receipts-probe.py,
+# password via env). Tokens/passwords redacted; bodies otherwise verbatim.
+# Receipt-class map (old §0 truncated id -> this run's verbatim body):
+#   proposal receipt d2e5d8bb…     -> 1b (kind=proposed) + 1d receipt replay
+#   confirm receipt 441a6c02…      -> 1c (kind=confirmed, revision 0->1->2)
+#   import requestId c666ff58…     -> 2 (opportunityId+snapshotId)
+#   content digest 8a333f7f…       -> 5c export contentDigest (+files[].fileDigest)
+#   PDF SHA-256 a65d6bd4…          -> 6b sha256 == 5c files[pdf].fileDigest (self-consistent)
+#   Task(session) ef1125b7…        -> 4 application receipt taskId/runId
+#   (bonus) searchId 936c6f6e…     -> 9 honest-failure searchId
+# Chain result: EXIT=0, 17 x HTTP 200 (incl. one same-request-id CAS retry at step 8,
+# a real unknown-outcome recovery), second submission honestly rejected 409
+# submission_already_confirmed, honest search failure no_vetted_sources.
+### 0a register
+> POST /auth/register
+  request-body: {"username": "t33r2", "email": "t33r2-1790441527@t33.io", "password": "[REDACTED]"}
+< HTTP 201
+{"success": true, "message": "Registration successful", "user": {"id": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "username": "t33r2-1790441527", "email": "t33r2-1790441527@t33.io", "avatar": "", "tenant_id": 7, "is_active": true, "can_access_all_tenants": false, "is_system_admin": false, "preferences": {}, "created_at": "2026-09-27T00:52:07.463886+08:00", "updated_at": "2026-09-27T00:52:07.463886+08:00", "deleted_at": null}}
+# 201 expected; non-201 tolerated only when user already exists (rerun on same disposable DB)
+### 0b login
+> POST /auth/login
+  request-body: {"email": "t33r2-1790441527@t33.io", "password": "[REDACTED]"}
+< HTTP 200
+{"success": true, "message": "Login successful", "user": {"id": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "username": "t33r2-1790441527", "email": "t33r2-1790441527@t33.io", "avatar": "", "tenant_id": 7, "is_active": true, "can_access_all_tenants": false, "is_system_admin": false, "preferences": {}, "created_at": "2026-09-27T00:52:07.463886+08:00", "updated_at": "2026-09-27T00:52:07.463886+08:00", "deleted_at": null}, "active_tenant": {"id": 7, "name": "t33r2-1790441527's Workspace", "description": "Default workspace", "status": "active", "retriever_engines": {"engines": []}, "business": "", "storage_quota": 10737418240, "storage_used": 0, "context_config": {"max_tokens": 0, "compression_strategy": "", "recent_message_count": 0, "summarize_threshold": 0}, "created_at": "2026-09-27T00:52:07.433316+08:00", "updated_at": "2026-09-26T16:52:07.463199Z", "deleted_at": null}, "memberships": [{"tenant_id": 7, "tenant_name": "t33r2-1790441527's Workspace", "role": "owner"}], "token": "[REDACTED 279 chars]", "refresh_token": "[REDACTED]"}
+### 1a open(empty)
+> GET /career/open
+< HTTP 200
+{"revision": 0, "facts": [], "proposals": []}
+### 1b propose 毕业时间=2026-06
+> POST /career/act
+  request-body: {"action": "propose", "key": "毕业时间", "value": "2026-06", "requestId": "t33fix-propose-9f6fba9ab064", "expectedRevision": 0, "source": {"kind": "manual"}}
+< HTTP 200
+{"kind": "proposed", "requestId": "t33fix-propose-9f6fba9ab064", "revision": 1, "proposal": {"id": "ec2baeda-b2e4-48b1-a188-fa355582a975", "key": "毕业时间", "value": "2026-06", "source": {"kind": "manual"}, "status": "pending", "createdAt": "2026-09-26T16:52:07.612833Z"}}
+### 1c confirm_proposal
+> POST /career/act
+< HTTP 200
+{"kind": "confirmed", "requestId": "t33fix-confirm-eb1a85e32927", "revision": 2, "proposal": {"id": "ec2baeda-b2e4-48b1-a188-fa355582a975", "key": "毕业时间", "value": "2026-06", "source": {"kind": "manual"}, "status": "confirmed", "revision": 2, "confirmation": {"userId": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "confirmedAt": "2026-09-26T16:52:07.618483Z"}, "resolutionSource": {"kind": "user_confirmation"}, "createdAt": "2026-09-26T16:52:07.612833Z"}, "fact": {"key": "毕业时间", "value": "2026-06", "revision": 2, "source": {"kind": "manual"}, "confirmation": {"userId": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "confirmedAt": "2026-09-26T16:52:07.618943Z"}, "confirmedAt": "2026-09-26T16:52:07.618943Z"}}
+### 1d receipt replay(propose)
+> GET /career/receipt?requestId=[as issued]
+< HTTP 200
+{"kind": "proposed", "requestId": "t33fix-propose-9f6fba9ab064", "revision": 1, "proposal": {"id": "ec2baeda-b2e4-48b1-a188-fa355582a975", "key": "毕业时间", "value": "2026-06", "source": {"kind": "manual"}, "status": "pending", "createdAt": "2026-09-26T16:52:07.612833Z"}}
+### 2 import JD
+> POST /career/opportunities/import
+  request-body: {"requestId": "t33fix-import-2c3d67ab7d15", "rawText": "职位名称：前端开发实习生（上海）\n公司：示例科技有限公司\n要求：本科在读，202…"}
+< HTTP 200
+{"kind": "opportunity_imported", "requestId": "t33fix-import-2c3d67ab7d15", "opportunityId": "c830eff5-5be5-4383-8ffe-bb3691d0f759", "observationId": "d69d2efa-daa5-45d7-88ad-e61c45f0819c", "snapshotId": "de79ad18-80cf-409b-9d10-356aceb64c89", "status": "needs_review", "acquiredAt": "2026-09-26T16:52:07.626343Z"}
+### 3 evaluation
+> POST /career/evaluations
+< HTTP 200
+{"kind": "evaluation_created", "requestId": "t33fix-eval-d5bd31543994", "evaluationId": "08ca59e5-473e-4e13-b056-631cd80e8886", "opportunityId": "c830eff5-5be5-4383-8ffe-bb3691d0f759", "snapshotId": "de79ad18-80cf-409b-9d10-356aceb64c89", "profileRevision": 2, "status": "unknown"}
+### 4 application
+> POST /career/applications
+< HTTP 200
+{"applicationId": "004e3413-ab83-4c2f-aa7f-28e1826e023f", "requestId": "t33fix-apply-02c1ab6c7364", "linkState": "ready", "taskId": "e279fb53-949b-44cd-9c5a-84d2e4541da2", "runId": "8ccb0aa8-de98-4436-8833-86f80f0d4067", "qualified": true, "pinnedEvidence": {"opportunityId": "c830eff5-5be5-4383-8ffe-bb3691d0f759", "snapshotId": "de79ad18-80cf-409b-9d10-356aceb64c89", "evaluationId": "08ca59e5-473e-4e13-b056-631cd80e8886", "profileRevision": 2, "evaluationStatus": "unknown", "batchIdentity": "2026 秋招 a 批"}}
+### 5a material edit(draft)
+> POST /career/materials
+< HTTP 200
+{"kind": "material_edited", "requestId": "t33fix-material-7d12c412e73c", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "status": "draft", "pinnedEvidence": {"opportunityId": "c830eff5-5be5-4383-8ffe-bb3691d0f759", "snapshotId": "de79ad18-80cf-409b-9d10-356aceb64c89", "snapshotSha256": "b70470de61749c5c1b49497966e38e8feaaaf85582daadf3b0a927e5a4beb21e", "profileRevision": 2}, "body": {"sections": [{"heading": "个人概要", "content": "2026 届本科在读，前端实习方向。", "claims": [{"claimId": "c1", "text": "毕业时间 2026-06", "factKey": "毕业时间", "needsReview": false}]}]}, "reviewRisks": []}
+### 5b material confirm(V1)
+> POST /career/materials/confirm
+< HTTP 200
+{"kind": "material_confirmed", "requestId": "t33fix-confirm-mat-8245e20866ce", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "status": "confirmed", "version": 1, "pinnedEvidence": {"opportunityId": "c830eff5-5be5-4383-8ffe-bb3691d0f759", "snapshotId": "de79ad18-80cf-409b-9d10-356aceb64c89", "snapshotSha256": "b70470de61749c5c1b49497966e38e8feaaaf85582daadf3b0a927e5a4beb21e", "profileRevision": 2}, "body": {"sections": [{"heading": "个人概要", "content": "2026 届本科在读，前端实习方向。", "claims": [{"claimId": "c1", "text": "毕业时间 2026-06", "factKey": "毕业时间", "needsReview": false}]}]}, "reviewRisks": []}
+### 5c publish export(pdf+docx, contentDigest)
+> POST /career/materials/003ae726-4c1a-4b4a-9794-c8668179427e/exports
+< HTTP 200
+{"kind": "material_published", "requestId": "t33fix-export-ac21ff0ad2de", "exportId": "e51815bc-97f6-477c-a30f-dd431fff4d05", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "version": 1, "status": "submittable", "submittable": true, "contentDigest": "a79661240d6a95b34fa22a05f8773aad5ec11f93a3894069501e29cb1933ecf0", "files": [{"format": "pdf", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "version": 1, "contentDigest": "a79661240d6a95b34fa22a05f8773aad5ec11f93a3894069501e29cb1933ecf0", "objectKey": "resource://qCexdcwlYlDJZN3jlgOntA", "fileDigest": "e74104c4e7b7c6ac0d00219d0c524acbe938f13e5248394e87ec92cb8193f849", "size": 2211, "verified": true}, {"format": "docx", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "version": 1, "contentDigest": "a79661240d6a95b34fa22a05f8773aad5ec11f93a3894069501e29cb1933ecf0", "objectKey": "resource://GH1hXN-ndxFFegYaGMAGqw", "fileDigest": "b2158d4b491880e5d9e8043b8511ea3837253931e42b28f2ee4578a18debd57a", "size": 2161, "verified": true}], "createdAt": "2026-09-26T16:52:07.691368Z"}
+### 6a signed-url(pdf)
+> POST /career/materials/003ae726-4c1a-4b4a-9794-c8668179427e/exports/e51815bc-97f6-477c-a30f-dd431fff4d05/signed-url
+< HTTP 200
+{"exportId": "e51815bc-97f6-477c-a30f-dd431fff4d05", "materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "version": 1, "format": "pdf", "digest": "e74104c4e7b7c6ac0d00219d0c524acbe938f13e5248394e87ec92cb8193f849", "size": 2211, "expiresAt": 1790442127, "signature": "553979d819fb832ac51519cfddb2a7738a4dcfac35d03e1302928dfad6cf1f97", "url": "/api/v1/career/materials/003ae726-4c1a-4b4a-9794-c8668179427e/exports/e51815bc-97f6-477c-a30f-dd431fff4d05/download?format=pdf&expires=1790442127&signature=553979d819fb832ac51519cfddb2a7738a4dcfac35d03e1302928dfad6cf1f97"}
+### 6b download(pdf bytes)
+> GET /api/v1/career/materials/003ae726-4c1a-4b4a-9794-c8668179427e/exports/e51815bc-97f6-477c-a30f-dd431fff4d05/download?…[signature redacted]
+< HTTP 200
+{"bytes": 2211, "sha256": "e74104c4e7b7c6ac0d00219d0c524acbe938f13e5248394e87ec92cb8193f849", "saved": "/tmp/wk-t33fix-20260927-004238/career-material-v1-r2.pdf"}
+### 7a record submission(本人投递)
+> POST /career/applications/004e3413-ab83-4c2f-aa7f-28e1826e023f/submissions
+< HTTP 200
+{"kind": "submission_recorded", "requestId": "t33fix-submit-ee83cfc0907a", "applicationId": "004e3413-ab83-4c2f-aa7f-28e1826e023f", "submissionId": "caf3c41e-ad2e-4669-aa6c-3991ebc56fd7", "channel": "web", "occurredAt": "2026-09-26T16:52:07.714373Z", "versionConfirmed": true, "boundVersion": {"materialId": "003ae726-4c1a-4b4a-9794-c8668179427e", "exportId": "e51815bc-97f6-477c-a30f-dd431fff4d05", "version": 1, "contentDigest": "a79661240d6a95b34fa22a05f8773aad5ec11f93a3894069501e29cb1933ecf0"}, "confirmer": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "revision": 2, "createdAt": "2026-09-26T16:52:07.714373Z"}
+### 7b second submission rejected(expected: submission_already_confirmed)
+> POST /career/applications/004e3413-ab83-4c2f-aa7f-28e1826e023f/submissions
+< HTTP 409
+{"error": {"code": "submission_already_confirmed", "message": "career application already has a confirmed submission"}}
+### 8 progress event(已投递)
+> POST /career/applications/004e3413-ab83-4c2f-aa7f-28e1826e023f/progress
+< HTTP 409
+{"error": {"code": "revision_conflict", "currentRevision": 0, "message": "career revision conflict"}}
+### 8 progress event(已投递) (retry, same request-id, server currentRevision)
+> POST /career/applications/004e3413-ab83-4c2f-aa7f-28e1826e023f/progress
+< HTTP 200
+{"kind": "progress_appended", "requestId": "t33fix-progress-6b88aaf2302b", "applicationId": "004e3413-ab83-4c2f-aa7f-28e1826e023f", "eventId": "0177ad8d-1351-43ca-a83a-61ed79b2af05", "seq": 1, "revision": 1, "eventType": "submitted", "stage": "submitted", "occurredAt": "2026-09-26T16:52:07.736334Z", "source": {"kind": "manual"}, "confirmer": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "createdAt": "2026-09-26T16:52:07.736334Z"}
+### 8b progress projection
+> GET /career/applications/004e3413-ab83-4c2f-aa7f-28e1826e023f/progress
+< HTTP 200
+{"applicationId": "004e3413-ab83-4c2f-aa7f-28e1826e023f", "revision": 1, "stage": "submitted", "events": [{"eventId": "0177ad8d-1351-43ca-a83a-61ed79b2af05", "seq": 1, "kind": "progress_appended", "eventType": "submitted", "occurredAt": "2026-09-26T16:52:07.736334Z", "source": {"kind": "manual"}, "confirmer": "9b2db8c1-c9c9-4943-80a1-8167934c783a", "corrected": false, "requestId": "t33fix-progress-6b88aaf2302b", "createdAt": "2026-09-26T16:52:07.736334Z"}]}
+### 9 one-shot search(honest failure)
+> POST /career/searches
+< HTTP 200
+{"kind": "search_once", "requestId": "t33fix-search-ec82adbbf016", "searchId": "8394f9b1-46ec-41d6-a192-2b8365b5bedf", "status": "failed", "query": "上海 前端开发 实习", "coverage": {"sources": []}, "scopeNotes": ["no vetted search source is configured; nothing was fetched and no result is fabricated", "coverage reflects only actually vetted sources"], "failureCode": "no_vetted_sources", "results": [], "checkedAt": "2026-09-26T16:52:07.753689Z"}
+
+## tail marker: chain-complete
+

@@ -1,12 +1,30 @@
 // 微信/Taro 平台边界测试替身：只实现 src/platform 与 src/services 实际消费的
-// 契约（request/uploadFile/downloadFile 的 success/fail 回调 + RequestTask 生命周期、同步存储、
-// 文件查看通道）。通过 tests/*.test.mjs 里的 module.registerHooks 把 '@tarojs/taro' 重定向到本文件，
+// 契约（request/uploadFile 的 success/fail 回调 + RequestTask 生命周期、同步存储）。
+// 通过 tests/*.test.mjs 里的 module.registerHooks 把 '@tarojs/taro' 重定向到本文件，
 // 使真实源码（transport/storage/runtime/workbench）在 Node 中原样装配。
 const state = {
   storage: new Map(),
   calls: [],
+  openedDocuments: [],
+  removedFiles: [],
+  copies: [],
+  fileContents: new Map(),
+  fileReads: [],
+  fileWrites: [],
+  clipboard: [],
+  fileInfoSize: 128,
+  fileInfoError: null,
+  openDocumentError: null,
+  unlinkError: null,
   handler: null,
 };
+
+// 微信开发者工具实测（task-6-live-validation D3）：downloadFile 落下的运行时临时文件
+// （http://tmp/…、wxfile://tmp…、真机 /tmp/…）unlink/unlinkSync 一律 permission denied，
+// 只有 USER_DATA_PATH 下的文件可写可删——替身必须复现该平台契约，防止单测再次掩盖 D3。
+function isRuntimeTempPath(p) {
+  return typeof p === 'string' && (p.startsWith('http://tmp/') || p.startsWith('wxfile://tmp') || p.startsWith('/tmp/') || p.startsWith('tmp/'));
+}
 
 function makeTask(call) {
   const listeners = { headers: new Set(), chunk: new Set(), progress: new Set() };
@@ -49,24 +67,84 @@ const Taro = {
   downloadFile(options) { return dispatch('downloadFile', options); },
   // wx.login 契约替身：静默登录链路（services/runtime 的 wxCode 薄适配）固定换回 CODE。
   login() { return Promise.resolve({ code: 'CODE' }); },
+  getFileInfo(options) {
+    if (state.fileInfoError) return Promise.reject(state.fileInfoError);
+    const content = state.fileContents.get(options.filePath);
+    return Promise.resolve({ size: content === undefined ? state.fileInfoSize : Buffer.byteLength(content) });
+  },
+  openDocument(options) { if (state.openDocumentError) return Promise.reject(state.openDocumentError); state.openedDocuments.push(options); return Promise.resolve(); },
+  getFileSystemManager() {
+    return {
+      readFileSync(path, encoding, position = 0, length) {
+        state.fileReads.push({ filePath: path, encoding, position, length });
+        const content = state.fileContents.get(path);
+        if (content === undefined) throw new Error(`stub: missing file ${path}`);
+        const bytes = Buffer.from(content, 'utf8').subarray(position, length === undefined ? undefined : position + length);
+        // 无 encoding 时真实 weapp 返回“精确文件字节”的 ArrayBuffer；Node Buffer 小对象
+        // 落在共享池里，直接给 bytes.buffer 会把整池脏字节一起暴露（丢失 byteOffset）。
+        // T26 摘要校验依赖该契约保真：必须切出精确范围。
+        return encoding === 'utf8' ? bytes.toString('utf8') : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      },
+      unlinkSync(path) {
+        if (isRuntimeTempPath(path)) {
+          throw Object.assign(new Error(`unlinkSync:fail permission denied, open ${path}`), { errMsg: `unlinkSync:fail permission denied, open ${path}` });
+        }
+        state.removedFiles.push(path); state.fileContents.delete(path);
+      },
+      unlink({ filePath, success, fail }) {
+        queueMicrotask(() => {
+          if (isRuntimeTempPath(filePath)) { fail?.({ errMsg: `unlink:fail permission denied, open ${filePath}` }); return; }
+          if (state.unlinkError) { fail?.(state.unlinkError); return; }
+          state.removedFiles.push(filePath); state.fileContents.delete(filePath); success?.({});
+        });
+      },
+      copyFile({ srcPath, destPath, success, fail }) {
+        queueMicrotask(() => {
+          state.copies.push({ srcPath, destPath });
+          if (!state.fileContents.has(srcPath)) { fail?.({ errMsg: `copyFile:fail no such file or directory, open ${srcPath}` }); return; }
+          state.fileContents.set(destPath, state.fileContents.get(srcPath));
+          success?.({});
+        });
+      },
+      // T32：导出包留存 seam 需要真实 weapp 的 writeFile 契约（回调式，utf8 字符串）。
+      writeFile({ filePath, data, encoding = 'utf8', success, fail }) {
+        queueMicrotask(() => {
+          state.fileWrites.push({ filePath, encoding, length: typeof data === 'string' ? data.length : -1 });
+          if (typeof data !== 'string' || encoding !== 'utf8') { fail?.({ errMsg: `writeFile:fail unsupported encoding ${encoding}` }); return; }
+          state.fileContents.set(filePath, data);
+          success?.({});
+        });
+      },
+    };
+  },
+  // 注意：真实运行时的 Taro 对象没有 env 字段（@tarojs/api 不提供、weapp 插件也不复制
+  // wx.env——实测 Taro.env.USER_DATA_PATH 抛 TypeError）。替身同样不提供，USER_DATA_PATH
+  // 只经 wx 全局暴露，防止单测再次掩盖平台契约差异。
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
   getStorageInfoSync() { return { keys: [...state.storage.keys()] }; },
-  // 文件查看通道（platform/files.ts，Promise 风格调用）：小文件、可打开、临时文件可清理。
-  getFileInfo(options) {
-    return new Promise(resolve => queueMicrotask(() => { const result = { size: 5 }; options.success?.(result); resolve(result); }));
-  },
-  openDocument(options) {
-    return new Promise(resolve => queueMicrotask(() => { options.success?.({}); resolve({}); }));
-  },
-  getFileSystemManager() { return { unlinkSync() { /* temporary file cleanup is a no-op in the stub */ } }; },
+  // T32：等效可取得流程的剪贴板 seam（完整载荷不截断地到达系统剪贴板）。
+  setClipboardData(options) { state.clipboard.push(options?.data); return Promise.resolve({ data: options?.data }); },
 };
+// weapp 运行时全局存在 wx 对象；USER_DATA_PATH 只能从这里取。
+globalThis.wx = globalThis.wx ?? { env: { USER_DATA_PATH: 'wxfile://usr' } };
 
 // ---- 测试驱动面 ----
 function reset() {
   state.storage.clear();
   state.calls.length = 0;
+  state.openedDocuments.length = 0;
+  state.removedFiles.length = 0;
+  state.copies.length = 0;
+  state.fileContents.clear();
+  state.fileReads.length = 0;
+  state.fileWrites.length = 0;
+  state.clipboard.length = 0;
+  state.fileInfoSize = 128;
+  state.fileInfoError = null;
+  state.openDocumentError = null;
+  state.unlinkError = null;
   state.handler = null;
 }
 function lastCall(kind) {
@@ -93,8 +171,6 @@ function paths() {
 }
 
 export default Taro;
-// dispatch 同时挂到 stub 对象与命名导出：测试驱动面经 stub.dispatch 调用（platform-adapters.test.mjs）。
-export const stub = { reset, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state, dispatch,
+export const stub = { reset, dispatch, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state,
   /** 安装网络 handler：handler(call, task) 必须自行调用 succeed/fail 或 emit*。 */
   use(fn) { state.handler = fn; } };
-export { dispatch };

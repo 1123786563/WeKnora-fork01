@@ -1,0 +1,1047 @@
+.                                        |  WARN  Unsupported engine: wanted: {"node":">=26"} (current: {"node":"v22.22.3","pnpm":"10.28.2"})
+
+> @weknora/miniprogram@0.1.0 test /Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/miniprogram
+> node --experimental-strip-types --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: F0: sha256Hex matches public test vectors before any digest checks trust it
+ok 1 - F0: sha256Hex matches public test vectors before any digest checks trust it
+  ---
+  duration_ms: 3.621167
+  type: 'test'
+  ...
+# Subtest: A1: evaluation posts the frozen contract and returns the same receipt the web sees
+ok 2 - A1: evaluation posts the frozen contract and returns the same receipt the web sees
+  ---
+  duration_ms: 13.905125
+  type: 'test'
+  ...
+# Subtest: A2: application creation posts the frozen CreateApplicationInput against the same backend as web
+ok 3 - A2: application creation posts the frozen CreateApplicationInput against the same backend as web
+  ---
+  duration_ms: 1.721333
+  type: 'test'
+  ...
+# Subtest: A3: material edits confirm a new immutable version and never overwrite the old one
+ok 4 - A3: material edits confirm a new immutable version and never overwrite the old one
+  ---
+  duration_ms: 259.342333
+  type: 'test'
+  ...
+# Subtest: A4: publishing posts the frozen export contract and returns the both-verified pair
+ok 5 - A4: publishing posts the frozen export contract and returns the both-verified pair
+  ---
+  duration_ms: 8.527834
+  type: 'test'
+  ...
+# Subtest: B1: a hard-ineligible application without explicit continuation is refused typed
+ok 6 - B1: a hard-ineligible application without explicit continuation is refused typed
+  ---
+  duration_ms: 8.895541
+  type: 'test'
+  ...
+# Subtest: B2: explicit continuation creates the application and the hard warning stays attached
+ok 7 - B2: explicit continuation creates the application and the hard warning stays attached
+  ---
+  duration_ms: 101.905292
+  type: 'test'
+  ...
+# Subtest: C1: a revision conflict on application creation surfaces the typed server receipt
+ok 8 - C1: a revision conflict on application creation surfaces the typed server receipt
+  ---
+  duration_ms: 2.301291
+  type: 'test'
+  ...
+# Subtest: C2: one application per job and batch — the duplicate is the typed conflict it is
+ok 9 - C2: one application per job and batch — the duplicate is the typed conflict it is
+  ---
+  duration_ms: 2.482542
+  type: 'test'
+  ...
+# Subtest: C3: a repeat submission confirmation is refused typed and the record list stays one
+ok 10 - C3: a repeat submission confirmation is refused typed and the record list stays one
+  ---
+  duration_ms: 2.656333
+  type: 'test'
+  ...
+# Subtest: D1: an unknown application outcome is reconciled through the original request id
+ok 11 - D1: an unknown application outcome is reconciled through the original request id
+  ---
+  duration_ms: 5.75625
+  type: 'test'
+  ...
+# Subtest: D2: a missing material receipt during reconciliation keeps the intent and resends the same id
+ok 12 - D2: a missing material receipt during reconciliation keeps the intent and resends the same id
+  ---
+  duration_ms: 5.096875
+  type: 'test'
+  ...
+# Subtest: D3: an unknown submission outcome is recovered through the submissions receipt endpoint
+ok 13 - D3: an unknown submission outcome is recovered through the submissions receipt endpoint
+  ---
+  duration_ms: 4.412208
+  type: 'test'
+  ...
+# Subtest: E1: a scope change invalidates an in-flight application write — nothing is applied or persisted
+ok 14 - E1: a scope change invalidates an in-flight application write — nothing is applied or persisted
+  ---
+  duration_ms: 6.530917
+  type: 'test'
+  ...
+# Subtest: F1: a download redeems the grant authenticated, verifies the digest, opens, and cleans up
+ok 15 - F1: a download redeems the grant authenticated, verifies the digest, opens, and cleans up
+  ---
+  duration_ms: 16.744042
+  type: 'test'
+  ...
+# Subtest: F2: a tampered file fails the digest check typed and is never opened
+ok 16 - F2: a tampered file fails the digest check typed and is never opened
+  ---
+  duration_ms: 1.326333
+  type: 'test'
+  ...
+# Subtest: F3: an expired grant is re-issued once and the retry succeeds
+ok 17 - F3: an expired grant is re-issued once and the retry succeeds
+  ---
+  duration_ms: 2.974334
+  type: 'test'
+  ...
+# Subtest: G1: submission confirmation performs exactly one record write and nothing else
+ok 18 - G1: submission confirmation performs exactly one record write and nothing else
+  ---
+  duration_ms: 0.594417
+  type: 'test'
+  ...
+# Subtest: G2: the explicit unknown marker is exclusive — no version binding rides along
+ok 19 - G2: the explicit unknown marker is exclusive — no version binding rides along
+  ---
+  duration_ms: 2.025958
+  type: 'test'
+  ...
+# Subtest: H1: reading a missing (or cross-tenant) application surfaces the typed not-found
+ok 20 - H1: reading a missing (or cross-tenant) application surfaces the typed not-found
+  ---
+  duration_ms: 1.552792
+  type: 'test'
+  ...
+# Subtest: H2: a forbidden material read stays typed for the actionable state
+ok 21 - H2: a forbidden material read stays typed for the actionable state
+  ---
+  duration_ms: 1.525542
+  type: 'test'
+  ...
+# Subtest: H3: link_state linking reconciles through the original request id
+ok 22 - H3: link_state linking reconciles through the original request id
+  ---
+  duration_ms: 0.838834
+  type: 'test'
+  ...
+# Subtest: S1: an unselected version is never inferred as the explicit unknown (F1)
+ok 23 - S1: an unselected version is never inferred as the explicit unknown (F1)
+  ---
+  duration_ms: 0.400208
+  type: 'test'
+  ...
+# Subtest: D4: a safe resend replays the original expected revision, not the current desk revision (F3)
+ok 24 - D4: a safe resend replays the original expected revision, not the current desk revision (F3)
+  ---
+  duration_ms: 7.78875
+  type: 'test'
+  ...
+# Subtest: D2b: an edit-intent safe resend replays the original edit body, never a confirm (F2)
+ok 25 - D2b: an edit-intent safe resend replays the original edit body, never a confirm (F2)
+  ---
+  duration_ms: 16.210042
+  type: 'test'
+  ...
+# Subtest: D3b: a submission safe resend replays the original declared body and revision (F3)
+ok 26 - D3b: a submission safe resend replays the original declared body and revision (F3)
+  ---
+  duration_ms: 23.275375
+  type: 'test'
+  ...
+# Subtest: M1: the editable body round-trips every section and claim — nothing is silently dropped (F4)
+ok 27 - M1: the editable body round-trips every section and claim — nothing is silently dropped (F4)
+  ---
+  duration_ms: 1.003291
+  type: 'test'
+  ...
+# Subtest: T1: a declared time is parsed strictly — invalid input is never silently dropped (F5)
+ok 28 - T1: a declared time is parsed strictly — invalid input is never silently dropped (F5)
+  ---
+  duration_ms: 1.785084
+  type: 'test'
+  ...
+# Subtest: D3: 受保护产物从可写的私有副本打开，且副本在打开后立即删除
+ok 29 - D3: 受保护产物从可写的私有副本打开，且副本在打开后立即删除
+  ---
+  duration_ms: 9.637792
+  type: 'test'
+  ...
+# Subtest: D3: 预览失败时私有副本仍被清理，原始错误不被清理失败掩盖
+ok 30 - D3: 预览失败时私有副本仍被清理，原始错误不被清理失败掩盖
+  ---
+  duration_ms: 13.129416
+  type: 'test'
+  ...
+# Subtest: D3: 副本清理失败必须如实报错，而不是静默违背“立即清理”的承诺
+ok 31 - D3: 副本清理失败必须如实报错，而不是静默违背“立即清理”的承诺
+  ---
+  duration_ms: 1.665334
+  type: 'test'
+  ...
+# Subtest: D3: 授权过期（401）的下载不产生任何私有副本，也没有可清理对象
+ok 32 - D3: 授权过期（401）的下载不产生任何私有副本，也没有可清理对象
+  ---
+  duration_ms: 4.3295
+  type: 'test'
+  ...
+# Subtest: assembly: login through real client+transport+AuthCoordinator stores credentials and stamps scope
+ok 33 - assembly: login through real client+transport+AuthCoordinator stores credentials and stamps scope
+  ---
+  duration_ms: 15.36775
+  type: 'test'
+  ...
+# Subtest: assembly: scoped GET 401 refreshes single-flight and replays with the rotated token
+ok 34 - assembly: scoped GET 401 refreshes single-flight and replays with the rotated token
+  ---
+  duration_ms: 4.056583
+  type: 'test'
+  ...
+# Subtest: assembly: write requests never auto-retry or refresh on 401
+ok 35 - assembly: write requests never auto-retry or refresh on 401
+  ---
+  duration_ms: 1.809375
+  type: 'test'
+  ...
+# Subtest: assembly: 403 is surfaced as permission denial, never treated as 401 refresh
+ok 36 - assembly: 403 is surfaced as permission denial, never treated as 401 refresh
+  ---
+  duration_ms: 211.448292
+  type: 'test'
+  ...
+# Subtest: assembly: a response landing after a scope change is discarded (SCOPE_CHANGED)
+ok 37 - assembly: a response landing after a scope change is discarded (SCOPE_CHANGED)
+  ---
+  duration_ms: 102.00525
+  type: 'test'
+  ...
+# Subtest: assembly: chatStream assembles SSE frames end-to-end through the native chunk boundary
+ok 38 - assembly: chatStream assembles SSE frames end-to-end through the native chunk boundary
+  ---
+  duration_ms: 5.578167
+  type: 'test'
+  ...
+# Subtest: assembly: watchExecution installs the snapshot then appends streamed events from the watermark
+ok 39 - assembly: watchExecution installs the snapshot then appends streamed events from the watermark
+  ---
+  duration_ms: 7.066333
+  type: 'test'
+  ...
+# Subtest: assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action
+ok 40 - assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action
+  ---
+  duration_ms: 22.5115
+  type: 'test'
+  ...
+# Subtest: assembly: Task artifact listing and grant failures preserve permission and expiry statuses
+ok 41 - assembly: Task artifact listing and grant failures preserve permission and expiry statuses
+  ---
+  duration_ms: 9.099292
+  type: 'test'
+  ...
+# Subtest: assembly: protected DOCX opens with the user menu and removes its private copy
+ok 42 - assembly: protected DOCX opens with the user menu and removes its private copy
+  ---
+  duration_ms: 2.849167
+  type: 'test'
+  ...
+# Subtest: assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds
+ok 43 - assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds
+  ---
+  duration_ms: 3.7995
+  type: 'test'
+  ...
+# Subtest: assembly: revoked download is denied without creating any app-managed file
+ok 44 - assembly: revoked download is denied without creating any app-managed file
+  ---
+  duration_ms: 0.687041
+  type: 'test'
+  ...
+# Subtest: assembly: invalid signed-download 401 is an authorization failure rather than an expiry retry
+ok 45 - assembly: invalid signed-download 401 is an authorization failure rather than an expiry retry
+  ---
+  duration_ms: 0.673625
+  type: 'test'
+  ...
+# Subtest: assembly: unknown signed-download 401 body defaults to denial without app-managed files
+ok 46 - assembly: unknown signed-download 401 body defaults to denial without app-managed files
+  ---
+  duration_ms: 0.745459
+  type: 'test'
+  ...
+# Subtest: assembly: a scope switch during transfer prevents opening and any private copy
+ok 47 - assembly: a scope switch during transfer prevents opening and any private copy
+  ---
+  duration_ms: 68.388208
+  type: 'test'
+  ...
+# Subtest: assembly: scope change while obtaining a grant prevents an old-scope download
+ok 48 - assembly: scope change while obtaining a grant prevents an old-scope download
+  ---
+  duration_ms: 7.996792
+  type: 'test'
+  ...
+# Subtest: assembly: oversized files are rejected before any private copy exists
+ok 49 - assembly: oversized files are rejected before any private copy exists
+  ---
+  duration_ms: 0.87975
+  type: 'test'
+  ...
+# Subtest: assembly: native viewer failure removes the private copy
+ok 50 - assembly: native viewer failure removes the private copy
+  ---
+  duration_ms: 6.207875
+  type: 'test'
+  ...
+# Subtest: assembly: file-info failure happens before any private copy exists
+ok 51 - assembly: file-info failure happens before any private copy exists
+  ---
+  duration_ms: 1.208042
+  type: 'test'
+  ...
+# Subtest: assembly: startTask unknown after a lost response resubmits the SAME request id (D5)
+ok 52 - assembly: startTask unknown after a lost response resubmits the SAME request id (D5)
+  ---
+  duration_ms: 4.862583
+  type: 'test'
+  ...
+# Subtest: assembly: duplicate taps while a submission is unresolved never create a second intent
+ok 53 - assembly: duplicate taps while a submission is unresolved never create a second intent
+  ---
+  duration_ms: 0.720708
+  type: 'test'
+  ...
+# Subtest: assembly: wire paths used by the miniprogram match the Go route table
+ok 54 - assembly: wire paths used by the miniprogram match the Go route table
+  ---
+  duration_ms: 1.814
+  type: 'test'
+  ...
+# Subtest: assembly: logout clears credentials and private cache but keeps the flow silent on network errors
+ok 55 - assembly: logout clears credentials and private cache but keeps the flow silent on network errors
+  ---
+  duration_ms: 0.316167
+  type: 'test'
+  ...
+# Subtest: login exposes identity without exposing credentials to UI
+ok 56 - login exposes identity without exposing credentials to UI
+  ---
+  duration_ms: 10.452375
+  type: 'test'
+  ...
+# Subtest: concurrent refresh is single-flight and persists rotated credentials
+ok 57 - concurrent refresh is single-flight and persists rotated credentials
+  ---
+  duration_ms: 198.421833
+  type: 'test'
+  ...
+# Subtest: failed tenant switch retains original identity and unfreezes reads
+ok 58 - failed tenant switch retains original identity and unfreezes reads
+  ---
+  duration_ms: 0.667541
+  type: 'test'
+  ...
+# Subtest: refresh finishing after logout cannot resurrect a login
+ok 59 - refresh finishing after logout cannot resurrect a login
+  ---
+  duration_ms: 0.741958
+  type: 'test'
+  ...
+# Subtest: switch aborts old requests and preserves user while replacing tenant
+ok 60 - switch aborts old requests and preserves user while replacing tenant
+  ---
+  duration_ms: 1.102083
+  type: 'test'
+  ...
+# Subtest: login response completing after logout cannot restore identity
+ok 61 - login response completing after logout cannot restore identity
+  ---
+  duration_ms: 0.352292
+  type: 'test'
+  ...
+# Subtest: tenant switch response completing after logout cannot restore identity
+ok 62 - tenant switch response completing after logout cannot restore identity
+  ---
+  duration_ms: 0.287417
+  type: 'test'
+  ...
+# Subtest: bootstrap me response completing after logout is discarded
+ok 63 - bootstrap me response completing after logout is discarded
+  ---
+  duration_ms: 11.129875
+  type: 'test'
+  ...
+# Subtest: definitive refresh rejection on the hot path clears the zombie session
+ok 64 - definitive refresh rejection on the hot path clears the zombie session
+  ---
+  duration_ms: 148.098708
+  type: 'test'
+  ...
+# Subtest: transient refresh failure keeps the session for later retry
+ok 65 - transient refresh failure keeps the session for later retry
+  ---
+  duration_ms: 4.373791
+  type: 'test'
+  ...
+# Subtest: D7: host-case variant of the same origin migrates into the canonical key on construct
+ok 66 - D7: host-case variant of the same origin migrates into the canonical key on construct
+  ---
+  duration_ms: 164.34325
+  type: 'test'
+  ...
+# Subtest: D7: logout clears the canonical key only, other-origin keys stay untouched
+ok 67 - D7: logout clears the canonical key only, other-origin keys stay untouched
+  ---
+  duration_ms: 0.622042
+  type: 'test'
+  ...
+# Subtest: D7: non-bearer garbage in a variant key is dropped, not migrated
+ok 68 - D7: non-bearer garbage in a variant key is dropped, not migrated
+  ---
+  duration_ms: 6.299792
+  type: 'test'
+  ...
+# Subtest: D1: artifact 页组件引用不含 node_modules 段且在 dist 内可解析
+ok 69 - D1: artifact 页组件引用不含 node_modules 段且在 dist 内可解析
+  ---
+  duration_ms: 6.061708
+  type: 'test'
+  ...
+# Subtest: D2: base.wxml 的 t-button 模板必须绑定 tap 事件与真实属性
+ok 70 - D2: base.wxml 的 t-button 模板必须绑定 tap 事件与真实属性
+  ---
+  duration_ms: 14.103375
+  type: 'test'
+  ...
+# Subtest: F1: dist/npm/tdesign 不含 .d.ts 纯类型文件
+ok 71 - F1: dist/npm/tdesign 不含 .d.ts 纯类型文件
+  ---
+  duration_ms: 21.904709
+  type: 'test'
+  ...
+# Subtest: F1: 主包（dist 去分包目录）体积必须低于微信 2MB 上限
+ok 72 - F1: 主包（dist 去分包目录）体积必须低于微信 2MB 上限
+  ---
+  duration_ms: 45.279375
+  type: 'test'
+  ...
+# Subtest: F1: tdesign 拷贝闭包完整（button 及其 usingComponents 传递依赖 + common 运行时）
+ok 73 - F1: tdesign 拷贝闭包完整（button 及其 usingComponents 传递依赖 + common 运行时）
+  ---
+  duration_ms: 10.620875
+  type: 'test'
+  ...
+# Subtest: A1: opening the desk reads the same server-side profile and never mints a second one
+ok 74 - A1: opening the desk reads the same server-side profile and never mints a second one
+  ---
+  duration_ms: 76.116416
+  type: 'test'
+  ...
+# Subtest: A2: an empty profile reports onboarding instead of creating a parallel one
+ok 75 - A2: an empty profile reports onboarding instead of creating a parallel one
+  ---
+  duration_ms: 57.1405
+  type: 'test'
+  ...
+# Subtest: B1: extracted facts join the profile only after an item-by-item confirm_proposal
+ok 76 - B1: extracted facts join the profile only after an item-by-item confirm_proposal
+  ---
+  duration_ms: 23.281042
+  type: 'test'
+  ...
+# Subtest: B2: unconfirmed proposals stay proposals — nothing silently becomes a fact
+ok 77 - B2: unconfirmed proposals stay proposals — nothing silently becomes a fact
+  ---
+  duration_ms: 0.69775
+  type: 'test'
+  ...
+# Subtest: C1: a revision conflict surfaces the server receipt without corrupting the desk
+ok 78 - C1: a revision conflict surfaces the server receipt without corrupting the desk
+  ---
+  duration_ms: 1.286833
+  type: 'test'
+  ...
+# Subtest: C2: an ambiguous act outcome is reconciled through the original request id
+ok 79 - C2: an ambiguous act outcome is reconciled through the original request id
+  ---
+  duration_ms: 2.209083
+  type: 'test'
+  ...
+# Subtest: C3: a scope change invalidates in-flight career reads — stale responses never land
+ok 80 - C3: a scope change invalidates in-flight career reads — stale responses never land
+  ---
+  duration_ms: 0.829625
+  type: 'test'
+  ...
+# Subtest: D1: one-shot search posts the frozen searches contract and returns truthful rows
+ok 81 - D1: one-shot search posts the frozen searches contract and returns truthful rows
+  ---
+  duration_ms: 1.543
+  type: 'test'
+  ...
+# Subtest: D2: a search with no vetted sources reports honestly instead of inventing rows
+ok 82 - D2: a search with no vetted sources reports honestly instead of inventing rows
+  ---
+  duration_ms: 14.469625
+  type: 'test'
+  ...
+# Subtest: D3: a failed search keeps its failure code; quota refusal stays actionable
+ok 83 - D3: a failed search keeps its failure code; quota refusal stays actionable
+  ---
+  duration_ms: 1.426042
+  type: 'test'
+  ...
+# Subtest: D4: quota refusal surfaces as search_quota_refused without touching the profile
+ok 84 - D4: quota refusal surfaces as search_quota_refused without touching the profile
+  ---
+  duration_ms: 1.83275
+  type: 'test'
+  ...
+# Subtest: D5: an unknown search outcome is recovered through the receipt endpoint with the original request id
+ok 85 - D5: an unknown search outcome is recovered through the receipt endpoint with the original request id
+  ---
+  duration_ms: 1.119875
+  type: 'test'
+  ...
+# Subtest: D4b: a quota refusal renders the dedicated actionable prompt through the real error chain
+ok 86 - D4b: a quota refusal renders the dedicated actionable prompt through the real error chain
+  ---
+  duration_ms: 0.745875
+  type: 'test'
+  ...
+# Subtest: D6: a missing receipt (404) during reconciliation exposes an actionable recovery state
+ok 87 - D6: a missing receipt (404) during reconciliation exposes an actionable recovery state
+  ---
+  duration_ms: 0.808708
+  type: 'test'
+  ...
+# Subtest: D7: a quota-refused safe resend keeps the typed code, the dedicated prompt, and the intent
+ok 88 - D7: a quota-refused safe resend keeps the typed code, the dedicated prompt, and the intent
+  ---
+  duration_ms: 0.50875
+  type: 'test'
+  ...
+# Subtest: E1: share import previews verbatim before any network write, then submits the same payload
+ok 89 - E1: share import previews verbatim before any network write, then submits the same payload
+  ---
+  duration_ms: 0.730834
+  type: 'test'
+  ...
+# Subtest: E2: a missing share payload exposes recovery instead of demo data
+ok 90 - E2: a missing share payload exposes recovery instead of demo data
+  ---
+  duration_ms: 0.162125
+  type: 'test'
+  ...
+# Subtest: F1: uploading a resume posts multipart with request id and expected revision
+ok 91 - F1: uploading a resume posts multipart with request id and expected revision
+  ---
+  duration_ms: 1.135625
+  type: 'test'
+  ...
+# Subtest: F2: a failed source keeps its error category visible to the user
+ok 92 - F2: a failed source keeps its error category visible to the user
+  ---
+  duration_ms: 2.880166
+  type: 'test'
+  ...
+# Subtest: G1: web-side profile changes sync into the miniprogram view
+ok 93 - G1: web-side profile changes sync into the miniprogram view
+  ---
+  duration_ms: 0.87225
+  type: 'test'
+  ...
+# Subtest: H1: a forbidden career scope clears local desk state for recovery
+ok 94 - H1: a forbidden career scope clears local desk state for recovery
+  ---
+  duration_ms: 0.7325
+  type: 'test'
+  ...
+# Subtest: P1: readSharedEntry returns the shared JD payload from the entry params
+ok 95 - P1: readSharedEntry returns the shared JD payload from the entry params
+  ---
+  duration_ms: 1.492166
+  type: 'test'
+  ...
+# Subtest: P2: readSharedEntry reports a missing payload instead of inventing one
+ok 96 - P2: readSharedEntry reports a missing payload instead of inventing one
+  ---
+  duration_ms: 0.318125
+  type: 'test'
+  ...
+# Subtest: P3: prepareSharedImport builds a verifiable preview without any network write
+ok 97 - P3: prepareSharedImport builds a verifiable preview without any network write
+  ---
+  duration_ms: 1.411
+  type: 'test'
+  ...
+# Subtest: P4: prepareSharedImport refuses an empty payload with a recoverable error
+ok 98 - P4: prepareSharedImport refuses an empty payload with a recoverable error
+  ---
+  duration_ms: 10.95525
+  type: 'test'
+  ...
+# Subtest: P5: controlled career store is scoped under wk:career: and cleared with the private cache
+ok 99 - P5: controlled career store is scoped under wk:career: and cleared with the private cache
+  ---
+  duration_ms: 5.083541
+  type: 'test'
+  ...
+# Subtest: P6: chooseResume delegates to the injected file seam and forwards the native file
+ok 100 - P6: chooseResume delegates to the injected file seam and forwards the native file
+  ---
+  duration_ms: 0.80875
+  type: 'test'
+  ...
+# Subtest: P7: percent-encoded share payloads are decoded, literal % text is preserved
+ok 101 - P7: percent-encoded share payloads are decoded, literal % text is preserved
+  ---
+  duration_ms: 6.609292
+  type: 'test'
+  ...
+# Subtest: integer formatting never rounds values larger than Number.MAX_SAFE_INTEGER
+ok 102 - integer formatting never rounds values larger than Number.MAX_SAFE_INTEGER
+  ---
+  duration_ms: 74.324084
+  type: 'test'
+  ...
+# Subtest: scope transition aborts old requests and refuses stale commits
+ok 103 - scope transition aborts old requests and refuses stale commits
+  ---
+  duration_ms: 1.940458
+  type: 'test'
+  ...
+# Subtest: UTF-8 decoder works for every byte split, including surrogate-pair characters
+ok 104 - UTF-8 decoder works for every byte split, including surrogate-pair characters
+  ---
+  duration_ms: 12.006458
+  type: 'test'
+  ...
+# Subtest: UTF-8 decoder rejects malformed and truncated input rather than inventing characters
+ok 105 - UTF-8 decoder rejects malformed and truncated input rather than inventing characters
+  ---
+  duration_ms: 0.784333
+  type: 'test'
+  ...
+# Subtest: snapshot watermark starts replay correctly and rejects gaps or foreign runs
+ok 106 - snapshot watermark starts replay correctly and rejects gaps or foreign runs
+  ---
+  duration_ms: 19.915375
+  type: 'test'
+  ...
+# Subtest: snapshot installation cannot include events ahead of its watermark
+ok 107 - snapshot installation cannot include events ahead of its watermark
+  ---
+  duration_ms: 4.1445
+  type: 'test'
+  ...
+# Subtest: event cursor is not committed when persistence fails
+ok 108 - event cursor is not committed when persistence fails
+  ---
+  duration_ms: 0.637709
+  type: 'test'
+  ...
+# Subtest: pending submission reuses the same id and unknown lookup never releases the intent
+ok 109 - pending submission reuses the same id and unknown lookup never releases the intent
+  ---
+  duration_ms: 173.744958
+  type: 'test'
+  ...
+# Subtest: route manifest has twenty-four screens and only four primary tabs
+ok 110 - route manifest has twenty-four screens and only four primary tabs
+  ---
+  duration_ms: 1.82075
+  type: 'test'
+  ...
+# Subtest: A1: whole-space export posts the frozen two-field contract and returns the inline archive the web sees
+ok 111 - A1: whole-space export posts the frozen two-field contract and returns the inline archive the web sees
+  ---
+  duration_ms: 65.683458
+  type: 'test'
+  ...
+# Subtest: A2: the export archive carries all six segments the web inventory renders
+ok 112 - A2: the export archive carries all six segments the web inventory renders
+  ---
+  duration_ms: 8.759291
+  type: 'test'
+  ...
+# Subtest: A3: saving the export package writes the complete JSON to a local file — no silent truncation
+ok 113 - A3: saving the export package writes the complete JSON to a local file — no silent truncation
+  ---
+  duration_ms: 240.590083
+  type: 'test'
+  ...
+# Subtest: A4: the clipboard equivalent flow carries the full package when local saving is not enough
+ok 114 - A4: the clipboard equivalent flow carries the full package when local saving is not enough
+  ---
+  duration_ms: 0.363958
+  type: 'test'
+  ...
+# Subtest: B1: the deletion boundary view decodes in-space sections, external non-revocable items and retention
+ok 115 - B1: the deletion boundary view decodes in-space sections, external non-revocable items and retention
+  ---
+  duration_ms: 6.073833
+  type: 'test'
+  ...
+# Subtest: B2: deletion posts the frozen contract and only reports deleted after every step done
+ok 116 - B2: deletion posts the frozen contract and only reports deleted after every step done
+  ---
+  duration_ms: 9.1415
+  type: 'test'
+  ...
+# Subtest: B3: a partial deletion never claims complete deletion and recovers under the same request id
+ok 117 - B3: a partial deletion never claims complete deletion and recovers under the same request id
+  ---
+  duration_ms: 4.83725
+  type: 'test'
+  ...
+# Subtest: C1: an unknown export outcome is reconciled through the original request id
+ok 118 - C1: an unknown export outcome is reconciled through the original request id
+  ---
+  duration_ms: 4.2255
+  type: 'test'
+  ...
+# Subtest: C2: an unknown deletion outcome keeps the intent; a missing receipt is distinguishable and the resend replays the id
+ok 119 - C2: an unknown deletion outcome keeps the intent; a missing receipt is distinguishable and the resend replays the id
+  ---
+  duration_ms: 5.930375
+  type: 'test'
+  ...
+# Subtest: D1: after a complete deletion the old export receipt is rejected typed (404)
+ok 120 - D1: after a complete deletion the old export receipt is rejected typed (404)
+  ---
+  duration_ms: 1.966208
+  type: 'test'
+  ...
+# Subtest: D2: clearing local career caches removes only wk:career storage keys and resets the desk
+ok 121 - D2: clearing local career caches removes only wk:career storage keys and resets the desk
+  ---
+  duration_ms: 0.498833
+  type: 'test'
+  ...
+# Subtest: E1: a scope change discards a stale deletion response and persists no intent
+ok 122 - E1: a scope change discards a stale deletion response and persists no intent
+  ---
+  duration_ms: 1.283583
+  type: 'test'
+  ...
+# Subtest: E2: a cross-tenant boundary read surfaces the typed forbidden
+ok 123 - E2: a cross-tenant boundary read surfaces the typed forbidden
+  ---
+  duration_ms: 0.902
+  type: 'test'
+  ...
+# Subtest: E3: a revision conflict on deletion is typed with the current revision
+ok 124 - E3: a revision conflict on deletion is typed with the current revision
+  ---
+  duration_ms: 0.542334
+  type: 'test'
+  ...
+# Subtest: M1: an unknown export outcome blocks both main actions and the acknowledgement until reconciled
+ok 125 - M1: an unknown export outcome blocks both main actions and the acknowledgement until reconciled
+  ---
+  duration_ms: 4.995917
+  type: 'test'
+  ...
+# Subtest: M1: an unknown deletion blocks the delete main action; a reported partial does not (Web unknown ≠ error)
+ok 126 - M1: an unknown deletion blocks the delete main action; a reported partial does not (Web unknown ≠ error)
+  ---
+  duration_ms: 1.358125
+  type: 'test'
+  ...
+# Subtest: M1: in-flight runs (发起/对账/重试) block the main actions; export busy additionally blocks deletion
+ok 127 - M1: in-flight runs (发起/对账/重试) block the main actions; export busy additionally blocks deletion
+  ---
+  duration_ms: 0.310166
+  type: 'test'
+  ...
+# Subtest: F1: a partial receipt followed by an ambiguous retry re-blocks the deletion main action until a definite receipt
+ok 128 - F1: a partial receipt followed by an ambiguous retry re-blocks the deletion main action until a definite receipt
+  ---
+  duration_ms: 1.33375
+  type: 'test'
+  ...
+# Subtest: F1: a failed reconcile keeps the block until a definite receipt arrives (Web lookup failure → unknown)
+ok 129 - F1: a failed reconcile keeps the block until a definite receipt arrives (Web lookup failure → unknown)
+  ---
+  duration_ms: 7.965417
+  type: 'test'
+  ...
+# Subtest: F1: a definite retry refusal and a scope-changed failure do not raise the unresolved block (Web definite → error phase)
+ok 130 - F1: a definite retry refusal and a scope-changed failure do not raise the unresolved block (Web definite → error phase)
+  ---
+  duration_ms: 3.036417
+  type: 'test'
+  ...
+# Subtest: A1: the timeline renders in the server-authoritative order and a cross-client correction keeps the original traceable
+ok 131 - A1: the timeline renders in the server-authoritative order and a cross-client correction keeps the original traceable
+  ---
+  duration_ms: 7.45475
+  type: 'test'
+  ...
+# Subtest: A2: appending posts the frozen progress contract with the manual source and the per-application revision
+ok 132 - A2: appending posts the frozen progress contract with the manual source and the per-application revision
+  ---
+  duration_ms: 2.363042
+  type: 'test'
+  ...
+# Subtest: A3: an in-app correction targets the correction endpoint and carries correctsEventId
+ok 133 - A3: an in-app correction targets the correction endpoint and carries correctsEventId
+  ---
+  duration_ms: 4.775917
+  type: 'test'
+  ...
+# Subtest: A4: an unknown progress outcome is reconciled through the original request id (seam: 未知对账)
+ok 134 - A4: an unknown progress outcome is reconciled through the original request id (seam: 未知对账)
+  ---
+  duration_ms: 5.687709
+  type: 'test'
+  ...
+# Subtest: A5: a progress safe resend replays the original event revision even after the desk advanced
+ok 135 - A5: a progress safe resend replays the original event revision even after the desk advanced
+  ---
+  duration_ms: 7.271791
+  type: 'test'
+  ...
+# Subtest: A6: a progress revision conflict is definite and typed — no recovery intent (seam: 冲突回执)
+ok 136 - A6: a progress revision conflict is definite and typed — no recovery intent (seam: 冲突回执)
+  ---
+  duration_ms: 1.976458
+  type: 'test'
+  ...
+# Subtest: B1: generating posts the frozen preparation contract and returns the submitted-version anchor
+ok 137 - B1: generating posts the frozen preparation contract and returns the submitted-version anchor
+  ---
+  duration_ms: 1.74075
+  type: 'test'
+  ...
+# Subtest: B2: an unconfirmed submitted version answers the typed prompt state — never a silent latest-version fallback
+ok 138 - B2: an unconfirmed submitted version answers the typed prompt state — never a silent latest-version fallback
+  ---
+  duration_ms: 1.106583
+  type: 'test'
+  ...
+# Subtest: B3: preparations are listed through the frozen list endpoint
+ok 139 - B3: preparations are listed through the frozen list endpoint
+  ---
+  duration_ms: 1.069
+  type: 'test'
+  ...
+# Subtest: B4: revising a preparation draft goes through the material domain and stays anchored
+ok 140 - B4: revising a preparation draft goes through the material domain and stays anchored
+  ---
+  duration_ms: 10.955583
+  type: 'test'
+  ...
+# Subtest: B5: an unknown preparation outcome is reconciled through the preparations receipt (seam: 未知对账)
+ok 141 - B5: an unknown preparation outcome is reconciled through the preparations receipt (seam: 未知对账)
+  ---
+  duration_ms: 1.51025
+  type: 'test'
+  ...
+# Subtest: C1: offline keeps the local preparation draft editable, never writes progress, and never auto-submits on reconnect
+ok 142 - C1: offline keeps the local preparation draft editable, never writes progress, and never auto-submits on reconnect
+  ---
+  duration_ms: 40.12025
+  type: 'test'
+  ...
+# Subtest: D1: switching accounts never shows the previous user preparation draft
+ok 143 - D1: switching accounts never shows the previous user preparation draft
+  ---
+  duration_ms: 1.761792
+  type: 'test'
+  ...
+# Subtest: E1: a scope change invalidates an in-flight progress write — nothing is applied or persisted (seam: 空间切换)
+ok 144 - E1: a scope change invalidates an in-flight progress write — nothing is applied or persisted (seam: 空间切换)
+  ---
+  duration_ms: 0.852541
+  type: 'test'
+  ...
+# Subtest: F1: cross-tenant progress and preparation reads stay typed forbidden
+ok 145 - F1: cross-tenant progress and preparation reads stay typed forbidden
+  ---
+  duration_ms: 0.45375
+  type: 'test'
+  ...
+# Subtest: R1-P1: the local draft round-trips section claims
+ok 146 - R1-P1: the local draft round-trips section claims
+  ---
+  duration_ms: 0.28175
+  type: 'test'
+  ...
+# Subtest: R1-P2: merging a retained draft into the server body is local-first — locally added sections survive, claims come from the server (F2)
+ok 147 - R1-P2: merging a retained draft into the server body is local-first — locally added sections survive, claims come from the server (F2)
+  ---
+  duration_ms: 0.233417
+  type: 'test'
+  ...
+# Subtest: R1-P3: empty claims are recovered from the material domain before submission — never silently dropped (F1)
+ok 148 - R1-P3: empty claims are recovered from the material domain before submission — never silently dropped (F1)
+  ---
+  duration_ms: 0.543584
+  type: 'test'
+  ...
+# Subtest: R1-P4: the composed save chain preserves server claims through the real material write (F1 端到端)
+ok 149 - R1-P4: the composed save chain preserves server claims through the real material write (F1 端到端)
+  ---
+  duration_ms: 0.971958
+  type: 'test'
+  ...
+# Subtest: A1: saving a rule posts the frozen T13 contract and persists the rule reference for the scope
+ok 150 - A1: saving a rule posts the frozen T13 contract and persists the rule reference for the scope
+  ---
+  duration_ms: 66.514
+  type: 'test'
+  ...
+# Subtest: A2: the stored rule id re-opens the same version — a cross-client edit changes the plan the miniprogram reads
+ok 151 - A2: the stored rule id re-opens the same version — a cross-client edit changes the plan the miniprogram reads
+  ---
+  duration_ms: 4.655666
+  type: 'test'
+  ...
+# Subtest: A3: a rule revision conflict is definite and typed — no recovery intent (seam: 冲突回执)
+ok 152 - A3: a rule revision conflict is definite and typed — no recovery intent (seam: 冲突回执)
+  ---
+  duration_ms: 4.177667
+  type: 'test'
+  ...
+# Subtest: A4: an unknown rule outcome recovers through the original request id and revision (seam: 未知对账)
+ok 153 - A4: an unknown rule outcome recovers through the original request id and revision (seam: 未知对账)
+  ---
+  duration_ms: 5.477334
+  type: 'test'
+  ...
+# Subtest: A4b: a reconciled rule receipt clears the intent without a second write
+ok 154 - A4b: a reconciled rule receipt clears the intent without a second write
+  ---
+  duration_ms: 1.741291
+  type: 'test'
+  ...
+# Subtest: A5: a scope change invalidates an in-flight rule write — nothing is applied or persisted (seam: 空间切换)
+ok 155 - A5: a scope change invalidates an in-flight rule write — nothing is applied or persisted (seam: 空间切换)
+  ---
+  duration_ms: 34.229
+  type: 'test'
+  ...
+# Subtest: B1: the usage estimate is read from the frozen endpoint and displayed verbatim
+ok 156 - B1: the usage estimate is read from the frozen endpoint and displayed verbatim
+  ---
+  duration_ms: 1.30325
+  type: 'test'
+  ...
+# Subtest: B2: an exhausted window blocks only the new charged act — every stored archive, application and timeline stays readable (关键断言)
+ok 157 - B2: an exhausted window blocks only the new charged act — every stored archive, application and timeline stays readable (关键断言)
+  ---
+  duration_ms: 18.136292
+  type: 'test'
+  ...
+# Subtest: B3: a repeated charged request replays the same request id — presented once, never double charged
+ok 158 - B3: a repeated charged request replays the same request id — presented once, never double charged
+  ---
+  duration_ms: 9.551959
+  type: 'test'
+  ...
+# Subtest: C1: requesting the subscription passes only the template ids — zero job detail in the native payload
+ok 159 - C1: requesting the subscription passes only the template ids — zero job detail in the native payload
+  ---
+  duration_ms: 4.104833
+  type: 'test'
+  ...
+# Subtest: C2: a rejected subscription keeps the in-station todos readable — no fake delivery
+ok 160 - C2: a rejected subscription keeps the in-station todos readable — no fake delivery
+  ---
+  duration_ms: 16.807458
+  type: 'test'
+  ...
+# Subtest: C3: an unavailable native API (simulator or unconfigured templates) reports the honest limitation
+ok 161 - C3: an unavailable native API (simulator or unconfigured templates) reports the honest limitation
+  ---
+  duration_ms: 0.587667
+  type: 'test'
+  ...
+# Subtest: C4: the inbox renders the frozen privacy notices verbatim — no company, job or interview detail
+ok 162 - C4: the inbox renders the frozen privacy notices verbatim — no company, job or interview detail
+  ---
+  duration_ms: 0.737042
+  type: 'test'
+  ...
+# Subtest: C5: registering a todo posts the frozen T20 contract and surfaces the deduplicated receipt with the response-only push report
+ok 163 - C5: registering a todo posts the frozen T20 contract and surfaces the deduplicated receipt with the response-only push report
+  ---
+  duration_ms: 44.272
+  type: 'test'
+  ...
+# Subtest: C6: opting out of push stops the pushes while the todos stay readable
+ok 164 - C6: opting out of push stops the pushes while the todos stay readable
+  ---
+  duration_ms: 1.502042
+  type: 'test'
+  ...
+# Subtest: request preserves real status and normalizes headers
+ok 165 - request preserves real status and normalizes headers
+  ---
+  duration_ms: 39.331
+  type: 'test'
+  ...
+# Subtest: cancellation aborts native task and rejects once
+ok 166 - cancellation aborts native task and rejects once
+  ---
+  duration_ms: 8.76625
+  type: 'test'
+  ...
+# Subtest: native upload carries filePath and fields without browser FormData
+ok 167 - native upload carries filePath and fields without browser FormData
+  ---
+  duration_ms: 122.029042
+  type: 'test'
+  ...
+# Subtest: stream metadata may be unknown before the real final HTTP status
+ok 168 - stream metadata may be unknown before the real final HTTP status
+  ---
+  duration_ms: 14.572208
+  type: 'test'
+  ...
+# Subtest: non-SSE data never reaches the event consumer
+ok 169 - non-SSE data never reaches the event consumer
+  ---
+  duration_ms: 1.152292
+  type: 'test'
+  ...
+# Subtest: stream rejects data loss when callback protocol is unsupported
+ok 170 - stream rejects data loss when callback protocol is unsupported
+  ---
+  duration_ms: 0.701333
+  type: 'test'
+  ...
+# Subtest: cancel remains AbortError when native abort synchronously calls fail
+ok 171 - cancel remains AbortError when native abort synchronously calls fail
+  ---
+  duration_ms: 0.818458
+  type: 'test'
+  ...
+# Subtest: known non-2xx stream headers reject before forwarding any content
+ok 172 - known non-2xx stream headers reject before forwarding any content
+  ---
+  duration_ms: 4.463791
+  type: 'test'
+  ...
+1..172
+# tests 172
+# suites 0
+# pass 172
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4447.62175

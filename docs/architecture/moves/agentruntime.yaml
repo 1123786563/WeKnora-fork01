@@ -277,6 +277,11 @@ legacy_files:
     navigation_label: Agent stream handler (handler/session)
     passb_task: B-agentruntime
   - path: internal/handler/session/native_archive.go
+  - path: internal/application/repository/memory.go
+  - path: internal/application/repository/memory_extraction.go
+  - path: internal/application/repository/memory_lifecycle.go
+  - path: internal/application/repository/memory_vector.go
+  - path: internal/handler/memory.go
     reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
     navigation_label: Native archive (handler/session)
     passb_task: B-agentruntime

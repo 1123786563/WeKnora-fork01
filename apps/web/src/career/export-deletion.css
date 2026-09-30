@@ -1,0 +1,92 @@
+/* Career whole-space lifecycle (T22): export package and complete deletion.
+   TDesign light theme tokens with the #07c05f brand green for the export
+   surface; deletion stays a deliberate, warning-toned action. */
+.wk-lifecycle {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-lifecycle h3 { margin: 0; }
+.wk-lifecycle h4 { margin: 12px 0 0; }
+.wk-lifecycle > p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-lifecycle__notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 4px solid #07c05f;
+  border-radius: 8px;
+  background: var(--td-brand-color-light, #e8f8ef);
+}
+.wk-lifecycle__revision { margin-top: 10px; }
+.wk-lifecycle__panel {
+  margin: 14px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 10px;
+}
+.wk-lifecycle__panel legend { font-weight: 600; padding: 0 6px; }
+.wk-lifecycle__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wk-lifecycle__actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  cursor: pointer;
+}
+.wk-lifecycle__actions button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-lifecycle__export, .wk-lifecycle__download {
+  border-color: #07c05f !important;
+  background: #07c05f !important;
+  color: #fff !important;
+}
+.wk-lifecycle__delete {
+  border-color: var(--td-error-color, #d54941) !important;
+  background: var(--td-error-color, #d54941) !important;
+  color: #fff !important;
+}
+.wk-lifecycle__message { margin: 10px 0 0; }
+.wk-lifecycle__message--error {
+  padding: 10px 12px;
+  border: 1px solid var(--td-error-color, #d54941);
+  border-radius: 8px;
+  color: var(--td-error-color, #d54941);
+}
+.wk-lifecycle__package, .wk-lifecycle__boundary, .wk-lifecycle__receipt {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-lifecycle__package { border-left: 4px solid #07c05f; }
+.wk-lifecycle__receipt--deleted { border-left: 4px solid #07c05f; }
+.wk-lifecycle__receipt--partial { border-left: 4px solid var(--td-warning-color, #e37318); }
+.wk-lifecycle__package-meta, .wk-lifecycle__receipt-meta {
+  margin: 6px 0 0;
+  color: var(--td-text-color-secondary, #666);
+  font-size: .88rem;
+  word-break: break-all;
+}
+.wk-lifecycle__inventory, .wk-lifecycle__boundary ul, .wk-lifecycle__receipt ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.wk-lifecycle__boundary ul li, .wk-lifecycle__receipt ul li { margin: 4px 0; }
+.wk-lifecycle__steps { margin: 8px 0 0; padding-left: 18px; }
+.wk-lifecycle__step { margin: 4px 0; }
+.wk-lifecycle__step--failed { color: var(--td-error-color, #d54941); }
+.wk-lifecycle__step-detail { display: block; margin-left: 12px; font-size: .85rem; color: var(--td-text-color-secondary, #666); }
+.wk-lifecycle__ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-warning-color, #e37318);
+  border-radius: 8px;
+}

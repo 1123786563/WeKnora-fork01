@@ -23,6 +23,11 @@ export interface KBSurfaceMe {
 
 export interface KBPermissions {
   canContribute: boolean;
+  /** Destructive-management gate. Vue canManageKB (frontend/src/stores/
+   *  organization.ts:818-823) admits only the owner or an explicit KB-level
+   *  admin — NOT every contributor (OCR R1-17: editor/成员写权限不得放宽
+   *  破坏性操作门控). */
+  canManage: boolean;
   /** Viewer-only: hide upload form and batch destructive controls. */
   viewerOnly: boolean;
 }
@@ -88,7 +93,13 @@ export function computeKBPermissions(kb: KBSurfaceKB, me: KBSurfaceMe | null | u
       || (!sharePermission && membershipAllowsWrite(me))
     ))
   );
-  return { canContribute, viewerOnly: !canContribute };
+  const canManage = !!me && (
+    isSystemAdmin(me)
+    || isCreator(kb, me)
+    || sharePermission === 'owner'
+    || sharePermission === 'admin'
+  );
+  return { canContribute, canManage, viewerOnly: !canContribute };
 }
 
 /**

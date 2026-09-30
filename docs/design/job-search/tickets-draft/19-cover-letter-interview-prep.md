@@ -1,8 +1,6 @@
 # T19：求职信与基于投递版的面试准备
 
-**状态：** 已发布；ready-for-agent。
-
-**GitHub Issue：** [#156](https://github.com/1123786563/WeKnora-fork01/issues/156)。
+**状态：** 待批准草案；发布时加 ready-for-agent 标签。
 
 ## Parent
 

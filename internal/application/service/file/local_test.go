@@ -40,3 +40,13 @@ func TestLocalGetFileURL_NoExternalURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "local://1/abc/img.png", got)
 }
+
+func TestLocalSaveCareerExportUsesStableObjectPath(t *testing.T) {
+	dir := t.TempDir()
+	svc := NewLocalFileService(dir, "")
+	first, err := svc.SaveBytes(context.Background(), []byte("first"), 17, "career_export_durable.pdf", false)
+	require.NoError(t, err)
+	second, err := svc.SaveBytes(context.Background(), []byte("retry"), 17, "career_export_durable.pdf", false)
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+}

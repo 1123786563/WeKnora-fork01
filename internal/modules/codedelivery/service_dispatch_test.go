@@ -178,8 +178,8 @@ func TestDispatchWithoutApprovalConsumesNothing(t *testing.T) {
 func TestTamperedSnapshotNeverReachesGitHub(t *testing.T) {
 	f := seededFixture(t)
 	snap := appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1", Args: []byte(`{"repo":"o/n"}`)}
-	_, err := f.dispatcher.Dispatch(context.Background(), snap, "")
-	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
+	_, err := f.dispatcher.Dispatch(context.Background(), localSnapshot(snap), "")
+	require.ErrorIs(t, err, ErrDispatchNotStarted)
 	require.Zero(t, f.github.Calls()["POST /git/blobs"])
 }
 

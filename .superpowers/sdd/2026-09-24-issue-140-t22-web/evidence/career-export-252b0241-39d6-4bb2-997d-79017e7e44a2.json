@@ -1,0 +1,111 @@
+{
+  "kind": "career_exported",
+  "requestId": "f6356e60-e2a0-40f2-907e-fdfcb768105a",
+  "exportId": "252b0241-39d6-4bb2-997d-79017e7e44a2",
+  "revision": 1,
+  "status": "complete",
+  "digest": "64e24a6f7f464ea0b814f6a2f20c1de0e8999c15890e30aa0959305409944d41",
+  "archive": {
+    "profile": {
+      "revision": 1,
+      "facts": [
+        {
+          "key": "学历",
+          "value": "本科计算机科学",
+          "revision": 1,
+          "source": {
+            "kind": "manual"
+          },
+          "confirmation": {
+            "userId": "704950d6-0f29-43e3-be7b-2170aae7fe03",
+            "confirmedAt": "2026-09-25T15:30:00.193012Z"
+          },
+          "confirmedAt": "2026-09-25T15:30:00.193012Z"
+        }
+      ],
+      "proposals": []
+    },
+    "factHistory": [
+      {
+        "key": "学历",
+        "value": "本科计算机科学",
+        "revision": 1,
+        "source": {
+          "kind": "manual"
+        },
+        "confirmation": {
+          "userId": "704950d6-0f29-43e3-be7b-2170aae7fe03",
+          "confirmedAt": "2026-09-25T15:30:00.193012Z"
+        },
+        "confirmedAt": "2026-09-25T15:30:00.193012Z"
+      }
+    ],
+    "opportunities": [
+      {
+        "opportunityId": "6f79f564-834f-41f2-9113-949211523ebb",
+        "snapshots": [
+          {
+            "snapshotId": "90a6ad78-8932-4153-914a-12dee40941dc",
+            "status": "needs_review",
+            "rawText": "高级后端工程师（Go）\n公司：示例科技\n要求：本科以上，3年 Go 经验，熟悉 PostgreSQL。",
+            "acquiredAt": "2026-09-25T15:30:00.236575Z"
+          }
+        ]
+      }
+    ],
+    "applications": [
+      {
+        "applicationId": "85568613-dbf0-4782-85df-81d248da7134",
+        "opportunityId": "6f79f564-834f-41f2-9113-949211523ebb",
+        "snapshotId": "90a6ad78-8932-4153-914a-12dee40941dc",
+        "batchIdentity": "e2e-batch-1",
+        "taskId": "6fc9ce49-8374-4fe2-bf9c-6f8b7899f566",
+        "progressEvents": [
+          {
+            "eventId": "ba28e940-1ced-451f-87dc-d82cb1dee32e",
+            "applicationId": "85568613-dbf0-4782-85df-81d248da7134",
+            "seq": 1,
+            "eventType": "submitted",
+            "occurredAt": "2026-09-25T15:30:25.989978Z",
+            "source": {
+              "kind": "manual"
+            },
+            "confirmer": "704950d6-0f29-43e3-be7b-2170aae7fe03"
+          }
+        ]
+      }
+    ],
+    "materials": [
+      {
+        "materialId": "30807a1f-c81c-4723-9716-463cb947b263",
+        "opportunityId": "6f79f564-834f-41f2-9113-949211523ebb",
+        "status": "draft",
+        "versions": [
+          {
+            "version": 1,
+            "requestId": "t22-matc-1",
+            "versionBody": "{\"version\":1,\"pinnedEvidence\":{\"opportunityId\":\"6f79f564-834f-41f2-9113-949211523ebb\",\"snapshotId\":\"90a6ad78-8932-4153-914a-12dee40941dc\",\"snapshotSha256\":\"83ae59ca0ad521665aed3b2b75e99fb8d6d0c6ff37bc79f9642304ed59752c5c\",\"profileRevision\":1},\"factBasisRevision\":1,\"body\":{\"sections\":[{\"heading\":\"教育经历\",\"content\":\"本科计算机科学\",\"claims\":[]}]},\"reviewRisks\":[],\"requestId\":\"t22-matc-1\",\"createdAt\":\"2026-09-25T15:30:33.316526Z\"}",
+            "createdAt": "2026-09-25T15:30:33.316526Z"
+          }
+        ]
+      }
+    ],
+    "submissions": [
+      {
+        "submissionId": "9e78e230-98d3-48f8-b7f1-307724735d41",
+        "applicationId": "85568613-dbf0-4782-85df-81d248da7134",
+        "channel": "web",
+        "occurredAt": "2026-09-25T15:30:40.582088Z",
+        "versionConfirmed": true,
+        "materialId": "30807a1f-c81c-4723-9716-463cb947b263",
+        "exportId": "c7f71ab2-92df-46dc-830d-689662328e2b",
+        "version": 1,
+        "contentDigest": "7c3c56915b19f830cccaddf68b839358b3eefb4d6df3a76c68cdde3f9bfaab21",
+        "note": "E2E 构造投递记录",
+        "confirmer": "704950d6-0f29-43e3-be7b-2170aae7fe03",
+        "createdAt": "2026-09-25T15:30:40.582088Z"
+      }
+    ]
+  },
+  "createdAt": "2026-09-25T15:32:50.268172Z"
+}

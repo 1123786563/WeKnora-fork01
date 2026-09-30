@@ -1,0 +1,8 @@
+# T33 iOS-mode HTTP probes 2026-09-26 (Lite 127.0.0.1:57828, disposable SQLite)
+# Owner A = t33a@t33.io (career chain run on same server: application de3fa49d -> Task session ef1125b7-8f72-4704-aabd-bf3ec4c8e9c4 / run 349d0617-d97f-4e9b-a7fd-33d785144f68, status waiting_user/career_application_linking)
+A  GET /api/v1/workbench/executions?limit=5                 -> 200 {"items":[{"run_id":"349d0617-...","session_id":"ef1125b7-...","status":"waiting_user","title":"Career application 3e57ca16-..."}]}
+A  GET /api/v1/workbench/executions/349d0617-.../snapshot   -> 200 {"data":{"execution":{"run_id":"349d0617-...","session_id":"ef1125b7-...","run_status":"waiting_user",...}}}
+B  GET /api/v1/workbench/executions?limit=5                 -> 200 {"items":[]}   (intruder sees only own empty list)
+B  GET /api/v1/workbench/executions/349d0617-.../snapshot   -> 404              (cross-tenant denial)
+anonymous GET /api/v1/workbench/executions                  -> 401              (unauthenticated denial)
+# Note: earlier probe "executions/ef1125b7.../snapshot" 404 was wrong route param (snapshot is keyed by run_id, see internal/router/routes_workbench.go:46); corrected probe above.

@@ -652,6 +652,105 @@ test('authorizedRequest carries the credential and refreshes exactly once on a 4
   ]);
 });
 
+test('authorizedRequest does not refresh or replay a POST after a 401', async () => {
+  const store = fakeStore();
+  let sends = 0;
+  let refreshes = 0;
+  const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => remote({ refresh: async () => { refreshes += 1; return { access_token: 'access-2', refresh_token: 'refresh-2' }; } }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async () => { sends += 1; throw unauthorized; },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  await assert.rejects(runtime.authorizedRequest({ method: 'POST', path: '/api/v1/tasks', body: { title: 'task' } }), (error) => error === unauthorized);
+
+  assert.equal(sends, 1);
+  assert.equal(refreshes, 0);
+});
+
+test('authorizedRequest returns scope changed instead of a stale write 401 after sign-out', async () => {
+  const started = deferred<void>();
+  const response = deferred<void>();
+  const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+  const runtime = createMobileRuntime({
+    ...ports(fakeStore(), () => remote()),
+    authorizedTransport: () => async () => { started.resolve(); await response.promise; throw unauthorized; },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const pending = runtime.authorizedRequest({ method: 'POST', path: '/api/v1/tasks', body: { title: 'task' } });
+  await started.promise;
+  await runtime.signOut();
+  response.resolve();
+
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+});
+
+test('authorizedRequest refreshes and replays HEAD and OPTIONS after a 401', async () => {
+  for (const method of ['HEAD', 'OPTIONS']) {
+    let refreshes = 0;
+    const sentTokens: string[] = [];
+    const runtime = createMobileRuntime({
+      ...ports(fakeStore(), () => remote({ refresh: async () => { refreshes += 1; return { access_token: 'access-2', refresh_token: 'refresh-2' }; } })),
+      authorizedTransport: () => async (input, token) => {
+        sentTokens.push(`${input.method}:${token}`);
+        if (token === 'access-1') throw Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+        return { success: true, data: { ok: true } };
+      },
+    });
+    await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+    assert.deepEqual(await runtime.authorizedRequest({ method, path: '/api/v1/tasks' }), { success: true, data: { ok: true } });
+    assert.deepEqual(sentTokens, [`${method}:access-1`, `${method}:access-2`]);
+    assert.equal(refreshes, 1);
+  }
+});
+
+test('authorizedRequest does not retry PUT, PATCH, or DELETE and normalizes read methods', async () => {
+  let sends = 0;
+  let refreshes = 0;
+  const unauthorized = Object.assign(new Error('HTTP 401'), { name: 'ApiError', status: 401 });
+  const runtime = createMobileRuntime({
+    ...ports(fakeStore(), () => remote({ refresh: async () => { refreshes += 1; return { access_token: 'access-2', refresh_token: 'refresh-2' }; } })),
+    authorizedTransport: () => async () => { sends += 1; throw unauthorized; },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  for (const method of ['PUT', 'PATCH', 'DELETE']) {
+    await assert.rejects(runtime.authorizedRequest({ method, path: '/api/v1/tasks/1' }), (error) => error === unauthorized);
+  }
+  await assert.rejects(runtime.authorizedRequest({ method: 'get', path: '/api/v1/tasks' }), (error) => error === unauthorized);
+
+  assert.equal(sends, 5, 'three writes send once and lowercase GET retries once');
+  assert.equal(refreshes, 1, 'lowercase GET refreshes exactly once');
+});
+
+test('an expired Task Office session with failed refresh rejects the protected request and exposes no data', async () => {
+  const store = fakeStore();
+  let sends = 0;
+  let refreshes = 0;
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => remote({ refresh: async () => { refreshes += 1; throw new Error('refresh expired'); } }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async () => {
+      sends += 1;
+      const error = new Error('HTTP 401');
+      error.name = 'ApiError';
+      (error as unknown as { status?: number }).status = 401;
+      throw error;
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await assert.rejects(runtime.authorizedRequest({ method: 'GET', path: '/api/v1/tasks' }), /RUNTIME_UNAUTHORIZED/);
+  assert.equal(refreshes, 1, 'expired credentials trigger one refresh attempt');
+  assert.equal(sends, 1, 'a failed refresh never replays the Task request');
+  runtime.dispose();
+});
+
 test('a late authorized response after a scope change is dropped', async () => {
   const release = deferred<void>();
   const runtime = createMobileRuntime({

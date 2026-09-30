@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS idx_career_opportunity_observation_source;
+ALTER TABLE career_opportunity_observations DROP COLUMN observed_http_status;
+ALTER TABLE career_opportunity_observations DROP COLUMN adapter_version;
+ALTER TABLE career_opportunity_observations DROP COLUMN adapter_id;
+ALTER TABLE career_opportunity_observations DROP COLUMN final_url;
+ALTER TABLE career_opportunity_observations DROP COLUMN submitted_url;
+ALTER TABLE career_opportunity_observations DROP COLUMN failure_code;
+ALTER TABLE career_opportunity_observations DROP COLUMN completeness;
+ALTER TABLE career_opportunity_observations DROP COLUMN source_status;

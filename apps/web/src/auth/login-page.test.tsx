@@ -336,3 +336,37 @@ test('language menu options are keyboard-operable and close after selection', as
   assert.equal(document.querySelector('[role="menuitem"]'), null, 'menu should close after selection');
   assert.equal(document.querySelector('.language-switch > button')?.textContent?.includes('EN'), true);
 });
+
+// OCR r1 high-17：Enter 在密码框触发 tdesign Input 的 onEnter，同时原生表单
+// 隐式提交也走 onSubmit——双路径叠加曾连发两次 login/register（第二次注册报
+// “用户已存在”）。submit 在途锁必须保证同一时刻只有一次真实请求。
+test('Enter onEnter plus the implicit form submit fire the login exactly once', async () => {
+  let loginCalls = 0;
+  let release!: (value: unknown) => void;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const client = fakeClient(async () => { loginCalls += 1; await gate; return { user: {}, token: 't' }; });
+  await mountLogin(client);
+  const email = document.querySelector('input[autocomplete="email"]') as HTMLInputElement;
+  const password = document.querySelector('input[autocomplete="current-password"]') as HTMLInputElement;
+  assert.ok(email && password, 'expected the login form fields');
+  const setNativeValue = (input: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, value);
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+  await act(async () => {
+    setNativeValue(email, 'parity-test@local.dev');
+    setNativeValue(password, 'CorrectPassword!');
+  });
+  const submit = [...document.querySelectorAll('button')].find((n) => n.getAttribute('type') === 'submit') as HTMLButtonElement;
+  assert.ok(submit, 'expected the submit button');
+  // 两条提交路径在同一 tick 内叠加（onEnter 未 preventDefault 时原生隐式
+  // 提交随后触发；此处以同步双触发等价模拟）。
+  await act(async () => {
+    password.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    submit.click();
+  });
+  release({ user: {}, token: 't' });
+  await settle(30);
+  assert.equal(loginCalls, 1, 'double submit path must be collapsed into one request by the in-flight lock');
+});

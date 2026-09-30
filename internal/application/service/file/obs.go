@@ -22,12 +22,13 @@ import (
 )
 
 type obsFileService struct {
-	client      *s3.Client
-	bucketName  string
-	endpoint    string
-	region      string
-	pathPrefix  string
-	proxyDomain string
+	client       *s3.Client
+	bucketName   string
+	endpoint     string
+	region       string
+	pathPrefix   string
+	proxyDomain  string
+	putBytesHook fileBytesPutHook
 }
 
 // obsUsePathStyle reports whether the OBS client should keep path-style
@@ -306,7 +307,11 @@ func (s *obsFileService) CopyFile(ctx context.Context,
 }
 
 func (s *obsFileService) SaveBytes(ctx context.Context, data []byte, tenantID uint64, fileName string, temp bool) (string, error) {
-	ext := filepath.Ext(fileName)
+	safeName, err := utils.SafeFileName(fileName)
+	if err != nil {
+		return "", fmt.Errorf("invalid file name: %w", err)
+	}
+	ext := filepath.Ext(safeName)
 
 	var objectKey string
 	if temp {
@@ -322,8 +327,21 @@ func (s *obsFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 			objectKey = fmt.Sprintf("%d/%s%s", tenantID, uuid.New().String(), ext)
 		}
 	}
+	if !temp && isCareerStableName(safeName) {
+		objectKey = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, s.bucketName, objectKey, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to OBS: %w", err)
+		}
+		prefix := s.getPrifix()
+		if s.proxyDomain != "" {
+			return fmt.Sprintf("%s%s", prefix, objectKey), nil
+		}
+		return fmt.Sprintf("%s%s/%s", prefix, s.bucketName, objectKey), nil
+	}
 
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucketName),
 		Key:         aws.String(objectKey),
 		Body:        strings.NewReader(string(data)),

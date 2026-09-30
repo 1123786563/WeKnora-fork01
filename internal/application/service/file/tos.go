@@ -25,6 +25,7 @@ type tosFileService struct {
 	pathPrefix     string
 	bucketName     string
 	tempBucketName string
+	putBytesHook   fileBytesPutHook
 }
 
 const tosScheme = "tos://"
@@ -176,7 +177,6 @@ func (s *tosFileService) SaveFile(ctx context.Context, file *multipart.FileHeade
 		knowledgeID,
 		uuid.New().String()+ext,
 	)
-
 	src, err := file.Open()
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
@@ -217,6 +217,9 @@ func (s *tosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 		"exports",
 		uuid.New().String()+ext,
 	)
+	if !temp && isCareerStableName(safeName) {
+		objectName = careerExportObjectKey(s.pathPrefix, tenantID, safeName)
+	}
 
 	if temp && s.tempBucketName != "" {
 		targetBucket = s.tempBucketName
@@ -225,6 +228,12 @@ func (s *tosFileService) SaveBytes(ctx context.Context, data []byte, tenantID ui
 			fmt.Sprintf("%d", tenantID),
 			uuid.New().String()+ext,
 		)
+	}
+	if s.putBytesHook != nil {
+		if err := s.putBytesHook(ctx, targetBucket, objectName, data); err != nil {
+			return "", fmt.Errorf("failed to upload bytes to TOS: %w", err)
+		}
+		return fmt.Sprintf("tos://%s/%s", targetBucket, objectName), nil
 	}
 
 	_, err = s.client.PutObjectV2(ctx, &tos.PutObjectV2Input{

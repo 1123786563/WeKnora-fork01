@@ -507,6 +507,12 @@ var importExceptions = []importException{
 		PassBTask:    "B-agentruntime",
 	},
 	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/mcp_tool.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp",
+		Reason:       "issue-140 世代工具层直连 airesource mcp（与 airesource_seams 同源的预存耦合，Pass B 收口）",
+		PassBTask:    "B-agentruntime",
+	},
+	{
 		ImporterFile: "internal/modules/agentruntime/agent/tools/airesource_seams.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank",
 		Reason:       "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）",
@@ -795,6 +801,12 @@ var importExceptions = []importException{
 		PassBTask: "B-craft",
 	},
 	// ---- batch A4 搬迁显形的预存横向耦合：workbench 内文件消费其他模块内部包（Pass B 任务 B-workbench）----
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/command_queue_next.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime",
+		Reason:       "命令队列映射错误时必须保留 AgentRun outcome identity；仅依赖 AgentRuntime 模块根错误哨兵，Pass A 不改边界",
+		PassBTask:    "B-workbench",
+	},
 	{
 		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",

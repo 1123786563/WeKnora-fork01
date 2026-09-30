@@ -3,6 +3,7 @@ export interface ApiErrorInit {
   code: string;
   message: string;
   requestId?: string;
+  currentRevision?: number;
   details?: unknown;
   cause?: unknown;
 }
@@ -25,6 +26,7 @@ export class ApiError extends Error {
   readonly status?: number;
   readonly code: string;
   readonly requestId?: string;
+  readonly currentRevision?: number;
   readonly details?: unknown;
 
   constructor(init: ApiErrorInit) {
@@ -33,6 +35,7 @@ export class ApiError extends Error {
     this.status = init.status;
     this.code = init.code;
     this.requestId = init.requestId;
+    this.currentRevision = init.currentRevision;
     this.details = init.details;
   }
 }
@@ -81,5 +84,8 @@ export function errorFromResult(status: number, body: unknown, headers: Record<s
       : {};
     details = { ...base, reason };
   }
-  return new ApiError({ status, code, message, requestId, details });
+  return new ApiError({
+    status, code, message, requestId, details,
+    ...(typeof nested?.currentRevision === 'number' && Number.isFinite(nested.currentRevision) ? { currentRevision: nested.currentRevision } : {}),
+  });
 }

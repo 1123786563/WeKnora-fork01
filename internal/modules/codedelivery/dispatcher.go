@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
 )
 
@@ -16,13 +14,13 @@ import (
 // connection); ActionRows re-reads the approved snapshot.
 type DispatcherDeps struct {
 	Connections ConnectionReader
-	Creds       appconnectorsvc.CredentialResolver
-	Guard       appconnectorsvc.A02Guard
+	Creds       CredentialResolver
+	Guard       A02Guard
 	GitHub      GitHubClientFactory
 	GitLab      CodePlatformClientFactory
 	Workspace   WorkspaceFileSource
 	Store       *deliveryrepo.DeliveryStore
-	ActionRows  appconnectorsvc.ActionStoreSource
+	ActionRows  ActionStoreSource
 	Runs        RunReader
 }
 
@@ -51,29 +49,29 @@ func NewDeliveryDispatcher(deps DispatcherDeps) *DeliveryDispatcher {
 // definite outcome; a transport error is unobservable and bubbles up as
 // ErrGitHubTransport (the service parks unknown). Push-succeeded with a
 // definite PR failure is the recorded PARTIAL completion `pushed`.
-func (d *DeliveryDispatcher) Dispatch(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string) (appconnectorsvc.DispatchOutcome, error) {
+func (d *DeliveryDispatcher) Dispatch(ctx context.Context, snap ActionSnapshot, providerKey string) (DispatchOutcome, error) {
 	material, err := ParseDeliveryMaterial(snap.Args)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: %v", ErrDispatchNotStarted, err)
 	}
 	if err := d.deps.Guard.Check(ctx,
-		appconnector.OCSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
+		ActionSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
 		snap.ConnectionID, snap.AuthVersion,
 	); err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: a02: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: a02: %v", ErrDispatchNotStarted, err)
 	}
 	token, err := d.tokenFor(ctx, snap)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: credential: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: credential: %v", ErrDispatchNotStarted, err)
 	}
 	// 平台路由是前置门（T24 #54）：未知目标/未接线适配器在此拒绝，零远端调用。
 	client, err := d.clientForTarget(snap.Target, token, material.Repo)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: %v", ErrDispatchNotStarted, err)
 	}
 	row, err := d.findByAction(ctx, snap.TenantID, snap.ID)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: delivery row: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: delivery row: %v", ErrDispatchNotStarted, err)
 	}
 	return d.deliver(ctx, snap, material, row, client, false)
 }
@@ -98,7 +96,7 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
 		return err
 	}
 	if err := d.deps.Guard.Check(ctx,
-		appconnector.OCSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
+		ActionSubject{TenantID: snap.TenantID, ActorID: snap.ActorID},
 		snap.ConnectionID, snap.AuthVersion,
 	); err != nil {
 		return err
@@ -117,28 +115,28 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
 
 // deliver runs the delivery chain. partialRecovery=true skips the push half
 // entirely — it already happened under the SAME approval.
-func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.ActionSnapshot, material DeliveryMaterial, row deliveryrepo.DeliveryRow, client GitHubClient, partialRecovery bool) (appconnectorsvc.DispatchOutcome, error) {
+func (d *DeliveryDispatcher) deliver(ctx context.Context, snap ActionSnapshot, material DeliveryMaterial, row deliveryrepo.DeliveryRow, client GitHubClient, partialRecovery bool) (DispatchOutcome, error) {
 	// 默认分支只读一次：推送半程已取（护栏 1）时 PR 半程直接复用，只有
 	// 恢复半程（跳过了推送半程）才自取（最终修复轮：去掉重复远端读）。
 	defaultBranch := ""
 	if !partialRecovery {
 		info, err := client.Repository(ctx)
 		if err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		defaultBranch = info.DefaultBranch
 		protected, err := client.BranchProtected(ctx, material.Branch)
 		if err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		// AC1 双保险：派发前复验目标分支不是默认分支/未被远端标记保护。
 		if err := RefuseProtectedTarget(material.Branch, defaultBranch, protected); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+			return DispatchOutcome{}, fmt.Errorf("%w: %v", ErrDispatchNotStarted, err)
 		}
 		// 内容从会话工作区读取（令牌只留在服务端，永不进沙箱）。
 		run, err := d.deps.Runs.GetOwnedRun(ctx, snap.TenantID, snap.ActorID, row.RunID)
 		if err != nil || run.SessionID == "" {
-			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: run %s", appconnectorsvc.ErrDispatchNotStarted, row.RunID)
+			return DispatchOutcome{}, fmt.Errorf("%w: run %s", ErrDispatchNotStarted, row.RunID)
 		}
 		// 同任务分支迭代语义（CONTEXT.md「创建或更新草稿 PR」）：分支已
 		// 存在时新提交必须以分支现 head 为 parent——GitHub 的 force:false
@@ -147,7 +145,7 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 		parent := material.BaselineSHA
 		head, exists, herr := client.BranchHead(ctx, material.Branch)
 		if herr != nil {
-			return appconnectorsvc.DispatchOutcome{}, herr
+			return DispatchOutcome{}, herr
 		}
 		if exists {
 			parent = head
@@ -161,46 +159,46 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 			}
 			content, rerr := d.deps.Workspace.ReadSessionFile(ctx, run.SessionID, root+"/"+change.Path)
 			if rerr != nil {
-				return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: workspace read %s: %v", appconnectorsvc.ErrDispatchNotStarted, change.Path, rerr)
+				return DispatchOutcome{}, fmt.Errorf("%w: workspace read %s: %v", ErrDispatchNotStarted, change.Path, rerr)
 			}
 			blobSHA, berr := client.CreateBlob(ctx, content)
 			if berr != nil {
-				return appconnectorsvc.DispatchOutcome{}, berr
+				return DispatchOutcome{}, berr
 			}
 			entries = append(entries, TreeEntry{Path: change.Path, SHA: blobSHA})
 		}
 		baseTree, terr := client.CommitTree(ctx, material.BaselineSHA)
 		if terr != nil {
-			return appconnectorsvc.DispatchOutcome{}, terr
+			return DispatchOutcome{}, terr
 		}
 		treeSHA, trerr := client.CreateTree(ctx, baseTree, entries)
 		if trerr != nil {
-			return appconnectorsvc.DispatchOutcome{}, trerr
+			return DispatchOutcome{}, trerr
 		}
 		commitSHA, cerr := client.CreateCommit(ctx, parent, treeSHA, material.CommitMessage)
 		if cerr != nil {
-			return appconnectorsvc.DispatchOutcome{}, cerr
+			return DispatchOutcome{}, cerr
 		}
 		if err := client.EnsureBranch(ctx, material.Branch, commitSHA); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		// 权威回执以远端为准（T24 #54）：推送后读回分支现 head——GitHub 上
 		// 它等于 CreateCommit 的结果；GitLab 的 commits API 由服务端定 sha，
 		// 本地占位值绝不进入台账。
 		head, pushed, herr := client.BranchHead(ctx, material.Branch)
 		if herr != nil {
-			return appconnectorsvc.DispatchOutcome{}, herr
+			return DispatchOutcome{}, herr
 		}
 		if !pushed {
-			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: branch %s absent after push", ErrGitHubTransport, material.Branch)
+			return DispatchOutcome{}, fmt.Errorf("%w: branch %s absent after push", ErrGitHubTransport, material.Branch)
 		}
 		commitSHA = head
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: commitSHA}); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
 			[]string{string(DeliveryDispatched), string(DeliveryPrepared), string(DeliveryUnknown)}, string(DeliveryPushed), ""); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 	}
 	// —— PR 半程 ——（恢复路径只走这里；默认分支复用推送半程已读事实）
@@ -208,7 +206,7 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 	if base == "" {
 		repoInfo, err := client.Repository(ctx)
 		if err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		base = repoInfo.DefaultBranch
 	}
@@ -225,24 +223,24 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 			// 确定性 PR 失败：若已推（pushed）保持部分完成可恢复；否则 failed。
 			current, gerr := d.deps.Store.GetDelivery(ctx, snap.TenantID, row.ID)
 			if gerr == nil && current.State == string(DeliveryPushed) {
-				return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: partialReceipt(current.CommitSHA)}, nil
+				return DispatchOutcome{Status: "succeeded", ProviderResult: partialReceipt(current.CommitSHA)}, nil
 			}
-			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: pr: %v", appconnectorsvc.ErrDispatchNotStarted, apiErr)
+			return DispatchOutcome{}, fmt.Errorf("%w: pr: %v", ErrDispatchNotStarted, apiErr)
 		}
-		return appconnectorsvc.DispatchOutcome{}, prerr // 传输不可观测 → 上层落 unknown
+		return DispatchOutcome{}, prerr // 传输不可观测 → 上层落 unknown
 	}
 	if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
 		PRNumber: receipt.Number, PRURL: receipt.URL, RemoteLogin: login,
 	}); err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+		return DispatchOutcome{}, err
 	}
 	if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
 		[]string{string(DeliveryPushed), string(DeliveryPrepared), string(DeliveryDispatched), string(DeliveryUnknown)},
 		string(DeliveryDelivered), ""); err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+		return DispatchOutcome{}, err
 	}
-	return appconnectorsvc.DispatchOutcome{
-		Status:         appconnector.ActionSucceeded,
+	return DispatchOutcome{
+		Status:         "succeeded",
 		ProviderResult: deliveredReceipt(receipt.Number, receipt.URL, login),
 	}, nil
 }
@@ -250,22 +248,22 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 // QueryProvider resolves an unknown delivery from REMOTE FACTS only: a draft
 // PR for the task head → delivered; otherwise the task branch ref → pushed.
 // It never re-sends anything.
-func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnectorsvc.ActionSnapshot, providerKey string) (appconnectorsvc.DispatchOutcome, error) {
+func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap ActionSnapshot, providerKey string) (DispatchOutcome, error) {
 	material, err := ParseDeliveryMaterial(snap.Args)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+		return DispatchOutcome{}, err
 	}
 	row, err := d.findByAction(ctx, snap.TenantID, snap.ID)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+		return DispatchOutcome{}, err
 	}
 	token, err := d.tokenFor(ctx, snap)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+		return DispatchOutcome{}, err
 	}
 	client, err := d.clientForTarget(snap.Target, token, material.Repo)
 	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchUnknown, err)
+		return DispatchOutcome{}, fmt.Errorf("%w: %v", ErrDispatchUnknown, err)
 	}
 	// MR identity carries the target dimension (R5-F8): resolve the repo's
 	// default branch — the same source of truth the dispatch half's PR leg
@@ -273,35 +271,35 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 	// never be mistaken for this delivery's receipt.
 	info, ierr := client.Repository(ctx)
 	if ierr != nil {
-		return appconnectorsvc.DispatchOutcome{}, ierr
+		return DispatchOutcome{}, ierr
 	}
 	head := material.Repo.Owner + ":" + material.Branch
 	if receipt, rerr := client.PullRequestForHead(ctx, head, info.DefaultBranch); rerr == nil && receipt != nil {
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
 			PRNumber: receipt.Number, PRURL: receipt.URL,
 		}); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
 			[]string{string(DeliveryUnknown)}, string(DeliveryDelivered), ""); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
-		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: draft PR exists"}, nil
+		return DispatchOutcome{Status: "succeeded", ProviderResult: "resolved: draft PR exists"}, nil
 	}
 	if sha, exists, berr := client.BranchHead(ctx, material.Branch); berr == nil && exists {
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: sha}); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
 			[]string{string(DeliveryUnknown)}, string(DeliveryPushed), ""); err != nil {
-			return appconnectorsvc.DispatchOutcome{}, err
+			return DispatchOutcome{}, err
 		}
-		return appconnectorsvc.DispatchOutcome{Status: appconnector.ActionSucceeded, ProviderResult: "resolved: branch pushed, draft PR absent"}, nil
+		return DispatchOutcome{Status: "succeeded", ProviderResult: "resolved: branch pushed, draft PR absent"}, nil
 	}
-	return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: no remote fact for %s yet", appconnectorsvc.ErrDispatchUnknown, head)
+	return DispatchOutcome{}, fmt.Errorf("%w: no remote fact for %s yet", ErrDispatchUnknown, head)
 }
 
-func (d *DeliveryDispatcher) tokenFor(ctx context.Context, snap appconnectorsvc.ActionSnapshot) (string, error) {
+func (d *DeliveryDispatcher) tokenFor(ctx context.Context, snap ActionSnapshot) (string, error) {
 	raw, err := d.deps.Creds.Resolve(ctx, snap.ConnectionID, snap.AuthVersion)
 	if err != nil {
 		return "", err
@@ -325,17 +323,14 @@ func (d *DeliveryDispatcher) findByAction(ctx context.Context, tenantID uint64, 
 	return row, nil
 }
 
-func (d *DeliveryDispatcher) snapshotOfDelivery(ctx context.Context, row deliveryrepo.DeliveryRow) (appconnectorsvc.ActionSnapshot, error) {
+func (d *DeliveryDispatcher) snapshotOfDelivery(ctx context.Context, row deliveryrepo.DeliveryRow) (ActionSnapshot, error) {
 	actionRow, err := d.deps.ActionRows.FindAction(ctx, row.ActionID)
 	if err != nil {
-		return appconnectorsvc.ActionSnapshot{}, err
+		return ActionSnapshot{}, err
 	}
-	return appconnectorsvc.ActionSnapshot{
+	return ActionSnapshot{
 		ID: actionRow.ID, TenantID: actionRow.TenantID, ActorID: actionRow.ActorID,
-		ConnectionID: actionRow.ConnectionID, Version: actionRow.AppVersion,
-		Target: actionRow.Target, Risk: actionRow.Risk, Digest: actionRow.ArgsDigest,
-		State: actionRow.State, Fence: actionRow.Fence, Args: []byte(actionRow.ArgsSnapshot),
-		AuthVersion: actionRow.AuthVersion, DigestVersion: int(actionRow.DigestVersion),
+		ConnectionID: actionRow.ConnectionID, Target: actionRow.Target, Args: []byte(actionRow.ArgsSnapshot), AuthVersion: actionRow.AuthVersion,
 	}, nil
 }
 

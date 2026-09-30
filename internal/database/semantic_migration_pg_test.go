@@ -63,7 +63,7 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, m.Up())
 	version, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(180), version)
+	require.Equal(t, uint(latestMigrationVersion(t, filepath.Join(root, "migrations/versioned"))), version)
 	require.False(t, dirty)
 	assertTablesAndIndex := func(want bool) {
 		for _, table := range append(append(semanticControlTables, semanticPolicyTables...), semanticInvocationTables...) {
@@ -84,7 +84,13 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 		}
 	}
 	assertTablesAndIndex(true)
-	require.NoError(t, m.Steps(-1))
+	// Roll back to the version immediately before semantic invocation storage
+	// (000186), while retaining the semantic control and policy migrations.
+	require.NoError(t, m.Migrate(185))
+	version, dirty, err = m.Version()
+	require.NoError(t, err)
+	require.Equal(t, uint(185), version)
+	require.False(t, dirty)
 	for _, table := range semanticInvocationTables {
 		var n int
 		require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
@@ -98,7 +104,7 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, m.Up())
 	version, dirty, err = m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(180), version)
+	require.Equal(t, uint(latestMigrationVersion(t, filepath.Join(root, "migrations/versioned"))), version)
 	require.False(t, dirty)
 	assertTablesAndIndex(true)
 	_ = sql.ErrNoRows

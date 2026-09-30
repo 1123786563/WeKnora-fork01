@@ -35,7 +35,7 @@ test('M2: the rail carries the experts entry right after agents', () => {
     analytics: 'Analytics',
   });
   assert.deepEqual(items.map((item) => item.key), [
-    'newChat', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
+    'newChat', 'career', 'careerSearch', 'careerRules', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
   ]);
   const experts = items.find((item) => item.key === 'experts');
   assert.ok(experts);
@@ -45,6 +45,41 @@ test('M2: the rail carries the experts entry right after agents', () => {
   assert.equal(experts.match('/platform/experts'), true);
   assert.equal(experts.match('/platform/experts/news-trend'), true);
   assert.equal(experts.match('/platform/agents'), false);
+});
+
+// T11 one-shot search entry: an exact-match sibling under the career office.
+// The career entry must not light up for /career/search (and vice versa).
+test('T11: the rail carries the one-shot search entry next to the career office', () => {
+  const items = buildNavItems((key) => key, {});
+  const search = items.find((item) => item.key === 'careerSearch');
+  const career = items.find((item) => item.key === 'career');
+  assert.ok(search);
+  assert.equal(search.href, '/platform/career/search');
+  assert.equal(search.label, '找岗');
+  assert.equal(search.match('/platform/career/search'), true);
+  assert.equal(search.match('/platform/career'), false);
+  assert.ok(career);
+  assert.equal(career.match('/platform/career/search'), false);
+});
+
+// T13 recurring rule entry: an exact-match sibling right after the one-shot
+// search; the neighbours must not light up for /career/rules (and vice
+// versa).
+test('T13: the rail carries the recurring rules entry after the one-shot search', () => {
+  const items = buildNavItems((key) => key, {});
+  const rules = items.find((item) => item.key === 'careerRules');
+  const search = items.find((item) => item.key === 'careerSearch');
+  const career = items.find((item) => item.key === 'career');
+  assert.ok(rules);
+  assert.equal(rules.href, '/platform/career/rules');
+  assert.equal(rules.label, '持续找岗');
+  assert.equal(rules.match('/platform/career/rules'), true);
+  assert.equal(rules.match('/platform/career/search'), false);
+  assert.equal(rules.match('/platform/career'), false);
+  assert.ok(search);
+  assert.equal(search.match('/platform/career/rules'), false);
+  assert.ok(career);
+  assert.equal(career.match('/platform/career/rules'), false);
 });
 
 test('M4: the rail carries the skills-market entry right after experts', () => {

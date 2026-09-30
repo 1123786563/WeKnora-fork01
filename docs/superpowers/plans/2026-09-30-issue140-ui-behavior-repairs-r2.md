@@ -1,0 +1,242 @@
+# Issue 140 Integrated UI Behavior Review Repairs R2 — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement these tasks. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Restore documented keyboard, modal, navigation and save behavior lost in UI migrations present in the Issue #140 authorized integration range.
+
+**Architecture:** Preserve TDesign visual styling while retaining native interaction semantics and established user flows. Use controlled, serialized persistence for full-configuration updates; use genuine TDesign overlays where the approved spec requires direct component use.
+
+**Tech Stack:** React 19, TypeScript, TDesign React, Node test runner.
+
+**Spec:** `docs/specs/2026-09-21-tdesign-react-migration-design.md`, `docs/specs/2026-09-23-weknora-job-search-design.md`, `CONTEXT.md`, Issue #140 DAG, and final range reviewer evidence recorded in `docs/plans/issue-140/final-review-addendum-2026-09-29.md`.
+
+## Global Constraints
+
+- Base all tasks on integration checkpoint `e7edfa72728c5d44940d9f145a0b5489089f4692`, an ancestor of original issue30-sweep BASE.
+- Preserve existing product actions, links, modified-click behavior, focus, keyboard shortcuts, localization and component ownership.
+- Do not replace required TDesign components with hand-written facades or weaken a11y semantics to achieve visual parity.
+- Keep each task in a separate worktree; commits are local only.
+
+## Review Focus
+
+- Every clickable navigation/action item remains keyboard focusable and activates with Enter/Space as appropriate.
+- Modal overlays keep focus within the modal, close on Escape, restore focus to the opener, and expose `aria-modal`.
+- An explicit load-older action remains possible when the first history page fits without overflow.
+- Zero-valued valid settings survive read, edit, save and reload; an older full-config response cannot overwrite a newer draft.
+- Action errors/cancellation do not close a confirmation menu as though the action succeeded.
+
+## Task 1: Restore document breadcrumb links and keyboard-operable document actions
+
+**Dependency:** None.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/documents/DocumentsPageChrome.tsx`, `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, relevant tests/CSS.
+
+**Consumes / produces:** Existing `href` breadcrumb model and document action callbacks. Breadcrumbs must remain native anchors; action triggers/menu items must be native buttons or equivalent keyboard-operable controls.
+
+**Steps:** Add tests for Enter activation, modified-click/open-in-new-tab, `aria-current`, keyboard menu opening/actions, and document action selection. Run failing cases. Restore anchor/button semantics without changing TDesign classes. Run focused Web tests and `git diff --check`; commit.
+
+**Acceptance:** Mouse and keyboard/native browser link behavior both work; document actions remain reachable without a pointer.
+
+## Task 2: Restore keyboard selection and modal focus semantics for knowledge-base scopes and shared drawer
+
+**Dependency:** None; separate files from Task 1.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/knowledge-bases/KnowledgeBasesPage.tsx`, `SharedKnowledgeBaseDrawer.tsx`, focused tests.
+
+**Consumes / produces:** Existing scope callback and drawer open/close props. Use native buttons for scope selection with `aria-pressed`. The drawer uses a `tdesign-react` accessible overlay or complete focus management: initial focus, Tab loop, Escape close, focus restoration and `aria-modal`.
+
+**Steps:** Add keyboard tests for all scope choices and drawer focus lifecycle. Run RED. Implement with existing TDesign primitives/styles. Run focused tests, Web typecheck, and `git diff --check`; commit.
+
+**Acceptance:** Keyboard users can choose each scope and cannot tab behind the open drawer; closing returns focus to the trigger.
+
+## Task 3: Restore Agent Editor section navigation semantics
+
+**Dependency:** None; owns only Agent Editor component and tests.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/agents/AgentEditorModal.tsx` and focused tests.
+
+**Consumes / produces:** Existing section-selection callback. Keep new appearance but use buttons with `aria-current`/pressed semantics.
+
+**Steps:** Add keyboard focus and Enter/Space section-change tests; run RED; restore button semantics; run focused tests and `git diff --check`; commit.
+
+**Acceptance:** Every editor section is keyboard focusable and selectable.
+
+## Task 4: Make Web chat confirmation callbacks single-step and failure-aware
+
+**Dependency:** None; owns ChatHeader and ChatRoutePage only.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/chat/chat-header.tsx`, `apps/web/src/chat/ChatRoutePage.tsx`, focused tests.
+
+**Consumes / produces:** Confirmation menu performs one confirmation and calls an action promise; callback resolves only on success and rejects on cancellation/API failure. Menu closes only after successful completion.
+
+**Steps:** Add tests for accept, cancel, API rejection and one-confirmation behavior; run RED; remove nested `window.confirm`, propagate failure/cancellation, and close only on success; run targeted tests and `git diff --check`; commit.
+
+**Acceptance:** No double prompt; failed/cancelled clear/delete leaves state and menu available for retry.
+
+## Task 5: Serialize settings saves and preserve valid zero values
+
+**Dependency:** None; settings components have disjoint files, but integrate together after task review.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/settings/PersonalMemoryPanel.tsx`, `ConfigSettingsPanel.tsx`, relevant tests.
+
+**Consumes / produces:** Existing full-configuration update methods. Preserve draft generations; serialize writes and after each completion send the latest unsaved generation. Ignore stale responses when updating local draft. `extract_min_interval_seconds=0` remains a valid saved value.
+
+**Steps:** Add reload-at-zero and out-of-order-update tests for both autosave paths. Run RED. Implement generation-aware serialized save queue and field-specific zero validation. Run focused settings tests and `git diff --check`; commit.
+
+**Acceptance:** Zero is not replaced by default; changes made during an in-flight request are eventually persisted and older responses cannot overwrite the latest draft.
+
+## Task 6: Restore Craft TDesign component and overlay behavior
+
+**Dependency:** None; `packages/views/src/craft/td.tsx` is owned only by this task.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/package.json`, `packages/views/src/craft/td.tsx`, Craft call sites/tests as required.
+
+**Consumes / produces:** Direct `tdesign-react` Button/Drawer/Dialog imports required by the approved TDesign migration spec §6; preserve existing host APIs at call sites. Remove handwritten `TDButton`/drawer/dialog facades. Overlay must support focus trap, native close button, Escape and focus restoration.
+
+**Steps:** Add contract tests for the direct component import and keyboard overlay behavior. Run RED. Add supported dependency/host wiring and migrate call sites, keeping behavior in TDesign-owned primitives. Run Craft tests/typecheck and `git diff --check`; commit.
+
+**Acceptance:** No handwritten TDesign adapter remains; controls and overlays retain required keyboard semantics and existing Craft behavior.
+
+## Task 7: Restore explicit chat history loading and localized invalid-image text
+
+**Dependency:** None; owns only chat message list/face and their tests.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/chat/message-list.tsx`, `message-face.tsx`, relevant tests.
+
+**Consumes / produces:** Existing `hasMore`, `loadingOlder`, `onLoadOlder`, and localized `copy.invalidImageLink` contracts.
+
+**Steps:** Add test where first page fits without overflow and older history remains reachable; add non-Chinese invalid-image rendering test. Run RED. Restore explicit accessible load-older control and pass localized copy into markdown renderer. Run focused package tests and `git diff --check`; commit.
+
+**Acceptance:** History remains loadable for underfilled viewports and invalid image fallback follows active locale.
+
+## Task 13: Repair message-history test setup and exercise the load action
+
+**Dependency:** Follow-up to Task 7 review finding; production behavior passed static review, but its new tests cannot pass as written.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/chat/message-list.test.tsx`, `packages/views/src/chat/markdown.test.tsx` only.
+
+**Consumes / produces:** Existing `MessageList` props `hasMore`, `loadingOlder`, and `onLoadOlder`; use the existing locale-copy resolver explicitly for English assertions. The Markdown test must import the resolver it calls.
+
+**Steps:**
+
+- [ ] Add/fix test setup so both locale assertions are deterministic and the resolver is imported.
+- [ ] Add a populated but underfilled first page and activate the native Load more button, asserting one callback; assert no callback while loading and no button when exhausted.
+- [ ] Run the focused views chat tests, applicable package typecheck, and `git diff --check`; expected: tests pass and directly cover activation plus locale rendering.
+- [ ] Commit only the two test files and report exact commands and results.
+
+**Acceptance:** The regression tests pass under deterministic locale setup and prove that a user can activate history loading even when the first page does not overflow.
+
+## Task 14: Give TDesign Craft overlays an accessible name
+
+**Dependency:** Repair finding `CRAFT-R2-1` on Task 6 commit `72e36c5860c968b868a6d00caaf14479d43ba67e`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/craft/overlay-a11y.ts`, `shell.tsx`, `versions.tsx`, and focused overlay tests only.
+
+**Consumes / produces:** Existing Craft Drawer/restore Dialog localized title/header and `useTDesignOverlayA11y`. Give each opened `role=dialog` panel a programmatic accessible name using `aria-labelledby` tied to the rendered heading or a localized `aria-label`; avoid duplicate IDs and preserve focus containment, Escape, close and focus-return behavior.
+
+**Steps:**
+
+- [ ] Add failing focused assertions that each open dialog has its expected accessible name.
+- [ ] Implement heading association or title label for both Drawer and restore Dialog.
+- [ ] Run focused shell/versions overlay tests, shared typecheck and `git diff --check`; expected: accessible names and existing keyboard lifecycle both pass.
+- [ ] Commit only the overlay helper/call-site/test files and report.
+
+**Acceptance:** Screen readers can identify both overlays by their visible localized title while all existing keyboard/focus behavior remains verified.
+
+## Task 15: Exercise message-history load activation in a DOM test
+
+**Dependency:** Repair finding `HISTORY-R2-1` on Task 13 commit `9075822ab8f8d6879b5af83d2a873768d7244335`.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `packages/views/src/chat/message-list.test.tsx` only unless the package's existing interaction-test helper requires a narrowly scoped test utility change.
+
+**Consumes / produces:** Existing `MessageList` native button and callback. Render one populated message in an underfilled page, activate Load more via the existing DOM interaction helper, and assert exactly one callback. Render loading state and assert activation produces no callback; retain exhausted-state absence. Do not alter production behavior unless a newly reproduced failure requires a separate reviewed task.
+
+**Steps:**
+
+- [ ] First resolve why dependencies were unavailable in the prior worktree using the repository's normal install/workspace setup; do not leave temporary dependency symlinks.
+- [ ] Add an interaction test that fails when the callback is inert or invoked while loading.
+- [ ] Run focused views chat tests and applicable package typecheck; run `git diff --check`.
+- [ ] Commit only owned test paths and report commands and environment evidence.
+
+**Acceptance:** The suite demonstrates that an underfilled first page can invoke older-history loading once and loading state blocks further activation.
+
+## Task 8: Make document move destinations and mode choices keyboard-operable
+
+**Dependency:** Follow-up to Task 1 review finding `UI-R2-DOC-01`; continue in the Task 1 worktree after its initial commit.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, focused document action tests, and narrowly scoped CSS only if needed.
+
+**Consumes / produces:** Existing move destination and move-mode callbacks. Replace click-only destination controls with native buttons. Represent the move modes as native toggle buttons inside a named group, using `aria-pressed` for the selected mode; do not claim `role=radio` unless implementing a complete radio group with arrow-key behavior. Preserve styling and selected state. Tests must focus a destination, invoke it through the supported keyboard interaction helper when available, and assert callback destination/mode payloads.
+
+**Steps:**
+
+- [ ] Add failing interaction tests for keyboard selection of a destination and each move mode, plus the resulting callback payload.
+- [ ] Implement native controls and accessible selected/checked state, preserving the menu's existing pointer behavior.
+- [ ] Run the focused KnowledgeDocumentsPage tests, document package typecheck, and `git diff --check`; perform a browser keyboard smoke if the jsdom environment cannot emulate native button activation.
+- [ ] Commit a repair on the Task 1 branch and report RED/GREEN evidence plus any browser-only evidence.
+
+**Acceptance:** Every choice needed to finish a document move can be opened, selected and confirmed without a pointer.
+
+## Task 10: Align document move-mode semantics with keyboard behavior
+
+**Dependency:** Follow-up to UI review finding `UI-R2-DOC-02`; continue on the Task 1 repair branch after Task 8.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, focused document move tests, and scoped CSS only if selected state needs adjustment.
+
+**Consumes / produces:** Task 8 native move-mode buttons currently expose `role="radio"` without a containing radio group or arrow-key model. Replace that partial radio contract with a named button group and `aria-pressed` state, or implement a complete native radio group. Add assertions for group labeling, selected mode, and callback behavior. Keep both modes operable with Tab/Enter/Space and preserve the selected visual indicator.
+
+**Steps:**
+
+- [ ] Add a failing test for the current radio-without-group semantics and a selected-mode assertion.
+- [ ] Use a semantically complete grouped control; prefer native toggle buttons with `aria-pressed` unless full radio arrow-key behavior is implemented.
+- [ ] Run focused document tests and `git diff --check`; if the test environment cannot model native keyboard defaults, document the limitation and retain semantic DOM assertions for native buttons.
+- [ ] Commit and report.
+
+**Acceptance:** Assistive technology sees a coherent mode group and the selected mode; the controls remain keyboard operable without an incomplete radio contract.
+
+## Task 9: Preserve Agent Editor section button layout and verify real keyboard semantics
+
+**Dependency:** Follow-up to Task 3 review finding `UI-R2-AGENT-01`; continue in the Task 3 worktree after its initial commit.
+
+**Role:** `frontend_implementer`; validator `frontend_validator`; reviewer `reviewer`.
+
+**Files:** `apps/web/src/agents/AgentEditorModal.tsx`, focused Agent Editor tests, and the modal's scoped CSS only.
+
+**Consumes / produces:** Native button section navigation from Task 3. Reset button-specific border/background/font/padding/width properties to the prior `.nav-item` appearance without removing focus indication or disabled/selected state. Add an interaction check using a keyboard-capable test helper when available; otherwise document that jsdom cannot synthesize browser default activation and run a real browser keyboard smoke.
+
+**Steps:**
+
+- [ ] Add a test for section focusability, selected semantics, and Enter/Space activation; capture the current style regression where supported by the test harness.
+- [ ] Restore the full-width navigation appearance with scoped button reset styles while preserving visible focus.
+- [ ] Run focused Agent Editor tests, Web typecheck, and `git diff --check`; perform browser keyboard/visual smoke if the unit harness cannot exercise native activation.
+- [ ] Commit a repair on the Task 3 branch and report evidence.
+
+**Acceptance:** Keyboard activation switches sections, and native button styling no longer changes the modal's established navigation layout.
+
+## Parallelism and integration
+
+Tasks 1–7 have non-overlapping production file ownership and isolated test/artifact paths; they may be implemented concurrently from the same integration checkpoint. Task 5 owns two settings files with no overlap elsewhere. Integrate by task number only after task-specific validation and independent review; then run the complete relevant Web and views test/typecheck gates. No task may edit the original issue30-sweep worktree.

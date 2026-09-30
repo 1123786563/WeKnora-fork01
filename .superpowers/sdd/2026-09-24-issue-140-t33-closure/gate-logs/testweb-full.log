@@ -1,0 +1,15 @@
+=== full test:web start 2026-09-26 21:39:47 load: 68.04 66.38 57.15 ===
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'Bob', undefined, undefined ],
+    expected: [ 'Bob', undefined ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @weknora/web@0.0.0 test: `node --import tsx --test --test-concurrency=4 'src/**/*.test.ts' 'src/**/*.test.tsx'`
+Exit status 1
+ ELIFECYCLE  Command failed with exit code 1.
+FULL_EXIT=0
+=== full test:web end 2026-09-26 23:49:30 ===

@@ -337,6 +337,9 @@ integration_points:
   - RegisterSkillMarketRoutes — internal/router/routes_skill_market.go:32
   - RegisterTenantSkillMarketRoutes — internal/router/routes_tenant_skill_market.go:31
   - RegisterTenantExpertMarketRoutes — internal/router/routes_tenant_expert_market.go:35
+  - RegisterAgentAdoptionRoutes — internal/router/routes_agent_adoption.go:18
+  - RegisterAgentUpgradeRoutes — internal/router/routes_agent_upgrade.go:16
+  - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:25 (merged graph public catalog/listing/adoption/release governance; 10 routes)
   workers:
     []
   lifecycle_hooks:

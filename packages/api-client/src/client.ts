@@ -32,7 +32,7 @@ import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
-import { createCareerApi } from './career/index.ts';
+import { createCareerApi } from './career.ts';
 import type { CareerObserver } from './career/types.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';

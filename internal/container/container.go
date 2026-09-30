@@ -55,6 +55,7 @@ import (
 	infra_web_search "github.com/Tencent/WeKnora/internal/modules/airesource/web_search"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/career"
 	imPkg "github.com/Tencent/WeKnora/internal/modules/channels/im"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/dingtalk"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/feishu"
@@ -237,7 +238,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// W26: immutable artifact version rows live in the same business database
 	// scope as the run store so imports and downloads share one fence.
 	must(container.Provide(repository.NewArtifactVersionStore))
-	must(container.Provide(NewCareerArtifactHandler))
 	must(container.Provide(repository.NewNotificationStore))
 	must(container.Provide(repository.NewNotificationProviderStateStore))
 	must(container.Provide(workbenchservice.NewNotificationProjector))
@@ -293,10 +293,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// T22 (#52): code delivery — dedicated A03 instance + workbench handler.
 	must(container.Provide(newCodeDeliveryService))
 	must(container.Provide(NewWorkbenchDeliveryHandler))
-	// T17 (#47): read-only research delegation + version-pinned annotation.
-	must(container.Provide(NewResearchSourceAuthorizer))
-	must(container.Provide(NewWorkbenchResearchHandler))
-	must(container.Provide(NewWorkbenchLegacyListHandler))
+	// T17/T13 collaboration, research, legacy, and compliance handler graph.
+	must(provideWorkbenchTaskHandlers(container))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))
 	must(container.Provide(NewWorkbenchInteractionStore))
@@ -307,18 +305,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchInboxHandler))
 	must(container.Provide(repository.NewWorkbenchTaskStateStore))
 	must(container.Provide(NewWorkbenchTaskStateHandler))
-	// T17 (#47) review round 1: NewWorkbenchTaskGrantsHandler (#42) was
-	// Provided without its *repository.TaskGrantStore — the provider stayed
-	// unbuildable, the optional RouterParams field resolved to nil, and the
-	// three /workbench/tasks/:task_id/grants routes never mounted. Providing
-	// the store makes the grants assembly (and the research handler's shared
-	// grant service) resolvable; TestTaskGrantsAndResearchHandlersBuildable
-	// pins this subset.
-	must(container.Provide(repository.NewTaskGrantStore))
-	must(container.Provide(NewWorkbenchTaskGrantsHandler))
-	must(container.Provide(NewTaskComplianceStore))
-	must(container.Provide(NewTaskComplianceService))
-	must(container.Provide(NewWorkbenchTaskComplianceHandler))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
@@ -801,6 +787,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// HTTP handlers layer
 	logger.Debugf(ctx, "[Container] Registering HTTP handlers...")
+	// Career applications link to durable Workbench tasks strictly through
+	// the interfaces.CareerApplicationTaskLinker seam.
+	must(container.Provide(workbenchservice.NewApplicationTaskCoordinator))
+	must(container.Provide(func(coordinator *workbenchservice.ApplicationTaskCoordinator) interfaces.CareerApplicationTaskLinker {
+		return coordinator
+	}))
+	// T22 complete deletion keeps the same boundary: Career removes Workbench
+	// application-task projections only through the remover port.
+	must(container.Provide(func(coordinator *workbenchservice.ApplicationTaskCoordinator) interfaces.CareerApplicationTaskProjectionRemover {
+		return coordinator
+	}))
+	must(container.Provide(career.NewHandler))
 	must(container.Provide(handler.NewTenantHandler))
 	must(container.Provide(handler.NewTenantMemberHandler))
 	must(container.Provide(handler.NewTenantInvitationHandler))
@@ -2939,8 +2937,10 @@ func registerArtifactVersionHTTPHandlers(
 	files interfaces.FileService,
 	storage interfaces.StorageBackendResolver,
 	versions *repository.ArtifactVersionStore,
+	runs *repository.AgentRunStore,
+	members interfaces.TenantMemberRepository,
 ) {
-	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions))
+	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions, runs).WithTenantMembership(members))
 }
 
 // registerArtifactPreviewHTTPHandlers installs the W27 isolated artifact

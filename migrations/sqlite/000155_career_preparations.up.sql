@@ -1,0 +1,26 @@
+CREATE TABLE career_preparations (
+  id TEXT PRIMARY KEY,
+  tenant_id INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
+  application_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  focus TEXT NOT NULL,
+  status TEXT NOT NULL,
+  submission_id TEXT NOT NULL DEFAULT '',
+  submitted_material_id TEXT NOT NULL DEFAULT '',
+  submitted_export_id TEXT NOT NULL DEFAULT '',
+  submitted_version INTEGER NOT NULL DEFAULT 0,
+  submitted_digest TEXT NOT NULL DEFAULT '',
+  snapshot_id TEXT NOT NULL DEFAULT '',
+  snapshot_sha256 TEXT NOT NULL DEFAULT '',
+  profile_revision INTEGER NOT NULL DEFAULT 0,
+  material_id TEXT NOT NULL DEFAULT '',
+  failure_code TEXT NOT NULL DEFAULT '',
+  failure_message TEXT NOT NULL DEFAULT '',
+  receipt_body TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE (tenant_id, user_id, request_id)
+);
+CREATE INDEX idx_career_preparation_scope ON career_preparations (tenant_id, user_id, application_id);

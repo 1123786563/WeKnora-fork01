@@ -17,8 +17,7 @@ owned_files:
     - internal/modules/career/module.go
 integration_points:
   routes:
-    - RegisterCareerArtifactRoutes — internal/router/routes_career_artifacts.go
-    - RegisterCareerArtifactDownloadRoute — internal/router/routes_career_artifacts.go
+    - RegisterCareerRoutes — internal/router/routes_career.go:8
   workers: []
   lifecycle_hooks: []
 test_commands:

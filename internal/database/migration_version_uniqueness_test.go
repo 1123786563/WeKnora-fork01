@@ -1,6 +1,7 @@
 package database
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,6 +45,65 @@ func TestMigrationVersionsUniquePerTrack(t *testing.T) {
 		for index := 1; index < len(versions); index++ {
 			require.NotEqualf(t, versions[index-1], versions[index],
 				"%s track has duplicate version %d — golang-migrate file source Initialize fails the entire track on duplicates", track, versions[index])
+		}
+	}
+
+	issue30SQLite := []string{
+		"task_grants", "agent_adoption_variants", "public_agent_marketplace",
+		"app_publications", "task_compliance", "code_deliveries",
+		"mobile_device_app", "app_action_plans", "agent_upgrade_proposals",
+		"task_research", "agent_fork_lineage", "space_connection_grants",
+	}
+	issue30Versioned := []string{
+		"task_grants", "agent_adoption_variants", "public_agent_marketplace",
+		"app_publications", "task_compliance", "code_deliveries",
+		"mobile_device_app", "app_action_plans", "space_connection_grants",
+		"agent_upgrade_proposals", "task_research", "agent_fork_lineage",
+	}
+	issue140 := []string{
+		"career_profile", "artifact_version_revocation", "career_source_revisions",
+		"career_opportunities", "career_evaluations", "workbench_application_tasks",
+		"career_applications", "source_import_observations", "career_searches",
+		"career_materials", "career_progress_events", "career_material_exports",
+		"career_search_rules", "career_submissions", "career_exports_deletions",
+		"career_preparations", "career_reminders", "career_usage", "career_reconciliations",
+		"career_lifecycle_gate", "career_lifecycle_owner",
+	}
+	for _, spec := range []struct {
+		track        string
+		issue30Base  int
+		issue140Base int
+		issue30      []string
+	}{
+		{track: "sqlite", issue30Base: 112, issue140Base: 140, issue30: issue30SQLite},
+		{track: "versioned", issue30Base: 191, issue140Base: 221, issue30: issue30Versioned},
+	} {
+		trackDir := filepath.Join(root, "migrations", spec.track)
+		for i, name := range spec.issue30 {
+			version := spec.issue30Base + i
+			for _, direction := range []string{"up", "down"} {
+				path := filepath.Join(trackDir, fmt.Sprintf("%06d_%s.%s.sql", version, name, direction))
+				require.FileExistsf(t, path, "issue30 migration filename/version changed: %s", path)
+			}
+		}
+		for i, name := range issue140 {
+			version := spec.issue140Base + i
+			for _, direction := range []string{"up", "down"} {
+				path := filepath.Join(trackDir, fmt.Sprintf("%06d_%s.%s.sql", version, name, direction))
+				require.FileExistsf(t, path, "#140 migration must preserve order at version %d: %s", version, path)
+			}
+		}
+	}
+	for _, item := range []struct {
+		track, up, down string
+	}{
+		{"sqlite", "000159_career_lifecycle_gate.up.sql", "000159_career_lifecycle_gate.down.sql"},
+		{"sqlite", "000160_career_lifecycle_owner.up.sql", "000160_career_lifecycle_owner.down.sql"},
+		{"versioned", "000240_career_lifecycle_gate.up.sql", "000240_career_lifecycle_gate.down.sql"},
+		{"versioned", "000241_career_lifecycle_owner.up.sql", "000241_career_lifecycle_owner.down.sql"},
+	} {
+		for _, name := range []string{item.up, item.down} {
+			require.FileExistsf(t, filepath.Join(root, "migrations", item.track, name), "lifecycle gate migration identity/version must remain paired: %s", name)
 		}
 	}
 }

@@ -7,16 +7,17 @@ import (
 	"os"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/application/service"
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
-	careerrepo "github.com/Tencent/WeKnora/internal/modules/career/repository"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"gorm.io/gorm"
+	"go.uber.org/dig"
 )
 
 // NewWorkbenchReadHandler wires the ownership facade to the same durable run
@@ -28,28 +29,24 @@ func NewWorkbenchReadHandler(
 	ingestor *repository.ExecutionObservationStore,
 	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists).WithGrantedRuns(runs)
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
 }
 
-// NewCareerArtifactHandler wires Career's owner/resource catalog to the
-// authenticated issuer and credential-free, signed download endpoint.
-func NewCareerArtifactHandler(db *gorm.DB, tenants interfaces.TenantService, files interfaces.FileService, storage interfaces.StorageBackendResolver) *session.CareerArtifactHandler {
-	return session.NewCareerArtifactHandler(careerrepo.NewArtifactCatalogStore(db), tenants, files, storage)
-}
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
 // to the same owned-run store as the read handler. The signing secret is read
 // from the environment per request; deployments without the key get an
-// honest 501 instead of links signed with a default secret. The read-side
-// snapshot repository doubles as the terminal-log reader, so the terminal
-// availability flag is sourced from the same wiring the terminal-log
-// endpoint's 501 check uses (B3-F76).
+// honest 501 instead of links signed with a default secret.
 func NewWorkbenchArtifactHandler(
 	runs *repository.AgentRunStore,
 	messages interfaces.MessageService,
 	snapshots *repository.AgentRunSnapshotRepository,
+	versions *repository.ArtifactVersionStore,
 ) *session.WorkbenchArtifactHandler {
-	return session.NewWorkbenchArtifactHandler(runs, messages).WithTerminalLog(snapshots)
+	return session.NewWorkbenchArtifactHandler(runs, messages).
+		WithTerminalLog(snapshots).
+		WithArtifactVersions(versions).
+		WithArtifactVersionRevoker(versions)
 }
 
 // NewWorkbenchListHandler wires the mobile workbench list to the ownership-
@@ -95,16 +92,54 @@ func NewWorkbenchInteractionStore(db *gorm.DB) *workbenchservice.GormInteraction
 }
 
 func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager, runs *repository.AgentRunStore, admission *workbenchservice.AdmissionCoordinator) *workbenchservice.Service {
-	// Command ports are intentionally nil until the lifecycle/stream adapters
-	// are supplied by the runtime container; command requests fail closed with
-	// capability_unavailable rather than mutating a different subsystem.
-	return workbenchservice.NewInteractionServiceWithRestart(
-		store,
-		workbenchservice.NewGormSteerPort(storeDB(store), streams),
-		workbenchservice.NewGormCancelPort(runs),
-		gate,
-		workbenchservice.NewGormRunRestartPort(storeDB(store), admission),
-	)
+	db := storeDB(store)
+	return workbenchservice.NewInteractionServiceWithRestart(store, workbenchservice.NewGormSteerPort(db, streams), workbenchservice.NewGormCancelPort(runs), gate, workbenchservice.NewGormRunRestartPort(db, admission))
+}
+
+func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
+	knowledgeBases := repository.NewKnowledgeBaseRepository(db)
+	return researchSourceAuthorizerFunc(func(ctx context.Context, tenantID uint64, id string) error {
+		_, err := knowledgeBases.GetKnowledgeBaseByIDAndTenant(ctx, id, tenantID)
+		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return session.ErrResearchSourceOutOfScope
+		}
+		return err
+	})
+}
+
+type researchSourceAuthorizerFunc func(context.Context, uint64, string) error
+
+func (f researchSourceAuthorizerFunc) AuthorizeResearchSource(ctx context.Context, tenantID uint64, id string) error {
+	return f(ctx, tenantID, id)
+}
+
+func NewWorkbenchResearchHandler(db *gorm.DB, runs *repository.AgentRunStore, messages interfaces.MessageService, sessions interfaces.SessionRepository, members interfaces.TenantMemberRepository) *session.WorkbenchResearchHandler {
+	grants := appservice.NewTaskGrantService(repository.NewTaskGrantStore(db), sessions, members)
+	return session.NewWorkbenchResearchHandler(runs, runs, messages, repository.NewTaskResearchStore(db), repository.NewTaskAnnotationStore(db), NewResearchSourceAuthorizer(db), grants)
+}
+
+func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
+	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
+}
+
+func NewWorkbenchTaskGrantsHandler(grants *repository.TaskGrantStore, sessions interfaces.SessionRepository, members interfaces.TenantMemberRepository) *session.WorkbenchTaskGrantsHandler {
+	return session.NewWorkbenchTaskGrantsHandler(appservice.NewTaskGrantService(grants, sessions, members))
+}
+
+func NewTaskComplianceStore(db *gorm.DB) *repository.TaskComplianceStore {
+	return repository.NewTaskComplianceStore(db)
+}
+func NewTaskComplianceService(store *repository.TaskComplianceStore, audit interfaces.AuditLogService) *appservice.TaskComplianceService {
+	return appservice.NewTaskComplianceService(store, audit)
+}
+func NewWorkbenchTaskComplianceHandler(compliance *appservice.TaskComplianceService) *session.WorkbenchTaskComplianceHandler {
+	return session.NewWorkbenchTaskComplianceHandler(compliance)
+}
+
+func wireTaskDeletionGuard(handler *session.Handler, compliance *appservice.TaskComplianceService) {
+	if handler != nil && compliance != nil {
+		handler.SetTaskDeletionGuard(compliance)
+	}
 }
 
 // storeDB is kept in the service constructor's dependency graph through the
@@ -147,12 +182,7 @@ func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
 }
 
 func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
-	enterpriseApp := strings.TrimSpace(os.Getenv("MOBILE_ENTERPRISE_APP_ID"))
-	if enterpriseApp != "" && repository.ValidateMobileAppID(enterpriseApp) != nil {
-		enterpriseApp = "" // 非法声明 fail closed：仅 official 通道
-	}
-	return handler.NewMobileDeviceHandler(store, mobileEnvironment()).
-		WithMobileAppPolicy(handler.MobileAppPolicy{EnterpriseAppID: enterpriseApp})
+	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
 }
 
 // NewWorkbenchTaskStateHandler wires the task archive lifecycle to the same
@@ -162,112 +192,26 @@ func NewWorkbenchTaskStateHandler(states *repository.WorkbenchTaskStateStore) *s
 	return session.NewWorkbenchTaskStateHandler(states)
 }
 
-// NewWorkbenchTaskGrantsHandler wires the task collaboration grants to the
-// durable store; tenant/owner always come from the authenticated context.
-func NewWorkbenchTaskGrantsHandler(
-	grants *repository.TaskGrantStore,
-	sessions interfaces.SessionRepository,
-	members interfaces.TenantMemberRepository,
-) *session.WorkbenchTaskGrantsHandler {
-	return session.NewWorkbenchTaskGrantsHandler(service.NewTaskGrantService(grants, sessions, members))
-}
-
-// NewWorkbenchLegacyListHandler wires the T14 legacy task projection to the
-// ownership-scoped repository; tenant/owner always come from the
-// authenticated context.
-func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
-	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
-}
-
-// NewTaskComplianceStore wires the T13 compliance store onto the shared DB
-// handle (dig provider; the concrete *gorm.DB keeps dig's type graph simple).
-func NewTaskComplianceStore(db *gorm.DB) *repository.TaskComplianceStore {
-	return repository.NewTaskComplianceStore(db)
-}
-
-// NewTaskComplianceService wires the compliance service onto the store and
-// the real audit trail. The audit service is REQUIRED — the compliance flow
-// fails closed without it (Task 3).
-func NewTaskComplianceService(
-	store *repository.TaskComplianceStore,
-	audit interfaces.AuditLogService,
-) *service.TaskComplianceService {
-	return service.NewTaskComplianceService(store, audit)
-}
-
-// NewWorkbenchTaskComplianceHandler wires the T13 compliance lanes to the
-// service built above. Tenant/role always come from the authenticated
-// context.
-func NewWorkbenchTaskComplianceHandler(compliance *service.TaskComplianceService) *session.WorkbenchTaskComplianceHandler {
-	return session.NewWorkbenchTaskComplianceHandler(compliance)
-}
-
-// wireTaskDeletionGuard installs the T13 legal-hold gate at the session
-// deletion entrances (O03 wireCraftSessionTombstone shape).
-func wireTaskDeletionGuard(handler *session.Handler, compliance *service.TaskComplianceService) {
-	if handler == nil || compliance == nil {
-		return
+// provideWorkbenchTaskHandlers registers the collaboration, research, legacy,
+// and compliance handler graph used by both production assembly and its graph test.
+func provideWorkbenchTaskHandlers(container *dig.Container) error {
+	providers := []interface{}{
+		NewResearchSourceAuthorizer,
+		NewWorkbenchResearchHandler,
+		NewWorkbenchLegacyListHandler,
+		repository.NewTaskGrantStore,
+		NewWorkbenchTaskGrantsHandler,
+		repository.NewTaskResearchStore,
+		repository.NewTaskAnnotationStore,
+		repository.NewWorkbenchLegacyListStore,
+		NewTaskComplianceStore,
+		NewTaskComplianceService,
+		NewWorkbenchTaskComplianceHandler,
 	}
-	handler.SetTaskDeletionGuard(compliance)
-}
-
-// researchSourceAuthorizer gates delegated sources against the task's tenant
-// knowledge scope. Production binds the tenant-scoped knowledge base lookup;
-// KB-level ACLs (shares/groups) stay enforced at retrieval time by the
-// existing access seam — a delegation never widens what a later read allows.
-type researchSourceAuthorizer struct {
-	kb interfaces.KnowledgeBaseRepository
-}
-
-// AuthorizeResearchSource rejects sources the task's tenant does not own.
-// The scope verdict is the exported sentinel (handler → 400); any other
-// lookup failure is infrastructure and passes through untouched so the
-// handler can surface 500 instead of mislabeling DB downtime as a denial
-// (B5-F58).
-func (a researchSourceAuthorizer) AuthorizeResearchSource(ctx context.Context, tenantID uint64, knowledgeBaseID string) error {
-	if strings.TrimSpace(knowledgeBaseID) == "" {
-		return fmt.Errorf("empty research source: %w", session.ErrResearchSourceOutOfScope)
-	}
-	if _, err := a.kb.GetKnowledgeBaseByIDAndTenant(ctx, knowledgeBaseID, tenantID); err != nil {
-		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
-			return fmt.Errorf("research source %q: %w", knowledgeBaseID, session.ErrResearchSourceOutOfScope)
+	for _, provider := range providers {
+		if err := container.Provide(provider); err != nil {
+			return err
 		}
-		return err
 	}
 	return nil
-}
-
-// NewResearchSourceAuthorizer wires the production source gate.
-func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
-	return researchSourceAuthorizer{kb: repository.NewKnowledgeBaseRepository(db)}
-}
-
-// NewWorkbenchResearchHandler wires the T17 (#47) delegation/annotation
-// surface: the same durable run store doubles as the granted reader (owner
-// first, #42 grant fallback second), annotations pin the current version
-// identity derived from message-bound artifacts.
-//
-// Wiring note (deviation from the plan's sketch, dig-v1.19 fact verified
-// empirically): the provider returns ONLY the handler — dig rejects a second
-// constructor result of session.ResearchSourceAuthorizer at Provide time
-// ("already provided") once NewResearchSourceAuthorizer is provided, which
-// would panic the app at startup via must(). The grant service is assembled
-// from the container-provided *repository.TaskGrantStore (review round 1
-// added that Provide; the #42 grants handler shares the same instance) so
-// both collaboration surfaces resolve through one durable store.
-func NewWorkbenchResearchHandler(
-	db *gorm.DB,
-	runs *repository.AgentRunStore,
-	messages interfaces.MessageService,
-	grants *repository.TaskGrantStore,
-	sessions interfaces.SessionRepository,
-	members interfaces.TenantMemberRepository,
-) *session.WorkbenchResearchHandler {
-	return session.NewWorkbenchResearchHandler(
-		runs, runs, messages,
-		repository.NewTaskResearchStore(db),
-		repository.NewTaskAnnotationStore(db),
-		NewResearchSourceAuthorizer(db),
-		service.NewTaskGrantService(grants, sessions, members),
-	)
 }

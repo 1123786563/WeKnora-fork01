@@ -18,6 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/career"
 	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -45,6 +46,7 @@ type RouterParams struct {
 	KBHandler                  *handler.KnowledgeBaseHandler
 	SemanticModelPolicyHandler *handler.SemanticModelPolicyHandler
 	KnowledgeHandler           *handler.KnowledgeHandler
+	CareerHandler              *career.Handler `optional:"true"`
 	TenantHandler              *handler.TenantHandler
 	TenantService              interfaces.TenantService
 	TenantAPIKeyService        interfaces.TenantAPIKeyService
@@ -67,7 +69,6 @@ type RouterParams struct {
 	// rather than mounting a reader without an authority boundary.
 	NativeArchiveHandler           *session.NativeArchiveHandler           `optional:"true"`
 	WorkbenchArtifactHandler       *session.WorkbenchArtifactHandler       `optional:"true"`
-	CareerArtifactHandler          *session.CareerArtifactHandler          `optional:"true"`
 	WorkbenchOverviewHandler       *session.WorkbenchOverviewHandler       `optional:"true"`
 	WorkbenchTaskStateHandler      *session.WorkbenchTaskStateHandler      `optional:"true"`
 	WorkbenchTaskGrantsHandler     *session.WorkbenchTaskGrantsHandler     `optional:"true"`
@@ -261,7 +262,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
 	// Workbench artifact grant download: credential-free by design. The HMAC
-	// grant (tenant/session/message/index/expiry) is the authorization fact,
+	// grant (tenant/owner/run/resource/version/expiry) is the authorization fact,
 	// verified in constant time — same pattern as the presigned file routes
 	// below. Must precede the global Auth middleware.
 	if params.SessionHandler != nil {
@@ -269,7 +270,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 	}
 	// Career artifact grants carry their own short-lived HMAC capability and
 	// must be mounted before Auth, alongside the legacy Task grant endpoint.
-	RegisterCareerArtifactDownloadRoute(r, params.CareerArtifactHandler)
 
 	// Local-browser extension gateway (A13): the WebSocket upgrade carries a
 	// device credential in its subprotocol and the authorize/internal
@@ -356,6 +356,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
+		RegisterCareerRoutes(v1, params.CareerHandler)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		// Member-scoped local-browser management (A13): pairing, status,
 		// revoke and the extension download for the calling member.
@@ -402,7 +403,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterNativeArchiveRoutes(v1, params.NativeArchiveHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, params.WorkbenchListHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
-		RegisterCareerArtifactRoutes(v1, params.CareerArtifactHandler)
 		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)

@@ -1,0 +1,101 @@
+/* Career in-station todo inbox (T20). TDesign light theme tokens with the
+   #07c05f brand green marking the authoritative in-station surface. */
+.wk-inbox {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-inbox h3 { margin: 0; }
+.wk-inbox__intro {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #07c05f;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--td-brand-color-light, #e8f8ef);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-inbox__push {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-inbox__push p { margin: 0; color: var(--td-text-color-secondary, #666); }
+.wk-inbox__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wk-inbox button {
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  cursor: pointer;
+}
+.wk-inbox button:hover:not(:disabled) { border-color: #07c05f; color: #07c05f; }
+.wk-inbox button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-inbox__submit { border-color: #07c05f; background: #07c05f; color: #fff; }
+.wk-inbox__submit:hover:not(:disabled) { color: #fff; opacity: .9; }
+.wk-inbox__todos {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.wk-inbox__todo {
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.wk-inbox__notice { margin: 0; font-size: 1rem; font-weight: 600; }
+.wk-inbox__todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--td-text-color-secondary, #666);
+  font-size: .85rem;
+}
+.wk-inbox__todo-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #07c05f;
+  font-weight: 600;
+  text-decoration: none;
+}
+.wk-inbox__todo-link:hover { text-decoration: underline; }
+.wk-inbox__todo-note { margin: 8px 0 0; color: var(--td-text-color-secondary, #666); font-size: .85rem; }
+.wk-inbox__empty { margin: 14px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-inbox__compose {
+  margin: 14px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-inbox__compose legend { padding: 0 4px; font-weight: 600; font-size: .9rem; }
+.wk-inbox__label { display: grid; gap: 6px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+.wk-inbox select,
+.wk-inbox input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-inbox__state { color: var(--td-text-color-secondary, #666); }
+.wk-inbox__message { margin: 10px 0 0; color: var(--td-text-color-secondary, #444); }
+.wk-inbox__message--error { color: var(--td-error-color, #d54941); }

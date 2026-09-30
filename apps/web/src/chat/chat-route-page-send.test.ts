@@ -6,6 +6,7 @@ import { build } from 'esbuild';
 
 interface CapturedChatPageProps {
   send(submission: { content: string; status: 'pending' }): Promise<void>;
+  conversationActionSlot?: unknown;
   /** R471-A1: the host derives Vue isAgentStreamSession() parity here. */
   canSteer?: boolean;
 }
@@ -192,6 +193,7 @@ test('ChatRoutePage first creatChat send opens the stream request after session 
     scopeController,
     location: 'http://weknora.test/platform/creatChat',
   });
+  assert.ok(props.conversationActionSlot, 'Career Opportunity paste affordance is injected into the chat conversation');
   (globalThis.window as { history: { pushState: (...args: unknown[]) => void } }).history.pushState = (...args) => {
     calls.push(`select:${String(args[2])}`);
   };

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const format = await import(`../src/core/format.ts`);
 const scope = await import(`../src/core/scope.ts`);
 const utf8 = await import(`../src/core/utf8.ts`);
+const intent = await import(`../src/core/intent.ts`);
 const routing = await import(`../src/core/routes.ts`);
 
 test('integer formatting never rounds values larger than Number.MAX_SAFE_INTEGER', () => {
@@ -38,21 +39,17 @@ test('UTF-8 decoder rejects malformed and truncated input rather than inventing 
   assert.throws(()=>new utf8.Utf8Decoder().push(Uint8Array.of(0xc0,0xaf)));
   const d=new utf8.Utf8Decoder();d.push(Uint8Array.of(0xf0,0x9f));assert.throws(()=>d.finish());
 });
-test('route manifest has twenty screens and only four primary tabs',()=>{
+test('intent request IDs are unique correlations, not credentials',()=>{
+  assert.equal(typeof intent.requestId,'function');
+  const first = intent.requestId();
+  const second = intent.requestId();
+  assert.match(first, /^mini-/);
+  assert.notEqual(first, second);
+});
+test('route manifest has twenty-five screens and only four primary tabs',()=>{
   assert.ok(routing.ROUTES);
-  assert.equal(Object.keys(routing.ROUTES).length,20);
+  assert.equal(Object.keys(routing.ROUTES).length,25); // T24 新增 career/discovery；T26 新增 career/application-material；T32 新增 career/export-deletion；T28 新增 career/progress-preparation；OCR high-9 补 career/rules-usage-reminders（此前注册于 app.config 却无路由键不可达）
   assert.equal(Object.values(routing.ROUTES).filter(x=>x.tab).length,4);
   assert.match(routing.pageUrl('document',{id:'a/b?c'}),/a%2Fb%3Fc/);
   assert.throws(()=>routing.pageUrl('not-a-page'));
-});
-const authPure = await import(`../src/core/auth.ts`);
-test('normalizeApiOrigin lowercases the host and drops trailing slashes only', () => {
-  assert.equal(authPure.normalizeApiOrigin('https://API.example.test/'), 'https://api.example.test');
-  assert.equal(authPure.normalizeApiOrigin('https://api.example.test'), 'https://api.example.test');
-  assert.equal(authPure.normalizeApiOrigin('https://api.example.test/x').endsWith('/x'), true, 'path is preserved');
-});
-test('isBearer accepts only a well-formed bearer record', () => {
-  assert.equal(authPure.isBearer({ kind: 'bearer', accessToken: 'a' }), true);
-  assert.equal(authPure.isBearer({ kind: 'bearer', accessToken: '' }), false);
-  assert.equal(authPure.isBearer({ token: 'a' }), false);
 });

@@ -55,6 +55,19 @@ test('a late home response after the scope lease was revoked never resolves with
   await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
 });
 
+test('a delayed task list from the previous tenant is rejected after switching leases', async () => {
+  const first = leased();
+  const second = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: first.lease };
+  const gate = deferred<TaskBackendPage>();
+  const { office } = officeWith(leaseRef, { list: () => gate.promise });
+  const pending = office.tasks({});
+  first.revocable.revoke();
+  leaseRef.lease = second.lease;
+  gate.resolve({ items: [backendRun('tenant-1-private') ] });
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+});
+
 test('a newer tasks query supersedes an in-flight older one', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
@@ -126,6 +139,18 @@ test('archive and restore invalidate the accumulated query and fail closed witho
   revocable.revoke();
   await assert.rejects(office.archive('task-r-a'), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
   await assert.rejects(office.home(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+});
+
+test('archive may commit remotely before lease settlement rejects locally', async () => {
+  const { revocable, lease } = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease };
+  let remotelyArchived = false;
+  const { office } = officeWith(leaseRef, {
+    archive: async () => { remotelyArchived = true; revocable.revoke(); },
+  });
+  await assert.rejects(office.archive('task-committed'), (error: unknown) =>
+    error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(remotelyArchived, true, 'the backend write can settle before the local lease check');
 });
 
 test('queries are normalized before they reach the backend', async () => {
