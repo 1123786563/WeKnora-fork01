@@ -1,15 +1,23 @@
 import { createElement, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
+import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources';
 import { createJsonTransport } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
-import type { MobileRuntime, RuntimeSnapshot } from '@weknora/mobile-core';
+import { createScopedVault, createWebCryptoCipher } from '@weknora/mobile-core';
+import type { MobileRuntime, RuntimeSnapshot, ScopedVault } from '@weknora/mobile-core';
+import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
+import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
+import type { SecureStorePort } from './adapters/secure-store.ts';
+import { createSecureVaultKeyStore, createSecureVaultStorage } from './adapters/vault-adapters.ts';
 import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
-import { AuthorizedLandingScreen } from './screens/AuthorizedLandingScreen.tsx';
+import { streamAuthorizedSse, type SseFetchLike } from './adapters/sse-stream.ts';
+import { HomeScreen } from './screens/HomeScreen.tsx';
+import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
 
@@ -21,6 +29,20 @@ function nativeFetch(input: string, init?: { method?: string; headers?: Record<s
   return fetch(input, init as RequestInit);
 }
 
+/** Wires the Scoped Vault only where Web Crypto exists. Native crypto seam completes in T10 (#40); absence must not break login. */
+function createNativeScopedVaultIfAvailable(): ScopedVault | undefined {
+  try {
+    const secure = require('expo-secure-store') as SecureStorePort;
+    return createScopedVault({
+      keyStore: createSecureVaultKeyStore(secure),
+      storage: createSecureVaultStorage(secure),
+      cipher: createWebCryptoCipher(),
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** The app composition root is the only place that joins concrete native adapters to Runtime. */
 export function createNativeMobileRuntime(): MobileRuntime {
   let runtime!: MobileRuntime;
@@ -29,9 +51,26 @@ export function createNativeMobileRuntime(): MobileRuntime {
     credentialStore: createNativeSecureCredentialStore(),
     deploymentStore: createNativeSecureDeploymentStore(),
     clientVersion: CLIENT_PROTOCOL_VERSION,
+    scopedVault: createNativeScopedVaultIfAvailable(),
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });
+    },
+    authorizedTransport(origin) {
+      const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
+      return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
+    },
+    authorizedStream(origin) {
+      // 惰性解析 expo/fetch（Node 测试环境无此模块；解析失败即无流通道，fail closed）
+      let streamFetch: SseFetchLike | undefined;
+      try { streamFetch = (require('expo/fetch') as { fetch: SseFetchLike }).fetch; } catch { streamFetch = undefined; }
+      return streamFetch === undefined ? undefined : (input, accessToken, onChunk) => streamAuthorizedSse(origin, input, accessToken, onChunk, streamFetch);
+    },
+    resourceShelf: {
+      remoteFor(origin) {
+        const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
+        return createMobileResourceRemote({ origin, request: client.request });
+      },
     },
     pendingOidcStore: createNativeSecurePendingOidcStore(),
     oidcBrowser: {
@@ -50,12 +89,58 @@ export interface RuntimeSurfaceProps {
   onSignIn: (input: { origin: string; email: string; password: string }) => Promise<void>;
   onBeginOidc: (input: { origin: string }) => Promise<void>;
   onSignOut: () => Promise<void>;
+  onActivateTenant: (tenantId: string) => Promise<void>;
+}
+
+const taskOffices = new Map<string, TaskOffice>();
+
+/** Task Office 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
+function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice {
+  let office = taskOffices.get(origin);
+  if (!office) {
+    const remote = createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input), stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk) });
+    office = createTaskOffice({
+      backend: remote,
+      detail: remote,
+      lease: () => activeRuntime.scopeLease(),
+    });
+    taskOffices.set(origin, office);
+  }
+  return office;
+}
+
+/** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
+export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runId: string) => void } = {}) {
+  const activeRuntime = runtime();
+  const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
+  return createElement(TasksScreen, {
+    key: snapshot.identity.activeTenantId,
+    taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin),
+    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
+  });
+}
+
+/** 详情路由经此取当前授权 scope 的 Task Office（无授权面返回 undefined）。 */
+export function activeTaskOffice(): TaskOffice | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return taskOfficeFor(activeRuntime, snapshot.deployment.origin);
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
-export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut }: RuntimeSurfaceProps) {
+export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut, onActivateTenant }: RuntimeSurfaceProps) {
   if (snapshot.surface === 'authorized' && snapshot.deployment && snapshot.identity?.userId && snapshot.identity.activeTenantId) {
-    return createElement(AuthorizedLandingScreen, { deploymentLabel: snapshot.deployment.label, userId: snapshot.identity.userId, tenantId: snapshot.identity.activeTenantId, onSignOut });
+    return createElement(HomeScreen, {
+      key: snapshot.identity.activeTenantId,
+      deploymentLabel: snapshot.deployment.label,
+      tenants: snapshot.identity.tenants ?? [{ id: snapshot.identity.activeTenantId }],
+      activeTenantId: snapshot.identity.activeTenantId,
+      onActivateTenant: (tenantId: string) => { void onActivateTenant(tenantId); },
+      onSignOut,
+      taskOffice: taskOfficeFor(runtime(), snapshot.deployment.origin),
+    });
   }
   if (snapshot.surface === 'deployment-login') {
     return createElement(DeploymentLoginScreen, { officialCloudOrigin, onSignIn, onBeginOidc });
@@ -68,6 +153,11 @@ let nativeRuntime: MobileRuntime | undefined;
 function runtime(): MobileRuntime {
   nativeRuntime ??= createNativeMobileRuntime();
   return nativeRuntime;
+}
+
+/** Route files reach the app-lifetime runtime through this accessor only. */
+export function activeMobileRuntime(): MobileRuntime {
+  return runtime();
 }
 
 /** Starts verified Runtime restoration once for an application lifetime. */
@@ -90,6 +180,7 @@ export function MobileApp() {
     onSignIn: async ({ origin, email, password }) => { await activeRuntime.signIn({ deployment: { origin }, email, password }); },
     onBeginOidc: async ({ origin }) => { await activeRuntime.beginOidc({ deployment: { origin }, redirectUri: OIDC_REDIRECT_URI }); },
     onSignOut: () => activeRuntime.signOut(),
+    onActivateTenant: async (tenantId) => { await activeRuntime.activateTenant(tenantId); },
   });
 }
 

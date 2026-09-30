@@ -26,10 +26,20 @@ func TestMX013OverviewOwnerScope(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	// 真实列集建表（防自造 schema 掩盖缺列——R1 P1 教训）：物理列以生产迁移为准
-	require.NoError(t, db.AutoMigrate(&workbenchservice.OverviewRunRow{}, &workbenchservice.OverviewInteractionRow{}))
+	require.NoError(t, db.AutoMigrate(&workbenchservice.OverviewRunRow{}, &workbenchservice.OverviewInteractionRow{}, &workbenchservice.OverviewTaskRow{}, &workbenchservice.OverviewNotificationRow{}))
 	for _, table := range []string{"agent_runs", "workbench_interactions"} {
 		require.True(t, db.Migrator().HasTable(table))
 	}
+	require.NoError(t, db.Create([]*workbenchservice.OverviewTaskRow{
+		{TenantID: 7, ID: "s-1", Title: "weekly report"},
+		{TenantID: 7, ID: "s-2", Title: "other user task"},
+		{TenantID: 7, ID: "s-3", Title: "finished research"},
+	}).Error)
+	require.NoError(t, db.Create([]*workbenchservice.OverviewNotificationRow{
+		{TenantID: 7, ID: "n-1", OwnerID: "u1", Read: false},
+		{TenantID: 7, ID: "n-2", OwnerID: "u2", Read: false},
+		{TenantID: 7, ID: "n-3", OwnerID: "u1", Read: true},
+	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create([]*workbenchservice.OverviewRunRow{
 		{TenantID: 7, RunID: "owned-run", SessionID: "s-1", OwnerID: "u1", Status: "running", UpdatedAt: now},
@@ -75,10 +85,59 @@ func TestMX013OverviewOwnerScope(t *testing.T) {
 	require.Equal(t, "pending", first.SettlementStatus, "active runs are never shown as settled")
 	require.Equal(t, "s-1", first.SessionID)
 	require.False(t, first.UpdatedAt.IsZero())
+	require.Equal(t, int64(1), envelope.Data.Counts.UnreadNotifications, "unread counts only the caller's unread rows")
+	require.Equal(t, "weekly report", first.Title)
+	require.Equal(t, "none", first.Attention)
+	completed := make([]string, 0, len(envelope.Data.RecentlyCompleted))
+	for _, run := range envelope.Data.RecentlyCompleted {
+		completed = append(completed, run.RunID)
+	}
+	require.Equal(t, []string{"owned-terminal"}, completed)
+	require.Equal(t, "finished research", envelope.Data.RecentlyCompleted[0].Title)
+	require.Equal(t, "settled", envelope.Data.RecentlyCompleted[0].SettlementStatus, "terminal runs project settlement per the snapshot precedent")
 
 	// perSessionHTTPRequests：overview 单次调用内未发生任何单 Run 读（结构性：聚合表单查）
 	perSessionHTTPRequests := 0
 	observation, err := json.Marshal(map[string]any{"visibleRunIds": visible, "perSessionHTTPRequests": perSessionHTTPRequests})
 	require.NoError(t, err)
 	t.Logf("MX013-OBSERVATION %s", observation)
+}
+
+// TestMX013OverviewExcludesArchivedTasksFromEverySegment: 归档任务从
+// in_progress、recently_completed 与 pending_interactions 全部落面消失。
+func TestMX013OverviewExcludesArchivedTasksFromEverySegment(t *testing.T) {
+	dsn := "file:" + t.TempDir() + "/overview-archived.db?_foreign_keys=on&_busy_timeout=10000"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&workbenchservice.OverviewRunRow{}, &workbenchservice.OverviewInteractionRow{}, &workbenchservice.OverviewTaskRow{}, &workbenchservice.OverviewNotificationRow{}))
+	now := time.Now().UTC()
+	archivedAt := now.Add(-time.Hour)
+	require.NoError(t, db.Create([]*workbenchservice.OverviewTaskRow{
+		{TenantID: 7, ID: "s-live", Title: "live task"},
+		{TenantID: 7, ID: "s-archived", Title: "archived task", ArchivedAt: &archivedAt},
+	}).Error)
+	require.NoError(t, db.Create([]*workbenchservice.OverviewRunRow{
+		{TenantID: 7, RunID: "live-run", SessionID: "s-live", OwnerID: "u1", Status: "running", UpdatedAt: now},
+		{TenantID: 7, RunID: "archived-run", SessionID: "s-archived", OwnerID: "u1", Status: "running", UpdatedAt: now},
+		{TenantID: 7, RunID: "archived-done", SessionID: "s-archived", OwnerID: "u1", Status: "succeeded", UpdatedAt: now},
+	}).Error)
+	require.NoError(t, db.Create(&workbenchservice.OverviewInteractionRow{
+		TenantID: 7, ID: "i-archived", RunID: "archived-run", OwnerID: "u1", Kind: "tool_approval", ArgsHash: "h1", Status: "pending", ExpectedRevision: 1, CreatedAt: now, UpdatedAt: now,
+	}).Error)
+
+	service := workbenchservice.NewWorkbenchOverviewService(db, func() time.Time { return now })
+	result, err := service.Overview(context.Background(), 7, "u1")
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"live-run"}, runIDsOfOverview(result.InProgress))
+	require.Empty(t, result.RecentlyCompleted, "an archived task's terminal runs stay out of recently completed")
+	require.Empty(t, result.PendingInteractions, "an archived task's pending interactions stay out of needs-me")
+}
+
+func runIDsOfOverview(runs []workbenchservice.OverviewRunSummary) []string {
+	ids := make([]string, 0, len(runs))
+	for _, run := range runs {
+		ids = append(ids, run.RunID)
+	}
+	return ids
 }

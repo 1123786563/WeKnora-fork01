@@ -52,6 +52,9 @@ export interface WorkbenchExecutionItem {
   space_id?: string;
   status: string;
   wait_reason?: string;
+  title?: string;
+  attention?: 'none' | 'required';
+  archived_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +72,8 @@ export interface WorkbenchExecutionList {
 export interface ExecutionListParams {
   status?: string;
   agent_id?: string;
+  search?: string;
+  archived?: boolean;
   cursor?: string;
   limit?: number;
 }
@@ -77,6 +82,8 @@ function buildListQuery(params: ExecutionListParams = {}): string {
   const query = new URLSearchParams();
   if (params.status && params.status.trim() !== '') query.set('status', params.status);
   if (params.agent_id && params.agent_id.trim() !== '') query.set('agent_id', params.agent_id);
+  if (params.search && params.search.trim() !== '') query.set('q', params.search.trim());
+  if (params.archived === true) query.set('archived', 'true');
   if (params.cursor && params.cursor.trim() !== '') query.set('cursor', params.cursor);
   if (typeof params.limit === 'number' && Number.isSafeInteger(params.limit) && params.limit > 0) {
     query.set('limit', String(params.limit));
@@ -111,6 +118,9 @@ function parseExecutionItem(value: unknown): WorkbenchExecutionItem {
     ...(optionalText(row.workspace_ref, 'workspace_ref') === undefined ? {} : { workspace_ref: row.workspace_ref as string }),
     ...(optionalText(row.space_id, 'space_id') === undefined ? {} : { space_id: row.space_id as string }),
     ...(optionalText(row.wait_reason, 'wait_reason') === undefined ? {} : { wait_reason: row.wait_reason as string }),
+    ...(optionalText(row.title, 'title') === undefined ? {} : { title: row.title as string }),
+    ...(row.attention === undefined || row.attention === null ? {} : (row.attention === 'none' || row.attention === 'required' ? { attention: row.attention } : (() => { throw new ContractError('attention', 'must be "none" or "required" when present'); })())),
+    ...(optionalText(row.archived_at, 'archived_at') === undefined ? {} : { archived_at: row.archived_at as string }),
   };
 }
 

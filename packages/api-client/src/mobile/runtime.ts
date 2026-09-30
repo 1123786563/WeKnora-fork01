@@ -23,6 +23,12 @@ export interface MobileRuntimeRemote {
   oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<{ token: string; refreshToken: string }>;
   refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }>;
   /**
+   * POST /api/v1/auth/switch-tenant（internal/handler/auth.go:1119）。后端为目标空间
+   * 重新签发令牌并把目标空间写为账号级「最近活跃租户」。适配器只做参数校验与
+   * session 归一，新空间的授权复核（me/capabilities）由 Mobile Runtime 决定。
+   */
+  switchTenant(input: { tenantId: string; refreshToken: string }): Promise<{ credential: { token: string; refreshToken: string }; tenant?: Record<string, unknown> | null }>;
+  /**
    * GET /api/v1/system/capabilities（internal/handler/deployment_capabilities.go，
    * Viewer+，需 Bearer）。只解包 code/msg/data 成功信封并原样返回 data——
    * 协议窗口（protocol_minimum/protocol_maximum）如何收敛成安全面由 Mobile
@@ -96,6 +102,16 @@ export function createMobileRuntimeRemote(options: MobileRuntimeRemoteOptions): 
     },
     refresh(refreshToken: string) {
       return auth.refresh(refreshToken);
+    },
+    async switchTenant(input: { tenantId: string; refreshToken: string }) {
+      const tenantId = Number(input.tenantId);
+      if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('switchTenant tenantId must be a positive integer');
+      if (typeof input.refreshToken !== 'string' || input.refreshToken.trim() === '') throw new Error('switchTenant refreshToken is required');
+      const session = await auth.switchTenant(tenantId, input.refreshToken);
+      return {
+        credential: { token: session.token, refreshToken: session.refreshToken },
+        tenant: session.tenant,
+      };
     },
     async deploymentCapabilities(accessToken: string): Promise<Record<string, unknown>> {
       const response = await bearerRequest(request, requireAccessToken(accessToken))({ method: 'GET', path: '/api/v1/system/capabilities' });

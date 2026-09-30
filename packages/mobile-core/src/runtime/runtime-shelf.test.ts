@@ -1,0 +1,176 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createMobileRuntime } from './mobile-runtime.ts';
+import { createInMemoryResourceRemote, type ResourceRemoteScript } from '../shelf/in-memory-resource-remote.ts';
+import type { ResourceRemote } from '../shelf/ports.ts';
+import type { CredentialStore, RuntimeRemote, StoredCredential } from './ports.ts';
+import type { DeploymentInput } from './types.ts';
+
+const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
+const OTHER: DeploymentInput = { origin: 'https://other.example.test', label: 'Other' };
+const CAPABILITIES = { protocol_minimum: 2, protocol_maximum: 3 };
+
+/** 假凭据夹具（非真实凭据）：refresh 单飞轮换后的下一对 token，取值即简报逐字值。 */
+function rotatedAccess(): string { return 'access-2'; }
+function rotatedRefresh(): string { return 'refresh-2'; }
+
+function fakeStore(initial: Record<string, StoredCredential | undefined> = {}): CredentialStore {
+  const values = new Map(Object.entries(initial));
+  return {
+    async read(deployment) { return values.get(deployment); },
+    async write(deployment, credential) { values.set(deployment, credential); },
+    async clear(deployment) { values.delete(deployment); },
+  };
+}
+
+function baseRemote(): RuntimeRemote {
+  return {
+    passwordLogin: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
+    me: async (token) => ({
+      user: { id: 'member-1' },
+      tenant: { id: token === 'tenant-2-access' ? 'tenant-2' : 'tenant-1' },
+      memberships: [{ tenant_id: 1 }, { tenant_id: 2 }],
+    }),
+    deploymentCapabilities: async () => CAPABILITIES,
+    oidcUrl: async () => ({ authorizationUrl: 'https://idp.example.test/authorize', state: 'state-1' }),
+    oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
+    oidcNativeExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
+    refresh: async () => ({ access_token: rotatedAccess(), refresh_token: rotatedRefresh() }),
+    switchTenant: async (input) => ({
+      credential: { token: `tenant-${input.tenantId}-access`, refreshToken: `refresh-${input.tenantId}` },
+      tenant: { id: `tenant-${input.tenantId}` },
+    }),
+  };
+}
+
+/** 按 token 区分租户事实的内存资源远端（跨租户隔离断言用）。 */
+function tenantResourceRemote(): ResourceRemote & { calls: Array<{ kind: string; token: string }> } {
+  const calls: Array<{ kind: string; token: string }> = [];
+  return {
+    calls,
+    async availableAgents(token) {
+      calls.push({ kind: 'agents', token });
+      return { rows: [{ id: `agent-${token}`, name: `Agent ${token}`, summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }], disabledOwnAgentIds: new Set<string>() };
+    },
+    async knowledgeBases(token) {
+      calls.push({ kind: 'knowledgeBases', token });
+      return [{ id: `kb-${token}`, title: `KB ${token}`, scan_status: 'indexed', document_count: 0, updated_at: '' }];
+    },
+    async connections(token) {
+      calls.push({ kind: 'connections', token });
+      return [];
+    },
+  };
+}
+
+test('an authorized runtime exposes a resource shelf bound to the active tenant', async () => {
+  const resource = tenantResourceRemote();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => baseRemote(),
+    clientVersion: 3,
+    resourceShelf: { remoteFor: () => resource },
+  });
+  assert.equal(runtime.resourceShelf(), undefined, 'no shelf before authorization');
+
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const handle = runtime.resourceShelf();
+  assert.ok(handle, 'an authorized scope must expose the shelf');
+  const page = await handle.browse();
+  assert.equal(page.tenantId, 'tenant-1');
+  assert.deepEqual(page.agents.map((agent) => agent.id), ['agent-access-1']);
+});
+
+test('switching tenants closes the old shelf and serves the new tenant only', async () => {
+  const resource = tenantResourceRemote();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => baseRemote(),
+    clientVersion: 3,
+    resourceShelf: { remoteFor: () => resource },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const first = runtime.resourceShelf()!;
+  const events: unknown[] = [];
+  first.subscribe((event) => events.push(event));
+
+  const snapshot = await runtime.activateTenant('2');
+
+  assert.equal(snapshot.identity?.activeTenantId, 'tenant-2');
+  await assert.rejects(first.browse(), /SHELF_SCOPE_CLOSED/);
+  assert.deepEqual(events, [{ type: 'scope-closed', reason: 'tenant-switch' }]);
+  const second = runtime.resourceShelf();
+  assert.ok(second);
+  assert.notEqual(second, first);
+  const page = await second.browse();
+  assert.equal(page.tenantId, 'tenant-2');
+  assert.deepEqual(page.agents.map((agent) => agent.id), ['agent-tenant-2-access'], 'the new page is rebuilt from the new tenant facts only');
+});
+
+test('sign-out and deployment changes close the shelf with their reasons', async () => {
+  const resource = tenantResourceRemote();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => baseRemote(),
+    clientVersion: 3,
+    resourceShelf: { remoteFor: () => resource },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const first = runtime.resourceShelf()!;
+  const firstEvents: unknown[] = [];
+  first.subscribe((event) => firstEvents.push(event));
+
+  await runtime.signOut();
+  assert.equal(runtime.resourceShelf(), undefined);
+  await assert.rejects(first.browse(), /SHELF_SCOPE_CLOSED/);
+  assert.deepEqual(firstEvents, [{ type: 'scope-closed', reason: 'sign-out' }]);
+
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const second = runtime.resourceShelf()!;
+  const secondEvents: unknown[] = [];
+  second.subscribe((event) => secondEvents.push(event));
+
+  await runtime.signIn({ deployment: OTHER, email: 'member@example.test', password: 'password' });
+
+  await assert.rejects(second.browse(), /SHELF_SCOPE_CLOSED/);
+  assert.deepEqual(secondEvents, [{ type: 'scope-closed', reason: 'deployment-change' }]);
+});
+
+test('browse retries once through the runtime refresh seam and persists the rotated credential', async () => {
+  const script: ResourceRemoteScript = {
+    agents: [{ id: 'builtin-quick-answer', name: 'Quick Answer', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }],
+  };
+  script.status = { agents: (token: string) => (token === 'access-1' ? 401 : undefined) };
+  const resource = createInMemoryResourceRemote(script);
+  const store = fakeStore();
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => baseRemote(),
+    clientVersion: 3,
+    resourceShelf: { remoteFor: () => resource },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const page = await runtime.resourceShelf()!.browse();
+
+  assert.deepEqual(page.agents.map((agent) => agent.id), ['builtin-quick-answer']);
+  assert.deepEqual(resource.calls.filter((call) => call.kind === 'agents').map((call) => call.token), ['access-1', 'access-2']);
+  assert.equal((await store.read(DEPLOYMENT.origin))?.token, 'access-2', 'the rotated credential must be persisted through the runtime single-flight');
+});
+
+test('a capability downgrade never opens a shelf', async () => {
+  const resource = tenantResourceRemote();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => baseRemote(),
+    clientVersion: 99,
+    resourceShelf: { remoteFor: () => resource },
+  });
+
+  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  assert.equal(snapshot.surface, 'upgrade-required');
+  assert.equal(runtime.resourceShelf(), undefined);
+  assert.equal(resource.calls.length, 0, 'no resource request may leave without an authorized scope');
+});

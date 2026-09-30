@@ -1,8 +1,10 @@
 import { clientGate, validateAuthReturn } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
-import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
-
-const scopeLeaseBrand = Symbol('ScopeLease');
+import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
+import { RuntimeScopeLease } from './scope-lease.ts';
+import { createResourceShelf } from '../shelf/resource-shelf.ts';
+import type { ResourceShelfHandle } from '../shelf/types.ts';
+import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
   if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
@@ -28,6 +30,30 @@ function tenantId(value: unknown): string | undefined {
   const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
   if (typeof id === 'string' && id.trim() !== '') return id;
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
+}
+
+function membershipTenantId(value: unknown): string | undefined {
+  const id = typeof value === 'object' && value !== null ? (value as { tenant_id?: unknown }).tenant_id : undefined;
+  if (typeof id === 'string' && id.trim() !== '') return id.trim();
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
+}
+
+function membershipTenantName(value: unknown): string | undefined {
+  const name = typeof value === 'object' && value !== null ? (value as { tenant_name?: unknown }).tenant_name : undefined;
+  return typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined;
+}
+
+function tenantOptions(memberships: unknown, activeTenantId: string): { tenants: Array<{ id: string; name?: string }> } {
+  if (!Array.isArray(memberships)) return { tenants: [{ id: activeTenantId }] };
+  const tenants: Array<{ id: string; name?: string }> = [];
+  for (const membership of memberships) {
+    const id = membershipTenantId(membership);
+    if (!id || tenants.some((option) => option.id === id)) continue;
+    const name = membershipTenantName(membership);
+    tenants.push(name ? { id, name } : { id });
+  }
+  if (!tenants.some((option) => option.id === activeTenantId)) tenants.unshift({ id: activeTenantId });
+  return { tenants };
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -57,10 +83,10 @@ function serverOidcCallback(deployment: Deployment): string {
   return `${deployment.origin}/api/v1/auth/oidc/callback`;
 }
 
-class RuntimeScopeLease {
-  readonly [scopeLeaseBrand] = undefined;
-  #active = true;
-  revoke(): void { this.#active = false; }
+function unauthorizedStatus(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    (error as { name?: unknown }).name === 'ApiError' &&
+    (error as { status?: unknown }).status === 401;
 }
 
 export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
@@ -68,6 +94,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let activeDeployment: Deployment | undefined;
   let lease: ScopeLease | undefined;
   let revocableLease: RuntimeScopeLease | undefined;
+  let activeShelf: ResourceShelfHandle | undefined;
+  let activeCredential: StoredCredential | undefined;
   let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
   const claimedOidcCallbacks = new Set<string>();
   let deploymentMutation: Promise<void> = Promise.resolve();
@@ -82,16 +110,33 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     for (const listener of listeners) listener(state);
     return state;
   };
-  const revoke = (): void => { revocableLease?.revoke(); revocableLease = undefined; lease = undefined; };
-  const begin = (deployment: Deployment): number => {
+  let vaultTail: Promise<void> = Promise.resolve();
+  const queueVaultRevoke = (reason: VaultRevokeReason): void => {
+    const expired = revocableLease;
+    const vault = ports.scopedVault;
+    if (!expired || !vault) return;
+    const attempt = (): Promise<void> => vault.revoke(expired.asScopeLease(), reason);
+    const next = vaultTail.then(attempt, attempt);
+    vaultTail = next.then(() => {}, () => {});
+  };
+  const revoke = (vaultReason: VaultRevokeReason): void => {
+    queueVaultRevoke(vaultReason);
+    revocableLease?.revoke();
+    revocableLease = undefined;
+    lease = undefined;
+    activeShelf?.close(vaultReason);
+    activeShelf = undefined;
+    activeCredential = undefined;
+  };
+  const begin = (deployment: Deployment, vaultReason: VaultRevokeReason = 'deployment-change'): number => {
     epoch += 1;
-    revoke();
+    revoke(vaultReason);
     activeDeployment = deployment;
     return epoch;
   };
-  const reserve = (): number => {
+  const reserve = (vaultReason: VaultRevokeReason = 'deployment-change'): number => {
     epoch += 1;
-    revoke();
+    revoke(vaultReason);
     activeDeployment = undefined;
     return epoch;
   };
@@ -135,6 +180,34 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     refreshFlights.set(deployment.origin, { requestEpoch, promise });
     return promise;
   };
+  /** Shared authorized-send core: reads the active credential, guards scope at every step, and replays exactly once through a single-flight refresh on a pre-send 401. */
+  const sendWithCredential = async <R>(requestEpoch: number, deployment: Deployment, send: (token: string) => Promise<R>): Promise<R> => {
+    const credential = await ports.credentialStore.read(deployment.origin);
+    if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+    if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
+    try {
+      const response = await send(credential.token);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      return response;
+    } catch (error) {
+      if (!unauthorizedStatus(error)) throw error;
+      const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
+      if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      const retried = await send(refreshed.token);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      return retried;
+    }
+  };
+  const accessTokenFor = async (origin: string, options?: { refresh?: boolean }): Promise<string> => {
+    const deployment = activeDeployment;
+    if (!deployment || deployment.origin !== origin || state.surface !== 'authorized' || !activeCredential) throw new Error('SHELF_SCOPE');
+    if (!options?.refresh) return activeCredential.token;
+    const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
+    if (!refreshed) throw new Error('SHELF_AUTH');
+    activeCredential = refreshed;
+    return refreshed.token;
+  };
 
   const authenticate = async (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<RuntimeSnapshot> => {
     try {
@@ -160,22 +233,27 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
       await mutateDeployment(async () => { await ports.deploymentStore?.write(deployment); });
       if (!current(requestEpoch, deployment)) return state;
-      revocableLease = new RuntimeScopeLease();
-      lease = revocableLease as unknown as ScopeLease;
-      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId } });
+      revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
+      lease = revocableLease.asScopeLease();
+      activeCredential = verifiedCredential;
+      activeShelf = ports.resourceShelf
+        ? createResourceShelf({ remote: ports.resourceShelf.remoteFor(deployment.origin), accessTokenFor }).open({ lease })
+        : undefined;
+      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) } });
     } catch {
       return safe(requestEpoch, deployment, 'authentication-required');
     }
   };
   const signOut = async (): Promise<void> => {
     const deployment = activeDeployment;
-    reserve();
+    reserve('sign-out');
     publish({ surface: 'deployment-login', reason: 'authentication-required' });
     await Promise.all([
       deployment ? mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); }) : Promise.resolve(),
       ports.pendingOidcStore ? mutatePendingOidc(async () => { await ports.pendingOidcStore!.clearPending(); }) : Promise.resolve(),
       mutateDeployment(async () => { await ports.deploymentStore?.clear(); }),
     ]);
+    await vaultTail;
   };
 
   return {
@@ -199,15 +277,19 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     async signIn(input): Promise<RuntimeSnapshot> {
-      const deployment = normalizeDeployment(input.deployment);
-      const requestEpoch = begin(deployment);
       try {
-        const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
-        if (!current(requestEpoch, deployment)) return state;
-        if (!await persistCredential(requestEpoch, deployment, credential)) return state;
-        return await authenticate(requestEpoch, deployment, credential);
-      } catch {
-        return safe(requestEpoch, deployment, 'authentication-required');
+        const deployment = normalizeDeployment(input.deployment);
+        const requestEpoch = begin(deployment);
+        try {
+          const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
+          if (!current(requestEpoch, deployment)) return state;
+          if (!await persistCredential(requestEpoch, deployment, credential)) return state;
+          return await authenticate(requestEpoch, deployment, credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
       }
     },
     async beginOidc(input): Promise<void> {
@@ -275,11 +357,50 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         if (oidcCompletion === completion) oidcCompletion = undefined;
       }
     },
+    async authorizedRequest(input: RuntimeAuthorizedRequest): Promise<unknown> {
+      const deployment = activeDeployment;
+      const transport = deployment && state.surface === 'authorized' ? ports.authorizedTransport?.(deployment.origin) : undefined;
+      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      return await sendWithCredential(epoch, deployment, (token) => transport(input, token));
+    },
+    async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
+      const deployment = activeDeployment;
+      const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
+      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      const requestEpoch = epoch;
+      const guardedChunk = (chunk: string): void => {
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        onChunk(chunk);
+      };
+      await sendWithCredential(requestEpoch, deployment, (token) => transport(input, token, guardedChunk));
+    },
     scopeLease: () => lease,
+    resourceShelf: () => activeShelf,
     signOut,
+    async activateTenant(tenantId: string): Promise<RuntimeSnapshot> {
+      try {
+        if (typeof tenantId !== 'string' || tenantId.trim() === '') return state;
+        const deployment = activeDeployment;
+        if (!deployment || state.surface !== 'authorized') return state;
+        const requestEpoch = begin(deployment, 'tenant-switch');
+        try {
+          const credential = await ports.credentialStore.read(deployment.origin);
+          if (!current(requestEpoch, deployment)) return state;
+          if (!credential) return safe(requestEpoch, deployment, 'authentication-required');
+          const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken });
+          if (!current(requestEpoch, deployment)) return state;
+          if (!await persistCredential(requestEpoch, deployment, switched.credential)) return state;
+          return await authenticate(requestEpoch, deployment, switched.credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
+      }
+    },
     dispose(): void {
       epoch += 1;
-      revoke();
+      revoke('dispose');
       activeDeployment = undefined;
       listeners.clear();
     },

@@ -8,6 +8,10 @@ import type { DeploymentInput } from './types.ts';
 
 const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
 const FULL_CAPABILITIES = { protocol_minimum: 2, protocol_maximum: 3 };
+/** Fixture grants for the `.test` deployment; wire-shaped refresh responses are mapped from these. */
+const DEFAULT_GRANT: StoredCredential = { token: 'access-1', refreshToken: 'refresh-1' };
+const FRESH_GRANT: StoredCredential = { token: 'fresh-access', refreshToken: 'fresh-refresh' };
+const LATE_GRANT: StoredCredential = { token: 'late-access', refreshToken: 'late-refresh' };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -45,7 +49,8 @@ function remote(overrides: Partial<RuntimeRemote> = {}): RuntimeRemote {
     oidcUrl: async () => ({ authorizationUrl: 'https://idp.example.test/authorize', state: 'state-1' }),
     oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     oidcNativeExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
-    refresh: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1' }),
+    refresh: async () => ({ access_token: DEFAULT_GRANT.token, refresh_token: DEFAULT_GRANT.refreshToken }),
+    switchTenant: async (input) => ({ credential: { token: `tenant-${input.tenantId}-access`, refreshToken: `refresh-${input.tenantId}` }, tenant: { id: `tenant-${input.tenantId}` } }),
     ...overrides,
   };
 }
@@ -91,7 +96,7 @@ test('boot restores Task 2 credentials before identity and capabilities', async 
 
   assert.deepEqual(store.calls, [`read:${DEPLOYMENT.origin}`]);
   assert.deepEqual(order, ['me:stored-access', 'capabilities:stored-access']);
-  assert.deepEqual(runtime.snapshot(), { surface: 'authorized', deployment: DEPLOYMENT, identity: { userId: 'user-1', activeTenantId: 'tenant-1' } });
+  assert.deepEqual(runtime.snapshot(), { surface: 'authorized', deployment: DEPLOYMENT, identity: { userId: 'user-1', activeTenantId: 'tenant-1', tenants: [{ id: 'tenant-1' }] } });
 });
 
 test('boot restores the persisted deployment and verifies stored credentials before authorizing', async () => {
@@ -171,7 +176,7 @@ test('a delayed boot cannot override a later manual sign-in', async () => {
 
   assert.deepEqual(runtime.snapshot(), {
     surface: 'authorized', deployment: manual,
-    identity: { userId: manual.origin, activeTenantId: manual.origin },
+    identity: { userId: manual.origin, activeTenantId: manual.origin, tenants: [{ id: manual.origin }] },
   });
 });
 
@@ -389,7 +394,7 @@ test('concurrent OIDC completions share one refresh after identity rejects an ex
   const second = runtime.completeOidc('weknora://oidc?code=code-1&state=state-1');
   await refreshStarted.promise;
   assert.equal(refreshes, 1);
-  releaseRefresh.resolve({ access_token: 'fresh-access', refresh_token: 'fresh-refresh' });
+  releaseRefresh.resolve({ access_token: FRESH_GRANT.token, refresh_token: FRESH_GRANT.refreshToken });
   await Promise.all([first, second]);
 
   assert.equal(refreshes, 1);
@@ -408,7 +413,7 @@ test('a refresh that settles after sign-out cannot persist or authorize', async 
   const boot = runtime.boot(DEPLOYMENT);
   await refreshStarted.promise;
   await runtime.signOut();
-  releaseRefresh.resolve({ access_token: 'late-access', refresh_token: 'late-refresh' });
+  releaseRefresh.resolve({ access_token: LATE_GRANT.token, refresh_token: LATE_GRANT.refreshToken });
   await boot;
 
   assert.equal(await store.read(DEPLOYMENT.origin), undefined);
@@ -432,12 +437,12 @@ test('a refresh that settles after a deployment change cannot persist or authori
   const boot = runtime.boot(DEPLOYMENT);
   await refreshStarted.promise;
   await runtime.signIn({ deployment: other, email: 'member@example.test', password: 'password' });
-  releaseRefresh.resolve({ access_token: 'late-access', refresh_token: 'late-refresh' });
+  releaseRefresh.resolve({ access_token: LATE_GRANT.token, refresh_token: LATE_GRANT.refreshToken });
   await boot;
 
   assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'expired-access', refreshToken: 'refresh-1' });
   assert.deepEqual(runtime.snapshot(), {
-    surface: 'authorized', deployment: other, identity: { userId: 'other-user', activeTenantId: 'other-tenant' },
+    surface: 'authorized', deployment: other, identity: { userId: 'other-user', activeTenantId: 'other-tenant', tenants: [{ id: 'other-tenant' }] },
   });
 });
 
@@ -534,4 +539,234 @@ test('OIDC consumes and rejects a callback outside its exact registered redirect
   assert.deepEqual(pending.calls, ['consume']);
   assert.equal(pending.value, undefined);
   assert.deepEqual(runtime.snapshot(), { surface: 'upgrade-required', deployment: { origin: DEPLOYMENT.origin, label: DEPLOYMENT.origin }, reason: 'authentication-required' });
+});
+
+test('activateTenant re-issues the credential, publishes the new active tenant, and revokes the prior lease', async () => {
+  const store = fakeStore();
+  const switches: Array<{ tenantId: string; refreshToken: string }> = [];
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    me: async (token) => ({ user: { id: 'user-1' }, tenant: { id: token === 'tenant-2-access' ? 'tenant-2' : 'tenant-1' } }),
+    switchTenant: async (input) => {
+      switches.push(input);
+      return { credential: { token: 'tenant-2-access', refreshToken: 'rotated-refresh' }, tenant: { id: 'tenant-2' } };
+    },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const priorLease = runtime.scopeLease();
+  assert.ok(priorLease);
+
+  const snapshot = await runtime.activateTenant('2');
+
+  assert.deepEqual(switches, [{ tenantId: '2', refreshToken: 'refresh-1' }]);
+  assert.equal(snapshot.identity?.activeTenantId, 'tenant-2');
+  assert.notEqual(runtime.scopeLease(), priorLease);
+  assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-2');
+  assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'tenant-2-access', refreshToken: 'rotated-refresh' });
+});
+
+test('the authorized snapshot lists tenant options parsed from memberships', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote({
+    me: async () => ({
+      user: { id: 'user-1' }, tenant: { id: 7 },
+      memberships: [{ tenant_id: 7, tenant_name: 'Acme', role: 'owner' }, { tenant_id: 9, tenant_name: 'Beta', role: 'viewer' }],
+    }),
+  })));
+  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.deepEqual(snapshot.identity, {
+    userId: 'user-1', activeTenantId: '7',
+    tenants: [{ id: '7', name: 'Acme' }, { id: '9', name: 'Beta' }],
+  });
+});
+
+test('a snapshot without memberships still exposes the active tenant as the sole option', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore()));
+  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.deepEqual(snapshot.identity, { userId: 'user-1', activeTenantId: 'tenant-1', tenants: [{ id: 'tenant-1' }] });
+});
+
+test('activateTenant without an authorized surface issues no switch request', async () => {
+  let switches = 0;
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote({
+    switchTenant: async () => { switches += 1; return { credential: { token: 'x', refreshToken: 'y' }, tenant: { id: 't' } }; },
+  })));
+  const before = runtime.snapshot();
+
+  const snapshot = await runtime.activateTenant('2');
+  await runtime.activateTenant('');
+  await runtime.activateTenant('   ');
+
+  assert.equal(switches, 0);
+  assert.equal(snapshot, before);
+});
+
+test('a rejected tenant switch fails closed without keeping the prior lease', async () => {
+  const store = fakeStore();
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    switchTenant: async () => { throw new Error('no membership'); },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const priorLease = runtime.scopeLease();
+  assert.ok(priorLease);
+
+  const snapshot = await runtime.activateTenant('404');
+
+  assert.deepEqual(snapshot, { surface: 'upgrade-required', deployment: DEPLOYMENT, reason: 'authentication-required' });
+  assert.notEqual(runtime.scopeLease(), priorLease);
+  assert.equal(runtime.scopeLease(), undefined);
+  assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'access-1', refreshToken: 'refresh-1' });
+});
+
+test('authorizedRequest rejects before any transport call when unauthorized', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await assert.rejects(runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' }), /RUNTIME_UNAUTHORIZED/);
+});
+
+test('authorizedRequest carries the credential and refreshes exactly once on a 401', async () => {
+  const sentTokens: Array<string | undefined> = [];
+  const rotatedCredential = { token: 'access-2', refreshToken: 'refresh-2' };
+  const store = fakeStore();
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => remote({
+      me: async (token) => ({ user: { id: 'user-1' }, tenant: { id: 'tenant-1' } }),
+      refresh: async () => ({ access_token: rotatedCredential.token, refresh_token: rotatedCredential.refreshToken }),
+    }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async (input, accessToken) => {
+      sentTokens.push(`${input.method} ${input.path} ${accessToken}`);
+      if (accessToken === 'access-1') {
+        const error = new Error('HTTP 401');
+        error.name = 'ApiError';
+        (error as unknown as { status?: number }).status = 401;
+        throw error;
+      }
+      return { success: true, data: { ok: true } };
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const response = await runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' });
+  assert.deepEqual(response, { success: true, data: { ok: true } });
+  assert.deepEqual(sentTokens, [
+    'GET /api/v1/workbench/overview access-1',
+    'GET /api/v1/workbench/overview access-2',
+  ]);
+});
+
+test('a late authorized response after a scope change is dropped', async () => {
+  const release = deferred<void>();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async () => {
+      await release.promise;
+      return { success: true, data: { stale: true } };
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' });
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+});
+
+test('a late tenant verification cannot override a completed later switch', async () => {
+  const store = fakeStore();
+  const meStarted = deferred<void>();
+  const releaseMe = deferred<{ user: { id: string }; tenant: { id: string } }>();
+  let meCalls = 0;
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    me: async (token) => {
+      meCalls += 1;
+      if (meCalls === 2) { meStarted.resolve(); return releaseMe.promise; }
+      const tenantId = token === 'tenant-2-access' ? 'tenant-2' : token === 'tenant-3-access' ? 'tenant-3' : 'tenant-1';
+      return { user: { id: 'user-1' }, tenant: { id: tenantId } };
+    },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const first = runtime.activateTenant('2');
+  await meStarted.promise;
+  const second = await runtime.activateTenant('3');
+  releaseMe.resolve({ user: { id: 'user-1' }, tenant: { id: 'tenant-2' } });
+  const firstSnapshot = await first;
+
+  assert.equal(second.identity?.activeTenantId, 'tenant-3');
+  assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-3');
+  assert.equal(firstSnapshot.identity?.activeTenantId, 'tenant-3');
+});
+
+test('authorizedEventStream rejects before any transport call when unauthorized', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await assert.rejects(runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, () => {}), /RUNTIME_UNAUTHORIZED/);
+});
+
+test('authorizedEventStream delivers chunks with the active token and refreshes exactly once on a pre-stream 401', async () => {
+  const sentTokens: string[] = [];
+  const chunks: string[] = [];
+  const rotated = { token: 'access-2', refreshToken: 'refresh-2' };
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote({ refresh: async () => ({ access_token: rotated.token, refresh_token: rotated.refreshToken }) }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, accessToken, onChunk) => {
+      sentTokens.push(accessToken);
+      if (accessToken === 'access-1') {
+        const error = new Error('HTTP 401');
+        error.name = 'ApiError';
+        (error as unknown as { status?: number }).status = 401;
+        throw error; // pre-stream 401：未产出任何 chunk
+      }
+      onChunk('id: 3\nevent: run.started\n');
+      onChunk('data: {}\n\n');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  assert.deepEqual(sentTokens, ['access-1', 'access-2']);
+  assert.equal(chunks.join(''), 'id: 3\nevent: run.started\ndata: {}\n\n');
+});
+
+test('a stream opened before a scope change is dropped, and its chunks never flush', async () => {
+  const release = deferred<void>();
+  const chunks: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, _accessToken, onChunk) => {
+      await release.promise;
+      onChunk('late frame');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+  assert.deepEqual(chunks, [], 'no late frame is delivered after the scope died');
+});
+
+test('a stream still open when the scope dies stops delivering chunks and settles with RUNTIME_SCOPE_CHANGED', async () => {
+  const streamOpened = deferred<void>();
+  const release = deferred<void>();
+  const chunks: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, _accessToken, onChunk) => {
+      streamOpened.resolve();
+      onChunk('id: 1\nevent: run.started\n\n');
+      await release.promise;
+      onChunk('late frame after scope death');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  await streamOpened.promise;
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+  assert.deepEqual(chunks, ['id: 1\nevent: run.started\n\n'], 'pre-death frames were delivered; the post-death frame never flushes');
 });

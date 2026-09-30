@@ -55,6 +55,32 @@ type ExecutionSnapshot struct {
 	Incomplete         bool             `json:"incomplete"`
 	ConfirmedWatermark int64            `json:"confirmed_watermark"`
 	Events             []ExecutionEvent `json:"events"`
+	// Task carries the task-level projection facts (T05) resolved at read
+	// time. Optional: deployments without the facts reader omit the section
+	// and the run section stays unchanged.
+	Task *TaskSnapshotFacts `json:"task,omitempty"`
+}
+
+// TaskSnapshotFacts mirrors repository.WorkbenchTaskFacts on the wire. Title
+// and ArchivedAt are omitempty; Attention is always emitted ("none"|"required").
+type TaskSnapshotFacts struct {
+	TaskID     string `json:"task_id"`
+	Title      string `json:"title,omitempty"`
+	Attention  string `json:"attention"`
+	ArchivedAt string `json:"archived_at,omitempty"`
+}
+
+func (f TaskSnapshotFacts) Validate() error {
+	if strings.TrimSpace(f.TaskID) == "" {
+		return invalid("task.task_id", "required")
+	}
+	if f.Attention != "none" && f.Attention != "required" {
+		return invalid("task.attention", `expected "none" or "required"`)
+	}
+	if f.ArchivedAt != "" && !iso8601.MatchString(f.ArchivedAt) {
+		return invalid("task.archived_at", "expected an ISO-8601 timestamp")
+	}
+	return nil
 }
 
 var iso8601 = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$`)

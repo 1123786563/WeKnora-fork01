@@ -7,6 +7,8 @@
  * - 扫描/索引状态文字+颜色双通道展示。
  */
 
+import type { AgentCapabilityState } from './agent-options.ts';
+
 export type KnowledgeScanStatus = 'pending' | 'scanning' | 'indexed' | 'failed';
 
 export interface KnowledgeResource {
@@ -17,16 +19,42 @@ export interface KnowledgeResource {
   updatedAt: string;
 }
 
+/** Connection 生命周期（internal/modules/appconnector/model.go:15-19：active/revoked/pending_reauthorization）。 */
+export type ConnectionLifecycleState = 'active' | 'revoked' | 'pending_reauthorization' | 'unknown';
+
 export interface ConnectionResource {
   id: string;
-  name: string;
+  kind: 'personal' | 'space';
+  state: ConnectionLifecycleState;
   connected: boolean;
+  capability: { state: AgentCapabilityState; reason: string };
 }
 
 export interface ResourceFavorites {
   /** 归一化 scope 键（origin/user/tenant，MX-011 normalize） */
   scopeKey: string;
   knowledgeIds: string[];
+}
+
+/** 连接能力三态裁决：无状态记录=unavailable（没有能力事实不得放行，不猜测）。 */
+export function connectionCapability(state: ConnectionLifecycleState): ConnectionResource['capability'] {
+  if (state === 'active') return { state: 'supported', reason: '' };
+  if (state === 'revoked') return { state: 'unavailable', reason: 'connection_revoked' };
+  if (state === 'pending_reauthorization') return { state: 'unavailable', reason: 'reauthorization_required' };
+  return { state: 'unavailable', reason: 'connection_state_not_reported' };
+}
+
+/** 服务端连接行 → 展示模型（只提升 id/kind/state 三个字段——wire 视图本无凭据字段，仍做结构性过滤双保险）。 */
+export function toConnectionResource(row: Record<string, unknown>): ConnectionResource {
+  const state: ConnectionLifecycleState =
+    row.state === 'active' || row.state === 'revoked' || row.state === 'pending_reauthorization' ? row.state : 'unknown';
+  return {
+    id: String(row.id ?? ''),
+    kind: row.kind === 'space' ? 'space' : 'personal',
+    state,
+    connected: state === 'active',
+    capability: connectionCapability(state),
+  };
 }
 
 /** 服务端知识行 → 展示模型（未知扫描状态按 pending 展示——不臆造 indexed）。 */

@@ -33,6 +33,12 @@ type WorkbenchSourceIngestor interface {
 	IngestSourceEvent(ctx context.Context, bindingID string, source repository.SourceObservation) (workbench.ExecutionEvent, error)
 }
 
+// OwnedTaskFactsReader resolves task-level facts for one owned run (T05).
+// Implementations bind every read to the authenticated tenant and owner.
+type OwnedTaskFactsReader interface {
+	ReadTaskFactsForRun(ctx context.Context, tenantID uint64, ownerID, runID string) (repository.WorkbenchTaskFacts, error)
+}
+
 // WorkbenchReadHandler is the ownership boundary for the mobile workbench.
 // Every operation resolves the run through GetOwnedRun before reading a
 // snapshot or event projection.
@@ -40,6 +46,7 @@ type WorkbenchReadHandler struct {
 	runs      OwnedRunReader
 	snapshots WorkbenchSnapshotReader
 	ingestor  WorkbenchSourceIngestor
+	taskFacts OwnedTaskFactsReader
 }
 
 const (
@@ -54,6 +61,14 @@ func NewWorkbenchReadHandler(runs OwnedRunReader, snapshots WorkbenchSnapshotRea
 		source = ingestor[0]
 	}
 	return &WorkbenchReadHandler{runs: runs, snapshots: snapshots, ingestor: source}
+}
+
+// WithTaskFacts attaches the task-facts reader used to enrich run snapshots
+// with the task layer (title/archive/attention). Nil facts keep the legacy
+// snapshot shape.
+func (h *WorkbenchReadHandler) WithTaskFacts(facts OwnedTaskFactsReader) *WorkbenchReadHandler {
+	h.taskFacts = facts
+	return h
 }
 
 type sourceEventRequest struct {
@@ -153,14 +168,27 @@ func (h *WorkbenchReadHandler) GetWorkbenchExecution(c *gin.Context) {
 }
 
 func (h *WorkbenchReadHandler) GetWorkbenchSnapshot(c *gin.Context) {
-	key, ok := h.owned(c)
+	run, ok := resolveOwnedRun(c, h.runs)
 	if !ok || h.snapshots == nil {
 		return
 	}
-	snapshot, err := h.snapshots.ReadRunSnapshot(c.Request.Context(), key)
+	snapshot, err := h.snapshots.ReadRunSnapshot(c.Request.Context(), run.Key)
 	if err != nil {
 		writeWorkbenchError(c, err)
 		return
+	}
+	if h.taskFacts != nil {
+		facts, factsErr := h.taskFacts.ReadTaskFactsForRun(c.Request.Context(), run.Key.TenantID, run.Owner, run.Key.RunID)
+		if factsErr != nil {
+			writeWorkbenchError(c, factsErr)
+			return
+		}
+		task := workbench.TaskSnapshotFacts{TaskID: facts.TaskID, Title: facts.Title, Attention: facts.Attention, ArchivedAt: facts.ArchivedAt}
+		if err := task.Validate(); err != nil {
+			writeWorkbenchError(c, err)
+			return
+		}
+		snapshot.Task = &task
 	}
 	writeWorkbenchJSON(c, snapshot)
 }

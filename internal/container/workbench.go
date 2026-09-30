@@ -21,8 +21,9 @@ func NewWorkbenchReadHandler(
 	runs *repository.AgentRunStore,
 	snapshots *repository.AgentRunSnapshotRepository,
 	ingestor *repository.ExecutionObservationStore,
+	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor)
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
 }
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
@@ -116,4 +117,11 @@ func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
 
 func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
 	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
+}
+
+// NewWorkbenchTaskStateHandler wires the task archive lifecycle to the same
+// ownership predicate the read model uses; tenant/owner always come from the
+// authenticated context.
+func NewWorkbenchTaskStateHandler(states *repository.WorkbenchTaskStateStore) *session.WorkbenchTaskStateHandler {
+	return session.NewWorkbenchTaskStateHandler(states)
 }

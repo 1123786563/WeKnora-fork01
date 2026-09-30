@@ -1,3 +1,7 @@
+import type { ScopedVault } from '../vault/scoped-vault.ts';
+import type { ResourceRemote } from '../shelf/ports.ts';
+import type { RuntimeAuthorizedRequest } from './types.ts';
+
 /** Exact credential fields returned by Task 2's `passwordLogin` adapter. */
 export interface StoredCredential {
   token: string;
@@ -20,12 +24,13 @@ export interface DeploymentStore {
 /** Structural subset of `createMobileRuntimeRemote`; mobile-core remains adapter-independent. */
 export interface RuntimeRemote {
   passwordLogin(input: { email: string; password: string }): Promise<StoredCredential>;
-  me(accessToken: string): Promise<{ user: { id: unknown }; tenant?: { id: unknown } | null }>;
+  me(accessToken: string): Promise<{ user: { id: unknown }; tenant?: { id: unknown } | null; memberships?: unknown[] }>;
   deploymentCapabilities(accessToken: string): Promise<unknown>;
   oidcUrl(redirectUri: string, frontendRedirectUri?: string, codeChallenge?: string): Promise<{ authorizationUrl: string; state: string }>;
   oidcExchange(code: string, state: string, codeVerifier?: string): Promise<StoredCredential>;
   oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<StoredCredential>;
   refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }>;
+  switchTenant(input: { tenantId: string; refreshToken: string }): Promise<{ credential: StoredCredential; tenant?: Record<string, unknown> | null }>;
 }
 
 /** Declared here for Task 4, which owns persistence and one-time callback consumption. */
@@ -35,6 +40,19 @@ export interface PendingOidcStore {
   consumePending(): Promise<PendingOidc | undefined>;
   clearPending(): Promise<void>;
 }
+
+/** Receives the access token; never exposes it upward. */
+export type AuthorizedTransport = (
+  input: { method: string; path: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal },
+  accessToken: string,
+) => Promise<unknown>;
+
+/** Authorized SSE read channel. Contract: a pre-stream 401 rejects (ApiError, status 401) with no chunks emitted; normal end resolves. */
+export type AuthorizedStreamTransport = (
+  input: RuntimeAuthorizedRequest,
+  accessToken: string,
+  onChunk: (chunk: string) => void,
+) => Promise<void>;
 
 export interface PendingOidc {
   deploymentOrigin: string;
@@ -62,6 +80,14 @@ export interface MobileRuntimePorts {
   pendingOidcStore?: PendingOidcStore;
   oidcBrowser?: OidcBrowserPort;
   lifecycle?: AppLifecyclePort;
+  /** Scoped Vault Module; the Runtime revokes its scopes on every scope change. Optional so T01-only compositions stay valid. */
+  scopedVault?: ScopedVault;
+  /** T03: Resource Shelf bindings. When present the Runtime opens one shelf per authorized scope and closes it on every scope change. */
+  resourceShelf?: { remoteFor(origin: string): ResourceRemote };
   /** Native platform entropy hook. Omit only where Web Crypto is available. */
   randomBytes?: (size: number) => Uint8Array;
+  /** Authorized channel for child modules (Task Office &c.); omitted = fail closed. */
+  authorizedTransport?: (deploymentOrigin: string) => AuthorizedTransport;
+  /** Authorized SSE channel for child modules; same token discipline as authorizedTransport. May return undefined when the platform has no streaming fetch (fail closed). */
+  authorizedStream?: (deploymentOrigin: string) => AuthorizedStreamTransport | undefined;
 }

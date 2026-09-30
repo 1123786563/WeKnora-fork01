@@ -202,3 +202,16 @@ func RegisterMobileDeviceRoutes(r *gin.RouterGroup, h *handler.MobileDeviceHandl
 	devices.PUT("/:id/presence", h.PutPresence)
 	devices.DELETE("/:id/presence", h.DeletePresence)
 }
+
+// RegisterWorkbenchTaskStateRoutes exposes the task archive lifecycle (T04).
+// Same Viewer/API-key boundary as the other workbench lanes; the handler
+// applies the tenant+owner ownership predicate. Archive is a write and is
+// deliberately NOT behind the W34 read gate.
+func RegisterWorkbenchTaskStateRoutes(r *gin.RouterGroup, h *session.WorkbenchTaskStateHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	tasks := g.apiKeyGroup(r.Group("/workbench/tasks", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	tasks.POST("/:task_id/archive", h.Archive)
+	tasks.DELETE("/:task_id/archive", h.Restore)
+}

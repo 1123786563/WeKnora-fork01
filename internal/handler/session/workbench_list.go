@@ -55,6 +55,7 @@ func (h *WorkbenchListHandler) ListWorkbenchExecutions(c *gin.Context) {
 	filter := repository.WorkbenchExecutionFilter{
 		Status:  strings.TrimSpace(c.Query("status")),
 		AgentID: strings.TrimSpace(c.Query("agent_id")),
+		Query:   c.Query("q"),
 		Cursor:  strings.TrimSpace(c.Query("cursor")),
 	}
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
@@ -64,6 +65,14 @@ func (h *WorkbenchListHandler) ListWorkbenchExecutions(c *gin.Context) {
 			return
 		}
 		filter.Limit = limit
+	}
+	if raw := strings.TrimSpace(c.Query("archived")); raw != "" {
+		archived, err := strconv.ParseBool(raw)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "archived must be a boolean"})
+			return
+		}
+		filter.ArchivedOnly = archived
 	}
 	page, err := h.lists.ListOwnedExecutions(c.Request.Context(), tenantID, ownerID, filter)
 	if errors.Is(err, repository.ErrWorkbenchCursor) {
