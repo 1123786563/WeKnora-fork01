@@ -1,6 +1,5 @@
-// CFT-S00-T004: the craft host shell composes the craft-local
-// tdesign-isomorphic primitives (td.tsx — the Drawer owns focus trap, Escape
-// and focus restore). These tests pin the craft composition layer:
+// CFT-S00-T004: the craft host shell composes direct TDesign primitives and
+// supplies the overlay focus contract. These tests pin the craft layer:
 //   1. CraftDrawer (Drawer wrapper) closes on Escape and restores focus
 //   2. a disabled/readonly action never fires its command
 //   3. the shell guards against page-level horizontal overflow (the class
@@ -28,7 +27,7 @@ Object.assign(globalThis, {
   ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
 });
 dom.window.HTMLElement.prototype.scrollTo = function (): void {};
-// td.tsx / craft.css import css; node:test short-circuits .css the same way
+// craft.css imports CSS; node:test short-circuits it the same way
 // packages/ui/src/index.test.tsx does (node module resolve hook).
 import * as nodeModule from 'node:module';
 const hooks = nodeModule as typeof nodeModule & {
@@ -71,22 +70,34 @@ test('CraftDrawer closes on Escape and restores the opener focus', async () => {
   let closed = 0;
   const root = await mount(
     <CraftDrawer open title="来源" onClose={() => { closed += 1; }}>
-      <p>sources body</p>
+      <button type="button">first source action</button>
+      <button type="button">last source action</button>
     </CraftDrawer>,
   );
-  assert.match(document.body.textContent ?? '', /sources body/);
+  assert.match(document.body.textContent ?? '', /first source action/);
   // The td Drawer's Escape is focus-scoped: the key only lands when the dialog
   // panel itself holds focus (the open effect focuses it; make it explicit).
-  const panel = document.querySelector('[role="dialog"]');
-  assert.ok(panel instanceof dom.window.HTMLElement, 'sheet panel rendered');
-  panel.focus();
+  const panel = document.querySelector('.wk-craft-drawer .t-drawer__content-wrapper');
+  assert.ok(panel instanceof dom.window.HTMLElement, 'TDesign drawer panel rendered');
+  assert.equal(panel.getAttribute('role'), 'dialog');
+  assert.equal(panel.getAttribute('aria-modal'), 'true');
+  assert.equal(panel.getAttribute('aria-label') ?? document.getElementById(panel.getAttribute('aria-labelledby') ?? '')?.textContent, '来源', 'drawer has the visible localized title as its accessible name');
+  assert.ok(panel.querySelector('button[aria-label="Close"]'), 'the overlay close control is a native button');
+  const last = [...panel.querySelectorAll('button')].at(-1);
+  assert.ok(last);
+  last.focus();
+  panel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(document.activeElement?.getAttribute('aria-label'), 'Close', 'Tab wraps within the drawer');
   await act(async () => {
-    document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    panel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
   assert.ok(closed >= 1, 'Escape must close the drawer');
   await act(async () => {
-    root.unmount();
+    panel.querySelector('button[aria-label="Close"]')?.click();
   });
+  assert.ok(closed >= 2, 'the native close button closes the drawer');
+  await act(async () => { root.unmount(); });
+  assert.equal(document.activeElement, trigger, 'closing returns focus to the opener');
 });
 
 test('a disabled action never fires its command', async () => {
@@ -101,9 +112,9 @@ test('a disabled action never fires its command', async () => {
   );
   const body = document.body.textContent ?? '';
   assert.match(body, /从此版本继续/);
-  const button = [...document.querySelectorAll('button')].find((b) => b.textContent === '从此版本继续');
-  assert.ok(button, 'action button rendered');
-  assert.equal(button.disabled, true, 'disabled action stays disabled');
+  const button = [...document.querySelectorAll('.t-button')].find((b) => b.textContent === '从此版本继续');
+  assert.ok(button, 'TDesign action control rendered');
+  assert.ok(button.classList.contains('t-is-disabled'), 'disabled action uses TDesign disabled state');
   assert.match(body, /有活动任务/, 'the disabled reason stays readable');
   button.click();
   assert.equal(fired, 0, 'a disabled button must not fire the command');

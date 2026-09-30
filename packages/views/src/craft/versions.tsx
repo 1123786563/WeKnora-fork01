@@ -5,7 +5,8 @@
 // conflated with restorable: the eligibility projection (domain rules)
 // disables restore with a readable reason while download stays available.
 import React, { useState } from 'react';
-import { Button, Dialog } from './td.tsx';
+import { Button, Dialog } from 'tdesign-react';
+import { useTDesignOverlayA11y } from './overlay-a11y.ts';
 import {
   restoreEligibility,
   type CraftVersionFact,
@@ -36,6 +37,8 @@ export interface CraftVersionsDrawerProps {
 export function CraftVersionsDrawer(props: CraftVersionsDrawerProps) {
   const [confirming, setConfirming] = useState<CraftVersionFact | null>(null);
   const zh = props.locale === 'zh';
+  const restoreTitle = zh ? '从此版本继续？' : 'Continue from this version?';
+  useTDesignOverlayA11y(confirming !== null, '.wk-craft-restore-dialog .t-dialog', restoreTitle);
 
   const eligibilityOf = (version: CraftVersionFact) =>
     restoreEligibility(props.selection, version.id, { canWrite: props.canWrite, hasActiveRun: props.hasActiveRun });
@@ -93,9 +96,13 @@ export function CraftVersionsDrawer(props: CraftVersionsDrawerProps) {
       </ul>
 
       <Dialog
-        open={confirming !== null}
-        title={zh ? '从此版本继续？' : 'Continue from this version?'}
+        visible={confirming !== null}
+        header={restoreTitle}
         onClose={() => setConfirming(null)}
+        closeOnEscKeydown
+        closeBtn={<button type="button" aria-label={zh ? '关闭' : 'Close'}>×</button>}
+        footer={false}
+        className="wk-craft-restore-dialog"
       >
         <p className="wk-craft-muted">
           {zh

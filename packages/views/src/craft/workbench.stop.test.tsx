@@ -140,8 +140,8 @@ async function mount(node: React.ReactNode) {
   return root;
 }
 
-function buttonByText(text: string): HTMLButtonElement | undefined {
-  return [...document.querySelectorAll('button')].find((b) => b.textContent === text) as HTMLButtonElement | undefined;
+function buttonByText(text: string): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>('.t-button')].find((b) => b.textContent === text);
 }
 
 test('stop button appears while a run is active and calls onStopRun once', async () => {
@@ -194,7 +194,7 @@ test("stopPhase='stopping' shows the busy label and disables the button", async 
   );
   const button = buttonByText('停止中…');
   assert.ok(button, 'the busy label 停止中… renders while stopping');
-  assert.equal(button.disabled, true, 'the stop button is disabled while stopping');
+  assert.ok(button.classList.contains('t-is-disabled'), 'the stop button uses TDesign disabled state while stopping');
   await act(async () => {
     button.click();
   });

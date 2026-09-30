@@ -42,7 +42,8 @@
     "dompurify": "3.4.11",
     "katex": "^0.16.25",
     "marked": "^17.0.5",
-    "mermaid": "11.15.0"
+    "mermaid": "11.15.0",
+    "tdesign-react": "1.18.3"
   },
   "peerDependencies": {
     "react": "^19.3.0"

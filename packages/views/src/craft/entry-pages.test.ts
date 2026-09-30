@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
-// craft entry pages import craft.css via td.tsx; short-circuit CSS the same way
+// craft entry pages import craft.css; short-circuit CSS the same way
 // packages/ui/src/index.test.tsx does.
 import * as nodeModule from 'node:module';
 const hooks = nodeModule as typeof nodeModule & {
@@ -52,11 +52,11 @@ function homeElement(over: Record<string, unknown> = {}) {
 
 test('an empty goal cannot submit: the create button renders disabled', () => {
   const markup = renderToStaticMarkup(homeElement());
-  const button = markup.match(/<button[^>]*data-testid="craft-create"[^>]*>/)?.[0]
-    ?? markup.match(/<button[^>]*>[^<]*<\/button>/g)?.find((b) => b.includes('craft-create'))
+  const button = markup.match(/<(?:button|div)[^>]*data-testid="craft-create"[^>]*>/)?.[0]
+    ?? markup.match(/<(?:button|div)[^>]*>[^<]*<\/\s*(?:button|div)>/g)?.find((b) => b.includes('craft-create'))
     ?? '';
   assert.ok(button.includes('craft-create'), 'create button present');
-  assert.match(button, /disabled/, 'empty goal keeps the create button disabled');
+  assert.match(button, /t-is-disabled/, 'empty goal uses TDesign disabled state');
 });
 
 test('closed kinds are disabled with a reason and the draft goal survives', () => {
@@ -83,7 +83,7 @@ test('templates only fill the form — no execute/authorize affordance', () => {
   assert.match(markup, /模板只填充目标与类型/);
   assert.match(markup, /填入创建器/);
   // closed kinds' use buttons disabled; the web ones enabled and inert
-  assert.match(markup, /disabled[^>]*title="kind_document_is_not_open_on_this_deployment"/);
+  assert.match(markup, /title="kind_document_is_not_open_on_this_deployment"[^>]*class="[^"]*t-is-disabled/);
   assert.doesNotMatch(markup, /立即生成|开始创作|一键授权|自动选择知识库/, 'no execute/authorize affordance (the subtitle is the disclaimer, not a button)');
   assert.equal(used, null, 'rendering never invokes onUse');
   assert.equal(CRAFT_STARTER_TEMPLATES.length >= 4, true);
