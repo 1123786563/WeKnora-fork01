@@ -148,10 +148,24 @@ test('breadcrumb shows 知识库 › kbName › 文档 and never the raw UUID', 
   assert.ok(html.includes('document-breadcrumb'), 'uses the Vue document-breadcrumb anatomy');
   assert.ok(html.includes('breadcrumb-link dropdown'), 'kbName crumb is a switcher dropdown');
   assert.ok(html.includes('breadcrumb-separator'), 'chevron separators present');
+  assert.match(html, /<a[^>]+href="\/platform\/knowledge-bases"[^>]*>知识库<\/a>/, 'knowledge-base list crumb retains native link behavior');
   // tdesign 平移：32px 行盒与 20px/600 字号由 documents.td.css 承载
   //（.document-title-row / .document-breadcrumb），模板不再携带 Tailwind。
   assert.ok(html.includes('document-title-row'), 'Vue title row anatomy');
   assert.ok(html.includes('document-breadcrumb'), 'Vue breadcrumb anatomy');
+});
+
+test('breadcrumb tabs are native anchors with aria-current on the active tab', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentsBreadcrumb, {
+    t, knowledgeBaseId: kbId, kbName: 'Parity KB Demo',
+    tabs: [
+      { key: 'documents', label: '文档', href: '/platform/knowledge/kb-1/documents', active: true },
+      { key: 'wiki', label: 'Wiki', href: '/platform/knowledge/kb-1/wiki' },
+    ],
+  }));
+  assert.match(html, /<a[^>]+href="\/platform\/knowledge\/kb-1\/documents"[^>]+aria-current="page"[^>]*>文档<\/a>/);
+  assert.match(html, /<a[^>]+href="\/platform\/knowledge\/kb-1\/wiki"[^>]*>Wiki<\/a>/);
+  assert.doesNotMatch(html, /role="link"/);
 });
 
 test('breadcrumb carries the info popover and settings gear like the FAQ page', () => {
