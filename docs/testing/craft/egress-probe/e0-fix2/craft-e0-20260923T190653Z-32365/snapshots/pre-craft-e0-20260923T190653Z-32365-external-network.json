@@ -1,0 +1,56 @@
+[
+  {
+    "Attachable": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Containers": {
+      "0c58e16cf2bf6d58b73de40e039177a675145b34c7d6cf6d24876c4cd42fc924": {
+        "EndpointID": "7dc2066d0d91a1a71aaaae20fd202f75679669c31dedacdbcd8960a42348fdd0",
+        "IPv4Address": "192.168.239.2/24",
+        "IPv6Address": "",
+        "MacAddress": "a6:cc:07:2a:73:3a",
+        "Name": "craft-e0-20260923T190653Z-32365-direct"
+      },
+      "69a2c2255647174c1ed4e9a35b2d07ffe8504f2a2f74997f652438dad1adea2b": {
+        "EndpointID": "9b378ef3a6c0e6d8aac444319829d464453bd4be8f1136d5055fcd8d68cf5bd8",
+        "IPv4Address": "192.168.239.3/24",
+        "IPv6Address": "",
+        "MacAddress": "de:cd:95:2e:f4:6a",
+        "Name": "craft-e0-20260923T190653Z-32365-adapter"
+      }
+    },
+    "Created": "2026-09-24T03:06:53.855569803+08:00",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Config": [
+        {
+          "Gateway": "192.168.239.1",
+          "Subnet": "192.168.239.0/24"
+        }
+      ],
+      "Driver": "default",
+      "Options": {}
+    },
+    "Id": "4eede75d1cbe5c8f41a815d8ca61246d25457f3e7d66a63195a13f4d24412774",
+    "Ingress": false,
+    "Internal": false,
+    "Labels": {},
+    "Name": "craft-e0-20260923T190653Z-32365-external",
+    "Options": {},
+    "Scope": "local",
+    "Status": {
+      "IPAM": {
+        "Subnets": {
+          "192.168.239.0/24": {
+            "DynamicIPsAvailable": 251,
+            "IPsInUse": 5
+          }
+        }
+      }
+    }
+  }
+]

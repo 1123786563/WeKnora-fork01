@@ -1240,9 +1240,9 @@ func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, tenantID uint64)
 				// ({"entitlements":[{"code":…,"name":…}]} — F-2' live-stack
 				// evidence); feature_code / nested feature.code are
 				// tolerated shapes, never assumed.
-				Code         string `json:"code"`
-				FeatureCode  string `json:"feature_code"`
-				Feature      *struct {
+				Code        string `json:"code"`
+				FeatureCode string `json:"feature_code"`
+				Feature     *struct {
 					Code string `json:"code"`
 				} `json:"feature"`
 			} `json:"entitlements"`

@@ -140,8 +140,8 @@ func TestUserUsageAggregations(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, exported, 2, "per-user totals; the foreign tenant and out-of-window rows are excluded")
 			require.Equal(t, "u1", exported[0].UserID)
-			require.Equal(t, int64(65), exported[0].InputTokens)      // 7 + 8 + 50
-			require.Equal(t, int64(35), exported[0].OutputTokens)    // 30 + 0 + 5
+			require.Equal(t, int64(65), exported[0].InputTokens)       // 7 + 8 + 50
+			require.Equal(t, int64(35), exported[0].OutputTokens)      // 30 + 0 + 5
 			require.Equal(t, int64(800), exported[0].CostMicrocredits) // 300 + 0 + 500
 			require.Empty(t, exported[0].WindowStart, "export rows carry no day dimension")
 			require.Empty(t, exported[0].Model, "export rows carry no model dimension")

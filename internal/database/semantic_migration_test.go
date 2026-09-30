@@ -20,7 +20,12 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, dirty := sqliteMigrationState(t, db)
-	latest := latestMigrationVersion(t, filepath.Join(root, "migrations/sqlite"))
+	// 全量 up 的终态等于 migrations/sqlite 目录中的最新迁移号：多 lane
+	// 合并持续追加迁移（semantic 三连 105-107、agent_versions 108、
+	// tenant_agent_marketplace 109，其后 craft/workbench/docker journal
+	// 等多族已入链），硬编码终态号会让本契约在每次新增迁移后误红
+	// （曾长期钉在 109 而对 T02 收编轮造成假失败）。
+	latest := latestSQLiteMigrationNumber(t, root)
 	require.Equal(t, latest, version)
 	require.False(t, dirty)
 	for _, table := range append(append(semanticControlTables, semanticPolicyTables...), semanticInvocationTables...) {
@@ -30,11 +35,9 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
-	// Return to version 106, immediately before semantic_model_invocations(107).
-	require.NoError(t, m.Migrate(106))
-	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 106, version)
-	require.False(t, dirty)
+	// 回滚到 semantic_model_invocations(107) 之下：从动态终态倒退到 106
+	// 需要回退 (latest-106) 步（终态为 109 的年代恰好等于 3 步）。
+	require.NoError(t, m.Steps(-(latest - 106)))
 	for _, table := range semanticInvocationTables {
 		require.False(t, sqliteTableExists(t, db, table), "down migration must remove %s", table)
 	}
@@ -52,25 +55,25 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	require.True(t, sqliteIndexExists(t, db, "idx_semantic_outbox_claim"))
 }
 
-func latestMigrationVersion(t *testing.T, dir string) int {
+// latestSQLiteMigrationNumber derives the expected full-up terminus from the
+// migrations/sqlite directory itself, so the contract stays true as lanes
+// keep appending numbered migrations.
+func latestSQLiteMigrationNumber(t *testing.T, repoRoot string) int {
 	t.Helper()
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(filepath.Join(repoRoot, "migrations", "sqlite"))
 	require.NoError(t, err)
 	latest := 0
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".up.sql") {
+		if entry.IsDir() || !strings.HasSuffix(name, ".up.sql") {
 			continue
 		}
-		versionText, _, ok := strings.Cut(name, "_")
-		if !ok {
-			continue
-		}
-		version, parseErr := strconv.Atoi(versionText)
-		require.NoError(t, parseErr)
-		if version > latest {
-			latest = version
+		number, err := strconv.Atoi(strings.SplitN(name, "_", 2)[0])
+		require.NoError(t, err, "migration file %s must start with its number", name)
+		if number > latest {
+			latest = number
 		}
 	}
+	require.Positive(t, latest, "migrations/sqlite must contain at least one up migration")
 	return latest
 }

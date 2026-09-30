@@ -26,6 +26,7 @@ func TestDelegationIdentitySameKeySamePayloadReplays(t *testing.T) {
 	task := craft.Task{
 		ToolCallID: "c1", Prompt: "build the report", RequestHash: "rh-ident",
 		Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 		Deadline: time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
 	}
 	first, err := store.PrepareTask(ctx, task)
@@ -55,6 +56,7 @@ func TestDelegationIdentitySameKeyDifferentPayloadConflicts(t *testing.T) {
 	task := craft.Task{
 		ToolCallID: "c1", Prompt: "original prompt", RequestHash: "rh-a",
 		Scope: craftTestScope(), Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 		Deadline: time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
 	}
 	_, err := store.PrepareTask(ctx, task)
@@ -81,6 +83,7 @@ func TestDelegationIdentitySurvivesProcessExit(t *testing.T) {
 	prepared, err := NewCraftStore(db).PrepareTask(ctx, craft.Task{
 		ToolCallID: "c1", Prompt: "two-turn report", RequestHash: "rh-restart",
 		Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 		Deadline: time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
 	})
 	require.NoError(t, err)

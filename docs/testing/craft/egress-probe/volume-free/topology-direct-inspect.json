@@ -1,0 +1,230 @@
+[
+    {
+        "Id": "7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245",
+        "Created": "2026-09-24T03:12:26.143104252Z",
+        "Path": "sleep",
+        "Args": [
+            "infinity"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 2884090,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-09-24T03:12:26.217457185Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "ResolvConfPath": "/var/lib/docker/containers/7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245/hostname",
+        "HostsPath": "/var/lib/docker/containers/7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245/hosts",
+        "LogPath": "/var/lib/docker/containers/7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245/7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245-json.log",
+        "Name": "/t19vf-20260924-direct",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {
+                    "max-file": "5",
+                    "max-size": "20m"
+                }
+            },
+            "NetworkMode": "t19vf-20260924-external",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": [
+                "ALL"
+            ],
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": [
+                "no-new-privileges"
+            ],
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 2089811968,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "Mounts": [
+                {
+                    "Type": "volume",
+                    "Source": "t19vf-20260924-direct-ledger",
+                    "Target": "/ledger"
+                }
+            ],
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [
+            {
+                "Type": "volume",
+                "Name": "t19vf-20260924-direct-ledger",
+                "Source": "/var/lib/docker/volumes/t19vf-20260924-direct-ledger/_data",
+                "Destination": "/ledger",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": true,
+                "Propagation": ""
+            }
+        ],
+        "Config": {
+            "Hostname": "7b94ef7f35c6",
+            "Domainname": "",
+            "User": "10001:10001",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "4096/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/home/craft",
+                "XDG_CONFIG_HOME=/home/craft/.config",
+                "XDG_DATA_HOME=/home/craft/.local/share"
+            ],
+            "Cmd": [
+                "infinity"
+            ],
+            "Image": "craft-e0-volume-free:task1",
+            "Volumes": null,
+            "WorkingDir": "/workspace/output",
+            "Entrypoint": [
+                "sleep"
+            ],
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "SandboxID": "c478c549d735f79089ff561099a9bfd4827045f561fe5522e5f7f67a7e0ff86c",
+            "SandboxKey": "/var/run/docker/netns/c478c549d735",
+            "Ports": {
+                "4096/tcp": null
+            },
+            "Networks": {
+                "t19vf-20260924-external": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "abd6d3f8db1d25b209dd9e8b6b8de4138f4b8bec80d3efe33a9dd1150650d02e",
+                    "EndpointID": "eb1e9f9f071b15355c7b55acc63f99ff09df6c04cccb4954b60edb7551d9a62c",
+                    "Gateway": "",
+                    "IPAddress": "192.168.239.2",
+                    "MacAddress": "82:98:0d:36:76:c8",
+                    "IPPrefixLen": 24,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "t19vf-20260924-direct",
+                        "7b94ef7f35c6"
+                    ]
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:e47f8158632f4f0caf58460b35f42be731b7c0eba28c3af369fe9002d72f6766",
+            "size": 859,
+            "platform": {
+                "architecture": "arm64",
+                "os": "linux"
+            }
+        }
+    }
+]

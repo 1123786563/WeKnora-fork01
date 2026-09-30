@@ -9,20 +9,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
-	maxBodyBytes   = 8 << 20
-	maxEventBytes  = 1 << 20
-	requestTimeout = 30 * time.Second
+	maxBodyBytes    = 8 << 20
+	maxEventBytes   = 1 << 20
+	requestTimeout  = 30 * time.Second
+	directoryHeader = "x-opencode-directory"
 )
 
 // Client implements the HTTP boundary exposed by the pinned OpenCode server.
 type Client struct {
-	base *url.URL
-	http *http.Client
+	base      *url.URL
+	http      *http.Client
+	directory string
 }
 
 func NewClient(baseURL string, h *http.Client) (*Client, error) {
@@ -38,19 +42,89 @@ func NewClient(baseURL string, h *http.Client) (*Client, error) {
 	}
 	copyClient := *h
 	originalRedirect := copyClient.CheckRedirect
-	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if !strings.EqualFold(req.URL.Host, base.Host) {
-			return errors.New("OpenCode redirect crossed host boundary")
+	baseCopy := *base
+	copyClient.CheckRedirect = directoryRedirectPolicy(&baseCopy, "", originalRedirect)
+	return &Client{base: &baseCopy, http: &copyClient}, nil
+}
+
+// WithDirectory returns an immutable client copy bound to a server-selected
+// canonical RunView directory. The value is routing context, not filesystem
+// isolation; callers must not derive it from model output or request input.
+func (c *Client) WithDirectory(directory string) (*Client, error) {
+	if c == nil || c.base == nil || c.http == nil {
+		return nil, errors.New("OpenCode client is not initialized")
+	}
+	if c.directory != "" {
+		return nil, errors.New("OpenCode client directory binding is immutable")
+	}
+	if err := validateDirectory(directory); err != nil {
+		return nil, err
+	}
+	bound := *c
+	bound.directory = directory
+	boundHTTP := *c.http
+	boundHTTP.CheckRedirect = directoryRedirectPolicy(c.base, directory, c.http.CheckRedirect)
+	bound.http = &boundHTTP
+	return &bound, nil
+}
+
+func validateDirectory(directory string) error {
+	if directory == "" || directory[0] != '/' || directory == "/" {
+		return errors.New("OpenCode directory must be a non-root absolute path")
+	}
+	if strings.ContainsAny(directory, "\\:;") {
+		return errors.New("OpenCode directory contains a forbidden character")
+	}
+	for _, char := range directory {
+		if unicode.IsControl(char) {
+			return errors.New("OpenCode directory contains a control character")
 		}
-		if originalRedirect != nil {
-			return originalRedirect(req, via)
+	}
+	if path.Clean(directory) != directory {
+		return errors.New("OpenCode directory must be canonical")
+	}
+	return nil
+}
+
+func directoryRedirectPolicy(base *url.URL, directory string, previous func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if !sameOrigin(req.URL, base) {
+			return errors.New("OpenCode redirect crossed origin boundary")
 		}
-		if len(via) >= 10 {
+		if previous != nil {
+			if err := previous(req, via); err != nil {
+				return err
+			}
+		} else if len(via) >= 10 {
 			return errors.New("stopped after 10 redirects")
+		}
+		// User-supplied CheckRedirect policies can mutate a redirect request. Check
+		// after invoking them so neither the origin nor the RunView binding can be
+		// changed before net/http sends the next request.
+		if !sameOrigin(req.URL, base) {
+			return errors.New("OpenCode redirect crossed origin boundary")
+		}
+		if directory != "" && req.Header.Get(directoryHeader) != directory {
+			return errors.New("OpenCode redirect lost directory binding")
+		}
+		if directory != "" {
+			query, err := url.ParseQuery(req.URL.RawQuery)
+			if err != nil {
+				return errors.New("OpenCode redirect has an invalid query")
+			}
+			// The pinned server gives ?directory= precedence over the header.
+			// Reject the key entirely (including encoded or duplicate forms) so
+			// a redirect cannot retarget an immutable bound client.
+			if _, ok := query["directory"]; ok {
+				return errors.New("OpenCode redirect attempted to override directory binding")
+			}
 		}
 		return nil
 	}
-	return &Client{base: base, http: &copyClient}, nil
+}
+
+func sameOrigin(left, right *url.URL) bool {
+	return left != nil && right != nil && strings.EqualFold(left.Scheme, right.Scheme) && strings.EqualFold(left.Host, right.Host)
 }
 
 func (c *Client) CreateSession(ctx context.Context) (string, error) {
@@ -224,7 +298,14 @@ func (c *Client) jsonRequest(ctx context.Context, method, path string, body any,
 }
 
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, method, c.base.Scheme+"://"+c.base.Host+path, body)
+	request, err := http.NewRequestWithContext(ctx, method, c.base.Scheme+"://"+c.base.Host+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if c.directory != "" {
+		request.Header.Set(directoryHeader, c.directory)
+	}
+	return request, nil
 }
 
 func responseError(response *http.Response, want int) error {

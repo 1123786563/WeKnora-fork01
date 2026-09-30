@@ -1,0 +1,7 @@
+T14 fix3 checkpoint hashes (SHA-256)
+Worktree HEAD: e2f335dc6d8c2a5166be00a8b282b1a02e7cdd9c
+Before source: a7f47443efbc9132b369b1a5e80848f7351a36d4878df425eb4ef22e28bfca3d  before/test_controller_integration.py
+After source: 9c95492af5f2f72c78c1f95f742a82aed5d1e03c3269561be97007586a3c0bf8  after-test_controller_integration.py
+Working source: 9c95492af5f2f72c78c1f95f742a82aed5d1e03c3269561be97007586a3c0bf8  deploy/craft/render-boundary/policy-helper/tests/test_controller_integration.py
+Task patch: db338477fa87fd25088524261bfff900426177977f878052623e5e9fd33deeb7  task.patch
+Task report: b2a7611e0a38b53ca1e4ec0b4c7b9529d49b53567c5703056677f4977937a643  docs/plans/2026-09-29-craft-107-t14-sockdiag-fix3-report.md

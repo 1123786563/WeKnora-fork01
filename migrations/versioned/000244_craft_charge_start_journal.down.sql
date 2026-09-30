@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_craft_charge_start_journal_state_updated_at;
+DROP TABLE IF EXISTS craft_charge_start_journal;

@@ -1,0 +1,10 @@
+UTC invocation context: macOS host using Docker/OrbStack Linux VM (Docker info: OSType=linux, Architecture=aarch64, Kernel=7.0.14-orbstack-00380-ga7e0a2dc9535, OperatingSystem=OrbStack).
+Image: alpine:3.22, immutable local ID sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 linux/arm64.
+Disposable command constraints: docker run --rm --network none --read-only --cap-drop ALL --entrypoint sh alpine:3.22; no mounts, ports or secret data.
+Command inside container: uname -a; ls -l /proc/net/*conntrack* /proc/net/stat/nf_conntrack 2>&1; grep -E 'nf_conntrack|nf_conntrack_ipv4' /proc/modules 2>/dev/null || true
+Output:
+Linux 1fdbf7090884 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug 7 03:48:40 UTC 2026 aarch64 Linux
+ls: /proc/net/*conntrack*: No such file or directory
+ls: /proc/net/stat/nf_conntrack: No such file or directory
+
+Exit 0. Post-check found no stopped/running alpine diagnostic container and no policy-helper container. This establishes only that these procfs paths are absent in a plain isolated container; it does not test NETLINK_NETFILTER/ctnetlink and does not prove the T14 namespace's precise interface availability.

@@ -1,0 +1,62 @@
+{
+  "checked_at_monotonic_ns": 4802847291,
+  "commands": {
+    "docker_info": {
+      "argv": [
+        "docker",
+        "info",
+        "--format",
+        "{{.ID}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "14b511b7-7c9b-4716-9e76-2eaec03f0cc6\n"
+    },
+    "helpers_by_policy": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "label=io.weknora.craft.policy-helper=true",
+        "--filter",
+        "label=io.weknora.craft.policy-id=t14_98eb7938bef8"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "helpers_by_renderer": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "label=io.weknora.craft.policy-helper=true",
+        "--filter",
+        "label=io.weknora.craft.renderer-id=6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "renderer_inspect": {
+      "argv": [
+        "docker",
+        "inspect",
+        "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff"
+      ],
+      "returncode": 1,
+      "stderr": "error: no such object: 6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff\n",
+      "stdout": "[]\n"
+    }
+  },
+  "docker_daemon_available": true,
+  "ephemeral_policy_helpers_absent": true,
+  "policy_id": "t14_98eb7938bef8",
+  "renderer_absent_after_teardown": true,
+  "renderer_id": "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+  "renderer_was_active_in_policy_record": true
+}

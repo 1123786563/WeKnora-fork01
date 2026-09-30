@@ -19,17 +19,22 @@
 //     wildcard files route (W03), the authorized sandbox terminal ticket,
 //     and the /auth/me identity used for the owner write gate.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { WeKnoraClient } from '@weknora/api-client';
+import type { CraftAccessMember, CraftBudgetExtensionAction, CraftGrantableAccessRole, CraftInputDecisionAction, CraftSubmitRunInput, WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
 import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
-import type { CraftCapabilitiesView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
+import type { CraftCapabilitiesView, CraftInputView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView, CraftWorkspaceView } from '@weknora/contracts';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createCraftWorkbenchController, type CraftEventFrame, type CraftEventTransport, type CraftSyncError } from '@weknora/core/craft/controller';
 import { authorizationHeader, type LegacyPlatformSession } from '../../platform/legacy-session.ts';
 import { CraftHome, capabilitiesFromView, type CraftAttachmentDraft, type CraftHomeCreateInput } from '@weknora/views/craft/home';
 import { CraftLibrary } from '@weknora/views/craft/library';
 import { CraftTemplates } from '@weknora/views/craft/templates';
-import { CraftWorkbench, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
+import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
+import { CraftAccess } from '@weknora/views/craft/access';
+import { CraftEditRequestPanel } from '@weknora/views/craft/workbench-edit';
+import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
+import { CraftInputExpandPanel } from '@weknora/views/craft/input-expand';
+import { CRAFT_USAGE_STRINGS_ZH, CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
@@ -184,48 +189,44 @@ export function CraftRoutes(props: CraftRoutesProps) {
     [authedFetch, route, apiBaseUrl],
   );
 
-  // C01 sources panel: resolve one durable craftkb:// ref through the
-  // EXISTING knowledge permission chain on every click (never cached, never
-  // pre-signed): the documents list of the owning library answers 403/404
-  // through the same ACL the build went through, and the resolved row
-  // becomes the panel notice. A revoked share fails HERE, at click time.
-  const openKnowledgeSource = useCallback(
-    async (citationId: string, ref: string): Promise<string | null> => {
-      const match = /^craftkb:\/\/kb\/([^/]+)\/knowledge\/([^/]+)\//.exec(ref);
-      if (match === null) return '无法解析来源引用 ' + ref;
-      const kbId = match[1] ?? '';
-      const knowledgeId = match[2] ?? '';
-      const page = await client.knowledgeBases.documents.list(kbId, {});
-      const row = page.data.find((item) => item.id === knowledgeId);
-      if (row === undefined) return '引用 ' + citationId + ' 的来源已不可见（无权限或已删除）';
-      return '已解析来源：' + (row.title ?? row.file_name ?? knowledgeId) + '（在所属知识库查看全文）';
-    },
-    [client],
-  );
-
 
   // Identity for the owner write gate (the terminal entry is owner-scoped).
   const [meId, setMeId] = useState<string | null>(null);
+  const [identifiedSession, setIdentifiedSession] = useState<LegacyPlatformSession | null>(null);
   useEffect(() => {
     if (session.credential.kind === 'anonymous') {
       setMeId(null);
+      setIdentifiedSession(session);
       return;
     }
     let cancelled = false;
+    setIdentifiedSession(null);
     void client
       .request({ method: 'GET', path: '/api/v1/auth/me' })
       .then((value: unknown) => {
         if (cancelled) return;
         const row = value as { data?: { user?: { id?: unknown } } };
         setMeId(typeof row?.data?.user?.id === 'string' ? row.data.user.id : null);
+        setIdentifiedSession(session);
       })
       .catch(() => {
-        if (!cancelled) setMeId(null);
+        if (!cancelled) {
+          setMeId(null);
+          setIdentifiedSession(session);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [client, session]);
+  const currentMeId = identifiedSession === session ? meId : null;
+
+  const [accessState, setAccessState] = useState<{
+    sessionId: string;
+    status: 'loading' | 'ready' | 'error';
+    members: CraftAccessMember[];
+    error: string | null;
+  }>({ sessionId: '', status: 'loading', members: [], error: null });
 
   // --- Home data -------------------------------------------------------------
   const [homeList, setHomeList] = useState<{ status: 'loading' | 'error' | 'ready'; error: string | null; items: CraftSessionSummaryView[]; nextCursor: string | null; capabilities: CraftCapabilitiesView | null }>({
@@ -296,8 +297,117 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // --- Workbench data ----------------------------------------------------------
   const sessionId = route.name === 'workbench' ? route.sessionId : null;
-  const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean } | null>(null);
+  // C01/T10 (#127) sources panel opener — switched (T20/#139) to the TESTED
+  // HTTP seam: ONE fetch through GET /craft/runs/:run_id/sources/:citation_id/
+  // open passes BOTH doors (the current Task grant AND the caller's own
+  // knowledge ACL) and returns only the opaque durable ref. The former
+  // client-side craftkb:// parsing walked the viewer's knowledge ACL but
+  // never the TaskOpenSource gate. Nothing is cached or pre-signed; a denial
+  // (or a revoked share) fails HERE, at click time, and no URL/href is ever
+  // rendered — the panel's only currency stays the durable ref.
+  const openKnowledgeSource = useCallback(
+    async (citationId: string, _ref: string, runId: string | null): Promise<string | null> => {
+      if (sessionId === null || runId === null || runId === '') return '来源不可打开（当前无运行上下文）';
+      try {
+        const wire = await craftApi.openSource(sessionId, runId, citationId, scopeController.current().signal);
+        const ref = typeof (wire as { ref?: unknown } | null)?.ref === 'string' ? (wire as { ref: string }).ref : '';
+        return ref !== '' ? '来源已通过当前权限校验（引用可见）' : '服务器响应无效';
+      } catch {
+        // Denials carry no reason by design (T10); every click re-runs both
+        // doors, so a later grant succeeds on the next click.
+        return '引用 ' + citationId + ' 的来源已不可见（无权限或已删除）';
+      }
+    },
+    [craftApi, sessionId, scopeController],
+  );
+  const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean; activeRun: { id: string; status: string; waitReason: string } | null } | null>(null);
   const [versions, setVersions] = useState<{ status: 'loading' | 'ready' | 'error'; items: CraftVersionView[] }>({ status: 'loading', items: [] });
+  const [inputDecisionState, setInputDecisionState] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
+  // T20/T02 (#121): inputs the member associated with THIS Task in this
+  // workbench session — the archive-expansion entrance projects exactly
+  // these (the server re-validates association on every expand; a reconnect
+  // simply re-associates or re-expands through the same guarded endpoint).
+  const [associatedInputs, setAssociatedInputs] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
+  const pendingRequestIdRef = useRef<string | null>(null);
+  const pendingSubmitRef = useRef<{
+    sessionId: string;
+    attachmentIds: string[];
+    body: CraftSubmitRunInput;
+  } | null>(null);
+  const pendingInputDecisions = useRef(new Map<string, {
+    sessionId: string;
+    resolve(ref: string): void;
+    reject(error: Error): void;
+  }>());
+
+  const activeSessionId = useRef<string | null>(null);
+  activeSessionId.current = sessionId;
+
+  useEffect(() => {
+    setInputDecisionState({ sessionId: sessionId ?? '', inputs: [] });
+    setAssociatedInputs({ sessionId: sessionId ?? '', inputs: [] });
+    pendingRequestIdRef.current = null;
+    pendingSubmitRef.current = null;
+    return () => {
+      pendingRequestIdRef.current = null;
+      pendingSubmitRef.current = null;
+      if (sessionId === null) return;
+      for (const [key, pending] of pendingInputDecisions.current) {
+        if (pending.sessionId === sessionId) {
+          pendingInputDecisions.current.delete(key);
+          pending.reject(new Error('Task changed before the input decision was acknowledged.'));
+        }
+      }
+    };
+  }, [sessionId]);
+
+  const refreshAccess = useCallback(async (targetSessionId: string) => {
+    const members = await craftApi.accessMembers(targetSessionId, scopeController.current().signal);
+    if (activeSessionId.current === targetSessionId) {
+      setAccessState({ sessionId: targetSessionId, status: 'ready', members, error: null });
+    }
+  }, [craftApi, scopeController]);
+
+  useEffect(() => {
+    if (sessionId === null) {
+      setAccessState({ sessionId: '', status: 'loading', members: [], error: null });
+      return;
+    }
+    let cancelled = false;
+    setAccessState({ sessionId, status: 'loading', members: [], error: null });
+    void craftApi.accessMembers(sessionId, scopeController.current().signal)
+      .then((members) => {
+        if (!cancelled) setAccessState({ sessionId, status: 'ready', members, error: null });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      });
+    return () => { cancelled = true; };
+  }, [craftApi, sessionId, scopeController]);
+
+  const grantAccess = useCallback(async (userId: string, grantRole: CraftGrantableAccessRole) => {
+    if (sessionId === null) throw new Error('No active Craft Task');
+    await craftApi.grantAccess(sessionId, userId, grantRole, scopeController.current().signal);
+    try {
+      await refreshAccess(sessionId);
+    } catch (error) {
+      if (activeSessionId.current === sessionId) {
+        setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  }, [craftApi, sessionId, scopeController, refreshAccess]);
+
+  const revokeAccess = useCallback(async (userId: string) => {
+    if (sessionId === null) throw new Error('No active Craft Task');
+    await craftApi.revokeAccess(sessionId, userId, scopeController.current().signal);
+    try {
+      await refreshAccess(sessionId);
+    } catch (error) {
+      if (activeSessionId.current === sessionId) {
+        setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  }, [craftApi, sessionId, scopeController, refreshAccess]);
 
   const loadVersions = useCallback(async () => {
     if (sessionId === null) return;
@@ -344,6 +454,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
           snapshotVersionId: view.current_version === null ? null : view.current_version.id,
           updatedAt,
           resumed: view.active_run !== null,
+          activeRun: toActiveRun(view),
         });
         await loadVersions();
         await controller.load(sessionId);
@@ -359,7 +470,99 @@ export function CraftRoutes(props: CraftRoutesProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, craftApi, scopeController, controller, loadVersions, loadHomeList]);
 
-  const canWrite = workbenchInfo !== null && meId !== null && workbenchInfo.ownerId === meId;
+  const canWrite = workbenchInfo !== null && currentMeId !== null && workbenchInfo.ownerId === currentMeId;
+
+  // The CURRENT member's access row, derived once per (session, access
+  // view, identity): both the task-access entry and the edit-request entry
+  // consume this same source — one lookup, one matching key, no drift.
+  // undefined means the role is not (yet) confirmed for this view.
+  const currentMember = useMemo(() => {
+    if (currentMeId === null || accessState.sessionId !== sessionId || accessState.status !== 'ready') return undefined;
+    return accessState.members.find((member) => member.user_id === currentMeId);
+  }, [currentMeId, accessState, sessionId]);
+
+  // T20 (#139) budget-pause panel mount: when the workspace's active Run is
+  // durably parked on the budget wait, the pause view is fetched ONCE per
+  // run identity. Extension actors (owner/billing admin) get the server's
+  // extension-action projection; everyone else is refused server-side and the
+  // assembly keeps the contact-owner copy without any figures (the panel
+  // renders no limit/used, so nothing is fabricated).
+  const activeRun = workbenchInfo?.activeRun ?? null;
+  // The pause view's numbers exist ONLY when the server answered: a denied
+  // fetch (the T19 seam restricts the view to extension actors) degrades to
+  // the contact-owner notice WITHOUT fabricating limit/used — unknown stays
+  // unknown, never folded into zeros.
+  const [budgetPauseView, setBudgetPauseView] = useState<
+    | { runId: string; viewed: true; extensionAction: CraftBudgetExtensionAction | null; limit: number; used: number }
+    | { runId: string; viewed: false }
+  | null>(null);
+  const [budgetExtensionBusy, setBudgetExtensionBusy] = useState(false);
+  const budgetExtensionAction = budgetPauseView?.viewed ? budgetPauseView.extensionAction : null;
+  const budgetExtensionInFlightRef = useRef(false);
+  useEffect(() => {
+    setBudgetPauseView(null);
+    if (sessionId === null || activeRun === null || activeRun.waitReason !== 'budget_exhausted') return;
+    let cancelled = false;
+    const runId = activeRun.id;
+    void craftApi.budgetPause(sessionId, runId, scopeController.current().signal)
+      .then((view) => {
+        if (!cancelled) setBudgetPauseView({ runId, viewed: true, extensionAction: view.extensionAction, limit: view.pause.limit, used: view.pause.used });
+      })
+      .catch(() => {
+        if (!cancelled) setBudgetPauseView({ runId, viewed: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, activeRun, craftApi, scopeController]);
+  // refreshWorkbench re-reads the authoritative workspace projection and
+  // merges the active-run facts into the mounted info (the same merge the
+  // initial load performs through the same toActiveRun projection — the
+  // initial load replaces the WHOLE info shape, this refresh merges only
+  // the active-run facts). Both run-state-changing callers reuse it: the
+  // admitted edit request (best-effort) and the budget extension.
+  // toActiveRun is the ONE workspace active-run projection every merge site
+  // uses — a field change is made exactly once.
+  const toActiveRun = (view: CraftWorkspaceView): { id: string; status: string; waitReason: string } | null =>
+    view.active_run === null
+      ? null
+      : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason };
+  const refreshWorkbench = useCallback(async (targetSessionId: string): Promise<void> => {
+    const view = await craftApi.get(targetSessionId, scopeController.current().signal);
+    if (activeSessionId.current !== targetSessionId) return;
+    setWorkbenchInfo((prev) => prev === null ? prev : {
+      ...prev,
+      resumed: view.active_run !== null,
+      activeRun: toActiveRun(view),
+    });
+  }, [craftApi, scopeController]);
+
+  // The server owns the pending action tuple. Reuse this projected action on
+  // retries; a remount fetches the same pending intent from the server again.
+  // A ref also closes the rapid double-click gap before React commits busy.
+  const requestBudgetExtension = useCallback(
+    async (runId: string, action: CraftBudgetExtensionAction): Promise<void> => {
+      if (sessionId === null || budgetExtensionInFlightRef.current) return;
+      budgetExtensionInFlightRef.current = true;
+      setBudgetExtensionBusy(true);
+      try {
+        await craftApi.extendBudget(sessionId, runId, action, scopeController.current().signal);
+        // The Run left the pause durably: reload the authoritative projection
+        // (workspace view drives the panel away) and the controller state.
+        try {
+          await refreshWorkbench(sessionId);
+        } catch {
+          // The controller reload below still reflects the resumed state; the
+          // panel stays until the next workspace refresh.
+        }
+        await controller.load(sessionId);
+      } finally {
+        budgetExtensionInFlightRef.current = false;
+        setBudgetExtensionBusy(false);
+      }
+    },
+    [sessionId, craftApi, scopeController, controller, refreshWorkbench],
+  );
 
   const issuePreview = useCallback(
     async (versionId: string) => craftApi.preview(sessionId ?? '', versionId, scopeController.current().signal),
@@ -426,7 +629,35 @@ export function CraftRoutes(props: CraftRoutesProps) {
   const pendingDecisions = useRef<CraftInteractionActionInput[]>([]);
   // CFT-S01-T008: the live submit intent's idempotency key. Null = no live
   // intent; minted on first send, reused across retries, cleared on success.
-  const pendingRequestIdRef = useRef<string | null>(null);
+  const decisionKey = (targetSessionId: string, ref: string) => `${targetSessionId}\u0000${ref}`;
+  const waitForInputDecision = useCallback((targetSessionId: string, input: CraftInputView): Promise<string> => {
+    if (activeSessionId.current !== targetSessionId) return Promise.reject(new Error('Task changed before the input decision was requested.'));
+    const key = decisionKey(targetSessionId, input.ref);
+    return new Promise<string>((resolve, reject) => {
+      pendingInputDecisions.current.set(key, { sessionId: targetSessionId, resolve, reject });
+      setInputDecisionState((prior) => ({
+        sessionId: targetSessionId,
+        inputs: prior.sessionId === targetSessionId && !prior.inputs.some((pending) => pending.ref === input.ref)
+          ? [...prior.inputs, input]
+          : prior.sessionId === targetSessionId ? prior.inputs : [input],
+      }));
+    });
+  }, []);
+
+  const decideInput = useCallback(async (ref: string, action: CraftInputDecisionAction): Promise<void> => {
+    if (sessionId === null || activeSessionId.current !== sessionId) throw new Error('Task changed before the input decision was recorded.');
+    const key = decisionKey(sessionId, ref);
+    const pending = pendingInputDecisions.current.get(key);
+    if (pending === undefined || pending.sessionId !== sessionId) throw new Error('This input decision is no longer active.');
+    const acknowledgement = await craftApi.decideInput(sessionId, ref, action, scopeController.current().signal);
+    if (activeSessionId.current !== sessionId || pendingInputDecisions.current.get(key) !== pending) {
+      throw new Error('Task changed before the input decision was acknowledged.');
+    }
+    pendingInputDecisions.current.delete(key);
+    if (acknowledgement.action === 'continue') pending.resolve(acknowledgement.ref);
+    else pending.reject(new Error('Run cancelled because an unrecognized input was not continued.'));
+  }, [craftApi, scopeController, sessionId]);
+
   const handleInteractionAction = useCallback((input: CraftInteractionActionInput) => {
     pendingDecisions.current = [...pendingDecisions.current, input];
     // Visible feedback without pretending the backend accepted it.
@@ -454,6 +685,23 @@ export function CraftRoutes(props: CraftRoutesProps) {
           // the run submission must reference — the raw attachment id is only
           // the upload's address, not the workspace input ref (W06 finding).
           const input = await craftApi.addInput(sessionId, { resource_ref: attachmentId, expected_sha256: digest }, scopeController.current().signal);
+          if (activeSessionId.current !== sessionId) throw new Error('Task changed while the attachment was being accepted.');
+          // T20/T02: track the accepted input so the archive-expansion
+          // entrance can offer the guarded server endpoint for it.
+          setAssociatedInputs((prior) => ({
+            sessionId,
+            inputs: prior.sessionId === sessionId && !prior.inputs.some((row) => row.ref === input.ref)
+              ? [...prior.inputs, input]
+              : prior.sessionId === sessionId ? prior.inputs : [input],
+          }));
+          if (input.recognition === null || !input.recognition.accepted) {
+            throw new Error('Craft input acceptance was not confirmed by the server.');
+          }
+          if (!input.recognition.understood) {
+            const decidedRef = await waitForInputDecision(sessionId, input);
+            if (activeSessionId.current !== sessionId) throw new Error('Task changed before the Run could be submitted.');
+            return decidedRef;
+          }
           return input.ref;
         }
         if (status === 'failed') throw new Error(`attachment processing failed: ${attachment.name}`);
@@ -461,7 +709,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
       }
       throw new Error(`attachment processing timed out: ${attachment.name}`);
     },
-    [sessionId, authedFetch, craftApi, scopeController],
+    [sessionId, authedFetch, craftApi, scopeController, waitForInputDecision],
   );
 
   const setAttachmentState = useCallback((id: string, state: HomeAttachment['state']) => {
@@ -472,6 +720,42 @@ export function CraftRoutes(props: CraftRoutesProps) {
     async (prompt: string): Promise<void> => {
       const current = attachments;
       if (sessionId === null) throw new Error('no active craft session');
+
+      const pendingSubmit = pendingSubmitRef.current;
+      if (pendingSubmit !== null) {
+        const attachmentsMatch = pendingSubmit.attachmentIds.length === current.length
+          && pendingSubmit.attachmentIds.every((id, index) => id === current[index]?.id);
+        if (pendingSubmit.sessionId !== sessionId) {
+          throw new Error('A previous Run outcome belongs to another Task. Start a new send in this Task.');
+        }
+        if (pendingRequestIdRef.current !== pendingSubmit.body.request_id) {
+          throw new Error('The previous Run outcome is unresolved. Refresh this Task before starting another send.');
+        }
+        if (prompt !== pendingSubmit.body.prompt || !attachmentsMatch) {
+          throw new Error('A previous Run outcome is unresolved. Retry the original prompt and attachments before changing them.');
+        }
+
+        // The server may already have admitted this Run. Replay the immutable
+        // wire body directly so retries cannot upload a second input ref.
+        const replay: CraftSubmitRunInput = {
+          request_id: pendingSubmit.body.request_id,
+          prompt: pendingSubmit.body.prompt,
+          input_refs: [...(pendingSubmit.body.input_refs ?? [])],
+          knowledge_scope: pendingSubmit.body.knowledge_scope,
+          base_version_id: pendingSubmit.body.base_version_id,
+        };
+        await craftApi.submit(sessionId, replay, scopeController.current().signal);
+        pendingRequestIdRef.current = null;
+        pendingSubmitRef.current = null;
+        setInputDecisionState({ sessionId, inputs: [] });
+        setAttachments([]);
+        setCreationScope(null);
+        setCreationPrompt(null);
+        await controller.load(sessionId);
+        return;
+      }
+
+      setInputDecisionState({ sessionId, inputs: [] });
       // CFT-S01-T008: the submit intent is frozen through the command bridge.
       // The requestId is minted ONCE per intent and survives lost responses —
       // a retry of the same composer draft reuses it, so the server replays
@@ -504,8 +788,25 @@ export function CraftRoutes(props: CraftRoutesProps) {
                 throw error;
               }
             },
-            submitDraft: (command, signal) =>
-              craftApi.submit(sessionId, command, signal ?? scopeController.current().signal),
+            submitDraft: (command, signal) => {
+              if (activeSessionId.current !== sessionId) throw new Error('Task changed before the Run could be submitted.');
+              const body: CraftSubmitRunInput = Object.freeze({
+                request_id: command.request_id,
+                prompt: command.prompt,
+                input_refs: Object.freeze([...command.input_refs]) as unknown as string[],
+                knowledge_scope: command.knowledge_scope,
+                base_version_id: command.base_version_id,
+              });
+              pendingSubmitRef.current = {
+                sessionId,
+                attachmentIds: Object.freeze(current.map((attachment) => attachment.id)) as unknown as string[],
+                body,
+              };
+              return craftApi.submit(sessionId, {
+                ...body,
+                input_refs: [...(body.input_refs ?? [])],
+              }, signal ?? scopeController.current().signal);
+            },
           },
         );
       } catch (error) {
@@ -514,13 +815,114 @@ export function CraftRoutes(props: CraftRoutesProps) {
         throw error;
       }
       pendingRequestIdRef.current = null;
+      pendingSubmitRef.current = null;
+      setInputDecisionState({ sessionId, inputs: [] });
       setAttachments([]);
       setCreationScope(null);
       setCreationPrompt(null);
       await controller.load(sessionId);
     },
-    [attachments, sessionId, uploadAndAssociate, craftApi, creationScope, scopeController, controller, setAttachmentState],
+    [attachments, sessionId, uploadAndAssociate, craftApi, creationScope, scopeController, controller, setAttachmentState, setInputDecisionState],
   );
+
+  const accessFeatures = useMemo(() => createCraftWorkbenchFeatures([
+    {
+      name: 'input-decision',
+      // Keep the gate visible while the mobile workbench is on its
+      // conversation tab; placing it in the aside could deadlock a send.
+      slot: 'header',
+      render: () => sessionId === null ? null : <CraftInputDecisionPanel
+        key={sessionId}
+        locale={locale}
+        inputs={inputDecisionState.sessionId === sessionId ? inputDecisionState.inputs : []}
+        onDecide={decideInput}
+      />,
+    },
+    {
+      // T20/T02 (#121): the archive-expansion entrance rides the guarded
+      // POST /craft/inputs/expand endpoint; members the server published
+      // join the tracked inputs (nested archives re-enter the same gate).
+      name: 'input-expand',
+      slot: 'header',
+      render: () => sessionId === null ? null : <CraftInputExpandPanel
+        key={sessionId + '-expand'}
+        locale={locale}
+        inputs={associatedInputs.sessionId === sessionId ? associatedInputs.inputs : []}
+        onExpand={(ref) => craftApi.expandInput(sessionId, ref, scopeController.current().signal).then((members) => {
+          setAssociatedInputs((prior) => prior.sessionId === sessionId
+            ? { sessionId, inputs: [...prior.inputs, ...members.filter((member) => !prior.inputs.some((row) => row.ref === member.ref))] }
+            : { sessionId, inputs: [...members] });
+          return members;
+        })}
+      />,
+    },
+    {
+      name: 'task-access',
+      slot: 'aside',
+      render: () => {
+        if (sessionId === null) return null;
+        if (accessState.sessionId !== sessionId || accessState.status === 'loading') {
+          return <p role="status">Loading Task access…</p>;
+        }
+        if (accessState.status === 'error') {
+          return <p role="alert">Task access unavailable: {accessState.error ?? 'Could not load access information.'}</p>;
+        }
+        if (currentMember === undefined) {
+          return <p role="status">Your Task role could not be confirmed. Access controls are unavailable.</p>;
+        }
+        return <CraftAccess
+          role={currentMember.role}
+          members={accessState.members}
+          onGrant={grantAccess}
+          onRevoke={revokeAccess}
+        />;
+      },
+    },
+    {
+      // T20/T09 (#135): the collaborator serialized-edit panel. canWrite is
+      // the SERVER-derived current role (owner or collaborator — the access
+      // view's member row, never a client guess); runActive mirrors the
+      // workspace's authoritative active-run projection; each request rides
+      // a fresh request_id through the raw-envelope submit seam and the
+      // panel holds the single fail-closed projection (writer lease
+      // conflict, unknown lease and the recorded initiator included).
+      name: 'edit-request',
+      slot: 'aside',
+      render: () => {
+        if (sessionId === null) return null;
+        // An unconfirmed role is NOT a read-only verdict: while the access
+        // view loads (or failed to load) the panel stays hidden instead of
+        // asserting "read-only member" about a possibly-writing member —
+        // the task-access entry keeps its dedicated loading/error wording.
+        if (currentMember === undefined) return null;
+        // owner OR collaborator — the TaskWrite grant. Deliberately NOT the
+        // component-scope canWrite (owner-only upload authority): this
+        // panel's seam is the server-derived serialized-edit grant.
+        const canRequestEdit = currentMember.role === 'owner' || currentMember.role === 'collaborator';
+        return <CraftEditRequestPanel
+          key={sessionId + '-edit'}
+          locale={locale}
+          canWrite={canRequestEdit}
+          runActive={activeRun !== null}
+          onRequestEdit={(prompt) => craftApi.submitEdit(sessionId, {
+            request_id: crypto.randomUUID(), prompt,
+          }, scopeController.current().signal).then((raw) => {
+            // The admitted run occupies the Task's single slot: refresh the
+            // authoritative projection (the serialization notice and the
+            // budget-pause wiring see it) and RELOAD the controller so the
+            // workbench subscribes to the new run's event stream. Only the
+            // budget extension performs this full pair on its own path;
+            // enrichedSend relies on controller.load alone (its event
+            // stream refreshes the run projection) (best-effort: the panel
+            // already answered from the submit envelope).
+            void refreshWorkbench(sessionId).catch(() => {});
+            void controller.load(sessionId).catch(() => {});
+            return raw;
+          })}
+        />;
+      },
+    },
+  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess, activeRun, refreshWorkbench, controller]);
 
   if (route.name === 'home') {
     return (
@@ -601,6 +1003,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
       ) : (
         <div>
         <CraftWorkbench
+          features={accessFeatures}
           locale={locale}
           sessionId={route.sessionId}
           title={workbenchInfo.title}
@@ -666,6 +1069,26 @@ export function CraftRoutes(props: CraftRoutesProps) {
           canDecide={canWrite}
           pollMs={5000}
         />
+        {budgetPauseView !== null ? (
+          budgetPauseView.viewed ? (
+            <CraftBudgetPauseNotice
+              pause={{ run_id: budgetPauseView.runId, reason: 'exhausted', limit: budgetPauseView.limit, used: budgetPauseView.used }}
+              canExtend={budgetExtensionAction !== null}
+              onRequestExtension={budgetExtensionAction !== null && !budgetExtensionBusy ? (runId) => {
+                void requestBudgetExtension(runId, budgetExtensionAction).catch((error: unknown) => {
+                  setSyncError(error instanceof Error ? error.message : String(error));
+                });
+              } : undefined}
+            />
+          ) : (
+            // Denied pause view: the same member-visible copy the panel
+            // uses, WITHOUT the numeric pause object — nothing fabricated.
+            <aside role="status" data-testid="craft-budget-pause">
+              <strong>{CRAFT_USAGE_STRINGS_ZH.pauseTitle}</strong>
+              <p>{CRAFT_USAGE_STRINGS_ZH.pauseContactOwner}</p>
+            </aside>
+          )
+        ) : null}
         </div>
       )}
     </div>

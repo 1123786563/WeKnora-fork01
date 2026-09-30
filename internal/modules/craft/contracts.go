@@ -34,6 +34,12 @@ var (
 	ErrBusy = errors.New("craft busy")
 	// ErrUnsupported reports a capability the current engine does not offer.
 	ErrUnsupported = errors.New("craft unsupported")
+	// ErrCorruptEvidence reports a server-side storage integrity failure on
+	// immutable evidence bytes (digest mismatch against the stored payload,
+	// undecodable pinned JSON). It is not a client-retryable conflict: the
+	// assembly boundary maps it to a 500-class response so integrity events
+	// stay distinguishable from real publication conflicts in monitoring.
+	ErrCorruptEvidence = errors.New("craft corrupt evidence")
 )
 
 // Scope is the server-derived execution identity: authenticated tenant and
@@ -58,6 +64,7 @@ type Workspace struct {
 type Input struct {
 	Ref, Name, SHA256, CitationID string
 	Bytes                         int64
+	Recognition                   *InputRecognition
 }
 
 // Task is the durable delegation request executed by the OpenCode runtime
@@ -65,11 +72,15 @@ type Input struct {
 type Task struct {
 	ID, ToolCallID, Prompt, PromptMessageID, RequestHash string
 	Scope
-	Fence        runtime.Fence
-	WorkspaceID  string
-	Inputs       []Input
-	SkillDigests []string
-	Deadline     time.Time
+	Fence runtime.Fence
+	// SnapshotDigest is the versioned identity of the final admitted Run
+	// snapshot, including repository-selected Workspace seed data.
+	SnapshotDigestVersion int
+	SnapshotDigest        string
+	WorkspaceID           string
+	Inputs                []Input
+	SkillDigests          []string
+	Deadline              time.Time
 }
 
 // Check is one verification performed on a produced artifact. Status is
@@ -89,6 +100,7 @@ type Version struct {
 	ID, WorkspaceID, RunID, Kind string
 	Files                        []File
 	Checks                       []Check
+	WebEvidence                  *WebCheckEvidence
 }
 
 // Observation is the OpenCode session state projected by Observe.

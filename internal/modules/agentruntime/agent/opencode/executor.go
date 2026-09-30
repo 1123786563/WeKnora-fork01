@@ -31,9 +31,9 @@ type emitFunc func(context.Context, craft.Task, string, json.RawMessage) error
 // It submits each delegation prompt exactly once, normalizes the live
 // sub-event stream, and settles the outcome only from a verified snapshot.
 type Executor struct {
-	client *Client
-	store  craft.Store
-	emit   emitFunc
+	resolver RunSessionResolver
+	store    craft.Store
+	emit     emitFunc
 }
 
 var _ craft.Executor = (*Executor)(nil)
@@ -43,7 +43,19 @@ var _ craft.Executor = (*Executor)(nil)
 func NewExecutor(client *Client, store craft.Store,
 	emit func(context.Context, craft.Task, string, json.RawMessage) error,
 ) craft.Executor {
-	return &Executor{client: client, store: store, emit: emit}
+	// Keep the historical constructor source-compatible for non-Craft callers,
+	// but a Task-level Client is not authority to select a Run session. Craft
+	// operations through this constructor therefore fail closed.
+	_ = client
+	return &Executor{store: store, emit: emit}
+}
+
+// NewRunBoundExecutor assembles the Craft executor with a resolver that
+// reloads the persisted RunView on every Execute, Observe, and Abort call.
+func NewRunBoundExecutor(store craft.Store, resolver RunSessionResolver,
+	emit func(context.Context, craft.Task, string, json.RawMessage) error,
+) craft.Executor {
+	return &Executor{resolver: resolver, store: store, emit: emit}
 }
 
 func validateExecutionTask(task craft.Task) error {
@@ -73,6 +85,7 @@ func (e *Executor) boundWorkspace(ctx context.Context, task craft.Task) (craft.W
 // executionRun carries the per-Execute mutable state.
 type executionRun struct {
 	task        craft.Task
+	client      *Client
 	sessionID   string
 	promptID    string
 	state       *subState
@@ -86,13 +99,16 @@ type executionRun struct {
 // across retries; a failed or lost POST is resolved by observing the
 // runtime instead of re-submitting.
 func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, error) {
-	if e.client == nil || e.store == nil {
-		return craft.Result{}, fmt.Errorf("%w: executor is missing its client or store", craft.ErrInvalidInput)
+	if e.store == nil {
+		return craft.Result{}, fmt.Errorf("%w: executor is missing its store", craft.ErrInvalidInput)
+	}
+	if e.resolver == nil {
+		return craft.Result{}, fmt.Errorf("%w: executor is missing its Run session resolver", craft.ErrUnsupported)
 	}
 	if err := validateExecutionTask(task); err != nil {
 		return craft.Result{}, err
 	}
-	workspace, err := e.boundWorkspace(ctx, task)
+	_, err := e.boundWorkspace(ctx, task)
 	if err != nil {
 		return craft.Result{}, err
 	}
@@ -107,7 +123,11 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 	if err != nil {
 		return craft.Result{}, err
 	}
-	run := &executionRun{task: prepared, sessionID: workspace.OpenCodeSessionID, promptID: prepared.PromptMessageID}
+	binding, err := e.resolveRunSession(ctx, prepared)
+	if err != nil {
+		return craft.Result{}, err
+	}
+	run := &executionRun{task: prepared, client: binding.Client, sessionID: binding.SessionID, promptID: prepared.PromptMessageID}
 	if run.promptID == "" {
 		return craft.Result{}, fmt.Errorf("%w: stored delegation has no prompt message id", craft.ErrInvalidInput)
 	}
@@ -115,11 +135,6 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 	if !messageIDReusableAt(run.promptID, time.Now()) {
 		return e.unresolved(run, nil, "persisted prompt message id %q is outside the current message id wrap window", run.promptID)
 	}
-	if run.sessionID == "" {
-		e.emitEvent(ctx, prepared, "workspace.unavailable", map[string]any{"workspace_id": task.WorkspaceID})
-		return e.finish(ctx, prepared, "failed", "workspace has no bound OpenCode session")
-	}
-
 	runCtx := ctx
 	cancel := context.CancelFunc(func() {})
 	deadline := prepared.Deadline
@@ -139,7 +154,7 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 	// unreadable runtime would be a blind retry (CFT-S02-T015), so the
 	// execution stays unknown and reconcilable instead.
 	alreadyAccepted := false
-	if pre, err := snapshotObservation(runCtx, e.client, run.sessionID, run.promptID); err == nil {
+	if pre, err := snapshotObservation(runCtx, run.client, run.sessionID, run.promptID); err == nil {
 		alreadyAccepted = pre.promptSeen
 	} else {
 		return e.unresolved(run, nil, "pre-flight snapshot failed, refusing to re-submit the prompt: %v", err)
@@ -151,7 +166,7 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 
 	// Subscribe before prompting so no sub-event of this round can be
 	// missed. A failed subscription never falls back to a blind prompt.
-	stream, subscribeErr := e.client.Events(runCtx)
+	stream, subscribeErr := run.client.Events(runCtx)
 	if stream != nil {
 		defer stream.Close()
 	}
@@ -159,7 +174,7 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 	if subscribeErr != nil {
 		promptErr = fmt.Errorf("event subscription failed: %w", subscribeErr)
 	} else if !alreadyAccepted {
-		promptErr = e.client.Prompt(runCtx, run.sessionID, run.promptID, prepared.Prompt)
+		promptErr = run.client.Prompt(runCtx, run.sessionID, run.promptID, prepared.Prompt)
 	}
 	if promptErr == nil {
 		run.startedSent = true
@@ -192,7 +207,7 @@ func (e *Executor) consume(ctx context.Context, stream io.ReadCloser, state *sub
 func (e *Executor) settle(ctx context.Context, run *executionRun, promptErr error) (craft.Result, error) {
 	verifyCtx, cancel := context.WithTimeout(ctx, snapshotVerifyBudget)
 	defer cancel()
-	snap, err := snapshotObservation(verifyCtx, e.client, run.sessionID, run.promptID)
+	snap, err := snapshotObservation(verifyCtx, run.client, run.sessionID, run.promptID)
 	if err != nil {
 		return e.unresolved(run, run.state, "snapshot verification failed: %v", err)
 	}
@@ -293,20 +308,24 @@ func (e *Executor) unresolved(run *executionRun, state *subState, format string,
 // the message list and the parts together. It never prompts, never
 // mutates state and never emits events.
 func (e *Executor) Observe(ctx context.Context, task craft.Task) (craft.Observation, error) {
-	if e.client == nil || e.store == nil {
-		return craft.Observation{}, fmt.Errorf("%w: executor is missing its client or store", craft.ErrInvalidInput)
+	if e.store == nil {
+		return craft.Observation{}, fmt.Errorf("%w: executor is missing its store", craft.ErrInvalidInput)
+	}
+	if e.resolver == nil {
+		return craft.Observation{}, fmt.Errorf("%w: executor is missing its Run session resolver", craft.ErrUnsupported)
 	}
 	if task.PromptMessageID == "" {
 		return craft.Observation{}, fmt.Errorf("%w: observe requires the persisted prompt message id", craft.ErrInvalidInput)
 	}
-	workspace, err := e.boundWorkspace(ctx, task)
+	_, err := e.boundWorkspace(ctx, task)
 	if err != nil {
 		return craft.Observation{}, err
 	}
-	if workspace.OpenCodeSessionID == "" {
-		return craft.Observation{}, fmt.Errorf("%w: workspace has no bound OpenCode session", craft.ErrUnsupported)
+	binding, err := e.resolveRunSession(ctx, task)
+	if err != nil {
+		return craft.Observation{}, err
 	}
-	snap, err := snapshotObservation(ctx, e.client, workspace.OpenCodeSessionID, task.PromptMessageID)
+	snap, err := snapshotObservation(ctx, binding.Client, binding.SessionID, task.PromptMessageID)
 	if err != nil {
 		return craft.Observation{}, err
 	}
@@ -317,17 +336,21 @@ func (e *Executor) Observe(ctx context.Context, task craft.Task) (craft.Observat
 // records the canceled outcome. An abort that raced a completed round is
 // left to the completed classification.
 func (e *Executor) Abort(ctx context.Context, task craft.Task) error {
-	if e.client == nil || e.store == nil {
-		return fmt.Errorf("%w: executor is missing its client or store", craft.ErrInvalidInput)
+	if e.store == nil {
+		return fmt.Errorf("%w: executor is missing its store", craft.ErrInvalidInput)
 	}
-	workspace, err := e.boundWorkspace(ctx, task)
+	if e.resolver == nil {
+		return fmt.Errorf("%w: executor is missing its Run session resolver", craft.ErrUnsupported)
+	}
+	_, err := e.boundWorkspace(ctx, task)
 	if err != nil {
 		return err
 	}
-	if workspace.OpenCodeSessionID == "" {
-		return fmt.Errorf("%w: workspace has no bound OpenCode session", craft.ErrUnsupported)
+	binding, err := e.resolveRunSession(ctx, task)
+	if err != nil {
+		return err
 	}
-	if err := e.client.Abort(ctx, workspace.OpenCodeSessionID); err != nil {
+	if err := binding.Client.Abort(ctx, binding.SessionID); err != nil {
 		return err
 	}
 	if task.PromptMessageID == "" {
@@ -335,7 +358,7 @@ func (e *Executor) Abort(ctx context.Context, task craft.Task) error {
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, snapshotVerifyBudget)
 	defer cancel()
-	snap, err := snapshotObservation(verifyCtx, e.client, workspace.OpenCodeSessionID, task.PromptMessageID)
+	snap, err := snapshotObservation(verifyCtx, binding.Client, binding.SessionID, task.PromptMessageID)
 	if err != nil || Completed(snap.obs) {
 		// The abort request was accepted; the outcome is settled by a
 		// later observe when the snapshot cannot confirm it yet.

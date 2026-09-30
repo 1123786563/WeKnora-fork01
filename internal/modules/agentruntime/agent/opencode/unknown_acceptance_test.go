@@ -40,12 +40,19 @@ func TestUnknownAcceptanceRemoteAcceptedReadTimeoutNoSecondPost(t *testing.T) {
 	if clientErr != nil {
 		t.Fatalf("NewClient: %v", clientErr)
 	}
-	executor := NewExecutor(timeoutClient, store, recorder.emit)
 
 	// One identity across every re-entry: same tool call, same payload hash
 	// AND the same deadline (the store's conflict rule compares them all).
 	deadline := time.Now().Add(20 * time.Second)
-	first := runExecute(executor, delegationTask(deadline))
+	firstTask := delegationTask(deadline)
+	boundClient, err := timeoutClient.WithDirectory("/workspace/unknown-acceptance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := NewRunBoundExecutor(store, &fakeRunResolver{bindings: map[string]RunSessionBinding{
+		firstTask.Fence.RunID: {Key: taskRunViewKey(firstTask), Client: boundClient, SessionID: f.sessionID, Directory: "/workspace/unknown-acceptance"},
+	}}, recorder.emit)
+	first := runExecute(executor, firstTask)
 	if !waitFor(t, func() bool { return f.promptCount() == 1 }) {
 		t.Fatal("the prompt was never submitted")
 	}

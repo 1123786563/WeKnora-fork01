@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -25,6 +28,12 @@ type CraftVersionStore struct {
 }
 
 var _ craft.VersionStore = (*CraftVersionStore)(nil)
+
+// The T07 evidence members ride on the same concrete store: a wired
+// assembly type-asserts the version store to craft.VersionEvidenceStore and
+// the promotion pins evidence in the same commit as the version.
+var _ craft.VersionEvidenceStore = (*CraftVersionStore)(nil)
+var _ craft.DraftFencedVersionStore = (*CraftVersionStore)(nil)
 
 // NewCraftVersionStore constructs the craft.VersionStore implementation
 // backed by the migrated business database.
@@ -65,6 +74,10 @@ func prepareCraftVersion(in craft.Version) (craft.Version, string, error) {
 	if in.WorkspaceID == "" || in.RunID == "" || in.Kind == "" {
 		return craft.Version{}, "", fmt.Errorf("%w: version requires workspace, run and kind", craft.ErrInvalidInput)
 	}
+	// Persist and return one canonical order so an identical retry compares
+	// equal to the sorted rows reconstructed by loadCraftVersion.
+	in.Files = append([]craft.File(nil), in.Files...)
+	sort.Slice(in.Files, func(i, j int) bool { return in.Files[i].Path < in.Files[j].Path })
 	digest, err := craft.ManifestDigest(in.Files)
 	if err != nil {
 		return craft.Version{}, "", err
@@ -168,6 +181,19 @@ func sameCraftVersion(a, b craft.Version) bool {
 // and answers it with the same id; a different publish under the same
 // identity is a conflict.
 func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in craft.Version) (craft.Version, error) {
+	return s.publish(ctx, scope, in, nil, nil)
+}
+
+func (s *CraftVersionStore) PublishWithDraftHead(ctx context.Context, scope craft.Scope, in craft.Version, expected craft.DraftHead, evidence *craft.VersionEvidence) (craft.Version, error) {
+	return s.publish(ctx, scope, in, evidence, &expected)
+}
+
+// publish is the shared transaction core of Publish and
+// PublishWithEvidence. evidence == nil pins no evidence member (the recorded
+// legacy shape); otherwise the evidence row lands in the SAME transaction as
+// the version row and its files, so a visible version always carries the
+// evidence it was promoted with.
+func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in craft.Version, evidence *craft.VersionEvidence, expectedHead *craft.DraftHead) (craft.Version, error) {
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return craft.Version{}, fmt.Errorf("%w: incomplete version scope", craft.ErrInvalidInput)
 	}
@@ -178,6 +204,30 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 	encoded, err := json.Marshal(in.Checks)
 	if err != nil {
 		return craft.Version{}, err
+	}
+	var evidenceRow craftVersionEvidenceRow
+	if evidence != nil {
+		if err := craft.ValidateVersionEvidence(*evidence); err != nil {
+			return craft.Version{}, err
+		}
+		if evidence.VersionID != in.ID || evidence.RunID != in.RunID {
+			return craft.Version{}, fmt.Errorf("%w: evidence binds version %s run %s, not the published version %s run %s",
+				craft.ErrInvalidInput, evidence.VersionID, evidence.RunID, in.ID, in.RunID)
+		}
+		// The canonical encoding and its digest come from the one domain
+		// function, so the stored bytes and the digest column can never
+		// disagree about what was pinned. (evidenceDigest, not digest: the
+		// outer digest is the version's manifest hash and stays in use
+		// below.)
+		raw, evidenceDigest, err := craft.EncodeVersionEvidence(*evidence)
+		if err != nil {
+			return craft.Version{}, err
+		}
+		evidenceRow = craftVersionEvidenceRow{
+			VersionID: in.ID, TenantID: scope.TenantID,
+			EvidenceJSON: string(raw), Digest: evidenceDigest,
+			AcquiredAt: evidence.AcquiredAt, PinnedAt: evidence.PinnedAt,
+		}
 	}
 	var out craft.Version
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -194,6 +244,32 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 		}
 		if ws.OwnerID != scope.UserID {
 			return fmt.Errorf("%w: workspace owned by %s", craft.ErrForbidden, ws.OwnerID)
+		}
+		if expectedHead != nil {
+			if expectedHead.WorkspaceID != in.WorkspaceID || expectedHead.State != craft.DraftHeadSelected || expectedHead.SourceRunID != in.RunID {
+				return fmt.Errorf("%w: invalid expected draft head for version %s", craft.ErrConflict, in.ID)
+			}
+			locked := tx.Model(&craftDraftHeadRow{}).
+				Where("workspace_id = ? AND tenant_id = ? AND revision = ? AND state = ? AND source_run_id = ? AND manifest_digest = ?",
+					in.WorkspaceID, scope.TenantID, expectedHead.Revision, string(craft.DraftHeadSelected), expectedHead.SourceRunID, expectedHead.ManifestDigest).
+				UpdateColumn("updated_at", gorm.Expr("updated_at"))
+			if locked.Error != nil {
+				return locked.Error
+			}
+			if locked.RowsAffected != 1 {
+				return fmt.Errorf("%w: workspace draft head changed before version publish", craft.ErrConflict)
+			}
+			var revision craftDraftRevisionRow
+			if err := tx.Where("workspace_id = ? AND tenant_id = ? AND revision = ? AND source_run_id = ? AND manifest_digest = ?",
+				in.WorkspaceID, scope.TenantID, expectedHead.Revision, expectedHead.SourceRunID, expectedHead.ManifestDigest).Take(&revision).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return fmt.Errorf("%w: immutable draft revision no longer matches promotion", craft.ErrConflict)
+				}
+				return err
+			}
+			if digest != expectedHead.ManifestDigest {
+				return fmt.Errorf("%w: published files do not match selected draft head manifest", craft.ErrConflict)
+			}
 		}
 
 		// created_at is written by the store, not the database default: the
@@ -222,6 +298,14 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 					return e
 				}
 			}
+			if evidence != nil {
+				// This transaction created the version row above, so its
+				// evidence member cannot pre-exist (the FK pins it to this
+				// version): a plain insert is the whole write.
+				if e := tx.Create(&evidenceRow).Error; e != nil {
+					return e
+				}
+			}
 			out = in
 			return nil
 		}
@@ -235,6 +319,18 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 		if !sameCraftVersion(stored, in) {
 			return fmt.Errorf("%w: version %s already published with different content", craft.ErrConflict, in.ID)
 		}
+		if evidence != nil {
+			// The version row pre-dates this call. It can only be without an
+			// evidence member when it was published by an earlier,
+			// evidence-less route (a pre-T07 deployment upgrade, or the
+			// evidence-less Publish paths still serving other collections):
+			// retro-pinning it would reconstruct history under a fresh
+			// PinnedAt, so the store refuses exactly like different content —
+			// only adoption of already-pinned identical evidence is allowed.
+			if e := adoptCraftVersionEvidence(tx, evidenceRow); e != nil {
+				return e
+			}
+		}
 		out = stored
 		return nil
 	})
@@ -242,6 +338,151 @@ func (s *CraftVersionStore) Publish(ctx context.Context, scope craft.Scope, in c
 		return craft.Version{}, err
 	}
 	return out, nil
+}
+
+// craftVersionEvidenceRow is the T07 (#131) immutable evidence member of one
+// version. Its production table is allocated by the central migration
+// owner; the JSON plus its integrity digest are the source of truth, exactly
+// like the Run's knowledge record row.
+type craftVersionEvidenceRow struct {
+	VersionID    string    `gorm:"column:version_id;primaryKey"`
+	TenantID     uint64    `gorm:"column:tenant_id;not null"`
+	EvidenceJSON string    `gorm:"column:evidence_json;type:text;not null"`
+	Digest       string    `gorm:"column:digest;type:char(64);not null"`
+	AcquiredAt   time.Time `gorm:"column:acquired_at;not null"`
+	PinnedAt     time.Time `gorm:"column:pinned_at;not null"`
+}
+
+func (craftVersionEvidenceRow) TableName() string { return "craft_version_evidence" }
+
+// sameCraftVersionEvidence reports evidence identity for replay adoption:
+// every frozen fact must match. PinnedAt is deliberately excluded — it is
+// the promotion's clock reading, not a fact of the observation, exactly as
+// the version row's created_at is excluded from sameCraftVersion — so a
+// replayed identical promotion adopts the stored evidence instead of
+// conflicting with its own timestamp.
+func sameCraftVersionEvidence(a, b craft.VersionEvidence) bool {
+	if a.VersionID != b.VersionID || a.RunID != b.RunID ||
+		a.RequestDigest != b.RequestDigest || a.PackageDigest != b.PackageDigest ||
+		!a.AcquiredAt.Equal(b.AcquiredAt) || a.Empty != b.Empty || a.Truncated != b.Truncated ||
+		len(a.Sources) != len(b.Sources) {
+		// AcquiredAt compares with Equal (monotonic clock/location-safe): a
+		// bare != on time.Time is Location-representation sensitive and one
+		// future writer forgetting .UTC() would break idempotent adoption
+		// with phantom conflicts.
+		return false
+	}
+	for i := range a.Sources {
+		if !sameKnowledgeSourceRecord(a.Sources[i], b.Sources[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameKnowledgeSourceRecord compares one recorded source with the SAME
+// location-representation safety the top-level AcquiredAt uses: KnowledgeSourceRecord
+// carries its own AcquiredAt time.Time, and a bare != compares clock
+// representation — one side serialized in a different offset decodes
+// "unequal" and turns an idempotent replay into a phantom conflict.
+func sameKnowledgeSourceRecord(a, b craft.KnowledgeSourceRecord) bool {
+	return a.ID == b.ID && a.Ref == b.Ref && a.Digest == b.Digest &&
+		a.TenantID == b.TenantID && a.ExcerptBytes == b.ExcerptBytes &&
+		a.AcquiredAt.Equal(b.AcquiredAt)
+}
+
+// adoptCraftVersionEvidence adopts the evidence already pinned to an
+// existing version row. A stored version WITHOUT an evidence member was
+// published by an earlier, evidence-less route (a pre-T07 deployment, or
+// the evidence-less Publish paths): retro-pinning it would reconstruct
+// history under a fresh PinnedAt, so it is refused like different content.
+// Identical frozen facts (PinnedAt excluded, exactly like the replay
+// adoption of the version row) adopt silently.
+func adoptCraftVersionEvidence(tx *gorm.DB, row craftVersionEvidenceRow) error {
+	var stored craftVersionEvidenceRow
+	if err := tx.Where("version_id = ?", row.VersionID).Take(&stored).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: version %s already published without evidence", craft.ErrConflict, row.VersionID)
+		}
+		return err
+	}
+	// Integrity parity with the read path: verify the stored bytes against
+	// their digest BEFORE adopting them, so a tampered row whose decoded
+	// facts happen to match the pinned replay cannot be silently adopted.
+	if sum := sha256.Sum256([]byte(stored.EvidenceJSON)); hex.EncodeToString(sum[:]) != stored.Digest {
+		return fmt.Errorf("%w: stored evidence for version %s fails its integrity digest", craft.ErrCorruptEvidence, row.VersionID)
+	}
+	var pinned craft.VersionEvidence
+	if err := json.Unmarshal([]byte(row.EvidenceJSON), &pinned); err != nil {
+		return err
+	}
+	var storedEvidence craft.VersionEvidence
+	if err := json.Unmarshal([]byte(stored.EvidenceJSON), &storedEvidence); err != nil {
+		return fmt.Errorf("%w: corrupt stored evidence for version %s: %v", craft.ErrCorruptEvidence, row.VersionID, err)
+	}
+	if !sameCraftVersionEvidence(storedEvidence, pinned) {
+		return fmt.Errorf("%w: version %s already pinned different evidence", craft.ErrConflict, row.VersionID)
+	}
+	return nil
+}
+
+// PublishWithEvidence is the T07 promotion write: one transaction publishes
+// the immutable version and pins ev as its evidence member. The evidence
+// must bind this exact version identity; the identical replay adopts the
+// stored rows and a different evidence under the same version id is a
+// conflict.
+func (s *CraftVersionStore) PublishWithEvidence(ctx context.Context, scope craft.Scope, v craft.Version, ev craft.VersionEvidence) (craft.Version, error) {
+	return s.publish(ctx, scope, v, &ev, nil)
+}
+
+// VersionEvidence returns the evidence pinned to one published version,
+// read strictly from the stored snapshot keyed by Version ID. The read
+// carries the same scope ACL as the version itself; a tampered row is
+// refused by its integrity digest; a version promoted without evidence
+// answers ErrNotFound — history is never reconstructed from the Workspace,
+// the current knowledge base or the Run's live record.
+func (s *CraftVersionStore) VersionEvidence(ctx context.Context, scope craft.Scope, versionID string) (craft.VersionEvidence, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || !craft.ValidVersionID(versionID) {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: incomplete version evidence request", craft.ErrInvalidInput)
+	}
+	var row craftVersionRow
+	err := s.db.WithContext(ctx).Where("id = ?", versionID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.VersionEvidence{}, craft.ErrNotFound
+	}
+	if err != nil {
+		return craft.VersionEvidence{}, err
+	}
+	if e := authorizeCraftVersion(s.db.WithContext(ctx), row, scope); e != nil {
+		return craft.VersionEvidence{}, e
+	}
+	var evidenceRow craftVersionEvidenceRow
+	err = s.db.WithContext(ctx).Where("version_id = ?", versionID).Take(&evidenceRow).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.VersionEvidence{}, craft.ErrNotFound
+	}
+	if err != nil {
+		return craft.VersionEvidence{}, err
+	}
+	// Integrity check: the digest column must be the SHA-256 of exactly the
+	// stored bytes — the byte-for-byte contract craft.EncodeVersionEvidence
+	// established at write time. Hashing the RAW stored bytes (never a
+	// decode-then-re-encode) keeps byte-level tampering detectable.
+	sum := sha256.Sum256([]byte(evidenceRow.EvidenceJSON))
+	if hex.EncodeToString(sum[:]) != evidenceRow.Digest {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrCorruptEvidence, versionID)
+	}
+	var ev craft.VersionEvidence
+	if err := json.Unmarshal([]byte(evidenceRow.EvidenceJSON), &ev); err != nil {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrCorruptEvidence, versionID, err)
+	}
+	if ev.VersionID != versionID {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence binds %s", craft.ErrConflict, versionID, ev.VersionID)
+	}
+	if err := craft.ValidateVersionEvidence(ev); err != nil {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrCorruptEvidence, versionID, err)
+	}
+	return ev, nil
 }
 
 // List returns the scope's workspace versions, newest first. A session

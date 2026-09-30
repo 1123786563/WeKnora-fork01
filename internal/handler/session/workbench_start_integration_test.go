@@ -141,6 +141,10 @@ func openWorkbenchHTTPDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.Exec("INSERT INTO tenants (id,name,business) VALUES (1,'t1','test')").Error)
 	require.NoError(t, db.Exec("INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES ('u1','u1','u1@test','x',1)").Error)
+	// Admissions are actor-fenced: AgentRunStore.Admit rejects any actor that
+	// is not an active member of the tenant. u1 must therefore be seeded as a
+	// tenant member, mirroring the production identity chain.
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").Error)
 	require.NoError(t, db.Exec("INSERT INTO sessions (id,tenant_id,title,user_id,engine_type) VALUES ('s1',1,'s1','u1','trpc')").Error)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return db

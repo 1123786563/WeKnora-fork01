@@ -8,23 +8,24 @@
 //
 // Phases (ONE test, run in order — the TestLagoBasePlanIntegration
 // single-test precedent):
-//  a. Full chain through the REAL adapter + BenefitsService: the monthly
-//     wallet is created with the priority-1 initial encoding — verified by
-//     a direct GET of the wallet on the pinned runtime.
-//  b. A top-up shaped wallet (#85's payment-confirmed object shape, created
-//     directly through the authority API: no period metadata, priority 2,
-//     +12-month expiry) joins the benefits snapshot as source=topup and the
-//     balance carries it.
-//  c. A FRESH tenant: an aging top-up (expiring BEFORE this month's end,
-//     priority 2) seeded first, then EnsureBenefits — the monthly wallet's
-//     creation initial must be the yielding class 3.
-//  d. The r1-review High counterexample ON THE REAL RUNTIME (spec L132's
-//     "runtime verification" gate): aging A(2) + monthly M(3) + fresh B(2)
-//     coexist; one rebalance_credits_order must PUT the priorities onto the
-//     true expiry order A=1 M=2 B=3; a second rebalance changes nothing.
-//     If the pinned v1.53 refuses the priority PUT (422/403 or unchanged),
-//     the test FAILS LOUDLY — per the plan's BLOCKED gate this point may
-//     never silently degrade.
+//
+//	a. Full chain through the REAL adapter + BenefitsService: the monthly
+//	   wallet is created with the priority-1 initial encoding — verified by
+//	   a direct GET of the wallet on the pinned runtime.
+//	b. A top-up shaped wallet (#85's payment-confirmed object shape, created
+//	   directly through the authority API: no period metadata, priority 2,
+//	   +12-month expiry) joins the benefits snapshot as source=topup and the
+//	   balance carries it.
+//	c. A FRESH tenant: an aging top-up (expiring BEFORE this month's end,
+//	   priority 2) seeded first, then EnsureBenefits — the monthly wallet's
+//	   creation initial must be the yielding class 3.
+//	d. The r1-review High counterexample ON THE REAL RUNTIME (spec L132's
+//	   "runtime verification" gate): aging A(2) + monthly M(3) + fresh B(2)
+//	   coexist; one rebalance_credits_order must PUT the priorities onto the
+//	   true expiry order A=1 M=2 B=3; a second rebalance changes nothing.
+//	   If the pinned v1.53 refuses the priority PUT (422/403 or unchanged),
+//	   the test FAILS LOUDLY — per the plan's BLOCKED gate this point may
+//	   never silently degrade.
 package commercialplatform
 
 import (

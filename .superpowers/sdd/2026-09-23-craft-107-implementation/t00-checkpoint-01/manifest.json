@@ -1,0 +1,72 @@
+{
+  "docs/plans/2026-09-23-craft-107-ownership.md": {
+    "sha256": "fefb5780bc1045ad325091180829d336131725ef409953850ea246c13ea4e131",
+    "size": 5201,
+    "tracked_at_base": false
+  },
+  "internal/container/craft_features.go": {
+    "sha256": "e4ebfb6891715ae4976af5565e3c8c7fb1838632f5ce9b4f1840b90b92f793d2",
+    "size": 624,
+    "tracked_at_base": false
+  },
+  "internal/handler/session/craft.go": {
+    "sha256": "025439f0b8c451e489c036a2818bc510994aaa5bc79b0ab0b3f9cdcea7acc48b",
+    "size": 24026,
+    "tracked_at_base": true
+  },
+  "internal/handler/session/craft_features.go": {
+    "sha256": "a19d55e6cc22eceef7169c523cb20e6c97ab4edf1b7bf1f4413f1181383cbeb0",
+    "size": 2138,
+    "tracked_at_base": false
+  },
+  "internal/handler/session/craft_features_test.go": {
+    "sha256": "fdb770edeeed5e79a0881ce6823328196b8aba8d7202ecd9215d89dfea7d10a4",
+    "size": 3115,
+    "tracked_at_base": false
+  },
+  "internal/modules/craft/contracts.go": {
+    "sha256": "e0b000d23c1560bac1f9253b0c1b23a902ddfd57d6dcc14342498cd367273d8e",
+    "size": 4743,
+    "tracked_at_base": true
+  },
+  "internal/modules/craft/web_contracts.go": {
+    "sha256": "f4e2669a65aa2c9dbc1b849557d26b68ffef627b31e33dc3ba29b98b862a18ea",
+    "size": 6461,
+    "tracked_at_base": false
+  },
+  "internal/modules/craft/web_contracts_test.go": {
+    "sha256": "36c3685117abf951782e0ac3f8e3c418e6d39bc7df25f5e9996e038b53b219e7",
+    "size": 2978,
+    "tracked_at_base": false
+  },
+  "packages/contracts/src/craft/index.ts": {
+    "sha256": "49413174c97cb9d670a14eece1f58fa588019db6aa5101f82fbd1c5bf4f8069c",
+    "size": 15659,
+    "tracked_at_base": true
+  },
+  "packages/contracts/src/craft/web-artifact.test.ts": {
+    "sha256": "e39a9dba4c6cb9862a241137bd06421930b1fb84eed03c0de78ecd809056f74a",
+    "size": 4113,
+    "tracked_at_base": false
+  },
+  "packages/contracts/src/craft/web-artifact.ts": {
+    "sha256": "5bf2ad85cdccb38eca8009ee0e73eecedd80a7b39469be7ae951f781a1750345",
+    "size": 6009,
+    "tracked_at_base": false
+  },
+  "packages/views/src/craft/workbench-features.tsx": {
+    "sha256": "c7ccd1b96fb6f672c38d9a02cc2ec1240a6b7a13355302d472e88491ea6b6898",
+    "size": 1339,
+    "tracked_at_base": false
+  },
+  "packages/views/src/craft/workbench.stop.test.tsx": {
+    "sha256": "7e3d8fcf5fa2d4ca76f0d7e8d94a3052f830183b1205f325cb87a82b70cf3852",
+    "size": 8923,
+    "tracked_at_base": true
+  },
+  "packages/views/src/craft/workbench.tsx": {
+    "sha256": "36a0514cc090faaec126185ed8354e72ccdc67b8e3630e2eab765653b9e9d3cf",
+    "size": 51998,
+    "tracked_at_base": true
+  }
+}

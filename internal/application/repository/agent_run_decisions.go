@@ -85,6 +85,12 @@ func (s *AgentRunStore) applyDecisionOnce(
 	}
 	var out agentruntime.Run
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockRunTransitionRow(tx, key); err != nil {
+			if errors.Is(err, agentruntime.ErrNotFound) {
+				return agentruntime.ErrNotFound
+			}
+			return err
+		}
 		var run agentRunRow
 		if err := runScope(tx, key).Take(&run).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -132,7 +138,17 @@ func (s *AgentRunStore) applyDecisionOnce(
 		if !errors.Is(priorErr, gorm.ErrRecordNotFound) {
 			return priorErr
 		}
+		if err := rejectUnresolvedCraftRunViewEffects(tx, key); err != nil {
+			return err
+		}
 		if run.Status != "waiting_user" || run.WaitReason != d.PendingID || run.Revision != d.ExpectedRevision {
+			return agentruntime.ErrConflict
+		}
+		unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
+		if err != nil {
+			return err
+		}
+		if unresolved {
 			return agentruntime.ErrConflict
 		}
 		var pending struct{ CallID, ArgsHash string }

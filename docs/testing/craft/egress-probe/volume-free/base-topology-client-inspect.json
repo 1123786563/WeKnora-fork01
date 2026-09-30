@@ -1,0 +1,227 @@
+[
+    {
+        "Id": "b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696",
+        "Created": "2026-09-24T03:03:07.439690609Z",
+        "Path": "sleep",
+        "Args": [
+            "infinity"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 2866429,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-09-24T03:03:07.530231084Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "ResolvConfPath": "/var/lib/docker/containers/b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696/hostname",
+        "HostsPath": "/var/lib/docker/containers/b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696/hosts",
+        "LogPath": "/var/lib/docker/containers/b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696/b8161be25816473d017284e22cf1f9b9af2b12b3eba2deeb9e11cf69d633e696-json.log",
+        "Name": "/t19base-20260924-client",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {
+                    "max-file": "5",
+                    "max-size": "20m"
+                }
+            },
+            "NetworkMode": "none",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 2089811968,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [
+            {
+                "Type": "volume",
+                "Name": "3e17cff158b2f8270259a807d15a22f0d48198b21950f38e13a2616e7a9579e6",
+                "Source": "/var/lib/docker/volumes/3e17cff158b2f8270259a807d15a22f0d48198b21950f38e13a2616e7a9579e6/_data",
+                "Destination": "/home/craft/.config/opencode",
+                "Driver": "local",
+                "Mode": "",
+                "RW": true,
+                "Propagation": ""
+            },
+            {
+                "Type": "volume",
+                "Name": "94e2809faac3f940bfe16dfdf228f5345912ee95422ab9f8a1996534d0a2ee95",
+                "Source": "/var/lib/docker/volumes/94e2809faac3f940bfe16dfdf228f5345912ee95422ab9f8a1996534d0a2ee95/_data",
+                "Destination": "/home/craft/.local/share/opencode",
+                "Driver": "local",
+                "Mode": "",
+                "RW": true,
+                "Propagation": ""
+            }
+        ],
+        "Config": {
+            "Hostname": "b8161be25816",
+            "Domainname": "",
+            "User": "10001:10001",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "4096/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/home/craft",
+                "XDG_CONFIG_HOME=/home/craft/.config",
+                "XDG_DATA_HOME=/home/craft/.local/share"
+            ],
+            "Cmd": [
+                "infinity"
+            ],
+            "Image": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+            "Volumes": {
+                "/home/craft/.config/opencode": {},
+                "/home/craft/.local/share/opencode": {}
+            },
+            "WorkingDir": "/workspace/output",
+            "Entrypoint": [
+                "sleep"
+            ],
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "SandboxID": "ee100d537b4076653f9f49a386b5ee7bebcce26c3669407d480e495baba14741",
+            "SandboxKey": "/var/run/docker/netns/ee100d537b40",
+            "Ports": {},
+            "Networks": {
+                "none": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb",
+                    "EndpointID": "8ea7e629fbccf287e23114830c5594c4011336356bdf8ed3ed33d868a747ff8b",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:bfd53feacedbf059783644c32a23d6a301e5d55bf0f58a5fb71b39ea93502d40",
+            "size": 2761,
+            "platform": {
+                "architecture": "arm64",
+                "os": "linux"
+            }
+        }
+    }
+]

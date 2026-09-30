@@ -1,0 +1,22 @@
+{
+  "cleanup": {
+    "errors": [],
+    "helper_ids_before_cleanup": [],
+    "helper_ids_removed": [],
+    "policy_cleanup_record": null,
+    "renderer_absent_confirmed": true,
+    "renderer_id": "b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c",
+    "renderer_inspect_returncode": 1,
+    "renderer_remove_returncode": 0,
+    "status": "verified-clean"
+  },
+  "completed_windows": [],
+  "container_id": "b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c",
+  "controller_records": [],
+  "error": "Command '['docker', 'exec', '--user', '10001:10001', 'b0caf9a4494b06a09ad62a6a0c86cf5aef04bb92412f42b8d9a4c61ce2d60b1c', 'python3', '-I', '-S', '-c', \"import os,stat,sys; p=sys.argv[1]; \\ntry: m=os.lstat(p)\\nexcept FileNotFoundError: print('T14_BARRIER_MISSING',file=sys.stderr); sys.exit(3)\\nif not stat.S_ISREG(m.st_mode) or m.st_size<=0 or m.st_size>16384: sys.exit('invalid receipt file type or size')\\nf=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK); s=os.fstat(f)\\nif not stat.S_ISREG(s.st_mode) or (m.st_dev,m.st_ino)!=(s.st_dev,s.st_ino) or s.st_size>16384: sys.exit('receipt changed during host read')\\nd=os.read(f,16385); os.close(f)\\nif not d or len(d)>16384 or len(d)!=s.st_size: sys.exit('receipt body exceeds bound or changed during read')\\nsys.stdout.buffer.write(d)\", '/out/barrier/v1/8515c649201aec2c5d11f2afe96f036ac162409bac612db9/001-diagnostic_complete-receipt.json']' timed out after 1 seconds",
+  "error_type": "TimeoutExpired",
+  "nonce": "8515c649201aec2c5d11f2afe96f036ac162409bac612db9",
+  "renderer_log_sha256": "86acb085e8e4fd8b181b8afaf706226cd2fc62b3993e22c85ea5a5188f96b330",
+  "renderer_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "status": "incomplete"
+}

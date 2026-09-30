@@ -45,6 +45,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
@@ -366,8 +367,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newSandboxManager))
 	// Per-tenant sandbox backends: the resolver builds a manager per request
 	// from the tenant's own configuration, falling back to the singleton above
-	// for tenants that configured nothing.
+	// for tenants that configured nothing. The binding store is one shared
+	// singleton for every writer and reader (resolver, preview no-egress
+	// checker, craft lifecycle) so Lite-mode memory bindings are visible
+	// across all of them.
 	must(container.Provide(service.NewTenantSandboxConfigLoader))
+	must(container.Provide(newSharedSessionSandboxBindingStore))
 	must(container.Provide(newTenantSandboxResolver))
 
 	// Business service layer
@@ -547,6 +552,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// is affected — craft_delegate only opens for tRPC sessions that already
 	// have a bound Craft workspace.
 	must(container.Provide(repository.NewCraftStore))
+	// R5 RunView material assembly is a separate, default-off capability. It
+	// exists for downstream H3 wiring, but no local workDir is ever used as a
+	// material source. Missing deployment pins leave Provider/ResolveMaterial
+	// nil and preserve the unavailable behavior.
+	must(container.Provide(provideCraftRunViewProductionAssembly))
+	// R4 Task3: the post-terminal draft-capture coordinator. It stays inert
+	// (receipts remain pending, admission stays fenced) unless the RunView
+	// production assembly is complete.
+	must(container.Provide(newCraftRunCaptureRunner))
+	// T08 Task ACL is one persistent service instance shared through its
+	// concrete API and the narrow craft.TaskAccessChecker port. Feature
+	// registration is owned by the router assembly that receives this registry.
+	must(container.Provide(service.NewCraftAccessService))
+	must(container.Provide(craftTaskAccessChecker))
+	must(container.Provide(craftTaskAccessNarrowPort))
+	must(container.Provide(session.NewCraftFeatureRoutes))
 	must(container.Provide(service.CraftActiveRunsQuery))
 	// W06 (coordinator-authorized): the executor assembly is env-driven —
 	// CRAFT_OPENCODE_BASE_URL assembles the real R01 Client -> R04 Executor
@@ -569,9 +590,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// uninstantiated: the executor above fails closed, which is the recorded
 	// assembly boundary (craft runtime deployment task).
 	must(container.Provide(repository.NewCraftVersionStore))
-	must(container.Provide(repository.NewCraftPreviewCheckStore))
+	// Dual registration: dig v1.19's As REPLACES the registered type with
+	// the interface (it does not register both), so the concrete constructor
+	// stays resolvable for the T14/T20 probe writer while the adapter below
+	// satisfies the frozen craft.PreviewCheckStore seam for consumers.
+	must(container.Provide(newCraftPreviewCheckStoreConcrete))
+	must(container.Provide(func(store *repository.CraftPreviewCheckStore) craft.PreviewCheckStore { return store }))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
+	must(container.Provide(newCraftDefaultVersionSelector))
 	// C05: the recovery snapshot service rides the same env-driven local
 	// runtime as the executor; without the craft dial it stays nil and the
 	// snapshot/restore routes never mount (fail-closed, like the executor).
@@ -579,7 +606,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// C01 production assembly (coordinator-assigned C06 integration item):
 	// the knowledge material build mounted with its REAL ACL ports. Without
 	// the craft runtime dial the provider answers nil — fail-closed, the
-	// same boundary the executor and snapshot service keep.
+	// same boundary the executor and snapshot service keep. T05 adds the
+	// durable record repository + current Task authority injection and the
+	// runtime/HTTP wiring (see craft_knowledge_wiring.go).
+	must(container.Provide(repository.NewCraftKnowledgeRecordRepository))
+	must(container.Provide(newCraftWebCitationGate))
 	must(container.Provide(newCraftKnowledgeService))
 	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
 	// service (guards, tombstone, sweep), the O01 usage ledger read side and
@@ -767,6 +798,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(validateCraftKnowledgeAssembly))
 	// O04: the usage view handler rides the craft session route table.
 	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// T20 (#139): the durable budget-pause surface (pause view + owner/
+	// billing-admin extension) rides the same craft session route table,
+	// gated by the persistent T08 Task checker.
+	must(container.Provide(newCraftBudgetPauseService))
+	must(container.Invoke(registerCraftBudgetPauseHTTPHandlers))
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
@@ -1178,8 +1214,33 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// O03 wiring: the craft tombstone at the session-deletion entrance (the
 	// Handler is fully constructible here — the router below resolves it).
+	must(container.Invoke(registerCraftAccessFeature))
+	must(container.Invoke(registerCraftInputFeature))
+	// T05 wiring: the per-Run knowledge package chain on the local craft
+	// runtime (H1 builder + H2 exact verifier + dispatch-time current-
+	// authority recheck) and the knowledge read-surface feature routes. Both
+	// run before router construction and fail application setup closed when
+	// a required port is missing.
+	must(container.Invoke(wireCraftKnowledgeRuntime))
+	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 	must(container.Invoke(wireTaskDeletionGuard))
+	// T11 (#128): the restricted-share consent surface (read/decision/
+	// revocation feature routes) over the shared version/file/record
+	// stores and the persistent TaskAccess checker.
+	must(container.Provide(newCraftShareService))
+	must(container.Invoke(registerCraftShareFeature))
+	// T12 (#132): the version-bound source-bundle export (describe +
+	// download feature routes) over the member-level version/evidence
+	// adapter, the shared file service and the persistent TaskAccess
+	// checker. T13 (#133): the download seam is CONSENT-GATED — the bundle
+	// projector is wrapped by the export-consent service below, so no
+	// restricted derived byte leaves without the current owner's bound
+	// approval; the consent read/decision feature rides beside it.
+	must(container.Provide(newCraftExportService))
+	must(container.Provide(newCraftExportConsentService))
+	must(container.Invoke(registerCraftExportFeature))
+	must(container.Invoke(registerCraftExportConsentFeature))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
@@ -2733,6 +2794,9 @@ func craftFeatureGateFromEnv() service.CraftFeatureGate {
 // newCraftSessionService assembles W03's craft session service from the
 // already-registered craft stores and the existing session, upload, file and
 // model services. New runs are admitted through the live agent run service.
+// T15 (#130): web sessions resolve their default preview seat through the
+// promotion-gated selector (newest version whose four independent checks
+// passed) — the run-bound collector carries the promotion assembly.
 func newCraftSessionService(
 	db *gorm.DB,
 	sessions interfaces.SessionService,
@@ -2741,31 +2805,92 @@ func newCraftSessionService(
 	documents interfaces.TemporaryDocumentService,
 	files interfaces.FileService,
 	models interfaces.ModelService,
+	access *service.CraftAccessService,
 	runtime *AgentRuntime,
+	defaultVersionSelector service.DefaultVersionSelector,
 ) (*service.CraftSessionService, error) {
 	runs := runtime.Runs
 	if runs == nil {
 		runs = service.RegisteredAgentRunService()
 	}
-	return service.NewCraftSessionService(service.CraftSessionConfig{
+	// T16 (#134): the concrete workspace store is the durable writer-lease
+	// store (same row space the lease CAS fences). The dig graph provides
+	// store as the concrete *repository.CraftStore behind the craft.Store
+	// interface, so a plain assertion wires the lease seam without a new
+	// Provide; a stub store (tests) leaves the seam off and StartRun keeps
+	// the pre-T16 behavior.
+	cfg := service.CraftSessionConfig{
 		DB: db, Sessions: sessions, Store: store, Versions: versions,
 		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
 		TemporaryDocs: documents, Files: files, Models: models,
-		Gate: craftFeatureGateFromEnv(),
-	})
+		Access: access, TaskList: access,
+		Gate: craftFeatureGateFromEnv(), DefaultVersionSelector: defaultVersionSelector,
+	}
+	if craftStore, ok := store.(*repository.CraftStore); ok {
+		cfg.WriterLeases = craftStore
+	}
+	return service.NewCraftSessionService(cfg)
+}
+
+// newCraftDefaultVersionSelector exposes the run-bound collector's
+// T15-gated default-seat selection as the session view's web selector. A
+// nil executor (craft dial not configured) keeps the legacy newest-version
+// projection: without a run-bound collector there are no four-check
+// versions to select anyway.
+func newCraftDefaultVersionSelector(executor craft.Executor) service.DefaultVersionSelector {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok || runtime == nil || runtime.runViewArtifacts == nil {
+		return nil
+	}
+	return runtime.runViewArtifacts.SelectDefaultVersion
+}
+
+// newCraftPreviewCheckStoreConcrete constructs the concrete preview-check
+// store. It is registered BOTH as its concrete type (the T14/T20 probe
+// writer resolves it for the T15 UpdateWebProbeCheck fact channel) and,
+// through a separate adapter provider, under the frozen
+// craft.PreviewCheckStore interface for existing interface consumers.
+func newCraftPreviewCheckStoreConcrete(db *gorm.DB) *repository.CraftPreviewCheckStore {
+	return repository.NewCraftPreviewCheckStoreConcrete(db)
 }
 
 // newCraftPreviewService assembles W02's preview service. Without a
 // configured isolated https preview origin the feature stays disabled:
 // issuance answers unavailable and the isolated origin 404s.
+//
+// T14 (#129) completion wiring: the service also receives the REAL Docker
+// network checker (bound-sandbox policy + live container inspection — a
+// stored config value alone cannot attest an old bridge container) and the
+// explicit browser-navigation protection gate. The gate is env-driven and
+// defaults OFF: a deployment enables previews only after the isolated
+// origin's no-egress posture is actually proven (the T14 live matrix).
+// Until then issuance stays fail-closed (ErrUnsupported) even with both
+// origins configured — the recorded default-off contract.
 func newCraftPreviewService(
 	versions craft.VersionStore,
 	files interfaces.FileService,
 	checks craft.PreviewCheckStore,
+	access *service.CraftAccessService,
+	loader sandbox.TenantSandboxConfigLoader,
+	bindings sandbox.SessionSandboxBindingStore,
 ) *service.CraftPreviewService {
+	// bindings is the process-wide shared singleton (resolver writes it,
+	// this checker reads it). nil keeps the checker zero-value = every
+	// issuance fails closed with "preview network policy is unavailable".
+	if bindings == nil {
+		logger.Warnf(context.Background(), "[CraftPreview] shared binding store unavailable; network checker stays zero-value (fail-closed)")
+	}
 	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
 		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
+		AccessChecker: access,
+		NetworkChecker: service.CraftPreviewDockerNetworkChecker{
+			Bindings:  bindings,
+			Loader:    loader,
+			Global:    sandbox.DefaultConfig(),
+			Inspector: service.CraftPreviewLocalDockerInspector{},
+		},
+		BrowserNavigationProtected: strings.EqualFold(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED")), "true"),
 	})
 }
 
@@ -2834,11 +2959,23 @@ func newUsageRecorderService(repo interfaces.UsageRepository) interfaces.UsageRe
 // resolves the workspace-relative paths the material manifest names. Without
 // the real runtime dial (CRAFT_OPENCODE_BASE_URL unset) the provider answers
 // a nil service — fail-closed, like the executor and snapshot service.
+//
+// T05 additionally injects the durable actual-source record store and the
+// current Task membership authority (T08 narrow port), so the HTTP read
+// surface (Sources/AuthorizeSourceOpen) and the dispatch-time
+// RevalidateForDispatch are reachable on this production service. The per-Run
+// atomic Publisher is deliberately NOT bound here: a package root exists only
+// inside one admitted RunView generation, so BuildForRun stays fail-closed on
+// this instance and production package building runs through
+// CraftKnowledgeRunViewBuilder (see wireCraftKnowledgeRuntime) — no competing
+// singleton publisher exists.
 func newCraftKnowledgeService(
 	store craft.Store,
 	knowledge interfaces.KnowledgeService,
 	knowledgeBases interfaces.KnowledgeBaseService,
 	executor craft.Executor,
+	taskAccess craft.TaskAccessChecker,
+	records *repository.CraftKnowledgeRecordRepository,
 ) (*service.CraftKnowledgeService, error) {
 	runtime, ok := executor.(*localCraftRuntime)
 	if !ok {
@@ -2865,7 +3002,160 @@ func newCraftKnowledgeService(
 		Access: service.BindCraftKnowledgeAccess(knowledge),
 		Search: service.BindCraftKnowledgeSearch(knowledgeBases),
 		Writer: writer,
+		// T05: durable per-Run actual-source records + current Task authority.
+		TaskAccess: taskAccess,
+		Records:    records,
 	})
+}
+
+type craftRunViewAdmittedRunReader interface {
+	Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error)
+}
+
+// CraftRunViewProductionAssembly is the server-owned RunView dependency set
+// offered to downstream Craft assembly. An unavailable assembly is a normal
+// default-off state; callers must treat nil Provider/ResolveMaterial as a
+// hard refusal and must never substitute the legacy local work directory.
+type CraftRunViewProductionAssembly struct {
+	Provider           *CraftRunViewContainerProvider
+	RuntimeCoordinator *CraftRunViewRuntimeCoordinator
+	Store              craft.RunViewStore
+	ResolveMaterial    func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
+	Close              func() error
+	Unavailable        string
+}
+
+const (
+	craftRunViewImageBinarySHA256 = "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e"
+)
+
+// craftRunViewProductionConfigFromEnv reads only explicit server deployment
+// pins. In particular, it does not infer an image digest from a local image
+// ID or from Docker's RepoDigests.
+func craftRunViewProductionConfigFromEnv() (CraftRunViewContainerProviderConfig, string, bool) {
+	config := CraftRunViewContainerProviderConfig{
+		SandboxRoot:          strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_SANDBOX_ROOT")),
+		ImageReference:       strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_IMAGE_REFERENCE")),
+		ImageDigest:          strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_IMAGE_DIGEST")),
+		OpenCodeBinarySHA256: craftRunViewImageBinarySHA256,
+		RuntimeConfigSHA256:  strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_RUNTIME_CONFIG_SHA256")),
+		OpenCodeVersion:      craftRunViewOpenCodeVersion,
+		ProjectID:            strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_PROJECT_ID")),
+	}
+	endpoint := strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_DOCKER_ENDPOINT"))
+	complete := config.SandboxRoot != "" && config.ImageReference != "" && config.ImageDigest != "" &&
+		config.RuntimeConfigSHA256 != "" && config.ProjectID != "" && endpoint != ""
+	return config, endpoint, complete
+}
+
+func provideCraftRunViewProductionAssembly(db *gorm.DB, runs *repository.AgentRunStore) *CraftRunViewProductionAssembly {
+	config, endpoint, complete := craftRunViewProductionConfigFromEnv()
+	if !complete {
+		return &CraftRunViewProductionAssembly{Unavailable: "RunView production pins are incomplete"}
+	}
+	engine, err := NewCraftRunViewDockerEngine(endpoint)
+	if err != nil {
+		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView Docker engine unavailable: %v", err)}
+	}
+	assembly, err := assembleCraftRunViewProduction(config, repository.NewCraftRunViewStore(db), repository.NewCraftRunViewEffectStore(db), runs, engine)
+	if err != nil {
+		_ = engine.Close()
+		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView provider unavailable: %v", err)}
+	}
+	assembly.Close = engine.Close
+	return assembly
+}
+
+// assembleCraftRunViewProduction is the testable constructor behind the
+// production DI provider. Its resolver verifies the current durable Run and
+// writer slot before the coordinator can allocate a generation or create a
+// container/session. The effect authority is mandatory: every mutating
+// provider send (Docker network create, container create/start/probe and the
+// OpenCode session create) is claimed through the durable RunView effect
+// store instead of the legacy composite EnsurePrivateNetwork path.
+func assembleCraftRunViewProduction(
+	config CraftRunViewContainerProviderConfig,
+	store craft.RunViewStore,
+	authority craft.RunViewEffectAuthority,
+	runs craftRunViewAdmittedRunReader,
+	engine CraftRunViewContainerEngine,
+) (*CraftRunViewProductionAssembly, error) {
+	return assembleCraftRunViewProductionWithAPI(config, store, authority, runs, engine, newCraftRunViewSessionAPI)
+}
+
+func assembleCraftRunViewProductionWithAPI(
+	config CraftRunViewContainerProviderConfig,
+	store craft.RunViewStore,
+	authority craft.RunViewEffectAuthority,
+	runs craftRunViewAdmittedRunReader,
+	engine CraftRunViewContainerEngine,
+	apiFactory craftRunViewSessionAPIFactory,
+) (*CraftRunViewProductionAssembly, error) {
+	if store == nil || runs == nil {
+		return nil, unresolvedCraftRunView("RunView store or durable Run reader is missing", nil)
+	}
+	if authority == nil {
+		return nil, unresolvedCraftRunView("RunView effect authority is missing; the physical stage is fail-closed", nil)
+	}
+	provider, err := newCraftRunViewContainerProvider(config, engine, apiFactory)
+	if err != nil {
+		return nil, err
+	}
+	coordinator, err := NewCraftRunViewAdmittedRuntimeCoordinator(store, authority, provider, "/workspace")
+	if err != nil {
+		return nil, err
+	}
+	assembly := &CraftRunViewProductionAssembly{
+		Provider: provider, RuntimeCoordinator: coordinator, Store: store,
+	}
+	assembly.ResolveMaterial = func(ctx context.Context, task craft.Task) (CraftRunViewMaterialHandle, error) {
+		if err := ctx.Err(); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("material resolution canceled", err)
+		}
+		if task.Fence.TenantID == 0 || task.Fence.TenantID != task.Scope.TenantID ||
+			task.Scope.UserID == "" || task.Scope.SessionID == "" || task.WorkspaceID == "" ||
+			task.Fence.RunID == "" || task.Fence.Owner == "" || task.Fence.Epoch < 1 {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: incomplete admitted Craft Task fence", craft.ErrForbidden)
+		}
+		key := craft.RunViewKey{TenantID: task.Scope.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
+		if err := craft.ValidateRunViewKey(key); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("admitted Run identity is invalid", err)
+		}
+		run, err := runs.Get(ctx, agentruntime.RunKey{TenantID: task.Scope.TenantID, RunID: task.Fence.RunID})
+		if err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("load durable admitted Run", err)
+		}
+		caller := types.CallerFromContext(ctx)
+		if run.Key != (agentruntime.RunKey{TenantID: task.Scope.TenantID, RunID: task.Fence.RunID}) ||
+			run.UserID != task.Scope.UserID || run.SessionID != task.Scope.SessionID ||
+			run.ActorUserID == "" || caller.TenantID != run.Key.TenantID || caller.UserID != run.ActorUserID ||
+			run.Status != "running" || run.Owner == "" || run.Owner != task.Fence.Owner ||
+			run.Epoch < 1 || run.Epoch != task.Fence.Epoch || !run.LeaseUntil.After(time.Now()) {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: durable admitted Run actor or writer fence changed", craft.ErrConflict)
+		}
+		version, digest, err := repository.CraftAdmittedSnapshotIdentity(run.Snapshot)
+		if err != nil || version != run.SnapshotDigestVersion || digest != run.SnapshotDigest ||
+			task.SnapshotDigestVersion != version || task.SnapshotDigest != digest ||
+			task.Fence.SnapshotDigestVersion != version || task.Fence.SnapshotDigest != digest {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: Task snapshot identity does not match the durable admitted Run", craft.ErrConflict)
+		}
+		snapshot, err := service.ParseDurableRunSnapshot(run.Snapshot)
+		if err != nil || snapshot.CraftWorkspaceSeed == nil || snapshot.CraftWorkspaceSeed.WorkspaceID != task.WorkspaceID {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: durable Run snapshot does not authorize this Workspace", craft.ErrConflict)
+		}
+		if err := ctx.Err(); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("material resolution canceled after Run verification", err)
+		}
+		runtime, err := coordinator.ResolveAdmitted(ctx, task)
+		if err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("resolve admitted RunView runtime", err)
+		}
+		if runtime.View.Key != key || runtime.View.State != craft.RunViewStateBound {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("admitted RunView is not bound to this task", nil)
+		}
+		return provider.MaterialHandle(ctx, store, key, runtime)
+	}
+	return assembly, nil
 }
 
 // validateCraftKnowledgeAssembly constructs the craft knowledge build at

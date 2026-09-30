@@ -105,6 +105,12 @@ type importException struct {
 // 前缀或子串匹配；一条豁免只压制该精确 file→package 对的 forbidden-import。
 var importExceptions = []importException{
 	{
+		ImporterFile: "internal/modules/agentruntime/agent/opencode/run_binding.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/craft",
+		Reason:       "craft-107 opencode 绑定直连 craft 模块（预存耦合，Pass B 收口）",
+		PassBTask:    "B-craft",
+	},
+	{
 		ImporterFile: "internal/modules/codedelivery/code_platform.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",

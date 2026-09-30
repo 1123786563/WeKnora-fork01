@@ -650,7 +650,7 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 				PaymentStatus string `json:"payment_status"`
 				CreatedAt     string `json:"created_at"`
 				Fees          []struct {
-					AmountCents int64  `json:"amount_cents"` // integer minor units, never float (GC-6)
+					AmountCents int64 `json:"amount_cents"` // integer minor units, never float (GC-6)
 					Item        struct {
 						Type string `json:"type"`
 						Name string `json:"name"`

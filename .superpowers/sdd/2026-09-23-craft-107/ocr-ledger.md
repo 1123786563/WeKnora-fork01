@@ -1,0 +1,32 @@
+# Craft #107 OCR ledger
+
+Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/2026-09-23-craft-107-ledger.md`, OCR is reserved for the complete delivered scope after T20 and any fixes; no rows yet.
+
+| Date (UTC) | Scope / commits | OCR verdict | Findings | Follow-up |
+| --- | --- | --- | --- | --- |
+| 2026-09-25 | T01: cf0920e1b^..ceb079e89c | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t01.md |
+| 2026-09-25 | T02: 2e68bb0ed^..f257d67f8 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t02.md |
+| 2026-09-25 | T03: bc013e0f1^..25caebd13 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t03.md |
+| 2026-09-25 | T08: 13c656301^..d7e522c61 | clean（增量收敛后干净；范围经核实修正为 T08 4 提交，见报告头） | 0 open | 报告: docs/plans/craft-107-ocr-t08.md |
+| 2026-09-25 | T04: dd1cc3b83^..9542f2d99 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t04.md |
+| 2026-09-25 | T10: adf910ac1^..c799642d0 | clean（首轮即净，纯迁移 0 findings） | 0 open | 报告: docs/plans/craft-107-ocr-t10.md |
+| 2026-09-26 | T14: eeb1ee2db^..700238a7 | clean（增量收敛后干净；范围经核实修正为 T14 提交序列，见报告头） | 0 open | 报告: docs/plans/craft-107-ocr-t14.md |
+| 2026-09-26 | T06: 00da0930b^..81ac54057 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t06.md |
+| 2026-09-26 | T15: 05fb4d496^..440985251 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t15.md |
+| 2026-09-26 | T11: d84192a87^..bc8604104 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t11.md |
+| 2026-09-26 | T07: 1c1468641^..5f60d5cfc | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t07.md |
+| 2026-09-26 | T16: 463be670b^..0112ab0bb | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t16.md |
+| 2026-09-26 | T08: 13c656301^..0108a1f3e | clean（第三轮后干净段延伸：build-log 信任缺口服务端收口，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t08.md |
+| 2026-09-26 | T14: eeb1ee2db^..b91d265dd | clean（第四轮豁免补救后干净段延伸：暂存资产钉扎/capture 前置门/manifest 逐段盘符等，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t14.md |
+| 2026-09-27 | T04: 678f34076^..f42e745e7 | clean（增量轮第三轮后干净段：nil 检查前移/组合 fail-closed/PATH 拒绝/形状校验等 6 项全修，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t04.md |
+| 2026-09-27 | T06: 545a2dc20^..e4de8a62a | clean（复核轮收编段：纯文档/台账变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t06.md |
+| 2026-09-27 | T15: 526e765a0^..699287503 | clean（增量轮收编段：树等价 merge 零代码增量，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t15.md |
+| 2026-09-27 | T11: 04b17527e^..35fb100bb | clean（复验轮报告收编段：零代码变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t11.md |
+| 2026-09-27 | T07: c8f2ecf90^..49cb9f732 | clean（幂等复验收编段：无生产代码变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t07.md |
+| 2026-09-27 | T16: d0ceff70c^..e046d9256 | clean（增量复验收编段：仅测试/报告变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t16.md |
+| 2026-09-27 | T12: dea1ddefa^..b2dcbbb6a | clean（幂等复验收编段：1 个生产文件纯 gofmt 治齐，0 findings） | 0 open | 报告: docs/plans/craft-107-ocr-t12.md |
+| 2026-09-27 | T17: 6a738e454^..1c31bfce | clean（第三轮 14 项全修复后干净：Superseded 收敛/requested 前提/contracts 补导出/崩溃窗口回补等，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t17.md |
+| 2026-09-27 | T09: fd0f7030e^..790412d1 | clean（第二轮 2 项全修复后干净：时间线幂等去重+单推导缝隙，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t09.md |
+| 2026-09-27 | T13: fff903f54^..8d302ed83 | clean（第二轮 3 项全修复后干净：冻结契约面对齐扁平 wire+views 复用契约 parse，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t13.md |
+| 2026-09-27 | T18: 90dcb987e^..9df0fccdb | clean（第二轮 HIGH root 锚点跟踪修复后干净：多洞活锁消除每轮严格前进，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t18.md |
+| 2026-09-28 | T20: 5854998d5^..f55bd392 | clean（第二轮 4 项 LOW 全修后干净：共享投影/注释修正/改名去遮蔽/共享派生，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t20.md |

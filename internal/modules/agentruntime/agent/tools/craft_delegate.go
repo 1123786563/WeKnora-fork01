@@ -180,6 +180,25 @@ func CraftDelegateRequestHash(goal string, inputs []craft.Input, skillDigests []
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+func craftDelegateTaskRequestHash(goal string, inputs []craft.Input, skillDigests []string, workspaceID string, digestVersion int, digest string) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte("craft-delegate-admitted-snapshot-v1\x00"))
+	_, _ = h.Write([]byte(CraftDelegateRequestHash(goal, inputs, skillDigests, workspaceID)))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(fmt.Sprintf("%d", digestVersion)))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(digest))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func validCraftSnapshotIdentity(version int, digest string) bool {
+	if version != 1 || len(digest) != sha256.Size*2 {
+		return false
+	}
+	decoded, err := hex.DecodeString(digest)
+	return err == nil && hex.EncodeToString(decoded) == digest
+}
+
 // craftDelegatePrompt renders the prompt submitted to the sub-executor: the
 // model's goal plus the staged read-only material manifest.
 func craftDelegatePrompt(goal string, inputs []craft.Input) string {
@@ -242,17 +261,22 @@ func (t *CraftDelegateTool) Execute(ctx context.Context, args json.RawMessage) (
 	if toolCallID == "" {
 		return &types.ToolResult{Success: false, Error: "craft_delegate requires the durable tool call identity"}, nil
 	}
+	if !validCraftSnapshotIdentity(fence.SnapshotDigestVersion, fence.SnapshotDigest) {
+		return &types.ToolResult{Success: false, Error: "craft_delegate requires a known admitted snapshot identity"}, nil
+	}
 
 	task := craft.Task{
-		ToolCallID:   toolCallID,
-		Prompt:       craftDelegatePrompt(parsed.Goal, inputs),
-		RequestHash:  CraftDelegateRequestHash(parsed.Goal, inputs, t.cfg.SkillDigests, t.cfg.WorkspaceID),
-		Scope:        t.cfg.Scope,
-		Fence:        fence,
-		WorkspaceID:  t.cfg.WorkspaceID,
-		Inputs:       inputs,
-		SkillDigests: append([]string(nil), t.cfg.SkillDigests...),
-		Deadline:     craftDelegationDeadline(ctx),
+		ToolCallID:            toolCallID,
+		Prompt:                craftDelegatePrompt(parsed.Goal, inputs),
+		RequestHash:           craftDelegateTaskRequestHash(parsed.Goal, inputs, t.cfg.SkillDigests, t.cfg.WorkspaceID, fence.SnapshotDigestVersion, fence.SnapshotDigest),
+		Scope:                 t.cfg.Scope,
+		Fence:                 fence,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion,
+		SnapshotDigest:        fence.SnapshotDigest,
+		WorkspaceID:           t.cfg.WorkspaceID,
+		Inputs:                inputs,
+		SkillDigests:          append([]string(nil), t.cfg.SkillDigests...),
+		Deadline:              craftDelegationDeadline(ctx),
 	}
 	result, err := t.cfg.Delegate(ctx, task)
 	if err != nil {

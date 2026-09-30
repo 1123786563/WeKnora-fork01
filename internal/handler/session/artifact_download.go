@@ -1,8 +1,13 @@
 package session
 
 import (
+	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	stderrors "errors"
+	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -11,11 +16,13 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/filetransport"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -731,4 +738,219 @@ func artifactVersionFileName(version repository.ArtifactVersion) string {
 		ext = ".gif"
 	}
 	return "artifact-" + version.ID + ext
+}
+
+// -----------------------------------------------------------------------------
+// Version-bound source bundle export (T12, #132)
+//
+// The bundle download projects ONE immutable version: exactly its own
+// artifact members (source), its recorded checks (build metadata) and the
+// citation/source manifest derived from the version's pinned evidence. The
+// service owns every authority check and the audit (member, Version,
+// manifest digest); these routes only translate. Member bytes stream from
+// the durable object refs through the file reader — never from the mutable
+// Workspace.
+// -----------------------------------------------------------------------------
+
+// CraftExportAPI is the T12 bundle surface. Its implementation owns all
+// current Task membership checks and the export manifest derivation; route
+// guards alone are not ACLs.
+type CraftExportAPI interface {
+	ExportBundle(context.Context, craft.Scope, string) (service.CraftExportBundle, error)
+}
+
+// CraftExportHandler translates the bundle projection onto HTTP.
+type CraftExportHandler struct {
+	svc   CraftExportAPI
+	files service.CraftExportFileReader
+}
+
+// NewCraftExportHandler constructs the bundle surface. A nil service or
+// reader fails closed on every request.
+func NewCraftExportHandler(svc CraftExportAPI, files service.CraftExportFileReader) *CraftExportHandler {
+	return &CraftExportHandler{svc: svc, files: files}
+}
+
+// RegisterCraftExportFeature binds the T12 bundle surface to one router
+// assembly's feature registry. Duplicate and post-mount registrations fail
+// on that registry without retaining process-global handler state.
+func RegisterCraftExportFeature(routes *CraftFeatureRoutes, svc CraftExportAPI, files service.CraftExportFileReader) error {
+	if routes == nil || svc == nil || files == nil {
+		return stderrors.New("Craft export feature unavailable")
+	}
+	return routes.Register("export", func(group CraftRouteGroup) {
+		RegisterCraftExportRoutes(group, NewCraftExportHandler(svc, files))
+	})
+}
+
+// MountCraftExportRoutes is called through the T00 constrained feature
+// registry at central assembly time.
+func (h *CraftExportHandler) MountCraftExportRoutes(group CraftRouteGroup) {
+	RegisterCraftExportRoutes(group, h)
+}
+
+// RegisterCraftExportRoutes mounts the T12 routes onto one constrained
+// feature group.
+func RegisterCraftExportRoutes(group CraftRouteGroup, h *CraftExportHandler) {
+	group.GET("/:id/craft/versions/:version_id/export", h.GetCraftExportBundle)
+	group.GET("/:id/craft/versions/:version_id/export/download", h.DownloadCraftExportBundle)
+}
+
+// craftExportBody projects the bundle description: the manifest digest, the
+// member list, the citation/source manifest and the build checks. It never
+// carries original material — titles and durable refs only.
+func craftExportBody(bundle service.CraftExportBundle) gin.H {
+	files := make([]gin.H, 0, len(bundle.Manifest.Files))
+	for _, f := range bundle.Manifest.Files {
+		files = append(files, gin.H{"path": f.Path, "sha256": f.SHA256, "restricted": f.Restricted})
+	}
+	sources := make([]gin.H, 0, len(bundle.CitationManifest.Sources))
+	for _, source := range bundle.CitationManifest.Sources {
+		sources = append(sources, gin.H{
+			"citation_id": source.CitationID, "ref": source.Ref,
+			"digest": source.Digest, "acquired_at": source.AcquiredAt,
+			"title": source.Title,
+		})
+	}
+	checks := make([]gin.H, 0, len(bundle.Version.Checks))
+	for _, check := range bundle.Version.Checks {
+		checks = append(checks, gin.H{"name": check.Name, "status": check.Status, "detail": check.Detail})
+	}
+	return gin.H{
+		"version_id": bundle.Version.ID, "run_id": bundle.Version.RunID, "kind": bundle.Version.Kind,
+		"manifest_digest": bundle.Manifest.ManifestDigest,
+		"files":           files, "sources": sources, "checks": checks,
+		"empty": bundle.CitationManifest.Empty,
+	}
+}
+
+// GetCraftExportBundle answers the bundle description for a current Task
+// member: the digest-bound member list, the citation/source manifest and
+// the build metadata.
+//
+// @Router /sessions/{session_id}/craft/versions/{version_id}/export [get]
+func (h *CraftExportHandler) GetCraftExportBundle(c *gin.Context) {
+	scope, ok := craftScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
+	if h == nil || h.svc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "unavailable"})
+		return
+	}
+	bundle, err := h.svc.ExportBundle(c.Request.Context(), scope, c.Param("version_id"))
+	if err != nil {
+		craftShareHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, craftExportBody(bundle))
+}
+
+// DownloadCraftExportBundle streams the complete source bundle as one zip:
+// exactly the version's immutable members plus the three fixed documents
+// (export-manifest.json, sources.json, build.json). The service has already
+// re-checked Task membership, re-validated every member path and computed
+// the manifest digest; the member bytes stream from the durable object refs.
+//
+// @Router /sessions/{session_id}/craft/versions/{version_id}/export/download [get]
+func (h *CraftExportHandler) DownloadCraftExportBundle(c *gin.Context) {
+	scope, ok := craftScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
+	if h == nil || h.svc == nil || h.files == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "unavailable"})
+		return
+	}
+	bundle, err := h.svc.ExportBundle(c.Request.Context(), scope, c.Param("version_id"))
+	if err != nil {
+		craftShareHTTPError(c, err)
+		return
+	}
+
+	name := "craft-" + bundle.Version.ID + "-source.zip"
+	c.Header("Content-Disposition", buildAttachmentHeader(name))
+	c.Header("Content-Type", "application/zip")
+	c.Header("Cache-Control", "private, no-store")
+	c.Status(http.StatusOK)
+
+	// Mid-stream failure contract: the manifest inside this zip declares
+	// the exact member list and their content digests, so a silently
+	// truncated-but-valid zip would deliver a "successful" download whose
+	// bytes disagree with the manifest. Any failure after the 200 head is
+	// sent therefore aborts the connection (the craftegress precedent):
+	// the client sees a broken transfer instead of a degraded bundle.
+	abortDownload := func(format string, args ...any) {
+		logger.Warnf(c.Request.Context(), format, args...)
+		panic(http.ErrAbortHandler)
+	}
+
+	zipWriter := zip.NewWriter(c.Writer)
+	writeDoc := func(path string, payload []byte) {
+		entry, err := zipWriter.CreateHeader(&zip.FileHeader{Name: path, Method: zip.Deflate})
+		if err != nil {
+			abortDownload("craft export bundle document %s create failed: %v", path, err)
+			return
+		}
+		if _, err := entry.Write(payload); err != nil {
+			abortDownload("craft export bundle document %s stream failed: %v", path, err)
+		}
+	}
+	manifestJSON, merr := json.Marshal(bundle.Manifest)
+	if merr != nil {
+		abortDownload("craft export bundle manifest encode failed: %v", merr)
+	}
+	writeDoc(craft.BundleManifestPath, manifestJSON)
+	sourcesJSON, serr := json.Marshal(bundle.CitationManifest)
+	if serr != nil {
+		abortDownload("craft export bundle sources encode failed: %v", serr)
+	}
+	writeDoc(craft.BundleSourcesPath, sourcesJSON)
+	buildJSON, berr := json.Marshal(bundle.BundleBuildDocument())
+	if berr != nil {
+		abortDownload("craft export bundle build document encode failed: %v", berr)
+	}
+	writeDoc(craft.BundleBuildPath, buildJSON)
+	for _, member := range bundle.Version.Files {
+		// zip-slip variant: a Windows drive-letter first segment (c:/evil)
+		// passes forward-slash relative-path validation but older or custom
+		// extractors can resolve it as an absolute target outside the
+		// extraction directory. Refuse it before the 200 head is written.
+		if first := member.Path; len(first) >= 2 && first[1] == ':' &&
+			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
+			abortDownload("craft export bundle member %q uses a drive-letter path", member.Path)
+			continue
+		}
+		reader, err := h.files.GetFile(c.Request.Context(), member.Ref)
+		if err != nil {
+			abortDownload("craft export bundle member %s read failed: %v", member.Path, err)
+			continue
+		}
+		entry, createErr := zipWriter.CreateHeader(&zip.FileHeader{Name: member.Path, Method: zip.Deflate})
+		if createErr != nil {
+			reader.Close()
+			abortDownload("craft export bundle member %s create failed: %v", member.Path, createErr)
+			continue
+		}
+		// The manifest's digest claim is verified against the ACTUAL bytes
+		// as they stream: a corrupted object or a swapped ref truncates the
+		// download instead of shipping bytes that disagree with the
+		// manifest.
+		hasher := sha256.New()
+		_, copyErr := io.Copy(io.MultiWriter(entry, hasher), reader)
+		reader.Close()
+		if copyErr != nil {
+			abortDownload("craft export bundle member %s stream failed: %v", member.Path, copyErr)
+			continue
+		}
+		if streamed := hex.EncodeToString(hasher.Sum(nil)); streamed != member.SHA256 {
+			abortDownload("craft export bundle member %s digest mismatch: manifest %s, streamed %s",
+				member.Path, member.SHA256, streamed)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		abortDownload("craft export bundle finalize failed for version %s: %v", bundle.Version.ID, err)
+	}
 }

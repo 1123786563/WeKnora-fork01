@@ -1,0 +1,218 @@
+package craft
+
+import (
+	"context"
+	"fmt"
+)
+
+// TaskAccessChecker is injected by the membership lane. The session ID in
+// Scope is the Task ID; callers must not substitute a second aggregate ID.
+// The checker owns current membership and permission policy, including fresh
+// authorization on reads of restricted originals.
+type TaskAccessChecker interface {
+	CheckTaskAccess(context.Context, Scope, TaskAction) error
+}
+
+type TaskAction string
+
+const (
+	TaskRead       TaskAction = "read"
+	TaskWrite      TaskAction = "write"
+	TaskShare      TaskAction = "share"
+	TaskOpenSource TaskAction = "open_source"
+	TaskPreview    TaskAction = "preview"
+)
+
+// RequireTaskAccess has no permissive default when an assembly lacks T08.
+func RequireTaskAccess(ctx context.Context, checker TaskAccessChecker, scope Scope, action TaskAction) error {
+	if checker == nil {
+		return ErrForbidden
+	}
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
+		return ErrForbidden
+	}
+	switch action {
+	case TaskRead, TaskWrite, TaskShare, TaskOpenSource, TaskPreview:
+	default:
+		return ErrInvalidInput
+	}
+	return checker.CheckTaskAccess(ctx, scope, action)
+}
+
+// These records are immutable-version and run facts. They do not grant access
+// or perform a transition: the owning application service remains authoritative.
+type InputRecognition struct {
+	Accepted   bool   `json:"accepted"`
+	Understood bool   `json:"understood"`
+	Reason     string `json:"reason"`
+}
+
+func (r InputRecognition) Validate() error {
+	if r.Understood && !r.Accepted {
+		return fmt.Errorf("%w: understood input was not accepted", ErrInvalidInput)
+	}
+	if r.Accepted && !r.Understood && r.Reason == "" {
+		return fmt.Errorf("%w: unrecognized input needs a reason", ErrInvalidInput)
+	}
+	return nil
+}
+
+type CheckOutcome string
+
+const (
+	WebCheckPassed CheckOutcome = "passed"
+	WebCheckFailed CheckOutcome = "failed"
+	WebCheckNotRun CheckOutcome = "not_run"
+)
+
+func (s CheckOutcome) valid() bool {
+	return s == WebCheckPassed || s == WebCheckFailed || s == WebCheckNotRun
+}
+
+// Each gate is separate evidence; page load cannot be inferred from HTTP reachability.
+type WebCheckEvidence struct {
+	Build            CheckOutcome `json:"build"`
+	Entry            CheckOutcome `json:"entry"`
+	PreviewReachable CheckOutcome `json:"preview_reachable"`
+	PageLoaded       CheckOutcome `json:"page_loaded"`
+}
+
+func (e WebCheckEvidence) Validate() error {
+	if !e.Build.valid() || !e.Entry.valid() || !e.PreviewReachable.valid() || !e.PageLoaded.valid() {
+		return fmt.Errorf("%w: invalid web check outcome", ErrInvalidInput)
+	}
+	return nil
+}
+func (e WebCheckEvidence) Ready() bool {
+	return e.Validate() == nil && e.Build == WebCheckPassed && e.Entry == WebCheckPassed && e.PreviewReachable == WebCheckPassed && e.PageLoaded == WebCheckPassed
+}
+
+type StopOutcomeStatus string
+
+const (
+	StopRequested StopOutcomeStatus = "requested"
+	StopConfirmed StopOutcomeStatus = "confirmed"
+	StopUnknown   StopOutcomeStatus = "unknown"
+)
+
+type StopOutcome struct {
+	RunID  string            `json:"run_id"`
+	Status StopOutcomeStatus `json:"status"`
+}
+
+func (o StopOutcome) Validate() error {
+	if o.RunID == "" || (o.Status != StopRequested && o.Status != StopConfirmed && o.Status != StopUnknown) {
+		return fmt.Errorf("%w: invalid stop outcome", ErrInvalidInput)
+	}
+	return nil
+}
+
+type WriterAcquireStatus string
+
+const (
+	WriterAcquired WriterAcquireStatus = "acquired"
+	WriterConflict WriterAcquireStatus = "conflict"
+	WriterUnknown  WriterAcquireStatus = "unknown"
+)
+
+type WriterAcquireOutcome struct {
+	WorkspaceID string              `json:"workspace_id"`
+	Status      WriterAcquireStatus `json:"status"`
+}
+
+func (o WriterAcquireOutcome) Validate() error {
+	if o.WorkspaceID == "" || (o.Status != WriterAcquired && o.Status != WriterConflict && o.Status != WriterUnknown) {
+		return fmt.Errorf("%w: invalid writer acquisition", ErrInvalidInput)
+	}
+	return nil
+}
+
+type BudgetPause struct {
+	RunID  string `json:"run_id"`
+	Reason string `json:"reason"`
+	Limit  int64  `json:"limit"`
+	Used   int64  `json:"used"`
+}
+
+func (p BudgetPause) Validate() error {
+	if p.RunID == "" || p.Reason == "" || p.Limit < 0 || p.Used < 0 {
+		return fmt.Errorf("%w: invalid budget pause", ErrInvalidInput)
+	}
+	return nil
+}
+
+type RestrictedContribution struct {
+	VersionID      string `json:"version_id"`
+	EvidenceDigest string `json:"evidence_digest"`
+	Restricted     bool   `json:"restricted"`
+}
+
+func (c RestrictedContribution) Validate() error {
+	if c.VersionID == "" || c.EvidenceDigest == "" {
+		return fmt.Errorf("%w: invalid restricted contribution", ErrInvalidInput)
+	}
+	return nil
+}
+
+type DecisionStatus string
+
+const (
+	DecisionApproved DecisionStatus = "approved"
+	DecisionRejected DecisionStatus = "rejected"
+	DecisionUnknown  DecisionStatus = "unknown"
+)
+
+func (d DecisionStatus) valid() bool {
+	return d == DecisionApproved || d == DecisionRejected || d == DecisionUnknown
+}
+
+type ShareDecision struct {
+	VersionID      string         `json:"version_id"`
+	EvidenceDigest string         `json:"evidence_digest"`
+	OwnerID        string         `json:"owner_id"`
+	Decision       DecisionStatus `json:"decision"`
+}
+
+func (d ShareDecision) Validate() error {
+	if d.VersionID == "" || d.EvidenceDigest == "" || d.OwnerID == "" || !d.Decision.valid() {
+		return fmt.Errorf("%w: invalid share decision", ErrInvalidInput)
+	}
+	return nil
+}
+
+type ExportFile struct {
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Restricted bool   `json:"restricted"`
+}
+type ExportManifest struct {
+	VersionID      string       `json:"version_id"`
+	ManifestDigest string       `json:"manifest_digest"`
+	Files          []ExportFile `json:"files"`
+}
+
+func (m ExportManifest) Validate() error {
+	if m.VersionID == "" || m.ManifestDigest == "" {
+		return fmt.Errorf("%w: invalid export manifest", ErrInvalidInput)
+	}
+	for _, f := range m.Files {
+		if f.Path == "" || f.SHA256 == "" {
+			return fmt.Errorf("%w: invalid export file", ErrInvalidInput)
+		}
+	}
+	return nil
+}
+
+type ExportDecision struct {
+	VersionID      string         `json:"version_id"`
+	ManifestDigest string         `json:"manifest_digest"`
+	OwnerID        string         `json:"owner_id"`
+	Decision       DecisionStatus `json:"decision"`
+}
+
+func (d ExportDecision) Validate() error {
+	if d.VersionID == "" || d.ManifestDigest == "" || d.OwnerID == "" || !d.Decision.valid() {
+		return fmt.Errorf("%w: invalid export decision", ErrInvalidInput)
+	}
+	return nil
+}

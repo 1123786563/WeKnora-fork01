@@ -1,0 +1,12 @@
+t19base-20260924-direct
+t19base-20260924-adapter
+t19base-20260924-helper
+t19base-20260924-client
+[]
+error: no such object: t19base-20260924-direct
+[]
+error: no such object: t19base-20260924-adapter
+[]
+error: no such object: t19base-20260924-helper
+[]
+error: no such object: t19base-20260924-client

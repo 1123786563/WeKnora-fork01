@@ -1,0 +1,57 @@
+[
+  {
+    "Attachable": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Containers": {
+      "3470716aa0d5231b76cff2a6ca7200f1a984058a1acc061febd3d5534602aee1": {
+        "EndpointID": "1c77e040fd724ed8b8c59041d18df3f06d59d18cba245197e96904f6e8a765f5",
+        "IPv4Address": "192.168.229.2/24",
+        "IPv6Address": "",
+        "MacAddress": "42:71:09:29:1b:f4",
+        "Name": "craft-e0-20260923T191218Z-38159-client"
+      },
+      "69becc164b232824a76e8d2123b408696f49d6aecb770819756940ece1e41306": {
+        "EndpointID": "a5751a8690a601dcf5234547312ad02ba79ca545add752bab0345b09b5937c83",
+        "IPv4Address": "192.168.229.1/24",
+        "IPv6Address": "",
+        "MacAddress": "32:16:bd:85:0c:88",
+        "Name": "craft-e0-20260923T191218Z-38159-adapter"
+      }
+    },
+    "Created": "2026-09-24T03:12:19.6963645+08:00",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Config": [
+        {
+          "Subnet": "192.168.229.0/24"
+        }
+      ],
+      "Driver": "default",
+      "Options": {}
+    },
+    "Id": "0598c2a9c6e55ea918c790e8d9ea2751607a341fbe28efb14f033d8723b7fc12",
+    "Ingress": false,
+    "Internal": true,
+    "Labels": {},
+    "Name": "craft-e0-20260923T191218Z-38159-private",
+    "Options": {
+      "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+    },
+    "Scope": "local",
+    "Status": {
+      "IPAM": {
+        "Subnets": {
+          "192.168.229.0/24": {
+            "DynamicIPsAvailable": 252,
+            "IPsInUse": 4
+          }
+        }
+      }
+    }
+  }
+]

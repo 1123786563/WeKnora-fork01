@@ -61,6 +61,9 @@ import './craft.css';
 // re-exported here because the assembly imports it from this module.
 export { createCraftMessageLog } from './presentation.ts';
 export type { CraftMessageSnapshot } from './presentation.ts';
+export { createCraftWorkbenchFeatures } from './workbench-features.tsx';
+export type { CraftWorkbenchFeature, CraftWorkbenchFeatureContext, CraftWorkbenchSlot } from './workbench-features.tsx';
+import type { CraftWorkbenchFeature, CraftWorkbenchSlot } from './workbench-features.tsx';
 
 // ---------------------------------------------------------------------------
 // Workbench component
@@ -81,6 +84,8 @@ export interface CraftInteractionActionInput {
 }
 
 export interface CraftWorkbenchProps {
+	/** Immutable, keyed feature list assembled before this view mounts. */
+	features?: readonly CraftWorkbenchFeature[];
   locale: CraftLocale;
   sessionId: string;
   title: string;
@@ -140,9 +145,11 @@ export interface CraftWorkbenchProps {
    * ASSEMBLY re-resolves the ref through the existing resource permission
    * chain on every click — it must never cache or pre-sign a URL into the
    * component. Optional until the assembly wires it; the panel renders the
-   * resolved notice (or permission error) it returns.
+   * resolved notice (or permission error) it returns. The runId of the log
+   * that produced the citation rides along (T20/#139): the tested T10 open
+   * seam is run-scoped. Existing two-arg callbacks keep compiling.
    */
-  onOpenSource?(citationId: string, ref: string): Promise<string | null>;
+  onOpenSource?(citationId: string, ref: string, runId?: string | null): Promise<string | null>;
   /**
    * Fetches one immutable member's TEXT through the assembly's authorized
    * version-files route (D01 wiring): the document view reads report.md and
@@ -365,14 +372,16 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const knowledgePackage = useMemo(() => projectKnowledgeSources(snapshot.events), [snapshot]);
   const [openingCitation, setOpenCitation] = useState<string | null>(null);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
-  const onOpenSourceProp = useEventCallback((citationId: string, ref: string): Promise<string | null> => {
+  const onOpenSourceProp = useEventCallback((citationId: string, ref: string, runId?: string | null): Promise<string | null> => {
     if (props.onOpenSource === undefined) return Promise.resolve(null);
-    return props.onOpenSource(citationId, ref);
+    return props.onOpenSource(citationId, ref, runId ?? null);
   });
   const openSource = (citationId: string, ref: string): void => {
     setOpenCitation(citationId);
     setSourceNotice(null);
-    void onOpenSourceProp(citationId, ref)
+    // The open seam is run-scoped: the citation came out of THIS log's
+    // knowledge.built frames, so the run the log tracks owns the record.
+    void onOpenSourceProp(citationId, ref, snapshot.runId)
       .then((notice) => { setSourceNotice(notice); })
       .catch((error: unknown) => {
         setSourceNotice(error instanceof Error ? error.message : String(error));
@@ -738,6 +747,10 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     );
   };
 
+  const renderFeatures = (slot: CraftWorkbenchSlot) => (props.features ?? [])
+    .filter((feature) => feature.slot === slot)
+    .map((feature) => <div key={feature.name} data-craft-feature={feature.name}>{feature.render({ sessionId: props.sessionId, canWrite: props.canWrite, selectedVersionId })}</div>);
+
   return (
     <main className="wk-craft wk-craft-page" aria-label={props.title || strings.craftHomeTitle}>
       <div className="wk-craft-head">
@@ -750,6 +763,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         </div>
       </div>
       {props.syncError !== null ? <p className="wk-craft-error" role="alert">{strings.craftStreamReconnecting} ({props.syncError})</p> : null}
+      {renderFeatures('header')}
       {restoreEntryVisible && restoreBlockedReason !== null && selectedVersionId !== null && !runActive && mainStatus !== 'waiting_user' ? (
         <p className="wk-craft-hint" data-testid="craft-restore-reason">{restoreBlockedReason}</p>
       ) : null}
@@ -829,6 +843,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
             aria-label={strings.craftTabConversation}
             data-narrow-hidden={narrow && narrowTab !== 'conversation'}
           >
+            {renderFeatures('conversation')}
             {conversation}
           </section>
           {!narrow ? (
@@ -859,7 +874,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
                 {tabButton('details', strings.craftTabDetails)}
               </div>
             ) : null}
-            <div className="wk-craft-panel">{sidePanel}</div>
+            <div className="wk-craft-panel">{sidePanel}{renderFeatures('aside')}</div>
           </section>
         </div>
       </div>

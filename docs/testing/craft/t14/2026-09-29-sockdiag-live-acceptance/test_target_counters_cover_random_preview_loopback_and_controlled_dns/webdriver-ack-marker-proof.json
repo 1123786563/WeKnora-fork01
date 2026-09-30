@@ -1,0 +1,30 @@
+{
+  "ack_after": {
+    "client_to_driver": {
+      "handle": 6,
+      "packets": 3
+    },
+    "driver_to_client": {
+      "handle": 7,
+      "packets": 3
+    }
+  },
+  "ack_before": {
+    "client_to_driver": {
+      "handle": 6,
+      "packets": 0
+    },
+    "driver_to_client": {
+      "handle": 7,
+      "packets": 0
+    }
+  },
+  "ack_counter_deltas": {
+    "client_to_driver": 3,
+    "driver_to_client": 3
+  },
+  "after_record": 7,
+  "before_record": 6,
+  "handles_match": true,
+  "passed": true
+}

@@ -153,6 +153,112 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
 	t.Logf("MX005-OBSERVATION accepted=%d conflict=%d", success, conflict)
 }
 
+type craftCancelAdapterRunRow struct {
+	TenantID   uint64 `gorm:"primaryKey"`
+	RunID      string `gorm:"primaryKey"`
+	OwnerID    string
+	SessionID  string
+	Status     string
+	WaitReason string
+	LeaseOwner string
+	LeaseUntil *time.Time
+	Revision   int64
+	UpdatedAt  time.Time
+}
+
+func (craftCancelAdapterRunRow) TableName() string { return "agent_runs" }
+
+type craftCancelAdapterSessionRow struct {
+	TenantID         uint64 `gorm:"primaryKey"`
+	ID               string `gorm:"primaryKey"`
+	ActiveAgentRunID *string
+}
+
+func (craftCancelAdapterSessionRow) TableName() string { return "sessions" }
+
+type craftCancelAdapterJournalRow struct {
+	TenantID uint64 `gorm:"primaryKey"`
+	RunID    string `gorm:"primaryKey"`
+	State    string
+}
+
+func (craftCancelAdapterJournalRow) TableName() string { return "craft_charge_start_journal" }
+
+type craftCancelAdapterEventRow struct {
+	TenantID  uint64 `gorm:"primaryKey"`
+	RunID     string `gorm:"primaryKey"`
+	Seq       int64  `gorm:"primaryKey"`
+	AttemptID string
+	EventType string
+	Payload   string
+}
+
+func (craftCancelAdapterEventRow) TableName() string { return "agent_run_events" }
+
+// craftCancelAdapterEffectIntentRow mirrors the production
+// craftRunViewEffectIntentRow schema: cancelRunTx always passes through
+// rejectUnresolvedCraftRunViewEffects, so the Workbench cancel fixture must
+// provision craft_run_view_effect_intents even when no intent is seeded.
+type craftCancelAdapterEffectIntentRow struct {
+	TenantID              uint64 `gorm:"primaryKey"`
+	RunID                 string `gorm:"primaryKey"`
+	OwnerID               string
+	SessionID             string
+	Generation            string
+	EffectKind            string
+	RequestDigest         string
+	ClaimToken            string
+	ActorUserID           string
+	WriterOwner           string
+	FenceEpoch            int64
+	SnapshotDigestVersion int
+	SnapshotDigest        string
+	State                 string
+	Outcome               string
+	Receipt               string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	FinishedAt            *time.Time
+}
+
+func (craftCancelAdapterEffectIntentRow) TableName() string { return "craft_run_view_effect_intents" }
+
+func TestGormCancelPortDefersUnresolvedCraftStart(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "craft-cancel.db") + "?_foreign_keys=on&_busy_timeout=5000"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.AutoMigrate(&craftCancelAdapterRunRow{}, &craftCancelAdapterSessionRow{}, &craftCancelAdapterJournalRow{}, &craftCancelAdapterEventRow{}, &craftCancelAdapterEffectIntentRow{}))
+	lease := time.Now().Add(time.Minute)
+	activeRun := "charge-workbench-cancel"
+	require.NoError(t, db.Create(&craftCancelAdapterRunRow{
+		TenantID: 7, RunID: activeRun, OwnerID: "u1", SessionID: "s1", Status: "running",
+		LeaseOwner: "worker", LeaseUntil: &lease, Revision: 4,
+	}).Error)
+	require.NoError(t, db.Create(&craftCancelAdapterSessionRow{TenantID: 7, ID: "s1", ActiveAgentRunID: &activeRun}).Error)
+	require.NoError(t, db.Create(&craftCancelAdapterJournalRow{TenantID: 7, RunID: activeRun, State: "intent"}).Error)
+
+	port := NewGormCancelPort(db)
+	require.ErrorIs(t, port.Cancel(context.Background(), 7, "other", activeRun, 4), agentruntime.ErrConflict)
+	require.ErrorIs(t, port.Cancel(context.Background(), 7, "u1", activeRun, 3), agentruntime.ErrConflict)
+	require.NoError(t, port.Cancel(context.Background(), 7, "u1", activeRun, 4))
+
+	var run craftCancelAdapterRunRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, activeRun).Take(&run).Error)
+	require.Equal(t, "reconciling", run.Status)
+	require.Equal(t, "craft_charge_start_pending", run.WaitReason)
+	require.Empty(t, run.LeaseOwner)
+	var session craftCancelAdapterSessionRow
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 7, "s1").Take(&session).Error)
+	require.NotNil(t, session.ActiveAgentRunID, "cancel cannot release the active Run slot before the external start resolves")
+	require.Equal(t, activeRun, *session.ActiveAgentRunID)
+	var journal craftCancelAdapterJournalRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, activeRun).Take(&journal).Error)
+	require.Equal(t, "intent", journal.State, "cancel preserves the unresolved journal evidence and hold state")
+}
+
 func (s *interactionStoreStub) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {
 	return []contract.InteractionDecision{s.current}, nil
 }

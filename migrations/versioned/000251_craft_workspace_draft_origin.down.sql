@@ -1,0 +1,5 @@
+DROP TRIGGER IF EXISTS trg_craft_draft_file_immutable ON craft_workspace_draft_files;
+DROP TRIGGER IF EXISTS trg_craft_draft_revision_immutable ON craft_workspace_draft_revisions;
+DROP TRIGGER IF EXISTS trg_craft_draft_origin_immutable ON craft_workspace_draft_origins;
+DROP FUNCTION IF EXISTS craft_reject_draft_history_mutation();
+DROP TABLE IF EXISTS craft_workspace_draft_origins;

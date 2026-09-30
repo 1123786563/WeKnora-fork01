@@ -1,0 +1,167 @@
+ M apps/web/src/features/craft/routes.tsx
+ M docs/plans/2026-09-23-craft-107-ledger.md
+ M internal/application/repository/agent_run.go
+ M internal/application/repository/agent_run_decisions.go
+ M internal/application/repository/agent_run_lifecycle.go
+ M internal/application/repository/agent_run_test.go
+ M internal/application/service/agent_run_graph.go
+ M internal/application/service/agent_run_graph_test.go
+ M internal/application/service/craft_budget.go
+ M internal/application/service/craft_budget_test.go
+ M internal/application/service/craft_execution_budget_test.go
+ M internal/application/service/craft_inputs.go
+ M internal/application/service/craft_knowledge.go
+ M internal/application/service/craft_knowledge_test.go
+ M internal/application/service/craft_session.go
+ M internal/application/service/craft_session_test.go
+ M internal/application/service/craft_source_guard_test.go
+ M internal/container/container.go
+ M internal/container/craft_runtime.go
+ M internal/container/craft_runtime_test.go
+ M internal/handler/session/craft_test.go
+ M internal/modules/agentruntime/agent/opencode/client.go
+ M internal/modules/agentruntime/agent/opencode/client_test.go
+ M internal/modules/agentruntime/agent/runtime/contracts.go
+ M internal/modules/commercial/repository/commercial/budget_reservation.go
+ M internal/modules/commercial/repository/commercial/budget_task.go
+ M internal/modules/craft/knowledge.go
+ M internal/modules/workbench/service/workbench/interaction.go
+ M internal/modules/workbench/service/workbench/interaction_test.go
+ M internal/router/router.go
+ M internal/router/routes_chat.go
+ M internal/router/routes_craft_features_test.go
+ A migrations/sqlite/000110_craft_web_artifact_frontier.down.sql
+ A migrations/sqlite/000110_craft_web_artifact_frontier.up.sql
+ A migrations/sqlite/000111_craft_input_admission_fence.down.sql
+ A migrations/sqlite/000111_craft_input_admission_fence.up.sql
+ A migrations/sqlite/000112_craft_charge_start_journal.down.sql
+ A migrations/sqlite/000112_craft_charge_start_journal.up.sql
+ A migrations/sqlite/000113_craft_run_views.down.sql
+ A migrations/sqlite/000113_craft_run_views.up.sql
+ A migrations/sqlite/000114_craft_run_view_create_intent.down.sql
+ A migrations/sqlite/000114_craft_run_view_create_intent.up.sql
+ A migrations/versioned/000189_craft_web_artifact_frontier.down.sql
+ A migrations/versioned/000189_craft_web_artifact_frontier.up.sql
+ A migrations/versioned/000190_craft_input_admission_fence.down.sql
+ A migrations/versioned/000190_craft_input_admission_fence.up.sql
+ A migrations/versioned/000191_craft_charge_start_journal.down.sql
+ A migrations/versioned/000191_craft_charge_start_journal.up.sql
+ A migrations/versioned/000192_craft_run_views.down.sql
+ A migrations/versioned/000192_craft_run_views.up.sql
+ A migrations/versioned/000193_craft_run_view_create_intent.down.sql
+ A migrations/versioned/000193_craft_run_view_create_intent.up.sql
+ M packages/api-client/src/craft/index.test.ts
+ M packages/api-client/src/craft/index.ts
+ M packages/api-client/src/index.ts
+ M packages/views/package.json
+ M packages/views/src/craft/access.test.tsx
+ M packages/views/src/craft/access.tsx
+ M packages/views/src/craft/files.tsx
+ M packages/views/src/craft/sources.tsx
+ M packages/views/src/craft/usage.tsx
+?? apps/web/src/features/craft/routes.access.test.tsx
+?? docs/plans/2026-09-23-craft-107-runview-binding-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-binding-report.md
+?? docs/plans/2026-09-23-craft-107-runview-binding-review.md
+?? docs/plans/2026-09-23-craft-107-runview-create-intent-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-create-intent-report.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-fix-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-fix-report.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-fix-review.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-report.md
+?? docs/plans/2026-09-23-craft-107-runview-protocol-review.md
+?? docs/plans/2026-09-23-craft-107-runview-retention-fix-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-retention-fix-report.md
+?? docs/plans/2026-09-23-craft-107-runview-retention-fix-review.md
+?? docs/plans/2026-09-23-craft-107-runview-runtime-adapter-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-runtime-r1-plan.md
+?? docs/plans/2026-09-23-craft-107-runview-runtime-r1-report.md
+?? docs/plans/2026-09-23-craft-107-t01-admission-migration-plan.md
+?? docs/plans/2026-09-23-craft-107-t01-admission-migration-report.md
+?? docs/plans/2026-09-23-craft-107-t01-admission-migration-review.md
+?? docs/plans/2026-09-23-craft-107-t01-fix1-review.md
+?? docs/plans/2026-09-23-craft-107-t01-fix2-review.md
+?? docs/plans/2026-09-23-craft-107-t01-fix3-review.md
+?? docs/plans/2026-09-23-craft-107-t01-product-decision-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t01-product-decision-review.md
+?? docs/plans/2026-09-23-craft-107-t01-route-mount-checkpoint.json
+?? docs/plans/2026-09-23-craft-107-t01-route-mount-checkpoint.patch
+?? docs/plans/2026-09-23-craft-107-t01-route-mount-plan.md
+?? docs/plans/2026-09-23-craft-107-t01-route-mount-report.md
+?? docs/plans/2026-09-23-craft-107-t01-route-mount-review.md
+?? docs/plans/2026-09-23-craft-107-t05-fix2-review.md
+?? docs/plans/2026-09-23-craft-107-t05-fix3-review.md
+?? docs/plans/2026-09-23-craft-107-t05-fix4-review.md
+?? docs/plans/2026-09-23-craft-107-t05-kb-selection-plan.md
+?? docs/plans/2026-09-23-craft-107-t05-kb-selection-report.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-fix-plan.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-fix-report.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-plan.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-report.md
+?? docs/plans/2026-09-23-craft-107-t05-publisher-review.md
+?? docs/plans/2026-09-23-craft-107-t05-source-guard-test-plan.md
+?? docs/plans/2026-09-23-craft-107-t05-source-guard-test-report.md
+?? docs/plans/2026-09-23-craft-107-t05-source-guard-test-review.md
+?? docs/plans/2026-09-23-craft-107-t05-worker-seam-map.md
+?? docs/plans/2026-09-23-craft-107-t08-actor-principal-design.md
+?? docs/plans/2026-09-23-craft-107-t08-actor-principal-plan.md
+?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-checkpoint.json
+?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-report.md
+?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-review-package.patch
+?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-review.md
+?? docs/plans/2026-09-23-craft-107-t08-central-b-design.md
+?? docs/plans/2026-09-23-craft-107-t08-content-acl-checkpoint.json
+?? docs/plans/2026-09-23-craft-107-t08-content-acl-checkpoint.patch
+?? docs/plans/2026-09-23-craft-107-t08-content-acl-plan.md
+?? docs/plans/2026-09-23-craft-107-t08-content-acl-report.md
+?? docs/plans/2026-09-23-craft-107-t08-product-mount-review.md
+?? docs/plans/2026-09-23-craft-107-t08-ui-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t14-conflicting-failure-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t14-evidence-contract-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t14-preview-attempt-fixture-review.md
+?? docs/plans/2026-09-23-craft-107-t14-probe-correlation-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t14-probe-release-gate-review.md
+?? docs/plans/2026-09-23-craft-107-t14-render-boundary-review.md
+?? docs/plans/2026-09-23-craft-107-t14-render-proof-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t14-request-correlation-review.md
+?? docs/plans/2026-09-23-craft-107-t19-durable-start-plan.md
+?? docs/plans/2026-09-23-craft-107-t19-fix2-review.md
+?? docs/plans/2026-09-23-craft-107-t19-journal-migration-review.md
+?? docs/plans/2026-09-23-craft-107-t19-run-transition-report.md
+?? docs/plans/2026-09-23-craft-107-t19-start-denial-fix-plan.md
+?? docs/plans/2026-09-23-craft-107-t19-start-denial-fix-review.md
+?? docs/plans/2026-09-23-craft-107-t19-start-journal-migration-plan.md
+?? docs/plans/2026-09-23-craft-107-t19-start-journal-migration-report.md
+?? docs/plans/2026-09-23-craft-107-t19-start-report.md
+?? docs/plans/2026-09-23-craft-107-t19-start-review.md
+?? docs/plans/runview-create-intent-review.md
+?? docs/plans/t08-content-acl-review.md
+?? docs/plans/t14-abort-evidence-fix-review.md
+?? internal/application/repository/agent_run_craft_charge_test.go
+?? internal/application/repository/craft_knowledge_records.go
+?? internal/application/repository/craft_knowledge_records_test.go
+?? internal/application/repository/craft_run_view.go
+?? internal/application/repository/craft_run_view_test.go
+?? internal/application/service/craft_budget_start_test.go
+?? internal/application/service/craft_budget_t19_test.go
+?? internal/application/service/craft_knowledge_t05_test.go
+?? internal/application/service/craft_session_acl_test.go
+?? internal/application/service/craft_t01_test.go
+?? internal/application/service/craft_task_list_query.go
+?? internal/container/craft_input_wiring.go
+?? internal/container/craft_input_wiring_test.go
+?? internal/container/craft_knowledge_publisher.go
+?? internal/container/craft_knowledge_publisher_test.go
+?? internal/container/craft_session_provider_test.go
+?? internal/handler/session/craft_input_round.go
+?? internal/handler/session/craft_input_round_test.go
+?? internal/handler/session/craft_knowledge_feature.go
+?? internal/handler/session/craft_knowledge_feature_test.go
+?? internal/modules/craft/run_view.go
+?? internal/modules/craft/run_view_test.go
+?? internal/router/craft_input_routes_test.go
+?? packages/views/src/craft/files.input.test.tsx
+?? packages/views/src/craft/sources.test.tsx
+?? packages/views/src/craft/usage.budget.test.tsx

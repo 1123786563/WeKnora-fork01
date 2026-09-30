@@ -1,0 +1,465 @@
+{
+  "artifact_dir": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T185802Z-22833",
+  "blockers": [
+    "TypeError: the JSON object must be str, bytes or bytearray, not dict"
+  ],
+  "cases": {
+    "cleanup": {
+      "cleanup_exit": 1,
+      "command": [
+        "cleanup trap"
+      ],
+      "exit_code": 1,
+      "ledger_end": {
+        "adapter": 0,
+        "gateway": 0,
+        "host": 0,
+        "provider": 0,
+        "proxy": 0
+      },
+      "ledger_start": {
+        "adapter": 0,
+        "gateway": 0,
+        "host": 0,
+        "provider": 0,
+        "proxy": 0
+      },
+      "reason": "run stopped before cleanup verification",
+      "resources_absent": false,
+      "status": "blocked"
+    },
+    "image": {
+      "actual": {
+        "id": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "platform": "linux/arm64"
+      },
+      "binary_sha256_expected": "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--entrypoint",
+        "opencode",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "--version"
+      ],
+      "exit_code": 0,
+      "reason": "",
+      "status": "pass",
+      "stderr_file": "logs/image.stderr.txt",
+      "stdout_file": "logs/image.stdout.txt"
+    }
+  },
+  "cleanup_inventory": [
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "container",
+      "name": "craft-e0-20260923T185802Z-22833-adapter"
+    },
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "container",
+      "name": "craft-e0-20260923T185802Z-22833-direct"
+    },
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "volume",
+      "name": "craft-e0-20260923T185802Z-22833-data"
+    },
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "volume",
+      "name": "craft-e0-20260923T185802Z-22833-config"
+    },
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "network",
+      "name": "craft-e0-20260923T185802Z-22833-external"
+    },
+    {
+      "error_path": true,
+      "exit_code": 0,
+      "kind": "network",
+      "name": "craft-e0-20260923T185802Z-22833-private"
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11"
+      ],
+      "elapsed_s": 0.254,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/image-inspect.stderr.txt",
+      "stdout": "[\n    {\n        \"Id\": \"sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\",\n        \"RepoTags\": [\n            \"weknora-craft-runtime:1.18.4\"\n        ],\n        \"RepoDigests\": [\n            \"weknora-craft-runtime@sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\"\n        ],\n        \"Comment\": \"buildkit.dockerfile.v0\",\n        \"Created\": \"2026-09-24T01:23:03.457319518+08:00\",\n        \"Config\": {\n            \"User\": \"10001:10001\",\n            \"ExposedPorts\": {\n                \"4096/tcp\": {}\n            },\n            \"Env\": [\n                \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\",\n                \"HOME=/home/craft\",\n                \"XDG_CONFIG_HOME=/home/craft/.config\",\n                \"XDG_DATA_HOME=/home/craft/.local/share\"\n            ],\n            \"Entrypoint\": [\n                \"/usr/local/bin/opencode\"\n            ],\n            \"Cmd\": [\n                \"serve\",\n                \"--hostname\",\n                \"0.0.0.0\",\n                \"--port\",\n                \"4096\"\n            ],\n            \"Volumes\": {\n                \"/home/craft/.config/opencode\": {},\n                \"/home/craft/.local/share/opencode\": {}\n            },\n            \"WorkingDir\": \"/workspace/output\",\n            \"ArgsEscaped\": true\n        },\n        \"Architecture\": \"arm64\",\n        \"Os\": \"linux\",\n        \"Size\": 415783393,\n        \"RootFS\": {\n            \"Type\": \"layers\",\n            \"Layers\": [\n                \"sha256:055ab12bd547e17a0630037f06a186cf405e3f61bb03a614562ca8f5ab52a8be\",\n                \"sha256:459f6e7cb9c93b806e821f4e51c5171763b9abfa140db439ffb60d2343e83f8c\",\n                \"sha256:3958e37a59793bc966e21d6c0eb76b039c5c678246a1956db5d379e29a2cc7bc\",\n                \"sha256:dd9e7e82a4f78c9ed0184d2ca8814f087a6974df6396289bd4872aa303ca11f7\",\n                \"sha256:3346287ab291da7508b9fc2b98ab75cd4dc3796404ee22184d139e57779c1682\",\n                \"sha256:feb28742857c64ffa9174608bbd851625605a263e3a980c71d4313e6f8d56c28\",\n                \"sha256:618ebd3e70fd81c0d86b87d96baa4e45c60f37b9c8b43d73169f1789722644af\",\n                \"sha256:7f9516e42e350729fd2aad9cb3a3423dec11196ce5621b107a42efb47c978ba0\",\n                \"sha256:f161e184786c5f3c8e503b3b1284f574510dd5968283af753595fe871756d744\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\",\n                \"sha256:3c9b4afde135050f500fa1aa22a968624726ba19f755a282db54b0b9cdda222d\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\"\n            ]\n        },\n        \"Metadata\": {\n            \"LastTagTime\": \"2026-09-23T17:23:14.977443808Z\"\n        },\n        \"Descriptor\": {\n            \"mediaType\": \"application/vnd.oci.image.index.v1+json\",\n            \"digest\": \"sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\",\n            \"size\": 856\n        },\n        \"Identity\": {\n            \"Pull\": [\n                {\n                    \"Repository\": \"docker.io/library/weknora-craft-runtime\"\n                }\n            ],\n            \"Build\": [\n                {\n                    \"Ref\": \"6xy2t8j0zg42eob77fqja8ey8\",\n                    \"CreatedAt\": \"2026-09-24T01:23:18.86837348+08:00\"\n                }\n            ]\n        }\n    }\n]\n",
+      "stdout_file": "logs/image-inspect.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--entrypoint",
+        "opencode",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "--version"
+      ],
+      "elapsed_s": 1.986,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/image-version.stderr.txt",
+      "stdout": "1.18.4\n",
+      "stdout_file": "logs/image-version.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "create",
+        "--internal",
+        "-o",
+        "com.docker.network.bridge.gateway_mode_ipv4=isolated",
+        "craft-e0-20260923T185802Z-22833-private"
+      ],
+      "elapsed_s": 0.082,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "e10daf5f90189875d1114dc426f06c4df1d752f90d6b944ada6679246c8439a9\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "create",
+        "craft-e0-20260923T185802Z-22833-external"
+      ],
+      "elapsed_s": 0.103,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "6d3bfc1d51c61f214f4d856c78a0bdad370c1a44389924131490f68c1cc851a8\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "create",
+        "craft-e0-20260923T185802Z-22833-config"
+      ],
+      "elapsed_s": 0.053,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "craft-e0-20260923T185802Z-22833-config\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "create",
+        "craft-e0-20260923T185802Z-22833-data"
+      ],
+      "elapsed_s": 0.078,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "craft-e0-20260923T185802Z-22833-data\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        "craft-e0-20260923T185802Z-22833-direct",
+        "--network",
+        "craft-e0-20260923T185802Z-22833-external",
+        "--network-alias",
+        "mock-gateway",
+        "--network-alias",
+        "mock-provider",
+        "--network-alias",
+        "mock-proxy",
+        "-p",
+        "0.0.0.0::8083",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe:/probe:ro",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T185802Z-22833/state:/state",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T185802Z-22833/ledgers:/ledger",
+        "--entrypoint",
+        "python3",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "/probe/server_v2.py",
+        "--role",
+        "direct",
+        "--run-id",
+        "craft-e0-20260923T185802Z-22833"
+      ],
+      "elapsed_s": 0.416,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "c421e57b276d56d7d8bce2e8ddb910e60a6574c15d70333d0e80bcf98c8a1172\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        "craft-e0-20260923T185802Z-22833-adapter",
+        "--network",
+        "craft-e0-20260923T185802Z-22833-private",
+        "--network-alias",
+        "mock-adapter",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--sysctl",
+        "net.ipv4.ip_forward=0",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe:/probe:ro",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T185802Z-22833/state:/state",
+        "-v",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T185802Z-22833/ledgers:/ledger",
+        "--entrypoint",
+        "python3",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "/probe/server_v2.py",
+        "--role",
+        "adapter",
+        "--run-id",
+        "craft-e0-20260923T185802Z-22833"
+      ],
+      "elapsed_s": 0.346,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "5ee7d4cca3140069a0c5002cf274737bb678a15d94f2aa3a02bd7d6f598738df\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "connect",
+        "--alias",
+        "mock-adapter-x",
+        "craft-e0-20260923T185802Z-22833-external",
+        "craft-e0-20260923T185802Z-22833-adapter"
+      ],
+      "elapsed_s": 0.073,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "craft-e0-20260923T185802Z-22833-direct",
+        "python3",
+        "-c",
+        "import json;print(json.dumps(json.load(open('/state/direct-ready.json'))))"
+      ],
+      "elapsed_s": 0.174,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/ready-direct.stderr.txt",
+      "stdout": "{\"run_id\": \"craft-e0-20260923T185802Z-22833\", \"boot_id\": \"d7c58056-4315-4da0-b85c-db9fa3e2e8d6\", \"role\": \"direct\", \"ports\": [8080, 8081, 8082, 8083]}\n",
+      "stdout_file": "logs/ready-direct.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "craft-e0-20260923T185802Z-22833-adapter",
+        "python3",
+        "-c",
+        "import json;print(json.dumps(json.load(open('/state/adapter-ready.json'))))"
+      ],
+      "elapsed_s": 0.076,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/ready-adapter.stderr.txt",
+      "stdout": "{\"run_id\": \"craft-e0-20260923T185802Z-22833\", \"boot_id\": \"e08f848c-be70-4252-987c-1848fbf02fd8\", \"role\": \"adapter\", \"ports\": [8080]}\n",
+      "stdout_file": "logs/ready-adapter.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "craft-e0-20260923T185802Z-22833-direct",
+        "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"
+      ],
+      "elapsed_s": 0.031,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/direct-ip.stderr.txt",
+      "stdout": "192.168.239.2\n",
+      "stdout_file": "logs/direct-ip.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "craft-e0-20260923T185802Z-22833-adapter",
+        "--format",
+        "{{json .NetworkSettings.Networks}}"
+      ],
+      "elapsed_s": 0.032,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/adapter-ips.stderr.txt",
+      "stdout": "{\"craft-e0-20260923T185802Z-22833-external\":{\"IPAMConfig\":{},\"Links\":null,\"Aliases\":[\"mock-adapter-x\"],\"DriverOpts\":{},\"GwPriority\":0,\"NetworkID\":\"6d3bfc1d51c61f214f4d856c78a0bdad370c1a44389924131490f68c1cc851a8\",\"EndpointID\":\"cdb32f69808b9d69ddd0671d6654f240d52edf1f80cc8c6e84fecae66a7a5544\",\"Gateway\":\"192.168.239.1\",\"IPAddress\":\"192.168.239.3\",\"MacAddress\":\"e2:27:0f:6d:e7:2a\",\"IPPrefixLen\":24,\"IPv6Gateway\":\"\",\"GlobalIPv6Address\":\"\",\"GlobalIPv6PrefixLen\":0,\"DNSNames\":[\"craft-e0-20260923T185802Z-22833-adapter\",\"mock-adapter-x\",\"5ee7d4cca314\"]},\"craft-e0-20260923T185802Z-22833-private\":{\"IPAMConfig\":null,\"Links\":null,\"Aliases\":[\"mock-adapter\"],\"DriverOpts\":null,\"GwPriority\":0,\"NetworkID\":\"e10daf5f90189875d1114dc426f06c4df1d752f90d6b944ada6679246c8439a9\",\"EndpointID\":\"68a5c1cb4b99fd6edf96681b15a497ea8942df08c952b738a19dce79e462c42e\",\"Gateway\":\"\",\"IPAddress\":\"192.168.229.1\",\"MacAddress\":\"2a:8d:fc:78:cb:22\",\"IPPrefixLen\":24,\"IPv6Gateway\":\"\",\"GlobalIPv6Address\":\"\",\"GlobalIPv6PrefixLen\":0,\"DNSNames\":[\"craft-e0-20260923T185802Z-22833-adapter\",\"mock-adapter\",\"5ee7d4cca314\"]}}\n",
+      "stdout_file": "logs/adapter-ips.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "craft-e0-20260923T185802Z-22833-adapter"
+      ],
+      "elapsed_s": 0.293,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-adapter.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-adapter\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-adapter.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "craft-e0-20260923T185802Z-22833-direct"
+      ],
+      "elapsed_s": 0.231,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-direct.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-direct\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-direct.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "craft-e0-20260923T185802Z-22833-data"
+      ],
+      "elapsed_s": 0.062,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-data.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-data\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-data.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "craft-e0-20260923T185802Z-22833-config"
+      ],
+      "elapsed_s": 0.134,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-config.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-config\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-config.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "rm",
+        "craft-e0-20260923T185802Z-22833-external"
+      ],
+      "elapsed_s": 0.292,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-external.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-external\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-external.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "rm",
+        "craft-e0-20260923T185802Z-22833-private"
+      ],
+      "elapsed_s": 0.12,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-private.stderr.txt",
+      "stdout": "craft-e0-20260923T185802Z-22833-private\n",
+      "stdout_file": "logs/cleanup-error-craft-e0-20260923T185802Z-22833-private.stdout.txt",
+      "timed_out": false
+    }
+  ],
+  "elapsed_s": 4.861,
+  "finished_utc": "2026-09-23T18:58:06Z",
+  "image": {
+    "binary_sha256": "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e",
+    "id": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+    "image_declared_volumes": {
+      "/home/craft/.config/opencode": {},
+      "/home/craft/.local/share/opencode": {}
+    },
+    "platform": "linux/arm64",
+    "version": "1.18.4"
+  },
+  "ledgers": {
+    "adapter": "ledgers/adapter.jsonl",
+    "gateway": "ledgers/gateway.jsonl",
+    "host": "ledgers/host.jsonl",
+    "provider": "ledgers/provider.jsonl",
+    "proxy": "ledgers/proxy.jsonl"
+  },
+  "names": {
+    "adapter": "craft-e0-20260923T185802Z-22833-adapter",
+    "client": "craft-e0-20260923T185802Z-22833-client",
+    "direct": "craft-e0-20260923T185802Z-22833-direct"
+  },
+  "run_id": "craft-e0-20260923T185802Z-22833",
+  "runtime": {},
+  "schema": "craft-e0-v2",
+  "started_utc": "2026-09-23T18:58:02Z",
+  "synthetic": false,
+  "verdict": "BLOCKED"
+}

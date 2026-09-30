@@ -120,7 +120,7 @@ func TestSessionRepoShareTokenUniqueAcrossSessions(t *testing.T) {
 
 	// Recreate the production partial unique index (migration 000170).
 	require.NoError(t, db.Exec(
-		"CREATE UNIQUE INDEX uq_sessions_share_token ON sessions (share_token) " +
+		"CREATE UNIQUE INDEX uq_sessions_share_token ON sessions (share_token) "+
 			"WHERE share_token IS NOT NULL AND share_token <> ''",
 	).Error)
 

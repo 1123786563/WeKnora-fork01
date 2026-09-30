@@ -124,13 +124,13 @@ func TestLagoPurchaseIntegration(t *testing.T) {
 
 	purchaseCommand := func(tenant uint64, planCode string) commercial.Command {
 		return commercial.Command{
-			Kind: commercial.CommandKindCreatePurchaseSubscription,
-			Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), planCode),
+			Kind:  commercial.CommandKindCreatePurchaseSubscription,
+			Key:   commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), planCode),
 			Actor: "integration:t09", Reason: "purchase evidence",
 			Payload: commercial.CreatePurchaseSubscriptionPayload{
 				TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 				ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
-				PlanCode: planCode, AmountFen: 9900, Currency: commercial.CurrencyCNY,
+				PlanCode:                       planCode, AmountFen: 9900, Currency: commercial.CurrencyCNY,
 			},
 		}
 	}

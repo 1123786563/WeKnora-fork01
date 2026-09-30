@@ -1,0 +1,235 @@
+diff --git a/internal/handler/session/craft.go b/internal/handler/session/craft.go
+index 7feaab089..a7254266e 100644
+--- a/internal/handler/session/craft.go
++++ b/internal/handler/session/craft.go
+@@ -104,10 +104,11 @@ func NewCraftSnapshotHandler(svc CraftSnapshotAPI) *CraftSnapshotHandler {
+ // craftRouteGroup is the route-mounting subset satisfied by both a raw gin
+ // group and the router's API-key-policy wrapper, so the craft routes can be
+ // mounted through whichever wrapper declares their auth policy.
+-type craftRouteGroup interface {
++type CraftRouteGroup interface {
+ 	GET(string, ...gin.HandlerFunc) gin.IRoutes
+ 	POST(string, ...gin.HandlerFunc) gin.IRoutes
+ }
++type craftRouteGroup = CraftRouteGroup
+ 
+ // RegisterCraftSessionRoutes mounts W03's craft API table. craftSessions is
+ // the /craft/sessions group (create + list); sessions is the existing
+@@ -151,6 +152,11 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
+ 		sessions.POST("/:session_id/craft/versions/:version_id/preview",
+ 			craftPreviewFailureMetrics(previewHandler.IssueCraftPreview))
+ 	}
++	if craftHandler != nil && registeredCraftFeatureRoutes.hasFeatures() {
++		if err := registeredCraftFeatureRoutes.Mount(sessions); err != nil {
++			panic(err)
++		}
++	}
+ }
+ 
+ // craftPreviewFailureMetrics counts a failed craft preview issuance at the
+@@ -305,17 +311,25 @@ func craftVersionDTO(v craft.Version) gin.H {
+ 	for _, check := range v.Checks {
+ 		checks = append(checks, craftCheckDTO(check))
+ 	}
+-	return gin.H{
++	dto := gin.H{
+ 		"id": v.ID, "workspace_id": v.WorkspaceID, "run_id": v.RunID,
+ 		"kind": v.Kind, "files": files, "checks": checks,
+ 	}
++	if v.WebEvidence != nil {
++		dto["web_evidence"] = v.WebEvidence
++	}
++	return dto
+ }
+ 
+ func craftInputDTO(in craft.Input) gin.H {
+-	return gin.H{
++	dto := gin.H{
+ 		"ref": in.Ref, "name": in.Name, "sha256": in.SHA256,
+ 		"bytes": in.Bytes, "citation_id": in.CitationID,
+ 	}
++	if in.Recognition != nil {
++		dto["recognition"] = in.Recognition
++	}
++	return dto
+ }
+ 
+ // -----------------------------------------------------------------------------
+diff --git a/internal/modules/craft/contracts.go b/internal/modules/craft/contracts.go
+index fcb58c725..9d7ecb0ca 100644
+--- a/internal/modules/craft/contracts.go
++++ b/internal/modules/craft/contracts.go
+@@ -58,6 +58,7 @@ type Workspace struct {
+ type Input struct {
+ 	Ref, Name, SHA256, CitationID string
+ 	Bytes                         int64
++	Recognition                   *InputRecognition
+ }
+ 
+ // Task is the durable delegation request executed by the OpenCode runtime
+@@ -89,6 +90,7 @@ type Version struct {
+ 	ID, WorkspaceID, RunID, Kind string
+ 	Files                        []File
+ 	Checks                       []Check
++	WebEvidence                  *WebCheckEvidence
+ }
+ 
+ // Observation is the OpenCode session state projected by Observe.
+diff --git a/packages/contracts/src/craft/index.ts b/packages/contracts/src/craft/index.ts
+index 4626c2f51..69a24fd4f 100644
+--- a/packages/contracts/src/craft/index.ts
++++ b/packages/contracts/src/craft/index.ts
+@@ -8,6 +8,9 @@
+ // file bytes travel through the platform transport, never through domain
+ // state.
+ 
++export * from './web-artifact.ts';
++import { parseCraftBudgetPause, parseCraftInputRecognition, parseCraftWebCheckEvidence, type CraftBudgetPause, type CraftInputRecognition, type CraftWebCheckEvidence } from './web-artifact.ts';
++
+ /** Craft artifact kinds (internal/craft/request.go closed set). */
+ export const CRAFT_SESSION_KINDS = ['web', 'document', 'spreadsheet', 'slides'] as const;
+ export type CraftSessionKind = (typeof CRAFT_SESSION_KINDS)[number];
+@@ -68,6 +71,7 @@ export interface CraftRunView {
+   /** Server-assigned event watermark; 0 on the POST /runs admission view. */
+   seq: number;
+   pending_id: string | null;
++  budget_pause: CraftBudgetPause | null;
+ }
+ 
+ export interface CraftFileVersionView {
+@@ -91,6 +95,7 @@ export interface CraftVersionView {
+   kind: string;
+   files: CraftFileVersionView[];
+   checks: CraftVersionCheckView[];
++  web_evidence: CraftWebCheckEvidence | null;
+ }
+ 
+ export interface CraftVersionsPageView {
+@@ -129,6 +134,7 @@ export interface CraftInputView {
+   sha256: string;
+   bytes: number;
+   citation_id: string;
++  recognition: CraftInputRecognition | null;
+ }
+ 
+ export interface CraftPreviewTicketView {
+@@ -244,6 +250,7 @@ export function parseCraftRunView(value: unknown): CraftRunView {
+     epoch: nonNegativeInt(v.epoch, 'epoch', 'craft run view'),
+     seq: nonNegativeInt(v.seq, 'seq', 'craft run view'),
+     pending_id: optionalString(v.pending_id, 'pending_id', 'craft run view'),
++    budget_pause: v.budget_pause === undefined || v.budget_pause === null ? null : parseCraftBudgetPause(v.budget_pause),
+   };
+ }
+ 
+@@ -278,6 +285,7 @@ export function parseCraftVersionView(value: unknown): CraftVersionView {
+     kind: nonEmptyString(v.kind, 'kind', 'craft version'),
+     files: v.files.map(parseFileVersion),
+     checks: v.checks.map(parseVersionCheck),
++    web_evidence: v.web_evidence === undefined || v.web_evidence === null ? null : parseCraftWebCheckEvidence(v.web_evidence),
+   };
+ }
+ 
+@@ -330,6 +338,7 @@ export function parseCraftInputView(value: unknown): CraftInputView {
+     sha256: typeof v.sha256 === 'string' ? v.sha256 : '',
+     bytes: nonNegativeInt(v.bytes, 'bytes', 'craft input'),
+     citation_id: typeof v.citation_id === 'string' ? v.citation_id : '',
++    recognition: v.recognition === undefined || v.recognition === null ? null : parseCraftInputRecognition(v.recognition),
+   };
+ }
+ 
+diff --git a/packages/views/src/craft/workbench.stop.test.tsx b/packages/views/src/craft/workbench.stop.test.tsx
+index bcdf65838..3e7f55799 100644
+--- a/packages/views/src/craft/workbench.stop.test.tsx
++++ b/packages/views/src/craft/workbench.stop.test.tsx
+@@ -65,6 +65,7 @@ if (hooks.registerHooks) {
+ // react-dom resolves through the web app's install (views stays renderer-free).
+ const { createRoot } = await import('../../../../apps/web/node_modules/react-dom/client.js');
+ const { CraftWorkbench } = await import('./workbench.tsx');
++const { createCraftWorkbenchFeatures } = await import('./workbench-features.tsx');
+ const { createCraftMessageLog } = await import('./presentation.ts');
+ 
+ // The controller state shape the W04 reducer publishes (domain CraftState).
+@@ -165,6 +166,24 @@ test('stop button appears while a run is active and calls onStopRun once', async
+   });
+ });
+ 
++test('two named workbench features render in deterministic slots and registry freezes', async () => {
++  document.body.replaceChildren();
++  const features = createCraftWorkbenchFeatures([
++    { name: 'sources', slot: 'aside', render: () => <span data-testid="sources-feature">Sources</span> },
++    { name: 'access', slot: 'header', render: () => <span data-testid="access-feature">Access</span> },
++  ]);
++  assert.deepEqual(features.map((feature) => feature.name), ['access', 'sources']);
++  assert.throws(() => createCraftWorkbenchFeatures([
++    { name: 'access', slot: 'header', render: () => null },
++    { name: 'access', slot: 'aside', render: () => null },
++  ]), /duplicate/);
++  assert.throws(() => createCraftWorkbenchFeatures([{ name: 'missing', slot: 'header', render: null as never }]), /render/);
++  const root = await mount(<CraftWorkbench {...baseProps(fakeController(null))} features={features} />);
++  assert.ok(document.querySelector('[data-testid="access-feature"]'));
++  assert.ok(document.querySelector('[data-testid="sources-feature"]'));
++  await act(async () => { root.unmount(); });
++});
++
+ test('stop button hidden when no run is active', async () => {
+   document.body.replaceChildren();
+   // A finished run (terminal main status) AND a workbench with no run at all
+diff --git a/packages/views/src/craft/workbench.tsx b/packages/views/src/craft/workbench.tsx
+index 0aef530e4..5b5cbc1bf 100644
+--- a/packages/views/src/craft/workbench.tsx
++++ b/packages/views/src/craft/workbench.tsx
+@@ -61,6 +61,9 @@ import './craft.css';
+ // re-exported here because the assembly imports it from this module.
+ export { createCraftMessageLog } from './presentation.ts';
+ export type { CraftMessageSnapshot } from './presentation.ts';
++export { createCraftWorkbenchFeatures } from './workbench-features.tsx';
++export type { CraftWorkbenchFeature, CraftWorkbenchFeatureContext, CraftWorkbenchSlot } from './workbench-features.tsx';
++import type { CraftWorkbenchFeature, CraftWorkbenchSlot } from './workbench-features.tsx';
+ 
+ // ---------------------------------------------------------------------------
+ // Workbench component
+@@ -81,6 +84,8 @@ export interface CraftInteractionActionInput {
+ }
+ 
+ export interface CraftWorkbenchProps {
++	/** Immutable, keyed feature list assembled before this view mounts. */
++	features?: readonly CraftWorkbenchFeature[];
+   locale: CraftLocale;
+   sessionId: string;
+   title: string;
+@@ -738,6 +743,10 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
+     );
+   };
+ 
++  const renderFeatures = (slot: CraftWorkbenchSlot) => (props.features ?? [])
++    .filter((feature) => feature.slot === slot)
++    .map((feature) => <div key={feature.name} data-craft-feature={feature.name}>{feature.render({ sessionId: props.sessionId, canWrite: props.canWrite, selectedVersionId })}</div>);
++
+   return (
+     <main className="wk-craft wk-craft-page" aria-label={props.title || strings.craftHomeTitle}>
+       <div className="wk-craft-head">
+@@ -750,6 +759,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
+         </div>
+       </div>
+       {props.syncError !== null ? <p className="wk-craft-error" role="alert">{strings.craftStreamReconnecting} ({props.syncError})</p> : null}
++      {renderFeatures('header')}
+       {restoreEntryVisible && restoreBlockedReason !== null && selectedVersionId !== null && !runActive && mainStatus !== 'waiting_user' ? (
+         <p className="wk-craft-hint" data-testid="craft-restore-reason">{restoreBlockedReason}</p>
+       ) : null}
+@@ -829,6 +839,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
+             aria-label={strings.craftTabConversation}
+             data-narrow-hidden={narrow && narrowTab !== 'conversation'}
+           >
++            {renderFeatures('conversation')}
+             {conversation}
+           </section>
+           {!narrow ? (
+@@ -859,7 +870,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
+                 {tabButton('details', strings.craftTabDetails)}
+               </div>
+             ) : null}
+-            <div className="wk-craft-panel">{sidePanel}</div>
++            <div className="wk-craft-panel">{sidePanel}{renderFeatures('aside')}</div>
+           </section>
+         </div>
+       </div>

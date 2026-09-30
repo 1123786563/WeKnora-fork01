@@ -1,0 +1,57 @@
+{
+  "kind": "web",
+  "task": "T04 固定离线 Web 构建运行时（#123）",
+  "toolchain": {
+    "name": "craft-web-toolchain",
+    "root": "/opt/craft/web",
+    "lock": "docker/craft/web/toolchain.lock.json（权威钉住文件，构建时逐文件 sha256 校验）",
+    "toolchain_digest": "9459a7f47c76b440e1f5594c4836de856f70e7bc92cb1e3fb946736ab0ca705f",
+    "digest_derivation": "sha256(\"craft-web-toolchain\\0\" + template_sha256 + \"\\0\" + \"\\0\".join(sorted(\"name:sha256\" of deps)) + \"\\0\" + build_program_sha256)；Go 侧 internal/container CraftWebToolchainDigest 与 Python 侧 build.py toolchain_digest 逐字节一致，TestCraftWebToolchainPinsMatchShippedFiles 机器校验两侧与 runtime-config.json 三方一致。"
+  },
+  "template": {
+    "name": "template.html",
+    "version": "1.0.0",
+    "sha256": "ecf1a109e97e0d991aeb4507fdb5079d71576f2caff1608491bf05961ae16d61",
+    "entry": "output/index.html",
+    "assets": ["assets/craft-web.css", "assets/craft-web.js"]
+  },
+  "dependencies": [
+    {"name": "craft-web.css", "version": "1.0.0", "license": "同仓库（内置样式，无外部来源）", "sha256": "b6109648e3f77bbf7ad679939ae1a3f3b8b5507b01efd9e74080d0fe0bede30b"},
+    {"name": "craft-web.js", "version": "1.0.0", "license": "同仓库（纯 DOM 过滤助手：无 fetch/XHR/WebSocket/eval）", "sha256": "e3bb701722a92a9f74238547cd778da263c1d821f1032168cd632d0d11b67e96"}
+  ],
+  "build_program": {
+    "name": "build.py",
+    "sha256": "ab05fa4558f37caf236ee4e9bb45576bebd7c845fe660408ee20b7fa80e20b45",
+    "runtime": "python3（镜像 D02 集已预置，Debian bookworm 3.11；宿主测试用 3.14，仅标准库）",
+    "network": "零网络：不发起任何 HTTP/DNS/Git/包管理器请求；拒绝任何外部引用的暂存内容（http(s)://、//host、绝对路径、javascript:/data:text/html、url()/@import、base/iframe/object/embed/form 标签）",
+    "exit_codes": "0 成功；2 工具链钉住违规（缺失/变更的预置依赖）；3 暂存内容非法；4 渲染/输出失败"
+  },
+  "build_log": {
+    "path": "output/build-log.json",
+    "fields": ["schema", "kind", "runtime_digest", "toolchain_digest", "template_version", "template_sha256", "exit_code", "entry", "assets", "egress", "error"],
+    "rule": "每次终止都写日志（含失败），exit_code 为真实退出码；Go 侧 ParseCraftWebBuildLog 严格解码（未知字段拒绝、资产仅限本地相对路径、退出码 0..255），CraftWebBuildEvidence 仅在工具链摘要与钉住值一致时把它折叠为 W01 ArtifactEvidence{BuildRan, BuildExitCode}，不匹配则整条忽略（build 保持 not_run，绝不伪造）。"
+  },
+  "image": {
+    "name": "weknora-craft-runtime",
+    "base": "debian:bookworm-slim + R01 OpenCode 1.18.4 钉住层",
+    "dockerfile_block": "W1 web 工具链层（COPY web/ → /opt/craft/web，root:root 0555 只读；构建期 sha256sum -c 校验全部钉住文件；--selftest 离线冒烟构建；镜像内不含任何网络下载步骤）",
+    "runtime_config": "docker/craft/runtime-config.json 新增 web_toolchain 节（模板/依赖/构建程序摘要 + 派生工具链摘要）；RunView 探针 sha256sum /etc/craft/runtime-config.json 使 Web 模板与依赖版本体现在运行时身份中",
+    "local_image_tag": "weknora-craft-runtime:t04-web（本地构建验证标签；registry digest 未发布，与 opencode.lock.json container_digest 现状一致）"
+  },
+  "skill": {
+    "name": "craft-web-build",
+    "version": "1.0.0",
+    "manifest": "skills/craft-web-build/manifest.json（digest 钉 SKILL.md，DecodeSkillManifest 严格契约）",
+    "registered_in": "docker/craft/runtime-config.json skills[]"
+  },
+  "offline_verification": {
+    "host_journey": "internal/container/craft_web_build_test.go TestCraftT04Journey：真实运行 build.py（空 HOME/TMPDIR、无代理）成功路径 + 缺失预置依赖（删 deps/craft-web.css → exit 2，日志带真实退出码与根因）+ 缺入口/篡改日志（未知字段、外部资产、越界路径、退出码 256、异工具链摘要整条忽略）",
+    "sandbox_evidence": "docs/testing/craft/t04/：真实 docker --network none 离线构建日志 + HTTP/DNS/Git/包管理器/shell 五路 egress 探针全部被拒的记录（环境级验证，按 Issue 验证证据要求提供）"
+  },
+  "forbidden": [
+    "任何外部 CDN/字体/脚本来源或 analytics（构建程序拒绝，预览 CSP connect-src none 兜底）",
+    "为构建下载依赖（镜像已预置全部依赖；npm/pip/curl 拉取一律拒绝）",
+    "伪造 build-log.json（服务端按钉住工具链摘要校验；不匹配整条忽略）",
+    "把上传代码当作构建输入执行（构建只读暂存 content.json；上传代码仍受 T03 执行策略约束）"
+  ]
+}

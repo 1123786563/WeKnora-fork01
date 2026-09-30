@@ -41,10 +41,12 @@ func (e *recordingDelegateExecutor) Execute(_ context.Context, _ craft.Task) (cr
 func guardWiringTask(scope craft.Scope, workspaceID string) craft.Task {
 	return craft.Task{
 		Scope: scope, ID: "dlg-guard", ToolCallID: "call-guard", WorkspaceID: workspaceID,
-		Prompt: "p", RequestHash: "rh",
+		Prompt: "p", RequestHash: "rh", SnapshotDigestVersion: 1,
+		SnapshotDigest: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 		Fence: agentruntime.Fence{
 			RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: "run-guard"},
-			Owner:  scope.UserID, Epoch: 1,
+			Owner:  scope.UserID, Epoch: 1, SnapshotDigestVersion: 1,
+			SnapshotDigest: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 		},
 	}
 }

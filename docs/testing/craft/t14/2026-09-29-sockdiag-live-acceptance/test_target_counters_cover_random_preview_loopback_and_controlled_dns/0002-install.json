@@ -1,0 +1,301 @@
+{
+  "action": "install",
+  "helper": {
+    "image_id": "sha256:c0cfa88b4db1940b7cbc978f0b43e713c22ce4af0ebcdeb2ec7db9a14bf1f2bb",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 10676348166,
+  "payload": {
+    "counters": {
+      "isolated_ipv4_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "isolated_ipv6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "loopback_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "loopback_v4_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "loopback_v6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "target_counters": {
+        "dns_invalid": {
+          "bytes": 0,
+          "counter_id": "policy-target-invalid-dns-drop",
+          "destination": "203.0.113.53",
+          "destination_ports": [
+            53
+          ],
+          "packets": 0,
+          "protocol": "udp"
+        },
+        "gateway_http": {
+          "bytes": 0,
+          "counter_id": "policy-target-gateway-http-drop",
+          "destination": "172.17.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        },
+        "metadata_http": {
+          "bytes": 0,
+          "counter_id": "policy-target-metadata-http-drop",
+          "destination": "169.254.169.254",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        },
+        "private_http": {
+          "bytes": 0,
+          "counter_id": "policy-target-private-http-drop",
+          "destination": "10.0.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        },
+        "public_https": {
+          "bytes": 0,
+          "counter_id": "policy-target-public-http-drop",
+          "destination": "1.1.1.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        }
+      }
+    },
+    "default_routes": [],
+    "interfaces": [
+      "lo",
+      "policy0"
+    ],
+    "mandatory_canary": {
+      "after_packets": 1,
+      "after_record": 4,
+      "before_packets": 0,
+      "before_record": 3,
+      "counter_id": "policy-loopback-v4-drop",
+      "delta_packets": 1,
+      "destination": "127.0.0.1:8081/tcp",
+      "kind": "post-policy-loopback-drop-canary",
+      "monotonic_ended_ns": 23260357125,
+      "monotonic_started_ns": 22768499291,
+      "passed": true,
+      "probe": {
+        "returncode": 1,
+        "stderr": "",
+        "stdout": "TimeoutError:timed out\n"
+      },
+      "probe_argv": [
+        "docker",
+        "exec",
+        "--user",
+        "10001:10001",
+        "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+        "python3",
+        "-c",
+        "import socket,sys;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.settimeout(.35);\ntry:s.connect(('127.0.0.1',8081));print('unexpected-connect');sys.exit(0)\nexcept OSError as exc:print(type(exc).__name__+':'+str(exc));sys.exit(1)"
+      ],
+      "webdriver_same_listener_canary": {
+        "after_packets": 2,
+        "before_packets": 1,
+        "connect_attempted": true,
+        "connect_elapsed_ms": 502,
+        "connected": false,
+        "counter_id": "policy-loopback-v4-drop",
+        "delta_packets": 1,
+        "destination": "127.0.0.1:9515/tcp",
+        "errno": null,
+        "error_type": "TimeoutError",
+        "monotonic_ended_ns": 25795069625,
+        "monotonic_started_ns": 24793216791,
+        "passed": true,
+        "probe_argv": [
+          "docker",
+          "exec",
+          "--user",
+          "10001:10001",
+          "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+          "python3",
+          "-c",
+          "import socket,sys,json,errno,time;family=socket.AF_INET;address='127.0.0.1';port=9515;s=socket.socket(family,socket.SOCK_STREAM);s.settimeout(.5);s.bind((('127.0.0.1' if family==socket.AF_INET else '::1'),0));local=s.getsockname()[1];out={'destination':address,'destination_port':port,'source_port':local,'connect_attempted':False};\nif local==34530:print(json.dumps(out));sys.exit(3)\nout['connect_attempted']=True;started=time.monotonic();\ntry:s.connect((address,port));out.update({'connected':True,'error_type':None,'errno':None});print(json.dumps(out));sys.exit(0)\nexcept OSError as exc:out.update({'connected':False,'error_type':type(exc).__name__,'errno':exc.errno,'connect_elapsed_ms':int((time.monotonic()-started)*1000)});print(json.dumps(out));sys.exit(1)"
+        ],
+        "returncode": 1,
+        "source_port": 58899,
+        "stderr": "",
+        "stdout": "{\"destination\": \"127.0.0.1\", \"destination_port\": 9515, \"source_port\": 58899, \"connect_attempted\": true, \"connected\": false, \"error_type\": \"TimeoutError\", \"errno\": null, \"connect_elapsed_ms\": 502}\n"
+      }
+    },
+    "netns": "net:[4026535519]",
+    "policy_id": "t14_98eb7938bef8",
+    "preview_port_attestation_path": "preview-port-attestation.json",
+    "raw_rules_sha256": "3c12b15051e97cd7202d5f712a149063212dd9c490fd183c1e7a1841c4c86f51",
+    "routes": {
+      "ipv4": [
+        {
+          "dev": "policy0",
+          "dst": "1.1.1.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "10.0.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "169.254.169.254",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "172.17.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "198.18.10.0/24",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "203.0.113.53",
+          "flags": [],
+          "scope": "link"
+        }
+      ],
+      "ipv6": [
+        {
+          "dev": "policy0",
+          "dst": "2001:db8:10::/64",
+          "flags": [],
+          "metric": 1024,
+          "pref": "medium"
+        },
+        {
+          "dev": "policy0",
+          "dst": "fe80::/64",
+          "flags": [],
+          "metric": 256,
+          "pref": "medium",
+          "protocol": "kernel"
+        }
+      ]
+    },
+    "target_counters": {
+      "dns_invalid": {
+        "bytes": 0,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 0,
+        "protocol": "udp"
+      },
+      "gateway_http": {
+        "bytes": 0,
+        "counter_id": "policy-target-gateway-http-drop",
+        "destination": "172.17.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      },
+      "metadata_http": {
+        "bytes": 0,
+        "counter_id": "policy-target-metadata-http-drop",
+        "destination": "169.254.169.254",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      },
+      "private_http": {
+        "bytes": 0,
+        "counter_id": "policy-target-private-http-drop",
+        "destination": "10.0.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      },
+      "public_https": {
+        "bytes": 0,
+        "counter_id": "policy-target-public-http-drop",
+        "destination": "1.1.1.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      }
+    }
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 9062,
+      "path": "0002-container-inspect-after.json",
+      "sha256": "b2b471b4c4f2919133750097cd45ad3b2078be31685779286780bb8a07d6de09"
+    },
+    "container_inspect_raw": {
+      "bytes": 9062,
+      "path": "0002-container-inspect-before.json",
+      "sha256": "b2b471b4c4f2919133750097cd45ad3b2078be31685779286780bb8a07d6de09"
+    },
+    "raw_link_json": {
+      "bytes": 573,
+      "path": "0002-links.json",
+      "sha256": "f125f10ead53bae9a88e16fda26f7faf9d835ca40c68a2be06529266cf0f1089"
+    },
+    "raw_route_json": {
+      "bytes": 654,
+      "path": "0002-routes.json",
+      "sha256": "ff00f2f59057a6a4d873bd91f7a4559c1b77f311a1c37fb64c4038ae9b654182"
+    },
+    "raw_rules": {
+      "bytes": 6649,
+      "path": "0002-nft-rules.json",
+      "sha256": "3c12b15051e97cd7202d5f712a149063212dd9c490fd183c1e7a1841c4c86f51"
+    }
+  },
+  "sequence": 2,
+  "target": {
+    "container_id": "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+    "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+    "container_pid": 1256819,
+    "netns": "net:[4026535519]"
+  }
+}

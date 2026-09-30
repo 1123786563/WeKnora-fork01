@@ -1,0 +1,249 @@
+// Package runtime defines the durable execution contracts used by the tRPC
+// agent runtime. It intentionally contains no database or application-service
+// dependencies so workers can be assembled without import cycles.
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+var (
+	// ErrConflict reports an incompatible idempotent request or state change.
+	ErrConflict = errors.New("agent runtime conflict")
+	// ErrRunActive indicates that a session's durable run slot is occupied.
+	ErrRunActive = errors.New("agent run already active")
+	// ErrLeaseLost rejects workers without a current owner/epoch lease.
+	ErrLeaseLost = errors.New("agent run lease lost")
+	// ErrNotFound indicates no record exists in the requested scope.
+	ErrNotFound = errors.New("agent run not found")
+	// ErrCursorExpired reports an event cursor outside retained history.
+	ErrCursorExpired = errors.New("agent event cursor expired")
+)
+
+// RunKey identifies a run within its tenant.
+type RunKey struct {
+	TenantID uint64
+	RunID    string
+}
+
+// RemoteProvider is the minimal provider capability required by a durable
+// dispatch worker. It lives in the dependency-free runtime package so the
+// worker, workbench service, and concrete Paseo adapter share one structural
+// contract without introducing an import cycle.
+type RemoteProvider interface {
+	Start(context.Context, RunKey, string) (string, error)
+}
+
+// RemoteStartRequest carries the fenced, immutable command data to a remote
+// provider. Implementations should prefer StartCommand; Start remains for
+// compatibility with older adapters.
+type RemoteStartRequest struct {
+	Fence        Fence
+	CommandID    string
+	PayloadHash  string
+	AttemptID    string
+	TargetID     string
+	WorkspaceRef string
+	Prompt       string
+	Provider     string
+}
+
+// RemoteUsageObservation is provider output only. It deliberately contains
+// no funding/source fields: those are selected by the server-side execution
+// binding before the provider is called.
+type RemoteUsageObservation struct {
+	Service      string
+	Status       string
+	PriceVersion string
+	Revision     int64
+	OccurredAt   time.Time
+	Dimensions   map[string]int64
+}
+
+type RemoteStartResult struct {
+	ExternalID string
+	Usage      *RemoteUsageObservation
+}
+
+// RemoteUsageProvider is an additive capability. Older providers may still
+// implement RemoteCommandProvider; the dispatcher then treats missing usage
+// as an unknown outcome and durably reconciles the dispatch.
+type RemoteUsageProvider interface {
+	StartCommandWithUsage(context.Context, RemoteStartRequest) (RemoteStartResult, error)
+}
+
+type RemoteCommandProvider interface {
+	StartCommand(context.Context, RemoteStartRequest) (string, error)
+}
+
+// Fence identifies a worker's exclusive, expiring claim on a run.
+type Fence struct {
+	RunKey
+	Owner                                    string
+	Epoch                                    int64
+	TargetID, WorkspaceRef, Prompt, Provider string
+	// The following values are server-owned execution-binding metadata. They
+	// are restored from the immutable admission snapshot, never accepted from
+	// a remote provider response.
+	ParentRunID, UsageSource, UsageFunding, UsageService, UsagePriceVersion string
+	UsageCredentialVersion                                                  int64
+	UsageUpper, UsageRevision                                               int64
+	UsageStatus                                                             string
+	UsageDimensions                                                         map[string]int64
+}
+
+// RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.
+type RunEvent struct {
+	Seq       int64           `json:"seq"`
+	AttemptID string          `json:"attempt_id,omitempty"`
+	Type      string          `json:"type"`
+	Payload   json.RawMessage `json:"payload"`
+}
+
+// RunInput is a durable steering message. Mode is inject or after.
+type RunInput struct {
+	SteerID string          `json:"steer_id"`
+	Mode    string          `json:"mode"`
+	Message json.RawMessage `json:"message"`
+}
+
+// Run is the durable execution query view.
+type Run struct {
+	Key                RunKey
+	SessionID          string
+	UserID             string
+	RequestID          string
+	AssistantMessageID string
+	Driver             string
+	TargetID           string
+	BudgetRef          string
+	Status             string
+	WaitReason         string
+	Owner              string
+	Revision           int64
+	Epoch              int64
+	LeaseUntil         time.Time
+	Deadline           time.Time
+	Snapshot           json.RawMessage
+}
+
+// Admission contains the immutable request and initial business messages.
+type Admission struct {
+	Key       RunKey
+	SessionID string
+	// Usage binding is server-owned admission metadata. It is persisted in
+	// the immutable run snapshot and copied into every worker Fence; clients
+	// and provider observations never populate these fields.
+	ParentRunID            string
+	UsageCredentialVersion int64
+	UsageSource            string
+	UsageFunding           string
+	UsageService           string
+	UsagePriceVersion      string
+	UsageUpper             int64
+	UsageRevision          int64
+	UsageStatus            string
+	UsageDimensions        map[string]int64
+	UserID                 string
+	RequestID              string
+	// UserMessageID optionally reuses the handler-persisted user message row
+	// instead of creating a second one; empty generates a fresh id.
+	UserMessageID      string
+	AssistantMessageID string
+	// Driver is empty for legacy platform requests. The repository normalizes
+	// that form to platform before it persists or compares an admission.
+	Driver           string
+	TargetID         string
+	BudgetRef        string
+	RequestHash      string
+	Snapshot         json.RawMessage
+	UserMessage      json.RawMessage
+	AssistantMessage json.RawMessage
+	Deadline         time.Time
+	// InputClaims carries server-created Craft input admission fences. It is
+	// optional so ordinary Run admission remains compatible. Each claim is
+	// validated and transitioned in the same transaction as the Run row.
+	InputClaims []InputAdmissionClaim
+}
+
+// InputAdmissionClaim fences one selected opaque Craft input decision. The
+// decision key is a server-derived digest of the selected input reference;
+// RunID and Token are allocated and persisted by the Craft service before
+// Submit and are never decoded from a user-facing request.
+type InputAdmissionClaim struct {
+	DecisionKey string
+	RunID       string
+	Token       string
+}
+
+// Decision is a durable user resolution for a run waiting on an external
+// result or tool action. Result is used only by provide_result.
+type Decision struct {
+	PendingID        string
+	DecisionID       string
+	ToolCallID       string
+	Action           string
+	ArgsHash         string
+	Reason           string
+	ExpectedRevision int64
+	Result           json.RawMessage
+	ResourceRef      string
+}
+
+// CheckpointRecord holds a complete graph checkpoint and its pending writes.
+type CheckpointRecord struct {
+	Namespace     string
+	ID            string
+	ParentID      string
+	Seq           int64
+	State         json.RawMessage
+	PendingWrites json.RawMessage
+}
+
+// RunStore persists admission and fences all executing-worker writes.
+type RunStore interface {
+	Admit(context.Context, Admission) (Run, error)
+	Get(context.Context, RunKey) (Run, error)
+	Claim(context.Context, RunKey, string, time.Duration) (Fence, error)
+	Renew(context.Context, Fence, time.Duration) error
+	Scan(context.Context, int) ([]RunKey, error)
+	SaveCheckpoint(context.Context, Fence, CheckpointRecord) error
+	SetStatus(context.Context, Fence, string, string) error
+	LoadCheckpoint(context.Context, RunKey) (CheckpointRecord, error)
+}
+
+// RunEventStore is the durable event and steering projection boundary.
+type RunEventStore interface {
+	AppendEvent(context.Context, Fence, RunEvent) (RunEvent, error)
+	ReadEvents(context.Context, RunKey, int64, int) ([]RunEvent, error)
+	Finalize(context.Context, Fence, json.RawMessage) error
+}
+
+// RunEventTrimmer deletes retained events below a watermark so replay
+// cursors beyond the retention horizon answer the explicit reload error.
+type RunEventTrimmer interface {
+	TrimEventsBefore(context.Context, RunKey, int64) (int64, error)
+	LastEventSeq(context.Context, RunKey) (int64, error)
+}
+
+// RunInputStore persists and atomically applies steering inputs with a checkpoint.
+type RunInputStore interface {
+	AppendInput(context.Context, RunKey, RunInput) error
+	ApplyInput(context.Context, Fence, string, CheckpointRecord) error
+}
+
+// RunInputReader lists steering inputs not yet consumed by the graph. The
+// durable worker reads pending inject inputs at safe node boundaries.
+type RunInputReader interface {
+	ListPendingInputs(context.Context, RunKey, string) ([]RunInput, error)
+}
+
+// RunInputConsumer marks steering inputs consumed once their message is
+// checkpointed in AppliedSteerIDs; a crash between mark and checkpoint is
+// safe because the resumed state re-filters by AppliedSteerIDs.
+type RunInputConsumer interface {
+	MarkInputsProcessed(context.Context, RunKey, ...string) error
+}

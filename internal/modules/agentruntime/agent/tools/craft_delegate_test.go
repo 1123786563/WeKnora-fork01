@@ -71,7 +71,7 @@ func newCraftDelegateTestTool(t *testing.T, delegate CraftDelegateCall) *CraftDe
 func craftDelegateExecCtx() context.Context {
 	fence := agentruntime.Fence{
 		RunKey: agentruntime.RunKey{TenantID: 7, RunID: "run-7"},
-		Owner:  "worker-7", Epoch: 3,
+		Owner:  "worker-7", Epoch: 3, SnapshotDigestVersion: 1, SnapshotDigest: strings.Repeat("d", 64),
 	}
 	ctx := agentruntime.WithRunFence(context.Background(), fence)
 	return WithToolExecContext(ctx, &ToolExecContext{ToolCallID: "call-7"})
@@ -103,13 +103,16 @@ func TestCraftDelegateToolAssemblesTaskFromRunContext(t *testing.T) {
 	if got.WorkspaceID != "ws-7" {
 		t.Fatalf("workspace = %q", got.WorkspaceID)
 	}
+	if got.SnapshotDigestVersion != 1 || got.SnapshotDigest != strings.Repeat("d", 64) {
+		t.Fatalf("snapshot identity = v%d/%q, want the admission identity from the run fence", got.SnapshotDigestVersion, got.SnapshotDigest)
+	}
 	if len(got.Inputs) != 1 || got.Inputs[0].Ref != "res://tenant/7/brief" {
 		t.Fatalf("inputs = %#v", got.Inputs)
 	}
 	if !strings.Contains(got.Prompt, "build the site") || !strings.Contains(got.Prompt, "brief.md") {
 		t.Fatalf("prompt = %q", got.Prompt)
 	}
-	wantHash := CraftDelegateRequestHash("build the site", got.Inputs, []string{"skill:abc"}, "ws-7")
+	wantHash := craftDelegateTaskRequestHash("build the site", got.Inputs, []string{"skill:abc"}, "ws-7", 1, strings.Repeat("d", 64))
 	if got.RequestHash != wantHash {
 		t.Fatalf("request hash = %q, want %q", got.RequestHash, wantHash)
 	}
@@ -118,18 +121,50 @@ func TestCraftDelegateToolAssemblesTaskFromRunContext(t *testing.T) {
 	}
 }
 
+func TestCraftDelegateToolFailsClosedWithoutKnownAdmissionDigest(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version int
+		digest  string
+	}{
+		{name: "missing legacy identity"},
+		{name: "unknown identity version", version: 2, digest: strings.Repeat("d", 64)},
+		{name: "malformed digest", version: 1, digest: "not-a-digest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			tool := newCraftDelegateTestTool(t, func(context.Context, craft.Task) (craft.Result, error) {
+				called = true
+				return craft.Result{Status: "succeeded"}, nil
+			})
+			ctx := agentruntime.WithRunFence(context.Background(), agentruntime.Fence{
+				RunKey: agentruntime.RunKey{TenantID: 7, RunID: "run-7"}, Owner: "worker-7", Epoch: 3,
+				SnapshotDigestVersion: tc.version, SnapshotDigest: tc.digest,
+			})
+			ctx = WithToolExecContext(ctx, &ToolExecContext{ToolCallID: "call-7"})
+			result, err := tool.Execute(ctx, []byte(`{"goal":"build"}`))
+			if err != nil || result == nil || result.Success || called {
+				t.Fatalf("Execute = (%#v, %v), delegate called=%v; want fail-closed before delegation", result, err, called)
+			}
+		})
+	}
+}
+
 func TestCraftDelegateToolRequestHashCoversGoalInputsSkills(t *testing.T) {
 	inputs := []craft.Input{{Ref: "r", SHA256: strings.Repeat("a", 64)}}
-	base := CraftDelegateRequestHash("goal", inputs, []string{"skill:1"}, "ws")
-	if CraftDelegateRequestHash("goal-2", inputs, []string{"skill:1"}, "ws") == base {
+	base := craftDelegateTaskRequestHash("goal", inputs, []string{"skill:1"}, "ws", 1, strings.Repeat("a", 64))
+	if craftDelegateTaskRequestHash("goal-2", inputs, []string{"skill:1"}, "ws", 1, strings.Repeat("a", 64)) == base {
 		t.Fatal("goal must be covered")
 	}
 	other := []craft.Input{{Ref: "r", SHA256: strings.Repeat("b", 64)}}
-	if CraftDelegateRequestHash("goal", other, []string{"skill:1"}, "ws") == base {
+	if craftDelegateTaskRequestHash("goal", other, []string{"skill:1"}, "ws", 1, strings.Repeat("a", 64)) == base {
 		t.Fatal("input digest must be covered")
 	}
-	if CraftDelegateRequestHash("goal", inputs, []string{"skill:2"}, "ws") == base {
+	if craftDelegateTaskRequestHash("goal", inputs, []string{"skill:2"}, "ws", 1, strings.Repeat("a", 64)) == base {
 		t.Fatal("skill version must be covered")
+	}
+	if craftDelegateTaskRequestHash("goal", inputs, []string{"skill:1"}, "ws", 1, strings.Repeat("b", 64)) == base {
+		t.Fatal("admitted snapshot identity must be covered")
 	}
 }
 

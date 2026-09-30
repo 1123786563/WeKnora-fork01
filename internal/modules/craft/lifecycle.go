@@ -228,3 +228,177 @@ func QuotaAllows(action string, sandboxOverLimit, storageOverLimit bool) bool {
 	}
 	return !sandboxOverLimit && !storageOverLimit
 }
+
+// T16 (#134): the durable Workspace writer lease. One Workspace admits at
+// most one writing Run at a time; the lease is a database row bound to the
+// Task (the session), the Workspace, the Run and the draft-head revision the
+// writer saw when it acquired. Read-only version/preview/download traffic
+// never touches it.
+
+// WriterLease is the durable projection of one Workspace's writer lease.
+type WriterLease struct {
+	// WorkspaceID is the leased Workspace.
+	WorkspaceID string
+	// TaskID is the Craft Task — by the frozen identity rule this equals the
+	// session id and is never a second aggregate id.
+	TaskID string
+	// RunID is the one Run allowed to write the Workspace while held.
+	RunID string
+	// Revision is the draft-head revision fenced at acquisition. T16
+	// (#134) persists and projects it only: enforcing it against every
+	// write and promotion of the Run is the T20+ orchestration contract —
+	// the serialization this increment guarantees is the lease CAS itself.
+	Revision int64
+}
+
+// WriterAcquisition is the answer of one writer-lease attempt: the frozen
+// T00 outcome projection plus the durable lease on acquisition and the
+// current holder on conflict.
+type WriterAcquisition struct {
+	Outcome WriterAcquireOutcome
+	// Lease is set exactly when Outcome.Status is WriterAcquired.
+	Lease *WriterLease
+	// Holder names the current holder when Outcome.Status is WriterConflict.
+	Holder *WriterLease
+}
+
+// Release bases the lease store accepts. Every basis except unknown is
+// re-verified against the authoritative run state inside the releasing
+// transaction; unknown retains the fence unconditionally.
+const (
+	// WriterReleaseVerifiedCompletion releases after the holder Run's
+	// terminal outcome and workspace effects were verified.
+	WriterReleaseVerifiedCompletion = "verified_completion"
+	// WriterReleaseConfirmedStop releases after a confirmed stop.
+	WriterReleaseConfirmedStop = "confirmed_stop"
+	// WriterReleaseAuthoritativeRecovery releases after an authoritative
+	// recovery inspected the durable run and workspace state.
+	WriterReleaseAuthoritativeRecovery = "authoritative_recovery"
+	// WriterReleaseUnknown is an outcome that could not be determined: it
+	// never releases the lease.
+	WriterReleaseUnknown = "unknown"
+)
+
+// WriterRunFacts is the authoritative observation of the lease-holding Run
+// at decision time, always read from the durable run row inside the deciding
+// transaction — never from a snapshot cached by the caller. Observed false
+// means the run row cannot be read at all: the outcome is unknown, which is
+// never permission.
+type WriterRunFacts struct {
+	// Observed reports whether the durable run row was readable at all.
+	Observed bool
+	// Status is the durable run status vocabulary (queued, running,
+	// waiting_user, reconciling, recovering, succeeded, failed, canceled).
+	Status string
+	// PendingToolWriters counts tool calls of the Run that are not yet in a
+	// terminal state — each may still write through the workspace.
+	PendingToolWriters int64
+	// PendingDelegations counts craft delegations of the Run that are not
+	// yet terminal.
+	PendingDelegations int64
+}
+
+// WriterRunTerminal reports whether a durable run status is a confirmed
+// terminal outcome. Anything else — including an unreadable row — is not.
+func WriterRunTerminal(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+// WriterLeaseReleasable reports whether the holder's authoritative facts
+// permit releasing the Workspace writer lease: a confirmed terminal outcome
+// (verified completion, confirmed stop, or the same evidence an
+// authoritative recovery would inspect) with zero unfinished writers. An
+// unreadable or non-terminal run — an unknown outcome — always retains the
+// fence: it can never permit a conflicting writer.
+func WriterLeaseReleasable(facts WriterRunFacts) bool {
+	return facts.Observed && WriterRunTerminal(facts.Status) &&
+		facts.PendingToolWriters == 0 && facts.PendingDelegations == 0
+}
+
+// WriterLeaseTakeover reports whether a new writer may TAKE OVER the lease
+// currently held under the observed facts. This is exactly the authoritative
+// recovery verdict: only a releasable holder (verified completion, confirmed
+// stop, or an authoritative recovery's evidence) may be superseded. An
+// absent lease is always takeable; an unknown or live holder never is.
+func WriterLeaseTakeover(held *WriterLease, facts WriterRunFacts) bool {
+	if held == nil {
+		return true
+	}
+	return WriterLeaseReleasable(facts)
+}
+
+// T17 (#136): the durable stop intent. A member's stop request and the
+// confirmed cancellation are two separate durable facts: the accepted HTTP
+// stop only records that the member ASKED to stop (requested) — the Run row
+// stays nonterminal and the writer fence stays; the terminal "canceled"
+// status is written only after an authoritative confirmation (confirmed);
+// and an outcome that could not be determined stays unknown, which is never
+// a release condition for the fence and never permission for a promotion.
+
+// StopIntent is the persisted stop-intent record of one Run, projected with
+// the frozen T00 stop-outcome vocabulary.
+type StopIntent struct {
+	RunID string
+	// Status is requested (the member asked; the executor may still run),
+	// confirmed (an authoritative observation confirmed the cancellation) or
+	// unknown (the abort outcome could not be determined).
+	Status StopOutcomeStatus
+}
+
+// Validate pins the stop-intent shape: a Run identity plus one of the three
+// frozen T00 stop-outcome statuses.
+func (i StopIntent) Validate() error {
+	if i.RunID == "" {
+		return fmt.Errorf("%w: stop intent requires a run id", ErrInvalidInput)
+	}
+	if i.Status != StopRequested && i.Status != StopConfirmed && i.Status != StopUnknown {
+		return fmt.Errorf("%w: stop intent status %q is not one of requested|confirmed|unknown", ErrInvalidInput, i.Status)
+	}
+	return nil
+}
+
+// StopIntentOutcome maps one authoritative executor observation onto the
+// stop-outcome vocabulary: only an observed abort on an idle session of a
+// REQUESTED stop is a confirmed cancellation; anything else observed stays
+// requested (the stop is still in flight). An observation that cannot be
+// read at all is the caller's unknown — never a confirmation.
+func StopIntentOutcome(requested bool, o Observation) StopOutcomeStatus {
+	// Same-source discipline with StopStatus, structurally enforced: the
+	// requested premise is a parameter, not a hardcoded true — an abort by
+	// any OTHER mechanism (budget pause, session deletion, a transport
+	// failure) observed Aborted+Idle is not a stop confirmation and can
+	// never project one.
+	if StopStatus(requested, o) == "canceled" {
+		return StopConfirmed
+	}
+	return StopRequested
+}
+
+// StopIntentSuperseded reports whether a normal completion has overtaken a
+// stop: the observation completed WITHOUT the stop's abort, so a lingering
+// requested/unknown intent is stale and the Run's terminal fact is its
+// completion, not a pending stop.
+func StopIntentSuperseded(o Observation) bool {
+	// A normal completion overtakes the stop ONLY when the stop's abort
+	// never landed: an ABORTED observation (even one the locked runtime
+	// marks Completed=true on its aborted message) is the stop being
+	// confirmed, never a supersession. Bare idleness is NOT completion
+	// evidence — an undetermined abort outcome must stay unknown, so the
+	// Idle disjunct is deliberately absent. Domain-local — no
+	// executor-side normalizer import.
+	return !o.Aborted && o.Completed
+}
+
+// StopIntentMayWriteRunTerminal reports whether the durable stop state of a
+// Run permits writing the terminal canceled status on the Run row. Only a
+// confirmed stop does: requested and unknown are nonterminal — the accepted
+// HTTP response must never terminalize the Run, and the writer fence and
+// the promotion gate stay in force until the authoritative outcome.
+func StopIntentMayWriteRunTerminal(status StopOutcomeStatus) bool {
+	return status == StopConfirmed
+}

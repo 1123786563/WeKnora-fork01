@@ -19,10 +19,12 @@
     "./chat/session-grouping": "./src/chat/session-grouping.ts",
     "./chat/session-state": "./src/chat/session-state.ts",
     "./chat/tool-results": "./src/chat/tool-results.ts",
+    "./craft/capabilities": "./src/craft/capabilities.ts",
     "./craft/reconnect": "./src/craft/reconnect.ts",
     "./craft/state": "./src/craft/state.ts",
     "./craft/usage": "./src/craft/usage.ts",
-    "./craft/capabilities": "./src/craft/capabilities.ts",
+    "./craft/version-selection": "./src/craft/version-selection.ts",
+    "./craft/web-promotion": "./src/craft/web-promotion.ts",
     "./knowledge/folders": "./src/knowledge/folders.ts",
     "./knowledge/list": "./src/knowledge/list.ts",
     "./knowledge/preview": "./src/knowledge/preview.ts",
@@ -33,8 +35,7 @@
     "./scope": "./src/scope.ts",
     "./settings/local-preferences": "./src/settings/local-preferences.ts",
     "./settings/local-preferences.test": "./src/settings/local-preferences.test.ts",
-    "./wiki/diff": "./src/wiki/diff.ts",
-    "./craft/version-selection": "./src/craft/version-selection.ts"
+    "./wiki/diff": "./src/wiki/diff.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

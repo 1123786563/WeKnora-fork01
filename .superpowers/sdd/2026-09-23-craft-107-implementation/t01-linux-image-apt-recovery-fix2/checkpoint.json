@@ -1,0 +1,26 @@
+{
+  "task": "T01 Fix2 \u2014 Debian-listed mirror routing",
+  "worktree": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01",
+  "head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "owned_files": [
+    "docker/craft/Dockerfile",
+    "docs/plans/2026-09-24-craft-107-t01-linux-image-apt-recovery-fix2-report.md",
+    ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix2/build.log",
+    ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix2/checkpoint.json"
+  ],
+  "dockerfile_sha256_before": "1dee856c10a4616ea7c40ec65d51b2f54745c9ffe947898cbb76988ea516bce7",
+  "dockerfile_sha256_after": "841b5bbda51139b8c20f5f3f740c5e4a2e31116fa413a417608feb01ce2a4a67",
+  "build_command": "timeout 1200 docker build --platform linux/arm64 --progress=plain -t weknora-craft-runtime:1.18.4 -f docker/craft/Dockerfile docker/craft",
+  "build_log": ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix2/build.log",
+  "build_log_sha256": "df7779b173fa604060918ce04dad9206505d8eabd161cc328fc6b7f270ac5f07",
+  "result": "failed at runtime apt-get install, Dockerfile line 112, exit 100 after 150 MB and Debian archive 502s for liblapack3, fonts-dejavu-core, libpoppler126, libreoffice-common, python3-jdcal, python3-openpyxl",
+  "opencode_fetch_stage": {
+    "version": "1.18.4",
+    "arm64_sha256": "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e",
+    "verified": true
+  },
+  "final_image_digest": null,
+  "opencode_version_in_final_image": null,
+  "opencode_sha256_in_final_image": null,
+  "diff_check": "git diff --check: passed"
+}

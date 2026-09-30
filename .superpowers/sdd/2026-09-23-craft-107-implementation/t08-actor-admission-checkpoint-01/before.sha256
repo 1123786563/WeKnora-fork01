@@ -1,0 +1,3 @@
+f15bd6b76189d47f4ddca7732942cc79d40dfd1613a378aa5d3099a5507c53e1  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run.go
+78b3ee666a8e907f39c36a832faafc2785bb84da8a18650184de71f6a33481bd  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run_test.go
+ad87d3bef9241e0df229da1c238a330bc3a0d730fbbedbdb35a8254de3552bcf  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/modules/agentruntime/agent/runtime/contracts.go

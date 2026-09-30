@@ -1,0 +1,25 @@
+{
+  "kind": "uncommitted-incremental-checkpoint",
+  "task": "T08-central-A",
+  "base_head": "929fb287e5e0ed29c6637b118fbdf0d009232728",
+  "files": [
+    {
+      "path": "internal/container/container.go",
+      "sha256": "e913b555ff869a350f72ffc073d7adaff5fb9858c7b8253f8d650afb7546a3f8",
+      "size": 126246,
+      "tracked_at_base": true
+    },
+    {
+      "path": "internal/container/craft_access_wiring.go",
+      "sha256": "166ed73cc3a9e77cffb5c368d56025ef723e2b103b98e28cb6e2d1d3a8ccbc96",
+      "size": 1196,
+      "tracked_at_base": false
+    },
+    {
+      "path": "internal/container/craft_access_wiring_test.go",
+      "sha256": "1271cbd7561003ed7f7d85ab7de3df483f0f706ce827afad1530a2d328411c37",
+      "size": 3931,
+      "tracked_at_base": false
+    }
+  ]
+}

@@ -107,6 +107,7 @@ func newCraftModelGatewayHandler(
 	gw, err := handler.NewCraftModelGateway(handler.CraftModelGatewayConfig{
 		Secret:         []byte(secret),
 		Budget:         budget,
+		Starter:        budget,
 		Recorder:       usage,
 		Upstream:       craftUpstreamResolver(models),
 		GatewayBaseURL: strings.TrimSpace(os.Getenv(craftGatewayBaseURLEnv)),

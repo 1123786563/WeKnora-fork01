@@ -126,6 +126,16 @@ func (m *memVersionStore) Publish(_ context.Context, _ craft.Scope, v craft.Vers
 	return v, nil
 }
 
+func (m *memVersionStore) PublishWithDraftHead(ctx context.Context, scope craft.Scope, v craft.Version, expected craft.DraftHead, evidence *craft.VersionEvidence) (craft.Version, error) {
+	if expected.WorkspaceID != v.WorkspaceID || expected.SourceRunID != v.RunID || expected.State != craft.DraftHeadSelected {
+		return craft.Version{}, craft.ErrConflict
+	}
+	if evidence != nil {
+		return craft.Version{}, craft.ErrUnsupported
+	}
+	return m.Publish(ctx, scope, v)
+}
+
 func (m *memVersionStore) List(_ context.Context, _ craft.Scope) ([]craft.Version, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -1,0 +1,4 @@
+418725eeeeeaf98e11007ed8519db99078384b8ff8e6bdb4c32375b3deb5f465  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-task2-checkpoint-01/baseline-head/internal/application/service/craft_session.go
+502e17f4bf1b7af2a50b4645f332133f88047b3177a74df1cca3bb33173d4f79  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-task2-checkpoint-01/baseline-head/internal/application/service/craft_session_test.go
+5a8982e51f27e86201f239376e95829b1fd45b357f44b802668ee40ad7304731  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-task2-checkpoint-01/baseline-head/internal/application/service/craft_inputs.go
+26415efec28939c1d00d49749522f09dafb7b498420aec350ea089df17a80882  .superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-task2-checkpoint-01/baseline-head/internal/handler/session/craft_test.go

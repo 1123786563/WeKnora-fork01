@@ -42,9 +42,14 @@ ARG OPENCODE_SHA256_AMD64=6ce6570e7db9a40e7bd3304ebdfff607920bde8cafd2eb5587bd7a
 # sha256 of the binary inside opencode-linux-arm64.tar.gz (v1.18.4)
 ARG OPENCODE_SHA256_ARM64=3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+    sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl; \
+    rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
     case "${TARGETARCH}" in \
       amd64) arch=x64; digest="${OPENCODE_SHA256_AMD64}";; \
@@ -70,9 +75,12 @@ RUN set -eux; \
 FROM debian:bookworm-slim AS runtime
 ARG OPENCODE_VERSION
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+    sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 # Dedicated non-root account; fixed ids so mounts can address it numerically.
 RUN groupadd --system --gid 10001 craft \
@@ -101,15 +109,26 @@ RUN install -d -o root -g root -m 0755 /workspace \
 # recorded in docker/craft/spreadsheet-requirements.lock; apt's repository
 # signature verification pins the debs at install time, and the build fails
 # loudly if openpyxl or soffice do not run.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      python3 \
-      python3-openpyxl \
-      libreoffice-calc-nogui \
-      fonts-noto-cjk \
- && rm -rf /var/lib/apt/lists/* \
- && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])' \
- && soffice --version
+RUN set -eux; \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then rm -f /etc/apt/apt.conf.d/docker-clean; fi; \
+    apt-get update; \
+    attempt=1; \
+    while :; do \
+      if apt-get install -y --no-install-recommends \
+        python3 \
+        python3-openpyxl \
+        libreoffice-calc-nogui \
+        fonts-noto-cjk; then \
+        break; \
+      fi; \
+      if [ "$attempt" -ge 3 ]; then echo "apt install failed after $attempt attempts" >&2; exit 1; fi; \
+      echo "apt install attempt $attempt failed; retrying" >&2; \
+      attempt=$((attempt + 1)); \
+    done; \
+    rm -f /var/cache/apt/archives/*.deb; \
+    rm -rf /var/lib/apt/lists/*; \
+    python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'; \
+    soffice --version
 
 # ---------- D03: slides toolchain (python-pptx + LibreOffice Impress + poppler) ----
 # The craft-slides skill writes decks with python-pptx, renders them to PDF
@@ -133,15 +152,26 @@ ARG XLSXWRITER_URL=https://files.pythonhosted.org/packages/a7/ea/53d1fe468e63e09
 ARG TYPING_EXTENSIONS_VERSION=4.12.2
 ARG TYPING_EXTENSIONS_SHA256=04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
 ARG TYPING_EXTENSIONS_URL=https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      curl \
-      python3-pip \
-      python3-pil \
-      libreoffice-impress-nogui \
-      poppler-utils \
- && rm -rf /var/lib/apt/lists/* \
- && for w in "${PYTHON_PPTX_URL} ${PYTHON_PPTX_SHA256}" "${XLSXWRITER_URL} ${XLSXWRITER_SHA256}" "${TYPING_EXTENSIONS_URL} ${TYPING_EXTENSIONS_SHA256}"; do \
+RUN set -eux; \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then rm -f /etc/apt/apt.conf.d/docker-clean; fi; \
+    apt-get update; \
+    attempt=1; \
+    while :; do \
+      if apt-get install -y --no-install-recommends \
+        curl \
+        python3-pip \
+        python3-pil \
+        libreoffice-impress-nogui \
+        poppler-utils; then \
+        break; \
+      fi; \
+      if [ "$attempt" -ge 3 ]; then echo "apt install failed after $attempt attempts" >&2; exit 1; fi; \
+      echo "apt install attempt $attempt failed; retrying" >&2; \
+      attempt=$((attempt + 1)); \
+    done; \
+    rm -f /var/cache/apt/archives/*.deb; \
+    rm -rf /var/lib/apt/lists/*; \
+    for w in "${PYTHON_PPTX_URL} ${PYTHON_PPTX_SHA256}" "${XLSXWRITER_URL} ${XLSXWRITER_SHA256}" "${TYPING_EXTENSIONS_URL} ${TYPING_EXTENSIONS_SHA256}"; do \
       set -- ${w}; \
       curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3 -o "/tmp/$(basename "$1")" "$1"; \
       echo "$2  /tmp/$(basename "$1")" | sha256sum -c -; \
@@ -181,11 +211,58 @@ RUN set -eux; \
     python3 -c 'import docx, lxml.etree, typing_extensions, sys; from docx import Document; d = Document(); d.add_heading("探活", 0); d.add_paragraph(" Craft round-trip"); d.save("/tmp/probe.docx"); r = Document("/tmp/probe.docx"); assert r.paragraphs[0].text == "探活"; print("python-docx", docx.__version__, "round-trip ok on", sys.version.split()[0])'; \
     rm -f /tmp/probe.docx
 
+# ---------- W1: web artifact toolchain (fixed offline template + deps) -----
+# The T04 fixed offline web build (#123): the entry template, the provisioned
+# dependency set and the build program are baked READ-ONLY under
+# /opt/craft/web. Every file is sha256-verified against the shipped
+# docker/craft/web/toolchain.lock.json at image build time, and the offline
+# selftest build must pass before the image exists. Nothing in this block
+# downloads anything: the build program is pure stdlib and the sandbox run
+# policy denies all egress anyway (docker run --network none).
+COPY web/template.html /opt/craft/web/template.html
+COPY web/deps/craft-web.css /opt/craft/web/deps/craft-web.css
+COPY web/deps/craft-web.js /opt/craft/web/deps/craft-web.js
+COPY web/build.py /opt/craft/web/build.py
+COPY web/toolchain.lock.json /opt/craft/web/toolchain.lock.json
+RUN set -eux; \
+    cd /opt/craft/web; \
+    expected_template="$(python3 -c 'import json;print(json.load(open("toolchain.lock.json"))["template"]["sha256"])')"; \
+    expected_css="$(python3 -c 'import json;print([d["sha256"] for d in json.load(open("toolchain.lock.json"))["dependencies"] if d["name"]=="craft-web.css"][0])')"; \
+    expected_js="$(python3 -c 'import json;print([d["sha256"] for d in json.load(open("toolchain.lock.json"))["dependencies"] if d["name"]=="craft-web.js"][0])')"; \
+    expected_build="$(python3 -c 'import json;print(json.load(open("toolchain.lock.json"))["build_program"]["sha256"])')"; \
+    printf '%s  %s\n' "$expected_template" template.html | sha256sum -c -; \
+    printf '%s  %s\n' "$expected_css" deps/craft-web.css | sha256sum -c -; \
+    printf '%s  %s\n' "$expected_js" deps/craft-web.js | sha256sum -c -; \
+    printf '%s  %s\n' "$expected_build" build.py | sha256sum -c -; \
+    HOME=/tmp python3 /opt/craft/web/build.py --selftest --toolchain /opt/craft/web; \
+    chown -R root:root /opt/craft/web; \
+    chmod -R 0555 /opt/craft/web; \
+    test -z "$(find /opt/craft/web -type l -print -quit)"
+
 COPY --from=opencode-fetch /usr/local/bin/opencode /usr/local/bin/opencode
 COPY runtime-config.json /etc/craft/runtime-config.json
 # COPY keeps the source file mode; force the world-readable mode so the
-# non-root runtime user can always read the runtime contract.
-RUN chmod 0644 /etc/craft/runtime-config.json
+# non-root runtime user can always read the runtime contract. The web
+# toolchain pin is carried by TWO authorities (web/toolchain.lock.json and
+# this runtime-config.json) — build-time cross-assertion so an upgrade that
+# updates one but not the other fails the image instead of shipping a
+# runtime identity file with stale toolchain metadata.
+RUN chmod 0644 /etc/craft/runtime-config.json && \
+    rc_digest="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["toolchain_digest"])')" && \
+    lock_digest="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["toolchain_digest"])')" && \
+    rc_template="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["template_sha256"])')" && \
+    lock_template="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["template"]["sha256"])')" && \
+    rc_build="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["build_program_sha256"])')" && \
+    lock_build="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["build_program"]["sha256"])')" && \
+    rc_version="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["template_version"])')" && \
+    lock_version="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["template"]["version"])')" && \
+    rc_deps="$(python3 -c 'import json;print(sorted((d["name"],d["version"],d["sha256"]) for d in json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["dependencies"]))')" && \
+    lock_deps="$(python3 -c 'import json;print(sorted((d["name"],d["version"],d["sha256"]) for d in json.load(open("/opt/craft/web/toolchain.lock.json"))["dependencies"]))')" && \
+    test "$rc_digest" = "$lock_digest" && \
+    test "$rc_template" = "$lock_template" && \
+    test "$rc_build" = "$lock_build" && \
+    test "$rc_version" = "$lock_version" && \
+    test "$rc_deps" = "$lock_deps"
 
 # OpenCode global config derived from /etc/craft/runtime-config.json's
 # permission policy. Keep in sync with that file's "permissions" section:
@@ -226,3 +303,9 @@ EXPOSE 4096
 # it is never published to the host network.
 ENTRYPOINT ["/usr/local/bin/opencode"]
 CMD ["serve", "--hostname", "0.0.0.0", "--port", "4096"]
+
+# T19 activity-ID egress adapter (cmd/craft-egress-adapter): NOT built into
+# this image yet — the per-Run deployment wiring (binary build stage,
+# CRAFT_EGRESS_* env injection, sandbox provider endpoint pointing at
+# 127.0.0.1:8787) is T19 lane scope; the gateway's fail-closed activity-ID
+# check stays default-off until that lane lands the wiring.

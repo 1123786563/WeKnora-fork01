@@ -1,0 +1,12 @@
+RED/fix evidence:
+- The actor admission tests originally failed with `craft conflict: agent runtime conflict` instead of admitting the Collaborator or returning `craft.ErrForbidden` for caller/scope mismatch while the service omitted the authenticated actor / caller binding.
+- With actor binding introduced, `TestCraftSessionStartRunPersistsActorAndFencesContinueClaimByActor` exposed that substituting a hashed string as the T01 request ID made same-actor replay fail with `craft conflict: admitted input claim has no matching Run`. Corrected by retaining the raw request ID for Run lookup and incorporating actor only into the claim digest; the owner/session/input claim key remains unchanged.
+- Handler HTTP owner happy-path tests initially returned 409 because their fixture omitted active tenant membership; after the approved fixture-only amendment, they passed.
+
+GREEN:
+1. `go test ./internal/application/service -run '^TestCraftSession(StartRunPersistsActorAndFencesContinueClaimByActor|StartRunRejectsScopeThatDiffersFromAuthenticatedCaller)$' -count=1`
+   PASS: `ok github.com/Tencent/WeKnora/internal/application/service 2.530s`
+2. `go test ./internal/application/service -run '^(TestCraftSession(StartRun|TaskAccess|TaskAccessRejects|ListPaginates)|TestCraftT01)' -count=1 && git diff --check`
+   PASS: `ok github.com/Tencent/WeKnora/internal/application/service 7.587s`; `git diff --check` passed.
+3. `go test ./internal/handler/session -run '^(TestCraftHTTP(Ow|Viewer|Routes|Body|Rejects|List|Restore|Capabilities)|TestCraftInputRoundHTTP)' -count=1 && git diff --check`
+   PASS: `ok github.com/Tencent/WeKnora/internal/handler/session 9.112s`; `git diff --check` passed.

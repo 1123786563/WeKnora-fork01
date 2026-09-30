@@ -73,13 +73,13 @@ type FakeSubscription struct {
 // subscription (#81): created incomplete by create_purchase_subscription,
 // advanced to active only by the (test) activation hook.
 type fakePurchase struct {
-	ExternalID       string
-	ExternalCustomer string
-	PlanCode         string
-	AmountFen        int64
-	Currency         string
-	Status           string // "incomplete"|"active"|"canceled"
-	InvoiceFees      []commercial.InvoiceLineSnapshot
+	ExternalID           string
+	ExternalCustomer     string
+	PlanCode             string
+	AmountFen            int64
+	Currency             string
+	Status               string // "incomplete"|"active"|"canceled"
+	InvoiceFees          []commercial.InvoiceLineSnapshot
 	InvoicePaymentStatus string // finalized-stage payment_status (D6' review input)
 }
 
@@ -115,11 +115,11 @@ type FakeAdapter struct {
 	// snapshot reads answer this error — the transient/definitive error
 	// classification the fulfiller tests drive.
 	failReadSnapshots error
-	commands    map[string]fakeCommand
-	creates     []commercial.Command
+	commands          map[string]fakeCommand
+	creates           []commercial.Command
 	// T08 state (#80): a real in-memory subscription + wallet authority.
-	subs       map[string]fakeSubscription
-	wallets    []fakeWallet
+	subs    map[string]fakeSubscription
+	wallets []fakeWallet
 	// T09 state (#81): a real in-memory payment-gated purchase authority —
 	// purchase subscriptions keyed by external id, and the provider binding
 	// per external customer (external customer id → provider customer id).

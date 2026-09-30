@@ -1,0 +1,32 @@
+{
+  "action": "install-failure-cleanup",
+  "helper": {
+    "image_id": "sha256:6ece2b481951b1069db834db6e1ea814f5a1e893f1f58b45d75daed54b705f86",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 16620182958,
+  "payload": {
+    "cleanup": "complete",
+    "netns": "net:[4026535734]",
+    "policy_id": "t14_50ef37f4a607"
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 8674,
+      "path": "0002-container-inspect-after.json",
+      "sha256": "1c6e793f24c628d4f11519097dc7dd2bd33d7c6accede039e5713da45c946522"
+    },
+    "container_inspect_raw": {
+      "bytes": 8674,
+      "path": "0002-container-inspect-before.json",
+      "sha256": "1c6e793f24c628d4f11519097dc7dd2bd33d7c6accede039e5713da45c946522"
+    }
+  },
+  "sequence": 2,
+  "target": {
+    "container_id": "f45afdc644d1c8452330f6803533bd88521e1f918b9b96dbbb975217f4952eb2",
+    "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+    "container_pid": 962395,
+    "netns": "net:[4026535734]"
+  }
+}

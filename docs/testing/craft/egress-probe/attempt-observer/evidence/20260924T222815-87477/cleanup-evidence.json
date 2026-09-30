@@ -1,0 +1,24 @@
+{
+  "absent": [
+    {
+      "exit_code": 1,
+      "kind": "container",
+      "name": "craft-e0-attempt-20260924T222815-87477-source"
+    },
+    {
+      "exit_code": 1,
+      "kind": "container",
+      "name": "craft-e0-attempt-20260924T222815-87477-listener"
+    },
+    {
+      "exit_code": 1,
+      "kind": "volume",
+      "name": "craft-e0-attempt-20260924T222815-87477-evidence"
+    },
+    {
+      "exit_code": 1,
+      "kind": "network",
+      "name": "craft-e0-attempt-20260924T222815-87477-net"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+[]
+error: no such object: t19vf-20260924-client
+[]
+error: no such object: t19vf-20260924-direct
+[]
+error: no such object: t19vf-20260924-adapter
+[]
+error: no such object: t19vf-20260924-helper
+[]
+Error response from daemon: get t19vf-20260924-config: no such volume
+[]
+Error response from daemon: get t19vf-20260924-data: no such volume
+[]
+Error response from daemon: get t19vf-20260924-direct-ledger: no such volume
+[]
+Error response from daemon: get t19vf-20260924-adapter-ledger: no such volume
+[]
+Error response from daemon: network t19vf-20260924-private not found
+[]
+Error response from daemon: network t19vf-20260924-external not found

@@ -85,6 +85,13 @@ func RegisterSessionShareRoutes(r *gin.RouterGroup, handler *session.Handler, g 
 	}
 }
 
+// registerSessionRoutes is the container/router seam. Keeping RouterParams in
+// this call ensures each NewRouter mounts only the Craft feature registry
+// provided by the same dig assembly.
+func registerSessionRoutes(r *gin.RouterGroup, params RouterParams, g *rbacGuards) {
+	RegisterSessionRoutes(r, params.SessionHandler, params.MessageSuggestionHandler, g, params.CraftFeatureRoutes)
+}
+
 // RegisterSessionRoutes 注册路由。
 //
 // Sessions are per-user resources; the handler enforces user ownership.
@@ -97,6 +104,7 @@ func RegisterSessionRoutes(
 	handler *session.Handler,
 	suggestionHandler *handler.MessageSuggestionHandler,
 	g *rbacGuards,
+	craftFeatures ...*session.CraftFeatureRoutes,
 ) {
 	// Sessions are per-user chat state, not knowledge-base content. The
 	// chat capability lets a scoped key run the full conversation flow
@@ -199,7 +207,7 @@ func RegisterSessionRoutes(
 	if api := session.RegisteredCraftSessionHandler(); api != nil {
 		craftHandler = session.NewCraftSessionHandler(api)
 	}
-	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler())
+	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler(), craftFeatures...)
 
 	// C02 interaction decide surface: mounted only when the interaction
 	// assembly is wired (fail-closed, no 503 shims); it inherits the sessions

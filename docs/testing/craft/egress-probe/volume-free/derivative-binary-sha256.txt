@@ -1,0 +1,1 @@
+3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e  /usr/local/bin/opencode

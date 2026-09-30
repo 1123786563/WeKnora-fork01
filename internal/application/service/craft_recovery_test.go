@@ -329,28 +329,42 @@ type craftRecoveryRealHarness struct {
 func newCraftRecoveryRealHarness(t *testing.T, digest string) *craftRecoveryRealHarness {
 	t.Helper()
 	db := openDurableRunTestDB(t)
+	// T18 (#137): the delegation must be admitted through the real Craft
+	// admission channel — a registered craft session, a workspace bound
+	// before admission (the repository attaches the workspace seed), and the
+	// actor on the admission — so the persisted run row carries the canonical
+	// admitted-snapshot digest the store's PrepareTask identity check demands.
+	// The previous hand-written "dddd…" digest predated that check (T01
+	// integration) and made every real-store recovery test fail closed.
+	require.NoError(t, db.Exec(
+		"INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')").Error)
 	runs := repository.NewAgentRunStore(db)
 	runService := NewAgentRunService(runs)
 	key := agentruntime.RunKey{TenantID: 1, RunID: "craft-rec-run"}
-	user, _ := json.Marshal(map[string]any{"role": "user", "content": "delegate one round"})
-	assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	_, err := runs.Admit(context.Background(), agentruntime.Admission{
-		Key: key, SessionID: "s1", UserID: "u1", RequestID: "req-1",
-		AssistantMessageID: "asst-1", RequestHash: "rh",
-		Snapshot:    json.RawMessage(`{"version":1,"query":"delegate","model_id":"m"}`),
-		UserMessage: user, AssistantMessage: assistant,
-		Deadline: time.Now().Add(10 * time.Minute),
-	})
-	require.NoError(t, err)
-	fenceA, err := runs.Claim(context.Background(), key, "worker-a", 30*time.Second)
-	require.NoError(t, err)
-	craftStore := repository.NewCraftStore(db)
 	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}
+	craftStore := repository.NewCraftStore(db)
 	workspace, err := craftStore.PutWorkspace(context.Background(), craft.Workspace{
 		Scope: scope, SandboxID: "sbx-1", Generation: "1",
 		OpenCodeSessionID: "oc-real-1", RuntimeDigest: digest,
 	}, 0)
 	require.NoError(t, err)
+	user, _ := json.Marshal(map[string]any{"role": "user", "content": "delegate one round"})
+	assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
+	_, err = runs.Admit(context.Background(), agentruntime.Admission{
+		Key: key, SessionID: "s1", UserID: "u1", ActorUserID: "u1", RequestID: "req-1",
+		AssistantMessageID: "asst-1", RequestHash: "rh",
+		Snapshot:    json.RawMessage(`{"version":1,"query":"delegate","model_id":"m","craft_input_manifest":[]}`),
+		UserMessage: user, AssistantMessage: assistant,
+		Deadline: time.Now().Add(10 * time.Minute),
+	})
+	require.NoError(t, err)
+	admitted, err := runs.Get(context.Background(), key)
+	require.NoError(t, err)
+	require.NotEmpty(t, admitted.SnapshotDigest, "craft admission must persist the canonical snapshot digest")
+	fenceA, err := runs.Claim(context.Background(), key, "worker-a", 30*time.Second)
+	require.NoError(t, err)
+	fenceA.SnapshotDigestVersion = admitted.SnapshotDigestVersion
+	fenceA.SnapshotDigest = admitted.SnapshotDigest
 	_, err = runs.EnsureToolPlan(context.Background(), fenceA, agentruntime.ToolPlan{
 		Version: 1, CallID: "call-c-1", Name: "craft_delegate", Identity: "craft_delegate",
 		ArgsHash: "ah-1", Args: json.RawMessage(`{"goal":"recover"}`),
@@ -361,7 +375,9 @@ func newCraftRecoveryRealHarness(t *testing.T, digest string) *craftRecoveryReal
 	task := craft.Task{
 		ID: "dlg_craft_rec_1", ToolCallID: "call-c-1", Prompt: "goal: recover the round",
 		RequestHash: "rh-1", Scope: scope, Fence: fenceA, WorkspaceID: workspace.ID,
-		PromptMessageID: promptID, Deadline: time.Now().Add(5 * time.Minute),
+		SnapshotDigestVersion: admitted.SnapshotDigestVersion,
+		SnapshotDigest:        admitted.SnapshotDigest,
+		PromptMessageID:       promptID, Deadline: time.Now().Add(5 * time.Minute),
 	}
 	_, err = craftStore.PrepareTask(context.Background(), task)
 	require.NoError(t, err)
@@ -468,13 +484,15 @@ func TestCraftRecoveryChatDoesNotUnlockUnknownWait(t *testing.T) {
 	require.Equal(t, h.task.ToolCallID, run.WaitReason)
 
 	// An ordinary chat message cannot unlock the unknown wait: the session's
-	// durable run slot is still held by the waiting run.
+	// durable run slot is still held by the waiting run. The chat admission
+	// itself is shape-valid for this registered Craft Task (manifest + actor)
+	// so the refusal can only come from the still-held run slot.
 	chatUser, _ := json.Marshal(map[string]any{"role": "user", "content": "just chatting"})
 	chatAssistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
 	_, err = h.runService.Submit(context.Background(), agentruntime.Admission{
 		Key:       agentruntime.RunKey{TenantID: 1, RunID: "craft-rec-run-2"},
-		SessionID: "s1", UserID: "u1", RequestID: "req-2", AssistantMessageID: "asst-2",
-		RequestHash: "rh2", Snapshot: json.RawMessage(`{"version":1}`),
+		SessionID: "s1", UserID: "u1", ActorUserID: "u1", RequestID: "req-2", AssistantMessageID: "asst-2",
+		RequestHash: "rh2", Snapshot: json.RawMessage(`{"version":1,"craft_input_manifest":[]}`),
 		UserMessage: chatUser, AssistantMessage: chatAssistant,
 		Deadline: time.Now().Add(time.Minute),
 	})
@@ -541,6 +559,8 @@ func TestCraftRecoveryManualRetryUsesDecisionWithoutResubmission(t *testing.T) {
 	delegate := NewCraftDelegateService(h.craftStore, after)
 	retriedTask := h.task
 	retriedTask.Fence = nextFence
+	retriedTask.Fence.SnapshotDigestVersion = retriedTask.SnapshotDigestVersion
+	retriedTask.Fence.SnapshotDigest = retriedTask.SnapshotDigest
 	result, err := delegate.Delegate(context.Background(), retriedTask)
 	require.NoError(t, err)
 	require.Equal(t, "succeeded", result.Status)

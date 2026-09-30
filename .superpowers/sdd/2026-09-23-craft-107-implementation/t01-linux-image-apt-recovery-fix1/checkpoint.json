@@ -1,0 +1,21 @@
+{
+  "task": "T01 Fix1 \u2014 HTTPS certificate bootstrap ordering",
+  "worktree": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01",
+  "head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "owned_files": [
+    "docker/craft/Dockerfile",
+    "docs/plans/2026-09-24-craft-107-t01-linux-image-apt-recovery-fix1-report.md",
+    ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix1/build.log",
+    ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix1/checkpoint.json"
+  ],
+  "dockerfile_sha256_before": "1dee856c10a4616ea7c40ec65d51b2f54745c9ffe947898cbb76988ea516bce7",
+  "dockerfile_sha256_after": "8c8d9fa3fc0acb2b3bcb692d39f3f45a00005e784bd7f6a130c64e3c7e464861",
+  "build_command": "timeout 1200 docker build --platform linux/arm64 --progress=plain -t weknora-craft-runtime:1.18.4 -f docker/craft/Dockerfile docker/craft",
+  "build_log": ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery-fix1/build.log",
+  "build_log_sha256": "dfbff1431dcb06eb343680544b8fce951d6a68954c6cdaf04776efe3b5982da0",
+  "result": "failed at initial opencode-fetch apt-get update; official HTTP Debian bookworm InRelease returned 502; apt exit 100; runtime stage canceled by BuildKit",
+  "image_digest": null,
+  "opencode_version_in_image": null,
+  "opencode_sha256_in_image": null,
+  "diff_check": "git diff --check: passed"
+}

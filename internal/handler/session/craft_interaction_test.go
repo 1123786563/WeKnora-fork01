@@ -70,6 +70,8 @@ func newCraftInteractionEnv(t *testing.T) *craftInteractionEnv {
 	replier := &craftHTTPReplier{}
 	runs := service.NewAgentRunService(repository.NewAgentRunStore(db))
 	svc := service.NewCraftControlService(runs, repository.NewCraftStore(db), nil, store, replier)
+	svc.SetTaskAccess(service.NewCraftAccessService(db))
+	svc.SetStopIntents(repository.NewCraftStopIntentStore(db))
 	env := &craftInteractionEnv{engine: gin.New(), svc: svc, store: store, db: db, replier: replier}
 	env.engine.Use(middleware.ErrorHandler())
 	env.engine.Use(func(c *gin.Context) {
@@ -87,6 +89,34 @@ func newCraftInteractionEnv(t *testing.T) *craftInteractionEnv {
 	})
 	RegisterCraftInteractionRoutes(env.engine.Group("/api/v1/sessions"), NewCraftInteractionHandler(svc))
 	return env
+}
+
+func TestStopCraftRunCollaboratorUsesPersistedOwnerStorageScope(t *testing.T) {
+	env := newCraftInteractionEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.db.Exec("INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1',1,'task','u1','trpc')").Error)
+	require.NoError(t, env.db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)
+		VALUES (1,'u2','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
+	access := service.NewCraftAccessService(env.db)
+	ownerScope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}
+	runs := repository.NewAgentRunStore(env.db)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "run-collaborator-http"}
+	_, err := runs.Admit(ctx, agentruntime.Admission{
+		Key: key, SessionID: "s1", UserID: "u1", ActorUserID: "u2",
+		RequestID: "request-collaborator-http", AssistantMessageID: "assistant-collaborator-http",
+		RequestHash: "hash-collaborator-http", Snapshot: json.RawMessage(`{"version":1}`),
+		UserMessage:      json.RawMessage(`{"role":"user","content":"build"}`),
+		AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`), Deadline: time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+	require.NoError(t, env.db.Exec("INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')").Error)
+	require.NoError(t, access.Grant(ctx, ownerScope, "u2", craft.TaskRoleCollaborator))
+	env.svc.SetTaskAccess(access)
+	w := env.do(t, http.MethodPost, "/api/v1/sessions/s1/craft/runs/run-collaborator-http/stop", "other", `{"task_id":"not-yet-visible"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"phase":"stopping"`)
+	_, err = repository.NewCraftStopIntentStore(env.db).GetStopIntent(ctx, ownerScope, key.RunID)
+	require.NoError(t, err, "the authenticated collaborator must authorize as actor u2 while persistence remains scoped to owner u1")
 }
 
 func (e *craftInteractionEnv) do(t *testing.T, method, path, identity, body string) *httptest.ResponseRecorder {

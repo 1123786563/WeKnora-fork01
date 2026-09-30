@@ -1,0 +1,825 @@
+diff --git a/internal/application/repository/agent_run.go b/internal/application/repository/agent_run.go
+index 1179b3ea9..e40178abc 100644
+--- a/internal/application/repository/agent_run.go
++++ b/internal/application/repository/agent_run.go
+@@ -113,6 +113,127 @@ func (s *AgentRunStore) GetOwnedRun(
+ 	return row.view(), err
+ }
+ 
++type runInputAdmissionClaimRow struct {
++	DecisionKey string     `gorm:"column:request_id"`
++	SessionID   string     `gorm:"column:session_id"`
++	RunID       string     `gorm:"column:admission_run_id"`
++	Token       string     `gorm:"column:admission_token"`
++	State       string     `gorm:"column:admission_state"`
++	LeaseUntil  *time.Time `gorm:"column:lease_expires_at"`
++}
++
++func (s *AgentRunStore) lockInputAdmissionClaims(tx *gorm.DB, in agentruntime.Admission) ([]runInputAdmissionClaimRow, error) {
++	if len(in.InputClaims) == 0 {
++		return nil, nil
++	}
++	if in.Driver != "platform" {
++		return nil, agentruntime.ErrConflict
++	}
++	seen := make(map[string]struct{}, len(in.InputClaims))
++	claims := make([]runInputAdmissionClaimRow, 0, len(in.InputClaims))
++	for _, selected := range in.InputClaims {
++		if selected.DecisionKey == "" || selected.RunID == "" || selected.Token == "" || selected.RunID != in.Key.RunID {
++			return nil, agentruntime.ErrConflict
++		}
++		if _, duplicate := seen[selected.DecisionKey]; duplicate {
++			return nil, agentruntime.ErrConflict
++		}
++		seen[selected.DecisionKey] = struct{}{}
++		fence := tx.Table("craft_session_requests").Where(
++			"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ? AND admission_run_id = ? AND admission_token = ? AND admission_state IN ('claimed', 'admitted')",
++			in.Key.TenantID, in.UserID, in.SessionID, "input_admission", selected.DecisionKey, selected.RunID, selected.Token,
++		).UpdateColumn("admission_token", gorm.Expr("admission_token"))
++		if fence.Error != nil {
++			return nil, fence.Error
++		}
++		if fence.RowsAffected != 1 {
++			return nil, agentruntime.ErrConflict
++		}
++		var claim runInputAdmissionClaimRow
++		if err := tx.Table("craft_session_requests").Select(
++			"request_id, session_id, admission_run_id, admission_token, admission_state, lease_expires_at",
++		).Where(
++			"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ?",
++			in.Key.TenantID, in.UserID, in.SessionID, "input_admission", selected.DecisionKey,
++		).Take(&claim).Error; err != nil {
++			return nil, err
++		}
++		if claim.RunID != in.Key.RunID || claim.Token != selected.Token || claim.SessionID != in.SessionID ||
++			(claim.State != "claimed" && claim.State != "admitted") {
++			return nil, agentruntime.ErrConflict
++		}
++		claims = append(claims, claim)
++	}
++	return claims, nil
++}
++
++func (s *AgentRunStore) inputAdmissionLeaseValid(tx *gorm.DB, in agentruntime.Admission, claim runInputAdmissionClaimRow) (bool, error) {
++	leaseColumn := "lease_expires_at"
++	if s.db.Name() == "sqlite" {
++		leaseColumn = "julianday(lease_expires_at)"
++	}
++	var marker int
++	err := tx.Table("craft_session_requests").Select("1").Where(
++		"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ? AND admission_run_id = ? AND admission_token = ? AND admission_state = 'claimed' AND "+leaseColumn+" > "+s.nowSQL(),
++		in.Key.TenantID, in.UserID, in.SessionID, "input_admission", claim.DecisionKey, claim.RunID, claim.Token,
++	).Limit(1).Scan(&marker).Error
++	return marker == 1, err
++}
++
++func (s *AgentRunStore) markInputAdmissionClaimsAdmitted(tx *gorm.DB, in agentruntime.Admission, claims []runInputAdmissionClaimRow) error {
++	for _, claim := range claims {
++		if claim.State == "admitted" {
++			continue
++		}
++		updated := tx.Table("craft_session_requests").Where(
++			"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ? AND admission_run_id = ? AND admission_token = ? AND admission_state = 'claimed'",
++			in.Key.TenantID, in.UserID, in.SessionID, "input_admission", claim.DecisionKey, claim.RunID, claim.Token,
++		).Update("admission_state", "admitted")
++		if updated.Error != nil {
++			return updated.Error
++		}
++		if updated.RowsAffected != 1 {
++			return agentruntime.ErrConflict
++		}
++	}
++	return nil
++}
++
++// rejectUnfencedCraftAdmission prevents an ordinary submission path from
++// bypassing a live or legacy Craft input claim by omitting the optional typed
++// claim bundle. Non-Craft Runs and idempotent replays are unaffected.
++func (s *AgentRunStore) rejectUnfencedCraftAdmission(tx *gorm.DB, in agentruntime.Admission) error {
++	var craftSession int
++	if err := tx.Table("craft_sessions").Select("1").Where(
++		"tenant_id = ? AND session_id = ?", in.Key.TenantID, in.SessionID,
++	).Limit(1).Scan(&craftSession).Error; err != nil {
++		return err
++	}
++	if craftSession == 0 {
++		return nil
++	}
++	var pending []runInputAdmissionClaimRow
++	if err := tx.Table("craft_session_requests").Select(
++		"request_id, session_id, admission_run_id, admission_token, admission_state, lease_expires_at",
++	).Where(
++		"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND admission_state <> ?",
++		in.Key.TenantID, in.UserID, in.SessionID, "input_admission", "admitted",
++	).Find(&pending).Error; err != nil {
++		return err
++	}
++	provided := make(map[string]agentruntime.InputAdmissionClaim, len(in.InputClaims))
++	for _, claim := range in.InputClaims {
++		provided[claim.DecisionKey] = claim
++	}
++	for _, claim := range pending {
++		selected, ok := provided[claim.DecisionKey]
++		if !ok || selected.RunID != claim.RunID || selected.Token != claim.Token || claim.SessionID != in.SessionID {
++			return agentruntime.ErrConflict
++		}
++	}
++	return nil
++}
++
+ // Admit atomically reserves a session, creates both business messages and
+ // persists the immutable request snapshot. Request retries are scoped to the
+ // authenticated tenant and owner; session validation precedes idempotency reads.
+@@ -172,6 +293,10 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 		if in.Driver == "platform" && session.EngineType != "trpc" {
+ 			return agentruntime.ErrConflict
+ 		}
++		inputClaims, claimErr := s.lockInputAdmissionClaims(tx, in)
++		if claimErr != nil {
++			return claimErr
++		}
+ 		var existing agentRunRow
+ 		e := tx.Where("tenant_id = ? AND owner_id = ? AND request_id = ?",
+ 			in.Key.TenantID, in.UserID, in.RequestID).Take(&existing).Error
+@@ -180,12 +305,35 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 				existing.Driver != in.Driver || existing.TargetID != in.TargetID || existing.BudgetRef != in.BudgetRef {
+ 				return agentruntime.ErrConflict
+ 			}
++			if len(inputClaims) != 0 {
++				if existing.RunID != in.Key.RunID {
++					return agentruntime.ErrConflict
++				}
++				if err := s.markInputAdmissionClaimsAdmitted(tx, in, inputClaims); err != nil {
++					return err
++				}
++			}
+ 			result = existing.view()
+ 			return nil
+ 		}
+ 		if !errors.Is(e, gorm.ErrRecordNotFound) {
+ 			return e
+ 		}
++		if err := s.rejectUnfencedCraftAdmission(tx, in); err != nil {
++			return err
++		}
++		for _, claim := range inputClaims {
++			if claim.State != "claimed" {
++				return agentruntime.ErrConflict
++			}
++			valid, err := s.inputAdmissionLeaseValid(tx, in, claim)
++			if err != nil {
++				return err
++			}
++			if !valid {
++				return agentruntime.ErrConflict
++			}
++		}
+ 		slot := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id IS NULL",
+ 			in.Key.TenantID, in.SessionID).UpdateColumn("active_agent_run_id", in.Key.RunID)
+ 		if slot.Error != nil {
+@@ -228,6 +376,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 			Clauses(clause.OnConflict{DoNothing: true}).Create(&assistant).Error; e != nil {
+ 			return e
+ 		}
++		if err := s.markInputAdmissionClaimsAdmitted(tx, in, inputClaims); err != nil {
++			return err
++		}
+ 		result = row.view()
+ 		return nil
+ 	})
+@@ -325,8 +476,115 @@ func (s *AgentRunStore) leaseExpiry(ttl time.Duration) clause.Expr {
+ }
+ 
+ func (s *AgentRunStore) claimableSQL() string {
+-	return "(status = 'queued' OR (status IN ('running', 'recovering') AND (lease_until IS NULL OR " +
+-		s.leaseColumnSQL() + " <= " + s.nowSQL() + ")))"
++	return "(((status = 'queued' OR (status IN ('running', 'recovering') AND (lease_until IS NULL OR " +
++		s.leaseColumnSQL() + " <= " + s.nowSQL() + "))) AND NOT EXISTS (SELECT 1 FROM craft_charge_start_journal j " +
++		"WHERE j.tenant_id = agent_runs.tenant_id AND j.run_id = agent_runs.run_id AND j.state IN ('intent','unknown'))) " +
++		"OR (status = 'reconciling' AND wait_reason = 'craft_charge_start_pending' AND NOT EXISTS " +
++		"(SELECT 1 FROM craft_charge_start_journal j WHERE j.tenant_id = agent_runs.tenant_id AND j.run_id = agent_runs.run_id AND j.state IN ('intent','unknown'))))"
++}
++
++const craftChargeStartPendingWaitReason = "craft_charge_start_pending"
++
++func hasUnresolvedCraftChargeStart(tx *gorm.DB, key agentruntime.RunKey) (bool, error) {
++	var count int64
++	err := tx.Table("craft_charge_start_journal").Where(
++		"tenant_id = ? AND run_id = ? AND state IN ('intent','unknown')", key.TenantID, key.RunID,
++	).Count(&count).Error
++	return count != 0, err
++}
++
++func lockRunTransitionRow(tx *gorm.DB, key agentruntime.RunKey) error {
++	locked := runScope(tx, key).UpdateColumn("revision", gorm.Expr("revision"))
++	if locked.Error != nil {
++		return locked.Error
++	}
++	if locked.RowsAffected != 1 {
++		return agentruntime.ErrNotFound
++	}
++	return nil
++}
++
++func requestCraftChargePause(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
++	updated := runScope(tx, key).Where("status IN ('running','recovering','queued')").Updates(map[string]any{
++		"status": "reconciling", "wait_reason": craftChargeStartPendingWaitReason,
++		"lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
++	})
++	if updated.Error != nil {
++		return updated.Error
++	}
++	if updated.RowsAffected != 1 {
++		return agentruntime.ErrConflict
++	}
++	payload, err := json.Marshal(map[string]string{"reason": reason})
++	if err != nil {
++		return err
++	}
++	return appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "craft_charge_pause_requested", string(payload))
++}
++
++func requestCraftChargeCancel(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
++	updated := runScope(tx, key).Where("status IN ('running','recovering','queued','waiting_user')").Updates(map[string]any{
++		"status": "reconciling", "wait_reason": craftChargeStartPendingWaitReason,
++		"lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
++	})
++	if updated.Error != nil {
++		return updated.Error
++	}
++	if updated.RowsAffected != 1 {
++		return agentruntime.ErrConflict
++	}
++	payload, err := json.Marshal(map[string]string{"reason": reason})
++	if err != nil {
++		return err
++	}
++	return appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "craft_charge_cancel_requested", string(payload))
++}
++
++// resolveCraftChargePendingTransition finalizes a pause/cancel request only
++// after every intent/unknown start for the Run has resolved.
++func resolveCraftChargePendingTransition(tx *gorm.DB, key agentruntime.RunKey) (bool, error) {
++	var run agentRunRow
++	if err := runScope(tx, key).Take(&run).Error; err != nil {
++		return false, err
++	}
++	if run.Status != "reconciling" || run.WaitReason != craftChargeStartPendingWaitReason {
++		return false, nil
++	}
++	unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
++	if err != nil || unresolved {
++		return false, err
++	}
++	var event agentRunEventRow
++	if err := tx.Where("tenant_id = ? AND run_id = ? AND event_type IN ?", key.TenantID, key.RunID,
++		[]string{"craft_charge_pause_requested", "craft_charge_cancel_requested"}).Order("seq DESC").Take(&event).Error; err != nil {
++		return false, err
++	}
++	var request struct{ Reason string }
++	if err := json.Unmarshal([]byte(event.Payload), &request); err != nil {
++		return false, err
++	}
++	status := "waiting_user"
++	if event.EventType == "craft_charge_cancel_requested" {
++		status = "canceled"
++	}
++	updated := runScope(tx, key).Where("status = 'reconciling' AND wait_reason = ?", craftChargeStartPendingWaitReason).
++		Updates(map[string]any{"status": status, "wait_reason": request.Reason, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
++	if updated.Error != nil {
++		return false, updated.Error
++	}
++	if updated.RowsAffected != 1 {
++		return false, agentruntime.ErrConflict
++	}
++	if status == "canceled" {
++		if err := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id = ?", key.TenantID, run.SessionID, key.RunID).
++			Update("active_agent_run_id", nil).Error; err != nil {
++			return false, err
++		}
++		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_confirmed", event.Payload); err != nil {
++			return false, err
++		}
++	}
++	return true, nil
+ }
+ 
+ // Claim takes a queued or expired run using database time and increments its epoch.
+@@ -349,7 +607,33 @@ func (s *AgentRunStore) ClaimDriver(
+ 		return agentruntime.Fence{}, agentruntime.ErrConflict
+ 	}
+ 	var fence agentruntime.Fence
++	transitionFinalized := false
+ 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		if err := lockRunTransitionRow(tx, key); err != nil {
++			return agentruntime.ErrLeaseLost
++		}
++		var current agentRunRow
++		if err := runScope(tx, key).Take(&current).Error; err != nil {
++			return err
++		}
++		if current.Status == "reconciling" && current.WaitReason == craftChargeStartPendingWaitReason {
++			finalized, err := resolveCraftChargePendingTransition(tx, key)
++			if err != nil {
++				return err
++			}
++			if finalized {
++				transitionFinalized = true
++				return nil
++			}
++			return agentruntime.ErrLeaseLost
++		}
++		unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
++		if err != nil {
++			return err
++		}
++		if unresolved {
++			return agentruntime.ErrLeaseLost
++		}
+ 		claimed := runScope(tx, key).Where("driver = ?", driver).Where(s.claimableSQL()).Updates(map[string]any{
+ 			"lease_owner": owner, "lease_until": s.leaseExpiry(ttl), "epoch": gorm.Expr("epoch + 1"),
+ 			"revision": gorm.Expr("revision + 1"), "status": "running", "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+@@ -401,6 +685,9 @@ func (s *AgentRunStore) ClaimDriver(
+ 		}
+ 		return nil
+ 	})
++	if err == nil && transitionFinalized {
++		return agentruntime.Fence{}, agentruntime.ErrLeaseLost
++	}
+ 	return fence, err
+ }
+ 
+@@ -500,6 +787,20 @@ func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence,
+ 		return agentruntime.ErrConflict
+ 	}
+ 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		locked := s.fenced(tx, fence).UpdateColumn("revision", gorm.Expr("revision"))
++		if locked.Error != nil {
++			return locked.Error
++		}
++		if locked.RowsAffected != 1 {
++			return agentruntime.ErrLeaseLost
++		}
++		unresolved, err := hasUnresolvedCraftChargeStart(tx, fence.RunKey)
++		if err != nil {
++			return err
++		}
++		if status == "waiting_user" && unresolved {
++			return requestCraftChargePause(tx, fence.RunKey, reason)
++		}
+ 		result := s.fenced(tx, fence).Updates(map[string]any{
+ 			"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil,
+ 			"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+diff --git a/internal/application/repository/agent_run_decisions.go b/internal/application/repository/agent_run_decisions.go
+index 913d7f3db..e360dc19c 100644
+--- a/internal/application/repository/agent_run_decisions.go
++++ b/internal/application/repository/agent_run_decisions.go
+@@ -85,6 +85,12 @@ func (s *AgentRunStore) applyDecisionOnce(
+ 	}
+ 	var out agentruntime.Run
+ 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		if err := lockRunTransitionRow(tx, key); err != nil {
++			if errors.Is(err, agentruntime.ErrNotFound) {
++				return agentruntime.ErrNotFound
++			}
++			return err
++		}
+ 		var run agentRunRow
+ 		if err := runScope(tx, key).Take(&run).Error; err != nil {
+ 			if errors.Is(err, gorm.ErrRecordNotFound) {
+@@ -135,6 +141,13 @@ func (s *AgentRunStore) applyDecisionOnce(
+ 		if run.Status != "waiting_user" || run.WaitReason != d.PendingID || run.Revision != d.ExpectedRevision {
+ 			return agentruntime.ErrConflict
+ 		}
++		unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
++		if err != nil {
++			return err
++		}
++		if unresolved {
++			return agentruntime.ErrConflict
++		}
+ 		var pending struct{ CallID, ArgsHash string }
+ 		pendingQuery := tx.Table("agent_tool_calls").Select("call_id, args_hash").Where("tenant_id = ? AND run_id = ? AND status = 'unknown'", key.TenantID, key.RunID)
+ 		if d.ToolCallID != "" {
+diff --git a/internal/application/repository/agent_run_lifecycle.go b/internal/application/repository/agent_run_lifecycle.go
+index e8df93a61..a4a32b081 100644
+--- a/internal/application/repository/agent_run_lifecycle.go
++++ b/internal/application/repository/agent_run_lifecycle.go
+@@ -3,6 +3,7 @@ package repository
+ import (
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 
+ 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+ 	"gorm.io/gorm"
+@@ -15,30 +16,71 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey,
+ 		return agentruntime.ErrConflict
+ 	}
+ 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+-		var run agentRunRow
+-		if err := runScope(tx, key).Take(&run).Error; err != nil {
+-			if err == gorm.ErrRecordNotFound {
+-				return agentruntime.ErrNotFound
+-			}
+-			return err
++		return s.cancelRunTx(tx, key, reason)
++	})
++}
++
++func (s *AgentRunStore) cancelRunTx(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
++	if err := lockRunTransitionRow(tx, key); err != nil {
++		if errors.Is(err, agentruntime.ErrNotFound) {
++			return agentruntime.ErrNotFound
+ 		}
+-		if run.Status == "canceled" {
++		return err
++	}
++	var run agentRunRow
++	if err := runScope(tx, key).Take(&run).Error; err != nil {
++		return err
++	}
++	if run.Status == "canceled" {
++		return nil
++	}
++	if run.Status == "succeeded" || run.Status == "failed" {
++		return agentruntime.ErrConflict
++	}
++	unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
++	if err != nil {
++		return err
++	}
++	if unresolved {
++		if run.Status == "reconciling" && run.WaitReason == craftChargeStartPendingWaitReason {
+ 			return nil
+ 		}
+-		if run.Status == "succeeded" || run.Status == "failed" {
+-			return agentruntime.ErrConflict
+-		}
+-		if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
++		if err := requestCraftChargeCancel(tx, key, reason); err != nil {
+ 			return err
+ 		}
+-		payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
+-		if err != nil {
+-			return err
++		payload, _ := json.Marshal(map[string]string{"reason": reason})
++		return appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payload))
++	}
++	if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
++		return err
++	}
++	payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
++	if err != nil {
++		return err
++	}
++	if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
++		return err
++	}
++	return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
++}
++
++// CancelRunOwnedAtRevision applies the Workbench's authenticated revision
++// fence through the same journal-aware cancellation transition as RunStore.
++func (s *AgentRunStore) CancelRunOwnedAtRevision(ctx context.Context, tenantID uint64, ownerID, runID string, revision int64, reason string) error {
++	if tenantID == 0 || ownerID == "" || runID == "" || revision < 0 {
++		return agentruntime.ErrConflict
++	}
++	key := agentruntime.RunKey{TenantID: tenantID, RunID: runID}
++	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
++		locked := runScope(tx, key).Where("owner_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", ownerID, revision).
++			UpdateColumn("revision", gorm.Expr("revision"))
++		if locked.Error != nil {
++			return locked.Error
+ 		}
+-		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
+-			return err
++		if locked.RowsAffected != 1 {
++			return agentruntime.ErrConflict
+ 		}
+-		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
++		return s.cancelRunTx(tx, key, reason)
+ 	})
+ }
+ 
+@@ -65,18 +107,18 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64,
+ 			return err
+ 		}
+ 		for _, id := range ids {
+-			if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", tenantID, id).
+-				Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
+-				return err
+-			}
+-			payload, err := json.Marshal(map[string]string{"reason": "session_deleted"})
+-			if err != nil {
+-				return err
+-			}
+-			if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: id}}, "cancellation_requested", string(payload)); err != nil {
++			if err := s.cancelRunTx(tx, agentruntime.RunKey{TenantID: tenantID, RunID: id}, "session_deleted"); err != nil {
+ 				return err
+ 			}
+ 		}
++		var pending int64
++		if err := tx.Table("agent_runs").Where("tenant_id = ? AND session_id = ? AND status = 'reconciling' AND wait_reason = ?",
++			tenantID, sessionID, craftChargeStartPendingWaitReason).Count(&pending).Error; err != nil {
++			return err
++		}
++		if pending != 0 {
++			return nil
++		}
+ 		return tx.Table("sessions").Where("tenant_id=? AND id=?", tenantID, sessionID).Update("active_agent_run_id", nil).Error
+ 	})
+ }
+diff --git a/internal/modules/workbench/service/workbench/interaction.go b/internal/modules/workbench/service/workbench/interaction.go
+index 69a39185b..d8d768b9a 100644
+--- a/internal/modules/workbench/service/workbench/interaction.go
++++ b/internal/modules/workbench/service/workbench/interaction.go
+@@ -11,6 +11,7 @@ import (
+ 
+ 	"github.com/google/uuid"
+ 
++	"github.com/Tencent/WeKnora/internal/application/repository"
+ 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+ 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+ 	workbench "github.com/Tencent/WeKnora/internal/modules/workbench"
+@@ -344,14 +345,9 @@ func (p *GormCancelPort) Cancel(ctx context.Context, tenantID uint64, ownerID, r
+ 	if p == nil || p.db == nil {
+ 		return ErrCapabilityUnavailable
+ 	}
+-	updated := p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", tenantID, ownerID, runID, expectedRevision).Updates(map[string]any{"status": "canceled", "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+-	if updated.Error != nil {
+-		return updated.Error
+-	}
+-	if updated.RowsAffected != 1 {
+-		return agentruntime.ErrConflict
+-	}
+-	return nil
++	return repository.NewAgentRunStore(p.db).CancelRunOwnedAtRevision(
++		ctx, tenantID, ownerID, runID, expectedRevision, "workbench_cancel_requested",
++	)
+ }
+ 
+ // GormSteerPort resolves the run owner and assistant message from the durable
+diff --git a/internal/modules/workbench/service/workbench/interaction_test.go b/internal/modules/workbench/service/workbench/interaction_test.go
+index 5a0baa9f6..3864c15f1 100644
+--- a/internal/modules/workbench/service/workbench/interaction_test.go
++++ b/internal/modules/workbench/service/workbench/interaction_test.go
+@@ -153,6 +153,84 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
+ 	t.Logf("MX005-OBSERVATION accepted=%d conflict=%d", success, conflict)
+ }
+ 
++type craftCancelAdapterRunRow struct {
++	TenantID   uint64 `gorm:"primaryKey"`
++	RunID      string `gorm:"primaryKey"`
++	OwnerID    string
++	SessionID  string
++	Status     string
++	WaitReason string
++	LeaseOwner string
++	LeaseUntil *time.Time
++	Revision   int64
++	UpdatedAt  time.Time
++}
++
++func (craftCancelAdapterRunRow) TableName() string { return "agent_runs" }
++
++type craftCancelAdapterSessionRow struct {
++	TenantID         uint64 `gorm:"primaryKey"`
++	ID               string `gorm:"primaryKey"`
++	ActiveAgentRunID *string
++}
++
++func (craftCancelAdapterSessionRow) TableName() string { return "sessions" }
++
++type craftCancelAdapterJournalRow struct {
++	TenantID uint64 `gorm:"primaryKey"`
++	RunID    string `gorm:"primaryKey"`
++	State    string
++}
++
++func (craftCancelAdapterJournalRow) TableName() string { return "craft_charge_start_journal" }
++
++type craftCancelAdapterEventRow struct {
++	TenantID  uint64 `gorm:"primaryKey"`
++	RunID     string `gorm:"primaryKey"`
++	Seq       int64  `gorm:"primaryKey"`
++	AttemptID string
++	EventType string
++	Payload   string
++}
++
++func (craftCancelAdapterEventRow) TableName() string { return "agent_run_events" }
++
++func TestGormCancelPortDefersUnresolvedCraftStart(t *testing.T) {
++	dsn := "file:" + filepath.Join(t.TempDir(), "craft-cancel.db") + "?_foreign_keys=on&_busy_timeout=5000"
++	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
++	require.NoError(t, err)
++	sqlDB, err := db.DB()
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = sqlDB.Close() })
++	require.NoError(t, db.AutoMigrate(&craftCancelAdapterRunRow{}, &craftCancelAdapterSessionRow{}, &craftCancelAdapterJournalRow{}, &craftCancelAdapterEventRow{}))
++	lease := time.Now().Add(time.Minute)
++	activeRun := "charge-workbench-cancel"
++	require.NoError(t, db.Create(&craftCancelAdapterRunRow{
++		TenantID: 7, RunID: activeRun, OwnerID: "u1", SessionID: "s1", Status: "running",
++		LeaseOwner: "worker", LeaseUntil: &lease, Revision: 4,
++	}).Error)
++	require.NoError(t, db.Create(&craftCancelAdapterSessionRow{TenantID: 7, ID: "s1", ActiveAgentRunID: &activeRun}).Error)
++	require.NoError(t, db.Create(&craftCancelAdapterJournalRow{TenantID: 7, RunID: activeRun, State: "intent"}).Error)
++
++	port := NewGormCancelPort(db)
++	require.ErrorIs(t, port.Cancel(context.Background(), 7, "other", activeRun, 4), agentruntime.ErrConflict)
++	require.ErrorIs(t, port.Cancel(context.Background(), 7, "u1", activeRun, 3), agentruntime.ErrConflict)
++	require.NoError(t, port.Cancel(context.Background(), 7, "u1", activeRun, 4))
++
++	var run craftCancelAdapterRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, activeRun).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, "craft_charge_start_pending", run.WaitReason)
++	require.Empty(t, run.LeaseOwner)
++	var session craftCancelAdapterSessionRow
++	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 7, "s1").Take(&session).Error)
++	require.NotNil(t, session.ActiveAgentRunID, "cancel cannot release the active Run slot before the external start resolves")
++	require.Equal(t, activeRun, *session.ActiveAgentRunID)
++	var journal craftCancelAdapterJournalRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, activeRun).Take(&journal).Error)
++	require.Equal(t, "intent", journal.State, "cancel preserves the unresolved journal evidence and hold state")
++}
++
+ func (s *interactionStoreStub) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {
+ 	return []contract.InteractionDecision{s.current}, nil
+ }
+diff --git a/internal/application/repository/agent_run_craft_charge_test.go b/internal/application/repository/agent_run_craft_charge_test.go
+new file mode 100644
+index 000000000..75427d5b4
+--- /dev/null
++++ b/internal/application/repository/agent_run_craft_charge_test.go
+@@ -0,0 +1,168 @@
++package repository
++
++import (
++	"context"
++	"encoding/json"
++	"testing"
++	"time"
++
++	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
++	"github.com/stretchr/testify/require"
++	"gorm.io/gorm"
++)
++
++func insertUnresolvedCraftStart(t *testing.T, db *gorm.DB, key agentruntime.RunKey, activity string) {
++	t.Helper()
++	now := time.Now().UTC()
++	require.NoError(t, db.Exec("INSERT INTO craft_charge_start_journal (tenant_id, run_id, activity_key, grant_id, call_id, reservation_key, state, run_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'intent', 0, ?, ?)",
++		key.TenantID, key.RunID, activity, "grant-"+activity, "call-"+activity, "reservation-"+activity, now, now).Error)
++}
++
++func TestCraftChargeIntentBlocksClaimAndDecisionResume(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-claim"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	_, err = store.Claim(context.Background(), in.Key, "worker-old", time.Minute)
++	require.NoError(t, err)
++	claimed, err := store.Get(context.Background(), in.Key)
++	require.NoError(t, err)
++	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Updates(map[string]any{"status": "waiting_user", "wait_reason": "decision-1", "lease_owner": "", "lease_until": nil}).Error)
++	insertUnresolvedCraftStart(t, db, in.Key, "claim-decision")
++
++	_, err = store.ApplyDecision(context.Background(), in.Key, "u1", agentruntime.Decision{
++		PendingID: "decision-1", DecisionID: "decision-resume", Action: "retry", ExpectedRevision: claimed.Revision,
++	})
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "unresolved start cannot be turned into a resumed chargeable Run")
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "waiting_user", run.Status)
++	require.Equal(t, "decision-1", run.WaitReason)
++
++	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Updates(map[string]any{"status": "recovering", "lease_owner": "worker-old", "lease_until": time.Now().Add(-time.Minute)}).Error)
++	_, err = store.ClaimDriver(context.Background(), in.Key, "platform", "worker-new", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, int64(1), run.Epoch)
++	require.Equal(t, "worker-old", run.LeaseOwner)
++}
++
++func TestCraftChargeIntentIsNotScheduledFromQueuedRun(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-queued-scan"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "queued-scan")
++
++	keys, err := store.Scan(context.Background(), 10)
++	require.NoError(t, err)
++	require.NotContains(t, keys, in.Key, "a Run with a durable unresolved start must not be scheduled")
++	_, err = store.Claim(context.Background(), in.Key, "worker", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++}
++
++func TestCraftChargePendingPauseFinalizesAfterIntentResolves(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-pause"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	fence, err := store.Claim(context.Background(), in.Key, "worker", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "pause")
++
++	require.NoError(t, store.SetStatus(context.Background(), fence, "waiting_user", "budget_exhausted"))
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++	var active *string
++	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
++	require.NotNil(t, active, "pending pause retains the active Run slot")
++
++	require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Update("state", "started").Error)
++	keys, err := store.Scan(context.Background(), 10)
++	require.NoError(t, err)
++	require.Contains(t, keys, in.Key, "resolved pause requests are scheduled for durable finalization")
++	_, err = store.Claim(context.Background(), in.Key, "worker-recovery", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost, "recovery finalizes the pause without claiming the parked Run")
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "waiting_user", run.Status)
++	require.Equal(t, "budget_exhausted", run.WaitReason)
++	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
++	require.NotNil(t, active)
++}
++
++func TestCraftChargeFinalizeRetainsUnresolvedStartAndDefersCancel(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-cancel"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	fence, err := store.Claim(context.Background(), in.Key, "worker", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "finalize")
++	require.NoError(t, store.Finalize(context.Background(), fence, json.RawMessage("{\"content\":\"completed with retained start evidence\"}")))
++	var journal struct{ State string }
++	require.NoError(t, db.Table("craft_charge_start_journal").Select("state").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&journal).Error)
++	require.Equal(t, "intent", journal.State, "terminal finalization retains unresolved journal evidence")
++
++	in.Key.RunID = "charge-cancel-pending"
++	in.RequestID = "charge-cancel-pending-request"
++	_, err = store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	fence, err = store.Claim(context.Background(), in.Key, "worker-cancel", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "cancel")
++	require.NoError(t, store.CancelRun(context.Background(), in.Key, "member_stop"))
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++	var active *string
++	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
++	require.NotNil(t, active, "cancel request is not confirmed cancellation while start is unresolved")
++
++	require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Update("state", "definitely_unstarted").Error)
++	keys, err := store.Scan(context.Background(), 10)
++	require.NoError(t, err)
++	require.Contains(t, keys, in.Key)
++	_, err = store.Claim(context.Background(), in.Key, "worker-recovery", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "canceled", run.Status)
++	require.Equal(t, "member_stop", run.WaitReason)
++	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
++	require.Nil(t, active)
++}
++
++func TestDeleteSessionRunsDoesNotCancelUnresolvedCraftRun(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-delete"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	_, err = store.Claim(context.Background(), in.Key, "worker", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "delete")
++
++	require.NoError(t, store.DeleteSessionRuns(context.Background(), 1, in.SessionID))
++	var run agentRunRow
++	var journal struct{ State string }
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++	require.NoError(t, db.Table("craft_charge_start_journal").Select("state").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&journal).Error)
++	require.Equal(t, "intent", journal.State, "session deletion preserves unresolved journal evidence")
++}

@@ -1,0 +1,31 @@
+{
+  "kind": "full-content-uncommitted-incremental-checkpoint",
+  "task": "T08-migration",
+  "previous_manifest_sha256": "ad0256ef592bc729de9e3307f07609faed1d078a8015558aa47843954c8cb589",
+  "files": [
+    {
+      "path": "migrations/versioned/000189_craft_web_artifact_frontier.up.sql",
+      "sha256": "9a5b429f34e9e746573defc63ff5fd1302850c83e08fbe0ae416ab17532ba04c",
+      "size": 1055,
+      "before_sha256": "8719d24a340e8eca8e077f37371e6855e647b0d29382f0571282d7919d0e5323"
+    },
+    {
+      "path": "migrations/versioned/000189_craft_web_artifact_frontier.down.sql",
+      "sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e",
+      "size": 349,
+      "before_sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e"
+    },
+    {
+      "path": "migrations/sqlite/000110_craft_web_artifact_frontier.up.sql",
+      "sha256": "b58a351d5b69eaad4f192b9ddaf533fdd5ac79825e71c30fff6c80263359e6f8",
+      "size": 1041,
+      "before_sha256": "bbdaf479acb52e4b72a676cdd03f15686124338a8e79a91960139934ce6f9706"
+    },
+    {
+      "path": "migrations/sqlite/000110_craft_web_artifact_frontier.down.sql",
+      "sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e",
+      "size": 349,
+      "before_sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e"
+    }
+  ]
+}

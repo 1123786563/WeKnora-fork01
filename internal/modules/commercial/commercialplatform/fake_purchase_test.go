@@ -89,13 +89,13 @@ func TestFakePurchaseSnapshotStates(t *testing.T) {
 
 func newSettleCommand(tenant uint64, planCode, txn string, amount int64) commercial.Command {
 	return commercial.Command{
-		Kind: commercial.CommandKindSettlePurchasePayment,
-		Key:  commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), txn),
+		Kind:  commercial.CommandKindSettlePurchasePayment,
+		Key:   commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), txn),
 		Actor: "test", Reason: "settle",
 		Payload: commercial.SettlePurchasePaymentPayload{
 			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: planCode, ChannelTransaction: txn, AmountFen: amount, Currency: commercial.CurrencyCNY,
+			PlanCode:                       planCode, ChannelTransaction: txn, AmountFen: amount, Currency: commercial.CurrencyCNY,
 		},
 	}
 }
@@ -149,20 +149,20 @@ func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)
 		TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 		Period: period, CreditsMicro: 100_00_00, // 1.00 credit in micro
 		ExpiresAt: periodEndOrFatal(t, period),
-		Priority: commercial.MonthlyWalletPriority,
+		Priority:  commercial.MonthlyWalletPriority,
 	}
 	purchase := monthly
 	purchase.WalletName = commercial.PurchaseWalletName(tenant, period)
 	if _, err := f.SubmitCommand(context.Background(), commercial.Command{
-		Kind: commercial.CommandKindGrantIncludedCredits,
-		Key:  commercial.GrantCreditsCommandKey(commercial.ExternalCustomerID(tenant), period),
+		Kind:  commercial.CommandKindGrantIncludedCredits,
+		Key:   commercial.GrantCreditsCommandKey(commercial.ExternalCustomerID(tenant), period),
 		Actor: "test", Reason: "base", Payload: monthly,
 	}); err != nil {
 		t.Fatalf("monthly grant: %v", err)
 	}
 	if _, err := f.SubmitCommand(context.Background(), commercial.Command{
-		Kind: commercial.CommandKindGrantIncludedCredits,
-		Key:  commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Kind:  commercial.CommandKindGrantIncludedCredits,
+		Key:   commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
 		Actor: "test", Reason: "purchase", Payload: purchase,
 	}); err != nil {
 		t.Fatalf("purchase grant (own wallet name): %v", err)

@@ -8,6 +8,41 @@ alias_obligations:
   - old_import_path: internal/craft
     passb_task: B-craft
 legacy_files:
+  - path: internal/application/repository/craft_candidate.go
+  - path: internal/application/repository/craft_docker_normal_input.go
+  - path: internal/application/repository/craft_docker_output.go
+  - path: internal/application/repository/craft_docker_send_claim.go
+  - path: internal/application/repository/craft_draft_head.go
+  - path: internal/application/repository/craft_knowledge_records.go
+  - path: internal/application/repository/craft_run_capture.go
+  - path: internal/application/repository/craft_run_capture_promotion.go
+  - path: internal/application/repository/craft_run_view.go
+  - path: internal/application/repository/craft_run_view_effect.go
+  - path: internal/application/repository/craft_stop_intent.go
+  - path: internal/application/repository/craft_web_build_receipt.go
+  - path: internal/application/service/craft_access.go
+  - path: internal/application/service/craft_archive.go
+  - path: internal/application/service/craft_citations.go
+  - path: internal/application/service/craft_collaborator_run.go
+  - path: internal/application/service/craft_docker_normal_exec.go
+  - path: internal/application/service/craft_docker_output.go
+  - path: internal/application/service/craft_docker_restricted_exec.go
+  - path: internal/application/service/craft_docker_send_coordinator.go
+  - path: internal/application/service/craft_execution_policy.go
+  - path: internal/application/service/craft_export.go
+  - path: internal/application/service/craft_export_consent.go
+  - path: internal/application/service/craft_run_capture.go
+  - path: internal/application/service/craft_share.go
+  - path: internal/application/service/craft_source_open.go
+  - path: internal/application/service/craft_task_list_query.go
+  - path: internal/application/service/craft_web_screen.go
+  - path: internal/handler/session/craft_access.go
+  - path: internal/handler/session/craft_budget_pause.go
+  - path: internal/handler/session/craft_export_consent.go
+  - path: internal/handler/session/craft_features.go
+  - path: internal/handler/session/craft_input_round.go
+  - path: internal/handler/session/craft_knowledge_feature.go
+  - path: internal/handler/session/craft_share.go
   - path: internal/application/repository/craft_preview_check.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Craft preview check (application/repository)
@@ -151,6 +186,22 @@ test_commands:
   - go test ./internal/modules/craft/... -count=1
 integration_points:
   routes:
+  - RegisterCraftExportRoutes — internal/handler/session/artifact_download.go:795
+  - RegisterCraftExportRoutes — internal/handler/session/artifact_download.go:796
+  - RegisterCraftAccessRoutes — internal/handler/session/craft_access.go:35
+  - RegisterCraftAccessRoutes — internal/handler/session/craft_access.go:36
+  - RegisterCraftAccessRoutes — internal/handler/session/craft_access.go:37
+  - RegisterCraftExportConsentRoutes — internal/handler/session/craft_export_consent.go:60
+  - RegisterCraftExportConsentRoutes — internal/handler/session/craft_export_consent.go:61
+  - NewCraftFeatureRoutes — internal/handler/session/craft_features.go:97
+  - NewCraftFeatureRoutes — internal/handler/session/craft_features.go:102
+  - RegisterCraftInputRoutes — internal/handler/session/craft_input_round.go:28
+  - RegisterCraftInputRoutes — internal/handler/session/craft_input_round.go:29
+  - NewCraftKnowledgeHandler — internal/handler/session/craft_knowledge_feature.go:28
+  - NewCraftKnowledgeHandler — internal/handler/session/craft_knowledge_feature.go:29
+  - RegisterCraftShareRoutes — internal/handler/session/craft_share.go:53
+  - RegisterCraftShareRoutes — internal/handler/session/craft_share.go:54
+  - RegisterCraftShareRoutes — internal/handler/session/craft_share.go:55
   - craft route groups (inside RegisterSessionRoutes)：/craft/sessions、/craft/scheduled-tasks、/craft/model-gateway — internal/router/routes_chat.go:95-235 (groups at 103/123/135)
   - RegisterCraftSessionRoutes (handler-side delegation; 12 routes) — internal/handler/session/craft.go:116-154
   - RegisterCraftInteractionRoutes (handler-side delegation; 4 routes) — internal/handler/session/craft_interaction.go:63

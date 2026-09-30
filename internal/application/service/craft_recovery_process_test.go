@@ -301,11 +301,15 @@ func craftRecoveryProviderCrash(
 	if err != nil {
 		fail("message id: %v", err)
 	}
+	fence.SnapshotDigestVersion = 1
+	fence.SnapshotDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	task := craft.Task{
 		ID: craftProcDelegation, ToolCallID: craftProcCallID,
 		Prompt: "goal: build the report", RequestHash: "rh-1", Scope: scope,
 		Fence: fence, WorkspaceID: workspace.ID, PromptMessageID: promptID,
-		Deadline: time.Now().Add(5 * time.Minute),
+		SnapshotDigestVersion: 1,
+		SnapshotDigest:        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		Deadline:              time.Now().Add(5 * time.Minute),
 	}
 	switch caseName {
 	case craftProcCaseRecordBeforeSubmit:

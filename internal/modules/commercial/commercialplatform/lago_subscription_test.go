@@ -231,11 +231,11 @@ type walletsStub struct {
 	mu       sync.Mutex
 	requests []stubReq
 
-	wallets        []stubWallet
-	createStatuses []int  // scripted statuses; a 422 answers wallet_limit_reached
-	limitExhausted bool   // every POST answers the limit 422
-	settleRounds   int    // initial wallet GETs answering an unsettled balance
-	entitlements   string // scripted entitlements body (the BASE "-sub" leg)
+	wallets              []stubWallet
+	createStatuses       []int  // scripted statuses; a 422 answers wallet_limit_reached
+	limitExhausted       bool   // every POST answers the limit 422
+	settleRounds         int    // initial wallet GETs answering an unsettled balance
+	entitlements         string // scripted entitlements body (the BASE "-sub" leg)
 	purchaseEntitlements string // scripted purchase-leg body ("" = 404 — no purchase subscription yet)
 	// entitlementCustomer scopes the scripted entitlements to ONE customer
 	// (per-customer truth; empty = all customers — the direct stub tests).
@@ -914,8 +914,8 @@ func TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes(t *testing.T) {
 // — never assumed, never required.
 func TestLagoBenefitsFeaturesParseToleratedShapes(t *testing.T) {
 	shapes := []string{
-		`{"entitlements":[{"code":"feat_code"}]}`,           // pinned v1.53 (live-stack evidence)
-		`{"entitlements":[{"feature_code":"feat_feature"}]}`, // tolerated
+		`{"entitlements":[{"code":"feat_code"}]}`,               // pinned v1.53 (live-stack evidence)
+		`{"entitlements":[{"feature_code":"feat_feature"}]}`,    // tolerated
 		`{"entitlements":[{"feature":{"code":"feat_nested"}}]}`, // tolerated
 	}
 	for i, body := range shapes {

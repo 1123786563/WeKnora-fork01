@@ -1,0 +1,22 @@
+1 .M N... 100644 100644 100644 7feaab0892ec6bfcdc3eb46157797ba9dcf8068d 7feaab0892ec6bfcdc3eb46157797ba9dcf8068d internal/handler/session/craft.go
+1 .M N... 100644 100644 100644 fcb58c7255f0219ee182ebde0c89f042df13f29b fcb58c7255f0219ee182ebde0c89f042df13f29b internal/modules/craft/contracts.go
+1 .M N... 100644 100644 100644 4626c2f51103cf6e517109af4b1554983d647b0d 4626c2f51103cf6e517109af4b1554983d647b0d packages/contracts/src/craft/index.ts
+1 .M N... 100644 100644 100644 bcdf65838f9d3d387e3bdf7d48179e83b162c2d7 bcdf65838f9d3d387e3bdf7d48179e83b162c2d7 packages/views/src/craft/workbench.stop.test.tsx
+1 .M N... 100644 100644 100644 0aef530e495e3a9c9112aa8db49a647b03fc0c53 0aef530e495e3a9c9112aa8db49a647b03fc0c53 packages/views/src/craft/workbench.tsx
+? docs/plans/2026-09-23-craft-107-dag.md
+? docs/plans/2026-09-23-craft-107-implementation.md
+? docs/plans/2026-09-23-craft-107-issue-snapshot.json
+? docs/plans/2026-09-23-craft-107-issue-summary.md
+? docs/plans/2026-09-23-craft-107-ledger.md
+? docs/plans/2026-09-23-craft-107-ownership.md
+? docs/plans/2026-09-23-craft-107-t00-brief.md
+? docs/plans/2026-09-23-craft-107-t00-report.md
+? docs/plans/2026-09-23-craft-web-artifact-issues-execution-prompt.md
+? internal/container/craft_features.go
+? internal/handler/session/craft_features.go
+? internal/handler/session/craft_features_test.go
+? internal/modules/craft/web_contracts.go
+? internal/modules/craft/web_contracts_test.go
+? packages/contracts/src/craft/web-artifact.test.ts
+? packages/contracts/src/craft/web-artifact.ts
+? packages/views/src/craft/workbench-features.tsx

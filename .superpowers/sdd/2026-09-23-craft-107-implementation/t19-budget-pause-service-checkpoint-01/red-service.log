@@ -1,0 +1,126 @@
+Command: go test ./internal/application/service -run ^TestCraftBudgetPauseWritersFenceIntentAndUnknown$ -count=1
+Exit code: 1
+--- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown (9.67s)
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_max_calls/intent (1.15s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_max_calls/intent
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_max_calls/unknown (1.18s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_max_calls/unknown
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_reservation_denial/intent (1.50s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_reservation_denial/intent
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_reservation_denial/unknown (1.12s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/start_reservation_denial/unknown
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_run/intent (1.02s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_run/intent
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_run/unknown (1.09s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_run/unknown
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_on_denial/intent (1.31s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_on_denial/intent
+            	Messages:   	pause is pending while the external-start journal is unresolved
+    --- FAIL: TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_on_denial/unknown (1.30s)
+        craft_budget_t19_test.go:427: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/service/craft_budget_t19_test.go:427
+            	Error:      	Not equal: 
+            	            	expected: "reconciling"
+            	            	actual  : "waiting_user"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1 +1 @@
+            	            	-reconciling
+            	            	+waiting_user
+            	Test:       	TestCraftBudgetPauseWritersFenceIntentAndUnknown/pause_on_denial/unknown
+            	Messages:   	pause is pending while the external-start journal is unresolved
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/application/service	11.471s
+FAIL

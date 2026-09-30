@@ -1,0 +1,243 @@
+{
+  "action": "snapshot",
+  "helper": {
+    "image_id": "sha256:c0cfa88b4db1940b7cbc978f0b43e713c22ce4af0ebcdeb2ec7db9a14bf1f2bb",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 2138683750,
+  "payload": {
+    "counters": {
+      "isolated_ipv4_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "isolated_ipv6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "loopback_drop": {
+        "bytes": 180,
+        "packets": 3
+      },
+      "loopback_v4_drop": {
+        "bytes": 180,
+        "packets": 3
+      },
+      "loopback_v6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "target_counters": {
+        "dns_invalid": {
+          "bytes": 0,
+          "counter_id": "policy-target-invalid-dns-drop",
+          "destination": "203.0.113.53",
+          "destination_ports": [
+            53
+          ],
+          "packets": 0,
+          "protocol": "udp"
+        },
+        "gateway_http": {
+          "bytes": 0,
+          "counter_id": "policy-target-gateway-http-drop",
+          "destination": "172.17.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        },
+        "metadata_http": {
+          "bytes": 60,
+          "counter_id": "policy-target-metadata-http-drop",
+          "destination": "169.254.169.254",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 1,
+          "protocol": "tcp"
+        },
+        "private_http": {
+          "bytes": 60,
+          "counter_id": "policy-target-private-http-drop",
+          "destination": "10.0.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 1,
+          "protocol": "tcp"
+        },
+        "public_https": {
+          "bytes": 0,
+          "counter_id": "policy-target-public-http-drop",
+          "destination": "1.1.1.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        }
+      }
+    },
+    "default_routes": [],
+    "interfaces": [
+      "lo",
+      "policy0"
+    ],
+    "netns": "net:[4026535519]",
+    "policy_id": "t14_98eb7938bef8",
+    "raw_rules_sha256": "1be4f01b0c3dd9b608efb1dba77153f361a9bd12f6e6ba2ee3bab9f945767245",
+    "routes": {
+      "ipv4": [
+        {
+          "dev": "policy0",
+          "dst": "1.1.1.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "10.0.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "169.254.169.254",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "172.17.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "198.18.10.0/24",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "203.0.113.53",
+          "flags": [],
+          "scope": "link"
+        }
+      ],
+      "ipv6": [
+        {
+          "dev": "policy0",
+          "dst": "2001:db8:10::/64",
+          "flags": [],
+          "metric": 1024,
+          "pref": "medium"
+        },
+        {
+          "dev": "policy0",
+          "dst": "fe80::/64",
+          "flags": [],
+          "metric": 256,
+          "pref": "medium",
+          "protocol": "kernel"
+        }
+      ]
+    },
+    "target_counters": {
+      "dns_invalid": {
+        "bytes": 0,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 0,
+        "protocol": "udp"
+      },
+      "gateway_http": {
+        "bytes": 0,
+        "counter_id": "policy-target-gateway-http-drop",
+        "destination": "172.17.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      },
+      "metadata_http": {
+        "bytes": 60,
+        "counter_id": "policy-target-metadata-http-drop",
+        "destination": "169.254.169.254",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 1,
+        "protocol": "tcp"
+      },
+      "private_http": {
+        "bytes": 60,
+        "counter_id": "policy-target-private-http-drop",
+        "destination": "10.0.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 1,
+        "protocol": "tcp"
+      },
+      "public_https": {
+        "bytes": 0,
+        "counter_id": "policy-target-public-http-drop",
+        "destination": "1.1.1.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      }
+    }
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 9062,
+      "path": "0014-container-inspect-after.json",
+      "sha256": "b2b471b4c4f2919133750097cd45ad3b2078be31685779286780bb8a07d6de09"
+    },
+    "container_inspect_raw": {
+      "bytes": 9062,
+      "path": "0014-container-inspect-before.json",
+      "sha256": "b2b471b4c4f2919133750097cd45ad3b2078be31685779286780bb8a07d6de09"
+    },
+    "raw_link_json": {
+      "bytes": 573,
+      "path": "0014-links.json",
+      "sha256": "f125f10ead53bae9a88e16fda26f7faf9d835ca40c68a2be06529266cf0f1089"
+    },
+    "raw_route_json": {
+      "bytes": 654,
+      "path": "0014-routes.json",
+      "sha256": "ff00f2f59057a6a4d873bd91f7a4559c1b77f311a1c37fb64c4038ae9b654182"
+    },
+    "raw_rules": {
+      "bytes": 6661,
+      "path": "0014-nft-rules.json",
+      "sha256": "1be4f01b0c3dd9b608efb1dba77153f361a9bd12f6e6ba2ee3bab9f945767245"
+    }
+  },
+  "sequence": 14,
+  "target": {
+    "container_id": "6193a52ad3bdb9dfba1e9befd98b2f4b3b973247427737468a36269a4cd72fff",
+    "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+    "container_pid": 1256819,
+    "netns": "net:[4026535519]"
+  }
+}

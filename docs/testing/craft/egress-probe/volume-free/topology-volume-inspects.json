@@ -1,0 +1,88 @@
+[
+    {
+        "CreatedAt": "2026-09-24T11:01:19+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-config/_data",
+        "Name": "t19vf-20260924-config",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:01:19+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-data/_data",
+        "Name": "t19vf-20260924-data",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:01:19+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-direct-ledger/_data",
+        "Name": "t19vf-20260924-direct-ledger",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:01:19+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-adapter-ledger/_data",
+        "Name": "t19vf-20260924-adapter-ledger",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:12:25+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-config/_data",
+        "Name": "t19vf-20260924-config",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:12:25+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-data/_data",
+        "Name": "t19vf-20260924-data",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:12:25+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-direct-ledger/_data",
+        "Name": "t19vf-20260924-direct-ledger",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[
+    {
+        "CreatedAt": "2026-09-24T11:12:25+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/t19vf-20260924-adapter-ledger/_data",
+        "Name": "t19vf-20260924-adapter-ledger",
+        "Options": null,
+        "Scope": "local"
+    }
+]

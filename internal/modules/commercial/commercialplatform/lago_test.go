@@ -284,9 +284,9 @@ func TestNewPlatformSelectsAdapterByProvider(t *testing.T) {
 // BaseURL (blocked-env, no authority egress) both stay legal.
 func TestNewPlatformRefusesLoopbackBypassForProductionAuthority(t *testing.T) {
 	for _, base := range []string{
-		"https://lago.eu.example.com",   // production-shaped authority
-		"http://10.0.0.5:3000",          // explicit non-loopback internal host
-		"https://api.stripe.com",        // any real host refuses
+		"https://lago.eu.example.com", // production-shaped authority
+		"http://10.0.0.5:3000",        // explicit non-loopback internal host
+		"https://api.stripe.com",      // any real host refuses
 	} {
 		if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: base, OutboundAllowLoopback: true}); err == nil {
 			t.Fatalf("bypass + non-loopback authority %q must refuse to build", base)

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -205,6 +207,7 @@ type previewEnv struct {
 	checks  *previewCheckStore
 	clock   *fakePreviewClock
 	service *service.CraftPreviewService
+	access  *previewAccess
 	issue   *gin.Engine
 	preview *gin.Engine
 	scope   craft.Scope
@@ -219,13 +222,17 @@ func newPreviewEnv(t *testing.T) *previewEnv {
 		checks: newPreviewCheckStore(),
 		clock:  &fakePreviewClock{now: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)},
 		scope:  craft.Scope{TenantID: 42, UserID: "user-1", SessionID: "sess-1"},
+		access: &previewAccess{},
 	}
 	env.checks.versions = env.store
 	env.service = service.NewCraftPreviewService(env.store, env.files, env.checks, service.CraftPreviewConfig{
-		AppOrigin:     "https://app.test",
-		PreviewOrigin: "https://preview.test",
-		TTL:           craft.PreviewTicketTTL,
-		Now:           env.clock.Now,
+		AppOrigin:                  "https://app.test",
+		PreviewOrigin:              "https://preview.test",
+		TTL:                        craft.PreviewTicketTTL,
+		Now:                        env.clock.Now,
+		AccessChecker:              env.access,
+		NetworkChecker:             previewNoEgress{},
+		BrowserNavigationProtected: true,
 	})
 	h := NewCraftPreviewHandler(env.service)
 
@@ -279,6 +286,8 @@ func previewMIME(path string) string {
 		return "text/css; charset=utf-8"
 	case strings.HasSuffix(path, ".js"):
 		return "text/javascript; charset=utf-8"
+	case strings.HasSuffix(path, ".svg"):
+		return "image/svg+xml"
 	default:
 		return "application/octet-stream"
 	}
@@ -303,8 +312,71 @@ func (env *previewEnv) issueTicket(t *testing.T, versionID string) map[string]an
 // previewGet performs one request on the isolated origin.
 func (env *previewEnv) previewGet(path string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	env.preview.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Host = "preview.test"
+	env.preview.ServeHTTP(w, req)
 	return w
+}
+
+type previewAccess struct{ denied bool }
+
+type previewNoEgress struct{}
+
+func (previewNoEgress) CheckPreviewNoEgress(context.Context, craft.Scope) error { return nil }
+
+func (a *previewAccess) CheckTaskAccess(_ context.Context, _ craft.Scope, action craft.TaskAction) error {
+	if action != craft.TaskPreview || a.denied {
+		return craft.ErrForbidden
+	}
+	return nil
+}
+
+// TestCraftT14Journey covers the public issuance and isolated file endpoint.
+func TestCraftT14Journey(t *testing.T) {
+	env := newPreviewEnv(t)
+	v := env.publishPreviewVersion(t, "ws-t14", "run-1", [][2]string{
+		{"index.html", `<html><head><link rel="stylesheet" href="style.css"></head><body><h1>T14</h1><img src="asset.svg"><script src="app.js"></script></body></html>`},
+		{"style.css", "body{color:red}"}, {"app.js", "window.localJSLoaded = true"},
+		{"asset.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>`},
+	})
+	ticket := env.issueTicket(t, v.ID)
+	u, err := url.Parse(ticket["url"].(string))
+	require.NoError(t, err)
+	// The auth-free route is also mounted on the app router; that host must not redeem.
+	mainReq := httptest.NewRequest(http.MethodGet, u.Path, nil)
+	mainReq.Host = "app.test"
+	mainReq.Header.Set("Cookie", "app_session=secret")
+	mainReq.Header.Set("Authorization", "Bearer app-secret")
+	main := httptest.NewRecorder()
+	env.preview.ServeHTTP(main, mainReq)
+	require.Equal(t, http.StatusNotFound, main.Code)
+	capPath := env.redeem(t, ticket["url"].(string))
+	require.Equal(t, http.StatusOK, env.previewGet(capPath).Code)
+	require.Equal(t, http.StatusOK, env.previewGet(strings.TrimSuffix(capPath, "index.html")+"style.css").Code)
+	require.Equal(t, http.StatusNotFound, env.previewGet(strings.TrimSuffix(capPath, "index.html")+"unlisted.js").Code)
+	env.access.denied = true
+	require.Equal(t, http.StatusNotFound, env.previewGet(capPath).Code, "revoked Task access must end a live capability")
+	env.access.denied = false
+	// A current membership decision is required on every new issuance.
+	denied := service.NewCraftPreviewService(env.store, env.files, env.checks, service.CraftPreviewConfig{
+		AppOrigin: "https://app.test", PreviewOrigin: "https://preview.test", BrowserNavigationProtected: true,
+	})
+	_, err = denied.Issue(context.Background(), env.scope, v.ID)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	unsafeNetwork := service.NewCraftPreviewService(env.store, env.files, env.checks, service.CraftPreviewConfig{
+		AppOrigin: "https://app.test", PreviewOrigin: "https://preview.test", AccessChecker: env.access, BrowserNavigationProtected: true,
+	})
+	_, err = unsafeNetwork.Issue(context.Background(), env.scope, v.ID)
+	require.ErrorIs(t, err, craft.ErrUnsupported)
+	if os.Getenv("CRAFT_PREVIEW_BROWSER_PROBE") == "1" {
+		server := httptest.NewServer(env.preview)
+		defer server.Close()
+		fresh := env.issueTicket(t, v.ID)
+		browserPath := env.redeem(t, fresh["url"].(string))
+		cmd := exec.Command("python", "../../../deploy/craft/browser_probe.py", server.URL, "https://preview.test"+browserPath, "/tmp/craft107/t14/browser.json")
+		output, runErr := cmd.CombinedOutput()
+		require.NoError(t, runErr, "browser probe: %s", output)
+	}
 }
 
 // redeem exchanges a ticket URL into the capability path it redirects to.
@@ -524,6 +596,15 @@ func TestCraftPreviewDisabledWhenOriginUnconfigured(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p/anything/index.html", nil))
 	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestCraftPreviewFailsClosedWithoutBrowserNavigationBoundary(t *testing.T) {
+	svc := service.NewCraftPreviewService(newPreviewVersionStore(), newPreviewFileStore(), nil, service.CraftPreviewConfig{
+		AppOrigin: "https://app.test", PreviewOrigin: "https://preview.test",
+	})
+	_, err := svc.Issue(context.Background(), craft.Scope{TenantID: 1, UserID: "u", SessionID: "s"}, "ver_"+strings.Repeat("a", 64))
+	require.ErrorIs(t, err, craft.ErrUnsupported)
+	require.Contains(t, err.Error(), "browser navigation egress is isolated")
 }
 
 // TestCraftPreviewVerdictChannelAndEvidence pins the W01-review items: the

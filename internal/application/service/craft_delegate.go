@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )
 
@@ -32,11 +34,16 @@ type CraftDelegation struct {
 }
 
 // NewCraftDelegation validates and assembles the Craft delegation surface.
-func NewCraftDelegation(store craft.Store, executor craft.Executor) (*CraftDelegation, error) {
+// The optional audit sink (dig-injected when the central assembly provides
+// interfaces.AuditLogService) persists the T03 material-policy events
+// (craft.input.read / craft.generated.execute / craft.input.execute_denied)
+// into audit_rows; without it the events stay typed log lines.
+func NewCraftDelegation(store craft.Store, executor craft.Executor, audit interfaces.AuditLogService) (*CraftDelegation, error) {
 	if store == nil || executor == nil {
 		return nil, errors.New("craft: delegation assembly requires a store and an executor")
 	}
-	return &CraftDelegation{Store: store, Delegate: NewCraftDelegateService(store, executor)}, nil
+	delegate := NewCraftDelegateService(store, executor).WithAuditLog(audit)
+	return &CraftDelegation{Store: store, Delegate: delegate}, nil
 }
 
 // CraftDelegateService drives one durable delegation: it reuses an already
@@ -47,6 +54,19 @@ type CraftDelegateService struct {
 	store    craft.Store
 	executor craft.Executor
 	guard    CraftDispatchGuard
+	audit    interfaces.AuditLogService
+}
+
+// WithAuditLog attaches the durable audit sink used by the T03 material
+// policy (item: persistent audit rows for craft.input.read /
+// craft.generated.execute / craft.input.execute_denied). nil (the default)
+// keeps the typed-event + log-line behavior. The sink is best-effort: a
+// failed audit write never changes a policy decision.
+func (s *CraftDelegateService) WithAuditLog(audit interfaces.AuditLogService) *CraftDelegateService {
+	if s != nil {
+		s.audit = audit
+	}
+	return s
 }
 
 // CraftDispatchGuard refuses a NEW delegation dispatch while the session's
@@ -83,6 +103,14 @@ func validateDelegateTask(task craft.Task) error {
 	}
 	if task.RequestHash == "" {
 		return fmt.Errorf("%w: delegation requires a request hash", craft.ErrInvalidInput)
+	}
+	if task.SnapshotDigestVersion != 1 || len(task.SnapshotDigest) != 64 ||
+		task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion || task.Fence.SnapshotDigest != task.SnapshotDigest {
+		return fmt.Errorf("%w: delegation requires a known admitted snapshot identity", craft.ErrInvalidInput)
+	}
+	decoded, err := hex.DecodeString(task.SnapshotDigest)
+	if err != nil || hex.EncodeToString(decoded) != task.SnapshotDigest {
+		return fmt.Errorf("%w: invalid admitted snapshot identity", craft.ErrInvalidInput)
 	}
 	return nil
 }
@@ -294,6 +322,113 @@ func CraftActiveRunsQuery(db *gorm.DB) CraftRunActivity {
 		}
 		return count > 0, nil
 	}
+}
+
+// MaterialPolicy returns the delegated-material execution policy (T03) for
+// one delegation's admitted inputs inside the given workspace root — the
+// local runtime uses /workspace, a RunView generation uses its own
+// deterministic /workspace/rv-<digest> directory. The policy never widens
+// what Delegate accepts: it only decides whether an observed execution
+// attempt targets uploaded input material (denied, audited, refused) or
+// generated Workspace/output code (allowed, audited as generated).
+func (s *CraftDelegateService) MaterialPolicy(workspaceRoot string, task craft.Task) (*CraftMaterialPolicy, error) {
+	if s == nil || s.store == nil {
+		return nil, fmt.Errorf("%w: delegation service is not assembled", craft.ErrInvalidInput)
+	}
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return nil, fmt.Errorf("%w: material policy requires the workspace root", craft.ErrInvalidInput)
+	}
+	if strings.TrimSpace(task.WorkspaceID) == "" {
+		return nil, fmt.Errorf("%w: material policy requires the delegation workspace", craft.ErrInvalidInput)
+	}
+	policy, err := craft.NewInputExecutionPolicy(workspaceRoot, task.Inputs)
+	if err != nil {
+		return nil, err
+	}
+	return &CraftMaterialPolicy{
+		policy:      policy,
+		scope:       task.Scope,
+		workspaceID: task.WorkspaceID,
+		runID:       task.Fence.RunID,
+		audit:       s.audit,
+	}, nil
+}
+
+// CraftMaterialPolicy adapts the module execution-denial policy to one
+// delegation. ReviewExecution and AuditInputRead emit the O04-style audit
+// line (identities only, never payloads) and return the typed decision or
+// event so callers can persist and project it. When the central assembly
+// injected an AuditLogService, the same events additionally persist as
+// audit_logs rows (best-effort: a failed write never changes a decision).
+type CraftMaterialPolicy struct {
+	policy      *craft.InputExecutionPolicy
+	scope       craft.Scope
+	workspaceID string
+	runID       string
+	audit       interfaces.AuditLogService
+}
+
+// writeAuditRow persists one material-policy event. Outcome follows the
+// decision (denied vs success) and Details carries identities only — never
+// payload bytes.
+func (p *CraftMaterialPolicy) writeAuditRow(ctx context.Context, kind string, outcome types.AuditOutcome, target, digest, reason string) {
+	if p == nil || p.audit == nil {
+		return
+	}
+	detailMap := map[string]string{
+		"run": p.runID, "workspace": p.workspaceID,
+		"target": target, "digest": digest, "reason": reason,
+	}
+	auditActor, auditActorFull := craftAuditActorUserID(p.scope.UserID)
+	if auditActorFull != "" {
+		detailMap["actor_user_id_full"] = auditActorFull
+	}
+	details, err := json.Marshal(detailMap)
+	if err != nil {
+		return
+	}
+	entry := &types.AuditLog{
+		// Synthetic API-key principals (api_external_user:<tenant>:<extid>)
+		// can exceed the VARCHAR(36) audit column; the hashed short form
+		// keeps the row writable, matching craft_access.go's discipline.
+		TenantID: p.scope.TenantID, ActorUserID: auditActor,
+		Action: types.AuditAction(kind), Outcome: outcome,
+		ScopeType: "craft_run", ScopeID: p.runID,
+		TargetType: "craft_workspace", TargetID: p.workspaceID,
+		Details: types.JSON(details),
+	}
+	if err := p.audit.Log(ctx, entry); err != nil {
+		logger.Warnf(ctx, "[CraftMaterial] audit row write failed (decision stands): %v", err)
+	}
+}
+
+// ReviewExecution decides one observed execution attempt and records the
+// distinct audit event: input.execute_denied for uploaded material,
+// generated.execute for allowed Workspace/output code.
+func (p *CraftMaterialPolicy) ReviewExecution(ctx context.Context, req craft.InputExecutionRequest) craft.InputExecutionDecision {
+	decision := p.policy.Review(req)
+	logger.Infof(ctx,
+		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%q",
+		decision.AuditKind, decision.Allowed, decision.Reason,
+		p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, decision.Target)
+	if decision.Allowed {
+		p.writeAuditRow(ctx, decision.AuditKind, types.AuditOutcomeSuccess, decision.Target, decision.Digest, "")
+	} else {
+		p.writeAuditRow(ctx, decision.AuditKind, types.AuditOutcomeDenied, decision.Target, decision.Digest, decision.Reason)
+	}
+	return decision
+}
+
+// AuditInputRead records uploaded input material being used as data and
+// returns the typed event, so audit evidence distinguishes reading uploaded
+// code from executing generated code.
+func (p *CraftMaterialPolicy) AuditInputRead(ctx context.Context, in craft.Input) craft.InputAuditEvent {
+	event := craft.InputReadAuditEvent(in)
+	logger.Infof(ctx,
+		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%q digest=%s",
+		event.Kind, p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, event.Target, event.Digest)
+	p.writeAuditRow(ctx, event.Kind, types.AuditOutcomeSuccess, event.Target, event.Digest, "")
+	return event
 }
 
 // registerCraftDelegateTool opens the craft_delegate tool for exactly the

@@ -1,0 +1,30 @@
+{
+  "kind": "full-content-uncommitted-checkpoint",
+  "base": "4bcad69baf033a1310b4dce1372c8153e66adc81",
+  "files": [
+    {
+      "path": "migrations/versioned/000189_craft_web_artifact_frontier.up.sql",
+      "sha256": "8719d24a340e8eca8e077f37371e6855e647b0d29382f0571282d7919d0e5323",
+      "size": 1020,
+      "checkpoint_copy": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/.superpowers/sdd/2026-09-23-craft-107-implementation/frontier-migration-checkpoint-01/migrations/versioned/000189_craft_web_artifact_frontier.up.sql"
+    },
+    {
+      "path": "migrations/versioned/000189_craft_web_artifact_frontier.down.sql",
+      "sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e",
+      "size": 349,
+      "checkpoint_copy": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/.superpowers/sdd/2026-09-23-craft-107-implementation/frontier-migration-checkpoint-01/migrations/versioned/000189_craft_web_artifact_frontier.down.sql"
+    },
+    {
+      "path": "migrations/sqlite/000110_craft_web_artifact_frontier.up.sql",
+      "sha256": "bbdaf479acb52e4b72a676cdd03f15686124338a8e79a91960139934ce6f9706",
+      "size": 1005,
+      "checkpoint_copy": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/.superpowers/sdd/2026-09-23-craft-107-implementation/frontier-migration-checkpoint-01/migrations/sqlite/000110_craft_web_artifact_frontier.up.sql"
+    },
+    {
+      "path": "migrations/sqlite/000110_craft_web_artifact_frontier.down.sql",
+      "sha256": "968a65b22b5f5e7a4d1ef370a7d198a6b7f1774aadac8d75bb861228b3010f0e",
+      "size": 349,
+      "checkpoint_copy": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/.superpowers/sdd/2026-09-23-craft-107-implementation/frontier-migration-checkpoint-01/migrations/sqlite/000110_craft_web_artifact_frontier.down.sql"
+    }
+  ]
+}

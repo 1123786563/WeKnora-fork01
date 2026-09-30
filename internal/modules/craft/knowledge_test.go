@@ -3,6 +3,7 @@ package craft
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // TestSourcesKeepRefsWhenBounded is the brief's verbatim Step 1 test: a bundle
@@ -71,19 +72,29 @@ func TestBoundSourcesReturnsEmptySliceForNoSources(t *testing.T) {
 	}
 }
 
-// TestExcerptOfBoundsAtRuneBoundary pins the controlled excerpt: bounded by
-// bytes but never split mid-rune, and unchanged content passes through.
+// TestExcerptOfBoundsAtRuneBoundary pins the controlled excerpt contract that
+// the T05 review correction (2026-09-23-craft-107-t05-review.md, finding 3)
+// mandated: bounded to at most max bytes, never split mid-rune, no overshoot
+// marker widening the cap (clipping is disclosed by callers through the
+// Truncated flags, see craft_knowledge.go), and unchanged content passes
+// through.
 func TestExcerptOfBoundsAtRuneBoundary(t *testing.T) {
 	if got := ExcerptOf("hello", 32); got != "hello" {
 		t.Fatalf("ExcerptOf short = %q, want passthrough", got)
 	}
+	if got := ExcerptOf("abcdefghijk", 8); got != "abcdefgh" {
+		t.Fatalf("ExcerptOf ascii = %q, want exact byte cut", got)
+	}
 	long := strings.Repeat("知", 64) // 3 bytes per rune
 	got := ExcerptOf(long, 8)
-	if !strings.HasSuffix(got, "�") {
-		t.Fatalf("overshoot marker missing: %q", got)
+	if got != "知知" {
+		t.Fatalf("ExcerptOf multibyte = %q, want the two complete runes that fit the cap", got)
 	}
-	if n := len(got); n > 8+3 {
-		t.Fatalf("excerpt length %d exceeds byte cap plus one marker rune", n)
+	if n := len(got); n > 8 {
+		t.Fatalf("excerpt length %d exceeds the hard byte cap", n)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("excerpt %q is not valid UTF-8", got)
 	}
 }
 

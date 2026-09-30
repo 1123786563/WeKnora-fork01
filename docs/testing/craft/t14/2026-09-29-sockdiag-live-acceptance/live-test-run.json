@@ -1,0 +1,13 @@
+{
+  "command": "POLICY_HELPER_EVIDENCE_DIR=/Users/wuyongjun/.codex/worktrees/craft-107-t14/WeKnora-fork01/docs/testing/craft/t14/2026-09-29-sockdiag-live-acceptance python3 -m unittest test_controller_integration.PolicyControllerIntegrationTests.test_target_counters_cover_random_preview_loopback_and_controlled_dns -v",
+  "result": "passed",
+  "exit_code": 0,
+  "duration_seconds": 158.447,
+  "test": "test_controller_integration.PolicyControllerIntegrationTests.test_target_counters_cover_random_preview_loopback_and_controlled_dns",
+  "acceptance": ["same-fd websocket marker positive bidirectional counters", "same-source-port SYN denied with errno null timeout and zero ACK-exception counter delta", "different-source-port fresh SYN denied", "loopback service denied", "random preview served", "mandatory drop-counter canary", "target policy receipts"],
+  "cleanup_receipt": "live-cleanup-verification.json",
+  "source_checkpoint": {
+    "helper.py": "c8d30121927350e3cea5fd3b5823ca2308f1b4f550af1d730d29ac7e92fd87c2",
+    "test_controller_integration.py": "9c95492af5f2f72c78c1f95f742a82aed5d1e03c3269561be97007586a3c0bf8"
+  }
+}

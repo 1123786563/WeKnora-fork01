@@ -21,6 +21,41 @@ func (s *BudgetStore) EnsureTaskBudget(ctx context.Context, tenantID uint64, run
 		Create(&TaskBudgetRow{TenantID: tenantID, RunID: runID, LimitMicro: int64(limit), Deadline: deadline.UTC(), Version: 1}).Error
 }
 
+// RenewTaskBudgetDeadline monotonically renews the owner Task deadline through
+// either the owner row or a child Run mapping. Admission of a later durable Run
+// is the caller's authorization boundary. This operation never changes the
+// budget limit, spent amount, or held amount.
+func (s *BudgetStore) RenewTaskBudgetDeadline(ctx context.Context, tenantID uint64, runID string, deadline time.Time) error {
+	if tenantID == 0 || runID == "" || deadline.IsZero() {
+		return ErrInvalidBudgetRequest
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, runID).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskBudgetMissing
+			}
+			return err
+		}
+		ownerRun := row.RunID
+		if row.RootRunID != "" {
+			ownerRun = row.RootRunID
+		}
+		result := tx.Model(&TaskBudgetRow{}).
+			Where("tenant_id = ? AND run_id = ? AND deadline < ?", tenantID, ownerRun, deadline.UTC()).
+			Updates(map[string]any{"deadline": deadline.UTC(), "version": gorm.Expr("version + 1")})
+		if result.Error != nil {
+			return result.Error
+		}
+		return nil
+	})
+}
+
+// errTaskBudgetChildRaced marks the concurrent-insert race inside
+// AttachChildRun's transaction; the caller retries the whole attachment once,
+// and the retry's existence read resolves the winner's row.
+var errTaskBudgetChildRaced = errors.New("budget: child run attach raced a concurrent insert")
+
 // AttachChildRun records that childRun charges the budget owned by
 // parentRun. The child row carries a zero limit and only points at the
 // parent's row: a delegated child counts against its parent's budget
@@ -29,6 +64,17 @@ func (s *BudgetStore) AttachChildRun(ctx context.Context, tenantID uint64, child
 	if tenantID == 0 || childRun == "" || parentRun == "" || childRun == parentRun {
 		return ErrInvalidBudgetRequest
 	}
+	for attempt := 0; attempt < 2; attempt++ {
+		err := s.attachChildRunTx(ctx, tenantID, childRun, parentRun)
+		if errors.Is(err, errTaskBudgetChildRaced) {
+			continue
+		}
+		return err
+	}
+	return s.attachChildRunTx(ctx, tenantID, childRun, parentRun)
+}
+
+func (s *BudgetStore) attachChildRunTx(ctx context.Context, tenantID uint64, childRun, parentRun string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var parent TaskBudgetRow
 		err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, parentRun).First(&parent).Error
@@ -53,7 +99,19 @@ func (s *BudgetStore) AttachChildRun(ctx context.Context, tenantID uint64, child
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		return tx.Create(&TaskBudgetRow{TenantID: tenantID, RunID: childRun, RootRunID: root, Deadline: parent.Deadline, Version: 1}).Error
+		if err := tx.Create(&TaskBudgetRow{TenantID: tenantID, RunID: childRun, RootRunID: root, Deadline: parent.Deadline, Version: 1}).Error; err != nil {
+			// Two concurrent admissions of the same child Run (client retry
+			// and duplicate submit are routine) can both pass the missing-row
+			// read and race the insert. A failed insert aborts the
+			// transaction on PostgreSQL, so the race is resolved by retrying
+			// the whole attachment: the second pass reads the winner's row
+			// and treats a same-root row as idempotent success.
+			if isUniqueViolation(err) {
+				return errTaskBudgetChildRaced
+			}
+			return err
+		}
+		return nil
 	})
 }
 

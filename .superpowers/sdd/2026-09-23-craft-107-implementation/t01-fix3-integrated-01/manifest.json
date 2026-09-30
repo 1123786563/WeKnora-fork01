@@ -1,0 +1,37 @@
+{
+  "source_head": "0c17125fe002f02838841f5133e4f6b9d476fec8",
+  "files": [
+    {
+      "path": "internal/application/repository/agent_run.go",
+      "sha256": "0f62d680ec2d607d0d795f6a7a97685418b61341b0cc1c405bd7b0d3ee6c8f21"
+    },
+    {
+      "path": "internal/application/repository/agent_run_test.go",
+      "sha256": "0014279e74ec8757edbe46092356d263d8e57e5ed96494e3643ca3eddfc5ba96"
+    },
+    {
+      "path": "internal/application/service/craft_inputs.go",
+      "sha256": "424df4d2a71af88ea41d6c30292c426fd0401d7ee0e130f1735b76ed5bd672d9"
+    },
+    {
+      "path": "internal/application/service/craft_session.go",
+      "sha256": "120c19ccb375327b080526c758f41f09b4ccf3416a25a60d2fdc32ea5078e88d"
+    },
+    {
+      "path": "internal/application/service/craft_t01_test.go",
+      "sha256": "3af2a7c130e8b11724703dfdee2df602266607a56fec190292ebe69a448cfb9a"
+    },
+    {
+      "path": "internal/container/craft_runtime.go",
+      "sha256": "a24213ce1a6a288dd58ab04f647dfdd66f52e490c4b17edbaab7d083856a8c46"
+    },
+    {
+      "path": "internal/container/craft_runtime_test.go",
+      "sha256": "90d5ba55d1b0fb49cf1b444d29e2e95c693c33ef3ea8a8cfe252e441406def7f"
+    },
+    {
+      "path": "internal/modules/agentruntime/agent/runtime/contracts.go",
+      "sha256": "ad87d3bef9241e0df229da1c238a330bc3a0d730fbbedbdb35a8254de3552bcf"
+    }
+  ]
+}

@@ -4,15 +4,10 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/golang-migrate/migrate/v4"
-	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 
 	"github.com/stretchr/testify/require"
 )
@@ -46,19 +41,7 @@ var versionedSQLiteTables = []string{
 	"agent_release_submissions",
 	"agent_release_reviews",
 	"agent_releases",
-	"plugin_previews",      // 000110 twin of versioned 000189 (issue #108)
-	"plugin_installations", // 000111 twin of versioned 000190 (issue #110)
-	"agent_adoptions",
-	"agent_adoption_variants",
-	"agent_chat_turn_claims",
-	"agent_variant_capability_mappings",
-	"public_marketplace_verified_publishers",
-	"public_marketplace_listings",
-	"public_release_submissions",
-	"public_release_reviews",
-	"public_agent_releases",
-	"tenant_introduced_releases",
-	"agent_upgrade_proposals",
+	"craft_budget_extension_intents", // SQLite migration 000136 / versioned 000215.
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -72,14 +55,6 @@ var versionedSQLiteColumns = map[string][]string{
 	"embed_channels":     {"allow_memory"},                   // 000060
 	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
 	"mcp_tool_approvals": {"enabled"},                        // 000091
-	"mcp_services":       {"plugin_installation_id"},         // 000190
-	// 000111 twin of versioned 000190 (issue #110): manifest_url is the
-	// long-lived upgrade source (T14/T16 re-fetch from it) — pinned here so
-	// the column set is frozen once, never re-altered by later tasks.
-	"plugin_installations":         {"manifest_url", "accepted_version", "endpoint_url", "tools_digest", "service_id", "drift_state", "state"}, // 000111
-	"agent_runs":                   {"security_agent_id", "security_local_agent_version_id", "security_release_id", "security_pin_source"},
-	"agent_release_revocations":    {"run_cancellation_state"},
-	"agent_dependency_revocations": {"run_cancellation_state"},
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
@@ -128,9 +103,6 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		"uq_agent_versions_scope", "uq_agent_versions_source_binding",
 		"uq_agent_marketplace_listing_scope", "uq_agent_release_review_decision",
 		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
-		"uq_agent_adoptions_scope", "uq_agent_variant_capability",
-		"uq_agent_upgrade_proposals_scope",
-		"uq_agent_adoption_variant_local_agent",
 	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
@@ -151,158 +123,6 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	assertSQLiteSkillStorageWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
-}
-
-func TestTask8ClaimMigrationEmptyDownUpAndPopulatedDownRefusal(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	chdirAndRestore(t, repoRoot)
-	dbPath := filepath.Join(t.TempDir(), "task8-migration.db")
-	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
-	sqlDB, err := sql.Open("sqlite3", dbPath)
-	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: false})
-	require.NoError(t, err)
-	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
-	require.NoError(t, err)
-	t.Cleanup(func() { _, _ = m.Close() })
-	require.NoError(t, m.Steps(-1), "empty-state rollback remains available")
-	require.NoError(t, m.Steps(1), "empty-state up/down round trip restores Task8 schema")
-	assertSQLiteClaimIndex(t, sqlDB, "agent_chat_turn_claims", true, "id", "source_tenant_id")
-	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_request", true, "session_tenant_id", "session_id", "owner_id", "request_id")
-	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_session_assistant", true, "session_tenant_id", "assistant_message_id")
-	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_session_user", true, "session_tenant_id", "user_message_id")
-	assertSQLiteNamedIndex(t, sqlDB, "idx_agent_chat_turn_claim_source_state_release", false, "source_tenant_id", "state", "release_id")
-	_, err = sqlDB.Exec(`INSERT INTO agent_chat_turn_claims(id,source_tenant_id,session_tenant_id,session_id,owner_id,request_id,request_hash,assistant_message_id,agent_id,state,lease_owner,lease_expires_at,generation) VALUES('claim',1,1,'session','owner','request','hash','assistant','agent','active','worker',CURRENT_TIMESTAMP,1)`)
-	require.NoError(t, err)
-	// ponytail: 125 = claims 前一版；career 迁移已编在 claims 之后，Steps(-1) 打不到守卫
-	require.Error(t, m.Migrate(125), "populated claim history must refuse schema rollback")
-}
-
-func TestTask8RunPinsAndPublishedVariantIdentityAreImmutable(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	chdirAndRestore(t, repoRoot)
-	dbPath := filepath.Join(t.TempDir(), "task8-pins.db")
-	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
-	db, err := sql.Open("sqlite3", dbPath)
-	require.NoError(t, err)
-	defer db.Close()
-	_, err = db.Exec(`INSERT INTO tenants(id,name,business) VALUES(1,'t1','test'); INSERT INTO sessions(id,tenant_id,title,user_id,engine_type) VALUES('s1',1,'s','u1','trpc')`)
-	require.NoError(t, err)
-	insertRun := func(runID, snapshot, pinAgent, pinVersion, pinRelease, pinSource string) error {
-		nullable := func(v string) any {
-			if v == "" {
-				return nil
-			}
-			return v
-		}
-		_, e := db.Exec(`INSERT INTO agent_runs(tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,engine_type,status,snapshot,deadline,security_agent_id,security_local_agent_version_id,security_release_id,security_pin_source) VALUES(1,?,'s1','u1',?,?,?,'trpc','running',?,CURRENT_TIMESTAMP,?,?,?,?)`, runID, "req-"+runID, "msg-"+runID, "hash", snapshot, nullable(pinAgent), nullable(pinVersion), nullable(pinRelease), nullable(pinSource))
-		return e
-	}
-	require.Error(t, insertRun("partial", `{"agent_id":"agent-a"}`, "agent-a", "", "", "admission"), "partial sidecar pins are rejected")
-	require.Error(t, insertRun("bad-source", `{"agent_id":"agent-a"}`, "agent-a", "version-a", "release-a", "bad"), "pin source is constrained")
-	require.NoError(t, insertRun("pinned", `{"agent_id":"agent-a"}`, "agent-a", "version-a", "release-a", "admission"))
-	_, err = db.Exec(`UPDATE agent_runs SET security_release_id='release-changed' WHERE tenant_id=1 AND run_id='pinned'`)
-	require.Error(t, err, "all populated sidecars are immutable")
-	_, err = db.Exec(`UPDATE agent_runs SET security_agent_id=NULL,security_local_agent_version_id=NULL,security_release_id=NULL,security_pin_source=NULL WHERE tenant_id=1 AND run_id='pinned'`)
-	require.Error(t, err, "populated pins cannot be cleared")
-	_, err = db.Exec(`PRAGMA foreign_keys=OFF; INSERT INTO agent_adoption_variants(id,tenant_id,adoption_id,release_id,name,state,local_agent_id,local_agent_version_id,published_at,created_at,updated_at) VALUES('v1',1,'missing-adoption','missing-release','V','published','agent-old','version-old',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP); PRAGMA foreign_keys=ON`)
-	require.NoError(t, err)
-	require.Error(t, insertRun("old-writer", `{"agent_id":"agent-old"}`, "", "", "", ""), "old application writers cannot create a Marketplace Run without pins")
-	_, err = db.Exec(`UPDATE agent_adoption_variants SET local_agent_version_id='version-changed' WHERE id='v1'`)
-	require.Error(t, err, "published Variant identity is immutable")
-	_, err = db.Exec(`UPDATE agent_adoption_variants SET state='retired' WHERE id='v1'`)
-	require.NoError(t, err)
-	_, err = db.Exec(`UPDATE agent_adoption_variants SET local_agent_id='agent-retired-rewrite' WHERE id='v1'`)
-	require.Error(t, err, "retired Variants preserve identity after publication")
-	var snapshot string
-	require.NoError(t, db.QueryRow(`SELECT snapshot FROM agent_runs WHERE run_id='pinned'`).Scan(&snapshot))
-	require.Equal(t, `{"agent_id":"agent-a"}`, snapshot, "pin enforcement never rewrites the frozen snapshot")
-}
-
-func TestTask8PostgresMigrationDeclaresTransactionalSecurityGuards(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	upBytes, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000205_agent_chat_turn_claims.up.sql"))
-	require.NoError(t, err)
-	downBytes, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000205_agent_chat_turn_claims.down.sql"))
-	require.NoError(t, err)
-	up := strings.ToLower(string(upBytes))
-	down := strings.ToLower(string(downBytes))
-	for _, fragment := range []string{
-		"begin;", "commit;", "lock table agent_runs,agent_adoption_variants,agent_release_revocations,agent_dependency_revocations in access exclusive mode",
-		"ck_agent_runs_security_pin_complete", "uq_agent_adoption_variant_local_agent", "trg_agent_runs_security_pin_immutable",
-		"trg_agent_runs_marketplace_pin_required", "trg_agent_adoption_variant_published_identity_immutable",
-		"agent_run_security_duplicate_variant_mapping", "agent_run_security_timestamp_conflict", "agent_run_security_stale_variant_version",
-		"security_pin_source='legacy_backfill'", "create table agent_chat_turn_claims",
-		"primary key(id,source_tenant_id)", "uq_agent_chat_turn_claim_request",
-		"create unique index uq_agent_chat_turn_claim_request on agent_chat_turn_claims(session_tenant_id,session_id,owner_id,request_id)",
-		"create unique index uq_agent_chat_turn_claim_session_assistant on agent_chat_turn_claims(session_tenant_id,assistant_message_id)",
-		"create unique index uq_agent_chat_turn_claim_session_user on agent_chat_turn_claims(session_tenant_id,user_message_id)",
-		"create index idx_agent_chat_turn_claim_source_state_release on agent_chat_turn_claims(source_tenant_id,state,release_id)", "old.published_at is not null",
-	} {
-		require.Contains(t, up, fragment, "PostgreSQL migration must preserve its reviewed atomic guard contract")
-	}
-	for _, fragment := range []string{"begin;", "commit;", "agent_security_history_prevents_down", "run_cancellation_state"} {
-		require.Contains(t, down, fragment, "PostgreSQL down migration must refuse populated history transactionally")
-	}
-}
-
-func assertSQLiteClaimIndex(t *testing.T, db *sql.DB, table string, primary bool, want ...string) {
-	t.Helper()
-	rows, err := db.Query("PRAGMA index_list(" + table + ")")
-	require.NoError(t, err)
-	defer rows.Close()
-	var observed []string
-	for rows.Next() {
-		var seq, unique, partial int
-		var name, origin string
-		require.NoError(t, rows.Scan(&seq, &name, &unique, &origin, &partial))
-		if unique != 1 || (primary && origin != "pk") || (!primary && origin == "pk") {
-			continue
-		}
-		cols := sqliteIndexColumns(t, db, name)
-		observed = append(observed, name+"="+strings.Join(cols, ","))
-		if equalStrings(cols, want) {
-			return
-		}
-	}
-	require.NoError(t, rows.Err())
-	require.Failf(t, "missing tenant-scoped unique index", "%s unique index on %s was not found (observed %v)", want, table, observed)
-}
-
-func assertSQLiteNamedIndex(t *testing.T, db *sql.DB, name string, unique bool, want ...string) {
-	t.Helper()
-	var indexUnique int
-	require.NoError(t, db.QueryRow("SELECT \"unique\" FROM pragma_index_list('agent_chat_turn_claims') WHERE name = ?", name).Scan(&indexUnique))
-	require.Equal(t, unique, indexUnique == 1)
-	require.Equal(t, want, sqliteIndexColumns(t, db, name))
-}
-
-func sqliteIndexColumns(t *testing.T, db *sql.DB, name string) []string {
-	t.Helper()
-	rows, err := db.Query("PRAGMA index_info(" + name + ")")
-	require.NoError(t, err)
-	defer rows.Close()
-	columns := make([]string, 0)
-	for rows.Next() {
-		var seq, cid int
-		var column string
-		require.NoError(t, rows.Scan(&seq, &cid, &column))
-		columns = append(columns, column)
-	}
-	require.NoError(t, rows.Err())
-	return columns
-}
-
-func equalStrings(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
@@ -604,67 +424,4 @@ func copySQLiteMigrationsV4(t *testing.T, repoRoot string) string {
 		require.NoError(t, os.WriteFile(filepath.Join(destDir, name), data, 0o600))
 	}
 	return dest
-}
-
-// TestPluginInstallationsSQLiteDownCleansDerivedRowsKeepsManual（评审修复
-// 轮发现 2）：000111 twin 的 down 必须与 PG 000190 down 同口径清理插件
-// 派生行——mcp_tool_approvals / mcp_oauth_tokens / mcp_oauth_clients 都按
-// service_id 键控，而生产 SQLite DSN 不开 foreign_keys（mattn/go-sqlite3
-// 默认 OFF，container 的 migrateDSN 无 _foreign_keys=on），FK 声明不兜底，
-// 漏清任何一张都会在 DELETE mcp_services 后留下永不消亡的孤儿行。手工
-// 服务（plugin_installation_id NULL）与其派生行原样保留（GAP-3 回退安全）。
-func TestPluginInstallationsSQLiteDownCleansDerivedRowsKeepsManual(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-	chdirAndRestore(t, repoRoot)
-	dbPath := filepath.Join(t.TempDir(), "plugin-install-down.db")
-	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
-	db := openSQLiteDB(t, dbPath)
-	db.SetMaxOpenConns(1)
-
-	// 一行手工服务 + 一行插件物化服务（回指 plugin_installations）。
-	_, err := db.Exec("INSERT INTO mcp_services (id, tenant_id, name, transport_type, enabled) VALUES (?, 1, 'manual-svc', 'http', 1)", "svc-manual")
-	require.NoError(t, err)
-	_, err = db.Exec("INSERT INTO mcp_services (id, tenant_id, name, transport_type, enabled, plugin_installation_id) VALUES (?, 1, 'plugin:com.example.p', 'http', 1, ?)",
-		"svc-plugin", "inst-plugin-1")
-	require.NoError(t, err)
-	_, err = db.Exec("INSERT INTO plugin_installations (id, tenant_id, plugin_id, name, manifest_url, accepted_version, transport_type, endpoint_url, tools_snapshot, tools_digest, service_id, drift_state, state, created_by) VALUES (?, 1, 'com.example.p', 'P', 'https://x.example.com/m.json', '1.0.0', 'http-streamable', 'https://x.example.com/mcp', '[]', 'digest', 'svc-plugin', 'none', 'active', 'admin')",
-		"inst-plugin-1")
-	require.NoError(t, err)
-	// 双方派生行：逐工具审批 + 成员个人 OAuth token + 动态客户端注册。
-	for _, svc := range []string{"svc-manual", "svc-plugin"} {
-		_, err = db.Exec("INSERT INTO mcp_tool_approvals (id, tenant_id, service_id, tool_name) VALUES (?, 1, ?, 'tool-a')", "appr-"+svc, svc)
-		require.NoError(t, err)
-		_, err = db.Exec("INSERT INTO mcp_oauth_tokens (id, tenant_id, user_id, service_id, principal_type, principal_id, access_token) VALUES (?, 1, 'user-1', ?, 'user', 'user-1', 'tok')",
-			"tok-"+svc, svc)
-		require.NoError(t, err)
-		_, err = db.Exec("INSERT INTO mcp_oauth_clients (id, tenant_id, service_id, client_id) VALUES (?, 1, ?, 'cid')", "cli-"+svc, svc)
-		require.NoError(t, err)
-	}
-
-	// 回退一步 = 执行 000111.down（只回插件安装族，不动更早迁移）。
-	// ponytail: 精确回退到 110 只执行 111.down（程序迁移已叠在其上，相对步进会回错家族）
-	require.NoError(t, migrateSQLiteToVersion(repoRoot, dbPath, 110))
-
-	// 表与列已删。
-	require.False(t, sqliteTableExists(t, db, "plugin_installations"))
-	require.False(t, sqliteColumnExists(t, db, "mcp_services", "plugin_installation_id"))
-	// 插件物化服务与其全部派生行清空；手工服务与其派生行原样保留。
-	// （每表一条字面量 SQL、参数一律 ? 绑定。）
-	var n int
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_services WHERE id = ?", "svc-plugin").Scan(&n))
-	require.Equal(t, 0, n, "plugin-materialized service must be removed by the down migration")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_services WHERE id = ?", "svc-manual").Scan(&n))
-	require.Equal(t, 1, n, "manual service must survive the down migration")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_tool_approvals WHERE service_id = ?", "svc-plugin").Scan(&n))
-	require.Equal(t, 0, n, "plugin-derived approval rows must be removed")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_tokens WHERE service_id = ?", "svc-plugin").Scan(&n))
-	require.Equal(t, 0, n, "member OAuth token rows keyed to the removed service must be cascade-cleaned (FK is OFF in production DSNs)")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_clients WHERE service_id = ?", "svc-plugin").Scan(&n))
-	require.Equal(t, 0, n, "dynamic-client rows keyed to the removed service must be cascade-cleaned")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_tool_approvals WHERE service_id = ?", "svc-manual").Scan(&n))
-	require.Equal(t, 1, n, "manual approval rows must survive")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_tokens WHERE service_id = ?", "svc-manual").Scan(&n))
-	require.Equal(t, 1, n, "manual OAuth token rows must survive")
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_clients WHERE service_id = ?", "svc-manual").Scan(&n))
-	require.Equal(t, 1, n, "manual OAuth client rows must survive")
 }

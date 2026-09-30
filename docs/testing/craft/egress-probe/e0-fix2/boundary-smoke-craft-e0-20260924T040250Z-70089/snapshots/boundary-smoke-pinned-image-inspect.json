@@ -1,0 +1,64 @@
+[
+  {
+    "Architecture": "arm64",
+    "Comment": "buildkit.dockerfile.v0",
+    "Config": {
+      "ArgsEscaped": true,
+      "Cmd": [
+        "serve",
+        "--hostname",
+        "0.0.0.0",
+        "--port",
+        "4096"
+      ],
+      "Entrypoint": [
+        "/usr/local/bin/opencode"
+      ],
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/home/craft",
+        "XDG_CONFIG_HOME=/home/craft/.config",
+        "XDG_DATA_HOME=/home/craft/.local/share"
+      ],
+      "ExposedPorts": {
+        "4096/tcp": {}
+      },
+      "User": "10001:10001",
+      "WorkingDir": "/workspace/output"
+    },
+    "Created": "2026-09-24T11:11:47.282792099+08:00",
+    "Descriptor": {
+      "digest": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "size": 855
+    },
+    "Id": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+    "Identity": {
+      "Build": [
+        {
+          "CreatedAt": "2026-09-24T11:11:47.614655282+08:00",
+          "Ref": "byfce8ziza6nlad71xue5qye1"
+        }
+      ]
+    },
+    "Metadata": {
+      "LastTagTime": "2026-09-24T03:11:47.552220284Z"
+    },
+    "Os": "linux",
+    "RepoDigests": [
+      "craft-e0-volume-free@sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615"
+    ],
+    "RepoTags": [
+      "craft-e0-volume-free:task1"
+    ],
+    "RootFS": {
+      "Layers": [
+        "sha256:157a19deae7573e2a5a655f7bd9eb6dc36485f91305d83640ac8d4f27178ec43",
+        "sha256:eb94bac215318d9fa504a2fbadcbc655df19123d6273ef37cf2d6eb998d0c824",
+        "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+      ],
+      "Type": "layers"
+    },
+    "Size": 385283149
+  }
+]

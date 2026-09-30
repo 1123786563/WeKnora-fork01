@@ -1,0 +1,63 @@
+[
+    {
+        "Name": "t19vf-20260924-external",
+        "Id": "abd6d3f8db1d25b209dd9e8b6b8de4138f4b8bec80d3efe33a9dd1150650d02e",
+        "Created": "2026-09-24T11:12:25.544530166+08:00",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "192.168.239.0/24",
+                    "Gateway": "192.168.239.1"
+                }
+            ]
+        },
+        "Internal": true,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {},
+        "Labels": {},
+        "Containers": {
+            "617ce3248ed5c09d85ef3777657ad720396f403ae13cb0da6c6ef6d1b64912fe": {
+                "Name": "t19vf-20260924-helper",
+                "EndpointID": "d2cfed12a17275c28c1952ebf4462053fbdd76aaae1b4dea1ea51370f307fefd",
+                "MacAddress": "fa:d7:ee:d7:bc:be",
+                "IPv4Address": "192.168.239.4/24",
+                "IPv6Address": ""
+            },
+            "7b94ef7f35c6a7e65abdc1f13431617045be8bb148e64b5811c7ca6ac1ddf245": {
+                "Name": "t19vf-20260924-direct",
+                "EndpointID": "eb1e9f9f071b15355c7b55acc63f99ff09df6c04cccb4954b60edb7551d9a62c",
+                "MacAddress": "82:98:0d:36:76:c8",
+                "IPv4Address": "192.168.239.2/24",
+                "IPv6Address": ""
+            },
+            "b09309a82683553a453f28fa092b7e790a52d870c8142ae9669f6c35fb449b79": {
+                "Name": "t19vf-20260924-adapter",
+                "EndpointID": "9dcf198d46790124c55e72a686607c863cf888a887ffe4f6c90bf7e6ad0d7d94",
+                "MacAddress": "c6:96:d6:c9:06:02",
+                "IPv4Address": "192.168.239.3/24",
+                "IPv6Address": ""
+            }
+        },
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "192.168.239.0/24": {
+                        "IPsInUse": 6,
+                        "DynamicIPsAvailable": 250
+                    }
+                }
+            }
+        }
+    }
+]

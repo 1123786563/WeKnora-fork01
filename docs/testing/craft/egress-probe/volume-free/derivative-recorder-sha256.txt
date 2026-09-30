@@ -1,0 +1,1 @@
+d1e7b870b35ede69f6c4e95435ffc11e6ce689a5a556b047e679204400962463  /usr/local/bin/craft_source_recorder.py

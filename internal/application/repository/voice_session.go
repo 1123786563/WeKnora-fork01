@@ -169,7 +169,7 @@ func (s *VoiceSessionStore) PendingUnknownVoiceSession(ctx context.Context, tena
 // Voice transcription result statuses.
 const (
 	VoiceTranscriptionSucceeded = "succeeded"
-	VoiceTranscriptionFailed     = "failed"
+	VoiceTranscriptionFailed    = "failed"
 )
 
 var (

@@ -67,7 +67,7 @@ type purchaseStub struct {
 	// landed yet, so the create is refused and NO subscription record is
 	// created.
 	rejectCreateNoDefaultPM bool
-	invoices []purchaseInvoiceRec // the finalized-stage visible set
+	invoices                []purchaseInvoiceRec // the finalized-stage visible set
 	// invoiceIndexStatus / invoiceDetailStatus script a NON-2xx answer on the
 	// corresponding face (0 = the normal 200) — the A-25 transient tests.
 	invoiceIndexStatus  int
@@ -334,10 +334,13 @@ func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux
 // purchaseInvoiceRec is one finalized invoice the stub answers on the
 // invoices index (the status[]=finalized visible window).
 type purchaseInvoiceRec struct {
-	LagoID         string
-	ExternalCust   string
-	PaymentStatus  string
-	SubscriptionFee *struct{ Name string; AmountCents int64 } // nil = no subscription line
+	LagoID          string
+	ExternalCust    string
+	PaymentStatus   string
+	SubscriptionFee *struct {
+		Name        string
+		AmountCents int64
+	} // nil = no subscription line
 	// FeeSubscriptionID is the fee line's external_subscription_id — the
 	// F-5 fees→subscription location predicate. Empty defaults to the
 	// PURCHASE subscription (the historical tests' intent); a Base-plan

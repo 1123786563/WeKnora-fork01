@@ -50,6 +50,9 @@
       "@weknora/domain/craft/reconnect": [
         "../../packages/domain/src/craft/reconnect.ts"
       ],
+      "@weknora/domain/craft/web-promotion": [
+        "../../packages/domain/src/craft/web-promotion.ts"
+      ],
       "@weknora/domain/craft/capabilities": [
         "../../packages/domain/src/craft/capabilities.ts"
       ],
@@ -114,6 +117,7 @@
       "@weknora/views/craft/templates": ["../../packages/views/src/craft/templates.tsx"],
       "@weknora/views/craft/assistant-runtime": ["../../packages/views/src/craft/assistant-runtime.tsx"],
       "@weknora/views/craft/workbench": ["../../packages/views/src/craft/workbench.tsx"],
+      "@weknora/views/craft/workbench-edit": ["../../packages/views/src/craft/workbench-edit.tsx"],
       "@weknora/views/craft/preview": ["../../packages/views/src/craft/preview.tsx"],
       "@weknora/views/craft/files": ["../../packages/views/src/craft/files.tsx"],
       "@weknora/views/craft/spreadsheet": ["../../packages/views/src/craft/spreadsheet.tsx"],

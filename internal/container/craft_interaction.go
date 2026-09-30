@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	sessionhandler "github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -60,6 +61,15 @@ func newCraftInteractionAssembly(
 		}
 	}
 	assembly.Control = service.NewCraftControlService(runs, store, nil, interactions, assembly.Client)
+	assembly.Control.SetTaskAccess(service.NewCraftAccessService(db))
+	// T17 (#136) production stop-intent seam: the member's stop request
+	// persists as its own durable fact (requested → confirmed/unknown) in
+	// craft_stop_intents, so a refresh replays the same durable answer and a
+	// confirmed stop is never downgraded. A missing database keeps the
+	// pre-T17 recorded-intent ordering (the nil seam stays fail-closed).
+	if stopIntents := repository.NewCraftStopIntentStore(db); stopIntents != nil {
+		assembly.Control.SetStopIntents(stopIntents)
+	}
 	assembly.Delivery = service.NewCraftDecisionDelivery(interactions, interactions, assembly.Client, runs)
 	return assembly
 }

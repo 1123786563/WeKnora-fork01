@@ -1,0 +1,75 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 13.44kB 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/debian:bookworm-slim
+#2 DONE 0.9s
+
+#3 [internal] load .dockerignore
+#3 transferring context:
+#3 transferring context: 2B done
+#3 DONE 0.2s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [opencode-fetch 1/3] FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#5 resolve docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 0.1s done
+#5 CACHED
+
+#4 [internal] load build context
+#4 transferring context: 41B done
+#4 DONE 0.1s
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 0.656 + printf %s\n Acquire::Retries "3";
+#6 0.657 + apt-get update
+#6 3.958 Err:1 http://deb.debian.org/debian bookworm InRelease
+#6 3.958   502  Bad Gateway [IP: 198.18.0.119 80]
+#6 4.642 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#6 5.675 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#6 6.595 Get:4 http://deb.debian.org/debian bookworm-updates/main arm64 Packages [6936 B]
+#6 7.261 Get:5 http://deb.debian.org/debian-security bookworm-security/main arm64 Packages [339 kB]
+#6 8.202 Reading package lists...
+#6 8.267 E: Failed to fetch http://deb.debian.org/debian/dists/bookworm/InRelease  502  Bad Gateway [IP: 198.18.0.119 80]
+#6 8.267 E: The repository 'http://deb.debian.org/debian bookworm InRelease' is not signed.
+#6 ERROR: process "/bin/sh -c set -eux;     printf '%s\\n' 'Acquire::Retries \"3\";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100
+
+#7 [runtime  2/13] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     rm -rf /var/lib/apt/lists/*
+#7 0.809 + printf %s\n Acquire::Retries "3";
+#7 0.809 + apt-get update
+#7 1.602 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#7 2.843 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#7 6.226 Err:3 http://deb.debian.org/debian-security bookworm-security InRelease
+#7 6.226   502  Bad Gateway [IP: 198.18.0.119 80]
+#7 6.883 Get:4 http://deb.debian.org/debian bookworm/main arm64 Packages [8689 kB]
+#7 CANCELED
+------
+ > [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*:
+0.657 + apt-get update
+3.958 Err:1 http://deb.debian.org/debian bookworm InRelease
+3.958   502  Bad Gateway [IP: 198.18.0.119 80]
+4.642 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+5.675 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+6.595 Get:4 http://deb.debian.org/debian bookworm-updates/main arm64 Packages [6936 B]
+7.261 Get:5 http://deb.debian.org/debian-security bookworm-security/main arm64 Packages [339 kB]
+
+8.267 E: Failed to fetch http://deb.debian.org/debian/dists/bookworm/InRelease  502  Bad Gateway [IP: 198.18.0.119 80]
+8.267 E: The repository 'http://deb.debian.org/debian bookworm InRelease' is not signed.
+------
+Dockerfile:45
+--------------------
+  44 |     
+  45 | >>> RUN set -eux; \
+  46 | >>>     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+  47 | >>>     apt-get update; \
+  48 | >>>     apt-get install -y --no-install-recommends ca-certificates; \
+  49 | >>>     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources; \
+  50 | >>>     apt-get update; \
+  51 | >>>     apt-get install -y --no-install-recommends curl; \
+  52 | >>>     rm -rf /var/lib/apt/lists/*
+  53 |     RUN set -eux; \
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c set -eux;     printf '%s\\n' 'Acquire::Retries \"3\";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100

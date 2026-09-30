@@ -60,20 +60,87 @@ func (s *AgentRunStore) ReadEvents(ctx context.Context, key agentruntime.RunKey,
 	if total == 0 {
 		return nil, agentruntime.ErrNotFound
 	}
-	var first agentRunEventRow
-	if err := s.db.WithContext(ctx).Where("tenant_id=? AND run_id=?", key.TenantID, key.RunID).Order("seq ASC").Take(&first).Error; err == nil && first.Seq > after+1 {
-		return nil, agentruntime.ErrCursorExpired
-	}
 	var rows []agentRunEventRow
 	q := s.db.WithContext(ctx).Where("tenant_id=? AND run_id=? AND seq>?", key.TenantID, key.RunID, after).Order("seq ASC").Limit(limit).Find(&rows)
 	if q.Error != nil {
 		return nil, q.Error
+	}
+	// T18 (#137) gap rule: the page the cursor asked for must be CONTIGUOUS
+	// from after+1 — a trimmed window head, a retention trim that removed a
+	// middle event, or any store repair that dropped a row must surface as
+	// ErrCursorExpired so the reconnecting client reloads the authoritative
+	// snapshot instead of silently skipping the missing seqs (both real
+	// consumers advance the cursor to the page's max seq, so a mid-page hole
+	// would otherwise never be caught up). The retained-window-head pre-check
+	// this loop replaces was fully subsumed: a page whose first row jumps
+	// past after+1 fails the first iteration, and an EMPTY page cannot hide
+	// a hole (a hole ahead of the cursor implies a retained row after it) —
+	// dropping the pre-check also saves one query on the 250ms SSE poll.
+	// AppendEvent allocates seq under the fence at last+1, so a healthy
+	// stream is always contiguous and this never false-positives.
+	expected := after + 1
+	for _, r := range rows {
+		if r.Seq != expected {
+			// The hole sits between expected-1 and r.Seq. The error carries
+			// BOTH recoverable positions: everything up to expected-1 is
+			// contiguous (a checkpoint consumer may project that prefix and
+			// cross the hole on its next pass), and r.Seq-1 is the resume
+			// position once the cursor stands at the hole's edge. SSE
+			// clients keep the plain 409-and-reload-snapshot answer.
+			return nil, cursorHoleError{contiguousBefore: expected - 1, resumeAfter: r.Seq - 1}
+		}
+		expected++
 	}
 	out := make([]agentruntime.RunEvent, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, agentruntime.RunEvent{Seq: r.Seq, AttemptID: r.AttemptID, Type: r.EventType, Payload: json.RawMessage(r.Payload)})
 	}
 	return out, nil
+}
+
+// cursorHoleError is the T18 gap rule's ErrCursorExpired carrying the two
+// recoverable positions around the hole. errors.Is(err,
+// agentruntime.ErrCursorExpired) keeps answering true for the SSE reload
+// path.
+type cursorHoleError struct {
+	// contiguousBefore is the last seq that is still contiguous with the
+	// requested cursor (== after when the hole starts the page).
+	contiguousBefore int64
+	// resumeAfter is the seq the NEXT contiguous segment starts after.
+	resumeAfter int64
+}
+
+func (e cursorHoleError) Error() string { return "agent event cursor expired" }
+func (e cursorHoleError) Is(target error) bool {
+	return target == agentruntime.ErrCursorExpired
+}
+
+// HolePositions reports the recoverable positions around the hole an
+// ErrCursorExpired from ReadEvents hit: everything up to contiguousBefore
+// is projectable, and the next contiguous segment starts after resumeAfter.
+// ok is false for errors that carry no positions.
+func HolePositions(err error) (contiguousBefore, resumeAfter int64, ok bool) {
+	var hole cursorHoleError
+	if errors.As(err, &hole) {
+		return hole.contiguousBefore, hole.resumeAfter, true
+	}
+	return 0, 0, false
+}
+
+// FirstEventSeq returns the lowest retained sequence for a run, or 0 when
+// no event exists. Cursor recovery resolves it as the honest resume point.
+func (s *AgentRunStore) FirstEventSeq(ctx context.Context, key agentruntime.RunKey) (int64, error) {
+	var first agentRunEventRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).
+		Order("seq ASC").Take(&first).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return first.Seq, nil
 }
 
 // LastEventSeq returns the highest retained sequence for a run, or 0 when
@@ -120,6 +187,9 @@ func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, 
 				return nil
 			}
 			return agentruntime.ErrLeaseLost
+		}
+		if err := rejectUnresolvedCraftRunViewEffects(tx, fence.RunKey); err != nil {
+			return err
 		}
 		var run agentRunRow
 		if err := runScope(tx, fence.RunKey).Take(&run).Error; err != nil {

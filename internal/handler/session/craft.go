@@ -34,7 +34,18 @@ type CraftSessionAPI interface {
 	View(context.Context, craft.Scope) (service.CraftWorkspaceView, error)
 	List(context.Context, craft.Scope, string, int) ([]service.CraftSessionSummary, string, error)
 	AssociateInput(context.Context, craft.Scope, string, string) (craft.Input, error)
-	StartRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, error)
+	// ExpandArchive (#121) extracts one associated archive input within hard
+	// resource limits and returns the all-or-nothing member projection.
+	ExpandArchive(context.Context, craft.Scope, string) ([]craft.Input, error)
+	// StartCollaboratorRun admits one Craft run requested by the
+	// authenticated member under their own CURRENT grant (T09 #135): the
+	// owner/collaborator admission is derived fresh through the T08
+	// authority, the durable actor is the initiating member and the
+	// craft.run_started timeline records them; the returned
+	// WriterAcquisition is the T16 (#134) durable workspace writer-lease
+	// outcome (acquired/conflict/unknown, the T00 frozen DTO) projected
+	// straight into the response.
+	StartCollaboratorRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, craft.WriterAcquisition, error)
 	ListVersions(context.Context, craft.Scope) ([]craft.Version, error)
 	GetVersion(context.Context, craft.Scope, string) (craft.Version, error)
 	OpenVersionFile(context.Context, craft.Scope, string, string) (craft.File, io.ReadCloser, error)
@@ -104,16 +115,17 @@ func NewCraftSnapshotHandler(svc CraftSnapshotAPI) *CraftSnapshotHandler {
 // craftRouteGroup is the route-mounting subset satisfied by both a raw gin
 // group and the router's API-key-policy wrapper, so the craft routes can be
 // mounted through whichever wrapper declares their auth policy.
-type craftRouteGroup interface {
+type CraftRouteGroup interface {
 	GET(string, ...gin.HandlerFunc) gin.IRoutes
 	POST(string, ...gin.HandlerFunc) gin.IRoutes
 }
+type craftRouteGroup = CraftRouteGroup
 
 // RegisterCraftSessionRoutes mounts W03's craft API table. craftSessions is
 // the /craft/sessions group (create + list); sessions is the existing
 // /sessions group whose guards the per-session craft routes inherit. Nil
 // handlers leave their surface unmounted: fail-closed, no silent 404 shims.
-func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHandler *CraftSessionHandler, previewHandler *CraftPreviewHandler) {
+func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHandler *CraftSessionHandler, previewHandler *CraftPreviewHandler, featureRoutes ...*CraftFeatureRoutes) {
 	if craftSessions != nil && craftHandler != nil {
 		craftSessions.POST("", craftHandler.CreateCraftSession)
 		craftSessions.GET("", craftHandler.ListCraftSessions)
@@ -129,6 +141,7 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.GET("/:id/craft/versions/:version_id", craftHandler.GetCraftVersion)
 		sessions.GET("/:id/craft/versions/:version_id/files/*file_path", craftHandler.DownloadCraftVersionFile)
 		sessions.POST("/:session_id/craft/inputs", craftHandler.PostCraftInput)
+		sessions.POST("/:session_id/craft/inputs/expand", craftHandler.PostCraftInputExpand)
 		sessions.POST("/:session_id/craft/runs", craftHandler.PostCraftRun)
 	}
 	if usageHandler := RegisteredCraftUsageHandler(); usageHandler != nil {
@@ -144,12 +157,26 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.GET("/:id/craft/snapshots", holder.ListCraftSnapshots)
 		sessions.POST("/:session_id/craft/restore", holder.RestoreCraftSnapshot)
 	}
+	if pauseAPI := RegisteredCraftBudgetPauseHandler(); pauseAPI != nil {
+		// T20 (#139): the durable budget-pause surface — the pause view Task
+		// members read (with the server-projected can_extend) and the
+		// owner/billing-admin extension that resumes the Run. The Task read
+		// gate is registered alongside the service (nil fails closed).
+		pauseHolder := NewCraftBudgetPauseHandler(pauseAPI, RegisteredCraftBudgetPauseAccess())
+		sessions.GET("/:id/craft/runs/:run_id/budget/pause", pauseHolder.GetCraftBudgetPause)
+		sessions.POST("/:session_id/craft/runs/:run_id/budget/extend", pauseHolder.PostCraftBudgetExtend)
+	}
 	if previewHandler != nil {
 		// W02's authenticated ticket issuance endpoint, mounted at its exact
 		// path (same route as RegisterCraftPreviewIssueRoute, which stays
 		// available for raw gin groups).
 		sessions.POST("/:session_id/craft/versions/:version_id/preview",
 			craftPreviewFailureMetrics(previewHandler.IssueCraftPreview))
+	}
+	if len(featureRoutes) > 0 && featureRoutes[0] != nil && featureRoutes[0].hasFeatures() {
+		if err := featureRoutes[0].Mount(sessions); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -238,6 +265,10 @@ func craftHTTPError(c *gin.Context, err error) {
 		c.Error(apperrors.NewNotFoundError(err.Error()))
 	case stderrors.Is(err, craft.ErrConflict):
 		c.Error(apperrors.NewConflictError(err.Error()))
+	case stderrors.Is(err, craft.ErrCorruptEvidence):
+		// Storage integrity failure, not a client conflict: 500-class so
+		// monitoring separates corruption from retryable publication races.
+		c.Error(apperrors.NewInternalServerError(err.Error()))
 	case stderrors.Is(err, craft.ErrBusy):
 		var conflict *service.ActiveRunConflict
 		detail := gin.H{"code": "run_active", "message": err.Error()}
@@ -270,6 +301,13 @@ type createCraftSessionRequest struct {
 type craftInputRequest struct {
 	ResourceRef    string `json:"resource_ref"`
 	ExpectedSHA256 string `json:"expected_sha256"`
+}
+
+// craftExpandArchiveRequest addresses one already-associated archive input
+// by its opaque resource ref; the response reuses the craftInputDTO
+// projection for the extracted members, so no new response fields exist.
+type craftExpandArchiveRequest struct {
+	ResourceRef string `json:"resource_ref"`
 }
 
 type craftRunRequestDTO struct {
@@ -305,17 +343,25 @@ func craftVersionDTO(v craft.Version) gin.H {
 	for _, check := range v.Checks {
 		checks = append(checks, craftCheckDTO(check))
 	}
-	return gin.H{
+	dto := gin.H{
 		"id": v.ID, "workspace_id": v.WorkspaceID, "run_id": v.RunID,
 		"kind": v.Kind, "files": files, "checks": checks,
 	}
+	if v.WebEvidence != nil {
+		dto["web_evidence"] = v.WebEvidence
+	}
+	return dto
 }
 
 func craftInputDTO(in craft.Input) gin.H {
-	return gin.H{
+	dto := gin.H{
 		"ref": in.Ref, "name": in.Name, "sha256": in.SHA256,
 		"bytes": in.Bytes, "citation_id": in.CitationID,
 	}
+	if in.Recognition != nil {
+		dto["recognition"] = in.Recognition
+	}
+	return dto
 }
 
 // -----------------------------------------------------------------------------
@@ -460,6 +506,37 @@ func (h *CraftSessionHandler) PostCraftInput(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": craftInputDTO(input)})
 }
 
+// PostCraftInputExpand serves POST /api/v1/sessions/:session_id/craft/inputs/expand
+// (#121): the body addresses one associated archive input by its opaque
+// resource ref; the bounded atomic extraction publishes every member as an
+// immutable input (all-or-nothing) and the response reuses the existing
+// Input projection. A mid-extraction failure leaves zero new material.
+func (h *CraftSessionHandler) PostCraftInputExpand(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft sessions are unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	var body craftExpandArchiveRequest
+	if !decodeCraftBody(c, &body) {
+		return
+	}
+	inputs, err := h.svc.ExpandArchive(c.Request.Context(), scope, body.ResourceRef)
+	if err != nil {
+		craftHTTPError(c, err)
+		return
+	}
+	members := make([]gin.H, 0, len(inputs))
+	for _, in := range inputs {
+		members = append(members, craftInputDTO(in))
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": members})
+}
+
 // PostCraftRun serves POST /api/v1/sessions/:session_id/craft/runs.
 func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 	if h == nil || h.svc == nil {
@@ -475,7 +552,7 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 	if !decodeCraftBody(c, &body) {
 		return
 	}
-	run, err := h.svc.StartRun(c.Request.Context(), scope, service.CraftRunRequest{
+	run, acquisition, err := h.svc.StartCollaboratorRun(c.Request.Context(), scope, service.CraftRunRequest{
 		RequestID: body.RequestID, Prompt: body.Prompt, InputRefs: body.InputRefs,
 		KnowledgeScope: body.KnowledgeScope, BaseVersionID: body.BaseVersionID,
 	})
@@ -483,7 +560,13 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 		craftHTTPError(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run)})
+	// The T00 frozen WriterAcquireOutcome DTO projects verbatim: acquired,
+	// conflict (another writing Run holds the workspace) or unknown. The
+	// initiating member (T09 #135) projects additively in the envelope from
+	// the admitted run's durable actor — runView itself stays the frozen
+	// craft DTO projection without actor identity.
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run),
+		"writer_acquisition": acquisition.Outcome, "initiated_by": run.ActorUserID})
 }
 
 // ListCraftVersions serves GET /api/v1/sessions/:session_id/craft/versions.

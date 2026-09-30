@@ -93,3 +93,200 @@ test('delegationStatus polls the read-only endpoint', async () => {
   const out = await api.delegationStatus('s1', 'run_1', 'dlg_1');
   if (out.phase !== 'canceled') throw new Error('bad phase');
 });
+
+test('access API lists validated roles and posts grants and revocations through authenticated transport', async () => {
+  const calls: ClientRequest[] = [];
+  const signal = new AbortController().signal;
+  const api = createCraftApi(async (input) => {
+    calls.push(input);
+    if (input.method === 'GET') return { success: true, data: [
+      { user_id: 'owner/id', role: 'owner' },
+      { user_id: 'viewer', role: 'viewer' },
+    ] };
+    return { success: true };
+  });
+  assert.deepEqual(await api.accessMembers('session / id', signal), [
+    { user_id: 'owner/id', role: 'owner' },
+    { user_id: 'viewer', role: 'viewer' },
+  ]);
+  await api.grantAccess('session / id', 'new-user', 'collaborator', signal);
+  await api.revokeAccess('session / id', 'viewer', signal);
+  assert.deepEqual(calls.map(({ method, path, body }) => ({ method, path, body })), [
+    { method: 'GET', path: '/api/v1/sessions/session%20%2F%20id/craft/access', body: undefined },
+    { method: 'POST', path: '/api/v1/sessions/session%20%2F%20id/craft/access', body: { user_id: 'new-user', role: 'collaborator' } },
+    { method: 'POST', path: '/api/v1/sessions/session%20%2F%20id/craft/access/revoke', body: { user_id: 'viewer' } },
+  ]);
+  assert.ok(calls.every((call) => call.signal === signal), 'all methods pass the caller cancellation signal');
+});
+
+test('access API rejects malformed members and propagates forbidden and aborted requests', async () => {
+  const malformed = createCraftApi(async () => ({ success: true, data: [{ user_id: 'viewer', role: 'admin' }] }));
+  await assert.rejects(() => malformed.accessMembers('s1'), (error: unknown) => error instanceof ApiError && error.code === 'INVALID_RESPONSE');
+
+  const forbidden = createCraftApi(async () => ({ success: false, error: { code: 'FORBIDDEN', message: 'Task access denied' } }));
+  await assert.rejects(() => forbidden.accessMembers('s1'), (error: unknown) => error instanceof ApiError && error.code === 'FORBIDDEN');
+
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = createCraftApi(async ({ signal }) => {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return { success: true, data: [] };
+  });
+  await assert.rejects(() => aborted.accessMembers('s1', controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+});
+
+test('input decisions post an exact ref and action and validate the acknowledged envelope', async () => {
+  const calls: ClientRequest[] = [];
+  const signal = new AbortController().signal;
+  const api = createCraftApi(async (input) => {
+    calls.push(input);
+    return { success: true, data: { ref: 'opaque://accepted-1', action: 'continue' } };
+  });
+  assert.deepEqual(await api.decideInput('session / one', 'opaque://accepted-1', 'continue', signal), {
+    ref: 'opaque://accepted-1', action: 'continue',
+  });
+  assert.deepEqual(calls, [{
+    method: 'POST',
+    path: '/api/v1/sessions/session%20%2F%20one/craft/inputs/decision',
+    body: { ref: 'opaque://accepted-1', action: 'continue' },
+    signal,
+  }]);
+});
+
+test('input decision rejects a mismatched acknowledgement and preserves forbidden and abort errors', async () => {
+  const mismatch = createCraftApi(async () => ({ success: true, data: { ref: 'opaque://other', action: 'continue' } }));
+  await assert.rejects(() => mismatch.decideInput('s1', 'opaque://accepted-1', 'continue'), (error: unknown) => error instanceof ApiError && error.code === 'INVALID_RESPONSE');
+
+  const forbidden = createCraftApi(async () => ({ success: false, error: { code: 'FORBIDDEN', message: 'decision denied' } }));
+  await assert.rejects(() => forbidden.decideInput('s1', 'opaque://accepted-1', 'continue'), (error: unknown) => error instanceof ApiError && error.code === 'FORBIDDEN');
+
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = createCraftApi(async ({ signal }) => {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return { success: true, data: { ref: 'opaque://accepted-1', action: 'continue' } };
+  });
+  await assert.rejects(() => aborted.decideInput('s1', 'opaque://accepted-1', 'continue', controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+});
+
+// T20 OCR: the edit panel's seam resolves the WHOLE PostCraftRun envelope —
+// the envelope-level writer_acquisition and initiated_by must survive the
+// api-client (unwrap would strip them down to data), both submit consumers
+// ride ONE shared admission request builder, and a malformed envelope still
+// fails closed.
+test('submitEdit resolves the whole run envelope and shares the submit request builder', async () => {
+  const envelope = {
+    success: true,
+    data: runView,
+    writer_acquisition: { workspace_id: 'w1', status: 'acquired' },
+    initiated_by: 'u-collaborator',
+  };
+  const { request, seen } = fakeRequest({
+    'POST /api/v1/sessions/s1/craft/runs': envelope,
+  });
+  const api = createCraftApi(request);
+
+  const raw = await api.submitEdit('s1', { request_id: 'req-edit-1', prompt: '把标题改成蓝色' });
+  assert.deepEqual(raw, envelope, 'the envelope-level writer_acquisition and initiated_by survive');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]?.method, 'POST');
+  assert.equal(seen[0]?.path, '/api/v1/sessions/s1/craft/runs');
+  assert.deepEqual(seen[0]?.body, {
+    request_id: 'req-edit-1',
+    prompt: '把标题改成蓝色',
+    input_refs: [],
+    knowledge_scope: '',
+    base_version_id: '',
+  });
+
+  // The typed submit rides the SAME builder (identical path and body) with
+  // its own RunView projection.
+  const typed = await api.submit('s1', { request_id: 'req-edit-1', prompt: '把标题改成蓝色' });
+  assert.equal(typed.run_id, 'run-1');
+  assert.equal(seen.length, 2);
+  assert.deepEqual(seen[1]?.body, seen[0]?.body, 'one contract, one request builder');
+
+  // A malformed envelope fails closed instead of resolving garbage.
+  const bad = fakeRequest({ 'POST /api/v1/sessions/s1/craft/runs': { success: false, error: { code: 'FORBIDDEN' } } });
+  const badApi = createCraftApi(bad.request);
+  await assert.rejects(() => badApi.submitEdit('s1', { request_id: 'req-edit-2', prompt: 'x' }), ApiError);
+});
+
+// Wrap-up OCR F01-F03: the consent endpoints answer a BARE flat body (no
+// success/data envelope); unwrap-style reads would reject every successful
+// consent response.
+test('export consent seams resolve the bare flat wire bodies', async () => {
+  const consentBody = {
+    version_id: 'v1', manifest_digest: 'sha256:m', state: 'awaiting',
+    restricted_derived: ['index.html'],
+    files: [{ path: 'index.html', sha256: 'sha256:f', restricted: false, origins: [] }],
+    decision: null,
+  };
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/versions/v1/export/consent': consentBody,
+    'POST /api/v1/sessions/s1/craft/versions/v1/export/consent/decision': { ...consentBody, state: 'consented' },
+  });
+  const api = createCraftApi(request);
+  const view = await api.exportConsent('s1', 'v1');
+  assert.deepEqual(view, consentBody, 'the bare flat consent body resolves as-is (no envelope rejection)');
+  const decided = await api.decideExportConsent('s1', 'v1', 'approved', 'sha256:m');
+  assert.equal((decided as Record<string, unknown>)['state'], 'consented', 'the decision body resolves after the server persisted it');
+});
+
+test('budgetPause retains valid pause values when its optional extension action is malformed', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': {
+      success: true,
+      data: { ...pause, extension_action: { key: 'unsafe', extra_calls: Number.MAX_SAFE_INTEGER + 1, extra_credits: 10 } },
+      can_extend: true,
+    },
+  });
+  const api = createCraftApi(request);
+  const view = await api.budgetPause('s1', 'r1');
+  assert.deepEqual(view.pause, pause, 'the required pause remains available');
+  assert.equal(view.extensionAction, null, 'invalid optional action is withheld');
+});
+
+test('budgetPause represents missing and null extension actions as null', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  for (const body of [{ ...pause }, { ...pause, extension_action: null }]) {
+    const { request } = fakeRequest({
+      'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: body },
+    });
+    const view = await createCraftApi(request).budgetPause('s1', 'r1');
+    assert.deepEqual(view.pause, pause);
+    assert.equal(view.extensionAction, null);
+  }
+});
+
+test('budgetPause keeps required pause parsing strict when extension actions are optional', async () => {
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': {
+      success: true,
+      data: { run_id: 'r1', reason: 'budget_exhausted', limit: -1, used: 10, extension_action: null },
+    },
+  });
+  const api = createCraftApi(request);
+  await assert.rejects(() => api.budgetPause('s1', 'r1'), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, 'INVALID_RESPONSE');
+    return true;
+  });
+});
+
+test('budgetPause reads the server extension action from data and extend sends its exact tuple', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  const action = { key: 'server-intent-key', extra_calls: 17, extra_credits: 2345678 };
+  const { request, seen } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: { ...pause, extension_action: action }, can_extend: true },
+    'POST /api/v1/sessions/s1/craft/runs/r1/budget/extend': { success: true },
+  });
+  const api = createCraftApi(request);
+  const view = await api.budgetPause('s1', 'r1');
+  assert.equal(view.pause.run_id, 'r1');
+  assert.equal(view.pause.used, 10);
+  assert.deepEqual(view.extensionAction, action, 'the server action is returned without substituting a client key or quantum');
+  await api.extendBudget('s1', 'r1', view.extensionAction!);
+  assert.deepEqual(seen[1]?.body, action, 'the POST echoes the exact server-owned tuple');
+});

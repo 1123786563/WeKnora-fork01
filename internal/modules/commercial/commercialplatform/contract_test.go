@@ -585,7 +585,7 @@ func runSettleContract(t *testing.T, name string, p commercial.CommercialPlatfor
 		Payload: commercial.SettlePurchasePaymentPayload{
 			TenantID: 51, ExternalCustomerID: commercial.ExternalCustomerID(51),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(51),
-			PlanCode: "weknora-contract-v1", ChannelTransaction: "txn-contract",
+			PlanCode:                       "weknora-contract-v1", ChannelTransaction: "txn-contract",
 			AmountFen: 9900, Currency: commercial.CurrencyCNY,
 		},
 	}
@@ -656,7 +656,7 @@ func TestFakeAdapterSettleContract(t *testing.T) {
 			Payload: commercial.CreatePurchaseSubscriptionPayload{
 				TenantID: 51, ExternalCustomerID: commercial.ExternalCustomerID(51),
 				ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(51),
-				PlanCode: "weknora-contract-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
+				PlanCode:                       "weknora-contract-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
 			},
 		})
 		return err

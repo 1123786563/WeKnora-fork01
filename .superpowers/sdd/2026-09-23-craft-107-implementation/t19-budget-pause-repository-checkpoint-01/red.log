@@ -1,0 +1,2 @@
+Command: go test ./internal/application/repository -run '^TestPauseForCraftBudgetInTx' -count=1 (before implementation)
+Result: FAIL at compile time because AgentRunStore.PauseForCraftBudgetInTx was undefined at the four new test call sites. This confirmed the transaction-scoped API did not exist.

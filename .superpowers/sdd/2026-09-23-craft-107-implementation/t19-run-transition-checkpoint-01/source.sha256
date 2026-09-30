@@ -1,0 +1,7 @@
+36a9ae5b4612c040e2e6e58fc70ddfecf0abf5803b09252b4e2aa4b29d9de3ff  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/application/repository/agent_run.go
+e1d06eb9221fefe30f1b39c40ad97ce8c47ddaf1e77f341ced4dd35b76b60851  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/application/repository/agent_run_craft_charge_test.go
+909d25bd57266a8145b7ceed7164263ae5956f68ae3b3a1696d22b4c470740f6  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/application/repository/agent_run_decisions.go
+171b4ef95ef54ac5126e78b3392beb8df4e666be5536424993bef062e1e75cfd  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/application/repository/agent_run_events.go
+9b809dcd5b2922a2fd3b522facd12c6ec70a8907c03f7dbc2aa5052384ed58e7  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/application/repository/agent_run_lifecycle.go
+5013342afee1a679c15923797e5e0963eaef8e4b1b2593ecebd0af76d8e9b7b9  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/modules/workbench/service/workbench/interaction.go
+3fefafa69935c24cd36e04e89b0f6579f40e511d9b27deccf568c5e9792dd8f6  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-run-transition-checkpoint-01/source/internal/modules/workbench/service/workbench/interaction_test.go

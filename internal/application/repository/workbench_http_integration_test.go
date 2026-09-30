@@ -44,6 +44,7 @@ func openWorkbenchHTTPDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES ('u1', 'u1', 'u1@example.test', 'x', 1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'u1', 'admin', 'active')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'session-1', 'u1', 'trpc')`).Error)
 	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
 	return db

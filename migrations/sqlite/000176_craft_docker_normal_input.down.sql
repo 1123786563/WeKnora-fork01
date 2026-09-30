@@ -1,0 +1,4 @@
+DROP TRIGGER IF EXISTS craft_docker_normal_input_immutable;
+DROP TRIGGER IF EXISTS craft_docker_normal_input_receipt_validate;
+DROP TRIGGER IF EXISTS craft_docker_normal_input_scope_validate;
+DROP TABLE IF EXISTS craft_docker_normal_inputs;

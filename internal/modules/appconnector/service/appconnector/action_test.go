@@ -228,6 +228,74 @@ func TestApprovalLifecycleHappyPath(t *testing.T) {
 	}
 }
 
+func TestActionServiceRechecksPersonalConnectionAgainstPersistedCraftActor(t *testing.T) {
+	authz, _, _, db := newAuthorizerFixture(t)
+	seedOCSubjectFixture(t, db) // alice owns c-personal; bob is the collaborator actor
+	seedConnectionRow(t, db, appconn.Connection{
+		ID: "c-bob-personal", InstallationID: "inst-1", Kind: appconn.ConnectionKindPersonal,
+		OwnerID: "bob", CredentialRef: "credential/bob", State: appconn.ConnectionActive,
+		TenantID: 7, AuthVersion: 2,
+	})
+	if err := db.AutoMigrate(&repoappconn.ActionRow{}, &repoappconn.ApprovalRow{}, &repoappconn.PreAuthorizationRow{}); err != nil {
+		t.Fatal(err)
+	}
+	dispatcher := &stubDispatcher{outcome: DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: "ok"}}
+	gate := &stubGate{}
+	service := NewActionService(repoappconn.NewActionStore(db), NewA02Guard(authz), gate, dispatcher, nil)
+	ctx := context.Background()
+
+	prepareAndApprove := func(connectionID string) string {
+		t.Helper()
+		action := sendAction()
+		action.ActorID = "bob" // captured from the durable tool metadata seam
+		action.ConnectionID = connectionID
+		action.AuthVersion = 2
+		action.Risk = appconn.RiskRead
+		id, err := service.Prepare(ctx, action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row, err := service.store.FindAction(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.ActorID != "bob" {
+			t.Fatalf("persisted action actor=%q, want bob", row.ActorID)
+		}
+		if err := service.Approve(ctx, id, "bob", row.ArgsDigest); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	ownerPrivate := prepareAndApprove("c-personal")
+	if err := service.Execute(ctx, ownerPrivate); !errors.Is(err, ErrConnectionForbidden) {
+		t.Fatalf("collaborator execution through owner's personal connection err=%v, want ErrConnectionForbidden", err)
+	}
+	if calls, _ := dispatcher.stats(); calls != 0 {
+		t.Fatalf("dispatcher calls after owner-private denial=%d, want 0", calls)
+	}
+
+	collaboratorPrivate := prepareAndApprove("c-bob-personal")
+	if err := service.Execute(ctx, collaboratorPrivate); err != nil {
+		t.Fatalf("collaborator's own personal connection should dispatch: %v", err)
+	}
+	calls, _ := dispatcher.stats()
+	if calls != 1 {
+		t.Fatalf("dispatcher calls=%d, want one collaborator-owned action", calls)
+	}
+	if dispatcher.lastSnap.ActorID != "bob" {
+		t.Fatalf("dispatcher actor=%q, want bob", dispatcher.lastSnap.ActorID)
+	}
+	var ownerState string
+	if err := db.Table("app_actions").Where("id = ?", ownerPrivate).Select("state").Scan(&ownerState).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ownerState != appconn.ActionAuthorized {
+		t.Fatalf("denied owner-private action state=%q, want untouched authorized", ownerState)
+	}
+}
+
 // TestExecuteChecksPersistedSubject pins the T04 wiring: the A02 re-check
 // carries the PERSISTED row's tenant/actor (never the calling operator and
 // never a synthetic admin identity), together with the row's connection id

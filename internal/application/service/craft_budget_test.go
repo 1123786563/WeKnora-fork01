@@ -84,7 +84,7 @@ func craftGrantCalls(t *testing.T, db *gorm.DB, tenant uint64, grantID string) i
 	t.Helper()
 	var n int64
 	require.NoError(t, db.Model(&CraftBudgetCallRow{}).
-		Where("tenant_id = ? AND grant_id = ?", tenant, grantID).Count(&n).Error)
+		Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", tenant, grantID).Count(&n).Error)
 	return n
 }
 
@@ -115,6 +115,7 @@ func TestCraftBudgetAdmitRegistersGrantAndCommercialTaskBudget(t *testing.T) {
 	seedCraftFundedTenant(t, db, 7, 5000)
 
 	scope := craft.Scope{TenantID: 7, UserID: "u1", SessionID: "s1"}
+	seedCraftBudgetRun(t, db, scope.TenantID, "run-1", scope.SessionID)
 	g, err := svc.Admit(ctx, scope, "run-1")
 	require.NoError(t, err)
 	require.True(t, g.Allowed)
@@ -124,9 +125,13 @@ func TestCraftBudgetAdmitRegistersGrantAndCommercialTaskBudget(t *testing.T) {
 	require.True(t, g.Deadline.After(time.Now().UTC()))
 
 	var task repocommercial.TaskBudgetRow
-	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", uint64(7), "run-1").First(&task).Error)
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", uint64(7), scope.SessionID).First(&task).Error)
 	require.Equal(t, int64(5000), task.LimitMicro)
 	require.Equal(t, g.Deadline.Unix(), task.Deadline.Unix())
+	var child repocommercial.TaskBudgetRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", uint64(7), "run-1").First(&child).Error)
+	require.Equal(t, scope.SessionID, child.RootRunID)
+	require.Zero(t, child.LimitMicro)
 
 	again, err := svc.Admit(ctx, scope, "run-1")
 	require.NoError(t, err)
@@ -150,6 +155,7 @@ func TestCraftBudgetAuthorizeCallReservesBudgetAndCountsCalls(t *testing.T) {
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 5000)
 
+	seedCraftBudgetRun(t, db, 7, "run-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "run-1")
 	require.NoError(t, err)
 
@@ -199,6 +205,7 @@ func TestCraftBudgetLastQuotaConcurrentAuthorizationAdmitsExactlyOne(t *testing.
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 500) // exactly one CallUpper of funds
 
+	seedCraftBudgetRun(t, db, 7, "run-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "run-1")
 	require.NoError(t, err)
 
@@ -235,6 +242,7 @@ func TestCraftBudgetRevokedGrantBlocksNewCallsAndKeepsAdmittedHolds(t *testing.T
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 5000)
 
+	seedCraftBudgetRun(t, db, 7, "run-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "run-1")
 	require.NoError(t, err)
 	admitted, err := svc.AuthorizeBinding(ctx, g.ID, CraftCallBinding{ModelID: "m1", Funding: commercial.FundingPlatform})
@@ -277,6 +285,7 @@ func TestCraftBudgetExpiredGrantRefusesCalls(t *testing.T) {
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 5000)
 
+	seedCraftBudgetRun(t, db, 7, "run-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "run-1")
 	require.NoError(t, err)
 
@@ -297,6 +306,7 @@ func TestCraftBudgetUnfundedTenantAdmitsButBlocksCalls(t *testing.T) {
 	svc, db, _ := craftBudgetEnv(t)
 	ctx := context.Background()
 
+	seedCraftBudgetRun(t, db, 8, "run-8", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 8, UserID: "u", SessionID: "s"}, "run-8")
 	require.NoError(t, err)
 	require.True(t, g.Allowed)
@@ -319,6 +329,7 @@ func TestCraftBudgetExtendRaisesCallCapAndCommercialLimit(t *testing.T) {
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 10000)
 
+	seedCraftBudgetRun(t, db, 7, "run-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "run-1")
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
@@ -330,9 +341,13 @@ func TestCraftBudgetExtendRaisesCallCapAndCommercialLimit(t *testing.T) {
 
 	require.NoError(t, svc.Extend(ctx, g.ID, "ext-1", 2, commercial.Credits(1000)))
 	require.NoError(t, svc.Extend(ctx, g.ID, "ext-1", 2, commercial.Credits(1000))) // idempotent key
+	// Extend is the top-up seam; production recovery changes the durable Run
+	// state only after reconciling its prior external outcome.
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 7, "run-1").
+		Updates(map[string]any{"status": "running", "wait_reason": ""}).Error)
 
 	var task repocommercial.TaskBudgetRow
-	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", uint64(7), "run-1").First(&task).Error)
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", uint64(7), "s").First(&task).Error)
 	require.Equal(t, int64(6000), task.LimitMicro)
 
 	for i := 0; i < 2; i++ {
@@ -352,9 +367,11 @@ func TestCraftBudgetGrantsOfDifferentTenantsNeverMix(t *testing.T) {
 	seedCraftFundedTenant(t, db, 7, 5000)
 	seedCraftFundedTenant(t, db, 8, 5000)
 
-	g7, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "shared-run")
+	seedCraftBudgetRun(t, db, 7, "shared-run", "s-7")
+	g7, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s-7"}, "shared-run")
 	require.NoError(t, err)
-	g8, err := svc.Admit(ctx, craft.Scope{TenantID: 8, UserID: "u", SessionID: "s"}, "shared-run")
+	seedCraftBudgetRun(t, db, 8, "shared-run", "s-8")
+	g8, err := svc.Admit(ctx, craft.Scope{TenantID: 8, UserID: "u", SessionID: "s-8"}, "shared-run")
 	require.NoError(t, err)
 	require.NotEqual(t, g7.ID, g8.ID)
 
@@ -362,9 +379,9 @@ func TestCraftBudgetGrantsOfDifferentTenantsNeverMix(t *testing.T) {
 		_, err := svc.AuthorizeBinding(ctx, g7.ID, CraftCallBinding{ModelID: "m1", Funding: commercial.FundingPlatform})
 		require.NoError(t, err)
 	}
-	snapshot7, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s"}, "shared-run")
+	snapshot7, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u", SessionID: "s-7"}, "shared-run")
 	require.NoError(t, err)
-	snapshot8, err := svc.Admit(ctx, craft.Scope{TenantID: 8, UserID: "u", SessionID: "s"}, "shared-run")
+	snapshot8, err := svc.Admit(ctx, craft.Scope{TenantID: 8, UserID: "u", SessionID: "s-8"}, "shared-run")
 	require.NoError(t, err)
 	require.Equal(t, 2, snapshot7.UsedCalls)
 	require.Equal(t, 0, snapshot8.UsedCalls)

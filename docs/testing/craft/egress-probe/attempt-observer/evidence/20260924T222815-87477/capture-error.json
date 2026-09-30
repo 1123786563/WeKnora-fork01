@@ -1,0 +1,4 @@
+{
+  "captured_utc": "2026-09-24T14:28:16.440658Z",
+  "error": "provision-evidence-volume failed (1): /usr/bin/install: cannot change owner and permissions of '/evidence': Operation not permitted\n/usr/bin/install: cannot change owner and permissions of '/evidence/observer': Operation not permitted\n/usr/bin/install: cannot change owner and permissions of '/evidence/observer/no-packet': Operation not permitted\n/usr/bin/install: cannot change owner and permissions of '/evidence/observer/local-response-loss': Operation not permitted\n/usr/bin/install: cannot change owner and permissions of '/evidence/observer/denied': Operation not permitted\n/usr/bin/install: cannot change owner and permissions of '/evidence/observer/unrelated': Operation not permitted"
+}

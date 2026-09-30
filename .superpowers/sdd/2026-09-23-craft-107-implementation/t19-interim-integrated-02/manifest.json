@@ -1,0 +1,44 @@
+{
+  "captured_at_utc": "2026-09-23T12:36:22.617108+00:00",
+  "source_head": "d9008dcb6fcf59067778710e8e90b10ba8230571",
+  "integration_head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "review_status": "T19 F3 and central call sites pending",
+  "files": [
+    {
+      "path": "internal/application/service/craft_budget.go",
+      "sha256": "f880a3ffbbef3f573d832b78cc1827cc689c2dbe80f6ad36b75d3edc6bce3216",
+      "bytes": 43659
+    },
+    {
+      "path": "internal/application/service/craft_budget_t19_test.go",
+      "sha256": "f80b5ac32e6a288bf5aca9990343648d04d11ef222d0090645cbffa5219b0cd6",
+      "bytes": 16475
+    },
+    {
+      "path": "internal/application/service/craft_budget_test.go",
+      "sha256": "b4f8405af50ff9bd3b81e8d9f6739698aae5608fe9b0a9703fff40e67cdfc0af",
+      "bytes": 17082
+    },
+    {
+      "path": "internal/modules/commercial/repository/commercial/budget_reservation.go",
+      "sha256": "2cd15e9f7221268a44e92b0c82a7c73797be73334e99580e374900e84d35b57c",
+      "bytes": 13812
+    },
+    {
+      "path": "internal/modules/commercial/repository/commercial/budget_task.go",
+      "sha256": "08ba062f36c37a6f3081b624aeca35ff7eaa928d6ef1aed961c32b7bf1749dff",
+      "bytes": 9462
+    },
+    {
+      "path": "packages/views/src/craft/usage.budget.test.tsx",
+      "sha256": "4663908a5b7615b361c387dd73866baef7b08e0ce3c968820f0a8ba4e2210238",
+      "bytes": 941
+    },
+    {
+      "path": "packages/views/src/craft/usage.tsx",
+      "sha256": "a68b15f2c415aa67c2a69c983c2aeeb6b820d7649ea63b63686cd2f92a570f3f",
+      "bytes": 11220
+    }
+  ],
+  "integration_note": "added reviewed external fix1 commercial budget deadline file after compile exposed missing method"
+}
