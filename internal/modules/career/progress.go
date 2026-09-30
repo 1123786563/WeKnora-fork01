@@ -117,18 +117,21 @@ type ProgressReceipt struct {
 
 // ProgressEventView is one immutable history row with its correction flag.
 type ProgressEventView struct {
-	EventID         string    `json:"eventId"`
-	Seq             uint64    `json:"seq"`
-	Kind            string    `json:"kind"`
-	EventType       string    `json:"eventType"`
-	Note            string    `json:"note,omitempty"`
-	OccurredAt      time.Time `json:"occurredAt"`
-	Source          Source    `json:"source"`
-	Confirmer       string    `json:"confirmer"`
-	CorrectsEventID string    `json:"correctsEventId,omitempty"`
-	Corrected       bool      `json:"corrected"`
-	RequestID       string    `json:"requestId"`
-	CreatedAt       time.Time `json:"createdAt"`
+	EventID           string    `json:"eventId"`
+	Seq               uint64    `json:"seq"`
+	Kind              string    `json:"kind"`
+	EventType         string    `json:"eventType"`
+	Note              string    `json:"note,omitempty"`
+	OccurredAt        time.Time `json:"occurredAt"`
+	Source            Source    `json:"source"`
+	Confirmer         string    `json:"confirmer"`
+	CorrectsEventID   string    `json:"correctsEventId,omitempty"`
+	Corrected         bool      `json:"corrected"`
+	RequestID         string    `json:"requestId"`
+	CreatedAt         time.Time `json:"createdAt"`
+	SubmissionID      string    `json:"submissionId,omitempty"`
+	SubmissionChannel string    `json:"submissionChannel,omitempty"`
+	VersionConfirmed  *bool     `json:"versionConfirmed,omitempty"`
 }
 
 // ProgressView is the per-application history plus the deterministic stage
@@ -486,7 +489,38 @@ func (o *Office) ApplicationProgress(ctx context.Context, applicationID string) 
 	if err != nil {
 		return ProgressView{}, err
 	}
-	return buildProgressView(applicationID, rows), nil
+	view := buildProgressView(applicationID, rows)
+	var submission submissionRecord
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND application_id=?", s.TenantID, s.UserID, applicationID).First(&submission).Error
+	if err == nil {
+		var linked progressEventRecord
+		err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND application_id=? AND request_id=?", s.TenantID, s.UserID, applicationID, submissionProgressRequestID(submission.ID)).First(&linked).Error
+		if err == nil {
+			for i := range view.Events {
+				if view.Events[i].RequestID == linked.RequestID {
+					view.Events[i].SubmissionID = submission.ID
+					view.Events[i].SubmissionChannel = submission.Channel
+					view.Events[i].VersionConfirmed = boolPointer(submission.VersionConfirmed)
+					view.Events[i].Note = submission.Note
+					view.Events[i].Confirmer = submission.Confirmer
+				}
+			}
+			view.Stage = projectProgressStageWithSubmission(rows, linked)
+			view.Revision++
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProgressView{}, err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return ProgressView{}, err
+	}
+	return view, nil
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func projectProgressStageWithSubmission(rows []progressEventRecord, submission progressEventRecord) string {
+	rows = append(append([]progressEventRecord(nil), rows...), submission)
+	return projectProgressStage(rows)
 }
 
 // buildProgressView folds the stored rows into history plus projection. The
@@ -500,12 +534,16 @@ func buildProgressView(applicationID string, rows []progressEventRecord) Progres
 	}
 	events := make([]ProgressEventView, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, ProgressEventView{
+		view := ProgressEventView{
 			EventID: row.ID, Seq: row.Seq, Kind: row.Kind, EventType: row.EventType,
 			Note: row.Note, OccurredAt: row.OccurredAt, Source: decodeSource(row.Source),
 			Confirmer: row.Confirmer, CorrectsEventID: row.CorrectsEventID,
 			Corrected: superseded[row.ID], RequestID: row.RequestID, CreatedAt: row.CreatedAt,
-		})
+		}
+		if strings.HasPrefix(row.RequestID, "submission:") {
+			view.SubmissionID = strings.TrimPrefix(row.RequestID, "submission:")
+		}
+		events = append(events, view)
 	}
 	return ProgressView{
 		ApplicationID: applicationID,

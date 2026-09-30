@@ -369,13 +369,60 @@ func TestRecordSubmissionNeverPerformsOrInfersExternalAction(t *testing.T) {
 	require.Zero(t, findCalls)
 	require.Len(t, store.files, filesBefore, "record_submission must not render or store any file")
 
-	// No progress event is projected automatically: progress stays an explicit
-	// user seam (frozen design decision).
 	progress, err := o.ApplicationProgress(ctx, fx.ApplicationID)
 	require.NoError(t, err)
-	require.Empty(t, progress.Events, "recording a submission must not auto-append a progress event")
+	require.Equal(t, ProgressStageSubmitted, progress.Stage)
+	require.Len(t, progress.Events, 1)
+	require.Equal(t, ProgressEventSubmitted, progress.Events[0].EventType)
+	require.Equal(t, receipt.SubmissionID, progress.Events[0].SubmissionID)
 	require.Len(t, readSubmissionRows(t, db), 1)
 	require.NotEmpty(t, receipt.SubmissionID)
+}
+
+func TestRecordSubmissionProjectsLinkedProgressAndReplayOnce(t *testing.T) {
+	for _, unknown := range []bool{false, true} {
+		t.Run(map[bool]string{false: "known", true: "unknown"}[unknown], func(t *testing.T) {
+			o, db, _, ctx := newSubmissionOffice(t, "owner-1", 1970+uint64(boolInt(unknown)))
+			fx := seedSubmissionFixture(t, o, ctx, "projection")
+			input := submissionInput(fx, "projection-1", SubmissionChannelWeb, unknown, fx.Revision)
+			first, err := o.RecordSubmission(ctx, input)
+			require.NoError(t, err)
+			replayed, err := o.RecordSubmission(ctx, input)
+			require.NoError(t, err)
+			require.Equal(t, first, replayed)
+			view, err := o.ApplicationProgress(ctx, fx.ApplicationID)
+			require.NoError(t, err)
+			require.Equal(t, ProgressStageSubmitted, view.Stage)
+			require.Len(t, view.Events, 1)
+			event := view.Events[0]
+			require.Equal(t, ProgressEventSubmitted, event.EventType)
+			require.Equal(t, first.SubmissionID, event.SubmissionID)
+			require.Equal(t, first.OccurredAt, event.OccurredAt)
+			require.Equal(t, SubmissionChannelWeb, event.SubmissionChannel)
+			require.NotNil(t, event.VersionConfirmed)
+			require.Equal(t, !unknown, *event.VersionConfirmed)
+			require.Len(t, readSubmissionRows(t, db), 1)
+		})
+	}
+}
+
+func TestRecordSubmissionProgressFailureRollsBackBothRecords(t *testing.T) {
+	o, db, _, ctx := newSubmissionOffice(t, "owner-1", 1972)
+	fx := seedSubmissionFixture(t, o, ctx, "rollback")
+	o.afterSubmissionProgressPersist = func() error { return errors.New("injected progress write failure") }
+	_, err := o.RecordSubmission(ctx, submissionInput(fx, "rollback-1", SubmissionChannelEmail, false, fx.Revision))
+	require.ErrorContains(t, err, "injected progress write failure")
+	require.Empty(t, readSubmissionRows(t, db))
+	progress, err := o.ApplicationProgress(ctx, fx.ApplicationID)
+	require.NoError(t, err)
+	require.Empty(t, progress.Events)
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func TestRecordSubmissionExactReplayAndChangedIntentConflict(t *testing.T) {

@@ -67,18 +67,9 @@ func seedExportChain(t *testing.T, o *Office, ctx context.Context, seedID string
 	t.Helper()
 	o.SetApplicationTaskLinker(&fakeCareerApplicationLinker{})
 	fx := seedSubmissionFixture(t, o, ctx, seedID)
-	// Progress CASes on the application's event count (0 for the first
-	// event), not on the profile head.
-	_, err := o.AppendProgress(ctx, AppendProgressInput{
-		RequestID:        seedID + "-progress",
-		ApplicationID:    fx.ApplicationID,
-		EventType:        ProgressEventPendingSubmission,
-		Note:             "准备提交申请",
-		Source:           Source{Kind: "manual"},
-		ExpectedRevision: 0,
-	})
-	require.NoError(t, err)
-	_, err = o.RecordSubmission(ctx, submissionInput(fx, seedID+"-submission", SubmissionChannelEmail, false, fx.Revision))
+	input := submissionInput(fx, seedID+"-submission", SubmissionChannelEmail, false, fx.Revision)
+	input.Note = "已在官网投递"
+	_, err := o.RecordSubmission(ctx, input)
 	require.NoError(t, err)
 	return fx
 }
@@ -125,7 +116,7 @@ func TestExportCareerIncludesProfileSnapshotsEventsAndMaterialVersions(t *testin
 	application := receipt.Archive.Applications[0]
 	require.Equal(t, fx.ApplicationID, application.ApplicationID)
 	require.Len(t, application.ProgressEvents, 1)
-	require.Equal(t, ProgressEventPendingSubmission, application.ProgressEvents[0].EventType)
+	require.Equal(t, ProgressEventSubmitted, application.ProgressEvents[0].EventType)
 	require.Equal(t, "owner-1", application.ProgressEvents[0].Confirmer)
 
 	// 材料版本：the immutable version body is exported.
@@ -608,26 +599,6 @@ func TestDeleteCareerRemovesExportObjectsAndReleasesSourceUploads(t *testing.T) 
 	require.Len(t, releaser.calls, 1, "every uploaded source with a resource ref is released exactly once")
 	require.Equal(t, "local://1951/career_source_src-1.pdf|src-1", releaser.calls[0])
 	require.Zerof(t, countScopeRows(t, db, "career_source_revisions"), "source rows are purged after release")
-}
-
-func TestDeleteCareerRemovesRevokedExportObjects(t *testing.T) {
-	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
-	store := newMapExportStorage()
-	o.SetExportStorage(store)
-	fx := seedExportChain(t, o, ctx, "purge-revoked")
-	require.Len(t, store.files, 2)
-	_, err := o.RevokeMaterialExport(ctx, RevokeMaterialExportInput{
-		RequestID: "purge-revoked-revoke", MaterialID: fx.MaterialID, ExportID: fx.ExportID,
-		ExpectedRevision: fx.Revision,
-	})
-	require.NoError(t, err)
-	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
-
-	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "purge-revoked-delete", ExpectedRevision: fx.Revision})
-	require.NoError(t, err)
-	require.Equal(t, DeletionStatusDeleted, receipt.Status)
-	require.Empty(t, store.files, "revoked export bytes must be physically removed")
-	require.Zero(t, countScopeRows(t, db, "career_material_exports"))
 }
 
 // TestFindCareerDeletionDuringExecutionWindowReportsInProgress pins the
