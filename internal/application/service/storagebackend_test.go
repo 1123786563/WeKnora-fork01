@@ -41,6 +41,29 @@ func TestStorageBackendResolverScopesPathsAndTenant(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestResolveResourceFileServiceRejectsTenantAndBackendScopeMismatch(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.StorageBackend{}, &types.StoredResource{}))
+	for _, backendID := range []string{"backend-a", "backend-b"} {
+		require.NoError(t, db.Create(&types.StorageBackend{ID: backendID, TenantID: 7, Name: backendID, Provider: "local", Status: types.StorageBackendStatusActive}).Error)
+	}
+	catalog := service.NewResourceCatalog(repository.NewResourceRepository(db))
+	resolver := service.NewStorageBackendServiceWithResources(repository.NewStorageBackendRepository(db), db, catalog)
+	resource := &types.StoredResource{
+		ID: "resource-1", Handle: "AbCdEfGhIjKlMnOpQrStUv", TenantID: 7,
+		StorageBackendID: "backend-a", Provider: "local",
+		PhysicalPath: "storage://backend-b/local://tenant/7/private.txt",
+		LocationHash: "scope-mismatch", State: types.ResourceStateActive,
+	}
+	require.NoError(t, db.Create(resource).Error)
+
+	_, _, err = resolver.ResolveResourceFileService(context.Background(), &types.Tenant{ID: 8}, "resource://"+resource.Handle, t.TempDir())
+	require.Error(t, err, "a resource handle must not cross tenant scope")
+	_, _, err = resolver.ResolveResourceFileService(context.Background(), &types.Tenant{ID: 7}, "resource://"+resource.Handle, t.TempDir())
+	require.Error(t, err, "a resource persisted on backend A must not open through backend B")
+}
+
 func TestResolveFileServiceUsesWorkspaceDefaultForStubTenant(t *testing.T) {
 	t.Setenv("STORAGE_TYPE", "local")
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

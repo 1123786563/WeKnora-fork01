@@ -38,14 +38,29 @@ export interface TaskDetailController {
 export function createTaskDetailController(handle: TaskHandle): TaskDetailController {
   let state: TaskDetailViewState = { loading: true };
   let disposed = false;
+  let scopeEpoch = 0;
   const listeners = new Set<(state: TaskDetailViewState) => void>();
   const publish = (next: TaskDetailViewState): void => {
     state = next;
     for (const listener of [...listeners]) listener(state);
   };
-  const unsubscribe = handle.updates((view) => { if (!disposed) publish({ view, loading: false }); });
+  const publishScopeChanged = (): void => publish({ loading: false, error: TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED });
+  const unsubscribe = handle.updates((view) => {
+    if (disposed) return;
+    if (view === undefined) scopeEpoch += 1;
+    publish(view === undefined
+      ? { loading: false, error: TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED }
+      : { view, loading: false });
+  });
+  const hydrateEpoch = scopeEpoch;
   const tail: Promise<void> = handle.hydrate().then(
-    (view) => { if (!disposed) publish({ view, loading: false }); },
+    (_view) => {
+      if (disposed) return;
+      if (hydrateEpoch !== scopeEpoch) { publishScopeChanged(); return; }
+      const current = handle.view();
+      if (current === undefined) { publishScopeChanged(); return; }
+      publish({ view: current, loading: false });
+    },
     (failure: unknown) => {
       if (!disposed) publish({ view: undefined, loading: false, error: messageOf(failure) });
     },
@@ -54,9 +69,18 @@ export function createTaskDetailController(handle: TaskHandle): TaskDetailContro
     state: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     refresh(): Promise<void> {
+      const epoch = scopeEpoch;
       publish({ ...state, loading: true, error: undefined });
       const attempt = handle.resync().then(
-        (view) => { if (!disposed) publish({ view, loading: false }); },
+        (_view) => {
+          if (disposed) return;
+          const current = handle.view();
+          if (epoch !== scopeEpoch || current === undefined) {
+            publish({ loading: false, error: TASK_OFFICE_ERROR_COPY.TASK_OFFICE_SCOPE_CHANGED });
+            return;
+          }
+          publish({ view: current, loading: false });
+        },
         (failure: unknown) => {
           if (!disposed) publish({ view: handle.view(), loading: false, error: messageOf(failure) });
         },

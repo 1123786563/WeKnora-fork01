@@ -103,6 +103,23 @@ test('the backend-approved weknora://oidc deep link has a matching Expo file rou
   assert.equal(oidcRoute.default, callback.default);
 });
 
+test('Task Office is a registered Expo file route reachable from Tasks', async () => {
+  const route = await import('./app/task-office.tsx');
+  assert.equal(typeof route.default, 'function');
+
+  const { TasksScreen } = await import('./screens/TasksScreen.tsx');
+  hooks().__reset();
+  let opened = 0;
+  const screen = render(TasksScreen, {
+    taskOffice: { tasks: async () => ({ items: [], duplicateRunIds: [] }) },
+    onOpenTaskOffice: () => { opened += 1; },
+  });
+  const officeButton = descendants(screen).find(({ type, props }) => type === 'Button' && props.title === 'Task Office');
+  assert.ok(officeButton, 'authorized Tasks screen exposes the Task Office entry');
+  (officeButton!.props.onPress as () => void)();
+  assert.equal(opened, 1);
+});
+
 test('deployment login accepts only normalized HTTPS origins without embedded credentials', async () => {
   const { DeploymentLoginScreen, validatedDeploymentOrigin } = await import('./screens/DeploymentLoginScreen.tsx');
   assert.equal(validatedDeploymentOrigin('https://weknora.example.test/'), 'https://weknora.example.test');

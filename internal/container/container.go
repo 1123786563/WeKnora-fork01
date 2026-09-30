@@ -228,6 +228,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// W26: immutable artifact version rows live in the same business database
 	// scope as the run store so imports and downloads share one fence.
 	must(container.Provide(repository.NewArtifactVersionStore))
+	must(container.Provide(NewCareerArtifactHandler))
 	must(container.Provide(repository.NewNotificationStore))
 	must(container.Provide(repository.NewNotificationProviderStateStore))
 	must(container.Provide(workbenchservice.NewNotificationProjector))

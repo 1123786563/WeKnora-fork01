@@ -16,6 +16,8 @@ export interface Deployment {
 /** Opaque, Runtime-minted capability. Its revocation state never escapes mobile-core. */
 export interface ScopeLease {
   readonly [scopeLeaseBrand]: never;
+  /** Notifies scoped consumers synchronously when Runtime revokes this lease. */
+  onRevoke?(listener: () => void): () => void;
 }
 
 export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized' | 'read-only';

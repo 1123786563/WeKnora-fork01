@@ -1,0 +1,33 @@
+# CAREER MODULE — ISSUE #140 FOUNDATION (new module; not part of legacy Pass A package moves)
+module: career
+description: 单成员私有求职空间、确认事实、申请证据与求职工作流
+move_packages: []
+alias_obligations: []
+legacy_files:
+  - path: internal/handler/session/career_artifacts.go
+    reason: Career artifact HTTP adapter remains in the shared session handler package until router handler modules are split
+    navigation_label: Career artifact HTTP handler
+    passb_task: B-career
+owned_files:
+  move_sources: []
+  move_targets: []
+  importers: []
+  module_files:
+    - internal/modules/career/README.md
+    - internal/modules/career/module.go
+integration_points:
+  routes:
+    - RegisterCareerArtifactRoutes — internal/router/routes_career_artifacts.go
+    - RegisterCareerArtifactDownloadRoute — internal/router/routes_career_artifacts.go
+  workers: []
+  lifecycle_hooks: []
+test_commands:
+  - go test ./internal/modules/career/... -count=1
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

@@ -5,9 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./career": "./src/career/index.ts",
     "./chat/native": "./src/chat/native.ts"
   },
   "scripts": {
+    "test": "tsx --test src/career/*.test.ts test/career/*.test.ts",
     "test:native-agent": "tsx --test test/native-agent.test.ts"
   }
 }

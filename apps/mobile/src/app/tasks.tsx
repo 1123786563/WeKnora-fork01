@@ -7,6 +7,7 @@ export default function Tasks() {
     <MobileTasks
       onOpenTask={(taskId, runId) => router.push({ pathname: '/tasks/detail', params: { taskId, runId } })}
       onOpenLegacy={() => router.push('/tasks/legacy')}
+      onOpenTaskOffice={() => router.push('/task-office')}
     />
   );
 }

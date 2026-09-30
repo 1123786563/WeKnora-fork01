@@ -11,9 +11,22 @@ export interface LeaseScope {
 export class RuntimeScopeLease {
   readonly scope: LeaseScope;
   #active = true;
+  #revocationListeners = new Set<() => void>();
   constructor(scope: LeaseScope) { this.scope = scope; }
   get active(): boolean { return this.#active; }
-  revoke(): void { this.#active = false; }
+  revoke(): void {
+    if (!this.#active) return;
+    this.#active = false;
+    for (const listener of [...this.#revocationListeners]) {
+      try { listener(); } catch { /* one scoped consumer cannot block revocation for others */ }
+    }
+    this.#revocationListeners.clear();
+  }
+  onRevoke(listener: () => void): () => void {
+    if (!this.#active) { listener(); return () => undefined; }
+    this.#revocationListeners.add(listener);
+    return () => { this.#revocationListeners.delete(listener); };
+  }
   asScopeLease(): ScopeLease { return this as unknown as ScopeLease; }
 }
 
