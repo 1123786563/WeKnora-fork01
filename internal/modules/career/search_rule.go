@@ -3,6 +3,7 @@ package career
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ const (
 	RuleStatusDisabled = "disabled"
 
 	RuleRunStatusCompleted       = "completed"
+	RuleRunStatusStarted         = "started"
 	RuleRunStatusFailed          = "failed"
 	RuleRunStatusBlockedNoQuota  = "blocked_no_quota"
 	RuleRunStatusNoVettedSources = "no_vetted_sources"
@@ -46,8 +48,10 @@ const (
 	ruleRunNoteNoVettedSources = "no vetted search source is configured; the trigger was not searched and nothing was fabricated"
 )
 
+const maxRulePageSize = 50
+
 var ErrRuleNotFound = errors.New("career search rule not found")
-var errRuleChangedBeforeDispatch = errors.New("career search rule changed before dispatch")
+var errRuleCandidateStale = errors.New("career search rule candidate is stale")
 
 // SetRuleInput is the frozen request body of the set_rule seam. An empty
 // RuleID creates a rule; a non-empty one updates that rule under its scope.
@@ -129,8 +133,8 @@ type RuleView struct {
 	UpdatedAt       time.Time        `json:"updatedAt"`
 }
 
-// RuleSummary is the bounded list representation. It intentionally excludes
-// run and todo history; clients fetch that only for an individual rule.
+// RuleSummary is the bounded list projection. It intentionally excludes run
+// and todo histories; those are available only from Rule's detail endpoint.
 type RuleSummary struct {
 	RuleID          string           `json:"ruleId"`
 	Query           string           `json:"query"`
@@ -141,6 +145,18 @@ type RuleSummary struct {
 	Estimate        RuleCostEstimate `json:"estimate"`
 	CreatedAt       time.Time        `json:"createdAt"`
 	UpdatedAt       time.Time        `json:"updatedAt"`
+}
+
+type RulePage struct {
+	Rules      []RuleSummary `json:"rules"`
+	NextCursor *string       `json:"nextCursor"`
+}
+
+type rulePageCursor struct {
+	TenantID uint64    `json:"tenantId"`
+	UserID   string    `json:"userId"`
+	Updated  time.Time `json:"updatedAt"`
+	RuleID   string    `json:"ruleId"`
 }
 
 // RuleRunSummary is the one-line outcome of one triggered rule period.
@@ -197,6 +213,15 @@ type searchRuleRunRecord struct {
 	Status    string `gorm:"size:32;not null"`
 	Body      string `gorm:"type:text;not null"`
 	CreatedAt time.Time
+}
+
+// searchRuleRunBody extends the public run view with the frozen intent needed
+// to recover a committed start after a process restart. Embedded fields keep
+// the historic JSON projection compatible with RuleRunView decoding.
+type searchRuleRunBody struct {
+	RuleRunView
+	Query                   string `json:"query,omitempty"`
+	ExpectedProfileRevision uint64 `json:"expectedProfileRevision,omitempty"`
 }
 
 func (searchRuleRunRecord) TableName() string { return "career_search_rule_runs" }
@@ -504,28 +529,66 @@ func (o *Office) Rule(ctx context.Context, ruleID string) (RuleView, error) {
 	return view, nil
 }
 
-// ListRules returns only rules in the authenticated personal scope, ordered
-// by most recently updated and then stable ID. It never loads run/todo history.
-func (o *Office) ListRules(ctx context.Context) ([]RuleSummary, error) {
+// ListRules returns one owner-scoped keyset page in stable updated_at DESC,
+// id ASC order. The opaque cursor embeds and verifies its scope so it cannot
+// be replayed to enumerate another owner's rules.
+func (o *Office) ListRules(ctx context.Context, cursor string) (RulePage, error) {
 	s, err := getScope(ctx)
 	if err != nil {
-		return nil, err
+		return RulePage{}, err
 	}
 	if err = o.requireSpace(ctx, s); err != nil {
-		return nil, err
+		return RulePage{}, err
+	}
+	query := o.db.WithContext(ctx).Model(&searchRuleRecord{}).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID)
+	if len(cursor) > 2048 {
+		return RulePage{}, ErrInvalidRequest
+	}
+	if cursor != "" {
+		decoded, decodeErr := base64.RawURLEncoding.DecodeString(cursor)
+		if decodeErr != nil {
+			return RulePage{}, ErrInvalidRequest
+		}
+		var key rulePageCursor
+		if json.Unmarshal(decoded, &key) != nil || key.TenantID != s.TenantID || key.UserID != s.UserID || key.RuleID == "" || key.Updated.IsZero() {
+			return RulePage{}, ErrInvalidRequest
+		}
+		query = query.Where("(updated_at < ?) OR (updated_at = ? AND id > ?)", key.Updated, key.Updated, key.RuleID)
 	}
 	var rows []searchRuleRecord
-	if err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
-		Order("updated_at DESC, id ASC").Find(&rows).Error; err != nil {
-		return nil, err
+	if err = query.Order("updated_at DESC, id ASC").Limit(maxRulePageSize + 1).Find(&rows).Error; err != nil {
+		return RulePage{}, err
 	}
-	out := make([]RuleSummary, 0, len(rows))
+	page := RulePage{Rules: []RuleSummary{}, NextCursor: nil}
+	hasMore := len(rows) > maxRulePageSize
+	if hasMore {
+		rows = rows[:maxRulePageSize]
+	}
 	for _, row := range rows {
-		out = append(out, RuleSummary{RuleID: row.ID, Query: row.Query, IntervalMinutes: row.IntervalMinutes,
-			Status: row.Status, Revision: row.Revision, NextDueAt: row.NextDueAt,
-			Estimate: o.ruleEstimate(row.IntervalMinutes), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+		if row.Status == RuleStatusEnabled && (row.NextDueAt == nil || row.NextDueAt.IsZero()) {
+			return RulePage{}, fmt.Errorf("enabled career search rule %q has no valid due time", row.ID)
+		}
+		nextDueAt := row.NextDueAt
+		if row.Status != RuleStatusEnabled {
+			nextDueAt = nil
+		}
+		page.Rules = append(page.Rules, RuleSummary{
+			RuleID: row.ID, Query: row.Query, IntervalMinutes: row.IntervalMinutes,
+			Status: row.Status, Revision: row.Revision, NextDueAt: nextDueAt,
+			Estimate: o.ruleEstimate(row.IntervalMinutes), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		})
 	}
-	return out, nil
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		payload, marshalErr := json.Marshal(rulePageCursor{TenantID: s.TenantID, UserID: s.UserID, Updated: last.UpdatedAt, RuleID: last.ID})
+		if marshalErr != nil {
+			return RulePage{}, marshalErr
+		}
+		next := base64.RawURLEncoding.EncodeToString(payload)
+		page.NextCursor = &next
+	}
+	return page, nil
 }
 
 // TriggerDueRules is the explicit trigger seam: it evaluates the
@@ -542,6 +605,23 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 		return nil, err
 	}
 	now = now.UTC()
+	// A started run has crossed its linearization point. Recover it under the
+	// same deterministic request ID even if the rule was paused or edited after
+	// the claim committed.
+	var started []searchRuleRunRecord
+	if err = o.db.WithContext(ctx).
+		Where("tenant_id=? AND user_id=? AND status=?", s.TenantID, s.UserID, RuleRunStatusStarted).
+		Order("created_at ASC, id ASC").Find(&started).Error; err != nil {
+		return nil, err
+	}
+	outcomes := []RuleRunSummary{}
+	for _, run := range started {
+		outcome, recoverErr := o.recoverRuleRun(ctx, s, run, now)
+		if recoverErr != nil {
+			return nil, recoverErr
+		}
+		outcomes = append(outcomes, outcome)
+	}
 	var due []searchRuleRecord
 	err = o.db.WithContext(ctx).
 		Where("tenant_id=? AND user_id=? AND status=? AND next_due_at IS NOT NULL AND next_due_at <= ?",
@@ -550,13 +630,12 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 	if err != nil {
 		return nil, err
 	}
-	outcomes := []RuleRunSummary{}
 	for _, rule := range due {
 		outcome, triggerErr := o.triggerRulePeriod(ctx, s, rule, now)
-		if errors.Is(triggerErr, errRuleChangedBeforeDispatch) {
-			continue
-		}
 		if triggerErr != nil {
+			if errors.Is(triggerErr, errRuleCandidateStale) {
+				continue
+			}
 			return nil, triggerErr
 		}
 		outcomes = append(outcomes, outcome)
@@ -569,184 +648,207 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 // the T11 idempotency machinery instead of duplicating work. All network I/O
 // stays inside SearchOnce, outside any rule transaction.
 func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRuleRecord, now time.Time) (RuleRunSummary, error) {
-	current, err := o.currentDueRule(ctx, s, rule)
+	claim, existing, err := o.claimRulePeriod(ctx, s, rule, now)
 	if err != nil {
 		return RuleRunSummary{}, err
 	}
-	if current == nil {
-		return RuleRunSummary{}, errRuleChangedBeforeDispatch
-	}
-	rule = *current
-	period := rule.LastPeriod + 1
-	requestID := fmt.Sprintf("rule:%s:%d", rule.ID, period)
-
-	var receipt SearchOnceReceipt
-	ran := false
-	blockedStatus, blockedNote := "", ""
-	sources := o.ruleVettedSources()
-	switch {
-	case len(sources) == 0:
-		blockedStatus, blockedNote = RuleRunStatusNoVettedSources, ruleRunNoteNoVettedSources
-	default:
-		if o.searchQuotaGate == nil {
-			o.searchQuotaGate = passThroughSearchQuotaGate{}
+	if existing != nil {
+		if existing.Status != RuleRunStatusStarted {
+			return summaryFromStoredRun(*existing)
 		}
-		if err := o.searchQuotaGate.AdmitSearch(ctx, s, requestID, rule.Query); err != nil {
-			if !errors.Is(err, ErrSearchQuotaRefused) {
-				return RuleRunSummary{}, err
-			}
-			blockedStatus, blockedNote = RuleRunStatusBlockedNoQuota, ruleRunNoteNoQuota
-		}
-	}
-	if blockedStatus == "" {
-		// Quota admission may take time or invoke a concurrent policy update.
-		// Re-read after admission as well, so a committed pause/edit cannot
-		// start an external search using the stale due-row snapshot.
-		current, err = o.currentDueRule(ctx, s, rule)
+		claim, err = decodeRuleRunIntent(*existing)
 		if err != nil {
 			return RuleRunSummary{}, err
 		}
-		if current == nil {
-			return RuleRunSummary{}, errRuleChangedBeforeDispatch
-		}
-		var head profile
-		err := o.db.WithContext(ctx).
-			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			head.Revision = 0
-		} else if err != nil {
-			return RuleRunSummary{}, err
-		}
-		var searchErr error
-		receipt, searchErr = o.SearchOnce(ctx, SearchOnceInput{
-			RequestID: requestID, Query: rule.Query, ExpectedRevision: head.Revision,
-		})
-		ran = true
-		if searchErr != nil {
-			if errors.Is(searchErr, ErrSearchQuotaRefused) {
-				// The gate refused between the pre-check and the search: the
-				// trigger still must not vanish silently.
-				ran = false
-				blockedStatus, blockedNote = RuleRunStatusBlockedNoQuota, ruleRunNoteNoQuota
-				receipt = SearchOnceReceipt{}
-			} else if errors.Is(searchErr, ErrIdempotencyConflict) {
-				// The period request ID is deterministic while the profile
-				// revision moves with every write: a claiming row left by a
-				// crashed attempt is replayed or taken over under its stored
-				// fingerprint instead of stranding this rule's period — and
-				// with it the whole trigger — forever (ocr3-017).
-				receipt, searchErr = o.searchOnceUnderStoredFingerprint(ctx, s, requestID)
-				if searchErr != nil {
-					return RuleRunSummary{}, searchErr
-				}
-			} else {
-				return RuleRunSummary{}, searchErr
-			}
-		}
 	}
+	return o.executeClaimedRuleRun(ctx, s, claim, now)
+}
 
-	run := RuleRunView{
-		Kind: RuleKindRun, RuleID: rule.ID, Period: period,
-		RequestID: requestID, TriggeredAt: now,
-	}
-	switch {
-	case blockedStatus != "":
-		run.Status, run.Note = blockedStatus, blockedNote
-	case receipt.Status == SearchStatusCompleted:
-		run.Status, run.SearchID = RuleRunStatusCompleted, receipt.SearchID
-	default:
-		run.Status, run.SearchID, run.FailureCode = RuleRunStatusFailed, receipt.SearchID, receipt.FailureCode
-	}
+type claimedRulePeriod struct {
+	Run                     RuleRunView
+	Query                   string
+	ExpectedProfileRevision uint64
+}
 
-	var summary RuleRunSummary
-	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+func summaryFromStoredRun(row searchRuleRunRecord) (RuleRunSummary, error) {
+	var run RuleRunView
+	if err := json.Unmarshal([]byte(row.Body), &run); err != nil {
+		return RuleRunSummary{}, err
+	}
+	if run.RuleID != row.RuleID || run.Period != row.Period || run.RequestID != row.RequestID || run.Status != row.Status {
+		return RuleRunSummary{}, errors.New("invalid persisted career search rule run")
+	}
+	return RuleRunSummary{RuleID: row.RuleID, Period: row.Period, RequestID: row.RequestID, Status: run.Status}, nil
+}
+
+func decodeRuleRunIntent(row searchRuleRunRecord) (claimedRulePeriod, error) {
+	var body searchRuleRunBody
+	if err := json.Unmarshal([]byte(row.Body), &body); err != nil {
+		return claimedRulePeriod{}, err
+	}
+	if body.Status != RuleRunStatusStarted || body.RuleID != row.RuleID || body.Period != row.Period ||
+		body.RequestID != row.RequestID || body.Query == "" || body.RequestID != fmt.Sprintf("rule:%s:%d", row.RuleID, row.Period) {
+		return claimedRulePeriod{}, errors.New("invalid persisted career search rule claim")
+	}
+	return claimedRulePeriod{Run: body.RuleRunView, Query: body.Query, ExpectedProfileRevision: body.ExpectedProfileRevision}, nil
+}
+
+func (o *Office) claimRulePeriod(ctx context.Context, s Scope, scanned searchRuleRecord, now time.Time) (claimedRulePeriod, *searchRuleRunRecord, error) {
+	var claim claimedRulePeriod
+	var existing *searchRuleRunRecord
+	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row searchRuleRecord
-		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, rule.ID).
-			First(&row).Error
-		if errors.Is(e, gorm.ErrRecordNotFound) {
-			return ErrRuleNotFound
-		}
-		if e != nil {
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, scanned.ID).First(&row).Error; e != nil {
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				return errRuleCandidateStale
+			}
 			return e
 		}
-		summary = RuleRunSummary{RuleID: row.ID, Period: period, RequestID: requestID, Status: run.Status}
-
-		// A duplicated trigger for the same period reconciles to the stored
-		// run instead of duplicating history.
-		var existing searchRuleRunRecord
-		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("tenant_id=? AND user_id=? AND rule_id=? AND period=?", s.TenantID, s.UserID, row.ID, period).
-			First(&existing).Error
+		if row.Status != RuleStatusEnabled || row.Revision != scanned.Revision || row.Query != scanned.Query ||
+			row.LastPeriod != scanned.LastPeriod || scanned.NextDueAt == nil || row.NextDueAt == nil ||
+			!row.NextDueAt.Equal(*scanned.NextDueAt) || row.NextDueAt.After(now) {
+			return errRuleCandidateStale
+		}
+		period := scanned.LastPeriod + 1
+		var run searchRuleRunRecord
+		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id=? AND user_id=? AND rule_id=? AND period=?", s.TenantID, s.UserID, row.ID, period).First(&run).Error
 		if e == nil {
-			var stored RuleRunView
-			if json.Unmarshal([]byte(existing.Body), &stored) == nil {
-				summary.Status = stored.Status
-			}
+			existing = &run
 			return nil
 		}
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
-		if row.LastPeriod >= period {
-			// A concurrent writer already moved past this period; the run row
-			// above did not exist and nothing new may be created for it.
-			return nil
+		var head profile
+		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			head.Revision = 0
+		} else if e != nil {
+			return e
 		}
+		requestID := fmt.Sprintf("rule:%s:%d", row.ID, period)
+		claim.Run = RuleRunView{Kind: RuleKindRun, RuleID: row.ID, Period: period, RequestID: requestID, Status: RuleRunStatusStarted, TriggeredAt: now}
+		claim.Query = row.Query
+		claim.ExpectedProfileRevision = head.Revision
+		body, marshalErr := json.Marshal(searchRuleRunBody{RuleRunView: claim.Run, Query: claim.Query, ExpectedProfileRevision: head.Revision})
+		if marshalErr != nil {
+			return marshalErr
+		}
+		run = searchRuleRunRecord{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, RuleID: row.ID,
+			Period: period, RequestID: requestID, Status: RuleRunStatusStarted, Body: string(body), CreatedAt: now}
+		if e = tx.Create(&run).Error; e != nil {
+			return e
+		}
+		existing = &run
+		return nil
+	})
+	return claim, existing, err
+}
 
-		runID := uuid.NewString()
-		body, e := json.Marshal(run)
+func (o *Office) recoverRuleRun(ctx context.Context, s Scope, row searchRuleRunRecord, now time.Time) (RuleRunSummary, error) {
+	if row.Status != RuleRunStatusStarted {
+		return summaryFromStoredRun(row)
+	}
+	claim, err := decodeRuleRunIntent(row)
+	if err != nil {
+		return RuleRunSummary{}, err
+	}
+	return o.executeClaimedRuleRun(ctx, s, claim, now)
+}
+
+func (o *Office) executeClaimedRuleRun(ctx context.Context, s Scope, claim claimedRulePeriod, now time.Time) (RuleRunSummary, error) {
+	run := claim.Run
+	var receipt SearchOnceReceipt
+	runResults := false
+	if len(o.ruleVettedSources()) == 0 {
+		run.Status, run.Note = RuleRunStatusNoVettedSources, ruleRunNoteNoVettedSources
+	} else {
+		input := SearchOnceInput{RequestID: run.RequestID, Query: claim.Query, ExpectedRevision: claim.ExpectedProfileRevision}
+		result, searchErr := o.SearchOnce(ctx, input)
+		if errors.Is(searchErr, ErrRevisionConflict) {
+			// The rule claim has already committed. If SearchOnce has no row yet,
+			// refresh only its profile pin and retry the same request identity.
+			var searchRow searchRecord
+			lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, run.RequestID).First(&searchRow).Error
+			if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				var head profile
+				lookupErr = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
+				if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+					head.Revision = 0
+					lookupErr = nil
+				}
+				if lookupErr == nil {
+					result, searchErr = o.SearchOnce(ctx, SearchOnceInput{RequestID: run.RequestID, Query: claim.Query, ExpectedRevision: head.Revision})
+				}
+			} else if lookupErr == nil {
+				result, searchErr = o.searchOnceUnderStoredFingerprint(ctx, s, run.RequestID)
+			}
+		} else if errors.Is(searchErr, ErrIdempotencyConflict) {
+			// The period request ID can outlive the profile revision used by
+			// SearchOnce's first claim. Recover it under that durable fingerprint.
+			result, searchErr = o.searchOnceUnderStoredFingerprint(ctx, s, run.RequestID)
+		}
+		if errors.Is(searchErr, ErrSearchQuotaRefused) {
+			run.Status, run.Note = RuleRunStatusBlockedNoQuota, ruleRunNoteNoQuota
+		} else if searchErr != nil {
+			return RuleRunSummary{}, searchErr
+		} else {
+			receipt, runResults = result, true
+			if receipt.Status == SearchStatusCompleted {
+				run.Status, run.SearchID = RuleRunStatusCompleted, receipt.SearchID
+			} else {
+				run.Status, run.SearchID, run.FailureCode = RuleRunStatusFailed, receipt.SearchID, receipt.FailureCode
+			}
+		}
+	}
+	var summary RuleRunSummary
+	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rule searchRuleRecord
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, run.RuleID).First(&rule).Error; e != nil {
+			return e
+		}
+		var current searchRuleRunRecord
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND rule_id=? AND period=?", s.TenantID, s.UserID, run.RuleID, run.Period).First(&current).Error; e != nil {
+			return e
+		}
+		if current.Status != RuleRunStatusStarted {
+			var e error
+			summary, e = summaryFromStoredRun(current)
+			return e
+		}
+		if current.RequestID != run.RequestID {
+			return ErrIdempotencyConflict
+		}
+		body, e := json.Marshal(searchRuleRunBody{RuleRunView: run, Query: claim.Query, ExpectedProfileRevision: claim.ExpectedProfileRevision})
 		if e != nil {
 			return e
 		}
-		if e = tx.Create(&searchRuleRunRecord{
-			ID: runID, TenantID: s.TenantID, UserID: s.UserID, RuleID: row.ID,
-			Period: period, RequestID: requestID, Status: run.Status,
-			Body: string(body), CreatedAt: now,
-		}).Error; e != nil {
+		if e = tx.Model(&searchRuleRunRecord{}).Where("id=?", current.ID).Updates(map[string]any{"status": run.Status, "body": string(body)}).Error; e != nil {
 			return e
 		}
-		// One discovery todo per discovered job link; the unique index makes
-		// repeated surfacing idempotent, across periods and across rules.
-		if ran && len(receipt.Results) > 0 {
+		if runResults && len(receipt.Results) > 0 {
 			for _, result := range receipt.Results {
-				todo := searchDiscoveryTodoRecord{
-					ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID,
-					RuleID: row.ID, RunID: runID, SearchID: receipt.SearchID,
-					SourceID: result.SourceID, Link: result.Link,
-					Status: RuleTodoStatusOpen, CreatedAt: now,
-				}
+				todo := searchDiscoveryTodoRecord{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, RuleID: rule.ID, RunID: current.ID,
+					SearchID: receipt.SearchID, SourceID: result.SourceID, Link: result.Link, Status: RuleTodoStatusOpen, CreatedAt: now}
 				if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&todo).Error; e != nil {
 					return e
 				}
 			}
 		}
-		// If the rule was paused or disabled while the search was in flight,
-		// the run stays recorded (it happened) but holds no next due plan.
-		nextDue := planNextDue(row.Status, now, row.IntervalMinutes)
-		return tx.Model(&searchRuleRecord{}).
-			Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, row.ID).
-			Updates(map[string]any{
-				"last_period": period, "next_due_at": nextDue, "updated_at": now,
-			}).Error
+		if rule.LastPeriod < run.Period {
+			nextDue := planNextDue(rule.Status, now, rule.IntervalMinutes)
+			if e = tx.Model(&searchRuleRecord{}).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, rule.ID).
+				Updates(map[string]any{"last_period": run.Period, "next_due_at": nextDue, "updated_at": now}).Error; e != nil {
+				return e
+			}
+		}
+		summary = RuleRunSummary{RuleID: run.RuleID, Period: run.Period, RequestID: run.RequestID, Status: run.Status}
+		return nil
 	})
 	if err != nil {
 		return RuleRunSummary{}, err
 	}
 	return summary, nil
-}
-
-func (o *Office) currentDueRule(ctx context.Context, s Scope, snapshot searchRuleRecord) (*searchRuleRecord, error) {
-	var current searchRuleRecord
-	err := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, snapshot.ID).First(&current).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if current.Status != RuleStatusEnabled || current.Revision != snapshot.Revision || current.Query != snapshot.Query {
-		return nil, nil
-	}
-	return &current, nil
 }
