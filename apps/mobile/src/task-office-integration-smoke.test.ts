@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeUnauthenticatedRead, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
+import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeServerWriteAuthBoundary, runServerAuthorizationGate, probeUnauthenticatedRead, probeUnauthenticatedWrite, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
 import { createTaskOffice, TaskOfficeError, type TaskOffice } from '@weknora/mobile-core';
 
 test('Task Office live integration remains opt-in and requires all credentials', () => {
@@ -26,7 +26,9 @@ test('Task Office evidence reports unauthenticated rejection and never serialize
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: 'https://weknora.example.org',
     unauthenticatedRead: 'rejected',
+    unauthenticatedWrite: 'rejected',
     serverAuthBoundary: 'unreachable',
+    serverWriteAuthBoundary: 'not-attempted',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -48,6 +50,9 @@ test('pre-login probe accepts only typed scope rejection and detects fail-open',
       async overview() { backendCalls += 1; throw new Error('unexpected transport'); },
       async list() { backendCalls += 1; return { items: [] }; },
       async archive() { backendCalls += 1; }, async restore() { backendCalls += 1; },
+      async createSession() { throw new Error('unexpected transport'); },
+      async start() { throw new Error('unexpected transport'); },
+      async lookup() { throw new Error('unexpected transport'); },
     },
   });
   assert.equal(await probeUnauthenticatedRead(unauthenticated), 'rejected');
@@ -58,7 +63,26 @@ test('pre-login probe accepts only typed scope rejection and detects fail-open',
   assert.equal(backendCalls, 2, 'the real no-lease Office made no backend call; only deliberately broken adapters did');
 });
 
-test('server auth boundary probe rejects only on 401/403 without credentials (ocr2-043)', async () => {
+test('pre-login write probe requires the client scope lease and never reaches the backend', async () => {
+  let backendWrites = 0;
+  const unauthenticated = createTaskOffice({
+    lease: () => undefined,
+    backend: {
+      async overview() { return { needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '' }; },
+      async list() { return { items: [] }; },
+      async archive() { backendWrites += 1; }, async restore() { backendWrites += 1; },
+      async createSession() { throw new Error('unexpected transport'); },
+      async start() { throw new Error('unexpected transport'); },
+      async lookup() { throw new Error('unexpected transport'); },
+    },
+  });
+  assert.equal(await probeUnauthenticatedWrite(unauthenticated), 'rejected');
+  const broken: TaskOffice = { ...unauthenticated, async archive() { backendWrites += 1; } };
+  assert.equal(await probeUnauthenticatedWrite(broken), 'failed-open');
+  assert.equal(backendWrites, 1, 'only the deliberately broken Office reaches the write adapter');
+});
+
+test('server auth boundary rejects only explicit 401/403, and treats redirects and unauthenticated success as fail-open (ocr2-043)', async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const install = (respond: () => Promise<Response>): void => {
@@ -78,18 +102,69 @@ test('server auth boundary probe rejects only on 401/403 without credentials (oc
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
     install(async () => status(302));
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
+    install(async () => new Response('', { status: 302, headers: { location: '/login' } }));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
     install(async () => { throw new TypeError('network down'); });
     assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'unreachable');
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 6);
     for (const call of calls) {
       assert.ok(call.url.startsWith('https://weknora.example.org/api/v1/workbench/executions'), call.url);
       assert.equal(call.init?.method, 'GET');
-      assert.equal(call.init?.redirect, 'error');
+      assert.equal(call.init?.redirect, 'manual');
       assert.equal(Object.keys(call.init?.headers ?? {}).includes('authorization'), false, 'no credentials are sent');
     }
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('server archive probe posts to a unique sentinel with no credentials and manual redirects', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const request = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('{}', { status: 403 });
+  }) as typeof fetch;
+  assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', request), 'rejected');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.url, /^https:\/\/weknora\.example\.org\/api\/v1\/workbench\/tasks\/unauthenticated-smoke-[^/]+\/archive$/);
+  assert.equal(calls[0]!.init?.method, 'POST');
+  assert.equal(calls[0]!.init?.redirect, 'manual');
+  assert.equal(Object.keys(calls[0]!.init?.headers ?? {}).some((key) => key.toLowerCase() === 'authorization'), false);
+  for (const status of [200, 302, 404, 500]) {
+    assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', (async () => new Response('{}', { status })) as typeof fetch), 'failed-open');
+  }
+  assert.equal(await probeServerWriteAuthBoundary('https://weknora.example.org', (async () => { throw new TypeError('offline'); }) as typeof fetch), 'unreachable');
+});
+
+test('server authorization sequencing stops before sign-in and writes for failed-open or unreachable probes', async () => {
+  for (const failed of ['failed-open', 'unreachable'] as const) {
+    const events: string[] = [];
+    const result = await runServerAuthorizationGate(
+      async () => { events.push('server-read'); return failed; },
+      async () => { events.push('server-write'); return 'rejected'; },
+      async () => { events.push('sign-in'); events.push('archive-write'); },
+    );
+    assert.deepEqual(events, ['server-read']);
+    assert.equal(result.read, failed);
+    assert.equal(result.write, 'not-attempted');
+  }
+  for (const failed of ['failed-open', 'unreachable'] as const) {
+    const events: string[] = [];
+    const result = await runServerAuthorizationGate(
+      async () => { events.push('server-read'); return 'rejected'; },
+      async () => { events.push('server-write'); return failed; },
+      async () => { events.push('sign-in'); events.push('archive-write'); },
+    );
+    assert.deepEqual(events, ['server-read', 'server-write']);
+    assert.equal(result.write, failed);
+  }
+  const passedEvents: string[] = [];
+  await runServerAuthorizationGate(
+    async () => { passedEvents.push('server-read'); return 'rejected'; },
+    async () => { passedEvents.push('server-write'); return 'rejected'; },
+    async () => { passedEvents.push('sign-in'); passedEvents.push('archive-write'); },
+  );
+  assert.deepEqual(passedEvents, ['server-read', 'server-write', 'sign-in', 'archive-write']);
 });
 
 test('archive smoke restores in finally when archived listing fails, and exposes restore failure', async () => {

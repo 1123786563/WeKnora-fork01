@@ -14,9 +14,11 @@ export interface TaskOfficeIntegrationEvidence {
   /** 客户端 lease gate 拒绝（signIn 前 scopeLease() 恒 undefined，见
    * probeUnauthenticatedRead）——只证明本地编排层 fail-closed。 */
   unauthenticatedRead: 'rejected' | 'failed-open';
-  /** OCR ocr2-043：无凭证直连服务端 executions 端点的真实鉴权边界
-   * （401/403 → rejected；其余 2xx/4xx → failed-open；不可达 → unreachable）。 */
+  /** 客户端 lease gate 拒绝未登录写入（archive 在 signIn 前同样无 scope lease）。 */
+  unauthenticatedWrite: 'rejected' | 'failed-open';
+  /** 无凭证直连服务端 executions 端点的读鉴权边界（401/403 才算拒绝）。 */
   serverAuthBoundary: 'rejected' | 'failed-open' | 'unreachable';
+  serverWriteAuthBoundary: 'rejected' | 'failed-open' | 'unreachable' | 'not-attempted';
   home: 'loaded' | 'failed';
   sections: { needsMe: number; running: number; recentlyCompleted: number; unreadNotifications: number } | 'unavailable';
   listSearch: 'matched' | 'no-match' | 'failed';
@@ -37,21 +39,60 @@ export async function probeUnauthenticatedRead(office: TaskOffice): Promise<'rej
   }
 }
 
+/** Client-gate write probe: an unauthenticated archive must be rejected before
+ * the backend adapter can receive the sentinel task ID. */
+export async function probeUnauthenticatedWrite(office: TaskOffice): Promise<'rejected' | 'failed-open'> {
+  try {
+    await office.archive('unauthenticated-smoke-probe');
+    return 'failed-open';
+  } catch (error) {
+    return error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED' ? 'rejected' : 'failed-open';
+  }
+}
+
 /** OCR ocr2-043：无凭证直连真实生产端点，证明服务端鉴权边界 fail-closed。
  * GET /api/v1/workbench/executions 不带任何凭证：401/403 才算 rejected；
- * 任何其他状态（含重定向后 200 的登录页）都是 failed-open；网络不可达如实记
- * unreachable。redirect:'error' 防止跟随后跳到登录页被误判。 */
+ * 任何其他状态（包括 3xx 登录重定向）都是 failed-open；网络不可达如实记
+ * unreachable。redirect:'manual' 保留原始 3xx 响应，避免跟随后把登录页 200 误判。 */
 export async function probeServerAuthBoundary(deploymentOrigin: string): Promise<'rejected' | 'failed-open' | 'unreachable'> {
   try {
     const response = await fetch(new URL('/api/v1/workbench/executions?limit=1', deploymentOrigin).toString(), {
       method: 'GET',
-      redirect: 'error',
+      redirect: 'manual',
       headers: { accept: 'application/json' },
     });
     return response.status === 401 || response.status === 403 ? 'rejected' : 'failed-open';
   } catch {
     return 'unreachable';
   }
+}
+
+/** Credential-free archive route probe. A unique sentinel prevents touching a real task;
+ * authorization must reject before its nonexistent ID can produce a resource response. */
+export async function probeServerWriteAuthBoundary(
+  deploymentOrigin: string,
+  request: typeof fetch = fetch,
+): Promise<'rejected' | 'failed-open' | 'unreachable'> {
+  const sentinel = `unauthenticated-smoke-${globalThis.crypto.randomUUID()}`;
+  try {
+    const response = await request(new URL(`/api/v1/workbench/tasks/${encodeURIComponent(sentinel)}/archive`, deploymentOrigin).toString(), {
+      method: 'POST', redirect: 'manual', headers: { accept: 'application/json' },
+    });
+    return response.status === 401 || response.status === 403 ? 'rejected' : 'failed-open';
+  } catch { return 'unreachable'; }
+}
+
+/** Runs server probes in order and reaches the continuation only after both reject. */
+export async function runServerAuthorizationGate<T>(
+  read: () => Promise<'rejected' | 'failed-open' | 'unreachable'>,
+  write: () => Promise<'rejected' | 'failed-open' | 'unreachable'>,
+  proceed: () => Promise<T>,
+): Promise<{ read: 'rejected' | 'failed-open' | 'unreachable'; write: 'rejected' | 'failed-open' | 'unreachable' | 'not-attempted'; value?: T }> {
+  const readResult = await read();
+  if (readResult !== 'rejected') return { read: readResult, write: 'not-attempted' };
+  const writeResult = await write();
+  if (writeResult !== 'rejected') return { read: readResult, write: writeResult };
+  return { read: readResult, write: writeResult, value: await proceed() };
 }
 
 /** Archive at most one live task, and always attempt to restore it after a successful archive. */
@@ -131,7 +172,9 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: config.deploymentOrigin,
     unauthenticatedRead: 'failed-open',
+    unauthenticatedWrite: 'failed-open',
     serverAuthBoundary: 'unreachable',
+    serverWriteAuthBoundary: 'not-attempted',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -152,9 +195,15 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
   });
-  // OCR ocr2-043：先直连服务端证明真实鉴权边界（此前仅客户端 gate，探针
-  // 从未触达服务端，'rejected' 恒真，无法发现服务端鉴权回归）。
-  evidence.serverAuthBoundary = await probeServerAuthBoundary(config.deploymentOrigin);
+  // 先直连服务端读写路由验证鉴权；任一失败都在客户端探针、登录和写入前终止。
+  const serverGate = await runServerAuthorizationGate(
+    () => probeServerAuthBoundary(config.deploymentOrigin),
+    () => probeServerWriteAuthBoundary(config.deploymentOrigin),
+    async () => true,
+  );
+  evidence.serverAuthBoundary = serverGate.read;
+  evidence.serverWriteAuthBoundary = serverGate.write;
+  if (serverGate.value !== true) { runtime.dispose(); return evidence; }
   // 客户端 gate 探针：signIn 前的 Task Office 编排层必须先于传输层拒绝。
   const unauthenticatedOffice: TaskOffice = createTaskOffice({
     backend: createTaskOfficeRemote({
@@ -164,7 +213,8 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     lease: () => runtime.scopeLease(),
   });
   evidence.unauthenticatedRead = await probeUnauthenticatedRead(unauthenticatedOffice);
-  if (evidence.unauthenticatedRead !== 'rejected') { runtime.dispose(); return evidence; }
+  evidence.unauthenticatedWrite = await probeUnauthenticatedWrite(unauthenticatedOffice);
+  if (evidence.unauthenticatedRead !== 'rejected' || evidence.unauthenticatedWrite !== 'rejected') { runtime.dispose(); return evidence; }
   let snapshot: RuntimeSnapshot;
   try {
     snapshot = await runtime.signIn({
