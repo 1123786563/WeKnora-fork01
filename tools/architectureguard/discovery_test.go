@@ -181,7 +181,6 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
-<<<<<<< HEAD
 // issue #106 routes_plugins.go：首轮门控修复（dfc295b4e）时仅 1 条
 // /plugins/installations/preview（565 literal + 69 + 0 = 634）；其后 T06-T19
 // 治理端点落地，现共 15 条（全部 literal、全部 default-deny X-API-Key，apiKeyRoute
@@ -191,26 +190,10 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // worker 23+23 两侧一致；hooks 58。 ----
 
 const (
-	wantRouteLiteral  = 633
+	wantRouteLiteral  = 636
 	wantRouteAPIKey   = 95
 	wantRouteHandle   = 0
-	wantRouteTotal    = 728
-=======
-// worker 23+23 两侧一致；hooks 58。
-// #81 增量（issue-72(#81): purchase endpoints，69fd9b16d 前置提交）：
-// routes_commercial.go +2 literal（POST /purchases、GET /purchase）、
-// container.go +1 Invoke（SetPurchaseService 装配）→ 566 literal + 69 + 0 =
-// 635；hooks 59。审查第 2 轮 F8：基线随代码同步（代码为事实源）。
-// #84 增量（issue-72(#84): over_payment disposal drain + admin surface）：
-// routes_commercial.go +2 literal（GET /POST /admin/payment-anomalies 组）→
-// 568 literal + 69 + 0 = 637。 ----
-
-const (
-	wantRouteLiteral  = 568
-	wantRouteAPIKey   = 69
-	wantRouteHandle   = 0
-	wantRouteTotal    = 637
->>>>>>> codex/issue-72-dimension-owner-ruling
+	wantRouteTotal    = 731
 	wantWorkersPerMix = 23
 	wantHooks         = 63
 )

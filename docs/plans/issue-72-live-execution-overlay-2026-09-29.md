@@ -37,10 +37,10 @@ I compared SHA-256 values for the integration checkout at `8329b85d4` with the i
 | `internal/handler/commercial.go` | `a10d2af1fd253bf6be26ed915f3b0511b0f8c0919c0c2f27ba97ddb1ae2615db` |
 | `internal/handler/commercial_anomaly_test.go` | `028e6965247a4ab6c06c6771ca4c37749ae7c6c1b0144b29608c0c00f15f9497` |
 | `internal/router/routes_commercial.go` | `43f2d064087898ef5e6a3a59769c78b05d09f237011f8bcd85c70f48d994e1bc` |
-| `migrations/versioned/000189_commercial_fulfillment_exceptions.up.sql` | `2a0be00b0e7109ac8622c034e79b0f265fa8bcc541c6e6121771f9c2a005bd74` |
-| `migrations/versioned/000189_commercial_fulfillment_exceptions.down.sql` | `6a67323850baac981824e1c9c2f14ad9fcfcb40986fb48c8d940adc612095512` |
-| `migrations/sqlite/000110_commercial_fulfillment_exceptions.up.sql` | `ccf238910b2915215b26271a28f0065cef12547f7e54a778b076e984f73a4ee2` |
-| `migrations/sqlite/000110_commercial_fulfillment_exceptions.down.sql` | `6a67323850baac981824e1c9c2f14ad9fcfcb40986fb48c8d940adc612095512` |
+| `migrations/versioned/000206_commercial_fulfillment_exceptions.up.sql` | `2a0be00b0e7109ac8622c034e79b0f265fa8bcc541c6e6121771f9c2a005bd74` |
+| `migrations/versioned/000206_commercial_fulfillment_exceptions.down.sql` | `6a67323850baac981824e1c9c2f14ad9fcfcb40986fb48c8d940adc612095512` |
+| `migrations/sqlite/000127_commercial_fulfillment_exceptions.up.sql` | `ccf238910b2915215b26271a28f0065cef12547f7e54a778b076e984f73a4ee2` |
+| `migrations/sqlite/000127_commercial_fulfillment_exceptions.down.sql` | `6a67323850baac981824e1c9c2f14ad9fcfcb40986fb48c8d940adc612095512` |
 
 The initial Task 2 implementation report and validation record package/service/handler/router checks at their recorded checkpoint; fix 1 adds a passing focused and full commercial service run, and fix 2 records another passing focused and full commercial service run against the final fulfillment file hashes listed above. The fix 2 reviewer independently checked the exact final two-file hashes and passed Spec compliance and quality; the validation record identifies commit `aaf0b4960c215f71395c12455b3016df3b6a54f2`. The original report/validation do not alone prove the post-fix files were tested. These records are stored in the Task 2 worktree at `/Users/wuyongjun/.codex/worktrees/issue72-r8-late-success/WeKnora-fork01/.superpowers/sdd/issue-72-ocr-findings-r8/`; they are not copied into the integration worktree. PostgreSQL runtime migration verification remains unavailable. This verifies Task 2 code integration only, not whole Issue #84 acceptance, PostgreSQL runtime behavior, or overall #72 completion.
 

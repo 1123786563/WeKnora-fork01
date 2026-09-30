@@ -38,7 +38,7 @@ The only safe concurrency now is this plan's drafting with #86 repair; no #87 im
 
 ## R16 migration allocation correction
 
-The integration branch contains R8 Task 2 migration `versioned/000189_commercial_fulfillment_exceptions` paired with `sqlite/000110_commercial_fulfillment_exceptions`. The same R8 plan reserves `versioned/000190` + `sqlite/000111` for payment anomaly conflicts and `versioned/000191` + `sqlite/000112` for terminal outbox reasons. Therefore this plan assigns its three schema-bearing tasks as follows; PostgreSQL and SQLite numbering are separate sequences, not numerically paired streams:
+The integration branch contains R8 Task 2 migration `versioned/000206_commercial_fulfillment_exceptions` paired with `sqlite/000127_commercial_fulfillment_exceptions`. The same R8 plan reserves `versioned/000190` + `sqlite/000111` for payment anomaly conflicts and `versioned/000191` + `sqlite/000112` for terminal outbox reasons. Therefore this plan assigns its three schema-bearing tasks as follows; PostgreSQL and SQLite numbering are separate sequences, not numerically paired streams:
 
 | #87 schema task | Versioned/PostgreSQL | SQLite | Owned schema |
 | --- | --- | --- | --- |

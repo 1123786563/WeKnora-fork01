@@ -63,7 +63,7 @@ The SDD implementation/review loop is serial. Tasks 1–5 touch related commerci
 
 ### Task 2: Keep paid top-up winner failures visible and replayable
 
-**Dependencies:** Task 1 verified; architecture report `/tmp/issue72-r7-conflict-attention-architecture-20260929.md` §2. **Owner:** backend_implementer. **Validator:** backend_validator. **Files:** `internal/modules/commercial/service/commercial/fulfillment.go`, its tests, `internal/handler/commercial.go`, `internal/router/routes_commercial.go`, handler/router tests, and new migration/model files `migrations/sqlite/000110_commercial_fulfillment_exceptions.{up,down}.sql` and `migrations/versioned/000189_commercial_fulfillment_exceptions.{up,down}.sql`.
+**Dependencies:** Task 1 verified; architecture report `/tmp/issue72-r7-conflict-attention-architecture-20260929.md` §2. **Owner:** backend_implementer. **Validator:** backend_validator. **Files:** `internal/modules/commercial/service/commercial/fulfillment.go`, its tests, `internal/handler/commercial.go`, `internal/router/routes_commercial.go`, handler/router tests, and new migration/model files `migrations/sqlite/000127_commercial_fulfillment_exceptions.{up,down}.sql` and `migrations/versioned/000206_commercial_fulfillment_exceptions.{up,down}.sql`.
 
 **Consumes:** `fulfillEventPayload`; `winningPaymentTransaction`; `TopUpOrderLines`; `domain.FulfillmentKey(order.ID, "credits")`; platform middleware `RequirePlatformRefundReviewer`.
 
