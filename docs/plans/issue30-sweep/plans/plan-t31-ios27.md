@@ -38,6 +38,9 @@
 | `apps/mobile/app.json` | Expo scene-support opt-in and explicit iOS deployment target. |
 | `pnpm-lock.yaml` | Resolved workspace dependency graph. |
 | `apps/mobile/src/native-project-config.test.ts` | Public config invariants for SDK floor, scene opt-in, and iOS minimum. |
+| `apps/mobile/src/android-release-config.test.ts` | Keep the release dependency contract aligned to the SDK57 versions selected by Expo. |
+| `apps/mobile/src/release-deps.test.ts` | Update the direct Expo 55 major-version assertions affected by the SDK upgrade. |
+| `apps/mobile/src/app-smoke.test.tsx` | Keep its React module stub compatible with SDK57 React 19.2.3 JSX runtime, preserving existing behavior assertions. |
 | `docs/testing/mobile-runtime-login-device-acceptance.md` | Add the iOS 27 simulator build/install/start evidence and remaining real staging-device cases. |
 
 Generated `apps/mobile/ios/` output is verification-only and must not be committed.
@@ -114,3 +117,13 @@ The existing runtime API and app routes remain unchanged. Expo prebuild must gen
 ## Handoff
 
 Please review this plan amendment. Does it capture the intended iOS 27 compatibility change? After approval, execute it with `superpowers:subagent-driven-development` on a dedicated branch/worktree. Do not update the parent Ticket as complete until real staging login/OIDC and Android acceptance are also resolved.
+
+## Issue #30 execution ledger linkage
+
+- Root scope: Issue #30 → Issue #31; DAG node #31 (T01, B0), local executable subset from `docs/plans/issue30-sweep/dag.md` and snapshot `docs/plans/issue30-sweep/issues/issue-31.md`.
+- Execution worktree: `.worktrees/issue30-b0-t31`; branch `codex/issue30-b0-t31`; starting BASE `db234c5eb171f2dde7427d382b55b503a038f879`.
+- This plan is an execution copy of `docs/superpowers/plans/2026-09-21-t01-ios27-scene-lifecycle.md`; the approved product spec remains authoritative. User authorized the full Issue #30 execution and supplied SDD; plan is being executed without a second confirmation request.
+- Ruling: the existing staging-login/OIDC/Android device checks remain blocked-env and are not simulated; continue only the independently verifiable scene lifecycle/config/build/startup subset and record those external cases pending.
+- Verification tasks 1–3 are one vertical task stream: config contract RED; SDK/config upgrade; generated iOS 27 project build/startup plus acceptance record. Do not commit generated `apps/mobile/ios/` output.
+
+- Ruling 2026-09-29: current official Expo SDK 57 reference says minimum iOS 16.4+ and docs deprecate plugin `ios.deploymentTarget` in favor of top-level Expo `ios.deploymentTarget`; update the original plan's iOS 16.0/plugin placement to 16.4/top-level property. Evidence: [Expo SDK reference](https://docs.expo.dev/versions/latest/) and [Expo BuildProperties docs](https://docs.expo.dev/versions/latest/sdk/build-properties/). Cost if wrong: an unnecessary 0.4 iOS minimum increase or config placement could reduce supported device range/build reproducibility; generated project verification will catch config drift.
