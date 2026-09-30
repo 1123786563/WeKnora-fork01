@@ -139,6 +139,10 @@ type Admission struct {
 	// AgentID is explicit authorization input for the final serialized admission
 	// gate; it is never inferred from the client-controlled snapshot.
 	AgentID string
+	// LocalAgentVersionID and ReleaseID are trusted server-resolved Marketplace
+	// identity pins. They are never read from client JSON.
+	LocalAgentVersionID string
+	ReleaseID           string
 	// Usage binding is server-owned admission metadata. It is persisted in
 	// the immutable run snapshot and copied into every worker Fence; clients
 	// and provider observations never populate these fields.

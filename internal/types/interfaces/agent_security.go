@@ -15,6 +15,8 @@ const (
 	AgentSecurityVerdictDependencyBlocked = "dependency-blocked"
 	AgentSecurityInFlightCancel           = "cancel"
 	AgentSecurityInFlightAllow            = "allow"
+	AgentSecurityRunCancellationPending   = "pending"
+	AgentSecurityRunCancellationComplete  = "complete"
 )
 
 type AgentSecurityVerdict struct {
@@ -49,6 +51,7 @@ type AgentSecurityRevocationView struct {
 	RevokedAt            time.Time                     `json:"revoked_at"`
 	InFlightDisposition  string                        `json:"in_flight_disposition"`
 	CanceledRunCount     int64                         `json:"canceled_run_count"`
+	RunCancellationState string                        `json:"run_cancellation_state"`
 	ListingID            string                        `json:"listing_id,omitempty"`
 	ReleaseID            string                        `json:"release_id,omitempty"`
 	ReplacementReleaseID string                        `json:"replacement_release_id,omitempty"`
@@ -63,4 +66,5 @@ type AgentSecurityService interface {
 	GetRevocation(context.Context, uint64, string) (AgentSecurityRevocationView, error)
 	VerdictForAgent(context.Context, uint64, string) (AgentSecurityVerdict, error)
 	ReleaseAdmission(context.Context, uint64, string) error
+	ResolvePublishedAgentVersion(context.Context, uint64, string) (AgentVersionSnapshot, string, bool, error)
 }

@@ -40,18 +40,19 @@ func (s *AgentRunStore) DB() *gorm.DB {
 }
 
 type agentRunRow struct {
-	TenantID                                                              uint64
-	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
-	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason           string
-	Snapshot                                                              string
-	GraphVersion, SDKVersion                                              string
-	SchemaVersion                                                         int
-	LeaseOwner                                                            string
-	LeaseUntil                                                            *time.Time
-	Epoch, Revision                                                       int64
-	MaxRounds, MaxToolCalls                                               int
-	TokenBudget                                                           int64
-	Deadline, CreatedAt, UpdatedAt                                        time.Time
+	TenantID                                                                           uint64
+	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash              string
+	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason                        string
+	Snapshot                                                                           string
+	GraphVersion, SDKVersion                                                           string
+	SchemaVersion                                                                      int
+	LeaseOwner                                                                         string
+	SecurityAgentID, SecurityLocalAgentVersionID, SecurityReleaseID, SecurityPinSource string
+	LeaseUntil                                                                         *time.Time
+	Epoch, Revision                                                                    int64
+	MaxRounds, MaxToolCalls                                                            int
+	TokenBudget                                                                        int64
+	Deadline, CreatedAt, UpdatedAt                                                     time.Time
 }
 
 func (agentRunRow) TableName() string { return "agent_runs" }
@@ -183,7 +184,7 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		user.ID = in.UserMessageID
 	}
 	var result agentruntime.Run
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = withTenantSecurityGuard(ctx, s.db, in.Key.TenantID, func(tx *gorm.DB) error {
 		// The write locks this session before any reads. This also avoids a
 		// deferred SQLite read transaction trying to upgrade to a write lock.
 		lock := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL",
@@ -220,6 +221,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if in.AgentID == "" && (in.LocalAgentVersionID != "" || in.ReleaseID != "") {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
 		if strings.TrimSpace(in.AgentID) != "" {
 			// Serialize against RetireVariant before reading lifecycle state. The
 			// no-op UPDATE locks every matching tenant-local variant row on
@@ -242,6 +246,21 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 				return agentruntime.ErrAgentUseDenied
 			}
 		}
+		var releaseID string
+		var adopted bool
+		if in.AgentID != "" {
+			var admissionErr error
+			releaseID, adopted, admissionErr = checkLocalAgentReleaseAdmissionTx(tx, in.Key.TenantID, in.AgentID, in.LocalAgentVersionID)
+			if admissionErr != nil {
+				return admissionErr
+			}
+			if adopted && (in.ReleaseID == "" || releaseID != in.ReleaseID) {
+				return ErrAgentSecurityReleaseUnresolvable
+			}
+			if !adopted && in.ReleaseID != "" {
+				return ErrAgentSecurityReleaseUnresolvable
+			}
+		}
 		slot := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id IS NULL",
 			in.Key.TenantID, in.SessionID).UpdateColumn("active_agent_run_id", in.Key.RunID)
 		if slot.Error != nil {
@@ -258,12 +277,24 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 			Status: "queued", Snapshot: string(in.Snapshot),
 			GraphVersion: "1", SchemaVersion: 1, Deadline: in.Deadline,
 		}
+		if adopted {
+			row.SecurityAgentID = in.AgentID
+			row.SecurityLocalAgentVersionID = in.LocalAgentVersionID
+			row.SecurityReleaseID = releaseID
+			row.SecurityPinSource = "admission"
+		}
 		if in.Driver == "platform" {
 			row.EngineType = "trpc"
 		}
 		// A concurrent request may target a different session: the database
 		// unique key is the final arbiter and the slot reservation rolls back.
-		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		createRun := tx.Clauses(clause.OnConflict{DoNothing: true})
+		if !adopted {
+			// These columns are nullable as a four-column tuple. Omitting them
+			// preserves SQL NULL for ordinary Runs instead of GORM's empty strings.
+			createRun = createRun.Omit("SecurityAgentID", "SecurityLocalAgentVersionID", "SecurityReleaseID", "SecurityPinSource")
+		}
+		created := createRun.Create(&row)
 		if created.Error != nil {
 			return created.Error
 		}
@@ -287,6 +318,9 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		result = row.view()
 		return nil
 	})
+	if errors.Is(err, ErrTenantNotFound) {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
 	return result, err
 }
 

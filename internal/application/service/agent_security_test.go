@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -10,6 +11,50 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type fixedSecurityAgentVersions struct {
+	snapshot interfaces.AgentVersionSnapshot
+	tenant   uint64
+	version  string
+}
+
+func (f fixedSecurityAgentVersions) FreezeAgentVersion(context.Context, uint64, string, string) (interfaces.AgentVersionView, error) {
+	return interfaces.AgentVersionView{}, nil
+}
+func (f fixedSecurityAgentVersions) GetAgentVersion(_ context.Context, tenant uint64, version string) (interfaces.AgentVersionSnapshot, error) {
+	if tenant != f.tenant || version != f.version {
+		return interfaces.AgentVersionSnapshot{}, repository.ErrAgentSecurityReleaseUnresolvable
+	}
+	return f.snapshot, nil
+}
+func (f fixedSecurityAgentVersions) ListAgentVersions(context.Context, uint64, string) ([]interfaces.AgentVersionView, error) {
+	return nil, nil
+}
+
+func TestResolvePublishedAgentVersionBindsTenantAndAgent(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	listing, release := publishUpgradeServiceRelease(t, db, 1, "7.0.0", securityManifest, `{"dependencies":[]}`, securityBundleWithLock(`{"dependencies":[]}`))
+	adoption := adoptUpgradeRelease(t, db, listing, release)
+	agent := types.CustomAgent{ID: "local-agent-resolver", TenantID: 1, Name: "resolver"}
+	require.NoError(t, db.Create(&agent).Error)
+	versionID := "ver-" + agent.ID
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: versionID, TenantID: 1, AgentID: agent.ID, VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha"}).Error)
+	variant := publishSecurityVariant(t, db, adoption, release, "Resolver", agent.ID)
+	snapshot := interfaces.AgentVersionSnapshot{AgentVersionView: interfaces.AgentVersionView{ID: versionID, AgentID: agent.ID}, Agent: &agent}
+	svc.SetAgentVersionService(fixedSecurityAgentVersions{snapshot: snapshot, tenant: 1, version: versionID})
+	got, gotRelease, adopted, err := svc.ResolvePublishedAgentVersion(context.Background(), 1, agent.ID)
+	require.NoError(t, err)
+	require.True(t, adopted)
+	require.Equal(t, variant.ReleaseID, gotRelease)
+	require.Equal(t, versionID, got.AgentVersionView.ID)
+	_, _, _, err = svc.ResolvePublishedAgentVersion(context.Background(), 2, agent.ID)
+	require.Error(t, err, "tenant cannot resolve another tenant's Agent Variant")
+	wrong := snapshot
+	wrong.AgentVersionView.AgentID = "other-agent"
+	svc.SetAgentVersionService(fixedSecurityAgentVersions{snapshot: wrong, tenant: 1, version: versionID})
+	_, _, _, err = svc.ResolvePublishedAgentVersion(context.Background(), 1, agent.ID)
+	require.ErrorIs(t, err, repository.ErrAgentSecurityReleaseUnresolvable)
+}
 
 const securityManifest = `{"semantic_version":"%s","display_name":"Sec","summary":"s","supported_languages":["en"],"use_cases":["u"],"capability_requirements":[],"minimum_weknora_capability":"1","license_id":"MIT","source":{"agent_version_id":"v","version_number":1,"source_sha256":"sha"}}`
 
@@ -129,6 +174,50 @@ func TestRevokeReleaseRecordsAuditScopeAndCancelsRuns(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Nil(t, list[0].Scope)
+}
+
+func TestRevokeReleaseReturnsCommittedPendingResultWhenImmediateReconcileFails(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	_, releaseID := publishUpgradeServiceRelease(t, db, 1, "pending-reconcile", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	require.NoError(t, db.Exec(`CREATE TRIGGER reject_reconcile_complete BEFORE UPDATE OF run_cancellation_state ON agent_release_revocations BEGIN SELECT RAISE(ABORT, 'reconcile temporarily unavailable'); END`).Error)
+	view, err := svc.RevokeRelease(context.Background(), 1, "sec-admin", interfaces.ReleaseRevocationInput{ReleaseID: releaseID, Reason: "retry pending reconciliation"})
+	require.NoError(t, err, "a committed revocation must not be reported as uncommitted when immediate reconciliation is retryable")
+	require.NotEmpty(t, view.ID, "the committed revocation identity must be returned")
+	var response map[string]any
+	encoded, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(encoded, &response))
+	require.Equal(t, "pending", response["run_cancellation_state"])
+	var persisted types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "pending", persisted.RunCancellationState)
+	require.NoError(t, db.Exec(`DROP TRIGGER reject_reconcile_complete`).Error)
+	_, err = svc.runs.ReconcileRunCancellation(context.Background(), 1, view.ID)
+	require.NoError(t, err, "durable worker retry remains available after the immediate pass failed")
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "complete", persisted.RunCancellationState)
+}
+
+func TestRevokeDependencyReturnsCommittedPendingResultWhenImmediateReconcileFails(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	require.NoError(t, db.Exec(`INSERT OR IGNORE INTO tenants(id,name,business) VALUES(1,'tenant-1','test')`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER reject_reconcile_complete BEFORE UPDATE OF run_cancellation_state ON agent_dependency_revocations BEGIN SELECT RAISE(ABORT, 'reconcile temporarily unavailable'); END`).Error)
+	view, err := svc.RevokeDependency(context.Background(), 1, "sec-admin", interfaces.DependencyRevocationInput{Dependency: types.AgentReleaseDependency{Type: "skill", ID: "locked-skill", Version: "1.2.3", Digest: "digest"}, Reason: "retry pending reconciliation"})
+	require.NoError(t, err, "a committed revocation must not be reported as uncommitted when immediate reconciliation is retryable")
+	require.NotEmpty(t, view.ID, "the committed revocation identity must be returned")
+	var response map[string]any
+	encoded, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(encoded, &response))
+	require.Equal(t, "pending", response["run_cancellation_state"])
+	var persisted types.AgentDependencyRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "pending", persisted.RunCancellationState)
+	require.NoError(t, db.Exec(`DROP TRIGGER reject_reconcile_complete`).Error)
+	_, err = svc.runs.ReconcileRunCancellation(context.Background(), 1, view.ID)
+	require.NoError(t, err, "durable worker retry remains available after the immediate pass failed")
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "complete", persisted.RunCancellationState)
 }
 
 func TestRevokeDependencyUsesExactLockIdentityForScopeAndCancellation(t *testing.T) {

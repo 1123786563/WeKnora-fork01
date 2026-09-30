@@ -1,0 +1,31 @@
+BEGIN;
+LOCK TABLE agent_runs,agent_adoption_variants,agent_release_revocations,agent_dependency_revocations IN ACCESS EXCLUSIVE MODE;
+ALTER TABLE agent_release_revocations ADD COLUMN run_cancellation_state VARCHAR(16) NOT NULL DEFAULT 'complete';
+ALTER TABLE agent_dependency_revocations ADD COLUMN run_cancellation_state VARCHAR(16) NOT NULL DEFAULT 'complete';
+ALTER TABLE agent_runs ADD COLUMN security_agent_id VARCHAR(36);
+ALTER TABLE agent_runs ADD COLUMN security_local_agent_version_id VARCHAR(36);
+ALTER TABLE agent_runs ADD COLUMN security_release_id VARCHAR(36);
+ALTER TABLE agent_runs ADD COLUMN security_pin_source VARCHAR(32);
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM agent_adoption_variants WHERE local_agent_id IS NOT NULL AND local_agent_id<>'' GROUP BY tenant_id,local_agent_id HAVING COUNT(*)>1) THEN RAISE EXCEPTION 'agent_run_security_duplicate_variant_mapping'; END IF;
+ IF EXISTS(SELECT 1 FROM agent_runs r JOIN agent_adoption_variants v ON v.tenant_id=r.tenant_id AND v.local_agent_id=(r.snapshot::jsonb ->> 'agent_id') WHERE r.status NOT IN ('succeeded','failed','canceled') AND r.created_at<v.published_at) THEN RAISE EXCEPTION 'agent_run_security_timestamp_conflict'; END IF;
+ IF EXISTS(SELECT 1 FROM agent_adoption_variants v LEFT JOIN agent_versions av ON av.tenant_id=v.tenant_id AND av.id=v.local_agent_version_id AND av.agent_id=v.local_agent_id WHERE v.local_agent_id IS NOT NULL AND v.local_agent_id<>'' AND (v.local_agent_version_id IS NULL OR v.release_id IS NULL OR v.release_id='' OR av.id IS NULL)) THEN RAISE EXCEPTION 'agent_run_security_stale_variant_version'; END IF;
+END $$;
+UPDATE agent_runs r SET security_agent_id=(r.snapshot::jsonb ->> 'agent_id'),security_local_agent_version_id=v.local_agent_version_id,security_release_id=v.release_id,security_pin_source='legacy_backfill'
+FROM agent_adoption_variants v WHERE r.tenant_id=v.tenant_id AND v.local_agent_id=(r.snapshot::jsonb ->> 'agent_id') AND r.status NOT IN ('succeeded','failed','canceled') AND r.created_at>=v.published_at AND v.local_agent_version_id IS NOT NULL AND v.release_id IS NOT NULL;
+ALTER TABLE agent_runs ADD CONSTRAINT ck_agent_runs_security_pin_complete CHECK((security_agent_id IS NULL AND security_local_agent_version_id IS NULL AND security_release_id IS NULL AND security_pin_source IS NULL) OR (security_agent_id IS NOT NULL AND security_local_agent_version_id IS NOT NULL AND security_release_id IS NOT NULL AND security_pin_source IN ('admission','legacy_backfill')));
+CREATE TABLE agent_chat_turn_claims (
+ id VARCHAR(36) NOT NULL,source_tenant_id BIGINT NOT NULL,session_tenant_id BIGINT NOT NULL,session_id VARCHAR(36) NOT NULL,owner_id VARCHAR(512) NOT NULL,request_id VARCHAR(128) NOT NULL,request_hash VARCHAR(64) NOT NULL,assistant_message_id VARCHAR(36) NOT NULL,user_message_id VARCHAR(36),agent_id VARCHAR(36) NOT NULL,local_agent_version_id VARCHAR(36),release_id VARCHAR(36),state VARCHAR(16) NOT NULL CHECK(state IN ('active','completed','failed','cancelled')),reason TEXT NOT NULL DEFAULT '',lease_owner VARCHAR(128) NOT NULL,lease_expires_at TIMESTAMPTZ NOT NULL,generation BIGINT NOT NULL CHECK(generation>0),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),CHECK((local_agent_version_id IS NULL AND release_id IS NULL) OR (local_agent_version_id IS NOT NULL AND release_id IS NOT NULL)),PRIMARY KEY(id,source_tenant_id));
+CREATE UNIQUE INDEX uq_agent_chat_turn_claim_request ON agent_chat_turn_claims(session_tenant_id,session_id,owner_id,request_id);
+CREATE UNIQUE INDEX uq_agent_chat_turn_claim_session_assistant ON agent_chat_turn_claims(session_tenant_id,assistant_message_id);
+CREATE UNIQUE INDEX uq_agent_chat_turn_claim_session_user ON agent_chat_turn_claims(session_tenant_id,user_message_id);
+CREATE INDEX idx_agent_chat_turn_claims_active ON agent_chat_turn_claims(session_tenant_id,session_id,state,lease_expires_at);
+CREATE INDEX idx_agent_chat_turn_claim_source_state_release ON agent_chat_turn_claims(source_tenant_id,state,release_id);
+CREATE UNIQUE INDEX uq_agent_adoption_variant_local_agent ON agent_adoption_variants(tenant_id,local_agent_id) WHERE local_agent_id IS NOT NULL AND local_agent_id<>'';
+CREATE FUNCTION reject_agent_run_security_pin_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF (OLD.security_agent_id,OLD.security_local_agent_version_id,OLD.security_release_id,OLD.security_pin_source) IS DISTINCT FROM (NEW.security_agent_id,NEW.security_local_agent_version_id,NEW.security_release_id,NEW.security_pin_source) THEN RAISE EXCEPTION 'agent_run_security_pin_immutable'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER trg_agent_runs_security_pin_immutable BEFORE UPDATE ON agent_runs FOR EACH ROW EXECUTE FUNCTION reject_agent_run_security_pin_update();
+CREATE FUNCTION reject_unpinned_marketplace_run_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.security_pin_source IS NULL AND EXISTS(SELECT 1 FROM agent_adoption_variants v WHERE v.tenant_id=NEW.tenant_id AND v.local_agent_id=(NEW.snapshot::jsonb ->> 'agent_id')) THEN RAISE EXCEPTION 'agent_run_marketplace_security_pin_required'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER trg_agent_runs_marketplace_pin_required BEFORE INSERT ON agent_runs FOR EACH ROW EXECUTE FUNCTION reject_unpinned_marketplace_run_insert();
+CREATE FUNCTION reject_published_agent_variant_identity_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.published_at IS NOT NULL AND (OLD.local_agent_id,OLD.local_agent_version_id,OLD.release_id) IS DISTINCT FROM (NEW.local_agent_id,NEW.local_agent_version_id,NEW.release_id) THEN RAISE EXCEPTION 'published_agent_variant_identity_immutable'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER trg_agent_adoption_variant_published_identity_immutable BEFORE UPDATE ON agent_adoption_variants FOR EACH ROW EXECUTE FUNCTION reject_published_agent_variant_identity_update();
+COMMIT;

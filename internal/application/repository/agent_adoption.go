@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	ErrAgentAdoptionNotFound          = errors.New("agent adoption resource not found")
-	ErrAgentAdoptionVariantTransition = errors.New("agent adoption variant state transition failed")
+	ErrAgentAdoptionNotFound                 = errors.New("agent adoption resource not found")
+	ErrAgentAdoptionVariantIdentityImmutable = errors.New("published agent variant identity is immutable")
+	ErrAgentAdoptionVariantTransition        = errors.New("agent adoption variant state transition failed")
 	// ErrAgentAdoptionRemapStateConflict marks a ReplaceCapabilityMappings
 	// whose guarded state UPDATE lost to a concurrent transition (e.g.
 	// publish landing between the service's pre-check and this write): the
@@ -285,6 +286,16 @@ func (r *agentAdoptionRepository) ListCapabilityMappings(ctx context.Context, te
 // only when the current state is one of expectedFrom, so a concurrent or
 // repeated transition fails loudly instead of double-applying.
 func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenantID uint64, variantID string, expectedFrom []string, nextState string, updates map[string]any) (*types.AgentAdoptionVariantEntity, error) {
+	identityChanging := false
+	for _, key := range []string{"local_agent_id", "local_agent_version_id", "release_id"} {
+		if _, changing := updates[key]; changing {
+			identityChanging = true
+			break
+		}
+	}
+	if containsState(expectedFrom, "published") && identityChanging {
+		return nil, ErrAgentAdoptionVariantIdentityImmutable
+	}
 	set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
 	for key, value := range updates {
 		set[key] = value
@@ -304,15 +315,29 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 	if nextState == "published" {
 		var updated *types.AgentAdoptionVariantEntity
 		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
-			var variant types.AgentAdoptionVariantEntity
-			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&variant).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return ErrAgentAdoptionNotFound
-				}
+			variant, err := lockVariantForStateUpdate(tx, tenantID, variantID)
+			if err != nil {
 				return err
+			}
+			if identityChanging && variant.PublishedAt != nil {
+				return ErrAgentAdoptionVariantIdentityImmutable
 			}
 			if err := checkReleaseAdmissionTx(tx, tenantID, variant.ReleaseID); err != nil {
 				return err
+			}
+			return updateVariantStateTx(tx, tenantID, variantID, expectedFrom, nextState, set, &updated)
+		})
+		return updated, err
+	}
+	if identityChanging {
+		var updated *types.AgentAdoptionVariantEntity
+		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+			variant, err := lockVariantForStateUpdate(tx, tenantID, variantID)
+			if err != nil {
+				return err
+			}
+			if variant.PublishedAt != nil {
+				return ErrAgentAdoptionVariantIdentityImmutable
 			}
 			return updateVariantStateTx(tx, tenantID, variantID, expectedFrom, nextState, set, &updated)
 		})
@@ -336,6 +361,24 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 		return nil, fmt.Errorf("%w: variant %s is %q, expected one of %v", ErrAgentAdoptionVariantTransition, variantID, current.State, expectedFrom)
 	}
 	return r.GetVariant(ctx, tenantID, variantID)
+}
+
+func lockVariantForStateUpdate(tx *gorm.DB, tenantID uint64, variantID string) (types.AgentAdoptionVariantEntity, error) {
+	var variant types.AgentAdoptionVariantEntity
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&variant).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return variant, ErrAgentAdoptionNotFound
+	}
+	return variant, err
+}
+
+func containsState(states []string, wanted string) bool {
+	for _, state := range states {
+		if state == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func updateVariantStateTx(tx *gorm.DB, tenantID uint64, variantID string, expectedFrom []string, nextState string, set map[string]any, updated **types.AgentAdoptionVariantEntity) error {

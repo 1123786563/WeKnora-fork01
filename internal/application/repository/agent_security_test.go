@@ -530,3 +530,18 @@ func TestAgentSecurityStoreVariantsByLocalAgentTenantScoped(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 1)
 }
+
+func TestAgentChatTurnClaimAdmitUsesOrderedTenantGuards(t *testing.T) {
+	db := openRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE tenant_guard_order (tenant_id INTEGER NOT NULL)`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER record_tenant_guard BEFORE UPDATE OF id ON tenants BEGIN INSERT INTO tenant_guard_order(tenant_id) VALUES (OLD.id); END`).Error)
+	for _, ids := range [][]uint64{{2, 1, 2}, {1, 2}} {
+		require.NoError(t, db.Exec(`DELETE FROM tenant_guard_order`).Error)
+		err := withTenantSecurityGuards(context.Background(), db, ids, func(*gorm.DB) error { return nil })
+		require.NoError(t, err)
+		var got []uint64
+		require.NoError(t, db.Table("tenant_guard_order").Order("rowid").Pluck("tenant_id", &got).Error)
+		require.Equal(t, []uint64{1, 2}, got)
+	}
+}
