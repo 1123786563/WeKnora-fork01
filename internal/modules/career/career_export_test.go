@@ -67,18 +67,9 @@ func seedExportChain(t *testing.T, o *Office, ctx context.Context, seedID string
 	t.Helper()
 	o.SetApplicationTaskLinker(&fakeCareerApplicationLinker{})
 	fx := seedSubmissionFixture(t, o, ctx, seedID)
-	// Progress CASes on the application's event count (0 for the first
-	// event), not on the profile head.
-	_, err := o.AppendProgress(ctx, AppendProgressInput{
-		RequestID:        seedID + "-progress",
-		ApplicationID:    fx.ApplicationID,
-		EventType:        ProgressEventSubmitted,
-		Note:             "已在官网投递",
-		Source:           Source{Kind: "manual"},
-		ExpectedRevision: 0,
-	})
-	require.NoError(t, err)
-	_, err = o.RecordSubmission(ctx, submissionInput(fx, seedID+"-submission", SubmissionChannelEmail, false, fx.Revision))
+	input := submissionInput(fx, seedID+"-submission", SubmissionChannelEmail, false, fx.Revision)
+	input.Note = "已在官网投递"
+	_, err := o.RecordSubmission(ctx, input)
 	require.NoError(t, err)
 	return fx
 }
