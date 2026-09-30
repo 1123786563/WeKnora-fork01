@@ -449,11 +449,21 @@ func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptR
 	if id == "" {
 		id = providerID
 	}
+	state := mapWechatTradeState(out.TradeState)
+	if state == StateSucceeded && strings.TrimSpace(out.Amount.Currency) == "" {
+		return AttemptResult{State: StateUnknown, ProviderID: id}, fmt.Errorf("wechat query %s: succeeded transaction has unknown currency", providerID)
+	}
+	collectedFen := out.Amount.Total
+	if state == StateSucceeded && collectedFen <= 0 {
+		collectedFen = 0
+	}
 	// (#84/G2) The collected amount AND its currency ride along so the
 	// recovery paths can compare what the channel ACTUALLY collected
-	// against the order face (amount and currency both).
-	return AttemptResult{State: mapWechatTradeState(out.TradeState), ProviderID: id,
-		AmountFen: out.Amount.Total, AmountCurrency: out.Amount.Currency}, nil
+	// against the order face (amount and currency both). Keep a known
+	// currency even when total is absent/zero; the service can still retain
+	// an independently observed currency mismatch without inventing amount.
+	return AttemptResult{State: state, ProviderID: id,
+		AmountFen: collectedFen, AmountCurrency: out.Amount.Currency}, nil
 }
 
 // Close cancels a pending channel order by its original identifier.

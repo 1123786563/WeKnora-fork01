@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -20,7 +21,8 @@ var (
 	// payment channel adapter is wired in this process. The quote and order
 	// pipeline still works; only the channel call is refused, and it is
 	// refused EXPLICITLY instead of fabricating a checkout URL.
-	ErrPaymentProviderUnconfigured = errors.New("payment_provider_unconfigured")
+	ErrPaymentProviderUnconfigured   = errors.New("payment_provider_unconfigured")
+	ErrPaymentObservationUnavailable = errors.New("payment_status_unavailable")
 	// ErrQuoteTenantMismatch rejects use of a quote that was cut for a
 	// different space than the authenticated caller.
 	ErrQuoteTenantMismatch = errors.New("quote_tenant_mismatch")
@@ -357,9 +359,9 @@ func (s *OrderService) CurrentPayablePendingOrderView(ctx context.Context, tenan
 	if err != nil {
 		return OrderView{}, err
 	}
-	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+	return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
-		Version: row.Version}, nil
+		Version: row.Version}), nil
 }
 
 // quoteForTenant loads and validates the quote snapshot for a tenant.
@@ -499,18 +501,25 @@ func (s *OrderService) ListOrders(ctx context.Context, tenantID uint64) ([]Order
 	if err != nil {
 		return nil, err
 	}
+	attention, attentionErr := s.orders.ListAwaitingPaymentAnomalyOrderIDs(ctx, tenantID)
+	if attentionErr != nil {
+		attention = nil
+	} // fail open: preserve the primary list
 	out := make([]OrderView, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, OrderView{ID: r.ID, QuoteID: r.QuoteID, State: r.State,
-			AmountFen: r.AmountFen, Currency: r.Currency, Version: r.Version})
+			AmountFen: r.AmountFen, Currency: r.Currency, Version: r.Version,
+			PaymentAttention: hasOrderAttention(attention, r.ID)})
 	}
 	return out, nil
 }
 
-// withAttention（#84 Task 5 / G4）decorates an order projection with the
-// unresolved-anomaly flag: one parameter-bound indexed read per order poll
-// (acceptable; no join). A read failure degrades to "no attention" — the
-// order's primary state must never 500 over the anomaly decoration.
+// hasOrderAttention checks the batched tenant anomaly set.
+func hasOrderAttention(ids map[string]struct{}, orderID string) bool {
+	_, ok := ids[orderID]
+	return ok
+}
+
 func (s *OrderService) withAttention(ctx context.Context, view OrderView) OrderView {
 	if ok, err := s.orders.HasUnresolvedPaymentAnomaly(ctx, view.ID); err == nil && ok {
 		view.PaymentAttention = true
@@ -533,6 +542,13 @@ func collectedAmountMismatch(reportedFen, attemptFen int64, reportedCurrency, at
 	return reportedCurrency != "" && reportedCurrency != attemptCurrency
 }
 
+func validateCollectionObservation(fen int64, currency string) error {
+	if fen <= 0 || strings.TrimSpace(currency) == "" {
+		return ErrPaymentObservationUnavailable
+	}
+	return nil
+}
+
 // recoverMismatchedCollection retains a query-path collected-face mismatch
 // as an awaiting anomaly (#84, spec L127) and returns the pending order view
 // flagged for operator attention. The confirmation is skipped entirely: the
@@ -540,13 +556,7 @@ func collectedAmountMismatch(reportedFen, attemptFen int64, reportedCurrency, at
 // confirms through the normal leg).
 func (s *OrderService) recoverMismatchedCollection(ctx context.Context, row repocommercial.OrderRow, att repocommercial.PaymentAttemptRow, txn string, collectedFen int64, collectedCurrency string) (OrderView, error) {
 	actualFen := collectedFen
-	if actualFen <= 0 {
-		actualFen = att.AmountFen // channel reported no amount: the currency is the contradiction
-	}
 	actualCurrency := collectedCurrency
-	if actualCurrency == "" {
-		actualCurrency = att.Currency // channel reported no currency: the amount is the contradiction
-	}
 	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
 		TenantID: row.TenantID, OrderID: row.ID, AttemptID: att.MerchantOrderID,
 		Provider: att.Provider, Merchant: att.Merchant, Transaction: txn,
@@ -600,7 +610,7 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 	}
 	res, err := provider.Query(ctx, att.MerchantOrderID)
 	if err != nil {
-		return OrderView{}, fmt.Errorf("channel query failed for %s: %w", orderID, err)
+		return OrderView{}, fmt.Errorf("%w: channel query failed for %s: %v", ErrPaymentObservationUnavailable, orderID, err)
 	}
 	if res.State == payment.StateSucceeded {
 		txn := res.ProviderID
@@ -610,6 +620,12 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		// (#84/G2) Compare what the channel ACTUALLY collected against the
 		// attempt face BEFORE confirming: a mismatched collection is an
 		// abnormal fact, never a fulfillment.
+		if strings.TrimSpace(res.AmountCurrency) != "" && res.AmountCurrency != att.Currency {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
+		}
+		if err := validateCollectionObservation(res.AmountFen, res.AmountCurrency); err != nil {
+			return OrderView{}, err
+		}
 		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
 			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}
@@ -699,7 +715,7 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 	if qerr != nil {
 		// Both legs failed: the outcome stays unknown — surface it, mark
 		// nothing, keep the payable entry for a retry.
-		return OrderView{}, qerr
+		return OrderView{}, fmt.Errorf("%w: channel query failed during close recovery: %v", ErrPaymentObservationUnavailable, qerr)
 	}
 	switch res.State {
 	case payment.StateSucceeded:
@@ -711,6 +727,12 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 		// mismatched collection is retained as an anomaly instead of being
 		// confirmed at the attempt's face (the fund fact survives the close,
 		// the fulfillment right is never minted from a wrong collection).
+		if strings.TrimSpace(res.AmountCurrency) != "" && res.AmountCurrency != att.Currency {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
+		}
+		if err := validateCollectionObservation(res.AmountFen, res.AmountCurrency); err != nil {
+			return OrderView{}, err
+		}
 		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
 			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}

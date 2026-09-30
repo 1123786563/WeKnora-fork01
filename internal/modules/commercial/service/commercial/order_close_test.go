@@ -200,7 +200,7 @@ func TestCloseChannelOrderPaidRaceConfirmsFundFact(t *testing.T) {
 	// The user pays while we are closing: Close answers ORDER_PAID, the
 	// decisive Query answers SUCCESS.
 	wechat.closeErr = orderPaidError
-	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_race"}
+	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_race", AmountFen: order.AmountFen, AmountCurrency: "CNY"}
 
 	view, err := svc.CloseChannelOrder(context.Background(), 902, order.ID)
 	if err != nil {
@@ -360,6 +360,64 @@ func TestCloseChannelOrderIndeterminateStaysPending(t *testing.T) {
 	store := repocommercial.NewOrderStore(db)
 	if _, err := store.CurrentPendingPurchaseOrder(context.Background(), 905, 99_00, domain.CurrencyCNY); err != nil {
 		t.Fatalf("the order must remain a payable entry, got %v", err)
+	}
+}
+
+func TestCloseChannelOrderUnknownCollectionFaceIsRetryable(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		amount   int64
+		currency string
+	}{
+		{name: "amount unknown", currency: "CNY"},
+		{name: "currency unknown", amount: 9900},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, wechat, _, db := newCloseRaceEnv(t)
+			order, _ := openRaceOrder(t, svc, db, 908, payment.ProviderWechat)
+			wechat.closeErr = orderPaidError
+			wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "txn-unknown", AmountFen: tc.amount, AmountCurrency: tc.currency}
+			if _, err := svc.CloseChannelOrder(context.Background(), 908, order.ID); !errors.Is(err, ErrPaymentObservationUnavailable) {
+				t.Fatalf("expected typed retryable observation error, got %v", err)
+			}
+			if row := readOrder(t, db, order.ID); row.State != domain.OrderStatePending {
+				t.Fatalf("unknown collection face settled order: %s", row.State)
+			}
+			if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 0 {
+				t.Fatalf("unknown collection face emitted %d fulfill events", n)
+			}
+		})
+	}
+}
+
+func TestCloseChannelOrderWhitespaceCurrencyIsUnknownNotMismatch(t *testing.T) {
+	svc, wechat, _, db := newCloseRaceEnv(t)
+	order, _ := openRaceOrder(t, svc, db, 909, payment.ProviderWechat)
+	wechat.closeErr = orderPaidError
+	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "txn-whitespace", AmountFen: 9900, AmountCurrency: " \t "}
+	if _, err := svc.CloseChannelOrder(context.Background(), 909, order.ID); !errors.Is(err, ErrPaymentObservationUnavailable) {
+		t.Fatalf("whitespace currency must be retryable, got %v", err)
+	}
+	assertNoPaymentAnomalyOrFulfillment(t, db, order.ID)
+}
+
+func TestCloseChannelOrderAlipayAlreadyClosedRetiresChannel(t *testing.T) {
+	svc, _, alipay, db := newCloseRaceEnv(t)
+	order, attempt := openRaceOrder(t, svc, db, 910, payment.ProviderAlipay)
+	alipay.closeErr = errors.New("already closed")
+	alipay.queryRes = payment.AttemptResult{State: payment.StateClosed, ProviderID: attempt.MerchantOrderID}
+	view, err := svc.CloseChannelOrder(context.Background(), 910, order.ID)
+	if err != nil {
+		t.Fatalf("closed Alipay query without collection amount must retire: %v", err)
+	}
+	if view.State != domain.OrderStatePending {
+		t.Fatalf("retired entry retains pending order state, got %s", view.State)
+	}
+	if row := readOrder(t, db, order.ID); !row.ChannelFailed {
+		t.Fatal("already-closed channel entry must be retired")
+	}
+	if got := readAttempt(t, db, attempt.ID).State; got != repocommercial.PaymentAttemptStateClosed {
+		t.Fatalf("attempt should be closed, got %s", got)
 	}
 }
 
@@ -542,7 +600,7 @@ func TestPurchaseSwitchPaidRaceAnswersPaidOrder(t *testing.T) {
 	// The wechat payment is in flight: close answers ORDER_PAID, query
 	// answers SUCCESS.
 	wechat.closeErr = orderPaidError
-	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_swpaid"}
+	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_swpaid", AmountFen: first.Order.AmountFen, AmountCurrency: "CNY"}
 
 	qB := purchaseQuote(t, svc.orders, 92, "pro")
 	second, err := svc.Purchase(context.Background(), 92, qB.ID, payment.ProviderAlipay, "billing-admin", "Space 92")
@@ -596,7 +654,7 @@ func TestPurchaseSwitchAnswersFulfilledOrderNotNewChannel(t *testing.T) {
 	// worker has already advanced the order to fulfilled before the close's
 	// re-read.
 	wechat.closeErr = orderPaidError
-	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_swful"}
+	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_swful", AmountFen: first.Order.AmountFen, AmountCurrency: "CNY"}
 	wechat.queryHook = func() {
 		_ = store.ConfirmPayment(context.Background(), domain.PaymentFact{
 			Provider: payment.ProviderWechat, Merchant: att.Merchant,

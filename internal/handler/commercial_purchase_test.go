@@ -9,6 +9,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,10 @@ import (
 type handlerStubProvider struct {
 	mu          sync.Mutex
 	createErr   error
+	queryErr    error
+	closeErr    error
 	createCalls int
+	queryCalls  int
 }
 
 func (p *handlerStubProvider) Create(context.Context, payment.OrderRequest) (payment.AttemptResult, error) {
@@ -49,9 +53,15 @@ func (p *handlerStubProvider) Create(context.Context, payment.OrderRequest) (pay
 }
 
 func (p *handlerStubProvider) Query(context.Context, string) (payment.AttemptResult, error) {
+	p.mu.Lock()
+	p.queryCalls++
+	defer p.mu.Unlock()
+	if p.queryErr != nil {
+		return payment.AttemptResult{}, p.queryErr
+	}
 	return payment.AttemptResult{State: payment.StatePending}, nil
 }
-func (p *handlerStubProvider) Close(context.Context, string) error { return nil }
+func (p *handlerStubProvider) Close(context.Context, string) error { return p.closeErr }
 func (p *handlerStubProvider) Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error) {
 	return commercial.PaymentFact{}, nil
 }
@@ -101,7 +111,7 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 		t.Fatal(err)
 	}
 	provider := &handlerStubProvider{}
-	orders, err := commercialsvc.NewOrderService(db, map[string]payment.Provider{"wechat": provider})
+	orders, err := commercialsvc.NewOrderService(db, map[string]payment.Provider{"wechat": provider, "alipay": provider})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +121,7 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 	}
 	h := NewCommercialHandler(db)
 	h.SetPurchaseService(purchases)
+	h.SetOrderService(orders)
 
 	router := gin.New()
 	router.POST("/api/v1/commercial/purchases", func(c *gin.Context) {
@@ -121,8 +132,71 @@ func newPurchaseHandlerEnv(t *testing.T) *purchaseHandlerEnv {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}, h.Purchase)
+	router.GET("/api/v1/commercial/orders/:id", func(c *gin.Context) {
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(50))
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}, h.GetOrder)
 
 	return &purchaseHandlerEnv{handler: h, router: router, fake: fake, orders: orders, plans: plans, db: db, provider: provider}
+}
+
+func assertPaymentObservationUnavailable(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Code != http.StatusServiceUnavailable || strings.TrimSpace(rec.Body.String()) != `{"error":"payment status temporarily unavailable","reason":"payment_status_unavailable"}` {
+		t.Fatalf("expected closed payment observation 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "provider-private-detail") {
+		t.Fatalf("provider detail leaked in response: %s", rec.Body.String())
+	}
+}
+
+func TestGetOrderHandlerClosesUnavailablePaymentObservation(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := env.orders.CreateOrder(context.Background(), 50, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.provider.queryErr = errors.New("provider-private-detail")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/commercial/orders/"+order.ID, nil)
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	assertPaymentObservationUnavailable(t, rec)
+}
+
+func TestPurchaseChannelSwitchClosesUnavailablePaymentObservation(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := postPurchase(t, env, q.ID); rec.Code != http.StatusCreated {
+		t.Fatalf("fixture purchase failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := repocommercial.NewOrderStore(env.db).CurrentPendingPurchaseOrder(context.Background(), 50, 9900, "CNY"); err != nil {
+		t.Fatalf("fixture must have current payable pending order: %v", err)
+	}
+	q, err = env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.provider.queryErr = errors.New("provider-private-detail")
+	env.provider.closeErr = errors.New("close outcome uncertain")
+	body := `{"quote_id":"` + q.ID + `","provider":"alipay"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/purchases", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	if env.provider.queryCalls != 1 {
+		t.Fatalf("channel switch must query after close error, query calls=%d", env.provider.queryCalls)
+	}
+	assertPaymentObservationUnavailable(t, rec)
 }
 
 func seedHandlerPlan(t *testing.T, plans *commercialsvc.PlanVersionService) {
@@ -282,6 +356,9 @@ func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
 	if first.CheckoutURL == "" {
 		t.Fatalf("the existing order must be payable, got %+v", first)
 	}
+	if err := repocommercial.NewOrderStore(env.db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 50, OrderID: first.ID, AttemptID: "attempt", Provider: "wechat", Merchant: "merchant", Transaction: "txn-attention", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
 	// 新 quote 走遗留 POST /orders。
 	q2, err := env.orders.CreateQuote(ctx, 50, "pro")
 	if err != nil {
@@ -311,6 +388,38 @@ func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte(first.CheckoutURL)) {
 		t.Fatalf("the replayed order must carry the payment entry: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"payment_attention":true`)) {
+		t.Fatalf("duplicate checkout replay must carry unresolved payment attention: %s", rec.Body.String())
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := env.db.Where("order_id = ?", first.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repocommercial.NewOrderStore(env.db).ResolvePaymentAnomaly(ctx, anomaly.ID, anomaly.Version); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/commercial/orders", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("resolved replay must retain conflict status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Order map[string]any `json:"order"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode resolved replay: %v: %s", err, rec.Body.String())
+	}
+	if response.Order["id"] != first.ID || response.Order["checkout_url"] != first.CheckoutURL {
+		t.Fatalf("resolved replay lost payable order: %#v", response.Order)
+	}
+	if rawAttention, present := response.Order["payment_attention"]; present {
+		attention, ok := rawAttention.(bool)
+		if !ok || attention {
+			t.Fatalf("resolved replay must omit payment_attention or encode boolean false: %#v", response.Order)
+		}
 	}
 }
 

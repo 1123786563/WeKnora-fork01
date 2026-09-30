@@ -8,11 +8,15 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -53,6 +57,52 @@ func TestWechatDoAllowsWhitelistedLoopbackStub(t *testing.T) {
 	// provider 无商户密钥材料），证明豁免通道可用。
 	if err != nil && strings.Contains(err.Error(), "SSRF") {
 		t.Fatalf("whitelisted loopback must pass the SSRF gate, got %v", err)
+	}
+}
+
+func TestWechatQueryRequiresCompleteSucceededCollectionFace(t *testing.T) {
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "merchant.pem")
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, payload string
+		wantErr       bool
+		wantAmount    int64
+	}{
+		{name: "valid", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"total":100,"currency":"CNY"}}`, wantAmount: 100},
+		{name: "missing amount", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"currency":"CNY"}}`},
+		{name: "nonpositive amount", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"total":0,"currency":"CNY"}}`},
+		{name: "negative wrong-currency amount", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"total":-1,"currency":"USD"}}`},
+		{name: "missing currency", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"total":100}}`, wantErr: true},
+		{name: "blank currency", payload: `{"trade_state":"SUCCESS","out_trade_no":"order-1","amount":{"total":100,"currency":"  "}}`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(tc.payload)) }))
+			defer srv.Close()
+			p := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001", MchSerial: "serial", MchKeyPath: keyPath, APIBaseURL: srv.URL}, nil, nil)
+			res, err := p.Query(context.Background(), "order-1")
+			if tc.wantErr {
+				if err == nil || res.State == StateSucceeded {
+					t.Fatalf("incomplete successful observation must be rejected: result=%+v err=%v", res, err)
+				}
+				return
+			}
+			wantCurrency := "CNY"
+			if tc.name == "negative wrong-currency amount" {
+				wantCurrency = "USD"
+			}
+			if err != nil || res.State != StateSucceeded || res.AmountFen != tc.wantAmount || res.AmountCurrency != wantCurrency {
+				t.Fatalf("valid collection observation: %+v err=%v", res, err)
+			}
+		})
 	}
 }
 

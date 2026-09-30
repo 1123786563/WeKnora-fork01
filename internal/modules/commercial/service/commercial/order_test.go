@@ -2,12 +2,21 @@ package commercial
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +24,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -23,13 +33,14 @@ import (
 // tests: Create returns a checkout URL (or a configured error), Query
 // returns the configured attempt state.
 type stubCheckoutProvider struct {
-	mu             sync.Mutex
-	queryState     payment.AttemptState
-	queryAmountFen int64  // #84/G2: the collected amount the channel reports (0 = not reported)
-	queryCurrency  string // #84/G2 补: the collected currency the channel reports ("" = not reported)
-	createErr      error
-	createCalls    []string
-	queryCalls     []string
+	mu                   sync.Mutex
+	queryState           payment.AttemptState
+	queryAmountFen       int64  // #84/G2: the collected amount the channel reports (0 = not reported)
+	queryCurrency        string // #84/G2 补: the collected currency the channel reports ("" = not reported)
+	queryCurrencyUnknown bool
+	createErr            error
+	createCalls          []string
+	queryCalls           []string
 }
 
 func (p *stubCheckoutProvider) Create(_ context.Context, req payment.OrderRequest) (payment.AttemptResult, error) {
@@ -45,7 +56,11 @@ func (p *stubCheckoutProvider) Query(_ context.Context, id string) (payment.Atte
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.queryCalls = append(p.queryCalls, id)
-	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id, AmountFen: p.queryAmountFen, AmountCurrency: p.queryCurrency}, nil
+	currency := p.queryCurrency
+	if currency == "" && p.queryAmountFen > 0 && !p.queryCurrencyUnknown {
+		currency = "CNY"
+	}
+	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id, AmountFen: p.queryAmountFen, AmountCurrency: currency}, nil
 }
 func (p *stubCheckoutProvider) Close(context.Context, string) error { return nil }
 func (p *stubCheckoutProvider) Verify(context.Context, http.Header, []byte) (domain.PaymentFact, error) {
@@ -70,7 +85,10 @@ func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, err := db.DB(); err == nil {
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
@@ -78,12 +96,21 @@ func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.
 		&repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
-	provider := &stubCheckoutProvider{queryState: payment.StateSucceeded}
+	provider := &stubCheckoutProvider{queryState: payment.StateSucceeded, queryAmountFen: 9900, queryCurrency: "CNY"}
 	svc, err := NewOrderService(db, map[string]payment.Provider{"wechat": provider})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return svc, provider, db
+}
+
+func closeSQLiteDBOnCleanup(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 }
 
 func seedPublishedPlan(t *testing.T, db *gorm.DB) {
@@ -258,6 +285,7 @@ func TestOrderChannelFailureStillReturnsRecoverableOrder(t *testing.T) {
 	provider.mu.Lock()
 	provider.createErr = nil
 	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen, provider.queryCurrency = 9900, "CNY"
 	provider.mu.Unlock()
 	got, err := svc.RecoverOrderStatus(ctx, 101, order.ID)
 	if err != nil || got.State != domain.OrderStatePaid {
@@ -297,12 +325,15 @@ func TestOpenOrderPersistsChannelFailurePastCallerCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, err := db.DB(); err == nil {
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
 		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
-		&repocommercial.Subscription{}); err != nil {
+		&repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -638,8 +669,7 @@ func TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly(t *testing.T) {
 		anomaly.ExpectedCurrency != "CNY" || anomaly.ActualCurrency != "USD" {
 		t.Fatalf("currency anomaly snapshot mismatch: %+v", anomaly)
 	}
-	var nFulfill int64
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
+	nFulfill := countOutbox(t, db, repocommercial.OutboxKindFulfill)
 	if nFulfill != 0 {
 		t.Fatalf("a wrong-currency collection must not mint a fulfill right, got %d", nFulfill)
 	}
@@ -724,6 +754,251 @@ func TestRecoverOrderStatusCollectedAmountMatchConfirmsNormally(t *testing.T) {
 	}
 }
 
+func TestRecoverOrderStatusUnknownCollectionFaceIsRetryable(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		amount          int64
+		unknownCurrency bool
+	}{
+		{name: "amount unknown"},
+		{name: "currency unknown", amount: 9900, unknownCurrency: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, provider, db := newOrderTestEnv(t)
+			provider.queryState = payment.StateSucceeded
+			provider.queryAmountFen = tc.amount
+			provider.queryCurrency = ""
+			provider.queryCurrencyUnknown = tc.unknownCurrency
+			seedPublishedPlan(t, db)
+			ctx := context.Background()
+			q, err := svc.CreateQuote(ctx, 46, "pro")
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := svc.CreateOrder(ctx, 46, q.ID, "wechat")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := svc.RecoverOrderStatus(ctx, 46, view.ID); !errors.Is(err, ErrPaymentObservationUnavailable) {
+				t.Fatalf("expected typed retryable observation error, got %v", err)
+			}
+			if row := readOrder(t, db, view.ID); row.State != domain.OrderStatePending {
+				t.Fatalf("unknown collection face settled order: %s", row.State)
+			}
+			if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 0 {
+				t.Fatalf("unknown collection face emitted %d fulfill events", n)
+			}
+		})
+	}
+}
+
+func TestRecoverOrderStatusKnownCurrencyMismatchWithUnknownAmountRecordsZero(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen = 0
+	provider.queryCurrency = "USD"
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 47, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 47, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RecoverOrderStatus(ctx, 47, view.ID); err != nil {
+		t.Fatal(err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindCurrency || anomaly.ActualAmountFen != 0 || anomaly.ActualCurrency != "USD" {
+		t.Fatalf("expected known currency anomaly with unknown amount preserved as zero: %+v", anomaly)
+	}
+}
+
+func newRealWechatObservationEnv(t *testing.T, response string) (*OrderService, *gorm.DB) {
+	t.Helper()
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/close") {
+			http.Error(w, `{"code":"ORDER_PAID","message":"close raced"}`, http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`{"code_url":"https://pay.example/qr"}`))
+			return
+		}
+		_, _ = w.Write([]byte(response))
+	}))
+	t.Cleanup(server.Close)
+	merchantKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	platformKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merchantPath := filepath.Join(t.TempDir(), "merchant.pem")
+	if err := os.WriteFile(merchantPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(merchantKey)}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	platformDER, err := x509.MarshalPKIXPublicKey(&platformKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	platformPath := filepath.Join(t.TempDir(), "platform.pem")
+	if err := os.WriteFile(platformPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: platformDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := payment.NewWechatProvider(payment.WechatConfig{AppID: "wx-test", MchID: "1900000109", MchSerial: "merchant-serial", MchKeyPath: merchantPath, APIBaseURL: server.URL,
+		PlatformCerts: []payment.WechatPlatformCertRef{{Serial: "platform-serial", PublicKeyPath: platformPath}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeSQLiteDBOnCleanup(t, db)
+	if s, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
+		s.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{}, &repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{}, &repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := NewOrderService(db, map[string]payment.Provider{"wechat": provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, db
+}
+
+func TestRealWechatWrongCurrencyUnknownAmountRemainsAnomalyOnRecoveryPaths(t *testing.T) {
+	for _, path := range []string{"recover", "close"} {
+		for _, tc := range []struct{ name, amount string }{
+			{name: "missing-total", amount: ""},
+			{name: "negative-total", amount: ",\"total\":-1"},
+		} {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				response := `{"trade_state":"SUCCESS","transaction_id":"wx-txn-unknown-amount","out_trade_no":"ignored","amount":{"currency":"USD"` + tc.amount + `}}`
+				svc, db := newRealWechatObservationEnv(t, response)
+				seedPublishedPlan(t, db)
+				q, err := svc.CreateQuote(context.Background(), 71, "pro")
+				if err != nil {
+					t.Fatal(err)
+				}
+				order, err := svc.CreateOrder(context.Background(), 71, q.ID, "wechat")
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got OrderView
+				if path == "recover" {
+					got, err = svc.RecoverOrderStatus(context.Background(), 71, order.ID)
+				} else {
+					got, err = svc.CloseChannelOrder(context.Background(), 71, order.ID)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.State != domain.OrderStatePending || !got.PaymentAttention {
+					t.Fatalf("known wrong currency must remain pending with attention: %+v", got)
+				}
+				var anomaly repocommercial.PaymentAnomalyRow
+				if err := db.Where("order_id = ?", order.ID).First(&anomaly).Error; err != nil {
+					t.Fatal(err)
+				}
+				if anomaly.Kind != repocommercial.PaymentAnomalyKindCurrency || anomaly.ActualAmountFen != 0 || anomaly.ActualCurrency != "USD" {
+					t.Fatalf("wrong-currency unknown-amount fact lost or fabricated: %+v", anomaly)
+				}
+				if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 0 {
+					t.Fatalf("wrong-currency unknown amount emitted %d fulfill events", n)
+				}
+			})
+		}
+	}
+}
+
+func TestRealWechatMatchingCurrencyUnknownAmountIsRetryableOnRecoveryPaths(t *testing.T) {
+	for _, path := range []string{"recover", "close"} {
+		for _, tc := range []struct{ name, amount string }{
+			{name: "missing-total", amount: ""},
+			{name: "negative-total", amount: ",\"total\":-1"},
+		} {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				response := `{"trade_state":"SUCCESS","transaction_id":"wx-txn-unknown-amount","amount":{"currency":"CNY"` + tc.amount + `}}`
+				svc, db := newRealWechatObservationEnv(t, response)
+				seedPublishedPlan(t, db)
+				q, err := svc.CreateQuote(context.Background(), 72, "pro")
+				if err != nil {
+					t.Fatal(err)
+				}
+				order, err := svc.CreateOrder(context.Background(), 72, q.ID, "wechat")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if path == "recover" {
+					_, err = svc.RecoverOrderStatus(context.Background(), 72, order.ID)
+				} else {
+					_, err = svc.CloseChannelOrder(context.Background(), 72, order.ID)
+				}
+				if !errors.Is(err, ErrPaymentObservationUnavailable) {
+					t.Fatalf("matching currency with unknown amount must be retryable, got %v", err)
+				}
+				if row := readOrder(t, db, order.ID); row.State != domain.OrderStatePending {
+					t.Fatalf("unknown amount settled order: %s", row.State)
+				}
+				var n int64
+				if err := db.Model(&repocommercial.PaymentAnomalyRow{}).Where("order_id = ?", order.ID).Count(&n).Error; err != nil || n != 0 {
+					t.Fatalf("unknown amount must not create an anomaly: n=%d err=%v", n, err)
+				}
+				if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 0 {
+					t.Fatalf("unknown amount emitted %d fulfill events", n)
+				}
+			})
+		}
+	}
+}
+
+func TestRecoverWhitespaceCurrencyIsUnknownNotMismatch(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState, provider.queryAmountFen, provider.queryCurrency = payment.StateSucceeded, 9900, "   "
+	seedPublishedPlan(t, db)
+	q, err := svc.CreateQuote(context.Background(), 73, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(context.Background(), 73, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RecoverOrderStatus(context.Background(), 73, order.ID); !errors.Is(err, ErrPaymentObservationUnavailable) {
+		t.Fatalf("whitespace currency must be retryable, got %v", err)
+	}
+	assertNoPaymentAnomalyOrFulfillment(t, db, order.ID)
+}
+
+func assertNoPaymentAnomalyOrFulfillment(t *testing.T, db *gorm.DB, orderID string) {
+	t.Helper()
+	if row := readOrder(t, db, orderID); row.State != domain.OrderStatePending {
+		t.Fatalf("unknown currency settled order: %s", row.State)
+	}
+	var n int64
+	if err := db.Model(&repocommercial.PaymentAnomalyRow{}).Where("order_id = ?", orderID).Count(&n).Error; err != nil || n != 0 {
+		t.Fatalf("unknown currency must not create anomaly: n=%d err=%v", n, err)
+	}
+	if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 0 {
+		t.Fatalf("unknown currency emitted %d fulfill events", n)
+	}
+}
+
 // TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment（G5）：
 // 订单已 fulfilled 后第二渠道 late succeeded——恢复读幂等（仍 fulfilled）、
 // 不产生第二个 fulfill 事件、不二次履约，第二笔只落 over_payment 事件（由
@@ -775,13 +1050,169 @@ func TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment(t *t
 	if recovered.State != domain.OrderStateFulfilled {
 		t.Fatalf("a fulfilled order must stay fulfilled through recovery, got %s", recovered.State)
 	}
-	var nFulfill, nOver int64
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
-	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindOverPaid).Count(&nOver)
+	nFulfill := countOutbox(t, db, repocommercial.OutboxKindFulfill)
+	nOver := countOutbox(t, db, repocommercial.OutboxKindOverPaid)
 	if nFulfill != 1 {
 		t.Fatalf("the late success must never mint a second fulfill right, got %d", nFulfill)
 	}
 	if nOver != 1 {
 		t.Fatalf("the late success must be audited as over_payment, got %d", nOver)
+	}
+}
+
+func TestListOrdersProjectsAnomalyAttentionFromTenantBatch(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	store := repocommercial.NewOrderStore(db)
+	ids := make([]string, 0, 40)
+	for i := 0; i < 40; i++ {
+		id := fmt.Sprintf("order_batch_%02d", i)
+		if err := db.Create(&repocommercial.OrderRow{ID: id, TenantID: 101, QuoteID: fmt.Sprintf("quote_batch_%02d", i), Kind: "purchase", AmountFen: 9900, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 101, OrderID: ids[29], AttemptID: "m", Provider: "wechat", Merchant: "m", Transaction: "t", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.ListOrders(ctx, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 40 {
+		t.Fatalf("got %d rows", len(got))
+	}
+	for _, v := range got {
+		if v.PaymentAttention != (v.ID == ids[29]) {
+			t.Fatalf("attention projection for %s = %v", v.ID, v.PaymentAttention)
+		}
+	}
+}
+
+func TestListOrdersUsesOneAnomalyQueryForSmallAndLargeResults(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	for i := 0; i < 40; i++ {
+		if err := db.Create(&repocommercial.OrderRow{ID: fmt.Sprintf("count_order_%02d", i), TenantID: 111, QuoteID: fmt.Sprintf("count_quote_%02d", i), Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repocommercial.NewOrderStore(db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 111, OrderID: "count_order_29", AttemptID: "a", Provider: "wechat", Merchant: "count-merchant", Transaction: "count-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.OrderRow{ID: "count_single_order", TenantID: 112, QuoteID: "count_single_quote", Kind: "purchase", AmountFen: 100, Currency: "CNY", State: domain.OrderStatePaid, Version: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repocommercial.NewOrderStore(db).RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 112, OrderID: "count_single_order", AttemptID: "a", Provider: "wechat", Merchant: "count-merchant", Transaction: "count-single-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	var anomalyQueries atomic.Int64
+	callbackName := "test/count_anomaly_queries/" + strings.ReplaceAll(t.Name(), "/", "_")
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_payment_anomalies" {
+			anomalyQueries.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove(callbackName)
+	for _, tc := range []struct {
+		name                  string
+		tenant                uint64
+		wantRows, wantQueries int
+		attentionOrderID      string
+	}{
+		{name: "one order", tenant: 112, wantRows: 1, wantQueries: 1, attentionOrderID: "count_single_order"},
+		{name: "forty orders", tenant: 111, wantRows: 40, wantQueries: 1, attentionOrderID: "count_order_29"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			anomalyQueries.Store(0)
+			got, err := svc.ListOrders(ctx, tc.tenant)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != tc.wantRows {
+				t.Fatalf("rows=%d want %d", len(got), tc.wantRows)
+			}
+			if n := int(anomalyQueries.Load()); n != tc.wantQueries {
+				t.Fatalf("anomaly-table SELECT count=%d want %d", n, tc.wantQueries)
+			}
+			for _, v := range got {
+				if v.PaymentAttention != (v.ID == tc.attentionOrderID) {
+					t.Fatalf("attention for %s=%v", v.ID, v.PaymentAttention)
+				}
+			}
+		})
+	}
+}
+
+func TestListOrdersFailsOpenWhenAnomalyQueryFails(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	ctx := context.Background()
+	row := repocommercial.OrderRow{ID: "fail_open_order", TenantID: 121, QuoteID: "fail_open_quote", Kind: "purchase", AmountFen: 1234, Currency: "CNY", State: domain.OrderStatePaid, Version: 7}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 121, OrderID: row.ID, AttemptID: "a", Provider: "wechat", Merchant: "m", Transaction: "fail-open-txn", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	callbackName := "test/fail_anomaly_query/" + strings.ReplaceAll(t.Name(), "/", "_")
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "commercial_payment_anomalies" {
+			tx.AddError(fmt.Errorf("injected anomaly query failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove(callbackName)
+	got, err := svc.ListOrders(ctx, 121)
+	if err != nil {
+		t.Fatalf("anomaly lookup failure must fail open, err=%v", err)
+	}
+	if len(got) != 1 || got[0].ID != row.ID || got[0].State != row.State || got[0].AmountFen != row.AmountFen || got[0].Version != row.Version {
+		t.Fatalf("primary order projection lost: %+v", got)
+	}
+	if got[0].PaymentAttention {
+		t.Fatalf("failed anomaly lookup must not assert attention: %+v", got[0])
+	}
+}
+
+func TestCurrentPayablePendingOrderViewProjectsAndClearsAttention(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(ctx, 101, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err = store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{TenantID: 101, OrderID: order.ID, AttemptID: "m", Provider: "wechat", Merchant: "m", Transaction: "t", Kind: repocommercial.PaymentAnomalyKindAmount, ExpectedCurrency: "CNY", ActualCurrency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := svc.CurrentPayablePendingOrderView(ctx, 101)
+	if err != nil || !v.PaymentAttention {
+		t.Fatalf("unresolved view=%+v err=%v", v, err)
+	}
+	if v.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("unresolved view checkout URL=%q want %q", v.CheckoutURL, order.CheckoutURL)
+	}
+	var a repocommercial.PaymentAnomalyRow
+	if err = db.Where("order_id = ?", order.ID).First(&a).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.ResolvePaymentAnomaly(ctx, a.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	v, err = svc.CurrentPayablePendingOrderView(ctx, 101)
+	if err != nil || v.PaymentAttention {
+		t.Fatalf("resolved view=%+v err=%v", v, err)
+	}
+	if v.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("resolved view checkout URL=%q want %q", v.CheckoutURL, order.CheckoutURL)
 	}
 }
