@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -196,7 +195,7 @@ func (t *ListKnowledgeChunksTool) Execute(ctx context.Context, args json.RawMess
 		for _, c := range chunks {
 			chunkIDs = append(chunkIDs, c.ID)
 		}
-		infoMap := searchutil.CollectImageInfoByChunkIDs(ctx, t.chunkService.GetRepository(), effectiveTenantID, chunkIDs)
+		infoMap := CollectImageInfoByChunkIDs(ctx, t.chunkService.GetRepository(), effectiveTenantID, chunkIDs)
 		for _, c := range chunks {
 			if c.ImageInfo == "" {
 				if merged, ok := infoMap[c.ID]; ok {
@@ -289,7 +288,7 @@ func (t *ListKnowledgeChunksTool) executeByChunkID(ctx context.Context, chunkID 
 	if chunk.ImageInfo == "" {
 		effectiveTenantID := t.searchTargets.GetTenantIDForKB(chunk.KnowledgeBaseID)
 		if effectiveTenantID > 0 {
-			infoMap := searchutil.CollectImageInfoByChunkIDs(ctx, t.chunkService.GetRepository(), effectiveTenantID, []string{chunk.ID})
+			infoMap := CollectImageInfoByChunkIDs(ctx, t.chunkService.GetRepository(), effectiveTenantID, []string{chunk.ID})
 			if merged, ok := infoMap[chunk.ID]; ok {
 				chunk.ImageInfo = merged
 			}
@@ -407,7 +406,7 @@ func writeChunkImagesMarkdown(b *strings.Builder, c *types.Chunk) {
 		return
 	}
 	for _, img := range imageInfos {
-		if imageMarkdown := searchutil.BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
+		if imageMarkdown := BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
 			b.WriteString(imageMarkdown)
 			b.WriteString("\n")
 		}

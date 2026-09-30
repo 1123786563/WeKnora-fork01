@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -88,7 +87,7 @@ func enrichChunkImageInfo(
 	if len(ids) == 0 {
 		return
 	}
-	infoMap := searchutil.CollectImageInfoByChunkIDs(ctx, chunkRepo, tenantID, ids)
+	infoMap := CollectImageInfoByChunkIDs(ctx, chunkRepo, tenantID, ids)
 	if len(infoMap) == 0 {
 		return
 	}
@@ -109,7 +108,7 @@ func enrichChunkContent(c *types.Chunk) string {
 		if err := json.Unmarshal([]byte(c.ImageInfo), &imgInfos); err == nil && len(imgInfos) > 0 {
 			var imgBuilder strings.Builder
 			for _, img := range imgInfos {
-				if imageMarkdown := searchutil.BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
+				if imageMarkdown := BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
 					imgBuilder.WriteString("\n")
 					imgBuilder.WriteString(imageMarkdown)
 				}

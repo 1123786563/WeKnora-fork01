@@ -1,9 +1,5 @@
 package tools
 
-import (
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-)
-
 // SanitizeMessages validates and fixes a message array for LLM compatibility.
 // It handles common issues that cause provider API errors:
 //   - Ensures no consecutive same-role messages (some providers reject these)
@@ -11,12 +7,12 @@ import (
 //   - Removes empty content messages that can cause API errors
 //
 // Returns the sanitized message slice (may be shorter than input).
-func SanitizeMessages(messages []chat.Message) []chat.Message {
+func SanitizeMessages(messages []Message) []Message {
 	if len(messages) == 0 {
 		return messages
 	}
 
-	result := make([]chat.Message, 0, len(messages))
+	result := make([]Message, 0, len(messages))
 	for i, msg := range messages {
 		// Skip empty non-system messages (some providers reject these)
 		if msg.Content == "" && msg.Role != "system" &&
@@ -52,7 +48,7 @@ func SanitizeMessages(messages []chat.Message) []chat.Message {
 }
 
 // hasMatchingToolCall checks if any preceding assistant message has a tool call with the given ID.
-func hasMatchingToolCall(messages []chat.Message, toolCallID string) bool {
+func hasMatchingToolCall(messages []Message, toolCallID string) bool {
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 		if msg.Role == "assistant" {

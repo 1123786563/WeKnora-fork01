@@ -26,17 +26,16 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 // SkillFileStore is the write surface these tools need. Production uses
-// *sandbox.SessionBoundManager, whose WriteSessionFile already refuses any
+// *SessionBoundManager, whose WriteSessionFile already refuses any
 // path outside the skills image root; the per-skill scope below narrows that
 // to the one directory this install owns.
 type SkillFileStore interface {
-	StatSessionFile(ctx context.Context, sessionID, filePath string) (*sandbox.RemoteStatEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, filePath string) (*RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, filePath string) ([]byte, error)
 	WriteSessionFile(ctx context.Context, sessionID, filePath string, content []byte) error
 }
@@ -276,7 +275,7 @@ func (t *EditSkillFileTool) Execute(ctx context.Context, args json.RawMessage) (
 			Error:   fmt.Sprintf("failed to stat %s: %v", clean, statErr),
 		}, nil
 	}
-	if stat != nil && stat.Type == sandbox.RemoteEntryDir {
+	if stat != nil && stat.Type == RemoteEntryDir {
 		return &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("%s is a directory; edit_skill_file only edits files", clean),

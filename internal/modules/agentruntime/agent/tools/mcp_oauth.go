@@ -9,7 +9,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 )
@@ -90,12 +89,12 @@ type oauthWaiter interface {
 // authorization is required, pauses for the in-conversation prompt before retrying once.
 func getOrCreateMCPClientWithOAuthRetry(
 	ctx context.Context,
-	mcpManager *mcp.MCPManager,
+	mcpManager *MCPManager,
 	service *types.MCPService,
 	gate approval.MCPApproval,
 	oauthSess *MCPOAuthSession,
 	mcpToolName, toolCallID string,
-) (mcp.MCPClient, error) {
+) (MCPClient, error) {
 	client, err := mcpManager.GetOrCreateClient(ctx, service)
 	if err == nil {
 		return client, nil
@@ -243,7 +242,7 @@ func isAuthorizationRequired(err error) bool {
 	if mcpclient.IsOAuthAuthorizationRequiredError(err) || mcpclient.IsAuthorizationRequiredError(err) {
 		return true
 	}
-	var reauth *mcp.OAuthReauthorizationRequiredError
+	var reauth *OAuthReauthorizationRequiredError
 	if errors.As(err, &reauth) {
 		return true
 	}

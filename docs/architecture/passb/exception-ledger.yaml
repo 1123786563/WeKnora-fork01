@@ -1,4 +1,4 @@
-# Pass B exception ledger — 142 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
+# Pass B exception ledger — 130 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
 # Pass A 行 + 6 条 Pass B K1 搬迁显形行 + 5 条 Pass B K2 搬迁显形行 + 13 条 Pass B K3 搬迁显形行
 # + 2 条 Pass B K4 搬迁显形行（24-knowledge-process K4.4，2026-09-26，§5.5 种子多退少补：
 # 种子 3 对横向包目标零诊断退回、实测 policy/access 2 对补录）
@@ -9,6 +9,16 @@
 # datasource_service.go→knowledge/retrieval/app|appconnector|policy/access；IB2 集成撞号裁定：
 # 原分支顺延 exc-0132..0134 与 25b 重编号撞号，按头注规则以 (from,to) 边键为准重编号为
 # exc-0140..0142）。
+# R2.2（b3-r-tools，2026-09-28）：删 plan=32 execution 家族 9 行（exc-0029/0030/0039/0040/
+# 0041/0042/0044/0045/0047，tools 消费侧 seam 收敛）+ 新增 2 行 seam 登记行 exc-0143/0144
+# （Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；remove_at=ib3），计数 142→135。
+# R2.3（b3-r-tools，2026-09-28）：删 plan=32 airesource 家族 5 行（exc-0033/0036/0037/
+# 0038/0043，tools 消费侧 seam 收敛）+ 新增 3 行 seam 登记行 exc-0145/0146/0147
+# （Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；remove_at=ib3），计数 135→133。
+# R2.4（b3-r-tools，2026-09-29）：删 plan=32 knowledge 家族 4 行（exc-0032/0034/0035/
+# 0046，tools 消费侧 seam 收敛）+ 新增 1 行 seam 登记行 exc-0148
+# （Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；remove_at=ib3），计数 133→130。
+# plan=32 名下终态 8 行 = exc-0028/0031（模块根边保留）+ exc-0143..0148（6 seam 行）。
 # Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；K2 五行经 2026-09-25 基线对齐 merge
 # 由 exc-0106..0110 重编号为 exc-0112..0116（K1 已占 0106..0111）；K3 十三行经同窗
 # 由 exc-0106..0118 重编号为 exc-0117..0129；(from,to) 边键与五字段逐字不变；
@@ -187,120 +197,12 @@ exceptions:
     plan: 32-agentruntime-tools
     remove_at: ib3
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0029
-    from: internal/modules/agentruntime/agent/tools/browserskill.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0030
-    from: internal/modules/agentruntime/agent/tools/browserskill_result.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
   - id: exc-0031
     from: internal/modules/agentruntime/agent/tools/craft_delegate.go
     to: "github.com/Tencent/WeKnora/internal/modules/craft"
     plan: 32-agentruntime-tools
     remove_at: ib3
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
-  - id: exc-0032
-    from: internal/modules/agentruntime/agent/tools/grep_chunks.go
-    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0033
-    from: internal/modules/agentruntime/agent/tools/knowledge_search.go
-    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0034
-    from: internal/modules/agentruntime/agent/tools/knowledge_search.go
-    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0035
-    from: internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
-    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0036
-    from: internal/modules/agentruntime/agent/tools/mcp_exposure.go
-    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0037
-    from: internal/modules/agentruntime/agent/tools/mcp_oauth.go
-    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0038
-    from: internal/modules/agentruntime/agent/tools/mcp_tool.go
-    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0039
-    from: internal/modules/agentruntime/agent/tools/output_links.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0040
-    from: internal/modules/agentruntime/agent/tools/sandbox_edit.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0041
-    from: internal/modules/agentruntime/agent/tools/sandbox_ls.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0042
-    from: internal/modules/agentruntime/agent/tools/sandbox_write.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0043
-    from: internal/modules/agentruntime/agent/tools/sanitize_messages.go
-    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0044
-    from: internal/modules/agentruntime/agent/tools/shell_exec.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0045
-    from: internal/modules/agentruntime/agent/tools/skill_file.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0046
-    from: internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
-    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
-  - id: exc-0047
-    from: internal/modules/agentruntime/agent/tools/workspace_reader.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-    plan: 32-agentruntime-tools
-    remove_at: ib3
-    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
   - id: exc-0048
     from: internal/modules/agentruntime/agent/trpc/model.go
     to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
@@ -909,3 +811,39 @@ exceptions:
     plan: 25-agentcatalog-program
     remove_at: ib2
     reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0143
+    from: internal/modules/agentruntime/agent/tools/execution_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"
+  - id: exc-0144
+    from: internal/modules/agentruntime/agent/tools/execution_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"
+  - id: exc-0145
+    from: internal/modules/agentruntime/agent/tools/airesource_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"
+  - id: exc-0146
+    from: internal/modules/agentruntime/agent/tools/airesource_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"
+  - id: exc-0147
+    from: internal/modules/agentruntime/agent/tools/airesource_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"
+  - id: exc-0148
+    from: internal/modules/agentruntime/agent/tools/knowledge_seams.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"

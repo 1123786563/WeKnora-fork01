@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // Metadata snapshots detect outputs without parsing arbitrary commands or stdout.
 // Inspection is best-effort and never provisions a sandbox or downloads files.
-func sandboxOutputSnapshot(ctx context.Context, executor SandboxCommandExecutor, sessionID string) (map[string]sandbox.RemoteDirEntry, bool) {
+func sandboxOutputSnapshot(ctx context.Context, executor SandboxCommandExecutor, sessionID string) (map[string]RemoteDirEntry, bool) {
 	source, ok := executor.(interface {
-		ListSessionFiles(context.Context, string, string) ([]sandbox.RemoteDirEntry, error)
+		ListSessionFiles(context.Context, string, string) ([]RemoteDirEntry, error)
 	})
 	if !ok {
 		return nil, false
@@ -30,17 +29,17 @@ func sandboxOutputSnapshot(ctx context.Context, executor SandboxCommandExecutor,
 	return outputEntriesSnapshot(entries), true
 }
 
-func outputEntriesSnapshot(entries []sandbox.RemoteDirEntry) map[string]sandbox.RemoteDirEntry {
-	files := make(map[string]sandbox.RemoteDirEntry, len(entries))
+func outputEntriesSnapshot(entries []RemoteDirEntry) map[string]RemoteDirEntry {
+	files := make(map[string]RemoteDirEntry, len(entries))
 	for _, entry := range entries {
-		if entry.Type == sandbox.RemoteEntryFile {
+		if entry.Type == RemoteEntryFile {
 			files[entry.Path] = entry
 		}
 	}
 	return files
 }
 
-func changedOutputLinks(before, after map[string]sandbox.RemoteDirEntry) []string {
+func changedOutputLinks(before, after map[string]RemoteDirEntry) []string {
 	var paths []string
 	for filePath, next := range after {
 		old, exists := before[filePath]

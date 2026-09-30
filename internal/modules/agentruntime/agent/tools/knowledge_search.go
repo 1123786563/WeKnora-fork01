@@ -11,8 +11,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -125,7 +123,7 @@ type KnowledgeSearchTool struct {
 	knowledgeService     interfaces.KnowledgeService
 	chunkService         interfaces.ChunkService
 	searchTargets        types.SearchTargets // Pre-computed unified search targets
-	rerankModel          rerank.Reranker
+	rerankModel          Reranker
 	config               *config.Config // Global config for fallback values
 
 	seenMu     sync.Mutex
@@ -138,7 +136,7 @@ func NewKnowledgeSearchTool(
 	knowledgeService interfaces.KnowledgeService,
 	chunkService interfaces.ChunkService,
 	searchTargets types.SearchTargets,
-	rerankModel rerank.Reranker,
+	rerankModel Reranker,
 	cfg *config.Config,
 ) *KnowledgeSearchTool {
 	return &KnowledgeSearchTool{
@@ -381,7 +379,7 @@ func (t *KnowledgeSearchTool) Execute(ctx context.Context, args json.RawMessage)
 			byTenant[tid] = append(byTenant[tid], r.SearchResult)
 		}
 		for tid, batch := range byTenant {
-			searchutil.EnrichSearchResultsImageInfo(ctx, t.chunkService.GetRepository(), tid, batch)
+			EnrichSearchResultsImageInfo(ctx, t.chunkService.GetRepository(), tid, batch)
 		}
 	}
 
@@ -684,7 +682,7 @@ func (t *KnowledgeSearchTool) rerankScores(
 	ctx context.Context,
 	query string,
 	results []*searchResultWithMeta,
-) ([]rerank.RankResult, error) {
+) ([]RankResult, error) {
 	passages := make([]string, len(results))
 	for i, result := range results {
 		passages[i] = t.getEnrichedPassage(ctx, result.SearchResult)
@@ -707,14 +705,14 @@ func (t *KnowledgeSearchTool) rerankThreshold() float64 {
 const agentRerankFallbackMinScore = 0.15
 
 func filterRerankRankResults(
-	rankResults []rerank.RankResult,
+	rankResults []RankResult,
 	threshold float64,
 	preserveTop bool,
-) []rerank.RankResult {
+) []RankResult {
 	if len(rankResults) == 0 {
 		return nil
 	}
-	filtered := make([]rerank.RankResult, 0, len(rankResults))
+	filtered := make([]RankResult, 0, len(rankResults))
 	for _, r := range rankResults {
 		if r.RelevanceScore >= threshold {
 			filtered = append(filtered, r)
@@ -728,7 +726,7 @@ func filterRerankRankResults(
 			}
 		}
 		if preserveTop || top.RelevanceScore >= agentRerankFallbackMinScore {
-			return []rerank.RankResult{top}
+			return []RankResult{top}
 		}
 	}
 	return filtered
@@ -736,7 +734,7 @@ func filterRerankRankResults(
 
 func (t *KnowledgeSearchTool) applyModelRerankScores(
 	originals []*searchResultWithMeta,
-	rankResults []rerank.RankResult,
+	rankResults []RankResult,
 	threshold float64,
 	preserveTop bool,
 ) []*searchResultWithMeta {
@@ -829,7 +827,7 @@ func (t *KnowledgeSearchTool) deduplicateResults(results []*searchResultWithMeta
 
 // buildContentSignature creates a normalized signature for content to detect near-duplicates
 func (t *KnowledgeSearchTool) buildContentSignature(content string) string {
-	return searchutil.BuildContentSignature(content)
+	return BuildContentSignature(content)
 }
 
 // writeKnowledgeMetadataHeader emits document-scoped metadata once per
@@ -1045,7 +1043,7 @@ func (t *KnowledgeSearchTool) formatOutput(
 				var imageInfos []types.ImageInfo
 				if err := json.Unmarshal([]byte(result.ImageInfo), &imageInfos); err == nil && len(imageInfos) > 0 {
 					for _, img := range imageInfos {
-						if imageMarkdown := searchutil.BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
+						if imageMarkdown := BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
 							ob.WriteString(imageMarkdown)
 							ob.WriteString("\n")
 						}
@@ -1242,7 +1240,7 @@ func (t *KnowledgeSearchTool) compositeScore(
 
 // clampFloat clamps a float value to the specified range
 func (t *KnowledgeSearchTool) clampFloat(v, minV, maxV float64) float64 {
-	return searchutil.ClampFloat(v, minV, maxV)
+	return ClampFloat(v, minV, maxV)
 }
 
 // applyMMR applies Maximal Marginal Relevance algorithm to reduce redundancy
@@ -1328,7 +1326,7 @@ func (t *KnowledgeSearchTool) applyMMR(
 
 // tokenizeSimple tokenizes text into a set of words (simple whitespace-based)
 func (t *KnowledgeSearchTool) tokenizeSimple(text string) map[string]struct{} {
-	return searchutil.TokenizeSimple(text)
+	return TokenizeSimple(text)
 }
 
 // extractSnippetForQueries tries to produce a short contextual snippet around
@@ -1391,5 +1389,5 @@ func extractSnippetForQueries(content string, queries []string) string {
 
 // jaccard calculates Jaccard similarity between two token sets
 func (t *KnowledgeSearchTool) jaccard(a, b map[string]struct{}) float64 {
-	return searchutil.Jaccard(a, b)
+	return Jaccard(a, b)
 }

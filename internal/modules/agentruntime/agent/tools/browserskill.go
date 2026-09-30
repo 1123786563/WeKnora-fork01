@@ -9,23 +9,22 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
 type browserTaskManager interface {
-	GetStatus(context.Context, browserskill.Scope, string) (browserskill.Status, error)
-	Account(context.Context, browserskill.Scope) (browserskill.AccountStatus, error)
-	Control(context.Context, browserskill.Scope, string, string) error
-	Call(context.Context, browserskill.Scope, string, string, map[string]any) (json.RawMessage, error)
-	FinishTurn(context.Context, browserskill.Scope, string, bool) error
+	GetStatus(context.Context, Scope, string) (Status, error)
+	Account(context.Context, Scope) (AccountStatus, error)
+	Control(context.Context, Scope, string, string) error
+	Call(context.Context, Scope, string, string, map[string]any) (json.RawMessage, error)
+	FinishTurn(context.Context, Scope, string, bool) error
 }
 
 // BrowserSkillTool binds native browser commands to one member and conversation.
 type BrowserSkillTool struct {
 	BaseTool
 	manager    browserTaskManager
-	scope      browserskill.Scope
+	scope      Scope
 	session    string
 	prepare    sync.Once
 	prepareErr error
@@ -37,8 +36,8 @@ type BrowserSkillTool struct {
 
 // NewBrowserSkillTool creates a session-bound adapter to upstream RPC.
 func NewBrowserSkillTool(
-	manager *browserskill.Manager,
-	scope browserskill.Scope,
+	manager *Manager,
+	scope Scope,
 	session string,
 	searchInstructions ...string,
 ) *BrowserSkillTool {

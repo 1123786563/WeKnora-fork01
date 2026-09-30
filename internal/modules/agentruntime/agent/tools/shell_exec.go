@@ -43,14 +43,13 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 // SandboxCommandExecutor is the narrow, tool-facing subset of a session-aware
 // sandbox manager that supports executing arbitrary shell commands. In
-// production it is satisfied by *sandbox.SessionBoundManager; tests can stub
+// production it is satisfied by *SessionBoundManager; tests can stub
 // it with an in-memory fake. Kept local to the tools package for the same
 // reason as SandboxFileSource — no dependency leak into higher layers.
 type SandboxCommandExecutor interface {
@@ -61,7 +60,7 @@ type SandboxCommandExecutor interface {
 		workDir string,
 		timeout time.Duration,
 		env map[string]string,
-	) (*sandbox.ExecuteResult, error)
+	) (*ExecuteResult, error)
 }
 
 // Limits — kept generous enough for `pip install tensorflow` while still
@@ -179,8 +178,8 @@ type ShellExecInput struct {
 }
 
 // SandboxInstallCommandExecutor is the privileged counterpart of
-// SandboxCommandExecutor, satisfied by *sandbox.SessionBoundManager via
-// sandbox.SessionInstallShellExecutor. It exists as its own named type so the
+// SandboxCommandExecutor, satisfied by *SessionBoundManager via
+// SessionInstallShellExecutor. It exists as its own named type so the
 // install privilege can only be handed over deliberately: nothing that merely
 // implements ExecShellCommand can be mistaken for it.
 type SandboxInstallCommandExecutor interface {
@@ -188,8 +187,8 @@ type SandboxInstallCommandExecutor interface {
 		ctx context.Context,
 		sessionID string,
 		command string,
-		opts sandbox.ShellExecOptions,
-	) (*sandbox.ExecuteResult, error)
+		opts ShellExecOptions,
+	) (*ExecuteResult, error)
 }
 
 // installShellExecutor adapts the privileged executor to the plain executor
@@ -207,8 +206,8 @@ func (e installShellExecutor) ExecShellCommand(
 	workDir string,
 	timeout time.Duration,
 	env map[string]string,
-) (*sandbox.ExecuteResult, error) {
-	return e.inner.ExecShellCommandWithOptions(ctx, sessionID, command, sandbox.ShellExecOptions{
+) (*ExecuteResult, error) {
+	return e.inner.ExecShellCommandWithOptions(ctx, sessionID, command, ShellExecOptions{
 		WorkDir:         workDir,
 		Timeout:         timeout,
 		Env:             env,
@@ -279,7 +278,7 @@ func NewInstallShellExecTool(
 	executor SandboxInstallCommandExecutor, skillDir string,
 ) *ShellExecTool {
 	base := shellExecTool
-	defaultWorkDir, ok := sandbox.ValidatedImageSkillDir(skillDir)
+	defaultWorkDir, ok := ValidatedImageSkillDir(skillDir)
 	if !ok {
 		defaultWorkDir = defaultShellExecWorkDir
 	}
@@ -287,7 +286,7 @@ func NewInstallShellExecTool(
 	return &ShellExecTool{
 		BaseTool:       base,
 		executor:       installShellExecutor{inner: executor},
-		workDirRoots:   []string{defaultShellExecWorkDir, sandbox.SkillsImageRoot},
+		workDirRoots:   []string{defaultShellExecWorkDir, SkillsImageRoot},
 		defaultWorkDir: defaultWorkDir,
 		defaultTimeout: shellExecMaxTimeout,
 	}
@@ -534,24 +533,24 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 	if input.Stdin != "" {
 		// Apply input to the entire command, including compound shell grammar.
 		// Encoding keeps data out of shell syntax and preserves trailing newlines.
-		execCommand = "printf %s " + sandbox.ShellQuote(base64.StdEncoding.EncodeToString([]byte(input.Stdin))) +
-			" | base64 -d | /bin/bash --noprofile --norc -c " + sandbox.ShellQuote(execCommand)
+		execCommand = "printf %s " + ShellQuote(base64.StdEncoding.EncodeToString([]byte(input.Stdin))) +
+			" | base64 -d | /bin/bash --noprofile --norc -c " + ShellQuote(execCommand)
 	}
 	output, finishOutput := shellCommandOutput(ctx, command)
 	defer finishOutput()
 	// Observe only the requested command, not skill staging or artifact probes.
-	execCtx := sandbox.WithCommandOutput(ctx, output)
-	var res *sandbox.ExecuteResult
+	execCtx := WithCommandOutput(ctx, output)
+	var res *ExecuteResult
 	var err error
 	var outputFiles []string
 	if executor, ok := t.executor.(interface {
 		ExecShellCommandWithOutputSnapshot(
-			context.Context, string, string, sandbox.ShellExecOptions, string,
-		) (*sandbox.ExecuteResult, *sandbox.ShellOutputSnapshot, error)
+			context.Context, string, string, ShellExecOptions, string,
+		) (*ExecuteResult, *ShellOutputSnapshot, error)
 	}); ok {
-		var snapshot *sandbox.ShellOutputSnapshot
+		var snapshot *ShellOutputSnapshot
 		res, snapshot, err = executor.ExecShellCommandWithOutputSnapshot(execCtx, sessionID, execCommand,
-			sandbox.ShellExecOptions{WorkDir: workDir, Timeout: timeout, Env: env}, skills.ArtifactOutputDir())
+			ShellExecOptions{WorkDir: workDir, Timeout: timeout, Env: env}, skills.ArtifactOutputDir())
 		if snapshot != nil {
 			outputFiles = changedOutputLinks(
 				outputEntriesSnapshot(snapshot.Before), outputEntriesSnapshot(snapshot.After),
@@ -582,7 +581,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 		return &types.ToolResult{Success: false, Error: "shell executor returned no result"}, nil
 	}
 	if res.Killed && res.Error == "" {
-		res.Error = sandbox.ErrTimeout.Error()
+		res.Error = ErrTimeout.Error()
 	}
 
 	t.maybeCaptureSkillEnv(ctx, input.SkillName, supplied, res)
@@ -696,7 +695,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 // into that skill's credentials. pairs has already had every resolved name
 // removed, so this only ever fills a blank.
 func (t *ShellExecTool) maybeCaptureSkillEnv(
-	ctx context.Context, skillName string, pairs map[string]string, res *sandbox.ExecuteResult,
+	ctx context.Context, skillName string, pairs map[string]string, res *ExecuteResult,
 ) {
 	if t == nil || t.envCapture == nil || t.isInstallMode() {
 		return
@@ -705,7 +704,7 @@ func (t *ShellExecTool) maybeCaptureSkillEnv(
 		return
 	}
 	skillName = strings.TrimSpace(skillName)
-	if !sandbox.IsValidSkillName(skillName) || len(pairs) == 0 {
+	if !IsValidSkillName(skillName) || len(pairs) == 0 {
 		return
 	}
 	t.envCapture(ctx, skillName, pairs)
@@ -742,7 +741,7 @@ func dropResolvedNames(supplied, resolved map[string]string) map[string]string {
 
 func (t *ShellExecTool) isInstallMode() bool {
 	for _, root := range t.workDirRoots {
-		if root == sandbox.SkillsImageRoot {
+		if root == SkillsImageRoot {
 			return true
 		}
 	}
@@ -880,7 +879,7 @@ func hasInlineEvalFlag(command string) bool {
 }
 
 func skillNameFromShellCommand(command string) string {
-	idx := strings.Index(command, sandbox.SkillsImageRoot+"/")
+	idx := strings.Index(command, SkillsImageRoot+"/")
 	if idx < 0 {
 		return ""
 	}
@@ -888,7 +887,7 @@ func skillNameFromShellCommand(command string) string {
 	if end := strings.IndexAny(rest, " \t\"'"); end > 0 {
 		rest = rest[:end]
 	}
-	name, inImage := sandbox.SkillNameFromImagePath(rest)
+	name, inImage := SkillNameFromImagePath(rest)
 	if !inImage {
 		return ""
 	}
