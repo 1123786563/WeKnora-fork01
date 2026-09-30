@@ -375,6 +375,13 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
 
   return <div ref={containerRef} className="chat_scroll_box wk-chat-message-scroll" onScroll={onScroll}>
     <div className="msg_list wk-chat-messages" aria-label={t.messagesLabel}>
+    {hasMore ? <button
+      type="button"
+      className="wk-chat-load-older"
+      aria-label={loadingOlder ? t.loadingHistory : t.loadOlder}
+      disabled={loadingOlder}
+      onClick={() => { if (!loadingOlder) onLoadOlder?.(); }}
+    >{loadingOlder ? t.loadingHistory : t.loadOlder}</button> : null}
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
       // Vue handleMsgList restore split: the persisted `<think>…</think>`

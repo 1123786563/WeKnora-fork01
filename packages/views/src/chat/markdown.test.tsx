@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { renderChatMarkdown } from './markdown.ts';
 import { messageArtifactItems, renderMessageHtml } from './message-list.tsx';
+import { resolveChatCopy } from './chat-copy.ts';
 
 test('renders Markdown structures used by assistant answers', () => {
   const html = renderChatMarkdown([
@@ -147,6 +148,20 @@ test('message rendering uses the shared safe Markdown renderer', () => {
 test('message rendering threads the invalid-image label into the shared renderer', () => {
   const html = renderMessageHtml({ content: '![x](javascript:alert(1))' }, 'Invalid image link');
   assert.match(html, /<p>Invalid image link<\/p>/);
+});
+
+test('localized chat copy controls invalid-image fallback in message faces', async () => {
+  const React = await import('react');
+  Object.assign(globalThis, { React });
+  const { renderToStaticMarkup } = await import('../../../../apps/web/node_modules/react-dom/server.js');
+  const { BotMessageFace } = await import('./message-face.tsx');
+  const copy = resolveChatCopy('en-US');
+  const markup = renderToStaticMarkup(React.createElement(BotMessageFace, {
+    copy, message: { id: 'm1', role: 'assistant', content: '', is_completed: true } as never,
+    sessionId: null, content: '![bad](javascript:alert(1))',
+  }));
+  assert.match(markup, /Invalid image link/);
+  assert.doesNotMatch(markup, /无效的图片链接/);
 });
 
 test('message artifacts retain only public metadata for protected download actions', () => {
