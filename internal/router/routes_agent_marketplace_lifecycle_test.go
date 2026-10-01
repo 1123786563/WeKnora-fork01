@@ -45,6 +45,10 @@ func TestAgentMarketplaceLifecycleRoutesRequireAdminAndFullAccess(t *testing.T) 
 func newLifecycleTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 	t.Helper()
 	db := openTenantAgentMarketplaceHTTPTestDB(t)
+	require.NoError(t, db.Exec("INSERT INTO tenants (id, name, business) VALUES (1, 'lifecycle-e2e', 'test')").Error)
+	// Admit 的 actor 校验要求 actor 为本租户活跃成员（users JOIN tenant_members）。
+	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, is_active) VALUES ('admin', 'admin', 'admin@lifecycle.test', 'x', 1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'admin', 'admin', 'active')`).Error)
 	require.NoError(t, db.Create(&types.CustomAgent{ID: "agent-owned", Name: "Lifecycle helper", TenantID: 1, CreatedBy: "contributor", Config: types.CustomAgentConfig{AgentMode: "smart-reasoning", SystemPrompt: "Be useful."}}).Error)
 	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
 	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
@@ -71,6 +75,21 @@ func newLifecycleTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 	RegisterAgentUpgradeRoutes(v1, handler.NewAgentUpgradeHandler(upgrades), g)
 	RegisterAgentMarketplaceLifecycleRoutes(v1, handler.NewAgentMarketplaceLifecycleHandler(lifecycle), g)
 	return r, g, db
+}
+
+// newLifecycleCoordinator mirrors the container wiring (server-owned binding
+// resolver + security gate + published-version pins), see internal/container/workbench.go.
+func newLifecycleCoordinator(t *testing.T, db *gorm.DB) *workbenchservice.AdmissionCoordinator {
+	t.Helper()
+	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
+	security := service.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db))
+	security.SetAgentVersionService(versions)
+	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, repository.NewAgentRunStore(db), workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(nil))
+	require.NoError(t, err)
+	coordinator.SetAgentSecurityGate(security)
+	coordinator.SetPublishedAgentVersionResolver(security)
+	return coordinator
 }
 
 func newLifecycleIdentityMiddleware() gin.HandlerFunc {
@@ -248,7 +267,7 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	// Preserve a real Task/Run row across the lifecycle exits, so these counts
 	// prove historical work remains instead of comparing two empty tables.
 	seedLifecycleWorkbenchSessions(t, db, "lifecycle-history")
-	coordinator := workbenchservice.NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), nil, nil)
+	coordinator := newLifecycleCoordinator(t, db)
 	accepted, err := coordinator.Start(context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "admin"), workbenchservice.StartInput{
 		SessionID: "lifecycle-history", AgentID: localAgentID, TargetID: "platform", RequestID: "lifecycle-history-request", Text: "historical task", BudgetUpper: 100,
 	})
@@ -424,7 +443,7 @@ func TestLifecycleRetireBlocksNewWorkEndToEnd(t *testing.T) {
 	available := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer", nil)
 	require.Contains(t, available.Body.String(), localAgentID)
 	seedLifecycleWorkbenchSessions(t, db, "retire-admission-before", "retire-admission-after")
-	coordinator := workbenchservice.NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), nil, nil)
+	coordinator := newLifecycleCoordinator(t, db)
 	coordinator.SetAgentUseGate(newRealAgentUseGate(db))
 	r.POST("/api/v1/workbench/executions", newLifecycleIdentityMiddleware(), session.NewWorkbenchStartHandler(coordinator).Start)
 	startBody := func(sessionID, requestID string) string {
