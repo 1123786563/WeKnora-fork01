@@ -17,3 +17,14 @@
 - Task 2 R1 independent review: Spec compliance pass; code quality pass with Low report traceability finding (artifact in the mobile worktree). The updated report currently names a mismatched source commit and omits the R1 payload hash; reconcile before integration.
 - Task 3 status: not dispatched because agent capacity is exhausted; dedicated worktree exists at `/Users/wuyongjun/.paseo/worktrees/144ixsa6/issue30-t55-shell-boundary` and remains clean at plan base.
 - Current status: T55 remains incomplete pending Task 1 High repairs/re-review, Task 2 report traceability correction/integration, Task 3 implementation/review, integrated verification, final independent review, and complete OCR.
+
+## 2026-10-02 终局段（subagent 收口轮，branch codex/issue30-t63-closure @ a1e1ddae0）
+
+- 本段取代上文「Current status」行的六项悬置判定（该行所记为 round5 合并前快照）：
+  1. **Task 1 High 修复（F1）**：已随 `codex/issue30-t55-repair-backend` 落库（service.go:366-407 持久 CAS claim + 4 个 TestT55 回归）；本轮独立终审（opus）复核 PASS——store.go:88 原子谓词单写、并发 409、POST /pulls 恰一次、claim 错误路径全 settle 或停 dispatched 由 resolve fail-closed 自愈。
+  2. **F2/F3/F4**：全交付并复核 PASS（:325/:421 run+owner 先绑定；delivery-recovery.ts:59 delivered→not-needed；生产 resolver+store 隔离测试正控+operator env 保留+三负向 scope）。
+  3. **Task 2 R1 溯源**：bf091d978 已修正（真实源提交 878e9cec + payload SHA + 判词）。
+  4. **Task 3 shell-boundary**：实现已交付；审查工件未入库 → Minor 登记。
+  5. **集成验证**：已于集成 HEAD（a1e1ddae0）重跑——codedelivery ok、repository 聚焦组 ok、appconnector 8 包 ok、mobile-core delivery Node26 18/18；终审者独立抽跑复现一致。
+  6. **终审**：2026-10-02 opus 独立终审（task-3-review.md）判词 **#55 closure-ready（live GitHub 路径与原生环境 blocked-env 边界内）**；0 Critical / 0 Important / 2 流程 Minor（本段即 G6 回写；OCR 按既定口径：T25 收口差异经 round5 各流审查覆盖，全量 OCR 受基线 87 存量失败与配额历史影响，不构成单票门槛）。
+- follow-up（非阻塞）：悬空引用清理、task-3 审查工件入库、#55 关票与合入 owner 裁决。
