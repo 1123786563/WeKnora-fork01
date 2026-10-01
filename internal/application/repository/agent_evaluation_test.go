@@ -33,7 +33,7 @@ func TestAgentEvaluationReleasePinnedImmutableAndUnique(t *testing.T) {
 
 func seedPublicEvaluationReleaseFixture(t *testing.T, db *gorm.DB) string {
 	t.Helper()
-	seedMarketplaceVersion(t, db, "eval-version", "eval-agent")
+	require.NoError(t, db.Exec(`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES ('eval-version', 1, 'eval-agent', 1, '{}', 'sha', 'author')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_marketplace_listings (id,tenant_id,source_agent_id,display_name) VALUES ('eval-listing',1,'eval-agent','Eval')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_release_submissions (id,tenant_id,listing_id,agent_version_id,source_agent_id,semantic_version,bundle_digest,manifest_json,dependency_lock_json,bundle) VALUES ('eval-sub',1,'eval-listing','eval-version','eval-agent','1.0.0','eval-digest','{}','{}','{}')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_releases (id,tenant_id,listing_id,submission_id,agent_version_id,source_agent_id,release_number,semantic_version,bundle_digest,manifest_json,dependency_lock_json,bundle) VALUES ('eval-source-release',1,'eval-listing','eval-sub','eval-version','eval-agent',1,'1.0.0','eval-digest','{}','{}','{}')`).Error)
