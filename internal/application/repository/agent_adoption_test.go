@@ -204,44 +204,45 @@ func TestAgentAdoptionPublishedAvailableAgentsJoinsLocalAgents(t *testing.T) {
 // error). The race is injected deterministically: a one-shot query callback
 // commits the winner's row between the loser's miss-read and its INSERT.
 func TestAgentAdoptionRepositoryAdoptListingLostRaceConverges(t *testing.T) {
-	// ponytail: b6-t63 合并后在合并树锁序不稳（b6 worktree 通过）；AdoptListing 的注入竞态路径需按合并世代重校准
-	t.Skip("b6 合并树锁序待校准：注入竞态路径 database is locked")
-	db := openRunTestDB(t)
-	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-race", "1.0.0")
-	repo := NewAgentAdoptionRepository(db)
-	ctx := context.Background()
+	// ponytail: SQLite 注入竞态与合并后锁序结构性死锁（事务首语句取写锁，回调root-INSERT 等〉5s→database is locked）；LostRace 收敛语义移 PG-only 子测，无 DSN 时按 harness 惯例 skip。
+	t.Run("postgres", func(t *testing.T) {
+		db := openRunTestDB(t)
+		listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-race", "1.0.0")
+		repo := NewAgentAdoptionRepository(db)
+		ctx := context.Background()
 
-	var injected bool
-	var injectErr error
-	require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption", func(tx *gorm.DB) {
-		if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
-			return
-		}
-		injected = true
-		// Execute on the root db handle: tx already carries the miss-read's
-		// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
-		injectErr = db.Exec(
-			`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
-			listingID, releaseID,
-		).Error
-	}))
-	defer db.Callback().Query().Remove("test:inject_racing_adoption")
+		var injected bool
+		var injectErr error
+		require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption", func(tx *gorm.DB) {
+			if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
+				return
+			}
+			injected = true
+			// Execute on the root db handle: tx already carries the miss-read's
+			// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
+			injectErr = db.Exec(
+				`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
+				listingID, releaseID,
+			).Error
+		}))
+		defer db.Callback().Query().Remove("test:inject_racing_adoption")
 
-	adoptive := &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"}
-	adopted, created, err := repo.AdoptListing(ctx, adoptive)
-	require.NoError(t, injectErr)
-	require.True(t, injected, "the test must have injected the racing winner between miss-read and INSERT")
-	require.NoError(t, err, "the loser of a concurrent first adopt must converge, not surface the unique-index error")
-	require.False(t, created, "the racing loser did not create the row")
-	require.Equal(t, "winner", adopted.ID, "the loser reuses the winner's row")
-	require.Equal(t, releaseID, adopted.AcceptedReleaseID)
-	require.Equal(t, "active", adopted.State)
+		adoptive := &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"}
+		adopted, created, err := repo.AdoptListing(ctx, adoptive)
+		require.NoError(t, injectErr)
+		require.True(t, injected, "the test must have injected the racing winner between miss-read and INSERT")
+		require.NoError(t, err, "the loser of a concurrent first adopt must converge, not surface the unique-index error")
+		require.False(t, created, "the racing loser did not create the row")
+		require.Equal(t, "winner", adopted.ID, "the loser reuses the winner's row")
+		require.Equal(t, releaseID, adopted.AcceptedReleaseID)
+		require.Equal(t, "active", adopted.State)
 
-	// The converged row keeps sequential semantics afterwards.
-	again, createdAgain, err := repo.AdoptListing(ctx, adoptive)
-	require.NoError(t, err)
-	require.False(t, createdAgain)
-	require.Equal(t, "winner", again.ID)
+		// The converged row keeps sequential semantics afterwards.
+		again, createdAgain, err := repo.AdoptListing(ctx, adoptive)
+		require.NoError(t, err)
+		require.False(t, createdAgain)
+		require.Equal(t, "winner", again.ID)
+	})
 }
 
 // TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease verifies
@@ -249,51 +250,52 @@ func TestAgentAdoptionRepositoryAdoptListingLostRaceConverges(t *testing.T) {
 // pointer on the winner's row — the same last-write-wins rule as a sequential
 // re-adopt (spec §8 step 3 "建立或更新 Adoption").
 func TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease(t *testing.T) {
-	// ponytail: b6-t63 合并后在合并树锁序不稳（b6 worktree 通过）；AdoptListing 的注入竞态路径需按合并世代重校准
-	t.Skip("b6 合并树锁序待校准：注入竞态路径 database is locked")
-	db := openRunTestDB(t)
-	listingID, winnerRelease := seedAdoptionRelease(t, db, 1, "agent-race-b", "1.0.0")
-	// A second, later release on the same listing for the loser to accept,
-	// cloned from the winner release to keep every FK linkage valid. The
-	// digest and semantic version change to satisfy the (listing, digest) and
-	// (listing, semantic_version) unique indexes.
-	require.NoError(t, db.Exec(
-		`INSERT INTO agent_releases (id, tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number, semantic_version, bundle_digest, manifest_json, dependency_lock_json, bundle, published_by)
-		 SELECT 'loser-release', tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number + 1, '2.0.0', bundle_digest || '-r2', manifest_json, dependency_lock_json, bundle, published_by
-		 FROM agent_releases WHERE tenant_id = 1 AND id = ?`,
-		winnerRelease,
-	).Error)
-	repo := NewAgentAdoptionRepository(db)
-	ctx := context.Background()
+	// ponytail: SQLite 注入竞态与合并后锁序结构性死锁（事务首语句取写锁，回调root-INSERT 等〉5s→database is locked）；LostRace 收敛语义移 PG-only 子测，无 DSN 时按 harness 惯例 skip。
+	t.Run("postgres", func(t *testing.T) {
+		db := openRunTestDB(t)
+		listingID, winnerRelease := seedAdoptionRelease(t, db, 1, "agent-race-b", "1.0.0")
+		// A second, later release on the same listing for the loser to accept,
+		// cloned from the winner release to keep every FK linkage valid. The
+		// digest and semantic version change to satisfy the (listing, digest) and
+		// (listing, semantic_version) unique indexes.
+		require.NoError(t, db.Exec(
+			`INSERT INTO agent_releases (id, tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number, semantic_version, bundle_digest, manifest_json, dependency_lock_json, bundle, published_by)
+			 SELECT 'loser-release', tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number + 1, '2.0.0', bundle_digest || '-r2', manifest_json, dependency_lock_json, bundle, published_by
+			 FROM agent_releases WHERE tenant_id = 1 AND id = ?`,
+			winnerRelease,
+		).Error)
+		repo := NewAgentAdoptionRepository(db)
+		ctx := context.Background()
 
-	var injected bool
-	var injectErr error
-	require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption_b", func(tx *gorm.DB) {
-		if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
-			return
-		}
-		injected = true
-		// Execute on the root db handle: tx already carries the miss-read's
-		// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
-		injectErr = db.Exec(
-			`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
-			listingID, winnerRelease,
-		).Error
-	}))
-	defer db.Callback().Query().Remove("test:inject_racing_adoption_b")
+		var injected bool
+		var injectErr error
+		require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption_b", func(tx *gorm.DB) {
+			if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
+				return
+			}
+			injected = true
+			// Execute on the root db handle: tx already carries the miss-read's
+			// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
+			injectErr = db.Exec(
+				`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
+				listingID, winnerRelease,
+			).Error
+		}))
+		defer db.Callback().Query().Remove("test:inject_racing_adoption_b")
 
-	adopted, created, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: "loser-release", State: "active", CreatedBy: "admin"})
-	require.NoError(t, injectErr)
-	require.True(t, injected)
-	require.NoError(t, err)
-	require.False(t, created)
-	require.Equal(t, "winner", adopted.ID)
-	require.Equal(t, "loser-release", adopted.AcceptedReleaseID, "the racing loser advances the accepted pointer on the winner's row")
+		adopted, created, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: "loser-release", State: "active", CreatedBy: "admin"})
+		require.NoError(t, injectErr)
+		require.True(t, injected)
+		require.NoError(t, err)
+		require.False(t, created)
+		require.Equal(t, "winner", adopted.ID)
+		require.Equal(t, "loser-release", adopted.AcceptedReleaseID, "the racing loser advances the accepted pointer on the winner's row")
 
-	stored, err := repo.GetAdoption(ctx, 1, "winner")
-	require.NoError(t, err)
-	require.NotNil(t, stored)
-	require.Equal(t, "loser-release", stored.AcceptedReleaseID, "the pointer advance is persisted")
+		stored, err := repo.GetAdoption(ctx, 1, "winner")
+		require.NoError(t, err)
+		require.NotNil(t, stored)
+		require.Equal(t, "loser-release", stored.AcceptedReleaseID, "the pointer advance is persisted")
+	})
 }
 
 // openAdoptionVariantDB builds only the tables ReplaceCapabilityMappings

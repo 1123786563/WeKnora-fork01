@@ -14,11 +14,25 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+
+// retirementPinnedResolver freezes the pre-race pins so the retirement race
+// is adjudicated inside the Admit transaction, not by the resolver.
+type retirementPinnedResolver struct{}
+
+func (retirementPinnedResolver) ResolvePublishedAgentVersion(context.Context, uint64, string) (interfaces.AgentVersionSnapshot, string, bool, error) {
+	return interfaces.AgentVersionSnapshot{
+		AgentVersionView: interfaces.AgentVersionView{ID: "version", AgentID: "agent-retired", VersionNumber: 1, SourceSHA256: "digest"},
+		Agent:            &types.CustomAgent{TenantID: 1, ID: "agent-retired"},
+	}, "release", true, nil
+}
 
 type retirementRaceBudget struct {
 	entered        chan struct{}
@@ -49,15 +63,18 @@ func (b *retirementRaceBudget) ReleaseUnstarted(context.Context, string) error {
 }
 
 func TestAdmissionRetirementBetweenFastGateAndRunCommitIsDenied(t *testing.T) {
-	// ponytail: b6-t63 合并后退役/发布竞态错误链变为 runtime conflict（b6 世代准入序），断言待重校准
-	t.Skip("b6 合并树退役竞态断言待校准")
 	db := openAdmissionConcurrencyDB(t)
 	seedAdmissionVariant(t, db, "published")
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(4)
 	budget := &retirementRaceBudget{entered: make(chan struct{}), continueEnsure: make(chan struct{})}
-	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
+	coordinator := newAgentUseAdmissionCoordinator(t, db, budget)
+	// 竞态注入需要 pre-race pins：resolver 在 Admit 事务前解析，retire 已
+	// 提交后解析必 fail-closed（unresolvable），测不到事务内退役竞态闸。
+	// 固定 retire 前快照，让 Admit 事务内的 lockAgent+retired 计数裁决（同
+	// admissionStaleVersionResolver 模式）。
+	coordinator.SetPublishedAgentVersionResolver(retirementPinnedResolver{})
 	coordinator.SetAgentUseGate(func(ctx context.Context, tenant uint64, agentID string) error {
 		retired, gateErr := repository.NewAgentAdoptionRepository(db).RetiredVariantAgentExists(ctx, tenant, agentID)
 		if gateErr != nil {
@@ -94,12 +111,11 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 	// ponytail: 程序遗留红测——workbench Admit 不传 LocalAgentVersionID，而 variant 存在时
 	// 安全准入要求精确版本匹配；在 codex/issue30-mobile-office 终态上同样失败。
 	// 收口契约（Admit 侧传版本或守卫降级）后恢复。
-	t.Skip("issue30 遗留：workbench Admit 未传 LocalAgentVersionID，与安全准入契约不匹配")
 	t.Run("admitted replay and mismatched hash", func(t *testing.T) {
 		db := openAdmissionConcurrencyDB(t)
 		seedAdmissionVariant(t, db, "published")
 		adoptions := repository.NewAgentAdoptionRepository(db)
-		coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), nil, nil)
+		coordinator := newAgentUseAdmissionCoordinator(t, db, nil)
 		calls := 0
 		coordinator.SetAgentUseGate(func(ctx context.Context, tenant uint64, agentID string) error {
 			calls++
@@ -176,7 +192,7 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 		seedAdmissionVariant(t, db, "published")
 		budget := &releaseTrackingBudget{}
 		adoptions := repository.NewAgentAdoptionRepository(db)
-		coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
+		coordinator := newAgentUseAdmissionCoordinator(t, db, budget)
 		coordinator.SetAgentUseGate(func(ctx context.Context, tenant uint64, agentID string) error {
 			retired, gateErr := adoptions.RetiredVariantAgentExists(ctx, tenant, agentID)
 			if gateErr != nil {
@@ -198,6 +214,7 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 		committed, err := repository.NewAgentRunStore(db).Admit(ctx, agentruntime.Admission{
 			Key: agentruntime.RunKey{TenantID: 1, RunID: request.RunID}, SessionID: in.SessionID, AgentID: in.AgentID,
 			UserID: "u1", RequestID: in.RequestID, AssistantMessageID: "committed-pending-assistant", Driver: "platform",
+			LocalAgentVersionID: "version", ReleaseID: "release",
 			TargetID: "platform", BudgetRef: request.ReservationRef, RequestHash: request.RequestHash,
 			Snapshot: json.RawMessage(`{"agent_id":"agent-retired"}`), UserMessage: json.RawMessage(`{"role":"user","content":"hello"}`),
 			AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`), Deadline: time.Now().Add(time.Hour),
@@ -254,24 +271,46 @@ func TestAdmissionTransientAgentGateErrorKeepsPendingForRetry(t *testing.T) {
 	require.EqualValues(t, 1, budget.releases.Load())
 }
 
-func seedAdmissionVariant(t *testing.T, db interface{ Create(value any) *gorm.DB }, state string) {
+
+// newAgentUseAdmissionCoordinator mirrors the container wiring (security
+// gate + server-owned published-version pins) so variant agents resolve
+// release pins exactly like production, see internal/container/workbench.go.
+func newAgentUseAdmissionCoordinator(t *testing.T, db *gorm.DB, budget TaskBudgetPort) *AdmissionCoordinator {
 	t.Helper()
+	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	versions := appservice.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
+	security := appservice.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db))
+	security.SetAgentVersionService(versions)
+	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
+	coordinator.SetAgentSecurityGate(security)
+	coordinator.SetPublishedAgentVersionResolver(security)
+	return coordinator
+}
+
+func seedAdmissionVariant(t *testing.T, db *gorm.DB, state string) {
+	t.Helper()
+	// Admissions are actor-fenced: AgentRunStore.Admit requires an active
+	// tenant_members row, which openAdmissionConcurrencyDB does not seed.
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status) VALUES (1,'u1','owner','active')").Error)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "listing", SourceAgentID: "source-agent", DisplayName: "Agent", State: "listed"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "adoption", ListingID: "listing", AcceptedReleaseID: "release", State: "active"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{TenantID: 1, ID: "retired-variant", AdoptionID: "adoption", ReleaseID: "release", Name: "agent", State: state, LocalAgentID: "agent-retired", LocalAgentVersionID: "version"}).Error)
 	// 安全准入守卫解析链：custom_agents 本地身份 + agent_versions + agent_releases 全链可解析
 	require.NoError(t, db.Create(&types.CustomAgent{TenantID: 1, ID: "agent-retired", Name: "agent"}).Error)
-	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: "version", TenantID: 1, AgentID: "agent-retired", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "digest"}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: "submission", TenantID: 1, ListingID: "listing", AgentVersionID: "version", SourceAgentID: "agent-retired", SemanticVersion: "1.0.0", BundleDigest: "digest", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), Status: "approved"}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "release", ListingID: "listing", SubmissionID: "submission", AgentVersionID: "version", SourceAgentID: "agent-retired", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "digest", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: "version", TenantID: 1, AgentID: "agent-retired", VersionNumber: 1, Snapshot: `{"id":"agent-retired","tenant_id":1,"name":"agent"}`, SourceSHA256: "0373a4c026cedec0ed898c36bf7e30a571c8aeb5f4619905c78b19dbbc84db03"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: "submission", TenantID: 1, ListingID: "listing", AgentVersionID: "version", SourceAgentID: "agent-retired", SemanticVersion: "1.0.0", BundleDigest: "digest", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b"), Status: "approved"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "release", ListingID: "listing", SubmissionID: "submission", AgentVersionID: "version", SourceAgentID: "agent-retired", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "digest", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
 }
 
 func TestAdmissionAgentUseGateBlocksRetiredBeforePersisting(t *testing.T) {
 	// ponytail: 同 TestAdmissionReplaysCommittedRun 的程序遗留契约缺口，程序终态同样失败
-	t.Skip("issue30 遗留：workbench Admit 未传 LocalAgentVersionID，与安全准入契约不匹配")
 	db := openAdmissionConcurrencyDB(t)
 	require.NoError(t, db.Exec("INSERT INTO sessions (id,tenant_id,title,user_id,engine_type) VALUES ('s2',1,'s2','u1','trpc'),('s3',1,'s3','u1','trpc')").Error)
-	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), nil, nil)
+	// 普通代理（无 variant 血统）走 0-variant 放行路径，但也必须有本地身份行。
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status) VALUES (1,'u1','owner','active')").Error)
+	require.NoError(t, db.Create(&types.CustomAgent{TenantID: 1, ID: "agent-live", Name: "live"}).Error)
+	require.NoError(t, db.Create(&types.CustomAgent{TenantID: 1, ID: "agent-retired", Name: "retired"}).Error)
+	coordinator := newAgentUseAdmissionCoordinator(t, db, nil)
 	calls := 0
 	coordinator.SetAgentUseGate(func(_ context.Context, _ uint64, agentID string) error {
 		calls++
