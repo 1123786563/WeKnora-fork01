@@ -1,0 +1,91 @@
+T01 (#31) iOS live OIDC chain — environment-backed run log
+Branch codex/issue30-t63-closure, 2026-10-02 00:30–03:00 (+0800). Secrets redacted.
+
+[A] Bring-up stack (all verified from host)
+1. mkcert CA + certs for 192-168-3-33.nip.io (+ lvh.me, 192-168-3-33.sslip.io) — installed to system keychain.
+2. nginx (standalone instance, /tmp/t01/nginx/nginx.conf): :8443 ssl (later + :18443 ssl) → proxy_pass http://127.0.0.1:8084,
+   Host + X-Forwarded-Proto https preserved. TLS verified end-to-end:
+     $ curl https://192-168-3-33.nip.io:8443/api/v1/auth/oidc/config
+     {"success":true,"enabled":true,"provider_display_name":"Casdoor"}   (ssl_verify ok, nginx log line 200)
+3. Casdoor (existing container :18000) provisioned over admin API (admin session):
+   - org weknora created; password policy inherited from built-in (passwordType=bcrypt, AtLeast6).
+   - GOTCHA (worth upstreaming): on this Casdoor build, application rows must have owner="admin" with
+     organization="weknora" (mirroring app-built-in). Created via API with owner=weknora first, the row
+     stored but every consumer lookup failed ("The application: weknora-app does not exist", and add-user
+     failed with "The organization: admin should have one application at least" — that message interpolates
+     organization.Owner). sqlite UPDATE application SET owner='admin' fixed all lookups.
+   - app weknora-app: client_id/secret generated (stored in ~/.t01-live-creds.env, mode 600, never committed),
+     grant types authorization_code+password+refresh_token, enablePassword=1,
+     redirect_uris = [https://192-168-3-33.nip.io:8443/api/v1/auth/oidc/callback, https://lvh.me:8443/api/v1/auth/oidc/callback].
+   - user weknora/t01live created; API login probe {"status":"ok","data":"weknora/t01live"}.
+4. Backend: dev.sh-equivalent env + overlays (SSRF_WHITELIST=casdoor,localhost,192.168.3.30,192.168.3.33,
+   OIDC_AUTH_ENABLE=true, issuer http://localhost:18000, authorization endpoint http://192.168.3.33:18000/...,
+   client creds from env file). See BLOCKER 1 for why the binary is not HEAD.
+   Verified:
+     GET /api/v1/auth/oidc/config  → enabled=true, provider=Casdoor (direct :8084 and via https origin)
+     GET /api/v1/auth/oidc/url?redirect_uri=<https origin callback>&frontend_redirect_uri=weknora://oidc
+       → 200 authorization_url http://192.168.3.33:18000/login/oauth/authorize?client_id=...&state=<signed>
+     POST /api/v1/auth/login (parity account) → 200 + real session token; GET /api/v1/auth/me → 200;
+     GET /api/v1/system/capabilities → protocol window {2,3}.
+
+[B] Repo live smoke (Node 26, apps/mobile) against the authorized origin
+  WEKNORA_MOBILE_TEST_DEPLOYMENT_URL=https://192-168-3-33.nip.io:8443 (+ parity FUNC creds)
+  $ node --import tsx --test src/ios-core-workflow-integration-smoke.test.ts
+  → tests 4, pass 4, fail 0 (18.8s total)
+  Live-composition evidence record (total-ized contract, printed via runner):
+  {"deploymentOrigin":"https://192-168-3-33.nip.io:8443","signIn":"failed","coldBootRestore":"not-attempted",
+   "revocation":"not-attempted","tenantSwitch":"not-attempted","weakNetwork":"not-attempted",
+   "runVisibleInTasks":"not-attempted","errorReason":"surface upgrade-required"}
+  Interpretation: real network round-trips succeeded (login 200, capabilities 200) and the runtime
+  integration gate executed, but the runtime classified the deployment as upgrade-required, so the
+  authorized surface was not reached (see BLOCKER 2).
+
+[C] Simulator app (iPhone 18 Pro, iOS 27, booted; expo dev build, SDK 57, deploymentTarget 16.4)
+  - expo run:ios built and installed com.weknora.mobile; Metro restarted with
+    EXPO_PUBLIC_WEKNORA_CLOUD_ORIGIN so the deployment-login screen prefills the authorized HTTPS origin
+    (screenshots: app-deployment-login-authorized-origin.png, app-deployment-login-lvhme-prefill.png).
+  - OIDC begin attempts (tap "Continue with single sign-on") produced no outbound request to the
+    deployment (nginx/backend access logs unchanged, no nw_ activity to :8443) — beginOidc swallows the
+    fetch failure (mobile-runtime.ts beginOidc catch → safe()). Root cause: BLOCKER 2.
+  - The web legs that did work for real (system Safari, which resolves+connects differently):
+      casdoor-login-form-username-only.png — real Casdoor /login/oauth/authorize form, username filled only
+      casdoor-authentication-success.png   — real t01live authentication success at Casdoor
+    No authorization code was ever issued (casdoor token table stayed empty) because the in-app flow
+    never delivered a resumable authorization transaction back to the app.
+
+[D] BLOCKER 1 (repo): HEAD backend panics at boot — no current-commit deployment exists to test against
+  $ bash scripts/dev.sh app  (and go-build of 3dc9d0b07) both panic:
+  panic: could not build arguments for wireAgentSecurityGates (internal/container/agent_security.go:39):
+  failed to build *service.AgentAdoptionService → CustomAgentService → KnowledgeBaseService
+  (container.go:415 func10): missing types: retriever.TenantStoreOwnership; interfaces.StorageBackendResolver;
+  interfaces.TaskEnqueuer; interfaces.TaskInspector; *datasource.Scheduler; interfaces.ResourceCatalog
+  → provideAgentSecurity() runs container.Invoke(wireAgentSecurityGates) mid-registration (container.go ~491)
+    while KnowledgeBaseService's dependencies are only Provided later (~515-715).
+  Working tree = HEAD 753b9755e, clean. 9/29 baseline 5ab7919c5 boots fine (that binary,
+  /tmp/t01/server-base, serves this run), 9/30 21:35 merge 3dc9d0b07 already panics — regression window
+  is the 9/30 merge batch.
+
+[E] BLOCKER 2 (machine): system-wide proxy swallows simulator app traffic to any hostname origin
+  scutil --proxy: HTTP/HTTPS proxy 127.0.0.1:17890 (CoreTunnel), no ExceptionsList, not owned by any
+  networksetup service (profile-scoped) → cannot add per-host bypass without touching the user's tunnel.
+  Matrix (curl -x http://127.0.0.1:17890):
+    https://192.168.3.33:8084  → 200   (IP literal, LAN, direct rule)
+    https://192.168.3.33:18443 → 200   (IP literal, LAN)
+    https://192-168-3-33.nip.io:8443/18443 → 000 (hostname)
+    https://lvh.me:8443/18443            → 000 (hostname → loopback refused by tunnel)
+    http://192.168.3.33:18000   → 200   (why Safari could render Casdoor pages)
+  App CFNetwork uses the system proxy for hostnames; the app's deployment-origin gate
+  (runtime-integration-smoke.ts disallowedDeploymentHost + validatedDeploymentOrigin) rejects IP literals
+  and localhost — so no origin satisfies both the gate and the proxy. DNS-wise nip.io/sslip.io are also
+  unresolvable from Safari ("server IP address could not be found"); lvh.me resolves.
+
+[F] Resume checklist (after the two blockers clear)
+  1. Fix provideAgentSecurity ordering (or its deps) so HEAD boots; rebuild server binary.
+  2. Add CoreTunnel bypass for lvh.me + 192-168-3-33.nip.io (or pause system proxy during the run).
+  3. Everything else is standing: nginx (both certs), Casdoor (org/app/user + both redirect URIs),
+     creds file ~/.t01-live-creds.env, app installed with origin prefill (Metro env), companion+idb for
+     input. Then: tap "Continue with single sign-on" → Casdoor login (t01live) → weknora://oidc → home.
+
+[G] Left running (do not assume): nginx -c /tmp/t01/nginx/nginx.conf (pids in /tmp/t01/nginx/nginx.pid),
+  server-base backend (nohup, log /tmp/t01/logs/backend-base.log), Metro :8081 (apps/mobile),
+  idb_companion. Wi-Fi proxy bypass list restored to macOS defaults at 03:00.
