@@ -12,3 +12,16 @@ Independent read-only review, 2026-09-30. Exact implementation range: `1e9315773
 | R4-L6 — `apps/mobile/src/app/_layout.tsx:9`, static props | **Style-only/defer.** `edges={['top', 'bottom']}` and `style={{ flex: 1 }}` allocate small values when RootLayout renders. No observable startup issue follows, and OCR itself notes low render frequency. The applicable approved plan requires safe-area behavior, not a module-level constant; prior static-style suggestions are not an enforced mobile rule shown here. | **Document and defer.** If cleaned up later, use a stable `StyleSheet`/constant and update the smoke test's `react-native` stub as needed. Current `deepEqual` edges assertion would still pass. |
 
 **Recommendation:** 2 Low findings (R4-L1, R4-L2) deserve a narrow diagnostic/parser repair because they can produce a false failure or obscure the actual CI failure. The remaining 4 are nonblocking style/maintenance rulings. None of these six demonstrates a current scene, URL-forwarding, deployment-target, or safe-area acceptance failure. This report is an adjudication of selected OCR comments, not a full-range quality or Issue #31 external acceptance verdict; real HTTPS login/OIDC/capability and Android device evidence remain pending.
+
+---
+
+## 2026-10-02 活体验收终局段（T01 #31，branch codex/issue30-t63-closure @ 25c3f68e6）
+
+取代上文「real HTTPS login/OIDC/capability and Android device evidence remain pending」：
+
+- **授权 HTTPS 部署 + 真实 OIDC 登录 + 能力读面：✅（Android 全链）**。mkcert+nginx:8443（authorized host `192-168-3-33.nip.io` 过门禁）→ Casdoor 真实认证 → `weknora://oidc` 回跳 → `mobile/exchange` 200（token）→ `/auth/me`、`/system/capabilities` 200。证据 `android-evidence/t01-live/`（67d591d5b，6 png+log+sha256）。
+- **iOS**：Release 构建启动+origin 预填+Casdoor 真实认证（round-1，ce3cffa04）；round-2（25c3f68e6）验证 5 项修复生效、Metro 1425 模块 OK，in-app 登录完成被**用户级 CoreTunnel 代理**（127.0.0.1:17890 吞模拟器主机名流量）阻断——归因证明在案（sim 级 Safari 探针后端零命中；宿主直连 200/走代理 000）。**待用户一步**：bypass 加 `192-168-3-33.nip.io` 或验收期暂停代理，栈全在跑约 10 分钟可补全。
+- **Android 设备证据：✅（emulator test36，API36）**；真机单列未验。
+- **T31-F1：已闭合**（final-review-after-doc3.md 判 Resolved；verify-ios-framework-closure fail-closed 覆盖）。
+- **本轮副产（已正规提交）**：① Critical boot 回归修复——`provideAgentSecurity` 装配顺序（9/30 起 lineage 即炸，8042218c2，含 bootsmoke 回归测试与同族 knowledge/career/commercial 修复，审查 0 C/I）；② 6 笔移动登录链缺陷修复（noAuthAPI 漏 mobile/exchange、动态 require、路由目录测试文件、Hermes WebCrypto 模块化、SecureStore `%` 键、JWKS 有界重试——4ae6733cb..54cdfa09c）。
+- **判词：#31 活体验收在 Android 侧完备、iOS 侧仅差用户代理一步；emulator 证据成立，真机单列。** follow-up：workbench_notifications 缺表迁移（TASK_OFFICE_BACKEND 500）、service 包 agent-run 域 craft_charge_start_journal no-such-table（分支既有）、R4-L1/L2 Low。
