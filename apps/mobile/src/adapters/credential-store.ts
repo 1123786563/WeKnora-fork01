@@ -10,7 +10,9 @@ function normalizedOrigin(origin: string): string {
 }
 
 function key(origin: string): string {
-  return `${CREDENTIAL_PREFIX}${encodeURIComponent(normalizedOrigin(origin))}`;
+  // expo-secure-store 键只允许 [A-Za-z0-9._-]；encodeURIComponent 的 '%'（%3A 端口等）
+  // 会被拒，映射为 '.' 保持可逆性良好的合法字符集。
+  return `${CREDENTIAL_PREFIX}${encodeURIComponent(normalizedOrigin(origin)).replace(/%/g, '.')}`;
 }
 
 function parseCredential(raw: string | null): StoredCredential | undefined {
