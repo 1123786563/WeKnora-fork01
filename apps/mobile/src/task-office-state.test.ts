@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ScopeLease, TaskListPage } from '@weknora/mobile-core';
-import { createTaskOfficeListController, taskOfficeLifecycleKey } from './task-office-state.ts';
+import { createTaskOfficeListController, taskOfficeLifecycleKey } from './app/task-office-state.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
