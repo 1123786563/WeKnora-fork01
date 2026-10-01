@@ -226,6 +226,7 @@ func TestAdoptListingSerializesWithConcurrentUnlist(t *testing.T) {
 	repo := NewAgentAdoptionRepository(db)
 	market := NewAgentMarketplaceRepository(db)
 	ctx := context.Background()
+	require.NoError(t, db.Create(&types.Tenant{ID: 1, Name: "publisher"}).Error)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
 	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
 

@@ -110,8 +110,16 @@ func (r *agentAdoptionRepository) RetiredVariantAgentExists(ctx context.Context,
 
 func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context, tenantID uint64, listingID, expectedFrom, nextState string, updates map[string]any) (*types.AgentMarketplaceListingEntity, error) {
 	var row types.AgentMarketplaceListingEntity
-	err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockListingState(tx, tenantID, listingID, expectedFrom); err != nil {
+			return err
+		}
+		// The listing row lock precedes the tenant guard: same-tenant adoption
+		// paths never take the guard, and on SQLite the guard write would
+		// block behind any open writer before the listing lifecycle write.
+		// The guard still serializes this transition with cross-tenant
+		// IntroduceRelease custody rechecks (T35 #65).
+		if err := acquireTenantSecurityGuardTx(tx, tenantID); err != nil {
 			return err
 		}
 		now := time.Now().UTC()

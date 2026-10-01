@@ -391,7 +391,7 @@ func TestPublicMarketplaceEligibilityPredicatesStayConsistent(t *testing.T) {
 	repo := NewPublicMarketplaceRepository(db)
 	ctx := context.Background()
 	listing, release := seedApprovedPublicRelease(t, db, "7.0.0")
-	assertIneligible := func() {
+	assertIneligible := func(introduceErr error) {
 		t.Helper()
 		discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
 		require.NoError(t, err)
@@ -400,7 +400,7 @@ func TestPublicMarketplaceEligibilityPredicatesStayConsistent(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, catalog)
 		_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
-		require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+		require.ErrorIs(t, err, introduceErr)
 	}
 	discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
 	require.NoError(t, err)
@@ -412,17 +412,17 @@ func TestPublicMarketplaceEligibilityPredicatesStayConsistent(t *testing.T) {
 	_, _, err = repo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "publisher-admin"})
 	require.NoError(t, err)
 	require.NoError(t, repo.RevokePublisher(ctx, 1))
-	assertIneligible()
+	assertIneligible(ErrPublicMarketplaceNotFound)
 	_, _, err = repo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "publisher-admin"})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "tenant-listing-1").Update("state", "unlisted").Error)
-	assertIneligible()
+	assertIneligible(ErrPublicMarketplaceNotFound)
 	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "tenant-listing-1").Update("state", "listed").Error)
 	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("state", "unlisted").Error)
-	assertIneligible()
+	assertIneligible(ErrPublicMarketplaceLifecycleTransition)
 	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("state", "listed").Error)
 	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("current_release_id", nil).Error)
-	assertIneligible()
+	assertIneligible(ErrPublicMarketplaceNotFound)
 }
 
 func TestPublicMarketplaceRevocationGuardSerializesIntroduction(t *testing.T) {
