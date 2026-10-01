@@ -86,6 +86,9 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 // listing) row reconciles its accepted pointer; a first insert races on
 // uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	if err := checkReleaseAdmissionTx(tx, adoption.TenantID, adoption.AcceptedReleaseID); err != nil {
+		return nil, false, err
+	}
 	// Serialize eligibility checks with UnlistListing/DeprecateRelease before
 	// either inserting or reconciling an Adoption. A service-side precheck is
 	// useful for errors, but cannot authorize this write by itself.
@@ -123,6 +126,9 @@ func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.Ag
 	if err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
 		return nil, false, err
 	}
+	if winner.State != "active" {
+		return nil, false, ErrAgentAdoptionTransition
+	}
 	return reconcileAdoptionTx(tx, &winner, adoption.AcceptedReleaseID)
 }
 
@@ -143,6 +149,9 @@ func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, accep
 	// cannot make the reconciliation decision from a stale Adoption snapshot.
 	if err := tx.Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).First(existing).Error; err != nil {
 		return nil, false, err
+	}
+	if existing.State != "active" {
+		return nil, false, ErrAgentAdoptionTransition
 	}
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil

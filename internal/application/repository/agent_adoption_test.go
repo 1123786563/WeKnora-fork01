@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -156,7 +157,9 @@ func TestAgentAdoptionRepositoryRejectsAdoptionAfterTenantUnlist(t *testing.T) {
 	_, err := NewAgentMarketplaceRepository(db).UnlistTenantListing(context.Background(), 1, listingID, "admin", "closed")
 	require.NoError(t, err)
 	_, _, err = NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, CreatedBy: "admin"})
-	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	// task3 世代把拒绝原因细化为 ListingUnavailable；两种错误都证明拒绝发生。
+	require.True(t, errors.Is(err, ErrAgentAdoptionTransition) || errors.Is(err, ErrAgentMarketplaceListingUnavailable),
+		"unlisted listing must block adoption, got: %v", err)
 	var count int64
 	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, listingID).Count(&count).Error)
 	require.Zero(t, count)

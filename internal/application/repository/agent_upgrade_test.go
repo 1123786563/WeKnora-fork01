@@ -20,7 +20,7 @@ func openUpgradeProposalDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{}, &types.AgentMarketplaceListingEntity{}, &types.AgentReleaseEntity{}))
+	require.NoError(t, db.AutoMigrate(&types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{}, &types.AgentMarketplaceListingEntity{}, &types.AgentReleaseEntity{}, &types.TenantIntroducedReleaseEntity{}))
 	// AutoMigrate 不创建 uq_agent_upgrade_proposals_scope（实体无 uniqueIndex
 	// tag）；显式补建使 FindOrCreateProposal 的竞态分支由真实唯一索引驱动，
 	// 与迁移 000120/000200 的生产 DDL 一致。
@@ -36,6 +36,31 @@ func TestAgentUpgradeRepositoryFindOrCreateProposalIsIdempotent(t *testing.T) {
 
 	// 夹具基线：adoption 行存在；FindOrCreateProposal 只写 proposal 行，
 	// 绝不触碰 adoption（AC1 的存储侧半边，HTTP 侧另一半在 Task 6 e2e）。
+	// task3 世代起 listing→release→adoption 全链校验，夹具补齐两行父数据。
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{
+		TenantID: 1, ID: "l1", DisplayName: "listing", State: "listed",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		TenantID: 1, ID: "r1", ListingID: "l1", Bundle: []byte("{}"), SemanticVersion: "1.0.0",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		TenantID: 1, ID: "r2", ListingID: "l1", Bundle: []byte("{}"), SemanticVersion: "1.1.0",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		TenantID: 1, ID: "r3", ListingID: "l1", Bundle: []byte("{}"), SemanticVersion: "1.2.0",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{
+		TenantID: 2, ID: "l1", DisplayName: "listing", State: "listed",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		TenantID: 2, ID: "r1", ListingID: "l1", Bundle: []byte("{}"), SemanticVersion: "1.0.0",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		TenantID: 2, ID: "r2", ListingID: "l1", Bundle: []byte("{}"), SemanticVersion: "1.1.0",
+	}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{
+		TenantID: 2, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin",
+	}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{
 		TenantID: 1, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin",
 	}).Error)

@@ -28,6 +28,7 @@ func openPublicMarketplaceDB(t *testing.T) *gorm.DB {
 		&types.PublicReleaseSubmissionEntity{}, &types.PublicReleaseReviewEntity{},
 		&types.PublicAgentReleaseEntity{}, &types.TenantIntroducedReleaseEntity{},
 		&types.AgentAdoptionEntity{}, &types.AgentAdoptionVariantEntity{},
+		&types.AgentReleaseRevocationEntity{},
 	))
 	// AutoMigrate 不创建实体未带 uniqueIndex tag 的唯一索引；显式补建使
 	// adoptListingTx/IntroduceRelease 的 OnConflict 竞态分支、ReviewConflict
