@@ -270,6 +270,45 @@ func TestAgentQAClaimReplayActiveReturnsConflictWithAssistantID(t *testing.T) {
 	require.EqualValues(t, 1, userMessages, "replayed request must not create a second user message")
 }
 
+// A validation 400 AFTER admission (agent without ImageUploadEnabled) must
+// Finish the claim as failed: an orphaned active claim 409s the same
+// X-Request-ID forever and leaves a non-terminal assistant placeholder.
+func TestAgentQAPostAdmission400FailsClaimAndRetryIsTerminal(t *testing.T) {
+	db := openAgentClaimTestDB(t)
+	seedAgentClaimSession(t, db)
+	agent := seedClaimPlainAgent(t, db)
+	h := &Handler{
+		sessionService:          &runGateSessions{repo: repository.NewSessionRepository(db)},
+		customAgentService:      &resolveOwnAgentStub{agent: agent},
+		agentChatTurnClaimStore: repository.NewAgentChatTurnClaimRepository(db),
+	}
+	r := newAgentClaimRouter(h)
+	body := `{"query":"orphan claim","agent_id":"agent-plain","agent_enabled":true,"images":[{"data":"data:image/png;base64,aGk="}]}`
+
+	first := postAgentClaim(r, "/agent-chat/s1", body, "rid-orphan-1")
+	require.Equal(t, http.StatusBadRequest, first.Code, first.Body.String())
+
+	var claim types.AgentChatTurnClaimEntity
+	require.NoError(t, db.Where("request_id = ?", "rid-orphan-1").Take(&claim).Error)
+	require.Equal(t, "failed", claim.State, "post-admission 400 must terminalize the claim as failed")
+	var placeholder types.Message
+	require.NoError(t, db.Where("id = ?", claim.AssistantMessageID).Take(&placeholder).Error)
+	require.True(t, placeholder.IsCompleted, "post-admission 400 must terminalize the assistant placeholder")
+
+	replay := postAgentClaim(r, "/agent-chat/s1", body, "rid-orphan-1")
+	require.Equal(t, http.StatusConflict, replay.Code, replay.Body.String())
+	var replayBody struct {
+		Error struct {
+			Details struct {
+				State string `json:"state"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(replay.Body.Bytes(), &replayBody))
+	require.Equal(t, "failed", replayBody.Error.Details.State,
+		"same-key retry must report a terminal state, not an active claim")
+}
+
 func TestAgentQAStopCancelsClaimByOwner(t *testing.T) {
 	db := openAgentClaimTestDB(t)
 	seedAgentClaimSession(t, db)

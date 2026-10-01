@@ -134,7 +134,7 @@ func (rc *qaRequestContext) buildQARequest() *types.QARequest {
 // parseQARequest parses and validates a QA request, returns the request
 // context. claimTurns enables the durable agent-turn claim admission and must
 // only be set on the AgentQA route; the KnowledgeQA path stays unfenced.
-func (h *Handler) parseQARequest(c *gin.Context, logPrefix string, claimTurns bool) (*qaRequestContext, *CreateKnowledgeQARequest, error) {
+func (h *Handler) parseQARequest(c *gin.Context, logPrefix string, claimTurns bool) (_ *qaRequestContext, _ *CreateKnowledgeQARequest, err error) {
 	receivedAt := time.Now()
 	ctx := logger.CloneContext(c.Request.Context())
 	requestID := secutils.SanitizeForLog(c.GetString(types.RequestIDContextKey.String()))
@@ -349,6 +349,15 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string, claimTurns bo
 			// The assistant placeholder row was atomically inserted by Admit;
 			// reuse its server-generated ID for the whole turn.
 			reqCtx.assistantMessage.ID = claim.AssistantMessageID
+			// A later validation failure (e.g. an unsupported image/attachment
+			// 400) must Finish the claim: an orphaned active claim 409s the
+			// same X-Request-ID forever. Best-effort — fenced/double-finish
+			// refusals are expected and only logged inside the finisher.
+			defer func() {
+				if err != nil {
+					h.finishAgentChatTurnClaim(reqCtx.ctx, reqCtx.claim, reqCtx.assistantMessage, "failed")
+				}
+			}()
 		}
 	}
 
