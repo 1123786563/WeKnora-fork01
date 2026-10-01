@@ -196,7 +196,10 @@ func requireReplayWebhook(rows []inboundWebhookRow, baselineID string) (inboundW
 	return replay, nil
 }
 
-const inboundWebhookSQL = `SELECT COALESCE(json_agg(json_build_object('id', id::text, 'status', status::text) ORDER BY created_at, id)::text, '[]') FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND payload->>'id' = :'event_id';`
+// v1.53 stores the event DOUBLE-ENCODED in the jsonb column (a JSON string
+// scalar whose text IS the event), so the event-identity predicate unwraps
+// one layer before reading the id — a plain payload->>'id' matches nothing.
+const inboundWebhookSQL = `SELECT COALESCE(json_agg(json_build_object('id', id::text, 'status', status::text) ORDER BY created_at, id)::text, '[]') FROM inbound_webhooks WHERE organization_id = :'organization_id'::uuid AND source = 'stripe' AND code = :'provider_code' AND (payload #>> '{}')::jsonb ->> 'id' = :'event_id';`
 
 func readInboundWebhookRows(ctx context.Context, dbContainer, dbUser, dbName, orgID, providerCode, eventID string) ([]inboundWebhookRow, error) {
 	args := []string{"exec", "-i", dbContainer, "psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-U", dbUser, "-d", dbName,
@@ -769,7 +772,9 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := db.AutoMigrate(&repocommercial.PlanRow{}, &repocommercial.QuoteRow{}); err != nil {
+	if err := db.AutoMigrate(&repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &commercialsvc.FulfillmentRecord{}); err != nil {
 		t.Fatal(err)
 	}
 	if sqlDB, err := db.DB(); err == nil {
@@ -790,6 +795,24 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 	planCode := commercial.DeterministicPlanCode(planKey, view.Version)
+
+	// The application-side composition behind the wallet grant: a REAL
+	// quote cut from the published plan, then the paid purchase order
+	// through the repository chain whose ConfirmPayment writes the
+	// fulfill:<order> outbox event. The active-state branch below drives
+	// the real PurchaseFulfiller over that event — its GrantIncludedCredits
+	// creates the wallet the pre-replay snapshot asserts (never a manual
+	// wallet seed).
+	ordersSvc, err := commercialsvc.NewOrderService(db, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote, err := ordersSvc.CreateQuote(ctx, tenant, planKey)
+	if err != nil {
+		t.Fatalf("quote: %v", err)
+	}
+	t9OrderID := "ord-" + extPurchase
+	seedPaidT9PurchaseOrder(t, db, tenant, quote.ID, t9OrderID, 9900)
 
 	t.Run("gated create leaves the purchase incomplete with a stuck intent", func(t *testing.T) {
 		// The gate card rides the provider customer: bind through the
@@ -907,6 +930,11 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 					t.Fatalf("D6' re-check failed: %+v", snap.Purchase)
 				}
 				invoiceID := fmt.Sprint(intent["metadata"].(map[string]any)["lago_invoice_id"])
+				// The wallet exists because the application GRANTED it: the
+				// real fulfiller drives settle (short-circuits on the active
+				// purchase), re-checks the finalized invoice, and grants the
+				// first-period credits into the purchase wallet.
+				driveT9PurchaseFulfiller(t, ctx, db, a, tenant, t9OrderID)
 				beforeReplay, snapshotErr := t9LagoSnapshot(ctx, a, extPurchase, extCustomer, invoiceID)
 				if snapshotErr != nil {
 					t.Fatalf("capture complete pre-replay Lago snapshot: %v", snapshotErr)
@@ -1040,8 +1068,64 @@ func countLagoSucceededPayments(t *testing.T, a *LagoAdapter, extCustomer string
 	return n
 }
 
-func providerCustomerOf(t *testing.T, a *LagoAdapter, extCustomer string) string {
+// seedPaidT9PurchaseOrder plants the paid purchase order through the REAL
+// repository chain (CreateOrder / RegisterAttempt / ConfirmPayment — the
+// same seam the unit suite drives): ConfirmPayment itself writes the
+// pending fulfill:<order> outbox event a crashed worker would leave.
+func seedPaidT9PurchaseOrder(t *testing.T, db *gorm.DB, tenant uint64, quoteID, orderID string, amountFen int64) {
 	t.Helper()
+	store := repocommercial.NewOrderStore(db)
+	ctx := context.Background()
+	if err := store.CreateOrder(ctx, repocommercial.OrderRow{
+		ID: orderID, TenantID: tenant, QuoteID: quoteID, Kind: commercial.OrderKindPurchase,
+		AmountFen: amountFen, Currency: commercial.CurrencyCNY,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att-" + orderID, TenantID: tenant, OrderID: orderID, Provider: "stripe", Merchant: "weknora",
+		MerchantOrderID: "mo-" + orderID, AmountFen: amountFen, Currency: commercial.CurrencyCNY,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, commercial.PaymentFact{
+		TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + orderID, Provider: "stripe", Merchant: "weknora",
+		Transaction: "t9-" + orderID, Amount: commercial.CNYFen(amountFen), Currency: commercial.CurrencyCNY, State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// driveT9PurchaseFulfiller runs the REAL application fulfillment seam
+// (commercialsvc.PurchaseFulfiller over this adapter + sqlite) on the
+// pending fulfill event: settle short-circuits against the already-active
+// purchase and GrantIncludedCredits creates the purchase wallet in the
+// real authority. A silent pending outcome (nil without fulfillment)
+// fails the final order-state assert — the wallet must come from the
+// application path, not from a seed.
+func driveT9PurchaseFulfiller(t *testing.T, parent context.Context, db *gorm.DB, platform commercial.CommercialPlatform, tenant uint64, orderID string) {
+	t.Helper()
+	var ev repocommercial.OutboxEvent
+	if err := db.WithContext(parent).Where("event_key = ?", repocommercial.OutboxKindFulfill+":"+orderID).First(&ev).Error; err != nil {
+		t.Fatalf("fulfill outbox event missing: %v", err)
+	}
+	fulfiller, err := commercialsvc.NewPurchaseFulfiller(db, platform, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fulfiller.Fulfill(parent, ev); err != nil {
+		t.Fatalf("purchase fulfiller: %v", err)
+	}
+	row, err := repocommercial.NewOrderStore(db).GetOrder(parent, orderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Domain().State != commercial.OrderStateFulfilled {
+		t.Fatalf("purchase fulfiller left the order %q — the wallet grant must complete through the real application path", row.Domain().State)
+	}
+}
+
+func providerCustomerOf(t *testing.T, a *LagoAdapter, extCustomer string) string {	t.Helper()
 	status, body, err := a.do(context.Background(), http.MethodGet,
 		"/api/v1/customers/"+url.PathEscape(extCustomer), nil)
 	if err != nil || status != 200 {
