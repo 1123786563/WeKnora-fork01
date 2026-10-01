@@ -61,7 +61,7 @@ Spec 约束（§9/§10 原文摘录）：
   - `types.AgentMarketplaceListingEntity.UnlistedBy string` 与 `UnlistedAt *time.Time`
   - `types.AgentReleaseEntity.DeprecatedBy string`、`DeprecatedAt *time.Time`、`SuccessorReleaseID string`（gorm `type:varchar(36);not null;default:''`）
 
-- [ ] **Step 1: 写失败的迁移对齐测试**
+- [x] **Step 1: 写失败的迁移对齐测试**
 
 在 `internal/application/repository/agent_marketplace_lifecycle_test.go` 写（RED：迁移尚不存在，`m.Up()` 在 000124 文件缺席时仍会成功但新列不存在 → 断言失败；同时该测试走**真实全量 sqlite 迁移流**，天然验证两轨号位不冲突）：
 
@@ -132,12 +132,12 @@ func TestAgentMarketplaceLifecycleMigrationColumns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/application/repository/ -run TestAgentMarketplaceLifecycleMigrationColumns -count=1`
 Expected: FAIL（`agent_marketplace_listings.unlisted_at 必须由迁移创建`）
 
-- [ ] **Step 3: 写两对迁移文件与实体列**
+- [x] **Step 3: 写两对迁移文件与实体列**
 
 sqlite `000124_agent_marketplace_lifecycle.up.sql`（镜像 000122 的 twin 风格）：
 
@@ -186,12 +186,12 @@ ALTER TABLE agent_adoption_variants ADD COLUMN retired_by VARCHAR(255) NOT NULL 
 
 versioned down 与 sqlite down 同语句。实体加列（逐字）：`AgentAdoptionVariantEntity` 在 `PublishedAt *time.Time`（`internal/types/agent_adoption_persistence.go:46`）后加 `RetiredBy string \`gorm:"type:varchar(255);not null;default:''"\`` 与 `RetiredAt *time.Time`；`AgentAdoptionEntity` 在 `CreatedBy` 后加 `EndedBy`/`EndedAt` 同形；`AgentMarketplaceListingEntity` 在 `CurrentReleaseID` 后加 `UnlistedBy`/`UnlistedAt`；`AgentReleaseEntity` 在 `PublishedBy`（`internal/types/agent_marketplace_persistence.go:79`）后加 `DeprecatedBy string`、`DeprecatedAt *time.Time`、`SuccessorReleaseID string`（三者 gorm tag 同上）。
 
-- [ ] **Step 4: 运行测试确认通过 + 迁移唯一性守卫**
+- [x] **Step 4: 运行测试确认通过 + 迁移唯一性守卫**
 
 Run: `go test ./internal/application/repository/ -run TestAgentMarketplaceLifecycleMigrationColumns -count=1 && go test ./internal/database/ -run TestMigrationVersionsUniquePerTrack -count=1 && go build ./...`
 Expected: 全部 PASS / ok
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add migrations/sqlite/000124_agent_marketplace_lifecycle.*.sql migrations/versioned/000203_agent_marketplace_lifecycle.*.sql internal/types/agent_adoption_persistence.go internal/types/agent_marketplace_persistence.go internal/application/repository/agent_marketplace_lifecycle_test.go
