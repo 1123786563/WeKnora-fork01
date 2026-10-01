@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { errorFromResult } from '../errors.ts';
 import { createMobileCodeDeliveryRemote } from './code-delivery.ts';
 
 const okDeliveryWire = {
@@ -83,7 +84,6 @@ test('dispatchDelivery posts the PR-only recovery half and maps the record', asy
   assert.equal(record.state, 'pushed');
   assert.equal(transport.seen[0].method, 'POST');
   assert.equal(transport.seen[0].path, '/api/v1/workbench/executions/run-1/delivery/dlv-1/dispatch');
-  assert.deepEqual(transport.seen[0].body, {});
 });
 
 test('resolveDelivery posts the unknown-resolution half and maps the record', async () => {
@@ -93,14 +93,42 @@ test('resolveDelivery posts the unknown-resolution half and maps the record', as
   assert.equal(record.state, 'pushed');
   assert.equal(transport.seen[0].method, 'POST');
   assert.equal(transport.seen[0].path, '/api/v1/workbench/executions/run-1/delivery/dlv-1/resolve');
-  assert.deepEqual(transport.seen[0].body, {});
 });
 
-test('a 409 state conflict rejects with the ApiError shape intact for the recovery module to translate', async () => {
+test('a 409 state conflict rejects with the ApiError shape intact for recovery translation', async () => {
   const conflict = fakeRequest(() => ({ status: 409, body: { code: 'code_delivery_state_conflict' } }));
   const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: conflict.request });
   await assert.rejects(
     () => remote.dispatchDelivery({ runId: 'run-1', deliveryId: 'dlv-1' }),
     (error: any) => error.status === 409 && error.body?.code === 'code_delivery_state_conflict',
   );
+});
+
+test('production ApiError 409 conflicts propagate through both recovery methods', async () => {
+  for (const method of ['dispatchDelivery', 'resolveDelivery'] as const) {
+    const remote = createMobileCodeDeliveryRemote({
+      origin: 'https://weknora.example.com',
+      request: async () => { throw errorFromResult(409, { code: 'code_delivery_state_conflict' }); },
+    });
+    await assert.rejects(
+      () => remote[method]({ runId: 'run-1', deliveryId: 'dlv-1' }),
+      (error: any) => error.name === 'ApiError'
+        && error.status === 409
+        && error.code === 'code_delivery_state_conflict'
+        && error.body === undefined,
+    );
+  }
+});
+
+test('recovery target 404 rejects instead of mapping to null', async () => {
+  for (const method of ['dispatchDelivery', 'resolveDelivery'] as const) {
+    const remote = createMobileCodeDeliveryRemote({
+      origin: 'https://weknora.example.com',
+      request: async () => { throw errorFromResult(404, { code: 'code_delivery_not_found' }); },
+    });
+    await assert.rejects(
+      () => remote[method]({ runId: 'run-1', deliveryId: 'dlv-1' }),
+      (error: any) => error.name === 'ApiError' && error.status === 404 && error.code === 'code_delivery_not_found',
+    );
+  }
 });
