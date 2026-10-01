@@ -415,7 +415,11 @@ func TestLifecycleUnlistedVersusDeprecatedBehaviorDiffers(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, reAdopt.Code)
 	_, v3 := freezeAndPublishUpgradeRelease(t, r, "1.2.0", meta)
 	proposals := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/upgrade-proposals", "admin", "admin", nil)
-	require.Contains(t, proposals.Body.String(), `"to_release_id":"`+v3+`"`)
+	// G2 裁决（task-2 复审）：unlisted = 发行方全面撤回，reconcile 不再物化新
+	// 升级提案（无错跳过）；与 deprecated 保持可见带 reason/replacement 不同。
+	require.Equal(t, http.StatusOK, proposals.Code, proposals.Body.String())
+	require.Contains(t, proposals.Body.String(), `"data":[]`)
+	require.NotContains(t, proposals.Body.String(), `"to_release_id":"`+v3+`"`)
 
 	// Use a fresh real-stack fixture: each Release published from one source
 	// Agent reuses its Listing, and the first scenario intentionally unlisted it.

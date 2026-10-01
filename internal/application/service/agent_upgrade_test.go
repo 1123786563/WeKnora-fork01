@@ -755,3 +755,48 @@ func TestAcceptRejectsProposalFromStaleReleasePointer(t *testing.T) {
 		Where("tenant_id = ? AND adoption_id = ?", uint64(1), stale.AdoptionID).Count(&variants).Error)
 	require.Zero(t, variants, "no draft variant may be created off a superseded release pointer")
 }
+
+// TestReconcileSkipsUnlistedMaterializationPreservesExistingRows pins the G2
+// ruling (2026-10-01 task-2 复审): once a listing is unlisted, reconcile must
+// skip NEW proposal materialization without error, while the already
+// materialized proposal and the adoption/variant/local-agent rows survive.
+func TestReconcileSkipsUnlistedMaterializationPreservesExistingRows(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, v1)
+	_, v2 := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	require.NoError(t, db.Create(&types.CustomAgent{ID: "local-sales", Name: "Sales", TenantID: 1, CreatedBy: "admin", Config: types.CustomAgentConfig{AgentMode: "smart-reasoning"}}).Error)
+	adoptionsRepo := repository.NewAgentAdoptionRepository(db)
+	variant, err := adoptionsRepo.CreateVariant(context.Background(), &types.AgentAdoptionVariantEntity{
+		TenantID: 1, AdoptionID: adoption.ID, ReleaseID: v1, Name: "Sales",
+		LocalAgentID: "local-sales", LocalAgentVersionID: "version-1.0.0", CreatedBy: "admin", State: "published",
+	})
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	listed, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, listed, 1, "setup: while listed the v1→v2 proposal materializes")
+
+	_, v3 := publishUpgradeServiceRelease(t, db, 3, "1.2.0", upgradeManifestV3, `{"dependencies":[]}`, upgradeBundleV3)
+	_, err = repository.NewAgentMarketplaceRepository(db).TransitionListingState(ctx, 1, listingID, "listed", "unlisted", map[string]any{"unlisted_by": "admin"})
+	require.NoError(t, err)
+
+	after, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err, "unlisted 物化跳过必须是无错 continue，不得打挂列表端点")
+	require.Len(t, after, 1, "unlisted 后不得物化 v1→v3 新提案")
+	require.Equal(t, listed[0].ID, after[0].ID, "既有已物化提案必须原样保留")
+	require.Equal(t, v2, after[0].ToReleaseID)
+	require.NotEqual(t, v3, after[0].ToReleaseID)
+
+	var adoptionAfter types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, adoption.ID).Take(&adoptionAfter).Error)
+	require.Equal(t, "active", adoptionAfter.State)
+	variantAfter, err := adoptionsRepo.GetVariant(ctx, 1, variant.ID)
+	require.NoError(t, err)
+	require.NotNil(t, variantAfter)
+	require.Equal(t, "local-sales", variantAfter.LocalAgentID)
+	var localAgents int64
+	require.NoError(t, db.Table("custom_agents").Where("id = ?", "local-sales").Count(&localAgents).Error)
+	require.EqualValues(t, 1, localAgents, "既有本地 Agent 行必须保全")
+}
