@@ -61,6 +61,7 @@ export function createMobileCodeDeliveryRemote(options: CodeDeliveryRemoteOption
       }
     },
     async dispatchDelivery({ runId, deliveryId }): Promise<CodeDeliveryRecord> {
+<<<<<<< HEAD
       const response = await request({
         method: 'POST',
         path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery/${encodeURIComponent(deliveryId)}/dispatch`,
@@ -75,6 +76,20 @@ export function createMobileCodeDeliveryRemote(options: CodeDeliveryRemoteOption
         body: {},
       });
       return deliveryRecordOf(response);
+=======
+      return deliveryRecordOf(await request({
+        method: 'POST',
+        path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery/${encodeURIComponent(deliveryId)}/dispatch`,
+        body: {},
+      }));
+    },
+    async resolveDelivery({ runId, deliveryId }): Promise<CodeDeliveryRecord> {
+      return deliveryRecordOf(await request({
+        method: 'POST',
+        path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery/${encodeURIComponent(deliveryId)}/resolve`,
+        body: {},
+      }));
+>>>>>>> codex/issue30-b6-t55-task5
     },
   };
 }
