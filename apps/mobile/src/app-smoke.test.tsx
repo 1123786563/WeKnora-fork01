@@ -1960,3 +1960,234 @@ test('the /new route wires dictation through the composition root; confirmed tex
   assert.match(compositionSource, /createMobileVoiceTranscriptionRemote/, '转写 Remote 只在组合根装配');
   assert.match(compositionSource, /createNativeDictationCaptureIfAvailable/, '原生捕获 Adapter 只在组合根探测');
 });
+
+test('the delivery receipt section offers the recovery action for partial and unknown states only (T25 #55 AC1)', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '交付', lifecycle: 'active', runStatus: 'running', attention: 'required',
+    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 2, incomplete: false, connection: 'live',
+    timeline: [], duplicateSeqs: [],
+  };
+  const pushedReceipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed',
+    repo: 'octocat/hello', branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40),
+    commitSha: 'c1', attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const withRecovery = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: pushedReceipt, onRecoverDelivery: async () => pushedReceipt,
+  });
+  const sectionOf = (tree: unknown) => {
+    const sectionElement = descendants(tree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+    return sectionElement === undefined ? undefined : render(sectionElement.type as (props: unknown) => unknown, sectionElement.props);
+  };
+  const pushedJson = JSON.stringify(sectionOf(withRecovery));
+  assert.ok(pushedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'the honest partial-completion copy renders');
+  assert.ok(pushedJson.includes('恢复创建草稿 PR/MR'), 'the pushed state offers the recovery action');
+  const unknown: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'unknown' };
+  const unknownTree = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: unknown,
+    onRecoverDelivery: async () => unknown,
+  });
+  const unknownSection = sectionOf(unknownTree);
+  const unknownAction = descendants(unknownSection).find(({ type, props }) => type === 'Button' && props.title === '核对远端结果');
+  assert.ok(unknownAction, 'the unknown state offers the remote reconciliation action');
+  let recoveryInput: { runId: string; deliveryId: string } | undefined;
+  const wiredTree = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
+    onRecoverDelivery: async (input: { runId: string; deliveryId: string }) => { recoveryInput = input; return pushedReceipt; },
+  });
+  const wiredAction = descendants(sectionOf(wiredTree)).find(({ type, props }) => type === 'Button' && props.title === '恢复创建草稿 PR/MR');
+  assert.ok(wiredAction, 'the pushed recovery action is pressable');
+  (wiredAction!.props.onPress as () => void)();
+  assert.deepEqual(recoveryInput, { runId: 'run-1', deliveryId: 'dlv-1' }, 'recovery is bound to the displayed run and delivery');
+  const recovered: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'delivered' };
+  const settled = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: recovered,
+  });
+  assert.equal(JSON.stringify(sectionOf(settled)).includes('恢复创建草稿 PR/MR'), false, 'a delivered receipt offers no recovery action');
+  const noCallback = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
+  });
+  assert.equal(JSON.stringify(sectionOf(noCallback)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
+});
+
+test('the task detail route reports when recovery authorization disappears after render', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const initialRecovery = { recover: async () => receipt } as import('@weknora/mobile-core').DeliveryRecovery;
+  let currentRecovery: import('@weknora/mobile-core').DeliveryRecovery | undefined = initialRecovery;
+  let visibleError: string | undefined;
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery: initialRecovery, currentRecovery: () => currentRecovery,
+    isCurrentRun: () => true, setDelivery: () => {}, clearError: () => { visibleError = undefined; }, setError: (error) => { visibleError = error; },
+  });
+  currentRecovery = undefined;
+  await assert.rejects(action({ runId: 'run-1', deliveryId: 'dlv-1' }));
+  assert.ok(visibleError?.includes('登录状态或活动空间已变化'), 'revoked recovery becomes visible in the route error state');
+});
+
+test('the task detail route ignores recovery completion after the run changes', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'delivered', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: false, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let resolveRecovery!: (view: import('@weknora/mobile-core').DeliveryReceiptView) => void;
+  const recovery = { recover: () => new Promise<import('@weknora/mobile-core').DeliveryReceiptView>((resolve) => { resolveRecovery = resolve; }) } as import('@weknora/mobile-core').DeliveryRecovery;
+  let runIsCurrent = true;
+  const applied: import('@weknora/mobile-core').DeliveryReceiptView[] = [];
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery: recovery, currentRecovery: () => recovery,
+    isCurrentRun: () => runIsCurrent, setDelivery: (view) => applied.push(view), clearError: () => {}, setError: () => {},
+  });
+  const pending = action({ runId: 'run-1', deliveryId: 'dlv-1' });
+  runIsCurrent = false;
+  resolveRecovery(receipt);
+  await pending;
+  assert.deepEqual(applied, [], 'a late prior-run receipt cannot replace the current run receipt');
+});
+
+test('the task detail route ignores recovery completion after the active recovery scope changes', async () => {
+  const { createDeliveryRecoveryAction } = await import('./app/tasks/detail.tsx');
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'delivered', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: false, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let resolveRecovery!: (view: import('@weknora/mobile-core').DeliveryReceiptView) => void;
+  const capturedRecovery = { recover: () => new Promise<import('@weknora/mobile-core').DeliveryReceiptView>((resolve) => { resolveRecovery = resolve; }) } as import('@weknora/mobile-core').DeliveryRecovery;
+  const nextRecovery = { recover: async () => receipt } as import('@weknora/mobile-core').DeliveryRecovery;
+  let currentRecovery: import('@weknora/mobile-core').DeliveryRecovery = capturedRecovery;
+  const applied: import('@weknora/mobile-core').DeliveryReceiptView[] = [];
+  const action = createDeliveryRecoveryAction({
+    runId: 'run-1', capturedRecovery, currentRecovery: () => currentRecovery,
+    isCurrentRun: () => true, setDelivery: (view) => applied.push(view), clearError: () => {}, setError: () => {},
+  });
+  const pending = action({ runId: 'run-1', deliveryId: 'dlv-1' });
+  currentRecovery = nextRecovery;
+  resolveRecovery(receipt);
+  await pending;
+  assert.deepEqual(applied, [], 'a completion from a revoked scope cannot update the current receipt');
+});
+
+test('the task detail route hides prior delivery and recovery error immediately after the run changes', async () => {
+  const { deliveryForRoute, recoveryErrorForRoute, taskDetailRouteIdentity } = await import('./app/tasks/detail.tsx');
+  const oldDelivery: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const lease = {} as import('@weknora/mobile-core').ScopeLease;
+  const oldIdentity = taskDetailRouteIdentity({ surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'user-a', activeTenantId: 'tenant-1' } }, lease, 'task-1', 'run-1')!;
+  const nextIdentity = taskDetailRouteIdentity({ surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'user-a', activeTenantId: 'tenant-1' } }, lease, 'task-1', 'run-2')!;
+  const oldRecoveryIssue = { identity: oldIdentity, message: 'prior recovery failure' };
+  assert.equal(deliveryForRoute({ identity: oldIdentity, view: oldDelivery }, nextIdentity), undefined, 'prior run delivery is hidden synchronously');
+  assert.equal(recoveryErrorForRoute(oldRecoveryIssue, nextIdentity), undefined, 'prior run recovery error is hidden synchronously');
+});
+
+test('the mounted task detail route invalidates delivery state and stale actions on sign-out, tenant switch and same-origin reauth', async () => {
+  const { TaskDetailRouteLifecycle } = await import('./app/tasks/detail.tsx');
+  type Snapshot = import('@weknora/mobile-core').RuntimeSnapshot;
+  type Lease = import('@weknora/mobile-core').ScopeLease;
+  const receipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  let snapshot: Snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-a', activeTenantId: 'tenant-1' },
+  };
+  let lease: Lease | undefined = {} as Lease;
+  const cachedRecovery: import('@weknora/mobile-core').DeliveryRecovery = {
+    recover: async () => { throw new Error('recovery failed for test'); },
+  };
+  let activeRecovery: import('@weknora/mobile-core').DeliveryRecovery | undefined = cachedRecovery;
+  const reactRuntime = require('react') as {
+    useSyncExternalStore: (subscribe: (notify: () => void) => () => void, getSnapshot: () => unknown) => unknown;
+    useEffect: (effect: () => void | (() => void), dependencies?: readonly unknown[]) => void;
+  };
+  const originalUseSyncExternalStore = reactRuntime.useSyncExternalStore;
+  let storeNotifications = 0;
+  reactRuntime.useSyncExternalStore = (subscribe, getSnapshot) => {
+    reactRuntime.useEffect(() => subscribe(() => { storeNotifications += 1; }), []);
+    return getSnapshot();
+  };
+  const runtimeListeners = new Set<(next: Snapshot) => void>();
+  const routeRuntime = {
+    snapshot: () => snapshot,
+    subscribe: (listener: (next: Snapshot) => void) => { runtimeListeners.add(listener); return () => { runtimeListeners.delete(listener); }; },
+    scopeLease: () => lease,
+  };
+  const props = {
+    taskId: 'task-1', runId: 'run-1',
+    runtime: routeRuntime,
+    recoveryProvider: () => activeRecovery,
+    deliveryReader: () => ({ read: async () => receipt }),
+    taskOfficeProvider: () => undefined,
+  };
+  hooks().__reset();
+  render(TaskDetailRouteLifecycle, props);
+  hooks().__mount();
+  assert.ok(runtimeListeners.size > 0, 'the mounted route subscribes to runtime scope changes');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const mounted = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(mounted.props.delivery, receipt, 'the authorized initial scope displays its delivery receipt');
+  const staleAction = mounted.props.onRecoverDelivery as (input: { runId: string; deliveryId: string }) => Promise<unknown>;
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }));
+  const errored = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.match(String(errored.props.recoveryError), /恢复请求失败/, 'the active scope recovery error is visible');
+
+  snapshot = { surface: 'deployment-login', reason: 'authentication-required' };
+  lease = undefined;
+  activeRecovery = undefined;
+  const notificationsBeforeSignOut = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeSignOut, 'sign-out publishes through the mounted external-store subscription');
+  const signedOut = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(signedOut.props.delivery, undefined, 'sign-out hides prior receipt synchronously');
+  assert.equal(signedOut.props.recoveryError, undefined, 'sign-out hides prior scope error synchronously');
+  assert.equal(signedOut.props.onRecoverDelivery, undefined, 'sign-out removes the recovery action');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleSignOut = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleSignOut.props.delivery, undefined, 'sign-out never reveals the old receipt');
+  assert.match(String(afterStaleSignOut.props.error), /登录状态或活动空间已变化/, 'scope loss appears in the detail route general error surface');
+
+  snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-a', activeTenantId: 'tenant-2' },
+  };
+  lease = {} as Lease;
+  activeRecovery = cachedRecovery;
+  const notificationsBeforeTenantSwitch = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeTenantSwitch, 'tenant change publishes through the mounted external-store subscription');
+  const switchedTenant = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(switchedTenant.props.delivery, undefined, 'tenant switch does not reveal the previous tenant receipt');
+  assert.equal(switchedTenant.props.recoveryError, undefined, 'tenant switch does not reveal the previous tenant error');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleTenantAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleTenantAction.props.delivery, undefined, 'tenant switch never reveals the old receipt');
+  assert.match(String(afterStaleTenantAction.props.error), /登录状态或活动空间已变化/, 'stale tenant action is visible on the current route');
+
+  snapshot = {
+    surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+    identity: { userId: 'user-b', activeTenantId: 'tenant-1' },
+  };
+  lease = {} as Lease;
+  activeRecovery = cachedRecovery;
+  const notificationsBeforeReauth = storeNotifications;
+  runtimeListeners.forEach((listener) => listener(snapshot));
+  assert.ok(storeNotifications > notificationsBeforeReauth, 'same-origin/tenant reauthentication publishes a new scope lease');
+  const reauthenticated = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(reauthenticated.props.delivery, undefined, 'same origin/tenant with a new user and lease starts without prior receipt state');
+  assert.equal(reauthenticated.props.recoveryError, undefined, 'same origin/tenant reauthentication starts without prior error state');
+  await assert.rejects(staleAction({ runId: 'run-1', deliveryId: 'dlv-1' }), /authorization changed/);
+  const afterStaleReauthAction = render(TaskDetailRouteLifecycle, props) as { props: Record<string, unknown> };
+  assert.equal(afterStaleReauthAction.props.delivery, undefined, 'reauthentication never reveals the previous user receipt');
+  assert.match(String(afterStaleReauthAction.props.error), /登录状态或活动空间已变化/, 'stale reauth action is visible without a delivery receipt section');
+  hooks().__unmount();
+  reactRuntime.useSyncExternalStore = originalUseSyncExternalStore;
+});

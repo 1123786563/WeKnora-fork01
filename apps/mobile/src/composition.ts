@@ -13,7 +13,8 @@ import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
 import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
 import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
-import { createDeliveryReader, createDeliveryRecovery, type DeliveryReader, type DeliveryRecovery } from '@weknora/mobile-core';
+import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
+import { createDeliveryRecovery, type DeliveryRecovery } from '@weknora/mobile-core';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
@@ -291,7 +292,7 @@ export async function registerActiveDeviceIfPossible(
 
 /** /tasks 应用根：授权面才渲染列表屏；其余面给出与其余路由同口径的登录 gate
  * （B3 复验发现 1：此前 return null 使 /tasks 未授权态只剩布局层空白）。 */
-export function MobileTasks({ onOpenTask, onOpenLegacy, onOpenTaskOffice }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void; onOpenTaskOffice?: () => void } = {}) {
+export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void } = {}) {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) {
@@ -302,7 +303,6 @@ export function MobileTasks({ onOpenTask, onOpenLegacy, onOpenTaskOffice }: { on
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
     ...(onOpenLegacy === undefined ? {} : { onOpenLegacy }),
-    ...(onOpenTaskOffice === undefined ? {} : { onOpenTaskOffice }),
   });
 }
 
@@ -352,7 +352,8 @@ export function activeDeliveryReader(): DeliveryReader | undefined {
 
 const deliveryRecoveries = new Map<string, DeliveryRecovery>();
 
-/** Delivery recovery 按 deployment scope key 记忆化；读与恢复共用同一个 remote。 */
+/** Delivery recovery 按 deployment scope key 记忆化；同一 remote 结构实现读与恢复两端口
+ * （镜像 taskOfficeFor 的 `backend: remote, detail: remote` 范式，T05）。 */
 function deliveryRecoveryFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): DeliveryRecovery {
   return cachePut(deliveryRecoveries, deploymentScopeKey(origin, tenantId), () => {
     const remote = createMobileCodeDeliveryRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
