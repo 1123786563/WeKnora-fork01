@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -134,6 +135,52 @@ func seedApprovedPublicRelease(t *testing.T, db *gorm.DB, semanticVersion string
 	loaded, err := repo.GetPublicListing(ctx, created.ListingID)
 	require.NoError(t, err)
 	return *loaded, created
+}
+
+// T35 #65 Task 4: ListPublicReviewsForSubmissions is the batch read behind
+// catalog/detail review summaries. It returns ONLY the four safe fields and
+// never the review Reason (spec §12); unknown ids are simply absent.
+func TestPublicMarketplaceRepositoryListPublicReviewsForSubmissionsNeverExposesReason(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, release := seedApprovedPublicRelease(t, db, "1.0.0")
+
+	// A rejected second submission carries a marker reason as well.
+	bundle := []byte(`{"payload":{"system_prompt":"v9"},"manifest":{"semantic_version":"9.9.9"},"dependency_lock":{"dependencies":[]}}`)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		ID: "tenant-release-9.9.9", TenantID: 1, ListingID: "tenant-listing-1", SubmissionID: "tenant-submission-9.9.9",
+		AgentVersionID: "version-x-9.9.9", SourceAgentID: "agent-a", ReleaseNumber: 9, SemanticVersion: "9.9.9",
+		BundleDigest: digestOf(bundle), ManifestJSON: `{}`, DependencyLockJSON: `{"dependencies":[]}`, Bundle: bundle,
+	}).Error)
+	sub2, err := repo.CreatePublicSubmission(ctx, nil, &types.PublicReleaseSubmissionEntity{
+		PublisherTenantID: 1, PublicListingID: listing.ID, SourceListingID: "tenant-listing-1", SourceReleaseID: "tenant-release-9.9.9",
+		SemanticVersion: "9.9.9", BundleDigest: digestOf(bundle), ManifestJSON: `{}`, DependencyLockJSON: `{"dependencies":[]}`, Bundle: bundle, Status: "submitted",
+	})
+	require.NoError(t, err)
+	_, _, err = repo.ReviewAndPublishPublicTx(ctx, "", sub2.ID, digestOf(bundle), types.AgentReleaseReviewDecision{ReviewerID: "platform-reviewer-2", Decision: "rejected", Reason: "MK-REASON rejected"})
+	require.NoError(t, err)
+	// Marker reason on the approved review row: the summary must not carry it.
+	require.NoError(t, db.Exec("UPDATE public_release_reviews SET reason = 'MK-REASON approved' WHERE submission_id = ?", release.SubmissionID).Error)
+
+	summaries, err := repo.ListPublicReviewsForSubmissions(ctx, []string{release.SubmissionID, sub2.ID, "missing-submission"})
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+	approved := summaries[release.SubmissionID]
+	require.Equal(t, release.SubmissionID, approved.SubmissionID)
+	require.Equal(t, "platform-reviewer", approved.ReviewerID)
+	require.Equal(t, "approved", approved.Decision)
+	require.False(t, approved.ReviewedAt.IsZero())
+	rejected := summaries[sub2.ID]
+	require.Equal(t, "rejected", rejected.Decision)
+	require.Equal(t, "platform-reviewer-2", rejected.ReviewerID)
+	_, present := summaries["missing-submission"]
+	require.False(t, present, "未知 submission 不得出现在批读结果")
+
+	encoded, err := json.Marshal(summaries)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "MK-REASON", "批读摘要永不含 Review Reason")
+	require.NotContains(t, string(encoded), `"Reason"`, "批读摘要结构不含 Reason 字段")
 }
 
 func TestPublicMarketplaceRepositoryVerifyPublisherLifecycle(t *testing.T) {

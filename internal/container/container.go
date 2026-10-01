@@ -490,8 +490,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	provideAgentSecurity(container)
 	provideAgentMarketplaceLifecycle(container)
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
-	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) interfaces.PublicMarketplaceService {
-		return service.NewPublicMarketplaceService(repo, listings)
+	must(container.Provide(repository.NewAgentEvaluationRepository))
+	must(container.Provide(func(repo repository.AgentEvaluationRepository) *service.AgentEvaluationService {
+		return service.NewAgentEvaluationService(repo)
+	}))
+	must(container.Provide(func(s *service.AgentEvaluationService) interfaces.AgentEvaluationService { return s }))
+	must(container.Provide(repository.NewMarketplaceMetricsRepository))
+	must(container.Provide(func(repo repository.MarketplaceMetricsRepository) *service.MarketplaceMetricsService {
+		return service.NewMarketplaceMetricsService(repo)
+	}))
+	must(container.Provide(func(s *service.MarketplaceMetricsService) interfaces.MarketplaceMetricsService { return s }))
+	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository, evaluations interfaces.AgentEvaluationService, metrics interfaces.MarketplaceMetricsService) interfaces.PublicMarketplaceService {
+		return service.NewPublicMarketplaceService(repo, listings, evaluations, metrics)
 	}))
 	must(container.Provide(handler.NewPublicMarketplaceHandler))
 	must(container.Provide(service.NewUserResourceFavoriteService))

@@ -34,6 +34,10 @@ func RegisterPublicMarketplaceRoutes(r *gin.RouterGroup, publicHandler *handler.
 	g.apiKeyRoute(r, http.MethodGet, "/marketplace/public/catalog", admin, g.Viewer(), publicHandler.ListPublicCatalog)
 	g.apiKeyRoute(r, http.MethodGet, "/marketplace/public/listings/:id", admin, g.Viewer(), publicHandler.GetPublicListing)
 	g.apiKeyRoute(r, http.MethodPost, "/marketplace/public/listings/:id/adopt", admin, g.Admin(), publicHandler.AdoptPublicListing)
+	// T35 #65 Task 4：平台结构化 Evaluation 授权面——仅 SystemAdmin，且刻意
+	// 不经 apiKeyRoute 声明策略：API-key 门对未声明路由默认拒绝，平台 API
+	// key 能力面属后续工作（沿 verified-publishers 治理路由先例）。
+	r.POST("/marketplace/public/evaluations", g.SystemAdmin(), publicHandler.RecordPublicEvaluation)
 	r.GET("/marketplace/public/verified-publishers", g.SystemAdmin(), publicHandler.ListVerifiedPublishers)
 	r.POST("/marketplace/public/verified-publishers", g.SystemAdmin(), publicHandler.VerifyPublisher)
 	r.DELETE("/marketplace/public/verified-publishers/:tenant_id", g.SystemAdmin(), publicHandler.RevokePublisher)

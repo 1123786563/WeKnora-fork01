@@ -37,6 +37,11 @@ type PublicMarketplaceService interface {
 	// into the adopter tenant and creates/updates the tenant's Adoption;
 	// the bool reports whether the introduction row was created.
 	AdoptPublicListing(ctx context.Context, tenantID uint64, actorID, listingID, releaseID string) (PublicAdoptionResult, bool, error)
+	// RecordEvaluation delegates platform structured Evaluation authoring
+	// to the AgentEvaluationService (T35 #65 Task 4). The reviewer identity
+	// always comes from the authenticated request context; HTTP authoring
+	// is SystemAdmin-only at the router.
+	RecordEvaluation(ctx context.Context, reviewerID string, evaluation types.AgentEvaluationEntity) (AgentEvaluationView, error)
 }
 
 type VerifiedPublisherView struct {
@@ -53,29 +58,48 @@ type PublicReviewResult struct {
 }
 
 // PublicReleaseSummary is the portable documentation of one public
-// release: version, digest, Manifest and Dependency Lock. No bundle bytes
-// cross the service boundary through views.
+// release: version, digest, Manifest and Dependency Lock plus the
+// allowlisted manifest projection (compatibility floor, required
+// capabilities, license). No bundle bytes cross the service boundary
+// through views.
 type PublicReleaseSummary struct {
-	ID                 string
-	SemanticVersion    string
-	BundleDigest       string
-	ManifestJSON       string
-	DependencyLockJSON string
-	CreatedAt          time.Time
+	ID                       string
+	SemanticVersion          string
+	BundleDigest             string
+	ManifestJSON             string
+	DependencyLockJSON       string
+	MinimumWeKnoraCapability string
+	CapabilityRequirements   []string
+	LicenseID                string
+	CreatedAt                time.Time
+}
+
+// PublicReleaseReviewSummary is the platform review decision surfaced with
+// a public release: decision/reviewer/time ONLY — never the review Reason.
+type PublicReleaseReviewSummary struct {
+	SubmissionID string
+	ReviewerID   string
+	Decision     string
+	ReviewedAt   time.Time
 }
 
 // PublicCatalogEntryView is one public catalog row: listing identity,
-// display data, publisher trust signal and the current release summary.
+// display data, publisher trust signal, the current release summary, the
+// safe review summary, the release-pinned Evaluation summaries and the
+// bucketed metrics projection (spec §12: no adopter-derived identity).
 type PublicCatalogEntryView struct {
-	ListingID         string
-	DisplayName       string
-	Summary           string
-	State             string
-	PublisherTenantID uint64
-	PublisherVerified bool
-	CurrentRelease    *PublicReleaseSummary
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ListingID            string
+	DisplayName          string
+	Summary              string
+	State                string
+	PublisherTenantID    uint64
+	PublisherVerified    bool
+	CurrentRelease       *PublicReleaseSummary
+	CurrentReleaseReview *PublicReleaseReviewSummary
+	Evaluations          []AgentEvaluationView
+	Metrics              *MarketplaceMetricsView
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type PublicListingDetailView struct {

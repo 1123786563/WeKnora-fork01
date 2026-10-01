@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,15 +28,23 @@ const (
 )
 
 type PublicMarketplaceService struct {
-	repo     repository.PublicMarketplaceRepository
-	listings interfaces.AgentMarketplaceRepository
-	now      func() time.Time
+	repo        repository.PublicMarketplaceRepository
+	listings    interfaces.AgentMarketplaceRepository
+	evaluations interfaces.AgentEvaluationService
+	metrics     interfaces.MarketplaceMetricsService
+	now         func() time.Time
 }
 
 var _ interfaces.PublicMarketplaceService = (*PublicMarketplaceService)(nil)
 
-func NewPublicMarketplaceService(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) *PublicMarketplaceService {
-	return &PublicMarketplaceService{repo: repo, listings: listings, now: time.Now}
+func NewPublicMarketplaceService(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository, evaluations interfaces.AgentEvaluationService, metrics interfaces.MarketplaceMetricsService) *PublicMarketplaceService {
+	return &PublicMarketplaceService{repo: repo, listings: listings, evaluations: evaluations, metrics: metrics, now: time.Now}
+}
+
+// RecordEvaluation delegates platform Evaluation authoring to the T1
+// AgentEvaluationService; the reviewer identity is the authenticated actor.
+func (s *PublicMarketplaceService) RecordEvaluation(ctx context.Context, reviewerID string, evaluation types.AgentEvaluationEntity) (interfaces.AgentEvaluationView, error) {
+	return s.evaluations.RecordEvaluation(ctx, reviewerID, evaluation)
 }
 
 func (s *PublicMarketplaceService) VerifyPublisher(ctx context.Context, actorID string, tenantID uint64, note string) (interfaces.VerifiedPublisherView, bool, error) {
@@ -220,6 +229,60 @@ func (s *PublicMarketplaceService) ReviewPublicSubmission(ctx context.Context, r
 	return interfaces.PublicReviewResult{Review: review, Release: release}, nil
 }
 
+// publicManifestProjection extracts the allowlisted compatibility/license
+// fields from a release manifest. A malformed manifest leaves them empty —
+// the raw manifest itself is already published on the wire.
+func applyPublicManifestProjection(summary *interfaces.PublicReleaseSummary) {
+	var manifest struct {
+		MinimumWeKnoraCapability string   `json:"minimum_weknora_capability"`
+		CapabilityRequirements   []string `json:"capability_requirements"`
+		LicenseID                string   `json:"license_id"`
+	}
+	if err := json.Unmarshal([]byte(summary.ManifestJSON), &manifest); err != nil {
+		return
+	}
+	summary.MinimumWeKnoraCapability = manifest.MinimumWeKnoraCapability
+	summary.CapabilityRequirements = manifest.CapabilityRequirements
+	summary.LicenseID = manifest.LicenseID
+}
+
+func reviewSummaryView(summary repository.PublicReviewSummary) *interfaces.PublicReleaseReviewSummary {
+	return &interfaces.PublicReleaseReviewSummary{
+		SubmissionID: summary.SubmissionID, ReviewerID: summary.ReviewerID,
+		Decision: summary.Decision, ReviewedAt: summary.ReviewedAt,
+	}
+}
+
+// composeReleaseTrust enriches one catalog entry with the current release's
+// trust data: manifest projection, safe review summary, release-pinned
+// Evaluation summaries and the bucketed metrics view. This adds linear
+// per-listing Evaluation/Metrics reads to the catalog's existing
+// per-listing release lookup (plan T65 Task 4 ruling).
+func (s *PublicMarketplaceService) composeReleaseTrust(ctx context.Context, entry *interfaces.PublicCatalogEntryView, release *types.PublicAgentReleaseEntity, reviewSummaries map[string]repository.PublicReviewSummary) error {
+	if release == nil {
+		return nil
+	}
+	entry.CurrentRelease = &interfaces.PublicReleaseSummary{
+		ID: release.ID, SemanticVersion: release.SemanticVersion, BundleDigest: release.BundleDigest,
+		ManifestJSON: release.ManifestJSON, DependencyLockJSON: release.DependencyLockJSON, CreatedAt: release.CreatedAt,
+	}
+	applyPublicManifestProjection(entry.CurrentRelease)
+	if summary, ok := reviewSummaries[release.SubmissionID]; ok {
+		entry.CurrentReleaseReview = reviewSummaryView(summary)
+	}
+	evaluations, err := s.evaluations.ListEvaluationsForRelease(ctx, release.ID)
+	if err != nil {
+		return err
+	}
+	entry.Evaluations = evaluations
+	metrics, err := s.metrics.MetricsForRelease(ctx, release.ID)
+	if err != nil {
+		return err
+	}
+	entry.Metrics = &metrics
+	return nil
+}
+
 func (s *PublicMarketplaceService) ListPublicCatalog(ctx context.Context) ([]interfaces.PublicCatalogEntryView, error) {
 	rows, err := s.repo.ListPublicCatalog(ctx)
 	if err != nil {
@@ -235,21 +298,31 @@ func (s *PublicMarketplaceService) ListPublicCatalog(ctx context.Context) ([]int
 			verified[publisher.TenantID] = true
 		}
 	}
+	submissionIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.Release != nil {
+			submissionIDs = append(submissionIDs, row.Release.SubmissionID)
+		}
+	}
+	reviewSummaries, err := s.repo.ListPublicReviewsForSubmissions(ctx, submissionIDs)
+	if err != nil {
+		return nil, err
+	}
 	views := make([]interfaces.PublicCatalogEntryView, 0, len(rows))
 	for _, row := range rows {
 		if row.Listing.State != PublicListingStateListed || row.Release == nil {
 			continue
 		}
-		views = append(views, interfaces.PublicCatalogEntryView{
+		entry := interfaces.PublicCatalogEntryView{
 			ListingID: row.Listing.ID, DisplayName: row.Listing.DisplayName, Summary: row.Listing.Summary,
 			State: row.Listing.State, PublisherTenantID: row.Listing.PublisherTenantID,
 			PublisherVerified: verified[row.Listing.PublisherTenantID],
-			CurrentRelease: &interfaces.PublicReleaseSummary{
-				ID: row.Release.ID, SemanticVersion: row.Release.SemanticVersion, BundleDigest: row.Release.BundleDigest,
-				ManifestJSON: row.Release.ManifestJSON, DependencyLockJSON: row.Release.DependencyLockJSON, CreatedAt: row.Release.CreatedAt,
-			},
-			CreatedAt: row.Listing.CreatedAt, UpdatedAt: row.Listing.UpdatedAt,
-		})
+			CreatedAt:         row.Listing.CreatedAt, UpdatedAt: row.Listing.UpdatedAt,
+		}
+		if err := s.composeReleaseTrust(ctx, &entry, row.Release, reviewSummaries); err != nil {
+			return nil, err
+		}
+		views = append(views, entry)
 	}
 	return views, nil
 }
@@ -292,11 +365,14 @@ func (s *PublicMarketplaceService) GetPublicListing(ctx context.Context, listing
 		if err != nil {
 			return nil, err
 		}
+		var reviewSummaries map[string]repository.PublicReviewSummary
 		if release != nil {
-			entry.CurrentRelease = &interfaces.PublicReleaseSummary{
-				ID: release.ID, SemanticVersion: release.SemanticVersion, BundleDigest: release.BundleDigest,
-				ManifestJSON: release.ManifestJSON, DependencyLockJSON: release.DependencyLockJSON, CreatedAt: release.CreatedAt,
+			if reviewSummaries, err = s.repo.ListPublicReviewsForSubmissions(ctx, []string{release.SubmissionID}); err != nil {
+				return nil, err
 			}
+		}
+		if err := s.composeReleaseTrust(ctx, &entry, release, reviewSummaries); err != nil {
+			return nil, err
 		}
 	}
 	return &interfaces.PublicListingDetailView{PublicCatalogEntryView: entry}, nil

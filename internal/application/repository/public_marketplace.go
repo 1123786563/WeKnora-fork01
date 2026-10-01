@@ -50,6 +50,7 @@ type PublicMarketplaceRepository interface {
 	GetPublicRelease(ctx context.Context, releaseID string) (*types.PublicAgentReleaseEntity, error)
 	ReviewAndPublishPublicTx(ctx context.Context, expectedPriorReleaseID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (*types.PublicReleaseReviewEntity, *types.PublicAgentReleaseEntity, error)
 	ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error)
+	ListPublicReviewsForSubmissions(ctx context.Context, submissionIDs []string) (map[string]PublicReviewSummary, error)
 	IntroduceRelease(ctx context.Context, adopterTenantID uint64, actorID string, listing *types.PublicMarketplaceListingEntity, release *types.PublicAgentReleaseEntity) (*types.TenantIntroducedReleaseEntity, *types.AgentAdoptionEntity, bool, error)
 	UnlistPublicListing(ctx context.Context, listingID, actorID, reason string) (*types.PublicMarketplaceListingEntity, error)
 	DeprecatePublicRelease(ctx context.Context, releaseID, replacementReleaseID, actorID, reason string) (*types.PublicAgentReleaseEntity, error)
@@ -417,6 +418,45 @@ func (r *publicMarketplaceRepository) ListPublicCatalog(ctx context.Context) ([]
 		out = append(out, PublicCatalogRow{Listing: rows[i], Release: release})
 	}
 	return out, nil
+}
+
+// PublicReviewSummary is the safe projection of a platform review for the
+// public catalog read model: SubmissionID/ReviewerID/Decision/ReviewedAt
+// ONLY — the Review Reason never crosses this boundary (spec §12).
+type PublicReviewSummary struct {
+	SubmissionID string
+	ReviewerID   string
+	Decision     string
+	ReviewedAt   time.Time
+}
+
+// ListPublicReviewsForSubmissions batch-reads the review summary for the
+// given submission ids; unknown ids are absent from the result. One review
+// exists per submission at most (uq_public_release_review_submission).
+func (r *publicMarketplaceRepository) ListPublicReviewsForSubmissions(ctx context.Context, submissionIDs []string) (map[string]PublicReviewSummary, error) {
+	result := map[string]PublicReviewSummary{}
+	ids := make([]string, 0, len(submissionIDs))
+	for _, id := range submissionIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	var rows []PublicReviewSummary
+	if err := r.db.WithContext(ctx).
+		Table("public_release_reviews").
+		Select("submission_id", "reviewer_id", "decision", "created_at AS reviewed_at").
+		Where("submission_id IN ?", ids).
+		Order("created_at ASC, id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.SubmissionID] = row
+	}
+	return result, nil
 }
 
 // IntroduceRelease is the cross-tenant propagation primitive: it copies ONE

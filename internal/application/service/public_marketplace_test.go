@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -17,7 +19,9 @@ func newPublicMarketplaceServiceForTest(t *testing.T) (*PublicMarketplaceService
 	t.Helper()
 	db := openAgentVersionServiceTestDB(t)
 	listings := repository.NewAgentMarketplaceRepository(db)
-	return NewPublicMarketplaceService(repository.NewPublicMarketplaceRepository(db), listings), db
+	evaluations := NewAgentEvaluationService(repository.NewAgentEvaluationRepository(db))
+	metrics := NewMarketplaceMetricsService(repository.NewMarketplaceMetricsRepository(db))
+	return NewPublicMarketplaceService(repository.NewPublicMarketplaceRepository(db), listings, evaluations, metrics), db
 }
 
 // differentDigest flips the last hex char of a valid digest, yielding a
@@ -233,6 +237,127 @@ func TestPublicMarketplaceServiceGetListingMatchesCatalogVisibility(t *testing.T
 	detail, err = svc.GetPublicListing(ctx, "no-such-listing")
 	require.Nil(t, detail)
 	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+}
+
+// TestPublicMarketplaceServiceRecordEvaluationDelegatesToEvaluationService pins
+// the T35 #65 Task 4 delegation seam: RecordEvaluation forwards to the T1
+// AgentEvaluationService (evaluator identity from the authenticated reviewer)
+// and surfaces its invalid/conflict errors unchanged.
+func TestPublicMarketplaceServiceRecordEvaluationDelegatesToEvaluationService(t *testing.T) {
+	svc, db := newPublicMarketplaceServiceForTest(t)
+	listingID, _, _ := seedTenantRelease(t, db)
+	ctx := context.Background()
+	_, _, err := svc.VerifyPublisher(ctx, "sysadmin", 1, "")
+	require.NoError(t, err)
+	submission, err := svc.SubmitPublicRelease(ctx, 1, "publisher-admin", listingID, "")
+	require.NoError(t, err)
+	result, err := svc.ReviewPublicSubmission(ctx, "platform-reviewer", submission.ID, submission.BundleDigest, types.AgentReleaseReviewDecision{Decision: "approved"})
+	require.NoError(t, err)
+
+	valid := types.AgentEvaluationEntity{
+		ReleaseID: result.Release.ID, TestSetID: "ts-suite", TestSetVersion: "v1", EnvironmentClass: "standard",
+		EvaluatedAt: time.Now().UTC(),
+		ResultsJSON: `{"status":"pass","checks":[{"code":"manifest_completeness","status":"pass"},{"code":"privacy","status":"pass"}]}`,
+	}
+	view, err := svc.RecordEvaluation(ctx, "sysadmin-evaluator", valid)
+	require.NoError(t, err)
+	require.Equal(t, "sysadmin-evaluator", view.EvaluatorID)
+	require.Equal(t, result.Release.ID, view.ReleaseID)
+	var rows int64
+	db.Table("agent_release_evaluations").Where("release_id = ?", result.Release.ID).Count(&rows)
+	require.EqualValues(t, 1, rows)
+
+	duplicate := valid
+	duplicate.EvaluatedAt = valid.EvaluatedAt.Add(time.Second)
+	_, err = svc.RecordEvaluation(ctx, "sysadmin-evaluator", duplicate)
+	require.ErrorIs(t, err, repository.ErrAgentEvaluationConflict)
+
+	invalid := valid
+	invalid.TestSetID = "ts-suite-2"
+	invalid.ResultsJSON = `{"status":"pass","checks":[{"code":"evil","status":"pass"}]}`
+	_, err = svc.RecordEvaluation(ctx, "sysadmin-evaluator", invalid)
+	require.ErrorIs(t, err, repository.ErrAgentEvaluationInvalid)
+
+	emptyReviewer := valid
+	emptyReviewer.TestSetID = "ts-suite-3"
+	_, err = svc.RecordEvaluation(ctx, "  ", emptyReviewer)
+	require.ErrorIs(t, err, ErrAgentEvaluationInvalidInput)
+}
+
+// TestPublicMarketplaceServiceComposesTrustAndMetricsIntoCatalogAndDetail
+// pins the T35 #65 Task 4 read-model composition: catalog/detail entries
+// carry the safe review summary (never Reason), the manifest compatibility
+// floor/capability/license projection, the immutable Evaluation summary and
+// the threshold-bucketed MarketplaceMetricsView.
+func TestPublicMarketplaceServiceComposesTrustAndMetricsIntoCatalogAndDetail(t *testing.T) {
+	svc, db := newPublicMarketplaceServiceForTest(t)
+	listingID, _, _ := seedTenantRelease(t, db)
+	ctx := context.Background()
+	_, _, err := svc.VerifyPublisher(ctx, "sysadmin", 1, "")
+	require.NoError(t, err)
+	submission, err := svc.SubmitPublicRelease(ctx, 1, "publisher-admin", listingID, "")
+	require.NoError(t, err)
+	result, err := svc.ReviewPublicSubmission(ctx, "platform-reviewer", submission.ID, submission.BundleDigest, types.AgentReleaseReviewDecision{Decision: "approved", Reason: "MK-SVC-REASON"})
+	require.NoError(t, err)
+	_, err = svc.RecordEvaluation(ctx, "sysadmin-evaluator", types.AgentEvaluationEntity{
+		ReleaseID: result.Release.ID, TestSetID: "ts-suite", TestSetVersion: "v1", EnvironmentClass: "standard",
+		EvaluatedAt: time.Now().UTC(),
+		ResultsJSON: `{"status":"pass","checks":[{"code":"license","status":"pass"}]}`,
+	})
+	require.NoError(t, err)
+
+	adoptAs := func(tenantID uint64) {
+		t.Helper()
+		require.NoError(t, db.Exec(`INSERT OR IGNORE INTO tenants (id, name, business) VALUES (?, 'adopter', 'test')`, tenantID).Error)
+		_, _, err := svc.AdoptPublicListing(ctx, tenantID, "adopter-admin", result.Release.ListingID, "")
+		require.NoError(t, err)
+	}
+	for tenantID := uint64(2); tenantID <= 5; tenantID++ {
+		adoptAs(tenantID)
+	}
+
+	catalog, err := svc.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Len(t, catalog, 1)
+	entry := catalog[0]
+	require.NotNil(t, entry.CurrentReleaseReview)
+	require.Equal(t, "approved", entry.CurrentReleaseReview.Decision)
+	require.Equal(t, "platform-reviewer", entry.CurrentReleaseReview.ReviewerID)
+	require.False(t, entry.CurrentReleaseReview.ReviewedAt.IsZero())
+	require.NotNil(t, entry.Metrics)
+	require.Equal(t, "suppressed", entry.Metrics.IntroductionsBucket, "4 adopters 低于阈值必须抑制")
+	require.Len(t, entry.Evaluations, 1)
+	require.Equal(t, result.Release.ID, entry.Evaluations[0].ReleaseID)
+	require.Equal(t, "ts-suite", entry.Evaluations[0].TestSetID)
+
+	require.Equal(t, "1", entry.CurrentRelease.MinimumWeKnoraCapability)
+	require.Equal(t, []string{"knowledge"}, entry.CurrentRelease.CapabilityRequirements)
+	require.Equal(t, "MIT", entry.CurrentRelease.LicenseID)
+
+	detail, err := svc.GetPublicListing(ctx, result.Release.ListingID)
+	require.NoError(t, err)
+	require.NotNil(t, detail.CurrentReleaseReview)
+	require.Equal(t, "approved", detail.CurrentReleaseReview.Decision)
+	require.NotNil(t, detail.Metrics)
+	require.Equal(t, "suppressed", detail.Metrics.IntroductionsBucket)
+	require.Len(t, detail.Evaluations, 1)
+
+	// 第五个采用租户翻转桶位；无升级提案的度量保持抑制。
+	adoptAs(6)
+	catalog, err = svc.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Len(t, catalog, 1)
+	require.Equal(t, "5-9", catalog[0].Metrics.IntroductionsBucket)
+	require.Equal(t, "5-9", catalog[0].Metrics.ActiveAdoptersBucket)
+	require.Equal(t, "suppressed", catalog[0].Metrics.UpgradeProposalsBucket)
+	require.Equal(t, "suppressed", catalog[0].Metrics.AcceptedUpgradesBucket)
+	require.Equal(t, "not_collected", catalog[0].Metrics.ErrorCategoryAvailability)
+
+	// Review Reason 永不进入读模型（结构保证 + 序列化证据）。
+	encoded, err := json.Marshal(catalog[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "MK-SVC-REASON")
+	require.NotContains(t, string(encoded), `"Reason"`)
 }
 
 func TestPublicMarketplaceServiceCustodyHidesRevokedPublisher(t *testing.T) {

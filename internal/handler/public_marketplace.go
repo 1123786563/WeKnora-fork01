@@ -45,6 +45,24 @@ type adoptPublicListingBody struct {
 	ReleaseID string `json:"release_id,omitempty"`
 }
 
+// recordPublicEvaluationBody is the closed request shape for platform
+// Evaluation authoring: results must be the structured
+// {status,checks:[{code,status}]} object, never freeform text, and the
+// reviewer identity never arrives from the body.
+type recordPublicEvaluationBody struct {
+	ReleaseID        string `json:"release_id"`
+	TestSetID        string `json:"test_set_id"`
+	TestSetVersion   string `json:"test_set_version"`
+	EnvironmentClass string `json:"environment_class"`
+	Results          struct {
+		Status string `json:"status"`
+		Checks []struct {
+			Code   string `json:"code"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	} `json:"results"`
+}
+
 type verifiedPublisherResponse struct {
 	TenantID   uint64    `json:"tenant_id"`
 	State      string    `json:"state"`
@@ -55,28 +73,36 @@ type verifiedPublisherResponse struct {
 }
 
 type publicCatalogReleaseResponse struct {
-	ID              string          `json:"id"`
-	SemanticVersion string          `json:"semantic_version"`
-	BundleDigest    string          `json:"bundle_digest"`
-	Manifest        json.RawMessage `json:"manifest"`
-	DependencyLock  json.RawMessage `json:"dependency_lock"`
-	CreatedAt       time.Time       `json:"created_at"`
+	ID                       string          `json:"id"`
+	SemanticVersion          string          `json:"semantic_version"`
+	BundleDigest             string          `json:"bundle_digest"`
+	Manifest                 json.RawMessage `json:"manifest"`
+	DependencyLock           json.RawMessage `json:"dependency_lock"`
+	MinimumWeKnoraCapability string          `json:"minimum_weknora_capability"`
+	CapabilityRequirements   []string        `json:"capability_requirements"`
+	LicenseID                string          `json:"license_id"`
+	CreatedAt                time.Time       `json:"created_at"`
 }
 
 // publicCatalogListingResponse is the public catalog row wire. Its field
 // set is pinned by the router tests with strict decoding: adding any
-// adopter-derived field (adoption counts, adopter ids, metrics) breaks the
-// privacy contract (spec §12) and the test.
+// adopter-derived field (adoption counts, adopter ids, raw metrics) breaks
+// the privacy contract (spec §12) and the test. The T35 #65 trust fields
+// (safe review summary, manifest projection, release-pinned Evaluation
+// summaries, bucketed metrics view) are the reviewed allowlist.
 type publicCatalogListingResponse struct {
-	ID                string                        `json:"id"`
-	DisplayName       string                        `json:"display_name"`
-	Summary           string                        `json:"summary"`
-	State             string                        `json:"state"`
-	PublisherTenantID uint64                        `json:"publisher_tenant_id"`
-	PublisherVerified bool                          `json:"publisher_verified"`
-	CurrentRelease    *publicCatalogReleaseResponse `json:"current_release,omitempty"`
-	CreatedAt         time.Time                     `json:"created_at"`
-	UpdatedAt         time.Time                     `json:"updated_at"`
+	ID                   string                        `json:"id"`
+	DisplayName          string                        `json:"display_name"`
+	Summary              string                        `json:"summary"`
+	State                string                        `json:"state"`
+	PublisherTenantID    uint64                        `json:"publisher_tenant_id"`
+	PublisherVerified    bool                          `json:"publisher_verified"`
+	CurrentRelease       *publicCatalogReleaseResponse `json:"current_release,omitempty"`
+	CurrentReleaseReview *publicReviewSummaryResponse  `json:"current_release_review,omitempty"`
+	Evaluations          []agentEvaluationResponse     `json:"evaluations,omitempty"`
+	Metrics              *marketplaceMetricsResponse   `json:"metrics,omitempty"`
+	CreatedAt            time.Time                     `json:"created_at"`
+	UpdatedAt            time.Time                     `json:"updated_at"`
 }
 
 type publicSubmissionResponse struct {
@@ -140,6 +166,49 @@ type publicAdoptionSummaryResponse struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+// publicReviewSummaryResponse carries the platform review decision with
+// the current release: decision/reviewer/time ONLY — never the Reason.
+type publicReviewSummaryResponse struct {
+	SubmissionID string    `json:"submission_id"`
+	ReviewerID   string    `json:"reviewer_id"`
+	Decision     string    `json:"decision"`
+	ReviewedAt   time.Time `json:"reviewed_at"`
+}
+
+// agentEvaluationCheckResponse / agentEvaluationResultsResponse are the
+// typed structured Evaluation results on the wire (never double-encoded
+// JSON strings, never freeform text).
+type agentEvaluationCheckResponse struct {
+	Code   string `json:"code"`
+	Status string `json:"status"`
+}
+
+type agentEvaluationResultsResponse struct {
+	Status string                         `json:"status"`
+	Checks []agentEvaluationCheckResponse `json:"checks"`
+}
+
+type agentEvaluationResponse struct {
+	ID               string                         `json:"id"`
+	ReleaseID        string                         `json:"release_id"`
+	TestSetID        string                         `json:"test_set_id"`
+	TestSetVersion   string                         `json:"test_set_version"`
+	EnvironmentClass string                         `json:"environment_class"`
+	EvaluatorID      string                         `json:"evaluator_id"`
+	EvaluatedAt      time.Time                      `json:"evaluated_at"`
+	Results          agentEvaluationResultsResponse `json:"results"`
+}
+
+// marketplaceMetricsResponse is the closed five-field metrics wire: coarse
+// buckets plus the explicit not_collected error-category availability.
+type marketplaceMetricsResponse struct {
+	IntroductionsBucket       string `json:"introductions_bucket"`
+	ActiveAdoptersBucket      string `json:"active_adopters_bucket"`
+	UpgradeProposalsBucket    string `json:"upgrade_proposals_bucket"`
+	AcceptedUpgradesBucket    string `json:"accepted_upgrades_bucket"`
+	ErrorCategoryAvailability string `json:"error_category_availability"`
+}
+
 type adoptPublicListingResponse struct {
 	Introduction publicIntroductionResponse    `json:"introduction"`
 	Adoption     publicAdoptionSummaryResponse `json:"adoption"`
@@ -159,17 +228,71 @@ func publicCatalogReleaseDTO(release *interfaces.PublicReleaseSummary) *publicCa
 	return &publicCatalogReleaseResponse{
 		ID: release.ID, SemanticVersion: release.SemanticVersion, BundleDigest: release.BundleDigest,
 		Manifest: json.RawMessage(release.ManifestJSON), DependencyLock: json.RawMessage(release.DependencyLockJSON),
-		CreatedAt: release.CreatedAt,
+		MinimumWeKnoraCapability: release.MinimumWeKnoraCapability,
+		CapabilityRequirements:   release.CapabilityRequirements,
+		LicenseID:                release.LicenseID,
+		CreatedAt:                release.CreatedAt,
 	}
 }
 
-func publicCatalogListingDTO(entry interfaces.PublicCatalogEntryView) publicCatalogListingResponse {
-	return publicCatalogListingResponse{
+func publicReviewSummaryDTO(summary *interfaces.PublicReleaseReviewSummary) *publicReviewSummaryResponse {
+	if summary == nil {
+		return nil
+	}
+	return &publicReviewSummaryResponse{
+		SubmissionID: summary.SubmissionID, ReviewerID: summary.ReviewerID,
+		Decision: summary.Decision, ReviewedAt: summary.ReviewedAt,
+	}
+}
+
+// publicEvaluationDTO renders one Evaluation with its ResultsJSON parsed
+// into the closed typed shape. ResultsJSON is repo-validated at write time
+// (T35 #65 Task 1); a decode failure here means storage corruption and is
+// surfaced as an error instead of silently fabricated evidence.
+func publicEvaluationDTO(view interfaces.AgentEvaluationView) (agentEvaluationResponse, error) {
+	response := agentEvaluationResponse{
+		ID: view.ID, ReleaseID: view.ReleaseID, TestSetID: view.TestSetID, TestSetVersion: view.TestSetVersion,
+		EnvironmentClass: view.EnvironmentClass, EvaluatorID: view.EvaluatorID, EvaluatedAt: view.EvaluatedAt,
+		Results: agentEvaluationResultsResponse{Checks: []agentEvaluationCheckResponse{}},
+	}
+	decoder := json.NewDecoder(strings.NewReader(view.ResultsJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&response.Results); err != nil {
+		return agentEvaluationResponse{}, err
+	}
+	return response, nil
+}
+
+func publicMetricsDTO(view *interfaces.MarketplaceMetricsView) *marketplaceMetricsResponse {
+	if view == nil {
+		return nil
+	}
+	return &marketplaceMetricsResponse{
+		IntroductionsBucket:       view.IntroductionsBucket,
+		ActiveAdoptersBucket:      view.ActiveAdoptersBucket,
+		UpgradeProposalsBucket:    view.UpgradeProposalsBucket,
+		AcceptedUpgradesBucket:    view.AcceptedUpgradesBucket,
+		ErrorCategoryAvailability: view.ErrorCategoryAvailability,
+	}
+}
+
+func publicCatalogListingDTO(entry interfaces.PublicCatalogEntryView) (publicCatalogListingResponse, error) {
+	response := publicCatalogListingResponse{
 		ID: entry.ListingID, DisplayName: entry.DisplayName, Summary: entry.Summary, State: entry.State,
 		PublisherTenantID: entry.PublisherTenantID, PublisherVerified: entry.PublisherVerified,
-		CurrentRelease: publicCatalogReleaseDTO(entry.CurrentRelease),
-		CreatedAt:      entry.CreatedAt, UpdatedAt: entry.UpdatedAt,
+		CurrentRelease:       publicCatalogReleaseDTO(entry.CurrentRelease),
+		CurrentReleaseReview: publicReviewSummaryDTO(entry.CurrentReleaseReview),
+		Metrics:              publicMetricsDTO(entry.Metrics),
+		CreatedAt:            entry.CreatedAt, UpdatedAt: entry.UpdatedAt,
 	}
+	for _, evaluation := range entry.Evaluations {
+		dto, err := publicEvaluationDTO(evaluation)
+		if err != nil {
+			return publicCatalogListingResponse{}, err
+		}
+		response.Evaluations = append(response.Evaluations, dto)
+	}
+	return response, nil
 }
 
 func publicSubmissionDTO(row interfaces.PublicSubmissionView) publicSubmissionResponse {
@@ -193,6 +316,13 @@ func publicMarketplaceClientError(err error) error {
 		// and why it refuses (409, reviewable).
 		return apperrors.NewConflictError(err.Error())
 	case stderrors.Is(err, marketrepo.ErrAgentAdoptionTransition):
+		return apperrors.NewConflictError(err.Error())
+	case stderrors.Is(err, marketrepo.ErrAgentEvaluationConflict):
+		return apperrors.NewConflictError("agent evaluation identity already exists")
+	case stderrors.Is(err, marketrepo.ErrAgentEvaluationInvalid),
+		stderrors.Is(err, marketservice.ErrAgentEvaluationInvalidInput):
+		return apperrors.NewValidationError("invalid agent evaluation")
+	case stderrors.Is(err, marketrepo.ErrAgentSecurityReleaseBlocked):
 		return apperrors.NewConflictError(err.Error())
 	case stderrors.Is(err, marketservice.ErrPublicMarketplaceStaleDigest),
 		stderrors.Is(err, marketrepo.ErrPublicMarketplaceDigestMismatch),
@@ -361,7 +491,12 @@ func (h *PublicMarketplaceHandler) ListPublicCatalog(c *gin.Context) {
 	}
 	data := make([]publicCatalogListingResponse, 0, len(entries))
 	for _, entry := range entries {
-		data = append(data, publicCatalogListingDTO(entry))
+		dto, err := publicCatalogListingDTO(entry)
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+		data = append(data, dto)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
@@ -372,7 +507,51 @@ func (h *PublicMarketplaceHandler) GetPublicListing(c *gin.Context) {
 		_ = c.Error(publicMarketplaceClientError(err))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": publicCatalogListingDTO(entry.PublicCatalogEntryView)})
+	dto, err := publicCatalogListingDTO(entry.PublicCatalogEntryView)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": dto})
+}
+
+// RecordPublicEvaluation is the SystemAdmin-only platform Evaluation
+// authoring entry (T35 #65 Task 4): the reviewer identity comes from the
+// authenticated context, the structured results are re-serialized into the
+// repo-validated closed shape, and invalid/conflict map to 400/409.
+func (h *PublicMarketplaceHandler) RecordPublicEvaluation(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, agentMarketplaceMaxRequestBytes)
+	var body *recordPublicEvaluationBody
+	if err := decodeAgentMarketplaceBody(c.Request.Body, &body); err != nil {
+		invalidMarketplaceBody(c, err)
+		return
+	}
+	if body == nil || strings.TrimSpace(body.ReleaseID) == "" || strings.TrimSpace(body.TestSetID) == "" ||
+		strings.TrimSpace(body.TestSetVersion) == "" || strings.TrimSpace(body.EnvironmentClass) == "" ||
+		strings.TrimSpace(body.Results.Status) == "" || len(body.Results.Checks) == 0 {
+		invalidMarketplaceBody(c, stderrors.New("release_id, test_set_id, test_set_version, environment_class and results (status+checks) are required"))
+		return
+	}
+	resultsJSON, err := json.Marshal(body.Results)
+	if err != nil {
+		invalidMarketplaceBody(c, err)
+		return
+	}
+	reviewerID, _ := types.UserIDFromContext(c.Request.Context())
+	view, err := h.public.RecordEvaluation(c.Request.Context(), reviewerID, types.AgentEvaluationEntity{
+		ReleaseID: body.ReleaseID, TestSetID: body.TestSetID, TestSetVersion: body.TestSetVersion,
+		EnvironmentClass: body.EnvironmentClass, EvaluatedAt: time.Now().UTC(), ResultsJSON: string(resultsJSON),
+	})
+	if err != nil {
+		_ = c.Error(publicMarketplaceClientError(err))
+		return
+	}
+	response, err := publicEvaluationDTO(view)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": response})
 }
 
 func (h *PublicMarketplaceHandler) AdoptPublicListing(c *gin.Context) {
