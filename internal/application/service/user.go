@@ -2027,7 +2027,14 @@ func (jwks *oidcJWKS) rsaKeyForKid(kid string) (*rsa.PublicKey, error) {
 }
 
 // fetchOIDCJWKS loads the provider's JWKS document over the SSRF-safe client.
+// SQLite-backed providers (Casdoor) can intermittently serialize an empty key
+// set under concurrent writes (T01 #31 live round), so one empty document is
+// retried after a short backoff before the request is declared failed.
 func (s *userService) fetchOIDCJWKS(ctx context.Context, jwksURI string) (*oidcJWKS, error) {
+	return s.fetchOIDCJWKSDocument(ctx, jwksURI, true)
+}
+
+func (s *userService) fetchOIDCJWKSDocument(ctx context.Context, jwksURI string, retryOnEmpty bool) (*oidcJWKS, error) {
 	if err := validateOIDCEndpoint("jwks", jwksURI, true); err != nil {
 		return nil, err
 	}
@@ -2052,7 +2059,15 @@ func (s *userService) fetchOIDCJWKS(ctx context.Context, jwksURI string) (*oidcJ
 		return nil, fmt.Errorf("failed to decode JWKS document: %w", err)
 	}
 	if len(jwks.Keys) == 0 {
-		return nil, errors.New("JWKS document contains no keys")
+		if !retryOnEmpty {
+			return nil, errors.New("JWKS document contains no keys")
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(400 * time.Millisecond):
+		}
+		return s.fetchOIDCJWKSDocument(ctx, jwksURI, false)
 	}
 	return &jwks, nil
 }

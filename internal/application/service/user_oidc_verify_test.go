@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -401,5 +402,57 @@ func TestResolveOIDCUserInfo_VerifiedIDTokenUsedWhenUserinfoFails(t *testing.T) 
 	}
 	if info.Email != "user@example.com" {
 		t.Fatalf("email = %q, want verified id_token email", info.Email)
+	}
+}
+
+// Casdoor(sqlite) can intermittently serialize an empty JWKS under concurrent
+// writes (T01 #31 live round); fetchOIDCJWKS retries once before failing.
+func TestFetchOIDCJWKS_RetriesEmptyDocument(t *testing.T) {
+	withOIDCSSRFWhitelist(t, "127.0.0.1")
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	jwks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			_ = json.NewEncoder(w).Encode(oidcJWKS{})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(oidcJWKS{Keys: []oidcJWK{rsaJWK(key, "kid-1")}})
+	}))
+	defer jwks.Close()
+
+	svc := &userService{}
+	got, err := svc.fetchOIDCJWKS(context.Background(), jwks.URL)
+	if err != nil {
+		t.Fatalf("empty-then-valid JWKS rejected: %v", err)
+	}
+	if len(got.Keys) != 1 {
+		t.Fatalf("keys = %d, want 1", len(got.Keys))
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("jwks calls = %d, want 2", n)
+	}
+}
+
+func TestFetchOIDCJWKS_EmptyAfterRetryFails(t *testing.T) {
+	withOIDCSSRFWhitelist(t, "127.0.0.1")
+
+	var calls atomic.Int32
+	jwks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(oidcJWKS{})
+	}))
+	defer jwks.Close()
+
+	svc := &userService{}
+	_, err := svc.fetchOIDCJWKS(context.Background(), jwks.URL)
+	if err == nil || !strings.Contains(err.Error(), "no keys") {
+		t.Fatalf("err = %v, want JWKS no-keys failure", err)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("jwks calls = %d, want exactly 2 (retry is bounded)", n)
 	}
 }
