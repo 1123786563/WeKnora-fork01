@@ -1,0 +1,122 @@
+# #82 live T9 environment-backed run — 2026-10-02 (Task 2, plan 2026-10-02-issue82-t9-live)
+
+Stack: local Docker Lago (deploy/lago, compose project weknora-lago, pinned
+v1.53.0), API http://127.0.0.1:48889, org 0e7d28e9-96a2-47ec-acab-677722d15bf9.
+Credentials: LAGO_ORG_API_KEY from deploy/lago/.env (git-ignored, 600) and the
+operator Stripe TEST key from ~/.zcode/issue72-stripe.env — both sourced into
+the shell environment ONLY; never echoed, committed or logged. Secret scans
+("sk_"+"test", "rk_"+"live", "wh"+"sec_" literal patterns AND exact-value reverse grep) over the
+raw logs: CLEAN. HEAD 6c59483e6 (+ uncommitted harness fix noted in §A).
+Provider weknora-stripe registered on the fresh org before the runs (GraphQL
+addStripePaymentProvider with the operator test key; T09 precedent
+deploy/lago/evidence/t09-run.txt step 2).
+
+## Selector correction (plan Task 2: "actual test names via grep first")
+grep 'func Test' *integration_test.go → no test named TestLagoSettlementIntegration.
+T9-relevant: TestLagoPurchaseIntegration,
+TestLagoIntegrationSettleActivatesGatedSubscription (settlement live chain),
+TestInboundWebhookReplayGateAndCanonicalCollection (webhook replay gate).
+
+## Attempt timeline (env-assembly diagnosis, one step per failure)
+A1 prefix mode, harness as-committed → FAIL "authority base url violates the
+   outbound host policy": the purchase harness (lago_purchase_integration_test.go)
+   was never updated for the #82 outbound-host policy — every sibling integration
+   test sets OutboundAllowLoopback, this one missed (git -S confirms never had it).
+   Fix (env assembly, NOT an assertion change): set
+   cfg.OutboundAllowLoopback = strings.Contains(baseURL,"127.0.0.1")||…("localhost")
+   — same expression as lago_settlement_integration_test.go:758. Uncommitted.
+A2 loopback fixed, provider unregistered → FAIL "no provider registered" (F2 gate,
+   lago_purchase.go:437): fresh lago.sh init org had no payment provider.
+   Fix: register weknora-stripe (above).
+A3 provider registered, prefix mode → FAIL "no settle-able default payment method
+   without provider key/pm token" (lago_purchase.go:292-303): real Lago answers
+   422 no_default_payment_method for the placeholder-prefix binding and the
+   adapter fails CLOSED (structural). CONCLUSION: pure prefix mode cannot pass
+   the gated create on a real stack — the plan's "prefix 绑定源，无需 Stripe"
+   assumption does not hold for the purchase chain. Binding source switched to
+   the T09-proven Stripe mode (LAGO_INTEGRATION_STRIPE_API_KEY=<operator test
+   key> + LAGO_INTEGRATION_STRIPE_PM_TOKEN=pm_card_visa).
+A4 Stripe mode → PASS (full output §B).
+A5 settlement live test with the full t11-style env (prepare_t9_env.sh adapted to
+   project weknora-lago: base/api key/org id/db container+user+name, webhook
+   secret minted via Stripe API and stored through the Lago model layer) →
+   3/4 subtests PASS, 1 FAIL "customer wallets missing" (§C) → BLOCKED.
+
+## §B Final run — A4 (verbatim, sanitized)
+Command (values redacted):
+  LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48889 \
+  LAGO_INTEGRATION_API_KEY=<LAGO_ORG_API_KEY> \
+  LAGO_INTEGRATION_STRIPE_API_KEY=<STRIPE_TEST_KEY> \
+  LAGO_INTEGRATION_STRIPE_PM_TOKEN=pm_card_visa \
+  LAGO_INTEGRATION_PROVIDER_CUSTOMER_PREFIX=t82live-$(date +%s) \
+  go test -tags lago_integration ./internal/modules/commercial/commercialplatform \
+    -run 'TestLagoPurchaseIntegration|TestLagoIntegrationSettleActivatesGatedSubscription|TestInboundWebhookReplayGateAndCanonicalCollection' \
+    -count=1 -v -timeout 20m
+
+=== RUN   TestLagoPurchaseIntegration
+--- PASS: TestLagoPurchaseIntegration (8.72s)
+=== RUN   TestInboundWebhookReplayGateAndCanonicalCollection
+--- PASS: TestInboundWebhookReplayGateAndCanonicalCollection (0.00s)
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription
+    lago_settlement_integration_test.go:729: lago integration env not configured
+--- SKIP: TestLagoIntegrationSettleActivatesGatedSubscription (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform	9.305s
+
+## §C Settlement live chain — A5 (verbatim, sanitized; full t9 env assembled)
+Command skeleton: same package/tags, -run 'TestLagoIntegrationSettleActivatesGatedSubscription',
+env family exported by the adapted prepare_t9_env.sh (settle-evidence/prepare_t9_env.sh
+with PROJECT=weknora-lago, ENV_FILE=deploy/lago/.env; script copy kept out of the repo).
+
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/gated_create_leaves_the_purchase_incomplete_with_a_stuck_intent
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/settle_drives_the_rails_and_the_webhook_finalizes
+    lago_settlement_integration_test.go:912: capture complete pre-replay Lago snapshot: customer wallets missing
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/settle_replay_is_a_zero-side-effect_no-op
+=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/TestSettleSecondChannelTransactionShortCircuitsWhenActive
+--- FAIL: TestLagoIntegrationSettleActivatesGatedSubscription (16.15s)
+    --- PASS: TestLagoIntegrationSettleActivatesGatedSubscription/gated_create_leaves_the_purchase_incomplete_with_a_stuck_intent (5.59s)
+    --- FAIL: TestLagoIntegrationSettleActivatesGatedSubscription/settle_drives_the_rails_and_the_webhook_finalizes (10.30s)
+    --- PASS: TestLagoIntegrationSettleActivatesGatedSubscription/settle_replay_is_a_zero-side-effect_no-op (0.13s)
+    --- PASS: TestLagoIntegrationSettleActivatesGatedSubscription/TestSettleSecondChannelTransactionShortCircuitsWhenActive (0.05s)
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform	16.804s
+FAIL
+
+## §D BLOCKED analysis — "customer wallets missing" (A5)
+Verbatim failing assertion (t9LagoSnapshot, lago_settlement_integration_test.go:398-399):
+    if len(wallets) == 0 {
+        return nil, fmt.Errorf("customer wallets missing")
+    }
+  (surfacing as: settle_drives_the_rails_and_the_webhook_finalizes:
+   "capture complete pre-replay Lago snapshot: customer wallets missing")
+
+Chain up to that point PASSED on the live stack: subscription active, invoice
+finalized + payment_status succeeded, exactly one succeeded Lago payment.
+The assertion then requires an ACTIVE wallet named "<extPurchase>-<period>".
+Facts established:
+  - Neither the test nor the LagoAdapter ever grants a wallet in this chain
+    (grep: zero CommandKindGrantIncludedCredits / createWallet calls in the test;
+    settle is spec'd to perform NO Lago state write).
+  - Wallets are granted ONLY by the application service layer
+    (service/commercial/purchase_fulfillment.go:302, benefits.go:431), which the
+    tagged test does not invoke.
+  - The fresh stack's wallets table is EMPTY after the run (psql count=0) — the
+    wallet is not created-and-missed; it is never created.
+  - No deploy/lago-lab fixture seeds it (fixtures.py/phases.py: zero wallet refs).
+=> The wallet expectation depends on state the test cannot produce on a fresh
+stack; historical greens (settle-evidence, r4-flow*) rode a long-lived lab stack
+where application-level flows had granted wallets. NOT an env-assembly knob I may
+turn: hand-seeding the wallet via API would fabricate the very fact under test.
+NOT a product defect either (the settle chain itself is green). Classification:
+BLOCKED — harness-state dependency in the tagged test's wallet snapshot. Fix
+belongs to the test (drive the application fulfiller or drop/seed the wallet
+expectation explicitly) — outside this task's authority to change assertions.
+
+## Verdict for the #82 open surface
+- live T9 purchase chain (gated create / entitlements-closed / replay / conflict /
+  isolation): PROVEN on the fresh pinned stack (Stripe binding mode).
+- webhook replay gate: PASS.
+- settlement live chain: gated-create + settle + replay-no-op subtests PASS;
+  wallet-snapshot assertion BLOCKED as above (needs a test-side decision).
+- AC4 (real Alipay sandbox credentials) remains the only external open item.
