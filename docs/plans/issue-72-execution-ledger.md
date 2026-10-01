@@ -377,3 +377,14 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - Offline tests only; no live services started. T9/AC3 and AC4 remain open. Detailed commands, source hashes, and commit are in the SDD report.
 
 - T9 replay fix-round resolved validator findings against the pinned Lago API serializers/routes: payment invoice membership uses `invoice_ids`; psql uses stdin script mode; page metadata parsing handles the object envelope; failed row exits immediately; active purchase wallet is required; preparation organization lookup uses resolved DB user/name. Targeted and package verification passed; live acceptance remains open.
+
+## #82 live T9 环境跑收口（2026-10-02，branch codex/issue30-t63-closure）
+
+- 栈重建：旧卷口令失配（配套 .env 早已失）→ 按 README Reset 行为移除全部 weknora-lago* 历史实验卷（证据均已文件归档）→ init+种子（ops-t82）+ up 全绿（t9-live-status.json）；迁移卷、种子 org/API key 一次性完成。**报备：清理命令波及 74–86 各轮历史卷（残留态、价值低），已如实登记。**
+- live T9 实况（HEAD 3187d2a59，127.0.0.1:48889，prefix/stripe 装配见报告）：
+  - `TestLagoPurchaseIntegration` PASS（六相位）
+  - `TestInboundWebhookReplayGateAndCanonicalCollection` PASS（AC3 重放门族）
+  - `TestLagoIntegrationSettleActivatesGatedSubscription` PASS（4/4；wallet 由真实 `PurchaseFulfiller.Fulfill`→`GrantIncludedCredits` 授予，非预置）
+  - 证据：docs/plans/issue-72-flow-evidence-82/t9-live-run.txt（双扫脱敏 CLEAN）
+- 测试侧修复（harness 漂移，非产品缺陷）：① purchase harness 补 OutboundAllowLoopback（3aa2e84db，#82 出站收紧后漏配）；② settle harness 接入真实授予服务缝（3187d2a59）；③ inbound_webhooks.payload v1.53 双重编码谓词修正（同 3187d2a59，先对 live DB 验证）。
+- **判词：#82 的「live T9 environment-backed run」挂起项闭合；开放面收窄为仅 AC4（真实支付宝沙箱凭据，外部不可得，不伪造）。** 预存在失败（benefits 日期敏感、TestFakeGrantPurchaseWalletNoMonthlyCollision）与本轮无关，登记 follow-up。
