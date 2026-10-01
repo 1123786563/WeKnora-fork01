@@ -527,6 +527,16 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 			require.NotContains(t, field, t25ProbeToken, "A03 action value leaks credential")
 		}
 	}
+	var connections []appconnectorrepo.ConnectionRow
+	require.NoError(t, env.db.Find(&connections).Error)
+	for _, conn := range connections {
+		for _, field := range []string{conn.ID, conn.InstallationID, conn.Kind, conn.OwnerID, conn.CredentialRef, conn.State} {
+			require.NotContains(t, field, t25ProbeToken, "connection row leaks credential")
+		}
+	}
+	for _, entry := range os.Environ() {
+		require.NotContains(t, entry, t25ProbeToken, "credential resolution must not add the probe to the inherited environment used by shell launchers")
+	}
 	require.NotZero(t, env.github.snapshotCalls()["POST /git/blobs"])
 	env.github.mu.Lock()
 	probeHeaders := env.github.probeHeaders
