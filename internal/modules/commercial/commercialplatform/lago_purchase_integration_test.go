@@ -58,6 +58,10 @@ func TestLagoPurchaseIntegration(t *testing.T) {
 		t.Skip("blocked-env: LAGO_INTEGRATION_BASE_URL / LAGO_INTEGRATION_API_KEY / binding source not set (operator stack not provided)")
 	}
 	cfg := Config{Provider: ProviderLago, BaseURL: baseURL, APIKey: apiKey, Release: lockedRelease(t)}
+	// The integration stack is loopback; the #82 outbound host policy
+	// (EnvOutboundAllowLoopback) requires the explicit dev bypass — same
+	// as the sibling integration tests.
+	cfg.OutboundAllowLoopback = strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost")
 	if stripeKey != "" {
 		cfg.StripeAPIKey = stripeKey
 		// F11: a provider test payment-method token so the binding ensure
