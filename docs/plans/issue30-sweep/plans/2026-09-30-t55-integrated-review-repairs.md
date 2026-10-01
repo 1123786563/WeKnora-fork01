@@ -4,7 +4,7 @@
 
 **Goal:** Close the four valid findings from the final independent review of Issue #55 by making pushed recovery single-claim and run-bound, reporting mobile recovery evidence truthfully, and proving managed code-platform credentials stay outside the general Shell boundary.
 
-**Architecture:** Keep the durable Delivery row as the recovery linearization point: atomically claim `pushed` before any PR write, settle a definite rejection back to `pushed`, and park an unobservable write outcome as `unknown` for provider-query-only reconciliation. Bind every action to the URL run and owner before entering the provider path. Keep the mobile opt-in evidence flow honest for already-delivered records. Add a production-wiring boundary integration test for Delivery credentials versus general Shell sandbox creation and execution; do not change operator-provided Shell environment semantics without evidence that the approved contract requires it.
+**Architecture:** Keep the durable Delivery row as the recovery linearization point: atomically claim `pushed` before any PR write, settle a definite rejection back to `pushed`, and park an unobservable write outcome as `unknown` for provider-query-only reconciliation. Bind every action to the URL run and owner before entering the provider path. Keep the mobile opt-in evidence flow honest for already-delivered records. Add a production-wiring boundary integration test for Delivery credentials versus general Shell sandbox creation and execution. A narrow optional provider-factory seam may be added to the tenant sandbox resolver so the test can keep the real persisted-config loader and `SessionBoundManager` path while injecting a fake `RemoteSandboxClient`; production container wiring continues to use the existing concrete Cube/E2B/Docker factory. Do not change operator-provided Shell environment semantics.
 
 **Tech Stack:** Go 1.26, GORM/SQLite migration-backed HTTP integration tests, Gin handlers, TypeScript/node:test/tsx, Expo mobile smoke tests.
 
@@ -50,7 +50,7 @@ Task 3 uses a new isolated integration-test file and may run beside Task 1 only 
 |---|---|---|
 | 1 | CAS claim occurs before PR write; mismatch checks precede provider access; successful, definite failure, and ambiguous outcomes each have a terminal/persisted result and explicit tests | Consistent; if the existing action snapshot/query seam is insufficient, pause before widening |
 | 2 | The read state chooses `not-needed` before invoking recovery; tests assert both result label and zero writes | Consistent |
-| 3 | Uses a fake managed credential and provider at production Shell and Delivery wiring boundaries; keeps operator-provided env unchanged | Consistent as an acceptance test; no production behavior change unless the test proves an actual leak |
+| 3 | Uses a fake managed credential and provider at production Shell and Delivery wiring boundaries; keeps operator-provided env unchanged | Consistent; permit only a default-preserving optional client factory seam for test injection, with no change to production provider selection or operator env |
 
 ## Review finding coverage
 
@@ -119,17 +119,18 @@ Task 3 uses a new isolated integration-test file and may run beside Task 1 only 
 
 **Owned files:**
 - Create: `internal/application/repository/delivery_shell_isolation_http_test.go`
-- Create or modify a sandbox test file only if the concrete production Shell creation seam cannot be exercised from the repository integration test; any widening must be reported before edit.
+- Modify only as required for the test seam: `internal/modules/execution/sandbox/tenant_resolver.go` and its resolver test; optional factory must default to the existing production `buildClient` behavior.
 
 **Consumes:** production Delivery credential resolver and outbound HTTP transport already exercised by `delivery_recovery_http_test.go`; production tenant Shell configuration resolver, `SessionBoundManager`, and `RemoteSandboxClient` boundary.
 
 **Produces:** one isolated fake-secret/fake-provider integration test that resolves a fake managed GitHub write credential for Delivery, creates a general Shell through the production tenant configuration path, executes one benign command through the general Shell surface, and proves the fake managed credential appears only in the Delivery adapter's outbound Authorization header and nowhere in the Shell create request, execution environment, response, or persisted Shell configuration. Keep owner-configured environment values unchanged.
 
 - [ ] **Step 1: Build the failing boundary test with separate probes.** Use distinct fake values for the managed Delivery credential and the operator-provided Shell environment. Record the exact production-resolved Shell config and the captured provider `Create`/`Exec` request. Assert the managed credential is absent from every Shell boundary while the Delivery HTTP stub sees it only as Authorization. The test must fail if the managed probe is injected into Shell env or output.
-- [ ] **Step 2: Run the focused test and confirm the baseline.** Run `go test ./internal/application/repository/ -run '^TestManagedDeliveryCredentialNeverEntersGeneralShell$' -count=1 -v`. Expected: the real production wiring passes if the two credential paths are already isolated; if so, the new test itself supplies the missing acceptance evidence and is green without production changes. If it fails, preserve the failure and determine the narrowest approved-contract correction before changing source.
-- [ ] **Step 3: Correct only a proven boundary violation.** If managed Delivery credentials are present at the Shell seam, remove that unintended cross-wiring at the nearest composition boundary; do not strip arbitrary operator-supplied variables or silently redefine Shell configuration.
-- [ ] **Step 4: Re-run the focused test and existing Shell regressions.** Run the focused boundary test, `go test ./internal/modules/execution/sandbox/ -run 'TestWithWorkspaceEnvDefaults' -count=1`, and `git diff --check`. Expected: both Shell env default tests and the production boundary test pass; the Delivery fake credential never appears in Shell observations.
-- [ ] **Step 5: Commit the task.** Commit the owned test and any proven minimal composition fix, then record exact commands, results, commit, and package checksum.
+- [ ] **Step 2: Establish the narrow provider injection seam if needed.** The existing tenant resolver privately constructs concrete clients. Add an optional injected `RemoteSandboxClient` factory used only when explicitly provided; leave production container wiring unset so it continues to use `buildClient`, guarded shared transports, and the real persisted tenant config loader. Pin that default behavior with a resolver test.
+- [ ] **Step 3: Run the focused test and confirm the baseline.** Run `go test ./internal/application/repository/ -run '^TestManagedDeliveryCredentialNeverEntersGeneralShell$' -count=1 -v`. Expected: production config resolution and `SessionBoundManager` use the fake client only at the provider seam; no helper-only stand-in.
+- [ ] **Step 4: Correct only a proven boundary violation.** If managed Delivery credentials are present at the Shell seam, remove that unintended cross-wiring at the nearest composition boundary; do not strip arbitrary operator-supplied variables or silently redefine Shell configuration.
+- [ ] **Step 5: Re-run the focused test and existing Shell regressions.** Run the focused boundary test, `go test ./internal/modules/execution/sandbox/ -run 'TestWithWorkspaceEnvDefaults' -count=1`, resolver factory/default tests, and `git diff --check`. Expected: all pass; the Delivery fake credential never appears in Shell observations.
+- [ ] **Step 6: Commit the task.** Commit the owned test/seam and any proven minimal composition fix, then record exact commands, results, commit, and package checksum.
 
 ## Completion checks
 
