@@ -292,7 +292,7 @@ export async function registerActiveDeviceIfPossible(
 
 /** /tasks 应用根：授权面才渲染列表屏；其余面给出与其余路由同口径的登录 gate
  * （B3 复验发现 1：此前 return null 使 /tasks 未授权态只剩布局层空白）。 */
-export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void } = {}) {
+export function MobileTasks({ onOpenTask, onOpenLegacy, onOpenTaskOffice }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void; onOpenTaskOffice?: () => void } = {}) {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) {
@@ -301,8 +301,9 @@ export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId
   return createElement(TasksScreen, {
     key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
-    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
+    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string, runId: string }) => onOpenTask(card.taskId, card.runId) }),
     ...(onOpenLegacy === undefined ? {} : { onOpenLegacy }),
+    ...(onOpenTaskOffice === undefined ? {} : { onOpenTaskOffice }),
   });
 }
 
