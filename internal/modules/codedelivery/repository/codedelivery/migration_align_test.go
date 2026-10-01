@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // TestCodeDeliveriesMigrationSQLMatchesModel executes THIS plan's sqlite

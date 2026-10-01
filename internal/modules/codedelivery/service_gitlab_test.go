@@ -147,8 +147,8 @@ func TestGitLabUnsupportedProviderFailsClosed(t *testing.T) {
 	// 平台路由拒绝可区分）。
 	before := snapshotGitLabCalls(f)
 	snap := appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1", Target: "notion.deliver", Args: mustMaterialJSON(t)}
-	_, err = f.dispatcher.Dispatch(ctx, localSnapshot(snap), "")
-	require.ErrorIs(t, err, ErrDispatchNotStarted)
+	_, err = f.dispatcher.Dispatch(ctx, snap, "")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
 	require.ErrorContains(t, err, "a02", "无连接快照必须由 A02 门拒绝")
 	require.Equal(t, before, snapshotGitLabCalls(f), "未知快照的派发必须零远端调用")
 
@@ -158,8 +158,8 @@ func TestGitLabUnsupportedProviderFailsClosed(t *testing.T) {
 	// 外来 target 永不触达任何适配器。
 	snap = appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1",
 		ConnectionID: "conn-notion", AuthVersion: 1, Target: "notion.deliver", Args: mustMaterialJSON(t)}
-	_, err = f.dispatcher.Dispatch(ctx, localSnapshot(snap), "")
-	require.ErrorIs(t, err, ErrDispatchNotStarted)
+	_, err = f.dispatcher.Dispatch(ctx, snap, "")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
 	require.ErrorContains(t, err, "code_delivery_unsupported_provider", "未知 target 必须由平台路由门拒绝而非 A02 门")
 	require.Equal(t, before, snapshotGitLabCalls(f), "外来 target 的派发必须零远端调用")
 	require.Zero(t, f.gitlab.Calls()["POST /repository/commits"])
@@ -172,8 +172,8 @@ func TestGitLabTamperedSnapshotNeverReachesGitLab(t *testing.T) {
 	f := seededGitLabFixture(t)
 	before := snapshotGitLabCalls(f)
 	snap := appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1", Target: "gitlab.deliver", Args: []byte(`{"repo":"o/n"}`)}
-	_, err := f.dispatcher.Dispatch(context.Background(), localSnapshot(snap), "")
-	require.ErrorIs(t, err, ErrDispatchNotStarted)
+	_, err := f.dispatcher.Dispatch(context.Background(), snap, "")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
 	after := snapshotGitLabCalls(f)
 	require.Equal(t, before, after, "篡改快照的派发必须零远端调用")
 }
@@ -269,7 +269,12 @@ func TestGitLabUnknownOutcomeResolvesFromRemoteFacts(t *testing.T) {
 	require.Equal(t, "unknown", view.ActionState)
 
 	f.gitlab.liftBlackout()
-	view, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	view, err = f.svc.ResolveDeliveryUnknown(ctx, in)
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryPushed), view.State, "远端事实：分支已收敛、MR 缺席 → 部分完成")
 
@@ -373,7 +378,7 @@ func TestQueryProviderIgnoresForeignTargetMR(t *testing.T) {
 	view, err = f.svc.GetDelivery(ctx, 7, view.ID)
 	require.NoError(t, err)
 	_, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
-	require.ErrorIs(t, err, ErrDispatchUnknown, "a foreign-target MR is not a remote fact of THIS delivery")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchUnknown, "a foreign-target MR is not a remote fact of THIS delivery")
 
 	after, gerr := f.svc.GetDelivery(ctx, 7, view.ID)
 	require.NoError(t, gerr)

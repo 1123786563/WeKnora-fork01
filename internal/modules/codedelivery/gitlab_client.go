@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 )
 
 // GitLabAPIBaseURL is the reviewed production endpoint (gitlab.com SaaS).
@@ -309,7 +311,7 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 	baselineTree, err := c.Tree(ctx, c.stagedBase)
 	if err != nil {
 		if _, ok := localCapError(err); ok {
-			return fmt.Errorf("%w: baseline tree read exceeded local cap: %v", ErrDispatchNotStarted, err)
+			return fmt.Errorf("%w: baseline tree read exceeded local cap: %v", appconnectorsvc.ErrDispatchNotStarted, err)
 		}
 		return err
 	}
@@ -339,7 +341,7 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 		current, err = c.Tree(ctx, startRef)
 		if err != nil {
 			if _, ok := localCapError(err); ok {
-				return fmt.Errorf("%w: branch tree read exceeded local cap: %v", ErrDispatchNotStarted, err)
+				return fmt.Errorf("%w: branch tree read exceeded local cap: %v", appconnectorsvc.ErrDispatchNotStarted, err)
 			}
 			return err
 		}
@@ -381,10 +383,10 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 		}
 		// 空收敛 + 分支不存在：commits POST 从未出网（分支/MR 均未创建），
 		// 本地可证拒绝 → ErrDispatchNotStarted（settle 落 failed）。
-		return fmt.Errorf("%w: task branch %s would be empty; nothing to push: %v", ErrDispatchNotStarted, branch, ErrInvalidMaterial)
+		return fmt.Errorf("%w: task branch %s would be empty; nothing to push: %v", appconnectorsvc.ErrDispatchNotStarted, branch, ErrInvalidMaterial)
 	}
 	if len(actions) > 2*MaxDeliveryFiles {
-		return fmt.Errorf("%w: %d commit actions exceed cap %d: %w", ErrDispatchNotStarted, len(actions), 2*MaxDeliveryFiles, ErrBaselineTooLarge)
+		return fmt.Errorf("%w: %d commit actions exceed cap %d: %w", appconnectorsvc.ErrDispatchNotStarted, len(actions), 2*MaxDeliveryFiles, ErrBaselineTooLarge)
 	}
 	body := map[string]any{
 		"branch":         branch,

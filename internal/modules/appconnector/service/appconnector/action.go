@@ -124,6 +124,15 @@ type ActionDispatcher interface {
 type UnknownResolver interface {
 	QueryProvider(ctx context.Context, snap ActionSnapshot, providerKey string) (DispatchOutcome, error)
 }
+type AttestedUnknownResolver interface {
+	QueryProviderConfirmed(ctx context.Context, snap ActionSnapshot, providerKey string, ownerConfirmed bool) (DispatchOutcome, error)
+}
+
+// ReadOnlyUnknownResolver reports provider facts without mutating caller-owned state.
+// ActionService uses it before persisting the Action's terminal outcome.
+type ReadOnlyUnknownResolver interface {
+	QueryProviderReadOnly(ctx context.Context, snap ActionSnapshot, providerKey string, ownerConfirmed bool) (DispatchOutcome, error)
+}
 
 // A02Guard re-checks, on EVERY execute, that the PERSISTED subject may
 // still use the connection: subject shape, tenant scope, strict
@@ -591,6 +600,12 @@ func settleOutcome(out DispatchOutcome, derr error) DispatchOutcome {
 // ResolveUnknown resolves an action parked in unknown by querying the
 // PROVIDER — it never re-queues the action into the normal dispatch path.
 func (s *ActionService) ResolveUnknown(ctx context.Context, id string) error {
+	return s.ResolveUnknownConfirmed(ctx, id, false)
+}
+
+// ResolveUnknownConfirmed carries an explicit owner attestation only to resolvers that support it.
+// Generic resolvers remain fail-closed and retain their original query contract.
+func (s *ActionService) ResolveUnknownConfirmed(ctx context.Context, id string, ownerConfirmed bool) error {
 	row, err := s.store.FindAction(ctx, id)
 	if err != nil {
 		return err
@@ -605,7 +620,15 @@ func (s *ActionService) ResolveUnknown(ctx context.Context, id string) error {
 	if serr != nil {
 		return serr
 	}
-	out, qerr := s.unknown.QueryProvider(ctx, snap, row.ProviderKey)
+	var out DispatchOutcome
+	var qerr error
+	if readonly, ok := s.unknown.(ReadOnlyUnknownResolver); ok {
+		out, qerr = readonly.QueryProviderReadOnly(ctx, snap, row.ProviderKey, ownerConfirmed)
+	} else if attested, ok := s.unknown.(AttestedUnknownResolver); ok {
+		out, qerr = attested.QueryProviderConfirmed(ctx, snap, row.ProviderKey, ownerConfirmed)
+	} else {
+		out, qerr = s.unknown.QueryProvider(ctx, snap, row.ProviderKey)
+	}
 	if qerr != nil {
 		return qerr
 	}

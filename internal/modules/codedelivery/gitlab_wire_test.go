@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
 )
 
@@ -801,6 +802,6 @@ func TestEnsureBranchEmptyConvergenceIsDispatchNotStarted(t *testing.T) {
 	require.NoError(t, err)
 
 	err = client.EnsureBranch(ctx, "weknora/task/s-empty", placeholder)
-	require.ErrorIs(t, err, ErrDispatchNotStarted, "a proven pre-send local rejection must carry the not-started contract")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted, "a proven pre-send local rejection must carry the not-started contract")
 	require.Zero(t, e.Calls()["POST /repository/commits"], "nothing may leave")
 }

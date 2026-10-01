@@ -85,9 +85,9 @@ func TestDiffAgainstBaseline(t *testing.T) {
 
 func TestParseDeliveryMaterialExactFields(t *testing.T) {
 	mat := DeliveryMaterial{
-		Repo:        RepoRef{Owner: "octocat", Name: "hello"},
+		Repo: RepoRef{Owner: "octocat", Name: "hello"},
 		BaselineSHA: "b" + strings.Repeat("0", 39), Branch: TaskBranchOf("s-1"),
-		Files:         []FileChange{{Path: "main.go", Deleted: false}},
+		Files: []FileChange{{Path: "main.go", Deleted: false}},
 		CommitMessage: "fix: greeting", PRTitle: "WeKnora task s-1",
 	}
 	raw, err := mat.CanonicalJSON()
