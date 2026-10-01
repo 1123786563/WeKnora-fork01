@@ -119,6 +119,10 @@ func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context,
 		// block behind any open writer before the listing lifecycle write.
 		// The guard still serializes this transition with cross-tenant
 		// IntroduceRelease custody rechecks (T35 #65).
+		// ponytail: theoretical AB-BA ceiling — a legacy/import collision where a
+		// tenant-local row id equals a platform-issued public listing UUID could
+		// invert this order; unreachable on supported write paths, and PostgreSQL's
+		// deadlock detector would roll back the single transaction if it ever fired.
 		if err := acquireTenantSecurityGuardTx(tx, tenantID); err != nil {
 			return err
 		}

@@ -44,3 +44,5 @@ The implementation review identified the canonical structured result contract in
 - `go test ./internal/database -run 'TestSQLiteAgentEvaluationMigrationDownUp|TestSQLiteMigrationsCreateVersionedSchema|TestSQLiteMigrationsUpgradeV4PreservesData' -count=1` — PASS.
 - `git diff --check` — PASS.
 - `go build ./...` — PASS.
+
+> **T35 #65 restore 注记（2026-10-01）**：本报告记载的迁移号 versioned 000205 / sqlite 000126 为原始恢复前编号；恢复集成到新基线后实落 **000271 / 000190**（详见 .superpowers/sdd/2026-10-01-issue65-t35/task-1-report.md）。
