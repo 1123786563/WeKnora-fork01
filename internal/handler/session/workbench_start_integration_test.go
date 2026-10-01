@@ -146,6 +146,10 @@ func openWorkbenchHTTPDB(t *testing.T) *gorm.DB {
 	// tenant member, mirroring the production identity chain.
 	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").Error)
 	require.NoError(t, db.Exec("INSERT INTO sessions (id,tenant_id,title,user_id,engine_type) VALUES ('s1',1,'s1','u1','trpc')").Error)
+	// Admission's security guard requires the snapshot's agent to be a live,
+	// tenant-owned custom agent row (agent_security_guard.go); a1 without a
+	// row fails closed as ErrAgentSecurityReleaseUnresolvable.
+	require.NoError(t, db.Exec("INSERT INTO custom_agents (id,tenant_id,name) VALUES ('a1',1,'a1')").Error)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return db
 }

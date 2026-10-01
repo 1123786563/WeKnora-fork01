@@ -62,8 +62,12 @@ type profile struct {
 	Revision uint64 `gorm:"not null"`
 }
 type space struct {
-	TenantID    uint64 `gorm:"primaryKey"`
-	OwnerUserID string `gorm:"uniqueIndex;size:512"`
+	TenantID uint64 `gorm:"primaryKey"`
+	// `unique` (not `uniqueIndex`): migrations create the column inline-UNIQUE
+	// and gorm's MigrateColumnUnique drops a generated uni_<table>_<col>
+	// constraint when the model lacks the `unique` tag — that drop 42704s
+	// and kills boot.
+	OwnerUserID string `gorm:"unique;size:512"`
 	CreatedAt   time.Time
 }
 
@@ -118,8 +122,9 @@ type factVersion struct {
 	CreatedAt    time.Time
 }
 type proposal struct {
-	ID               uint   `gorm:"primaryKey"`
-	PublicID         string `gorm:"uniqueIndex;size:36"`
+	ID uint `gorm:"primaryKey"`
+	// Same inline-UNIQUE migration/gorm tag reconciliation as space.OwnerUserID.
+	PublicID         string `gorm:"unique;size:36"`
 	TenantID         uint64 `gorm:"index:idx_career_proposal_scope"`
 	UserID           string `gorm:"index:idx_career_proposal_scope;size:512"`
 	Key              string `gorm:"size:128"`

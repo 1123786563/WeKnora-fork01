@@ -487,7 +487,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(func(upgrade *service.AgentUpgradeService) interfaces.AgentUpgradeService { return upgrade }))
 	must(container.Provide(handler.NewAgentUpgradeHandler))
-	provideAgentSecurity(container)
 	provideAgentMarketplaceLifecycle(container)
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
 	must(container.Provide(repository.NewAgentEvaluationRepository))
@@ -1252,6 +1251,26 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(registerCraftExportFeature))
 	must(container.Invoke(registerCraftExportConsentFeature))
 
+	// Agent security wiring must run after every provider its eager Invokes
+	// resolve transitively (wireAgentSecurityGates pulls adoption →
+	// CustomAgentService → KnowledgeBaseService, which needs the task
+	// enqueuer/inspector, storage resolver, scheduler and resource catalog
+	// registered far below its old position), and after session.NewHandler
+	// so the claims wiring sees a non-nil handler — but before
+	// router.NewRouter, which mounts the security routes. dig.Invoke resolves
+	// eagerly at call order, so this position is load-bearing.
+	provideAgentSecurity(container)
+
+	// IB2（K5 Brief (b)/(c)）：knowledge 模块门面装配——18 worker 双栈注册的
+	// 处理器集合与 recoverPendingWikiTasks 生命周期挂点改经模块门面单一注册
+	//（原 :1058 直接 invoke 撤销，spec §4.3 单一注册点；恢复函数幂等，
+	// recover_pending_wiki_tasks.go:27-30）。Provide 必须先于下方 task-server
+	// Invoke：RunAsynqServer/RegisterSyncHandlers 都解析 *knowledge.Module。
+	must(container.Provide(newKnowledgeModule))
+	must(container.Invoke(func(mod *knowledge.Module) error {
+		return mod.Start(context.Background())
+	}))
+
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
 	must(container.Provide(router.NewRouter))
@@ -1260,14 +1279,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	} else {
 		must(container.Invoke(router.RegisterSyncHandlers))
 	}
-	// IB2（K5 Brief (b)/(c)）：knowledge 模块门面装配——18 worker 双栈注册的
-	// 处理器集合与 recoverPendingWikiTasks 生命周期挂点改经模块门面单一注册
-	//（原 :1058 直接 invoke 撤销，spec §4.3 单一注册点；恢复函数幂等，
-	// recover_pending_wiki_tasks.go:27-30）。
-	must(container.Provide(newKnowledgeModule))
-	must(container.Invoke(func(mod *knowledge.Module) error {
-		return mod.Start(context.Background())
-	}))
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container

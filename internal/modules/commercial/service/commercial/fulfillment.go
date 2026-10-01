@@ -60,7 +60,7 @@ type FulfillmentRecord struct {
 // The outbox identity is an internal storage key and is never exposed by APIs.
 type FulfillmentExceptionRow struct {
 	EventKey   string     `gorm:"primaryKey;column:event_key" json:"-"`
-	ID         string     `gorm:"column:id;not null;uniqueIndex"`
+	ID         string     `gorm:"column:id;not null;unique"`
 	TenantID   uint64     `gorm:"column:tenant_id;not null;index"`
 	OrderID    string     `gorm:"column:order_id;not null;index"`
 	Kind       string     `gorm:"column:kind;not null"`
