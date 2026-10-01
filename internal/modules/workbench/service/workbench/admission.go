@@ -16,15 +16,17 @@ import (
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 var (
-	ErrBudgetDenied    = errors.New("budget denied")
-	ErrRequestPending  = errors.New("request admission pending")
-	ErrRequestRejected = errors.New("request rejected")
-	ErrAgentUseDenied  = agentruntime.ErrAgentUseDenied
+	ErrBudgetDenied         = errors.New("budget denied")
+	ErrRequestPending       = errors.New("request admission pending")
+	ErrRequestRejected      = errors.New("request rejected")
+	ErrAgentUseDenied       = agentruntime.ErrAgentUseDenied
+	ErrAgentSecurityBlocked = errors.New("agent security policy refused the admission")
 )
 
 // TrustedAdmissionBinding is resolved by a server-side policy/target service.
@@ -41,6 +43,25 @@ type TrustedAdmissionBinding struct {
 	Revision          int64
 	Status            string
 	Dimensions        map[string]int64
+	// LocalAgentVersionID and ReleaseID pin the exact Marketplace Version and
+	// Release resolved server-side from the published Variant. A client can
+	// never self-assert an execution identity.
+	LocalAgentVersionID string
+	ReleaseID           string
+}
+
+// AgentSecurityGate is the trusted security-verdict seam consulted by Start
+// for NEW work after request identity, hash and replay resolution. nil keeps
+// admission open (legacy behaviour).
+type AgentSecurityGate interface {
+	VerdictForAgent(ctx context.Context, tenantID uint64, agentID string) (interfaces.AgentSecurityVerdict, error)
+}
+
+// PublishedAgentVersionResolver is the server-owned seam that pins the exact
+// immutable Version and Release of the currently published Variant for an
+// admitted Agent. Pins come only from here, never from client JSON.
+type PublishedAgentVersionResolver interface {
+	ResolvePublishedAgentVersion(ctx context.Context, sourceTenantID uint64, localAgentID string) (interfaces.AgentVersionSnapshot, string, bool, error)
 }
 
 // AdmissionBindingResolver is the trusted server seam for target, credential,
@@ -154,6 +175,14 @@ type AdmissionCoordinator struct {
 	// permits use. It is installed by the container and consulted before any
 	// durable admission write.
 	agentUseGate func(context.Context, uint64, string) error
+	// agentSecurityGate refuses new work for agents whose published release
+	// was security-revoked. Installed via SetAgentSecurityGate; nil keeps
+	// admission open (legacy behaviour).
+	agentSecurityGate AgentSecurityGate
+	// publishedAgentVersionResolver resolves the server-owned Version/Release
+	// pins copied into every agent-backed admission. nil leaves pins empty and
+	// the 8C repository guard fails closed for adopted agents.
+	publishedAgentVersionResolver PublishedAgentVersionResolver
 }
 
 // SetAdmissionGate installs the W34 capability gate consulted by Start
@@ -173,6 +202,24 @@ func (a *AdmissionCoordinator) SetAgentUseGate(gate func(context.Context, uint64
 		return
 	}
 	a.agentUseGate = gate
+}
+
+// SetAgentSecurityGate installs the release-security verdict gate. Passing nil
+// removes the gate for compatibility with existing deployments.
+func (a *AdmissionCoordinator) SetAgentSecurityGate(gate AgentSecurityGate) {
+	if a == nil {
+		return
+	}
+	a.agentSecurityGate = gate
+}
+
+// SetPublishedAgentVersionResolver installs the server-owned Marketplace pin
+// resolver used by admitPending. Passing nil removes it for compatibility.
+func (a *AdmissionCoordinator) SetPublishedAgentVersionResolver(resolver PublishedAgentVersionResolver) {
+	if a == nil {
+		return
+	}
+	a.publishedAgentVersionResolver = resolver
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -333,22 +380,16 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		if existing.State == "admitted" || existing.State == "dispatching" || existing.State == "rejected" {
 			return a.resumeExisting(ctx, existing, in)
 		}
-		if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-			if errors.Is(err, ErrAgentUseDenied) {
-				return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
-			}
-			return agentruntime.Run{}, err
+		if err := a.checkNewWorkGates(ctx, tenant, in.AgentID); err != nil {
+			return a.settleGateDenial(ctx, tenant, actor, in, hash, err)
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}
 	if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return agentruntime.Run{}, lookupErr
 	}
-	if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-		if errors.Is(err, ErrAgentUseDenied) {
-			return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
-		}
-		return agentruntime.Run{}, err
+	if err := a.checkNewWorkGates(ctx, tenant, in.AgentID); err != nil {
+		return a.settleGateDenial(ctx, tenant, actor, in, hash, err)
 	}
 	if err := a.requests.CreatePending(ctx, req); err != nil {
 		existing, getErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
@@ -364,15 +405,41 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		if existing.State == "admitted" || existing.State == "dispatching" || existing.State == "rejected" {
 			return a.resumeExisting(ctx, existing, in)
 		}
-		if gateErr := a.checkAgentUse(ctx, tenant, in.AgentID); gateErr != nil {
-			if errors.Is(gateErr, ErrAgentUseDenied) {
-				return a.settleDeniedPending(ctx, tenant, actor, in, hash, gateErr)
-			}
-			return agentruntime.Run{}, gateErr
+		if gateErr := a.checkNewWorkGates(ctx, tenant, in.AgentID); gateErr != nil {
+			return a.settleGateDenial(ctx, tenant, actor, in, hash, gateErr)
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}
 	return a.admitPending(ctx, req, in)
+}
+
+// checkNewWorkGates runs the pre-write denial gates for NEW work in order:
+// agent lifecycle first, then release security. A denial wraps ErrAgentUseDenied
+// or ErrAgentSecurityBlocked so the caller can settle the request.
+func (a *AdmissionCoordinator) checkNewWorkGates(ctx context.Context, tenant uint64, agentID string) error {
+	if err := a.checkAgentUse(ctx, tenant, agentID); err != nil {
+		return err
+	}
+	if a.agentSecurityGate == nil || strings.TrimSpace(agentID) == "" {
+		return nil
+	}
+	verdict, err := a.agentSecurityGate.VerdictForAgent(ctx, tenant, agentID)
+	if err != nil {
+		return err
+	}
+	if verdict.Blocked() {
+		return fmt.Errorf("%w: %s", ErrAgentSecurityBlocked, verdict.Reason)
+	}
+	return nil
+}
+
+// settleGateDenial settles a pre-write gate denial. Infrastructure errors are
+// returned as-is: they must never open the gate or settle a request.
+func (a *AdmissionCoordinator) settleGateDenial(ctx context.Context, tenant uint64, actor string, in StartInput, hash string, err error) (agentruntime.Run, error) {
+	if errors.Is(err, ErrAgentUseDenied) || errors.Is(err, ErrAgentSecurityBlocked) {
+		return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
+	}
+	return agentruntime.Run{}, err
 }
 
 func (a *AdmissionCoordinator) checkAgentUse(ctx context.Context, tenant uint64, agentID string) error {
@@ -455,6 +522,14 @@ func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repositor
 }
 
 func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.WorkbenchRequest, in StartInput, ids ...string) (run agentruntime.Run, err error) {
+	var runID, reservation string
+	ownedReservation := false
+	if len(ids) > 0 {
+		runID = ids[0]
+	}
+	if len(ids) > 1 {
+		reservation = ids[1]
+	}
 	bindingResolver := a.binding
 	if bindingResolver == nil {
 		return agentruntime.Run{}, errors.New("trusted admission binding resolver is required")
@@ -472,19 +547,38 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	if binding.Revision <= 0 || binding.Source == "" || binding.Funding == "" || binding.Service == "" || binding.PriceVersion == "" || len(binding.Dimensions) == 0 {
 		return agentruntime.Run{}, errors.New("trusted admission binding is incomplete")
 	}
+	replayAssistantID := ""
+	if strings.TrimSpace(in.AgentID) != "" && a.publishedAgentVersionResolver != nil {
+		// A retry whose run already committed replays the frozen pins stored
+		// on the run row; re-resolving against a since-revoked or switched
+		// Variant must not deny that replay. Only a NEW run identity needs
+		// the currently published Version/Release.
+		committed := false
+		if runID != "" {
+			existingRun, getErr := a.runs.Get(ctx, agentruntime.RunKey{TenantID: req.TenantID, RunID: runID})
+			if getErr == nil {
+				committed = true
+				// Admit's idempotent replay compares the assistant message id;
+				// the committed run's id must be reused, not regenerated.
+				replayAssistantID = existingRun.AssistantMessageID
+			}
+		}
+		if !committed {
+			snapshot, releaseID, adopted, resolveErr := a.publishedAgentVersionResolver.ResolvePublishedAgentVersion(ctx, req.TenantID, in.AgentID)
+			if resolveErr != nil {
+				return agentruntime.Run{}, resolveErr
+			}
+			if adopted {
+				binding.LocalAgentVersionID = snapshot.AgentVersionView.ID
+				binding.ReleaseID = releaseID
+			}
+		}
+	}
 	snapshot, _ := json.Marshal(map[string]any{
 		"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "space_id": in.SpaceID, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper,
 		"parent_run_id": binding.ParentRunID, "credential_version": binding.CredentialVersion, "usage_source": binding.Source, "usage_funding": binding.Funding, "usage_service": binding.Service, "price_version": binding.PriceVersion, "usage_upper": binding.Upper, "usage_revision": binding.Revision, "usage_status": binding.Status, "usage_dimensions": binding.Dimensions,
 	})
 	deadline := time.Now().Add(10 * time.Minute)
-	var runID, reservation string
-	ownedReservation := false
-	if len(ids) > 0 {
-		runID = ids[0]
-	}
-	if len(ids) > 1 {
-		reservation = ids[1]
-	}
 	if reservation == "" {
 		reservation, err = a.budget.Ensure(ctx, req.TenantID, req.ActorID, req.RequestID, binding.Upper, deadline)
 		ownedReservation = true
@@ -519,9 +613,12 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		}
 	}
 	assistantID := uuid.NewString()
+	if replayAssistantID != "" {
+		assistantID = replayAssistantID
+	}
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, AgentID: in.AgentID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, ParentRunID: binding.ParentRunID, UsageCredentialVersion: binding.CredentialVersion, UsageSource: binding.Source, UsageFunding: binding.Funding, UsageService: binding.Service, UsagePriceVersion: binding.PriceVersion, UsageUpper: binding.Upper, UsageRevision: binding.Revision, UsageStatus: binding.Status, UsageDimensions: binding.Dimensions})
+	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, AgentID: in.AgentID, LocalAgentVersionID: binding.LocalAgentVersionID, ReleaseID: binding.ReleaseID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, ParentRunID: binding.ParentRunID, UsageCredentialVersion: binding.CredentialVersion, UsageSource: binding.Source, UsageFunding: binding.Funding, UsageService: binding.Service, UsagePriceVersion: binding.PriceVersion, UsageUpper: binding.Upper, UsageRevision: binding.Revision, UsageStatus: binding.Status, UsageDimensions: binding.Dimensions})
 	if err != nil {
 		if errors.Is(err, agentruntime.ErrAgentUseDenied) {
 			denial := fmt.Errorf("%w: %v", ErrAgentUseDenied, err)

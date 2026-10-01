@@ -19,6 +19,6 @@ func TestParseQARequestRejectsUnknownReasoningMode(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	h := &Handler{}
-	_, _, err := h.parseQARequest(c, "KnowledgeQA")
+	_, _, err := h.parseQARequest(c, "KnowledgeQA", false)
 	require.Error(t, err, "reasoning_mode 白名单外取值必须在进入任何服务调用前以 400 拒绝")
 }

@@ -63,7 +63,7 @@ func NewWorkbenchListHandler(lists *repository.WorkbenchListStore) *session.Work
 // stay untouched (drain semantics). W24 additionally wires the durable
 // credit budget and the database-backed admission binding resolver so only
 // trusted execution-target usage binds at admission time.
-func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore, adoptions repository.AgentAdoptionRepository) *workbenchservice.AdmissionCoordinator {
+func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore, adoptions repository.AgentAdoptionRepository, security *appservice.AgentSecurityService) *workbenchservice.AdmissionCoordinator {
 	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(targets))
 	if err != nil {
 		panic(err)
@@ -79,6 +79,10 @@ func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *rep
 		}
 		return nil
 	})
+	if security != nil {
+		coordinator.SetAgentSecurityGate(security)
+		coordinator.SetPublishedAgentVersionResolver(security)
+	}
 	return coordinator
 }
 

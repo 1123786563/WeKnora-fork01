@@ -73,7 +73,7 @@ func TestCompleteAssistantMessageRecordsChatUsage(t *testing.T) {
 		Usage:     &types.TokenUsage{PromptTokens: 11, CompletionTokens: 7},
 	}
 
-	h.completeAssistantMessage(context.Background(), assistant, "hello", "um-1", 9, "owner-1")
+	h.completeAssistantMessage(context.Background(), assistant, "hello", "um-1", 9, "owner-1", nil, "")
 
 	if len(rec.calls) != 1 {
 		t.Fatalf("RecordChatTurn calls = %d, want 1", len(rec.calls))
@@ -91,7 +91,7 @@ func TestCompleteAssistantMessageRecordsChatUsage(t *testing.T) {
 
 	// A second invocation on the same message instance must not double-count:
 	// the one-shot usage latch stays claimed for the message's lifetime.
-	h.completeAssistantMessage(context.Background(), assistant, "hello", "um-1", 9, "owner-1")
+	h.completeAssistantMessage(context.Background(), assistant, "hello", "um-1", 9, "owner-1", nil, "")
 	if len(rec.calls) != 1 {
 		t.Errorf("RecordChatTurn calls after repeat completion = %d, want still 1", len(rec.calls))
 	}
@@ -127,7 +127,7 @@ func TestCompleteAssistantMessageUsageSkips(t *testing.T) {
 			if tc.name == "usage already claimed for this message" {
 				h.usageRecordOnce.Store(tc.assistant.ID, struct{}{}) // a prior path won the race
 			}
-			h.completeAssistantMessage(context.Background(), tc.assistant, "", "", 1, "u")
+			h.completeAssistantMessage(context.Background(), tc.assistant, "", "", 1, "u", nil, "")
 			if !tc.assistant.IsCompleted {
 				t.Error("message must still complete")
 			}
@@ -148,7 +148,7 @@ func TestCompleteAssistantMessageUsageErrorDoesNotBlock(t *testing.T) {
 		ID: "am-2", SessionID: "s", ModelID: "m",
 		Usage: &types.TokenUsage{PromptTokens: 3},
 	}
-	h.completeAssistantMessage(context.Background(), assistant, "q", "u-1", 1, "owner")
+	h.completeAssistantMessage(context.Background(), assistant, "q", "u-1", 1, "owner", nil, "")
 
 	if !assistant.IsCompleted {
 		t.Error("recording failure must not block message completion")
@@ -189,7 +189,7 @@ func TestCompleteAssistantMessageConcurrentCompletionRecordsOnce(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					<-start // align every goroutine at the gate, then race in
-					h.completeAssistantMessage(context.Background(), assistant, "q", "um-1", 3, "owner")
+					h.completeAssistantMessage(context.Background(), assistant, "q", "um-1", 3, "owner", nil, "")
 				}()
 			}
 			close(start)

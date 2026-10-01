@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -80,6 +81,13 @@ type qaRequestContext struct {
 	reqAgentEnabled bool
 	reqAgentID      string
 
+	// T34 #64 8D: durable turn claim fencing this agent turn. nil = the
+	// legacy unfenced path (claim store not assembled or agentless QA).
+	claim *repository.AgentChatTurnClaim
+	// claimRequestHash is the canonical execution fingerprint admitted with
+	// the claim; a same-key retry with a different hash conflicts.
+	claimRequestHash string
+
 	reasoningMode string // T15: "rules" | "model" | ""
 
 	// skipSSE is set for server-started follow-up runs (steer backlog after
@@ -123,8 +131,10 @@ func (rc *qaRequestContext) buildQARequest() *types.QARequest {
 	return req
 }
 
-// parseQARequest parses and validates a QA request, returns the request context
-func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestContext, *CreateKnowledgeQARequest, error) {
+// parseQARequest parses and validates a QA request, returns the request
+// context. claimTurns enables the durable agent-turn claim admission and must
+// only be set on the AgentQA route; the KnowledgeQA path stays unfenced.
+func (h *Handler) parseQARequest(c *gin.Context, logPrefix string, claimTurns bool) (_ *qaRequestContext, _ *CreateKnowledgeQARequest, err error) {
 	receivedAt := time.Now()
 	ctx := logger.CloneContext(c.Request.Context())
 	requestID := secutils.SanitizeForLog(c.GetString(types.RequestIDContextKey.String()))
@@ -229,6 +239,128 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 	logger.Infof(ctx, "[%s] @mention merge: request.KnowledgeBaseIDs=%v, request.MentionedItems=%d, merged kbIDs=%v, merged knowledgeIDs=%v",
 		logPrefix, request.KnowledgeBaseIDs, len(request.MentionedItems), kbIDs, knowledgeIDs)
 
+	// Resolve the execution-affecting context BEFORE any persistence: the
+	// durable claim admission below needs the assistant placeholder template
+	// and must run before images/attachments are written to storage.
+	mentionScopes := tagScopesFromMentionedItems(request.MentionedItems)
+	requestTagIDs := dedupRequestStrings(request.TagIDs)
+	if err := validateUnscopedTagIDs(orphanTagIDsForScope(requestTagIDs, mentionScopes), secutils.SanitizeForLogArray(kbIDs)); err != nil {
+		return nil, nil, errors.NewBadRequestError(err.Error())
+	}
+	tagScopes := mergeTagScopesFromRequestIDs(mentionScopes, requestTagIDs, secutils.SanitizeForLogArray(kbIDs))
+	tagIDs := dedupRequestStrings(append(request.TagIDs, mentionedIDsByType(request.MentionedItems, "tag")...))
+	mcpServiceIDs := dedupRequestStrings(append(request.MCPServiceIDs, mentionedIDsByType(request.MentionedItems, "mcp")...))
+	skillNames := dedupRequestStrings(append(request.SkillNames, mentionedIDsByType(request.MentionedItems, "skill")...))
+	executionContext, agentID, agentTenantID, modelID := buildMessageExecutionContext(
+		ctx,
+		customAgent,
+		effectiveTenantID,
+		request.SummaryModelID,
+		secutils.SanitizeForLogArray(kbIDs),
+		secutils.SanitizeForLogArray(knowledgeIDs),
+		secutils.SanitizeForLogArray(tagIDs),
+		tagScopes,
+		secutils.SanitizeForLogArray(mcpServiceIDs),
+		secutils.SanitizeForLogArray(skillNames),
+		request.WebSearchEnabled,
+	)
+
+	reqCtx := &qaRequestContext{
+		ctx:         ctx,
+		c:           c,
+		sessionID:   sessionID,
+		requestID:   requestID,
+		receivedAt:  receivedAt,
+		query:       request.Query,
+		session:     session,
+		customAgent: customAgent,
+		assistantMessage: &types.Message{
+			SessionID:        sessionID,
+			Role:             "assistant",
+			RequestID:        c.GetString(types.RequestIDContextKey.String()),
+			IsCompleted:      false,
+			Channel:          request.Channel,
+			AgentID:          agentID,
+			AgentTenantID:    agentTenantID,
+			ModelID:          modelID,
+			ExecutionContext: executionContext,
+		},
+		knowledgeBaseIDs:      secutils.SanitizeForLogArray(kbIDs),
+		knowledgeIDs:          secutils.SanitizeForLogArray(knowledgeIDs),
+		tagScopes:             tagScopes,
+		tagIDs:                secutils.SanitizeForLogArray(tagIDs),
+		mcpServiceIDs:         secutils.SanitizeForLogArray(mcpServiceIDs),
+		skillNames:            secutils.SanitizeForLogArray(skillNames),
+		summaryModelID:        secutils.SanitizeForLog(request.SummaryModelID),
+		webSearchEnabled:      request.WebSearchEnabled,
+		mentionedItems:        convertMentionedItems(request.MentionedItems),
+		effectiveTenantID:     effectiveTenantID,
+		sharedAgentReadOnly:   sharedAgentReadOnly,
+		channel:               request.Channel,
+		suggestionAttribution: request.SuggestionAttribution,
+		reqAgentEnabled:       request.AgentEnabled,
+		reqAgentID:            request.AgentID,
+		reasoningMode:         request.ReasoningMode,
+		resourceRewriter:      resourceRewriter,
+	}
+
+	// T34 #64 8D: durable turn claim admission for agent-mode turns. Runs
+	// after authorized agent resolution and BEFORE any attachment
+	// persistence, message write, live-run allocation, or SSE byte — a
+	// blocked/conflicting/replayed request leaves zero side effects.
+	if claimTurns && customAgent != nil && customAgent.IsAgentMode() {
+		reqCtx.claimRequestHash = canonicalQARequestHash(&request, request.AttachmentIDs)
+		claim, ok := h.admitAgentChatTurn(c, reqCtx, requestID)
+		if !ok {
+			return nil, nil, errAgentClaimResponded
+		}
+		if claim.ID != "" {
+			if claim.LocalAgentVersionID != nil {
+				pinned, loaded := h.loadClaimAgentSnapshot(c, reqCtx, claim)
+				if !loaded {
+					return nil, nil, errAgentClaimResponded
+				}
+				// Execute the pinned immutable snapshot, not the mutable
+				// local CustomAgent configuration.
+				customAgent = pinned
+				reqCtx.customAgent = pinned
+				executionContext, agentID, agentTenantID, modelID = buildMessageExecutionContext(
+					ctx,
+					customAgent,
+					effectiveTenantID,
+					request.SummaryModelID,
+					secutils.SanitizeForLogArray(kbIDs),
+					secutils.SanitizeForLogArray(knowledgeIDs),
+					secutils.SanitizeForLogArray(tagIDs),
+					tagScopes,
+					secutils.SanitizeForLogArray(mcpServiceIDs),
+					secutils.SanitizeForLogArray(skillNames),
+					request.WebSearchEnabled,
+				)
+				// ponytail: the persisted placeholder keeps the admission-time
+				// context (Finish never rewrites ExecutionContext); only the
+				// in-memory execution view is re-pinned here.
+				reqCtx.assistantMessage.ExecutionContext = executionContext
+				reqCtx.assistantMessage.AgentID = agentID
+				reqCtx.assistantMessage.AgentTenantID = agentTenantID
+				reqCtx.assistantMessage.ModelID = modelID
+			}
+			reqCtx.claim = &claim
+			// The assistant placeholder row was atomically inserted by Admit;
+			// reuse its server-generated ID for the whole turn.
+			reqCtx.assistantMessage.ID = claim.AssistantMessageID
+			// A later validation failure (e.g. an unsupported image/attachment
+			// 400) must Finish the claim: an orphaned active claim 409s the
+			// same X-Request-ID forever. Best-effort — fenced/double-finish
+			// refusals are expected and only logged inside the finisher.
+			defer func() {
+				if err != nil {
+					h.finishAgentChatTurnClaim(reqCtx.ctx, reqCtx.claim, reqCtx.assistantMessage, "failed")
+				}
+			}()
+		}
+	}
+
 	// Process inline base64 images: decode and save to storage.
 	// VLM analysis for RAG paths is deferred to the pipeline rewrite step.
 	// For pure chat paths with non-vision models, VLM analysis runs here as fallback.
@@ -249,6 +381,7 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 		// - Normal RAG mode: runs in the pipeline rewrite step with progress events
 		// - Normal pure-chat mode: runs in the async goroutine with progress events
 	}
+	reqCtx.images = request.Images
 
 	// Process file attachments: decode and save to storage, extract content
 	var processedAttachments types.MessageAttachments
@@ -324,6 +457,7 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 
 		logger.Infof(ctx, "[%s] all attachments processed", logPrefix)
 	}
+	reqCtx.attachments = processedAttachments
 
 	// Pre-uploaded documents may still be parsing. Only fetch their metadata
 	// here (fast, available even while processing) to validate agent file-type
@@ -359,73 +493,8 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 		}
 		attachmentIDs = normalizedIDs
 	}
-
-	mentionScopes := tagScopesFromMentionedItems(request.MentionedItems)
-	requestTagIDs := dedupRequestStrings(request.TagIDs)
-	if err := validateUnscopedTagIDs(orphanTagIDsForScope(requestTagIDs, mentionScopes), secutils.SanitizeForLogArray(kbIDs)); err != nil {
-		return nil, nil, errors.NewBadRequestError(err.Error())
-	}
-	tagScopes := mergeTagScopesFromRequestIDs(mentionScopes, requestTagIDs, secutils.SanitizeForLogArray(kbIDs))
-	tagIDs := dedupRequestStrings(append(request.TagIDs, mentionedIDsByType(request.MentionedItems, "tag")...))
-	mcpServiceIDs := dedupRequestStrings(append(request.MCPServiceIDs, mentionedIDsByType(request.MentionedItems, "mcp")...))
-	skillNames := dedupRequestStrings(append(request.SkillNames, mentionedIDsByType(request.MentionedItems, "skill")...))
-	executionContext, agentID, agentTenantID, modelID := buildMessageExecutionContext(
-		ctx,
-		customAgent,
-		effectiveTenantID,
-		request.SummaryModelID,
-		secutils.SanitizeForLogArray(kbIDs),
-		secutils.SanitizeForLogArray(knowledgeIDs),
-		secutils.SanitizeForLogArray(tagIDs),
-		tagScopes,
-		secutils.SanitizeForLogArray(mcpServiceIDs),
-		secutils.SanitizeForLogArray(skillNames),
-		request.WebSearchEnabled,
-	)
-
-	// Build request context
-	reqCtx := &qaRequestContext{
-		ctx:         ctx,
-		c:           c,
-		sessionID:   sessionID,
-		requestID:   requestID,
-		receivedAt:  receivedAt,
-		query:       request.Query,
-		session:     session,
-		customAgent: customAgent,
-		assistantMessage: &types.Message{
-			SessionID:        sessionID,
-			Role:             "assistant",
-			RequestID:        c.GetString(types.RequestIDContextKey.String()),
-			IsCompleted:      false,
-			Channel:          request.Channel,
-			AgentID:          agentID,
-			AgentTenantID:    agentTenantID,
-			ModelID:          modelID,
-			ExecutionContext: executionContext,
-		},
-		knowledgeBaseIDs:      secutils.SanitizeForLogArray(kbIDs),
-		knowledgeIDs:          secutils.SanitizeForLogArray(knowledgeIDs),
-		tagScopes:             tagScopes,
-		tagIDs:                secutils.SanitizeForLogArray(tagIDs),
-		mcpServiceIDs:         secutils.SanitizeForLogArray(mcpServiceIDs),
-		skillNames:            secutils.SanitizeForLogArray(skillNames),
-		summaryModelID:        secutils.SanitizeForLog(request.SummaryModelID),
-		webSearchEnabled:      request.WebSearchEnabled,
-		mentionedItems:        convertMentionedItems(request.MentionedItems),
-		effectiveTenantID:     effectiveTenantID,
-		sharedAgentReadOnly:   sharedAgentReadOnly,
-		images:                request.Images,
-		channel:               request.Channel,
-		attachments:           processedAttachments,
-		attachmentIDs:         attachmentIDs,
-		attachmentMetas:       attachmentMetas,
-		suggestionAttribution: request.SuggestionAttribution,
-		reqAgentEnabled:       request.AgentEnabled,
-		reqAgentID:            request.AgentID,
-		reasoningMode:         request.ReasoningMode,
-		resourceRewriter:      resourceRewriter,
-	}
+	reqCtx.attachmentIDs = attachmentIDs
+	reqCtx.attachmentMetas = attachmentMetas
 
 	return reqCtx, &request, nil
 }
@@ -745,7 +814,7 @@ func (h *Handler) setupSSEStream(reqCtx *qaRequestContext, generateTitle bool, m
 	)
 
 	// Setup stop event handler
-	h.setupStopEventHandler(eventBus, reqCtx.sessionID, reqCtx.session.TenantID, reqCtx.session.UserID, reqCtx.assistantMessage, cancel)
+	h.setupStopEventHandler(eventBus, reqCtx.sessionID, reqCtx.session.TenantID, reqCtx.session.UserID, reqCtx.assistantMessage, cancel, reqCtx.claim)
 
 	// Watch for stop events independently of the client SSE connection so a
 	// user-requested stop reliably cancels generation even when the client
@@ -892,7 +961,7 @@ func (h *Handler) SearchKnowledge(c *gin.Context) {
 // @Router       /knowledge-chat/{session_id} [post]
 func (h *Handler) KnowledgeQA(c *gin.Context) {
 	// Parse and validate request
-	reqCtx, request, err := h.parseQARequest(c, "KnowledgeQA")
+	reqCtx, request, err := h.parseQARequest(c, "KnowledgeQA", false)
 	if err != nil {
 		c.Error(err)
 		return
@@ -912,15 +981,22 @@ func (h *Handler) KnowledgeQA(c *gin.Context) {
 // @Param        request     body      CreateKnowledgeQARequest true  "问答请求"
 // @Param        resource_urls  query     string  false  "文件引用形式，public 返回可加载直链"  Enums(handle, public)  default(handle)
 // @Success      200         {object}  map[string]interface{}   "问答结果（SSE流）"
-// @Failure      400         {object}  errors.AppError          "请求参数错误"
+// @Failure      400         {object}  errors.AppError          "请求参数错误（含 X-Request-ID 非空且 ≤128 字节）"
+// @Failure      409         {object}  errors.AppError          "Agent 安全策略拒绝、请求重放冲突或同 X-Request-ID 在途/终态重试（details 含 assistant_message_id 与 state）"
+// @Failure      500         {object}  errors.AppError          "claim/版本存储基础设施错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /agent-chat/{session_id} [post]
 func (h *Handler) AgentQA(c *gin.Context) {
 	// Parse and validate request
-	reqCtx, request, err := h.parseQARequest(c, "AgentQA")
+	reqCtx, request, err := h.parseQARequest(c, "AgentQA", true)
 	if err != nil {
-		c.Error(err)
+		// Claim rejections have already recorded their 400/409/500 AppError
+		// on the gin context; attaching the sentinel would overwrite it with
+		// a 500.
+		if !stderrors.Is(err, errAgentClaimResponded) {
+			c.Error(err)
+		}
 		return
 	}
 
@@ -974,6 +1050,11 @@ const (
 // new assistant instead of seeing an empty session. executeQA skips work that
 // is already done when those IDs are populated.
 func (h *Handler) persistTurnMessages(ctx context.Context, reqCtx *qaRequestContext) error {
+	// Claimed turns write the user row through the fenced store path; the
+	// assistant row already exists as the claim's atomic placeholder.
+	if reqCtx.claim != nil && h.agentChatTurnClaimStore != nil {
+		return h.persistClaimTurnMessages(ctx, reqCtx)
+	}
 	createdUser := false
 	if reqCtx.userMessageID == "" {
 		userMessageAttachments := reqCtx.attachments
@@ -1017,6 +1098,45 @@ func (h *Handler) persistTurnMessages(ctx context.Context, reqCtx *qaRequestCont
 			return err
 		}
 		reqCtx.assistantMessage = assistantMessagePtr
+	}
+	return nil
+}
+
+// persistClaimTurnMessages writes the claimed turn's user message through the
+// generation-fenced store CAS; a stale claim cannot create rows.
+func (h *Handler) persistClaimTurnMessages(ctx context.Context, reqCtx *qaRequestContext) error {
+	claim := *reqCtx.claim
+	if reqCtx.userMessageID == "" {
+		userMessageAttachments := reqCtx.attachments
+		if len(reqCtx.attachmentMetas) > 0 {
+			userMessageAttachments = append(
+				append(types.MessageAttachments{}, reqCtx.attachments...),
+				reqCtx.attachmentMetas...,
+			)
+		}
+		msg := &types.Message{
+			SessionID:      reqCtx.sessionID,
+			Role:           "user",
+			Content:        reqCtx.query,
+			RequestID:      claim.RequestID,
+			IsCompleted:    true,
+			MentionedItems: reqCtx.mentionedItems,
+			Images:         convertImageAttachments(reqCtx.images),
+			Attachments:    userMessageAttachments,
+			Channel:        reqCtx.channel,
+			ExecutionContext: types.MessageExecutionContext{
+				SuggestionAttribution: reqCtx.suggestionAttribution,
+			},
+		}
+		userMessageID, err := h.agentChatTurnClaimStore.CreateUserMessage(
+			claimWriteCtx(ctx, claim), claim.SourceTenantID, claim.ID, claim.Generation, claim.LeaseOwner, msg)
+		if err != nil {
+			return err
+		}
+		reqCtx.userMessageID = userMessageID
+	}
+	if reqCtx.assistantMessage.ID == "" {
+		reqCtx.assistantMessage.ID = claim.AssistantMessageID
 	}
 	return nil
 }
@@ -1195,6 +1315,7 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 				h.completeAssistantMessage(
 					updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
 					reqCtx.session.TenantID, reqCtx.session.UserID,
+					nil, "",
 				)
 				streamCtx.eventBus.Emit(streamCtx.asyncCtx, event.Event{
 					Type:      event.EventAgentComplete,
@@ -1208,6 +1329,26 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 
 	// Execute QA asynchronously
 	asyncDone := make(chan struct{})
+
+	// T34 #64 8D: durable-claim watcher + heartbeat. A cancelled/revoked or
+	// lease-expired claim fences the turn fail-closed: local execution is
+	// cancelled as soon as the watcher observes it. The watcher lives exactly
+	// as long as the engine goroutine below.
+	if reqCtx.claim != nil && h.agentChatTurnClaimStore != nil {
+		fenceCh, stopClaimWatch := h.watchAgentChatClaim(
+			logger.CloneContext(context.WithoutCancel(streamCtx.asyncCtx)), *reqCtx.claim)
+		go func() {
+			defer stopClaimWatch()
+			select {
+			case <-fenceCh:
+				streamCtx.cancel()
+				<-asyncDone
+			case <-asyncDone:
+			}
+		}()
+	}
+
+	var serviceErr error
 	go func() {
 		defer close(asyncDone)
 		defer func() {
@@ -1233,6 +1374,10 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 					context.WithoutCancel(streamCtx.asyncCtx),
 					types.TenantIDContextKey, reqCtx.session.TenantID,
 				)
+				claimTerminalState := "completed"
+				if serviceErr != nil {
+					claimTerminalState = "failed"
+				}
 
 				// Claim any follow-up before completing this row. liveAgentRun
 				// treats a completed assistant as idle and would ClearLiveRun
@@ -1250,12 +1395,14 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 					h.completeAssistantMessage(
 						updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
 						reqCtx.session.TenantID, reqCtx.session.UserID,
+						reqCtx.claim, "failed",
 					)
 				} else {
 					kicked := h.kickNextRunFromSteerBacklog(updateCtx, reqCtx, streamCtx)
 					h.completeAssistantMessage(
 						updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
 						reqCtx.session.TenantID, reqCtx.session.UserID,
+						reqCtx.claim, claimTerminalState,
 					)
 					// A /steer that landed while we were completing still sits
 					// on this run. Claim it before ClearLiveRun so it is not
@@ -1283,7 +1430,6 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 		// Build QA request and invoke the appropriate service
 		qaReq := reqCtx.buildQARequest()
 
-		var serviceErr error
 		var stageName string
 		if mode == qaModeNormal {
 			stageName = "knowledge_qa_execution"
@@ -1555,6 +1701,16 @@ func (h *Handler) persistResolvedAttachmentContent(
 	if !changed {
 		return
 	}
+	if reqCtx.claim != nil && h.agentChatTurnClaimStore != nil {
+		if err := h.agentChatTurnClaimStore.UpdateMessage(
+			claimWriteCtx(updateCtx, *reqCtx.claim), reqCtx.claim.SourceTenantID,
+			reqCtx.claim.ID, reqCtx.claim.Generation, reqCtx.claim.LeaseOwner, msg,
+		); err != nil {
+			logger.Warnf(updateCtx, "persist attachment content: fenced update of user message %s failed: %v",
+				reqCtx.userMessageID, err)
+		}
+		return
+	}
 	if err := h.messageService.UpdateMessage(updateCtx, msg); err != nil {
 		logger.Warnf(updateCtx, "persist attachment content: update user message %s failed: %v",
 			reqCtx.userMessageID, err)
@@ -1686,6 +1842,7 @@ func appendQuickAnswerReasoning(msg *types.Message, content string) {
 func (h *Handler) completeAssistantMessage(
 	ctx context.Context, assistantMessage *types.Message, userQuery, userMessageID string,
 	tenantID uint64, userID string,
+	claim *repository.AgentChatTurnClaim, claimTerminalState string,
 ) {
 	// LoadOrStore reports loaded=false only for the first completion path to
 	// reach this message — the losers skip, closing the concurrent
@@ -1701,11 +1858,19 @@ func (h *Handler) completeAssistantMessage(
 			}
 		}
 	}
-	h.completeMsgMu.Lock()
-	assistantMessage.UpdatedAt = time.Now()
-	assistantMessage.IsCompleted = true
-	_ = h.messageService.UpdateMessage(ctx, assistantMessage)
-	h.completeMsgMu.Unlock()
+	if claim != nil && h.agentChatTurnClaimStore != nil {
+		// Claimed turn: the terminal write is the generation-fenced Finish
+		// (final content + claim state in one CAS). After a user stop or
+		// revocation the claim row already holds the terminal state and the
+		// write is refused — expected, history stays as fenced.
+		h.finishAgentChatTurnClaim(ctx, claim, assistantMessage, claimTerminalState)
+	} else {
+		h.completeMsgMu.Lock()
+		assistantMessage.UpdatedAt = time.Now()
+		assistantMessage.IsCompleted = true
+		_ = h.messageService.UpdateMessage(ctx, assistantMessage)
+		h.completeMsgMu.Unlock()
+	}
 
 	// Asynchronously index the Q&A pair into the chat history knowledge base for vector search.
 	// Use WithoutCancel so the goroutine survives after the HTTP request context is done.
