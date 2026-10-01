@@ -81,3 +81,21 @@ func TestDeliveryStoreLifecycleAndCAS(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 }
+
+func TestTransitionStateWithReceiptsIsAtomic(t *testing.T) {
+	db := openDeliveryTestDB(t)
+	store := NewDeliveryStore(db)
+	ctx := context.Background()
+	require.NoError(t, store.CreateDelivery(ctx, DeliveryRow{ID: "atomic", TenantID: 7, TaskID: "s", RunID: "r", OwnerID: "u", ActionID: "a", State: "dispatched"}))
+	update := ReceiptUpdate{CommitSHA: "sha-confirmed"}
+	require.ErrorIs(t, store.TransitionStateWithReceipts(ctx, 7, "atomic", []string{"unknown"}, "pushed", "", update), ErrDeliveryStateConflict)
+	row, err := store.GetDelivery(ctx, 7, "atomic")
+	require.NoError(t, err)
+	require.Equal(t, "dispatched", row.State)
+	require.Empty(t, row.CommitSHA, "failed CAS must not persist the associated receipt")
+	require.NoError(t, store.TransitionStateWithReceipts(ctx, 7, "atomic", []string{"dispatched"}, "pushed", "", update))
+	row, err = store.GetDelivery(ctx, 7, "atomic")
+	require.NoError(t, err)
+	require.Equal(t, "pushed", row.State)
+	require.Equal(t, "sha-confirmed", row.CommitSHA)
+}

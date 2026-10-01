@@ -162,29 +162,15 @@ func newDeliveryCredentialSource(db *gorm.DB) *deliveryCredentialSource {
 	return &deliveryCredentialSource{db: db, members: map[string]bool{"u1": true, "u2": true, "u3": true, "u4": true}}
 }
 
-// appConnAdapter 适配两侧 FindConnectionByID 返回类型差异。
-type appConnAdapter struct{ base *deliveryCredentialSource }
-
-func (a appConnAdapter) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
-	ident, err := a.base.FindConnectionByID(ctx, id)
-	if err != nil {
+func (s *deliveryCredentialSource) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
+	var row appconnectorrepo.ConnectionRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", 1, id).First(&row).Error; err != nil {
 		return appconnector.Connection{}, err
 	}
 	return appconnector.Connection{
-		ID: ident.ID, InstallationID: ident.InstallationID, Kind: ident.Kind,
-		OwnerID: ident.OwnerID, State: ident.State, TenantID: ident.TenantID, AuthVersion: ident.AuthVersion,
-	}, nil
-}
-
-func (s *deliveryCredentialSource) FindConnectionByID(ctx context.Context, id string) (codedelivery.ConnectionIdentity, error) {
-	var row appconnectorrepo.ConnectionRow
-	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", 1, id).First(&row).Error; err != nil {
-		return codedelivery.ConnectionIdentity{}, err
-	}
-	return codedelivery.ConnectionIdentity{
 		ID: row.ID, InstallationID: row.InstallationID, Kind: row.Kind,
-		OwnerID: row.OwnerID,
-		State:   row.State, TenantID: row.TenantID, AuthVersion: row.AuthVersion,
+		OwnerID: row.OwnerID, CredentialRef: row.CredentialRef,
+		State: row.State, TenantID: row.TenantID, AuthVersion: row.AuthVersion,
 	}, nil
 }
 
@@ -238,19 +224,19 @@ func newDeliveryCollabEnv(t *testing.T) *deliveryCollabEnv {
 	actionStore := appconnectorrepo.NewActionStore(db)
 	store := deliveryrepo.NewDeliveryStore(db)
 	connections := newDeliveryCredentialSource(db)
-	guard := appconnectorsvc.NewSubjectGuard(appConnAdapter{base: connections})
+	guard := appconnectorsvc.NewSubjectGuard(connections)
 	factory := codedelivery.NewGitHubClientFactory(http.DefaultClient, github.srv.URL)
 	dispatcher := codedelivery.NewDeliveryDispatcher(codedelivery.DispatcherDeps{
-		Connections: connections, Creds: connections, Guard: guardAdapter{g: guard},
+		Connections: connections, Creds: connections, Guard: guard,
 		GitHub: factory, Workspace: workspace, Store: store,
-		ActionRows: actionStoreAdapter{s: actionStore}, Runs: runsAdapter{r: runs},
+		ActionRows: actionStore, Runs: runs,
 	})
-	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcherAdapter{d: dispatcher}, dispatcherAdapter{d: dispatcher})
+	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	svc := codedelivery.NewCodeDeliveryService(codedelivery.CodeDeliveryDeps{
-		Store: store, Actions: lifecycleAdapter{s: actions}, ActionRows: actionStoreAdapter{s: actionStore},
+		Store: store, Actions: actions, ActionRows: actionStore,
 		Connections: connections, Creds: connections,
-		GitHub: factory, Workspace: workspace, Runs: runsAdapter{r: runs},
-		Providers:  installStoreAdapter{s: appconnectorrepo.NewInstallationStore(db)},
+		GitHub: factory, Workspace: workspace, Runs: runs,
+		Providers:  appconnectorrepo.NewInstallationStore(db),
 		Dispatcher: dispatcher,
 	})
 
@@ -424,103 +410,4 @@ func TestDeliveryCollaborationEndToEndCrossTenantIsolated(t *testing.T) {
 	w := env.do(t, http.MethodGet, "/api/v1/workbench/executions/r1/delivery", "", "outsider", 2, types.TenantRoleContributor)
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Contains(t, w.Body.String(), "run_not_found")
-}
-
-func (a appConnAdapter) LoadCredential(ctx context.Context, c appconnector.Connection) ([]byte, error) {
-	return a.base.LoadCredential(ctx, c)
-}
-func (a appConnAdapter) MemberActive(ctx context.Context, tenantID uint64, userID string) (bool, error) {
-	return a.base.MemberActive(ctx, tenantID, userID)
-}
-func (a appConnAdapter) TryAcquireRefreshLease(ctx context.Context, c appconnector.Connection, leaseID string, until time.Time) (bool, error) {
-	return a.base.TryAcquireRefreshLease(ctx, c, leaseID, until)
-}
-
-// guardAdapter 把 appconnectorsvc.A02Guard 适配为 codedelivery.A02Guard（subject 类型名不同、字段同构）。
-type guardAdapter struct{ g appconnectorsvc.A02Guard }
-
-func (a guardAdapter) Check(ctx context.Context, s codedelivery.ActionSubject, actionID string, authVersion int64) error {
-	return a.g.Check(ctx, appconnector.OCSubject{TenantID: s.TenantID, ActorID: s.ActorID}, actionID, authVersion)
-}
-
-// actionStoreAdapter 把 appconnectorrepo.ActionStore 适配为 codedelivery.ActionStoreSource。
-type actionStoreAdapter struct{ s *appconnectorrepo.ActionStore }
-
-func (a actionStoreAdapter) FindAction(ctx context.Context, id string) (codedelivery.ActionRecord, error) {
-	r, err := a.s.FindAction(ctx, id)
-	if err != nil {
-		return codedelivery.ActionRecord{}, err
-	}
-	return codedelivery.ActionRecord{
-		ID: r.ID, TenantID: r.TenantID, ActorID: r.ActorID, ConnectionID: r.ConnectionID,
-		AppVersion: r.AppVersion, Target: r.Target, Risk: r.Risk, ArgsDigest: r.ArgsDigest,
-		State: r.State, Fence: r.Fence, ArgsSnapshot: r.ArgsSnapshot, AuthVersion: r.AuthVersion,
-		DigestVersion: int(r.DigestVersion), ProviderResult: r.ProviderResult,
-	}, nil
-}
-
-// runsAdapter 把 AgentRunStore 适配为 codedelivery.RunReader。
-type runsAdapter struct{ r *repository.AgentRunStore }
-
-func (a runsAdapter) GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (codedelivery.RunIdentity, error) {
-	run, err := a.r.GetOwnedRun(ctx, tenantID, ownerID, runID)
-	if err != nil {
-		return codedelivery.RunIdentity{}, err
-	}
-	return codedelivery.RunIdentity{SessionID: run.SessionID}, nil
-}
-
-// dispatcherAdapter 把 codedelivery.DeliveryDispatcher 适配为 appconnectorsvc.ActionDispatcher。
-type dispatcherAdapter struct {
-	d *codedelivery.DeliveryDispatcher
-}
-
-func (a dispatcherAdapter) Dispatch(ctx context.Context, s appconnectorsvc.ActionSnapshot, reservationID string) (appconnectorsvc.DispatchOutcome, error) {
-	out, err := a.d.Dispatch(ctx, codedelivery.ActionSnapshot{
-		ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target,
-		AuthVersion: s.AuthVersion, Args: s.Args,
-	}, reservationID)
-	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
-	}
-	return appconnectorsvc.DispatchOutcome{Status: out.Status, ProviderResult: out.ProviderResult}, nil
-}
-func (a dispatcherAdapter) QueryProvider(ctx context.Context, s appconnectorsvc.ActionSnapshot, executionID string) (appconnectorsvc.DispatchOutcome, error) {
-	out, err := a.d.QueryProvider(ctx, codedelivery.ActionSnapshot{
-		ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target,
-		AuthVersion: s.AuthVersion, Args: s.Args,
-	}, executionID)
-	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
-	}
-	return appconnectorsvc.DispatchOutcome{Status: out.Status, ProviderResult: out.ProviderResult}, nil
-}
-
-// lifecycleAdapter 把 appconnectorsvc.ActionService 适配为 codedelivery.ActionLifecycle。
-type lifecycleAdapter struct {
-	s *appconnectorsvc.ActionService
-}
-
-func (a lifecycleAdapter) Prepare(ctx context.Context, in codedelivery.ActionInput) (string, error) {
-	return a.s.Prepare(ctx, appconnector.Action{
-		TenantID: in.TenantID, ActorID: in.ActorID, ConnectionID: in.ConnectionID,
-		Target: in.Target, Risk: in.Risk, Args: in.Args, AuthVersion: in.AuthVersion,
-	})
-}
-func (a lifecycleAdapter) Execute(ctx context.Context, id string) error { return a.s.Execute(ctx, id) }
-func (a lifecycleAdapter) ResolveUnknown(ctx context.Context, id string) error {
-	return a.s.ResolveUnknown(ctx, id)
-}
-
-// installStoreAdapter 把 appconnectorrepo.InstallationStore 适配为 codedelivery.ProviderSource。
-type installStoreAdapter struct {
-	s *appconnectorrepo.InstallationStore
-}
-
-func (a installStoreAdapter) GetInstallationByID(ctx context.Context, tenantID uint64, id string) (codedelivery.ProviderInstallation, error) {
-	inst, err := a.s.GetInstallationByID(ctx, tenantID, id)
-	if err != nil {
-		return codedelivery.ProviderInstallation{}, err
-	}
-	return codedelivery.ProviderInstallation{AppID: inst.AppID}, nil
 }

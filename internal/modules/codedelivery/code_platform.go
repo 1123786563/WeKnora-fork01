@@ -1,10 +1,13 @@
 package codedelivery
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 )
 
 // —— 统一 Delivery seam 的代码平台中立词汇（T24 #54）——
@@ -50,6 +53,13 @@ func ProviderOfTarget(target string) (string, error) {
 		return "", fmt.Errorf("%w: %q is not a delivery target", ErrUnsupportedProvider, target)
 	}
 	return rest, nil
+}
+
+// ProviderSource resolves the code platform behind a connection: the app id
+// of the installation the connection belongs to. Production:
+// *appconnectorrepo.InstallationStore (GetInstallationByID, tenant-scoped).
+type ProviderSource interface {
+	GetInstallationByID(ctx context.Context, tenantID uint64, installationID string) (appconnector.Installation, error)
 }
 
 // clientForPlatform picks the platform adapter behind the unified seam. Both

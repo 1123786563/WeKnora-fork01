@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
 	"github.com/google/uuid"
 )
@@ -29,9 +32,14 @@ var (
 	ErrConnectionNotUsable = errors.New("code_delivery_connection_not_usable")
 )
 
+// RunReader mirrors session.OwnedRunReader (production: *repository.AgentRunStore).
+type RunReader interface {
+	GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (agentruntime.Run, error)
+}
+
 // ConnectionReader is the connection lookup the owner-only rule needs.
 type ConnectionReader interface {
-	FindConnectionByID(ctx context.Context, connectionID string) (ConnectionIdentity, error)
+	FindConnectionByID(ctx context.Context, connectionID string) (appconnector.Connection, error)
 }
 
 // CodeDeliveryDeps wires the module. Actions is the DELIVERY-DEDICATED
@@ -41,10 +49,10 @@ type ConnectionReader interface {
 // never enter any response, log, or the sandbox.
 type CodeDeliveryDeps struct {
 	Store       *deliveryrepo.DeliveryStore
-	Actions     ActionLifecycle
-	ActionRows  ActionStoreSource
+	Actions     *appconnectorsvc.ActionService
+	ActionRows  appconnectorsvc.ActionStoreSource
 	Connections ConnectionReader
-	Creds       CredentialResolver
+	Creds       appconnectorsvc.CredentialResolver
 	// GitHub 与 GitLab 是统一 seam 背后的两个平台适配器（T24 #54）；缺失
 	// 的适配器让对应平台在 prepare 面即 fail closed。
 	GitHub GitHubClientFactory
@@ -234,9 +242,9 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	// 锚定 A03：digest 绑定 repo/基线/分支/文件清单/提交信息/PR 标题 + 连接
 	// 版本；内容变化=新 digest=旧批准失效（immutable approval anchor）。
 	// conn 已由 authorize 装载（T24 #54：authorize 返回连接供提供者解析）。
-	actionID, err := s.deps.Actions.Prepare(ctx, ActionInput{
+	actionID, err := s.deps.Actions.Prepare(ctx, appconnector.Action{
 		TenantID: in.TenantID, ActorID: in.CallerID, ConnectionID: in.ConnectionID,
-		Target: DeliveryTargetOf(provider), Risk: "deliver",
+		Target: DeliveryTargetOf(provider), Risk: appconnector.RiskDeliver,
 		AuthVersion: conn.AuthVersion, Args: args,
 	})
 	if err != nil {
@@ -248,7 +256,7 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if row.State != "awaiting_approval" {
+	if row.State != appconnector.ActionAwaitingApproval {
 		return DeliveryView{}, fmt.Errorf("%w: delivery action must await approval, got %s", ErrInvalidMaterial, row.State)
 	}
 	drow := deliveryrepo.DeliveryRow{
@@ -285,14 +293,16 @@ func (s *CodeDeliveryService) GetDelivery(ctx context.Context, tenantID uint64, 
 
 // DispatchInput addresses one delivery. CallerID must be the run owner.
 type DispatchInput struct {
-	TenantID   uint64
-	CallerID   string
-	RunID      string
-	DeliveryID string
+	TenantID            uint64
+	CallerID            string
+	RunID               string
+	DeliveryID          string
+	ConfirmNoMatchingPR bool
 }
 
 // ErrDeliveryState guards the delivery state machine at the service seam.
 var ErrDeliveryState = errors.New("code_delivery_state_conflict")
+var ErrDeliveryConfirmationRequired = errors.New("code_delivery_owner_confirmation_required")
 
 // ErrDeliveryDispatchRejected: the approved dispatch was refused BEFORE any
 // remote call left the process (A03 settled the action failed via
@@ -312,6 +322,9 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 	if err != nil {
 		return DeliveryView{}, err
 	}
+	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
 	switch DeliveryState(row.State) {
 	case DeliveryPrepared:
 		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
@@ -319,7 +332,7 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 			return DeliveryView{}, err
 		}
 		if err := s.deps.Actions.Execute(ctx, row.ActionID); err != nil {
-			if errors.Is(err, ErrDispatchUnknown) {
+			if errors.Is(err, appconnectorsvc.ErrDispatchUnknown) {
 				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
 					[]string{string(DeliveryDispatched), string(DeliveryPushed)}, string(DeliveryUnknown), "")
 				return s.viewAfter(ctx, in, row.ID)
@@ -342,7 +355,7 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 		if gerr != nil {
 			return DeliveryView{}, gerr
 		}
-		if action.State == "failed" {
+		if action.State == appconnector.ActionFailed {
 			failure := action.ProviderResult
 			if failure == "" {
 				failure = "dispatch rejected before send"
@@ -352,17 +365,48 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 			return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryDispatchRejected, failure)
 		}
 	case DeliveryPushed:
-		// pushed → PR-only 恢复（同一批准的未完成半程；A02 复验在恢复端内部）。
+		// CAS claim is the cross-process recovery linearization point.
+		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+			[]string{string(DeliveryPushed)}, string(DeliveryDispatched), ""); err != nil {
+			return DeliveryView{}, err
+		}
+		// dispatched → PR-only recovery; the dispatcher never repeats push steps.
 		if s.deps.Dispatcher == nil {
-			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+			claimErr := fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, DeliveryPushed, claimErr); settleErr != nil {
+				return DeliveryView{}, errors.Join(claimErr, settleErr)
+			}
+			return DeliveryView{}, claimErr
 		}
 		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
+			var rejected *PRWriteRejectedError
+			var notStarted *RecoveryNotStartedError
+			next := DeliveryUnknown
+			if errors.As(err, &rejected) || errors.As(err, &notStarted) {
+				next = DeliveryPushed
+			}
+			if settleErr := s.settleRecoveryClaim(ctx, in, row.ID, next, err); settleErr != nil {
+				return DeliveryView{}, errors.Join(err, settleErr)
+			}
 			return DeliveryView{}, err
 		}
 	default:
 		return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryState, row.State)
 	}
 	return s.viewAfter(ctx, in, row.ID)
+}
+
+// settleRecoveryClaim must outlive the request: a canceled HTTP context after
+// a possible provider write cannot be allowed to strand the durable claim.
+// The bounded detached context is only used for the local CAS settlement.
+func (s *CodeDeliveryService) settleRecoveryClaim(ctx context.Context, in DispatchInput, id string, to DeliveryState, cause error) error {
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.deps.Store.TransitionState(settleCtx, in.TenantID, id,
+		[]string{string(DeliveryDispatched)}, string(to), cause.Error()); err != nil {
+		return fmt.Errorf("settle interrupted recovery claim to %s: %w", to, err)
+	}
+	return nil
 }
 
 // ResolveDeliveryUnknown settles an unknown delivery from remote facts only.
@@ -374,8 +418,38 @@ func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in Dis
 	if err != nil {
 		return DeliveryView{}, err
 	}
-	if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+	if row.RunID != in.RunID || row.OwnerID != in.CallerID {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
+	if row.State != string(DeliveryUnknown) && row.State != string(DeliveryDispatched) {
+		return DeliveryView{}, fmt.Errorf("%w: resolve from %s", ErrDeliveryState, row.State)
+	}
+	action, err := s.deps.ActionRows.FindAction(ctx, row.ActionID)
+	if err != nil {
 		return DeliveryView{}, err
+	}
+	if action.State == appconnector.ActionUnknown {
+		if err := s.deps.Actions.ResolveUnknownConfirmed(ctx, row.ActionID, in.ConfirmNoMatchingPR); err != nil {
+			return DeliveryView{}, err
+		}
+		action, err = s.deps.ActionRows.FindAction(ctx, row.ActionID)
+		if err != nil {
+			return DeliveryView{}, err
+		}
+	}
+	if action.State == appconnector.ActionSucceeded {
+		if s.deps.Dispatcher == nil {
+			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+		}
+		snap, err := s.deps.Dispatcher.snapshotOfDelivery(ctx, row)
+		if err != nil {
+			return DeliveryView{}, err
+		}
+		if _, err = s.deps.Dispatcher.QueryProviderConfirmed(ctx, snap, "", in.ConfirmNoMatchingPR); err != nil {
+			return DeliveryView{}, err
+		}
+	} else if action.State != appconnector.ActionUnknown {
+		return DeliveryView{}, fmt.Errorf("%w: action state %s", ErrDeliveryState, action.State)
 	}
 	return s.viewAfter(ctx, in, row.ID)
 }
@@ -448,25 +522,25 @@ func (s *CodeDeliveryService) viewOf(ctx context.Context, row deliveryrepo.Deliv
 // It returns the run's sessionID (= taskID, ADR-0004) and the loaded
 // connection (provider resolution needs its installation); the service keeps
 // no mutable state.
-func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, ConnectionIdentity, error) {
+func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, appconnector.Connection, error) {
 	run, err := s.deps.Runs.GetOwnedRun(ctx, tenantID, callerID, runID)
 	if err != nil || run.SessionID == "" {
-		return "", ConnectionIdentity{}, fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
+		return "", appconnector.Connection{}, fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
 	}
 	conn, err := s.deps.Connections.FindConnectionByID(ctx, connectionID)
 	if err != nil {
-		return "", ConnectionIdentity{}, err
+		return "", appconnector.Connection{}, err
 	}
-	if conn.Kind != "personal" || conn.OwnerID != callerID ||
-		conn.TenantID != tenantID || conn.State != "active" {
-		return "", ConnectionIdentity{}, ErrConnectionNotUsable
+	if conn.Kind != appconnector.ConnectionKindPersonal || conn.OwnerID != callerID ||
+		conn.TenantID != tenantID || conn.State != appconnector.ConnectionActive {
+		return "", appconnector.Connection{}, ErrConnectionNotUsable
 	}
 	return run.SessionID, conn, nil
 }
 
 // platformProvider resolves the delivery platform from the connection's
 // installation app id — server-side authority, never client input (T24 #54).
-func (s *CodeDeliveryService) platformProvider(ctx context.Context, conn ConnectionIdentity) (string, error) {
+func (s *CodeDeliveryService) platformProvider(ctx context.Context, conn appconnector.Connection) (string, error) {
 	if s.deps.Providers == nil {
 		return "", fmt.Errorf("%w: provider source not wired", ErrUnsupportedProvider)
 	}

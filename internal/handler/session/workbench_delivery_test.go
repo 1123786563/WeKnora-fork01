@@ -41,6 +41,7 @@ type deliveryServiceStub struct {
 	prepErr     error
 	dispatchErr error
 	lastView    codedelivery.DeliveryView
+	lastResolve codedelivery.DispatchInput
 }
 
 func (s *deliveryServiceStub) MaterializeBaseline(ctx context.Context, in codedelivery.BaselineInput) (codedelivery.BaselineReceipt, error) {
@@ -68,7 +69,33 @@ func (s *deliveryServiceStub) DispatchDelivery(ctx context.Context, in codedeliv
 }
 
 func (s *deliveryServiceStub) ResolveDeliveryUnknown(ctx context.Context, in codedelivery.DispatchInput) (codedelivery.DeliveryView, error) {
+	s.lastResolve = in
 	return codedelivery.DeliveryView{ID: in.DeliveryID, State: "pushed"}, nil
+}
+
+func TestResolveDeliveryRequiresStrictOwnerConfirmationBody(t *testing.T) {
+	svc := &deliveryServiceStub{}
+	h := NewWorkbenchDeliveryHandler(deliveryRunsStub{}, deliveryGrantedStub{}, svc)
+	for _, tc := range []struct {
+		body      string
+		status    int
+		confirmed bool
+	}{
+		{"", http.StatusOK, false},
+		{`{"confirm_no_matching_pr":true}`, http.StatusOK, true},
+		{`{"confirm_no_matching_pr":false}`, http.StatusOK, false},
+		{`{"confirm_no_matching_pr":true,"extra":1}`, http.StatusBadRequest, false},
+		{`{`, http.StatusBadRequest, false},
+		{`null`, http.StatusBadRequest, false},
+	} {
+		c, _ := deliveryContext(http.MethodPost, "/api/v1/workbench/executions/run-1/delivery/dlv-1/resolve", tc.body, "u1")
+		c.Params = gin.Params{{Key: "run_id", Value: "run-1"}, {Key: "delivery_id", Value: "dlv-1"}}
+		h.ResolveDeliveryUnknown(c)
+		require.Equal(t, tc.status, c.Writer.Status())
+		if tc.status == http.StatusOK {
+			require.Equal(t, tc.confirmed, svc.lastResolve.ConfirmNoMatchingPR)
+		}
+	}
 }
 
 func (s *deliveryServiceStub) GetDeliveryForRun(ctx context.Context, tenantID uint64, runID string) (codedelivery.DeliveryView, error) {

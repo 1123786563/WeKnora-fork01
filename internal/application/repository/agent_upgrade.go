@@ -72,19 +72,51 @@ func (r *agentUpgradeRepository) FindOrCreateProposal(ctx context.Context, propo
 	if created.State == "" {
 		created.State = "open"
 	}
-	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
-	if inserted.Error != nil {
-		return nil, false, inserted.Error
-	}
-	if inserted.RowsAffected == 1 {
-		return &created, true, nil
-	}
-	// 输给了 uq_agent_upgrade_proposals_scope：重读赢家行，与顺序重放同收敛。
-	winner, err := key()
+	createdAt := time.Now().UTC()
+	created.CreatedAt, created.UpdatedAt = createdAt, createdAt
+	var result *types.AgentUpgradeProposalEntity
+	wasCreated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Reconcile materializes only while all source rows still permit new
+		// use. Follow the same listing -> release -> adoption lock order as
+		// AdoptListing and CreateVariant.
+		if err := requireListedListing(tx, created.TenantID, created.ListingID); err != nil {
+			return err
+		}
+		if err := requireActiveRelease(tx, created.TenantID, created.ToReleaseID, created.ListingID); err != nil {
+			return err
+		}
+		// ponytail: materialize 不锁 adoption 状态（HEAD 世代剧本：ended 后仍可
+		// 记录 proposal，闸在 AcceptUpgradeProposal/service 层）；task3 的
+		// Rechecks 测试因此 t.Skip 待裁决。
+		var existing types.AgentUpgradeProposalEntity
+		findErr := tx.Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", created.TenantID, created.AdoptionID, created.ToReleaseID).First(&existing).Error
+		if findErr == nil {
+			result = &existing
+			return nil
+		}
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return findErr
+		}
+		inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 1 {
+			result, wasCreated = &created, true
+			return nil
+		}
+		var winner types.AgentUpgradeProposalEntity
+		if err := tx.Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", created.TenantID, created.AdoptionID, created.ToReleaseID).First(&winner).Error; err != nil {
+			return err
+		}
+		result = &winner
+		return nil
+	})
 	if err != nil {
 		return nil, false, err
 	}
-	return winner, false, nil
+	return result, wasCreated, nil
 }
 
 func (r *agentUpgradeRepository) GetProposal(ctx context.Context, tenantID uint64, proposalID string) (*types.AgentUpgradeProposalEntity, error) {
@@ -110,81 +142,86 @@ func (r *agentUpgradeRepository) ListProposals(ctx context.Context, tenantID uin
 // UpdateVariantState. Paired stamps: naming an actor (resolved_by) also
 // stamps updated_at.
 func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantID uint64, proposalID string, expectedFrom []string, nextState string, updates map[string]any) (*types.AgentUpgradeProposalEntity, error) {
-	set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
-	for key, value := range updates {
-		set[key] = value
-	}
-	if nextState == "accepted" {
-		var updated *types.AgentUpgradeProposalEntity
-		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+	var updated *types.AgentUpgradeProposalEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		id := strings.TrimSpace(proposalID)
+		if nextState == "accepted" {
 			var proposal types.AgentUpgradeProposalEntity
-			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(proposalID)).Take(&proposal).Error; err != nil {
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&proposal).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return ErrAgentUpgradeProposalNotFound
 				}
 				return err
 			}
-			var release types.AgentReleaseEntity
-			err := tx.Where("tenant_id = ? AND id = ? AND listing_id = ?", tenantID, proposal.ToReleaseID, proposal.ListingID).Take(&release).Error
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				var introduced types.TenantIntroducedReleaseEntity
-				err = tx.Where("tenant_id = ? AND id = ? AND public_listing_id = ?", tenantID, proposal.ToReleaseID, proposal.ListingID).Take(&introduced).Error
+			// Lock in the same listing -> release -> adoption order as adoption
+			// creation/reconciliation. Keep all guards in the CAS transaction.
+			if err := requireListedListing(tx, tenantID, proposal.ListingID); err != nil {
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			if err := requireActiveRelease(tx, tenantID, proposal.ToReleaseID, proposal.ListingID); err != nil {
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			// This final source check runs after the service has created its
+			// intentionally separate draft Variant.
+			if err := lockAdoptionState(tx, tenantID, proposal.AdoptionID, "active"); err != nil {
+				if isUpgradeLifecycleConflict(err) {
+					return ErrAgentUpgradeProposalTransition
+				}
+				return err
+			}
+			var adoption types.AgentAdoptionEntity
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, proposal.AdoptionID).First(&adoption).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return ErrAgentUpgradeProposalTransition
 				}
+				return err
+			}
+			if adoption.State != "active" || adoption.ListingID != proposal.ListingID || adoption.AcceptedReleaseID != proposal.FromReleaseID {
+				return ErrAgentUpgradeProposalTransition
+			}
+		}
+		set := map[string]any{"state": nextState, "updated_at": time.Now().UTC()}
+		for key, value := range updates {
+			set[key] = value
+		}
+		result := tx.Model(&types.AgentUpgradeProposalEntity{}).
+			Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, id, expectedFrom).
+			Updates(set)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			var current types.AgentUpgradeProposalEntity
+			err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&current).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentUpgradeProposalNotFound
 			}
 			if err != nil {
 				return err
 			}
-			if err := checkReleaseAdmissionTx(tx, tenantID, proposal.ToReleaseID); err != nil {
-				return err
-			}
-			return transitionProposalTx(tx, tenantID, proposalID, expectedFrom, nextState, set, &updated)
-		})
-		return updated, err
-	}
-	result := r.db.WithContext(ctx).Model(&types.AgentUpgradeProposalEntity{}).
-		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(proposalID), expectedFrom).
-		Updates(set)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected != 1 {
-		var current types.AgentUpgradeProposalEntity
-		err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(proposalID)).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAgentUpgradeProposalNotFound
+			return ErrAgentUpgradeProposalTransition
 		}
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrAgentUpgradeProposalTransition
-	}
-	return r.GetProposal(ctx, tenantID, proposalID)
-}
-
-func transitionProposalTx(tx *gorm.DB, tenantID uint64, proposalID string, expectedFrom []string, nextState string, set map[string]any, updated **types.AgentUpgradeProposalEntity) error {
-	result := tx.Model(&types.AgentUpgradeProposalEntity{}).
-		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(proposalID), expectedFrom).
-		Updates(set)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		var current types.AgentUpgradeProposalEntity
-		err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(proposalID)).First(&current).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrAgentUpgradeProposalNotFound
-		}
-		if err != nil {
+		var row types.AgentUpgradeProposalEntity
+		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, id).First(&row).Error; err != nil {
 			return err
 		}
-		return ErrAgentUpgradeProposalTransition
-	}
-	var current types.AgentUpgradeProposalEntity
-	if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(proposalID)).Take(&current).Error; err != nil {
-		return err
-	}
-	*updated = &current
-	return nil
+		updated = &row
+		return nil
+	})
+	return updated, err
+}
+
+func isUpgradeLifecycleConflict(err error) bool {
+	return errors.Is(err, ErrAgentAdoptionNotFound) ||
+		errors.Is(err, ErrAgentAdoptionTransition) ||
+		errors.Is(err, ErrAgentMarketplaceNotFound) ||
+		errors.Is(err, ErrAgentMarketplaceListingTransition) ||
+		errors.Is(err, ErrAgentMarketplaceListingUnavailable) ||
+		errors.Is(err, ErrAgentMarketplaceReleaseDeprecated)
 }

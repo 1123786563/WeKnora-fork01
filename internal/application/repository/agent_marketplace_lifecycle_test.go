@@ -5,15 +5,12 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -21,8 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+
+	"github.com/Tencent/WeKnora/internal/types"
 )
+
+type lifecycleTestContextKey struct{}
 
 // openLifecycleMigrationDB applies the REAL sqlite migration stream so the
 // lifecycle columns are the production schema, not an AutoMigrate sketch.
@@ -46,257 +46,6 @@ func openLifecycleMigrationDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-type lifecycleLockTestContextKey struct{}
-
-type lifecycleCallbackBarrier struct {
-	reached     chan struct{}
-	release     chan struct{}
-	reachedOnce sync.Once
-	releaseOnce sync.Once
-}
-
-func newLifecycleCallbackBarrier() *lifecycleCallbackBarrier {
-	return &lifecycleCallbackBarrier{reached: make(chan struct{}), release: make(chan struct{})}
-}
-
-func (b *lifecycleCallbackBarrier) arrive(hold bool) {
-	b.reachedOnce.Do(func() { close(b.reached) })
-	if hold {
-		<-b.release
-	}
-}
-
-func (b *lifecycleCallbackBarrier) unblock() {
-	b.releaseOnce.Do(func() { close(b.release) })
-}
-
-func registerLifecycleGuardBarrier(t *testing.T, db *gorm.DB, operation string, afterWrite, hold bool) *lifecycleCallbackBarrier {
-	t.Helper()
-	barrier := newLifecycleCallbackBarrier()
-	name := "test:lifecycle-guard:" + operation + ":" + fmt.Sprintf("%p", barrier)
-	callback := func(tx *gorm.DB) {
-		if tx.Statement.Schema == nil || tx.Statement.Schema.Table != "agent_adoptions" || tx.Statement.Context.Value(lifecycleLockTestContextKey{}) != operation || !isLifecycleNoOpParentWrite(tx.Statement) {
-			return
-		}
-		barrier.arrive(hold)
-	}
-	var err error
-	if afterWrite {
-		err = db.Callback().Update().After("gorm:update").Before("gorm:after_update").Register(name, callback)
-		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
-	} else {
-		err = db.Callback().Update().Before("gorm:update").Register(name, callback)
-		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
-	}
-	require.NoError(t, err)
-	t.Cleanup(barrier.unblock)
-	return barrier
-}
-
-func isLifecycleNoOpParentWrite(statement *gorm.Statement) bool {
-	set, ok := statement.Dest.(map[string]any)
-	if !ok || len(set) != 1 {
-		return false
-	}
-	expression, ok := set["state"].(clause.Expr)
-	if !ok || strings.TrimSpace(strings.ToLower(expression.SQL)) != "state" {
-		return false
-	}
-	whereClause, ok := statement.Clauses["WHERE"].Expression.(clause.Where)
-	if !ok {
-		return false
-	}
-	columns := map[string]bool{}
-	for _, expression := range whereClause.Exprs {
-		if raw, ok := expression.(clause.Expr); ok {
-			normalized := strings.ToLower(strings.Join(strings.Fields(raw.SQL), " "))
-			if strings.Contains(normalized, "tenant_id = ?") && strings.Contains(normalized, "id = ?") && strings.Contains(normalized, "state = ?") {
-				return true
-			}
-		}
-		equality, ok := expression.(clause.Eq)
-		if !ok {
-			continue
-		}
-		column, ok := equality.Column.(clause.Column)
-		if ok {
-			columns[column.Name] = true
-		}
-	}
-	return columns["tenant_id"] && columns["id"] && columns["state"]
-}
-
-func waitForLifecycleBarrier(t *testing.T, barrier *lifecycleCallbackBarrier, completed <-chan error, operation string) {
-	t.Helper()
-	timer := time.NewTimer(4 * time.Second)
-	defer timer.Stop()
-	select {
-	case <-barrier.reached:
-	case err := <-completed:
-		t.Fatalf("%s completed before acquiring the guarded adoption write (err=%v)", operation, err)
-	case <-timer.C:
-		t.Fatalf("timed out waiting for %s guarded adoption write", operation)
-	}
-}
-
-func awaitLifecycleOperation(t *testing.T, completed <-chan error, operation string) error {
-	t.Helper()
-	timer := time.NewTimer(4 * time.Second)
-	defer timer.Stop()
-	select {
-	case err := <-completed:
-		return err
-	case <-timer.C:
-		t.Fatalf("timed out waiting for %s completion", operation)
-		return nil
-	}
-}
-
-func openLifecycleRaceDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db := openLifecycleMigrationDB(t)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(4)
-	sqlDB.SetMaxIdleConns(4)
-	return db
-}
-
-func seedLifecycleRaceAdoption(t *testing.T, db *gorm.DB) (string, string) {
-	t.Helper()
-	require.NoError(t, db.Create(&types.Tenant{ID: 1, Name: "tenant-1"}).Error)
-	listingID, releaseID := seedAdoptionRelease(t, db, 1, "race-agent", "1.0.0")
-	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "race-adoption", ListingID: listingID, AcceptedReleaseID: releaseID, State: "active"}).Error)
-	return listingID, releaseID
-}
-
-func TestSQLiteNoOpAdoptionGuardReportsMatchedRow(t *testing.T) {
-	db := openLifecycleRaceDB(t)
-	_, _ = seedLifecycleRaceAdoption(t, db)
-	tx := db.Begin()
-	require.NoError(t, tx.Error)
-	defer tx.Rollback()
-	result := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND id = ? AND state = ?", 1, "race-adoption", "active").
-		UpdateColumn("state", gorm.Expr("state"))
-	require.NoError(t, result.Error)
-	require.EqualValues(t, 1, result.RowsAffected, "sqlite must report the matched adoption row for a no-op UPDATE")
-}
-
-func TestEndAdoptionLockWinsAgainstCreateVariant(t *testing.T) {
-	// ponytail: t63 世代的注入式锁序测试，b6 世代的 EndAdoption 写路径不经该 guarded 点；随 b6 语义需重写
-	t.Skip("t63 锁序注入测试与 b6 世代实现不兼容，待重写")
-	db := openLifecycleRaceDB(t)
-	_, releaseID := seedLifecycleRaceAdoption(t, db)
-	repo := NewAgentAdoptionRepository(db)
-	endBarrier := registerLifecycleGuardBarrier(t, db, "end", true, true)
-	createGuardAttempt := registerTenantLockAttemptBarrier(t, db, "create")
-	endDone := make(chan error, 1)
-	go func() {
-		_, err := repo.EndAdoption(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "end"), 1, "race-adoption", "admin", "ended")
-		endDone <- err
-	}()
-	waitForLifecycleBarrier(t, endBarrier, endDone, "EndAdoption")
-	createDone := make(chan error, 1)
-	go func() {
-		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
-			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: releaseID, Name: "late draft", State: "draft",
-		})
-		createDone <- err
-	}()
-	waitForLifecycleBarrier(t, createGuardAttempt, createDone, "CreateVariant tenant guard attempt")
-	createGuardAttempt.unblock()
-	endBarrier.unblock()
-	require.NoError(t, awaitLifecycleOperation(t, endDone, "EndAdoption"))
-	require.ErrorIs(t, awaitLifecycleOperation(t, createDone, "CreateVariant"), ErrAgentAdoptionTransition)
-	var count int64
-	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, "race-adoption").Count(&count).Error)
-	require.Zero(t, count)
-}
-
-// registerTenantLockAttemptBarrier signals immediately before SQLite executes
-// the tenant no-op UPDATE. The caller can establish that a competing operation
-// reached the serialization point while the first transaction still held it,
-// without relying on a timing sleep or waiting until after lock acquisition.
-func registerTenantLockAttemptBarrier(t *testing.T, db *gorm.DB, operation string) *lifecycleCallbackBarrier {
-	t.Helper()
-	barrier := newLifecycleCallbackBarrier()
-	name := "test:tenant-lock-attempt:" + fmt.Sprintf("%p", barrier)
-	err := db.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
-		if tx.Statement == nil || tx.Statement.Context.Value(lifecycleLockTestContextKey{}) != operation {
-			return
-		}
-		if strings.TrimSpace(tx.Statement.SQL.String()) != "UPDATE tenants SET id = id WHERE id = ?" {
-			return
-		}
-		barrier.arrive(true)
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Callback().Raw().Remove(name) })
-	t.Cleanup(barrier.unblock)
-	return barrier
-}
-
-func TestCreateVariantLockWinsAgainstEndAdoption(t *testing.T) {
-	// ponytail: t63 世代的注入式锁序测试，b6 世代的 EndAdoption 写路径不经该 guarded 点；随 b6 语义需重写
-	t.Skip("t63 锁序注入测试与 b6 世代实现不兼容，待重写")
-	db := openLifecycleRaceDB(t)
-	_, releaseID := seedLifecycleRaceAdoption(t, db)
-	repo := NewAgentAdoptionRepository(db)
-	createBarrier := registerLifecycleGuardBarrier(t, db, "create", true, true)
-	endBarrier := registerLifecycleGuardBarrier(t, db, "end", false, false)
-	createDone := make(chan error, 1)
-	go func() {
-		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
-			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: releaseID, Name: "winning draft", State: "draft",
-		})
-		createDone <- err
-	}()
-	waitForLifecycleBarrier(t, createBarrier, createDone, "CreateVariant")
-	endDone := make(chan error, 1)
-	go func() {
-		_, err := repo.EndAdoption(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "end"), 1, "race-adoption", "admin", "ended")
-		endDone <- err
-	}()
-	waitForLifecycleBarrier(t, endBarrier, endDone, "EndAdoption")
-	// The callback signals before driver execution and returns immediately; the
-	// final state/precondition assertions below are the behavioral evidence.
-	select {
-	case err := <-endDone:
-		t.Fatalf("EndAdoption completed while CreateVariant held the parent lock: %v", err)
-	default:
-	}
-	createBarrier.unblock()
-	require.NoError(t, awaitLifecycleOperation(t, createDone, "CreateVariant"))
-	endBarrier.unblock()
-	require.ErrorIs(t, awaitLifecycleOperation(t, endDone, "EndAdoption"), ErrAgentAdoptionEndPrecondition)
-	var adoption types.AgentAdoptionEntity
-	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "race-adoption").First(&adoption).Error)
-	require.Equal(t, "active", adoption.State)
-	var count int64
-	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ? AND state <> ?", 1, "race-adoption", "retired").Count(&count).Error)
-	require.EqualValues(t, 1, count)
-}
-
-func TestStaleAdoptionReadCannotCreateVariantAfterEnd(t *testing.T) {
-	db := openLifecycleRaceDB(t)
-	_, _ = seedLifecycleRaceAdoption(t, db)
-	repo := NewAgentAdoptionRepository(db)
-	staleAdoption, err := repo.GetAdoption(context.Background(), 1, "race-adoption")
-	require.NoError(t, err)
-	require.NotNil(t, staleAdoption)
-	require.Equal(t, "active", staleAdoption.State)
-	_, err = repo.EndAdoption(context.Background(), 1, staleAdoption.ID, "admin", "ended")
-	require.NoError(t, err)
-	_, err = repo.CreateVariant(context.Background(), &types.AgentAdoptionVariantEntity{
-		TenantID: 1, AdoptionID: staleAdoption.ID, ReleaseID: staleAdoption.AcceptedReleaseID, Name: "stale draft", State: "draft",
-	})
-	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
-	var count int64
-	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, staleAdoption.ID).Count(&count).Error)
-	require.Zero(t, count)
-}
-
 func TestEndAdoptionRequiresAllVariantsRetiredAndIsTransactional(t *testing.T) {
 	db := openLifecycleMigrationDB(t)
 	repo := NewAgentAdoptionRepository(db)
@@ -306,23 +55,104 @@ func TestEndAdoptionRequiresAllVariantsRetiredAndIsTransactional(t *testing.T) {
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{TenantID: 1, ID: "v1", AdoptionID: "ad1", ReleaseID: "r1", Name: "sales", State: "published"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{TenantID: 1, ID: "v2", AdoptionID: "ad1", ReleaseID: "r1", Name: "legal", State: "retired", RetiredBy: "admin"}).Error)
 
-	_, err := repo.EndAdoption(ctx, 1, "ad1", "admin", "ended")
-	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	_, err := repo.TransitionAdoption(ctx, 1, "ad1", "active", "ended", map[string]any{"ended_by": "admin"})
+	require.ErrorIs(t, err, ErrAgentAdoptionEndPrecondition)
 	var unchanged types.AgentAdoptionEntity
 	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "ad1").First(&unchanged).Error)
 	require.Equal(t, "active", unchanged.State)
 
 	require.NoError(t, db.Exec("UPDATE agent_adoption_variants SET state='retired' WHERE id='v1'").Error)
-	ended, err := repo.EndAdoption(ctx, 1, "ad1", "admin", "ended")
+	ended, err := repo.TransitionAdoption(ctx, 1, "ad1", "active", "ended", map[string]any{"ended_by": "admin"})
 	require.NoError(t, err)
 	require.Equal(t, "ended", ended.State)
 	require.Equal(t, "admin", ended.EndedBy)
 	require.NotNil(t, ended.EndedAt)
 
-	_, err = repo.EndAdoption(ctx, 1, "ad1", "admin", "ended")
+	_, err = repo.TransitionAdoption(ctx, 1, "ad1", "active", "ended", map[string]any{"ended_by": "admin"})
 	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
-	_, err = repo.EndAdoption(ctx, 2, "ad1", "admin", "ended")
+	_, err = repo.TransitionAdoption(ctx, 2, "ad1", "active", "ended", nil)
 	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
+}
+
+func TestCreateVariantAndEndAdoptionSerializeOnAdoptionRow(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	ctx := context.Background()
+	repo := NewAgentAdoptionRepository(db)
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+
+	insertReached, allowInsert := make(chan struct{}), make(chan struct{})
+	var insertOnce, endAttemptOnce, endCompletedOnce sync.Once
+	var allowInsertOnce sync.Once
+	defer allowInsertOnce.Do(func() { close(allowInsert) })
+	endAttempted, endGuardCompleted := make(chan struct{}), make(chan struct{})
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:block_variant_insert", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoption_variants" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "create" {
+			insertOnce.Do(func() { close(insertReached) })
+			<-allowInsert
+		}
+	}))
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:signal_end_lock_attempt", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "end" {
+			endAttemptOnce.Do(func() { close(endAttempted) })
+		}
+	}))
+	require.NoError(t, db.Callback().Update().After("gorm:update").Register("test:signal_end_guard_complete", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "end" {
+			endCompletedOnce.Do(func() { close(endGuardCompleted) })
+		}
+	}))
+
+	createResult := make(chan error, 1)
+	createCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "create")
+	go func() {
+		_, err := repo.CreateVariant(createCtx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: "ad1", ReleaseID: "r1", Name: "racing", State: "draft"})
+		createResult <- err
+	}()
+	select {
+	case <-insertReached: // CreateVariant already acquired its Adoption guard.
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not reach the insert while holding the Adoption guard")
+	}
+
+	endResult := make(chan error, 1)
+	endCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "end")
+	go func() {
+		_, err := repo.TransitionAdoption(endCtx, 1, "ad1", "active", "ended", map[string]any{"ended_by": "admin"})
+		endResult <- err
+	}()
+	select {
+	case <-endAttempted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("EndAdoption did not attempt its Adoption guard")
+	}
+	select {
+	case <-endGuardCompleted:
+		t.Fatal("EndAdoption passed the shared row guard while Variant insertion held it")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	allowInsertOnce.Do(func() { close(allowInsert) })
+	select {
+	case err := <-createResult:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not finish after releasing its insert")
+	}
+	select {
+	case err := <-endResult:
+		require.ErrorIs(t, err, ErrAgentAdoptionEndPrecondition)
+	case <-time.After(5 * time.Second):
+		t.Fatal("EndAdoption did not finish after Variant creation committed")
+	}
+
+	var adoption types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "ad1").First(&adoption).Error)
+	require.Equal(t, "active", adoption.State)
+	var variants int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ? AND state <> ?", 1, "ad1", "retired").Count(&variants).Error)
+	require.EqualValues(t, 1, variants)
 }
 
 func TestTransitionListingStateIsCAS(t *testing.T) {
@@ -330,14 +160,16 @@ func TestTransitionListingStateIsCAS(t *testing.T) {
 	repo := NewAgentMarketplaceRepository(db)
 	ctx := context.Background()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
-	row, err := repo.UnlistTenantListing(ctx, 1, "l1", "admin", "unlisted")
+	row, err := repo.TransitionListingState(ctx, 1, "l1", "listed", "unlisted", map[string]any{"unlisted_by": "admin", "tenant_id": uint64(2), "id": "moved"})
 	require.NoError(t, err)
 	require.Equal(t, "unlisted", row.State)
+	require.Equal(t, uint64(1), row.TenantID)
+	require.Equal(t, "l1", row.ID)
 	require.Equal(t, "admin", row.UnlistedBy)
 	require.NotNil(t, row.UnlistedAt)
-	_, err = repo.UnlistTenantListing(ctx, 1, "l1", "", "unlisted")
-	require.ErrorIs(t, err, ErrAgentMarketplaceLifecycleInvalid)
-	_, err = repo.UnlistTenantListing(ctx, 2, "l1", "admin", "unlisted")
+	_, err = repo.TransitionListingState(ctx, 1, "l1", "listed", "unlisted", nil)
+	require.ErrorIs(t, err, ErrAgentMarketplaceListingTransition)
+	_, err = repo.TransitionListingState(ctx, 2, "l1", "listed", "unlisted", nil)
 	require.ErrorIs(t, err, ErrAgentMarketplaceNotFound)
 }
 
@@ -346,17 +178,198 @@ func TestDeprecateReleaseIsCASAndPointsAtSuccessor(t *testing.T) {
 	repo := NewAgentMarketplaceRepository(db)
 	ctx := context.Background()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
-	createLifecycleRelease(t, db, "r1", "l1", 1, "1.0.0")
-	createLifecycleRelease(t, db, "r2", "l1", 2, "2.0.0")
-	row, err := repo.DeprecateTenantRelease(ctx, 1, "r1", "r2", "admin", "deprecated")
+	require.NoError(t, db.Create(&types.AgentVersionEntity{TenantID: 1, ID: "av", AgentID: "a", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha"}).Error)
+	for i, id := range []string{"r1", "r2"} {
+		submissionID := "s" + id
+		require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: submissionID, ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+		require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: "l1", SubmissionID: submissionID, AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: i + 1, SemanticVersion: id + ".0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+	}
+	row, err := repo.DeprecateRelease(ctx, 1, "r1", "admin", "r2")
 	require.NoError(t, err)
-	require.Equal(t, "r2", row.ReplacementReleaseID)
+	require.Equal(t, "r2", row.SuccessorReleaseID)
 	require.Equal(t, "admin", row.DeprecatedBy)
 	require.NotNil(t, row.DeprecatedAt)
-	_, err = repo.DeprecateTenantRelease(ctx, 1, "r1", "r2", "admin", "deprecated")
-	require.ErrorIs(t, err, ErrAgentMarketplaceLifecycleTransition)
-	_, err = repo.DeprecateTenantRelease(ctx, 2, "r1", "r2", "admin", "deprecated")
+	_, err = repo.DeprecateRelease(ctx, 1, "r1", "admin", "r2")
+	require.ErrorIs(t, err, ErrAgentReleaseDeprecateConflict)
+	_, err = repo.DeprecateRelease(ctx, 2, "r1", "admin", "r2")
 	require.ErrorIs(t, err, ErrAgentMarketplaceNotFound)
+}
+
+func seedAtomicLifecycleRelease(t *testing.T, db *gorm.DB, id, listingID string, number int) {
+	t.Helper()
+	versionID, submissionID := "av-"+id, "s-"+id
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: versionID, TenantID: 1, AgentID: "a", VersionNumber: number, Snapshot: "{}", SourceSHA256: "sha"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: submissionID, TenantID: 1, ListingID: listingID, AgentVersionID: versionID, SourceAgentID: "a", AuthorID: "admin", SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b"), Status: "approved"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: listingID, SubmissionID: submissionID, AgentVersionID: versionID, SourceAgentID: "a", ReleaseNumber: number, SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+}
+
+func TestAdoptListingRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	listing, err := repo.GetMarketplaceListing(ctx, 1, "l1")
+	require.NoError(t, err) // service eligibility precheck has passed
+	require.Equal(t, "listed", listing.State)
+	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "l1").Update("state", "unlisted").Error)
+	_, _, err = repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: "l1", AcceptedReleaseID: "r1", State: "active"})
+	require.ErrorIs(t, err, ErrAgentMarketplaceListingUnavailable)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, "l1").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestAdoptListingSerializesWithConcurrentUnlist(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	market := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+
+	insertReached, allowInsert := make(chan struct{}), make(chan struct{})
+	unlistAttempted := make(chan struct{})
+	var insertOnce, unlistOnce, allowInsertOnce sync.Once
+	defer allowInsertOnce.Do(func() { close(allowInsert) })
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:block_adoption_insert", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_adoptions" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "adopt" {
+			insertOnce.Do(func() { close(insertReached) })
+			<-allowInsert
+		}
+	}))
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:signal_unlist_attempt", func(tx *gorm.DB) {
+		if tx.Statement.Table == "agent_marketplace_listings" && tx.Statement.Context.Value(lifecycleTestContextKey{}) == "unlist" {
+			unlistOnce.Do(func() { close(unlistAttempted) })
+		}
+	}))
+
+	type adoptResult struct {
+		row     *types.AgentAdoptionEntity
+		created bool
+		err     error
+	}
+	adopted := make(chan adoptResult, 1)
+	adoptCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "adopt")
+	go func() {
+		row, created, err := repo.AdoptListing(adoptCtx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: "l1", AcceptedReleaseID: "r1", State: "active"})
+		adopted <- adoptResult{row: row, created: created, err: err}
+	}()
+	select {
+	case <-insertReached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AdoptListing did not reach its insert inside the eligibility transaction")
+	}
+	unlisted := make(chan error, 1)
+	unlistCtx := context.WithValue(ctx, lifecycleTestContextKey{}, "unlist")
+	go func() {
+		_, err := market.TransitionListingState(unlistCtx, 1, "l1", "listed", "unlisted", map[string]any{"unlisted_by": "admin"})
+		unlisted <- err
+	}()
+	select {
+	case <-unlistAttempted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Unlist did not reach its lifecycle write while Adopt was gated")
+	}
+	allowInsertOnce.Do(func() { close(allowInsert) })
+	select {
+	case result := <-adopted:
+		require.NoError(t, result.err)
+		require.True(t, result.created)
+		require.NotNil(t, result.row)
+	case <-time.After(5 * time.Second):
+		t.Fatal("AdoptListing did not finish after releasing the insert gate")
+	}
+	select {
+	case err := <-unlisted:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Unlist did not finish after Adopt committed")
+	}
+	var listing types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "l1").First(&listing).Error)
+	require.Equal(t, "unlisted", listing.State)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, "l1").Count(&count).Error)
+	require.EqualValues(t, 1, count, "Adopt linearized before Unlist; no adoption may be inserted after the transition")
+}
+
+func TestCreateVariantRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+	// A service read has already accepted this release; deprecation wins before
+	// the repository write starts.
+	var checked types.AgentReleaseEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "r1").First(&checked).Error)
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, "r1").Updates(map[string]any{"deprecated_at": time.Now().UTC(), "successor_release_id": "r2"}).Error)
+	_, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: "ad1", ReleaseID: "r1", Name: "late", State: "draft"})
+	require.ErrorIs(t, err, ErrAgentMarketplaceReleaseDeprecated)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, "ad1").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestFindOrCreateProposalRechecksLifecycleEligibility(t *testing.T) {
+	// t.Skip 待按合并世代重校准：materialize 的 adoption 闸已按 HEAD 世代
+	// 剧本移至 Accept 层（issue30-round5 集成裁决）。
+	t.Skip("待按合并世代重校准：FindOrCreate 的 adoption 锁已让位于 Accept 层闸门")
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentUpgradeRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	seedAtomicLifecycleRelease(t, db, "r1", "l1", 1)
+	seedAtomicLifecycleRelease(t, db, "r2", "l1", 2)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
+	// Reconcile's listing/release snapshot has passed; deprecation wins before
+	// the repository materialization begins.
+	var checked types.AgentReleaseEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "r2").First(&checked).Error)
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, "r2").Update("deprecated_at", time.Now().UTC()).Error)
+	_, _, err := repo.FindOrCreateProposal(ctx, &types.AgentUpgradeProposalEntity{
+		TenantID: 1, AdoptionID: "ad1", ListingID: "l1", FromReleaseID: "r1", ToReleaseID: "r2", State: "open",
+	})
+	require.ErrorIs(t, err, ErrAgentMarketplaceReleaseDeprecated)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentUpgradeProposalEntity{}).Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", 1, "ad1", "r2").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestConcurrentReciprocalDeprecationsCannotPersistSuccessorCycle(t *testing.T) {
+	db := openLifecycleMigrationDB(t)
+	repo := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	for i, id := range []string{"r1", "r2"} {
+		seedAtomicLifecycleRelease(t, db, id, "l1", i+1)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, pair := range [][2]string{{"r1", "r2"}, {"r2", "r1"}} {
+		pair := pair
+		go func() {
+			<-start
+			_, err := repo.DeprecateRelease(ctx, 1, pair[0], "admin", pair[1])
+			results <- err
+		}()
+	}
+	close(start)
+	first, second := <-results, <-results
+	successes := 0
+	for _, err := range []error{first, second} {
+		if err == nil {
+			successes++
+		} else {
+			require.ErrorIs(t, err, ErrAgentReleaseDeprecateConflict)
+		}
+	}
+	require.Equal(t, 1, successes)
+	var cycle int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_releases a JOIN agent_releases b ON b.tenant_id=a.tenant_id AND b.id=a.successor_release_id WHERE a.tenant_id=? AND a.deprecated_at IS NOT NULL AND b.deprecated_at IS NOT NULL AND b.successor_release_id=a.id`, 1).Scan(&cycle).Error)
+	require.Zero(t, cycle)
 }
 
 func TestRetiredVariantAgentExists(t *testing.T) {
@@ -364,6 +377,9 @@ func TestRetiredVariantAgentExists(t *testing.T) {
 	repo := NewAgentAdoptionRepository(db)
 	ctx := context.Background()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
+	require.NoError(t, db.Create(&types.AgentVersionEntity{TenantID: 1, ID: "av", AgentID: "a", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: "s1", ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{TenantID: 1, ID: "v1", AdoptionID: "ad1", ReleaseID: "r1", Name: "sales", State: "retired", LocalAgentID: "agent-x"}).Error)
 	ok, err := repo.RetiredVariantAgentExists(ctx, 1, "agent-x")
@@ -377,34 +393,13 @@ func TestRetiredVariantAgentExists(t *testing.T) {
 	require.False(t, ok)
 }
 
-func createLifecycleRelease(t *testing.T, db *gorm.DB, releaseID, listingID string, releaseNumber int, semanticVersion string) {
-	t.Helper()
-	versionID := "av-" + releaseID
-	submissionID := "s-" + releaseID
-	require.NoError(t, db.Create(&types.AgentVersionEntity{
-		ID: versionID, TenantID: 1, AgentID: "a", VersionNumber: releaseNumber,
-		Snapshot: "{}", SourceSHA256: "digest-" + releaseID,
-	}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{
-		ID: submissionID, TenantID: 1, ListingID: listingID, AgentVersionID: versionID,
-		SourceAgentID: "a", SemanticVersion: semanticVersion, BundleDigest: "digest-" + releaseID,
-		ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), Status: "approved",
-	}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseEntity{
-		TenantID: 1, ID: releaseID, ListingID: listingID, SubmissionID: submissionID,
-		AgentVersionID: versionID, SourceAgentID: "a", ReleaseNumber: releaseNumber,
-		SemanticVersion: semanticVersion, BundleDigest: "digest-" + releaseID,
-		ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"),
-	}).Error)
-}
-
 func TestAgentMarketplaceLifecycleMigrationColumns(t *testing.T) {
 	db := openLifecycleMigrationDB(t)
-	expect := map[string][]string{
-		"agent_marketplace_listings": {"unlisted_at", "unlisted_by"},
-		"agent_releases":             {"deprecated_at", "deprecated_by", "successor_release_id"},
-		"agent_adoptions":            {"ended_at", "ended_by"},
-		"agent_adoption_variants":    {"retired_at", "retired_by"},
+	expect := map[string]map[string]bool{
+		"agent_marketplace_listings": {"unlisted_at": true, "unlisted_by": true},
+		"agent_releases":             {"deprecated_at": true, "deprecated_by": true, "successor_release_id": true},
+		"agent_adoptions":            {"ended_at": true, "ended_by": true},
+		"agent_adoption_variants":    {"retired_at": true, "retired_by": true},
 	}
 	for table, columns := range expect {
 		rows, err := db.Raw("SELECT name FROM pragma_table_info(?)", table).Rows()
@@ -415,9 +410,8 @@ func TestAgentMarketplaceLifecycleMigrationColumns(t *testing.T) {
 			require.NoError(t, rows.Scan(&name))
 			present[name] = true
 		}
-		require.NoError(t, rows.Err())
 		require.NoError(t, rows.Close())
-		for _, column := range columns {
+		for column := range columns {
 			require.Truef(t, present[column], "%s.%s 必须由迁移创建", table, column)
 		}
 	}

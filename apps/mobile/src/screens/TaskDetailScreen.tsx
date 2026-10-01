@@ -70,6 +70,7 @@ function DeliveryReceiptSection({ delivery, onRecover, recoveryError }: { delive
       <Text>{DELIVERY_STATE_COPY[delivery.state]}</Text>
       {delivery.state === 'pushed' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.pushed} onPress={onRecover} /> : null}
       {delivery.state === 'unknown' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.unknown} onPress={onRecover} /> : null}
+      {delivery.state === 'failed' ? <Text>{DELIVERY_RECOVERY_COPY.failed}</Text> : null}
       {recoveryError !== undefined ? <Text>{recoveryError}</Text> : null}
       <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
       <Text numberOfLines={1}>分支：{delivery.branch}</Text>
@@ -156,7 +157,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
       {onOpenVoiceRoom !== undefined && <Button title="语音房" onPress={onOpenVoiceRoom} />}
-      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: delivery.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
+      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: view.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>

@@ -21,149 +21,127 @@ function recordWith(state: DeliveryRemoteRecord['state']): DeliveryRemoteRecord 
 
 function harness(state: DeliveryRemoteRecord['state']) {
   const calls: string[] = [];
-  const { lease, revoke } = mintLease();
-  let revoked = false;
   const remote: DeliveryRemote & DeliveryRecoveryRemote = {
     async delivery() { calls.push('delivery'); return recordWith(state); },
     async dispatchDelivery() { calls.push('dispatchDelivery'); return recordWith('delivered'); },
     async resolveDelivery() { calls.push('resolveDelivery'); return recordWith('pushed'); },
   };
+  const { lease } = mintLease();
+  let revoked = false;
   return {
     calls,
-    revoke() { revoke(); revoked = true; },
     recover: createDeliveryRecovery({ remote, lease: () => (revoked ? undefined : lease) }).recover,
+    setRevoked(value: boolean) { revoked = value; },
   };
 }
 
-test('recover routes pushed to the PR-only dispatch half exactly once', async () => {
+test('recover routes pushed to dispatch', async () => {
   const h = harness('pushed');
-  const view = await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' });
-  assert.equal(view.state, 'delivered');
+  assert.equal((await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' })).state, 'delivered');
   assert.deepEqual(h.calls, ['delivery', 'dispatchDelivery']);
 });
 
-test('recover routes unknown to the remote-facts resolve half', async () => {
+test('recover routes unknown to resolve', async () => {
   const h = harness('unknown');
-  const view = await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' });
+  assert.equal((await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' })).state, 'pushed');
   assert.deepEqual(h.calls, ['delivery', 'resolveDelivery']);
-  assert.equal(view.state, 'pushed');
 });
 
-test('recover on delivered is idempotent — zero write requests (re-entry safety)', async () => {
+test('delivered is idempotent with no write', async () => {
   const h = harness('delivered');
-  const view = await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' });
-  assert.equal(view.state, 'delivered');
+  assert.equal((await h.recover({ runId: 'run-1', deliveryId: 'dlv-1' })).state, 'delivered');
   assert.deepEqual(h.calls, ['delivery']);
 });
 
-test('prepared/dispatched/failed are not recovery windows — DELIVERY_STATE_CONFLICT', async () => {
+test('prepared, dispatched, and failed conflict without writes', async () => {
   for (const state of ['prepared', 'dispatched', 'failed'] as const) {
     const h = harness(state);
-    await assert.rejects(
-      () => h.recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-      (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_STATE_CONFLICT' && error.message.includes(state),
-    );
-    assert.deepEqual(h.calls, ['delivery'], `${state} must not trigger any write`);
+    await assert.rejects(() => h.recover({ runId: 'run-1', deliveryId: 'dlv-1' }), (error: unknown) =>
+      error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_STATE_CONFLICT' && error.message.includes(state));
+    assert.deepEqual(h.calls, ['delivery']);
   }
 });
 
-test('no delivery to recover fails closed with DELIVERY_INVALID_INPUT', async () => {
+test('missing delivery is invalid input', async () => {
   const remote: DeliveryRemote & DeliveryRecoveryRemote = {
     async delivery() { return null; },
-    async dispatchDelivery() { throw new Error('must not be called'); },
-    async resolveDelivery() { throw new Error('must not be called'); },
+    async dispatchDelivery() { throw new Error('unexpected'); },
+    async resolveDelivery() { throw new Error('unexpected'); },
   };
   const { lease } = mintLease();
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_INVALID_INPUT',
-  );
+  await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_INVALID_INPUT');
 });
 
-test('no lease fails closed with DELIVERY_SCOPE_CHANGED before any network', async () => {
+test('missing lease rejects before network', async () => {
   const remote: DeliveryRemote & DeliveryRecoveryRemote = {
-    async delivery() { throw new Error('must not be called'); },
-    async dispatchDelivery() { throw new Error('must not be called'); },
-    async resolveDelivery() { throw new Error('must not be called'); },
+    async delivery() { throw new Error('unexpected'); },
+    async dispatchDelivery() { throw new Error('unexpected'); },
+    async resolveDelivery() { throw new Error('unexpected'); },
   };
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => undefined }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
-  );
+  await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => undefined }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED');
 });
 
-test('a lease revoked while the write was in flight drops the late result — DELIVERY_SCOPE_CHANGED', async () => {
-  const { lease, revoke } = mintLease();
+test('revocation during write drops late result', async () => {
+  const internal = new RuntimeScopeLease({ deploymentOrigin: 'https://weknora.example.com', userId: 'u1', tenantId: 't1' });
+  const lease = internal.asScopeLease();
   const remote: DeliveryRemote & DeliveryRecoveryRemote = {
     async delivery() { return recordWith('pushed'); },
-    async dispatchDelivery() { revoke(); return recordWith('delivered'); },
-    async resolveDelivery() { throw new Error('must not be called'); },
+    async dispatchDelivery() { internal.revoke(); return recordWith('delivered'); },
+    async resolveDelivery() { throw new Error('unexpected'); },
   };
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
-  );
+  await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED');
 });
 
-test('a read rejection after lease revocation reports DELIVERY_SCOPE_CHANGED', async () => {
-  const { lease, revoke } = mintLease();
-  const remote: DeliveryRemote & DeliveryRecoveryRemote = {
-    async delivery() { revoke(); throw new Error('network down'); },
-    async dispatchDelivery() { throw new Error('must not be called'); },
-    async resolveDelivery() { throw new Error('must not be called'); },
-  };
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
-  );
-});
-
-test('a write rejection after lease revocation reports DELIVERY_SCOPE_CHANGED before translating API conflict', async () => {
-  const { lease, revoke } = mintLease();
-  const remote: DeliveryRemote & DeliveryRecoveryRemote = {
-    async delivery() { return recordWith('pushed'); },
-    async dispatchDelivery() {
-      revoke();
-      throw Object.assign(new Error('state conflict'), { status: 409 });
-    },
-    async resolveDelivery() { throw new Error('must not be called'); },
-  };
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
-  );
-});
-
-test('a 409 state conflict translates to DELIVERY_STATE_CONFLICT (both ApiError shapes)', async () => {
+test('409 conflict translates for both supported ApiError shapes', async () => {
   for (const shape of [
-    Object.assign(new Error('api error 409'), { status: 409 }),
-    Object.assign(new Error('api error 409'), { status: 409, code: 'code_delivery_state_conflict' }),
-    Object.assign(new Error('api error 409'), { status: 409, body: { code: 'code_delivery_state_conflict' } }),
-    Object.assign(new Error('api error'), { code: 'code_delivery_state_conflict' }),
-    Object.assign(new Error('api error'), { body: { code: 'code_delivery_state_conflict' } }),
+    Object.assign(new Error('409'), { status: 409, code: 'code_delivery_state_conflict' }),
+    Object.assign(new Error('409'), { status: 409, body: { code: 'code_delivery_state_conflict' } }),
+    Object.assign(new Error('conflict'), { code: 'code_delivery_state_conflict' }),
+    Object.assign(new Error('conflict'), { body: { code: 'code_delivery_state_conflict' } }),
   ]) {
     const remote: DeliveryRemote & DeliveryRecoveryRemote = {
       async delivery() { return recordWith('pushed'); },
       async dispatchDelivery() { throw shape; },
-      async resolveDelivery() { throw new Error('must not be called'); },
+      async resolveDelivery() { throw new Error('unexpected'); },
     };
     const { lease } = mintLease();
-    await assert.rejects(
-      () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-      (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_STATE_CONFLICT',
-    );
+    await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+      (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_STATE_CONFLICT');
   }
 });
 
-test('any other backend failure translates to DELIVERY_BACKEND', async () => {
+test('other backend failures translate to backend error', async () => {
   const remote: DeliveryRemote & DeliveryRecoveryRemote = {
     async delivery() { return recordWith('pushed'); },
-    async dispatchDelivery() { return Promise.reject(new Error('network down')); },
-    async resolveDelivery() { throw new Error('must not be called'); },
+    async dispatchDelivery() { throw new Error('network down'); },
+    async resolveDelivery() { throw new Error('unexpected'); },
   };
   const { lease } = mintLease();
-  await assert.rejects(
-    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
-    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_BACKEND',
-  );
+  await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_BACKEND');
+});
+
+test('revocation during read rejects before any write', async () => {
+  const internal = new RuntimeScopeLease({ deploymentOrigin: 'https://weknora.example.com', userId: 'u1', tenantId: 't1' });
+  const lease = internal.asScopeLease();
+  const calls: string[] = [];
+  const remote: DeliveryRemote & DeliveryRecoveryRemote = {
+    async delivery() { calls.push('delivery'); internal.revoke(); return recordWith('pushed'); },
+    async dispatchDelivery() { calls.push('dispatchDelivery'); return recordWith('delivered'); },
+    async resolveDelivery() { calls.push('resolveDelivery'); return recordWith('pushed'); },
+  };
+  await assert.rejects(() => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED');
+  assert.deepEqual(calls, ['delivery']);
+});
+
+
+test('a mismatched delivery id is invalid input before any recovery write', async () => {
+  const h = harness('pushed');
+  await assert.rejects(() => h.recover({ runId: 'run-1', deliveryId: 'other-delivery' }), (error: unknown) =>
+    error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_INVALID_INPUT');
+  assert.deepEqual(h.calls, ['delivery']);
 });

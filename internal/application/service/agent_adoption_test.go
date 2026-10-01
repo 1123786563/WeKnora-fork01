@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -53,19 +55,22 @@ func newAgentAdoptionServiceForTest(t *testing.T) (*AgentAdoptionService, *gorm.
 	return svc, db, agents
 }
 
-type transitionRejectingAdoptionRepository struct {
+type gatedCreateVariantRepository struct {
 	repository.AgentAdoptionRepository
+	reached chan struct{}
+	resume  <-chan struct{}
 }
 
-func (r transitionRejectingAdoptionRepository) CreateVariant(context.Context, *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
-	return nil, repository.ErrAgentAdoptionTransition
+func (r *gatedCreateVariantRepository) CreateVariant(ctx context.Context, variant *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
+	close(r.reached)
+	<-r.resume
+	return r.AgentAdoptionRepository.CreateVariant(ctx, variant)
 }
 
 // seedAdoptionServiceRelease publishes a real Release whose Manifest
 // requires the capabilities "model" and "knowledge".
 func seedAdoptionServiceRelease(t *testing.T, db *gorm.DB) (listingID, releaseID string) {
 	t.Helper()
-	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test') ON CONFLICT(id) DO NOTHING`).Error)
 	require.NoError(t, db.Exec(
 		`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES ('version-a', 1, 'agent-a', 1, '{}', 'sha', 'author')`,
 	).Error)
@@ -186,6 +191,53 @@ func TestAgentAdoptionServiceVariantsMappingTestPublish(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
 }
 
+func TestCreateVariantRechecksAdoptionAfterServicePrecheck(t *testing.T) {
+	svc, db, _ := newAgentAdoptionServiceForTest(t)
+	listingID, releaseID := seedAdoptionServiceRelease(t, db)
+	ctx := context.Background()
+	adoption, _, err := svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID})
+	require.NoError(t, err)
+
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	baseRepo := svc.repo
+	gate := &gatedCreateVariantRepository{AgentAdoptionRepository: baseRepo, reached: make(chan struct{}), resume: resume}
+	svc.repo = gate
+	type result struct {
+		view interfaces.AdoptionVariantView
+		err  error
+	}
+	created := make(chan result, 1)
+	go func() {
+		view, err := svc.CreateVariant(ctx, 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "racing", ReleaseID: releaseID})
+		created <- result{view: view, err: err}
+	}()
+
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not reach its repository insert")
+	}
+	_, err = repository.NewAgentAdoptionRepository(db).TransitionAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	resumeOnce.Do(func() { close(resume) })
+
+	select {
+	case got := <-created:
+		require.ErrorIs(t, got.err, ErrAgentAdoptionStateConflict)
+	case <-time.After(5 * time.Second):
+		t.Fatal("CreateVariant did not return after the repository gate opened")
+	}
+
+	variants, err := baseRepo.ListVariantsByAdoption(ctx, 1, adoption.ID)
+	require.NoError(t, err)
+	require.Empty(t, variants, "a stale active-state pre-check must not create a Variant after Adoption ends")
+	ended, err := baseRepo.GetAdoption(ctx, 1, adoption.ID)
+	require.NoError(t, err)
+	require.Equal(t, "ended", ended.State)
+}
+
 func TestAgentAdoptionServiceRejectsUnknownAndDuplicateCapabilities(t *testing.T) {
 	svc, db, _ := newAgentAdoptionServiceForTest(t)
 	listingID, _ := seedAdoptionServiceRelease(t, db)
@@ -207,35 +259,6 @@ func TestAgentAdoptionServiceRejectsUnknownAndDuplicateCapabilities(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, []string{"knowledge", "model"}, variant.MissingCapabilities, "an empty binding leaves the capability missing")
 	require.Equal(t, "draft", variant.State)
-}
-
-func TestAgentAdoptionServiceMapsRepositoryParentStateConflict(t *testing.T) {
-	db := openAgentVersionServiceTestDB(t)
-	listingID, releaseID := seedAdoptionServiceRelease(t, db)
-	baseRepo := repository.NewAgentAdoptionRepository(db)
-	adoption, _, err := baseRepo.AdoptListing(context.Background(), &types.AgentAdoptionEntity{
-		TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
-	})
-	require.NoError(t, err)
-	svc := NewAgentAdoptionService(
-		transitionRejectingAdoptionRepository{AgentAdoptionRepository: baseRepo},
-		&fakeAdoptionAgentSource{db: db},
-		fakeAdoptionVersions{},
-	)
-	_, err = svc.CreateVariant(context.Background(), 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "stale draft"})
-	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
-}
-
-func TestAgentAdoptionServiceMapsEndedAdoptionConflict(t *testing.T) {
-	svc, db, _ := newAgentAdoptionServiceForTest(t)
-	listingID, releaseID := seedAdoptionServiceRelease(t, db)
-	ctx := context.Background()
-	adoption, _, err := svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
-	require.NoError(t, err)
-	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "admin", "ended")
-	require.NoError(t, err)
-	_, _, err = svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
-	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
 }
 
 func TestAgentAdoptionServicePublishRefusesTamperedRelease(t *testing.T) {

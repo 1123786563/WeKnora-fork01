@@ -3,7 +3,6 @@ package codedelivery
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
@@ -28,11 +28,11 @@ type fixtureRun struct {
 	sessionID string
 }
 
-func (f fixtureRun) GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (RunIdentity, error) {
+func (f fixtureRun) GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string) (agentruntime.Run, error) {
 	if runID != "run-1" || ownerID != "u1" || tenantID != 7 {
-		return RunIdentity{}, errors.New("run_not_found")
+		return agentruntime.Run{}, errors.New("run_not_found")
 	}
-	return RunIdentity{SessionID: f.sessionID}, nil
+	return agentruntime.Run{Key: agentruntime.RunKey{TenantID: tenantID, RunID: runID}, SessionID: f.sessionID, Owner: ownerID}, nil
 }
 
 // fixtureConnections 同时实现 ConnectionReader 与 CredentialResolver（与生产
@@ -140,16 +140,15 @@ func newDeliveryFixture(t *testing.T, mutate func(root string)) *deliveryFixture
 	factory := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)
 	store := deliveryrepo.NewDeliveryStore(db)
 	dispatcher := NewDeliveryDispatcher(DispatcherDeps{
-		Connections: fixtureConnectionReader{source: connections}, Creds: connections, Guard: fixtureGuard{guard: guard},
+		Connections: connections, Creds: connections, Guard: guard,
 		GitHub: factory, GitLab: gitlabFactory, Workspace: workspace, Store: store,
-		ActionRows: fixtureActionRows{store: actionStore}, Runs: fixtureRun{sessionID: "s-1"},
+		ActionRows: actionStore, Runs: fixtureRun{sessionID: "s-1"},
 	})
-	bridge := fixtureActionBridge{delivery: dispatcher}
-	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, bridge, bridge)
+	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	svc := NewCodeDeliveryService(CodeDeliveryDeps{
-		Store: store, Actions: fixtureLifecycle{actions: actions}, ActionRows: fixtureActionRows{store: actionStore},
-		Connections: fixtureConnectionReader{source: connections}, Creds: connections,
-		GitHub: factory, GitLab: gitlabFactory, Providers: fixtureProviders{store: providers},
+		Store: store, Actions: actions, ActionRows: actionStore,
+		Connections: connections, Creds: connections,
+		GitHub: factory, GitLab: gitlabFactory, Providers: providers,
 		Workspace: workspace, Runs: fixtureRun{sessionID: "s-1"},
 		Dispatcher: dispatcher,
 	})
@@ -337,84 +336,4 @@ func TestDeliveryViewCarriesInitiatorAttribution(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "u1", view.Initiator,
 		"交付读面必须携带发起者（DeliveryRow.OwnerID 在 prepare 时已落库）")
-}
-
-type fixtureActionRows struct{ store *appconnectorrepo.ActionStore }
-
-func (a fixtureActionRows) FindAction(ctx context.Context, id string) (ActionRecord, error) {
-	r, e := a.store.FindAction(ctx, id)
-	if e != nil {
-		return ActionRecord{}, e
-	}
-	return ActionRecord{ID: r.ID, TenantID: r.TenantID, ActorID: r.ActorID, ConnectionID: r.ConnectionID, AppVersion: r.AppVersion, Target: r.Target, Risk: r.Risk, ArgsDigest: r.ArgsDigest, State: r.State, Fence: r.Fence, ArgsSnapshot: r.ArgsSnapshot, AuthVersion: r.AuthVersion, DigestVersion: int(r.DigestVersion), ProviderResult: r.ProviderResult}, nil
-}
-
-type fixtureProviders struct {
-	store *appconnectorrepo.InstallationStore
-}
-
-func (p fixtureProviders) GetInstallationByID(ctx context.Context, t uint64, id string) (ProviderInstallation, error) {
-	i, e := p.store.GetInstallationByID(ctx, t, id)
-	return ProviderInstallation{AppID: i.AppID}, e
-}
-
-type fixtureActionBridge struct{ delivery *DeliveryDispatcher }
-
-func (b fixtureActionBridge) Dispatch(ctx context.Context, s appconnectorsvc.ActionSnapshot, key string) (appconnectorsvc.DispatchOutcome, error) {
-	o, e := b.delivery.Dispatch(ctx, ActionSnapshot{ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target, AuthVersion: s.AuthVersion, Args: s.Args}, key)
-	if e != nil && errors.Is(e, ErrDispatchNotStarted) {
-		e = fmt.Errorf("%w: %w", appconnectorsvc.ErrDispatchNotStarted, e)
-	}
-	if e != nil && errors.Is(e, ErrDispatchUnknown) {
-		e = fmt.Errorf("%w: %w", appconnectorsvc.ErrDispatchUnknown, e)
-	}
-	return appconnectorsvc.DispatchOutcome{Status: o.Status, ProviderResult: o.ProviderResult}, e
-}
-func (b fixtureActionBridge) QueryProvider(ctx context.Context, s appconnectorsvc.ActionSnapshot, key string) (appconnectorsvc.DispatchOutcome, error) {
-	o, e := b.delivery.QueryProvider(ctx, ActionSnapshot{ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target, AuthVersion: s.AuthVersion, Args: s.Args}, key)
-	if e != nil && errors.Is(e, ErrDispatchUnknown) {
-		e = fmt.Errorf("%w: %w", appconnectorsvc.ErrDispatchUnknown, e)
-	}
-	return appconnectorsvc.DispatchOutcome{Status: o.Status, ProviderResult: o.ProviderResult}, e
-}
-func localSnapshot(s appconnectorsvc.ActionSnapshot) ActionSnapshot {
-	return ActionSnapshot{ID: s.ID, TenantID: s.TenantID, ActorID: s.ActorID, ConnectionID: s.ConnectionID, Target: s.Target, AuthVersion: s.AuthVersion, Args: s.Args}
-}
-
-type fixtureLifecycle struct {
-	actions *appconnectorsvc.ActionService
-}
-
-func (a fixtureLifecycle) Prepare(ctx context.Context, in ActionInput) (string, error) {
-	return a.actions.Prepare(ctx, appconnector.Action{TenantID: in.TenantID, ActorID: in.ActorID, ConnectionID: in.ConnectionID, Target: in.Target, Risk: in.Risk, AuthVersion: in.AuthVersion, Args: in.Args})
-}
-func (a fixtureLifecycle) Execute(ctx context.Context, id string) error {
-	e := a.actions.Execute(ctx, id)
-	if errors.Is(e, appconnectorsvc.ErrDispatchNotStarted) {
-		return fmt.Errorf("%w: %w", ErrDispatchNotStarted, e)
-	}
-	if errors.Is(e, appconnectorsvc.ErrDispatchUnknown) {
-		return fmt.Errorf("%w: %w", ErrDispatchUnknown, e)
-	}
-	return e
-}
-func (a fixtureLifecycle) ResolveUnknown(ctx context.Context, id string) error {
-	e := a.actions.ResolveUnknown(ctx, id)
-	if errors.Is(e, appconnectorsvc.ErrDispatchUnknown) {
-		return fmt.Errorf("%w: %w", ErrDispatchUnknown, e)
-	}
-	return e
-}
-
-type fixtureConnectionReader struct{ source *fixtureConnections }
-
-func (c fixtureConnectionReader) FindConnectionByID(ctx context.Context, id string) (ConnectionIdentity, error) {
-	v, e := c.source.FindConnectionByID(ctx, id)
-	return ConnectionIdentity{ID: v.ID, InstallationID: v.InstallationID, Kind: v.Kind, OwnerID: v.OwnerID, State: v.State, TenantID: v.TenantID, AuthVersion: v.AuthVersion}, e
-}
-
-type fixtureGuard struct{ guard appconnectorsvc.A02Guard }
-
-func (g fixtureGuard) Check(ctx context.Context, s ActionSubject, id string, v int64) error {
-	return g.guard.Check(ctx, appconnector.OCSubject{TenantID: s.TenantID, ActorID: s.ActorID}, id, v)
 }

@@ -2,11 +2,13 @@ package codedelivery
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
@@ -109,6 +111,27 @@ func TestPartialPushPRFailureRecoversWithoutRepush(t *testing.T) {
 	require.Equal(t, before["POST /pulls"]+1, after["POST /pulls"], "recovery retries ONLY the PR creation")
 }
 
+func TestDispatchAndResolveRejectMismatchedPersistedRunAndOwner(t *testing.T) {
+	for _, field := range []string{"run_id", "owner_id"} {
+		t.Run(field, func(t *testing.T) {
+			f := seededFixture(t)
+			view := firstDelivery(t, f)
+			before := snapshotCalls(f)
+			column, value := "run_id", "run-other"
+			if field == "owner_id" {
+				column, value = "owner_id", "u-other"
+			}
+			require.NoError(t, f.svc.deps.Store.DB().Table("code_deliveries").Where("id = ?", view.ID).Update(column, value).Error)
+			in := dispatchInput(view)
+			_, err := f.svc.DispatchDelivery(context.Background(), in)
+			require.ErrorIs(t, err, ErrNotDeliveryOwner)
+			_, err = f.svc.ResolveDeliveryUnknown(context.Background(), in)
+			require.ErrorIs(t, err, ErrNotDeliveryOwner)
+			require.Equal(t, before, snapshotCalls(f), "mismatched identities must be rejected before any provider operation")
+		})
+	}
+}
+
 func snapshotCalls(f *deliveryFixture) map[string]int {
 	out := map[string]int{}
 	for k, v := range f.github.Calls() {
@@ -178,8 +201,8 @@ func TestDispatchWithoutApprovalConsumesNothing(t *testing.T) {
 func TestTamperedSnapshotNeverReachesGitHub(t *testing.T) {
 	f := seededFixture(t)
 	snap := appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1", Args: []byte(`{"repo":"o/n"}`)}
-	_, err := f.dispatcher.Dispatch(context.Background(), localSnapshot(snap), "")
-	require.ErrorIs(t, err, ErrDispatchNotStarted)
+	_, err := f.dispatcher.Dispatch(context.Background(), snap, "")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
 	require.Zero(t, f.github.Calls()["POST /git/blobs"])
 }
 
@@ -195,14 +218,148 @@ func TestUnknownOutcomeResolvesFromRemoteFacts(t *testing.T) {
 	require.Equal(t, "unknown", view.ActionState)
 
 	f.github.liftBlackout()
-	view, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	view, err = f.svc.ResolveDeliveryUnknown(ctx, in)
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryPushed), view.State, "远端事实：分支已推、PR 缺席 → 部分完成")
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State, "A03 action and delivery must settle consistently")
 
 	view, err = f.svc.DispatchDelivery(ctx, dispatchInput(view)) // PR-only 恢复
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryDelivered), view.State)
 	require.Empty(t, f.github.Violations())
+}
+
+func TestDispatchedSucceededActionNeedsAndAcceptsConfirmation(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.failNextPRCreation()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), view.State)
+	require.NoError(t, f.svc.deps.Store.TransitionState(ctx, 7, view.ID, []string{string(DeliveryPushed)}, string(DeliveryDispatched), "simulated interrupted settlement"))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	require.Equal(t, string(DeliveryDispatched), firstDelivery(t, f).State)
+	in.ConfirmNoMatchingPR = true
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	require.NotEmpty(t, resolved.CommitSHA)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+}
+
+func TestDispatchedUnknownActionSettlesBothRecordsWithConfirmation(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryUnknown), view.State)
+	f.github.liftBlackout()
+	require.NoError(t, f.svc.deps.Store.TransitionState(ctx, 7, view.ID, []string{string(DeliveryUnknown)}, string(DeliveryDispatched), "simulated delayed action settlement"))
+	in := dispatchInput(view)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryConfirmationRequired)
+	in.ConfirmNoMatchingPR = true
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+}
+
+func TestUnknownResolutionSettlementFailureLeavesDeliveryAmbiguousAndRetriesReadOnly(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	f.github.liftBlackout()
+	require.NoError(t, f.db.Exec(`CREATE TRIGGER fail_action_success BEFORE UPDATE OF state ON app_actions WHEN NEW.state = 'succeeded' BEGIN SELECT RAISE(FAIL, 'injected settlement failure'); END`).Error)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	before := snapshotCalls(f)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionUnknown, action.State)
+	_, err = f.svc.DispatchDelivery(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryState)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"], "unknown action cannot enter create path")
+	require.NoError(t, f.db.Exec(`DROP TRIGGER fail_action_success`).Error)
+	before = snapshotCalls(f)
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	action, err = f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"], "resolve must remain read-only")
+}
+
+func TestUnknownResolutionPropagatesBranchLookupErrorWithoutWrites(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryUnknown), view.State)
+	f.github.liftBlackout()
+	f.github.failNextBranchRead()
+	before := snapshotCalls(f)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	var apiErr *GitHubAPIError
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, http.StatusServiceUnavailable, apiErr.Status)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionUnknown, action.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
+}
+
+func TestSucceededActionReconcilesAmbiguousDeliveryOnRetry(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	f.github.blackoutAfterRefCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	f.github.liftBlackout()
+	require.NoError(t, f.db.Exec(`CREATE TRIGGER fail_delivery_settle BEFORE UPDATE OF state ON code_deliveries WHEN NEW.state = 'pushed' BEGIN SELECT RAISE(FAIL, 'injected delivery settlement failure'); END`).Error)
+	in := dispatchInput(view)
+	in.ConfirmNoMatchingPR = true
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.Error(t, err)
+	require.Equal(t, string(DeliveryUnknown), firstDelivery(t, f).State)
+	action, err := f.svc.deps.ActionRows.FindAction(ctx, view.ActionID)
+	require.NoError(t, err)
+	require.Equal(t, appconnector.ActionSucceeded, action.State)
+	before := snapshotCalls(f)
+	_, err = f.svc.DispatchDelivery(ctx, in)
+	require.ErrorIs(t, err, ErrDeliveryState)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
+	require.NoError(t, f.db.Exec(`DROP TRIGGER fail_delivery_settle`).Error)
+	before = snapshotCalls(f)
+	resolved, err := f.svc.ResolveDeliveryUnknown(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryPushed), resolved.State)
+	require.Equal(t, before["POST /pulls"], snapshotCalls(f)["POST /pulls"])
 }
 
 // A02 拒绝（成员资格撤销）：动作不消费、零远端调用。

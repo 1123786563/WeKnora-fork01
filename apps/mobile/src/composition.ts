@@ -13,7 +13,8 @@ import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
 import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
 import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
-import { createDeliveryReader, createDeliveryRecovery, type DeliveryReader, type DeliveryRecovery } from '@weknora/mobile-core';
+import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
+import { createDeliveryRecovery, type DeliveryRecovery } from '@weknora/mobile-core';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
@@ -300,7 +301,7 @@ export function MobileTasks({ onOpenTask, onOpenLegacy, onOpenTaskOffice }: { on
   return createElement(TasksScreen, {
     key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
-    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
+    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string, runId: string }) => onOpenTask(card.taskId, card.runId) }),
     ...(onOpenLegacy === undefined ? {} : { onOpenLegacy }),
     ...(onOpenTaskOffice === undefined ? {} : { onOpenTaskOffice }),
   });
@@ -352,7 +353,8 @@ export function activeDeliveryReader(): DeliveryReader | undefined {
 
 const deliveryRecoveries = new Map<string, DeliveryRecovery>();
 
-/** Delivery recovery 按 deployment scope key 记忆化；读与恢复共用同一个 remote。 */
+/** Delivery recovery 按 deployment scope key 记忆化；同一 remote 结构实现读与恢复两端口
+ * （镜像 taskOfficeFor 的 `backend: remote, detail: remote` 范式，T05）。 */
 function deliveryRecoveryFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): DeliveryRecovery {
   return cachePut(deliveryRecoveries, deploymentScopeKey(origin, tenantId), () => {
     const remote = createMobileCodeDeliveryRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });

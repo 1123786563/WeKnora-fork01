@@ -14,19 +14,14 @@ function tsFiles(dir: string): string[] {
   });
 }
 
-test('a source guard finds no known mobile terminal input wiring markers (supplemental T25 #55 AC2 evidence)', () => {
+// T25 (#55) AC2：移动装配图结构性无终端输入通道——src 源树（除测试）零命中
+// terminal 门票签发与 WS 终端装配词。移动端的终端面只有材料域的只读投影
+// （MATERIAL_TERMINAL_READ_ONLY，task-material.ts:227）。
+test('the mobile source tree wires no terminal ticket or interactive terminal channel (T25 #55 AC2)', () => {
   for (const file of tsFiles(here)) {
     const source = readFileSync(file, 'utf8');
-    // This string scan is a supplemental guard, not exhaustive proof. The API
-    // client's packages/api-client/src/sandbox/terminal-surface.test.ts separately
-    // asserts that the only method exposed by that adapter is issueTicket.
-    for (const marker of [
-      'createSandboxTerminalApi', 'issueTicket', 'sandbox/terminal-ticket',
-      'WebSocket', 'terminalSocket', 'createTerminalWebSocket', 'socket.send(',
-      'sendInput(', 'writeInput(', 'sendTerminalInput(', 'writeTerminalInput(',
-      'terminal-input', '/terminal/input',
-    ]) {
-      assert.equal(source.includes(marker), false, `${file} must not reference known terminal input marker ${marker}`);
+    for (const marker of ['createSandboxTerminalApi', 'issueTicket', 'sandbox/terminal-ticket']) {
+      assert.equal(source.includes(marker), false, `${file} must not reference ${marker}: the mobile terminal is read-only by construction`);
     }
   }
 });
