@@ -55,8 +55,21 @@ export function probeNativeTaskCapabilities(presence: NativeTaskCapabilityPresen
 
 /** Detects installed Expo/native APIs lazily, so importing the probe in Node tests has no native side effects. */
 export function detectNativeTaskCapabilities(): NativeTaskCapabilities {
+  // Metro rejects dynamic require(name) ("Invalid call at line 59: require(name)") —
+  // static literals keep build-time resolution and the try/catch preserves the
+  // Node-test "absent module → undefined" semantics.
   const load = (name: string): Record<string, unknown> | undefined => {
-    try { return require(name) as Record<string, unknown>; } catch { return undefined; }
+    try {
+      switch (name) {
+        case 'expo-router': return require('expo-router') as Record<string, unknown>;
+        case 'expo-document-picker': return require('expo-document-picker') as Record<string, unknown>;
+        case 'expo-file-system': return require('expo-file-system') as Record<string, unknown>;
+        case 'react-native': return require('react-native') as Record<string, unknown>;
+        case 'expo-notifications': return require('expo-notifications') as Record<string, unknown>;
+        case 'expo-secure-store': return require('expo-secure-store') as Record<string, unknown>;
+        default: return undefined;
+      }
+    } catch { return undefined; }
   };
   const router = load('expo-router');
   const picker = load('expo-document-picker');
