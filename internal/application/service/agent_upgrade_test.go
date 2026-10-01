@@ -272,7 +272,7 @@ func TestAcceptUpgradeProposalMapsConcurrentAdoptionEndToConflict(t *testing.T) 
 		t.Fatal("AcceptUpgradeProposal did not reach CreateVariant after its state prechecks")
 	}
 
-	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	_, err = repository.NewAgentAdoptionRepository(db).TransitionAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
 	require.NoError(t, err)
 	resumeOnce.Do(func() { close(resume) })
 	select {
@@ -406,7 +406,7 @@ func TestAcceptUpgradeProposalRechecksAdoptionEndAfterVariantCreation(t *testing
 	var draft types.AgentAdoptionVariantEntity
 	require.NoError(t, db.Where("tenant_id = ? AND adoption_id = ?", 1, adoption.ID).First(&draft).Error)
 	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", 1, draft.ID).Update("state", "retired").Error)
-	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	_, err = repository.NewAgentAdoptionRepository(db).TransitionAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
 	require.NoError(t, err)
 	resumeOnce.Do(func() { close(resume) })
 	select {

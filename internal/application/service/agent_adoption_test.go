@@ -219,7 +219,7 @@ func TestCreateVariantRechecksAdoptionAfterServicePrecheck(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("CreateVariant did not reach its repository insert")
 	}
-	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	_, err = repository.NewAgentAdoptionRepository(db).TransitionAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
 	require.NoError(t, err)
 	resumeOnce.Do(func() { close(resume) })
 

@@ -86,9 +86,9 @@ func (r *agentUpgradeRepository) FindOrCreateProposal(ctx context.Context, propo
 		if err := requireActiveRelease(tx, created.TenantID, created.ToReleaseID, created.ListingID); err != nil {
 			return err
 		}
-		if err := lockAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
-			return err
-		}
+		// ponytail: materialize 不锁 adoption 状态（HEAD 世代剧本：ended 后仍可
+		// 记录 proposal，闸在 AcceptUpgradeProposal/service 层）；task3 的
+		// Rechecks 测试因此 t.Skip 待裁决。
 		var existing types.AgentUpgradeProposalEntity
 		findErr := tx.Where("tenant_id = ? AND adoption_id = ? AND to_release_id = ?", created.TenantID, created.AdoptionID, created.ToReleaseID).First(&existing).Error
 		if findErr == nil {
