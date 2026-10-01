@@ -3,7 +3,8 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow, OrderView, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './ui.tsx';
 // (D15-f) 共享购买状态词表：本页不再持有私有的三行内联文案。
 import { PURCHASE_STATE_LABEL } from './order-state.ts';
 

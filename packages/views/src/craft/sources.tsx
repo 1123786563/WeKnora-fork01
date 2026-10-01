@@ -8,7 +8,7 @@
 // every click — a share revoked after the run immediately yields the
 // permission error instead of replaying a cached link.
 import React, { useMemo } from 'react';
-import { Button } from '@weknora/ui';
+import { Button } from 'tdesign-react';
 import { craftStrings, formatBytes, type CraftLocale } from './presentation.ts';
 
 /** One knowledge source row, mirroring the backend material manifest. */

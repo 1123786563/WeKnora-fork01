@@ -69,7 +69,7 @@ export function documentMenuItems(input: DocumentMenuInput): DocumentMenuItem[] 
   }
   items.push({ action: 'reparse', labelKey: 'knowledgeBase.rebuildDocument' });
   if (inFlight) {
-    items.push({ action: 'cancel-parse', labelKey: 'knowledgeBase.documents.cancelParse' });
+    items.push({ action: 'cancel-parse', labelKey: 'knowledgeBase.cancelParse' });
   }
   if (input.canMutateKnowledge) {
     items.push({ action: 'move-folder', labelKey: 'knowledgeBase.moveToFolder.action' });

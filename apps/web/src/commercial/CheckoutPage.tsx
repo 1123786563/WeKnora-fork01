@@ -5,7 +5,8 @@ import type { OrderView, PurchaseView, QuoteView } from '@weknora/contracts';
 import { isSafeCheckoutUrl } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './ui.tsx';
 import { orderMessage, PURCHASE_STATE_LABEL } from './order-state.ts';
 
 const POLL_INTERVAL_MS = 3000;

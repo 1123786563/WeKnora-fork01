@@ -348,7 +348,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
         <div className="wk-kdd-11">
           <TButton type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</TButton>
           {canMutateDocument && traceState.parseStatus === 'failed' ? <TButton type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</TButton> : null}
-          {canMutateDocument && isKnowledgeProcessingActive(traceState.parseStatus) ? <TButton type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</TButton> : null}
+          {canMutateDocument && isKnowledgeProcessingActive(traceState.parseStatus) ? <TButton type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.cancelParse')}</TButton> : null}
         </div>
         {traceState.parseStatus === 'failed' ? <Status tone="error">{traceState.lastError?.error_message || t('knowledgeBase.timeline.failed')}</Status> : null}
         <ol className="wk-kdd-16" aria-label={t('knowledgeBase.timeline.title')}>

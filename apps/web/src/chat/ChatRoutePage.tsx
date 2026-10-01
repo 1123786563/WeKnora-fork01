@@ -9,6 +9,7 @@ import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/sessio
 // OCR 终局第 2 轮 f01：OAuth 回调路径收敛共享模块（原内嵌字面量四处副本之一）。
 import { MCP_OAUTH_CALLBACK_PATH } from '../plugins/oauth.ts';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { OpportunityImportPanel } from '../career/OpportunityPage.tsx';
 import { ChatHeader, SandboxHeaderToggle } from './chat-header.tsx';
 import './chat-u.css';
 import './views-chat-u.css';
@@ -2112,6 +2113,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
     stream={{ phase: streamState.phase, thinking: streamState.thinking, answer: streamState.answer, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    conversationActionSlot={<OpportunityImportPanel client={client} scopeController={scopeController} />}
     /* R471-A1 — Vue canSteer parity (chat/index.vue isAgentStreamSession()):
      * steer capability belongs to the session's pipeline, not to the presence
      * of a steer handler. selectedAgentId drives buildWebChatStreamOptions

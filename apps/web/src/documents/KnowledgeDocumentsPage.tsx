@@ -5285,7 +5285,7 @@ export function KnowledgeDocumentsPage({
                 <div className="wk-kd-120">
                   <TdButton type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</TdButton>
                   {traceState.parseStatus === "failed" ? <TdButton type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</TdButton> : null}
-                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <TdButton type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</TdButton> : null}
+                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <TdButton type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.cancelParse")}</TdButton> : null}
                 </div>
                 {traceState.parseStatus === "failed" ? <Status tone="error">{traceState.lastError?.error_message || t("knowledgeBase.timeline.failed")}</Status> : null}
                 <ol className="wk-kd-121" aria-label={t("knowledgeBase.timeline.title")}>
@@ -5326,10 +5326,10 @@ export function KnowledgeDocumentsPage({
         </Sheet>
       ) : null}
       {confirmingTraceCancel && traceDocument && canContribute ? (
-        <Dialog open title={t("knowledgeBase.documents.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
+        <Dialog open title={t("knowledgeBase.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
           <p>{t("knowledgeBase.cancelParseConfirmBody", { title: displayName(traceDocument) })}</p>
           <div className="wk-list-actions wk-kd-109">
-            <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</TdButton>
+            <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.cancelParse")}</TdButton>
             <TdButton type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</TdButton>
           </div>
         </Dialog>

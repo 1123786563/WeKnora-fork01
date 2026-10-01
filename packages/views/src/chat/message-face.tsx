@@ -638,9 +638,11 @@ export function BotMessageFace(props: {
   content: string;
   onBookmark?(messageId: string): void | Promise<void>;
   onCitationClick?(citationId: string): void;
-  /** Vue ChatReferencesDrawer 入口：折叠根「检索完成」切换共享引用面板。 */
+  /** CHAT-8 对齐 Vue toggleExpanded：折叠根「检索完成」只切换内联 RAG 时间线，
+   *  不再切换共享引用面板（面板仅由正文 citation 点击 activateCitation 打开）。
+   *  保留宿主透传口以稳定 message-list 接线；BotMessageFace 不再消费。 */
   onToggleReferences?(): void;
-  /** 共享引用面板当前开合态（折叠根 aria-expanded + chevron 方向）。 */
+  /** 共享引用面板当前开合态（仅透传 aria 语义；折叠根不再消费）。 */
   referencesOpen?: boolean;
 }) {
   const liveStatus = props.copy.searchDone;
@@ -652,7 +654,6 @@ export function BotMessageFace(props: {
             copy={props.copy}
             message={props.message}
             liveStatusText={liveStatus}
-            onToggle={props.onToggleReferences}
             referencesOpen={props.referencesOpen}
           />
           <AgentStreamAnswerFace

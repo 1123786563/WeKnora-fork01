@@ -8,7 +8,7 @@
 // decompresses or fabricates anything client-side.
 import React from 'react';
 import type { CraftInputView } from '@weknora/contracts';
-import { Button } from '@weknora/ui';
+import { Button } from 'tdesign-react';
 import type { CraftLocale } from './presentation.ts';
 
 /** The server's own archive-extension vocabulary (craft/archive.go). */
