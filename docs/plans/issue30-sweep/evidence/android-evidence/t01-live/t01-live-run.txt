@@ -1,0 +1,23 @@
+# T01 #31 Android live run — sanitized log (2026-10-02 04:50-04:58 CST)
+
+## backend chain (server-head @ HEAD 8042218c2 + local uncommitted fixes; secrets masked by backend)
+INFO [2026-10-02 04:56:04.650] [52553a96-25fe-43dc-8f24-6b48e7508836 client_ip=192.168.3.33 latency=337.209µs method=GET path=/api/v1/auth/oidc/url?code_challenge=m97T5hAKsTE4tDFqIXANtNHVzeU_KTN2sakBf5v6g-M&frontend_redirect_uri=weknora%3A%2F%2Foidc&redirect_u
+INFO [2026-10-02 04:56:15.557] [17f4659e-72a3-4124-82bf-b63ea0649bb6 client_ip=192.168.3.33 latency=145.982959ms method=GET path=/api/v1/auth/oidc/callback?code=***&state=*** response_body=<a href="weknora://oidc?code=***&amp;state=***">Found</a>.   size=463 s
+INFO [2026-10-02 04:56:16.278] [9bf7f15a-3fc1-4946-a05b-a3fd5d3abbd2 client_ip=192.168.3.33 latency=13.757875ms method=POST path=/api/v1/auth/mobile/exchange request_body=[非文本类型，已跳过] response_body={"success":true,"message":"OIDC exchange successful","user":{"i
+INFO [2026-10-02 04:56:16.291] [6df42222-c6ad-4a40-935d-c92044751edf client_ip=192.168.3.33 latency=2.413708ms method=GET path=/api/v1/auth/me response_body={"data":{"capabilities":{"auto_accept_invitation":false,"can_create_tenant":true},"memberships":[{"tena
+INFO [2026-10-02 04:56:16.297] [471953b2-de33-4875-bfb9-ce9258b963fc client_ip=192.168.3.33 latency=1.003917ms method=GET path=/api/v1/system/capabilities response_body={"code":0,"data":{"edition":"standard","capabilities":{"agents":{"supported":true},"integra
+INFO [2026-10-02 04:56:16.366] [7489bbb6-f6a7-4250-ab75-47e7676dedc0 client_ip=192.168.3.33 latency=1.819042ms method=GET path=/api/v1/auth/me response_body={"data":{"capabilities":{"auto_accept_invitation":false,"can_create_tenant":true},"memberships":[{"tena
+INFO [2026-10-02 04:56:16.374] [c2eb5e26-a41b-44f2-bae9-2f6457636b82 client_ip=192.168.3.33 latency=1.029417ms method=GET path=/api/v1/system/capabilities response_body={"code":0,"data":{"edition":"standard","capabilities":{"agents":{"supported":true},"integra
+
+## nginx TLS chain (Chrome UA = browser authorize/callback; okhttp UA = app)
+192.168.3.33 - - [02/Oct/2026:04:56:44 +0800] "GET /api/v1/workbench/inbox HTTP/1.1" 500 103 "-" "okhttp/4.12.0"
+192.168.3.33 - - [02/Oct/2026:04:57:01 +0800] "GET /api/v1/workbench/inbox HTTP/1.1" 500 103 "-" "okhttp/4.12.0"
+192.168.3.33 - - [02/Oct/2026:04:57:01 +0800] "GET /api/v1/workbench/inbox HTTP/1.1" 500 103 "-" "okhttp/4.12.0"
+192.168.3.33 - - [02/Oct/2026:04:57:01 +0800] "GET /api/v1/workbench/inbox HTTP/1.1" 500 103 "-" "okhttp/4.12.0"
+192.168.3.33 - - [02/Oct/2026:04:57:01 +0800] "GET /api/v1/workbench/inbox HTTP/1.1" 500 103 "-" "okhttp/4.12.0"
+192.168.3.33 - - [02/Oct/2026:04:57:44 +0800] "GET /api/v1/workbench/executions?limit=20 HTTP/1.1" 500 94 "-" "okhttp/4.12.0"
+
+## device JS (logcat ReactNativeJS, curated; one-time values truncated)
+10-02 04:56:15.573 11562 11598 I ReactNativeJS: '[auth-return] delivering', 'weknora://oidc?code=<43B>'
+10-02 04:56:15.628 11562 11598 I ReactNativeJS: '[oidc-debug] exchanging code len', 43, 'state len', 366
+10-02 04:56:16.182 11562 11598 I ReactNativeJS: '[oidc-debug] exchange ok, token len', 283
