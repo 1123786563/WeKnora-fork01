@@ -1,0 +1,210 @@
+diff --git a/internal/application/repository/agent_upgrade.go b/internal/application/repository/agent_upgrade.go
+index a30e444d2..58d34d0a5 100644
+--- a/internal/application/repository/agent_upgrade.go
++++ b/internal/application/repository/agent_upgrade.go
+@@ -153,14 +153,36 @@ func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantI
+ 				}
+ 				return err
+ 			}
+-			var adoption types.AgentAdoptionEntity
+-			if err := tx.Where("tenant_id = ? AND id = ? AND listing_id = ?", tenantID, proposal.AdoptionID, proposal.ListingID).First(&adoption).Error; err != nil {
+-				return ErrAgentUpgradeProposalTransition
+-			}
++			// Lock in the same listing -> release -> adoption order as adoption
++			// creation/reconciliation. Keep all guards in the CAS transaction.
+ 			if err := requireListedListing(tx, tenantID, proposal.ListingID); err != nil {
+-				return ErrAgentUpgradeProposalTransition
++				if isUpgradeLifecycleConflict(err) {
++					return ErrAgentUpgradeProposalTransition
++				}
++				return err
+ 			}
+ 			if err := requireActiveRelease(tx, tenantID, proposal.ToReleaseID, proposal.ListingID); err != nil {
++				if isUpgradeLifecycleConflict(err) {
++					return ErrAgentUpgradeProposalTransition
++				}
++				return err
++			}
++			// This final source check runs after the service has created its
++			// intentionally separate draft Variant.
++			if err := lockAdoptionState(tx, tenantID, proposal.AdoptionID, "active"); err != nil {
++				if isUpgradeLifecycleConflict(err) {
++					return ErrAgentUpgradeProposalTransition
++				}
++				return err
++			}
++			var adoption types.AgentAdoptionEntity
++			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, proposal.AdoptionID).First(&adoption).Error; err != nil {
++				if errors.Is(err, gorm.ErrRecordNotFound) {
++					return ErrAgentUpgradeProposalTransition
++				}
++				return err
++			}
++			if adoption.State != "active" || adoption.ListingID != proposal.ListingID || adoption.AcceptedReleaseID != proposal.FromReleaseID {
+ 				return ErrAgentUpgradeProposalTransition
+ 			}
+ 		}
+@@ -194,3 +216,12 @@ func (r *agentUpgradeRepository) TransitionProposal(ctx context.Context, tenantI
+ 	})
+ 	return updated, err
+ }
++
++func isUpgradeLifecycleConflict(err error) bool {
++	return errors.Is(err, ErrAgentAdoptionNotFound) ||
++		errors.Is(err, ErrAgentAdoptionTransition) ||
++		errors.Is(err, ErrAgentMarketplaceNotFound) ||
++		errors.Is(err, ErrAgentMarketplaceListingTransition) ||
++		errors.Is(err, ErrAgentMarketplaceListingUnavailable) ||
++		errors.Is(err, ErrAgentMarketplaceReleaseDeprecated)
++}
+diff --git a/internal/application/repository/agent_upgrade_test.go b/internal/application/repository/agent_upgrade_test.go
+index 3499a1fc9..02cd22a8a 100644
+--- a/internal/application/repository/agent_upgrade_test.go
++++ b/internal/application/repository/agent_upgrade_test.go
+@@ -20,7 +20,7 @@ func openUpgradeProposalDB(t *testing.T) *gorm.DB {
+ 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
+ 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+ 	require.NoError(t, err)
+-	require.NoError(t, db.AutoMigrate(&types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{}))
++	require.NoError(t, db.AutoMigrate(&types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{}, &types.AgentMarketplaceListingEntity{}, &types.AgentReleaseEntity{}))
+ 	// AutoMigrate 不创建 uq_agent_upgrade_proposals_scope（实体无 uniqueIndex
+ 	// tag）；显式补建使 FindOrCreateProposal 的竞态分支由真实唯一索引驱动，
+ 	// 与迁移 000120/000200 的生产 DDL 一致。
+@@ -91,6 +91,10 @@ func TestAgentUpgradeRepositoryTransitionProposalCAS(t *testing.T) {
+ 	db := openUpgradeProposalDB(t)
+ 	repo := NewAgentUpgradeRepository(db)
+ 	ctx := context.Background()
++	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "agent1", DisplayName: "Agent", State: "listed"}).Error)
++	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "v1", SourceAgentID: "agent1", SemanticVersion: "1.0.0", BundleDigest: "d1", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
++	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "v2", SourceAgentID: "agent1", SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
++	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin"}).Error)
+ 	require.NoError(t, db.Create(&types.AgentUpgradeProposalEntity{
+ 		TenantID: 1, ID: "p1", AdoptionID: "a1", ListingID: "l1",
+ 		FromReleaseID: "r1", ToReleaseID: "r2", State: "open",
+@@ -116,6 +120,23 @@ func TestAgentUpgradeRepositoryTransitionProposalCAS(t *testing.T) {
+ 	require.ErrorIs(t, err, ErrAgentUpgradeProposalNotFound)
+ }
+ 
++func TestAgentUpgradeRepositoryTransitionProposalPreservesStorageError(t *testing.T) {
++	db := openUpgradeProposalDB(t)
++	repo := NewAgentUpgradeRepository(db)
++	ctx := context.Background()
++	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "agent1", DisplayName: "Agent", State: "listed"}).Error)
++	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "v2", SourceAgentID: "agent1", SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
++	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin"}).Error)
++	require.NoError(t, db.Create(&types.AgentUpgradeProposalEntity{TenantID: 1, ID: "p1", AdoptionID: "a1", ListingID: "l1", FromReleaseID: "r1", ToReleaseID: "r2", State: "open"}).Error)
++	require.NoError(t, db.Exec(`CREATE TRIGGER fail_adoption_guard BEFORE UPDATE ON agent_adoptions BEGIN SELECT RAISE(ABORT, 'injected adoption storage failure'); END`).Error)
++
++	_, err := repo.TransitionProposal(ctx, 1, "p1", []string{"open"}, "accepted", map[string]any{"accepted_variant_id": "v9"})
++	require.Error(t, err)
++	require.NotErrorIs(t, err, ErrAgentUpgradeProposalTransition)
++	require.NotErrorIs(t, err, ErrAgentUpgradeProposalNotFound)
++	require.Contains(t, err.Error(), "injected adoption storage failure")
++}
++
+ func TestAgentUpgradeRepositoryProposalTenantScope(t *testing.T) {
+ 	db := openUpgradeProposalDB(t)
+ 	repo := NewAgentUpgradeRepository(db)
+diff --git a/internal/application/service/agent_upgrade_test.go b/internal/application/service/agent_upgrade_test.go
+index b82c9c131..b4b641bcd 100644
+--- a/internal/application/service/agent_upgrade_test.go
++++ b/internal/application/service/agent_upgrade_test.go
+@@ -378,6 +378,98 @@ func TestAcceptUpgradeProposalRechecksLifecycleAfterVariantCreation(t *testing.T
+ 	require.Equal(t, AgentVariantStateDraft, variants[0].State)
+ }
+ 
++func TestAcceptUpgradeProposalRechecksAdoptionEndAfterVariantCreation(t *testing.T) {
++	svc, db := newAgentUpgradeServiceForTest(t)
++	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
++	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
++	_, _ = publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
++	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
++	require.NoError(t, err)
++	require.Len(t, proposals, 1)
++
++	baseRepo := svc.repo
++	resume := make(chan struct{})
++	var resumeOnce sync.Once
++	defer resumeOnce.Do(func() { close(resume) })
++	gate := &gatedUpgradeTransitionRepository{AgentUpgradeRepository: baseRepo, reached: make(chan struct{}), resume: resume}
++	svc.repo = gate
++	accepted := make(chan error, 1)
++	go func() {
++		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "retired orphan"})
++		accepted <- err
++	}()
++	select {
++	case <-gate.reached:
++	case <-time.After(5 * time.Second):
++		t.Fatal("AcceptUpgradeProposal did not reach TransitionProposal after draft creation")
++	}
++	var draft types.AgentAdoptionVariantEntity
++	require.NoError(t, db.Where("tenant_id = ? AND adoption_id = ?", 1, adoption.ID).First(&draft).Error)
++	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND id = ?", 1, draft.ID).Update("state", "retired").Error)
++	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(context.Background(), 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
++	require.NoError(t, err)
++	resumeOnce.Do(func() { close(resume) })
++	select {
++	case err := <-accepted:
++		require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
++		require.ErrorIs(t, err, repository.ErrAgentUpgradeProposalTransition)
++	case <-time.After(5 * time.Second):
++		t.Fatal("AcceptUpgradeProposal did not return after ending Adoption")
++	}
++	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
++	require.NoError(t, err)
++	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
++	require.Empty(t, proposal.AcceptedVariantID)
++}
++
++func TestAcceptUpgradeProposalRechecksAcceptedReleaseAfterVariantCreation(t *testing.T) {
++	svc, db := newAgentUpgradeServiceForTest(t)
++	listingID, fromReleaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
++	adoption := adoptUpgradeRelease(t, db, listingID, fromReleaseID)
++	_, targetReleaseID := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
++	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
++	require.NoError(t, err)
++	require.Len(t, proposals, 1)
++	_, advancedTo := publishUpgradeServiceRelease(t, db, 3, "1.2.0", upgradeManifestV3, upgradeLockV1, upgradeBundleV3)
++
++	baseRepo := svc.repo
++	resume := make(chan struct{})
++	var resumeOnce sync.Once
++	defer resumeOnce.Do(func() { close(resume) })
++	gate := &gatedUpgradeTransitionRepository{AgentUpgradeRepository: baseRepo, reached: make(chan struct{}), resume: resume}
++	svc.repo = gate
++	accepted := make(chan error, 1)
++	go func() {
++		_, _, err := svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "stale source"})
++		accepted <- err
++	}()
++	select {
++	case <-gate.reached:
++	case <-time.After(5 * time.Second):
++		t.Fatal("AcceptUpgradeProposal did not reach TransitionProposal after draft creation")
++	}
++	_, _, err = repository.NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{
++		TenantID: 1, ListingID: listingID, AcceptedReleaseID: advancedTo, State: "active", CreatedBy: "admin",
++	})
++	require.NoError(t, err)
++	resumeOnce.Do(func() { close(resume) })
++	select {
++	case err := <-accepted:
++		require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
++		require.ErrorIs(t, err, repository.ErrAgentUpgradeProposalTransition)
++	case <-time.After(5 * time.Second):
++		t.Fatal("AcceptUpgradeProposal did not return after advancing the accepted Release")
++	}
++	proposal, err := baseRepo.GetProposal(context.Background(), 1, proposals[0].ID)
++	require.NoError(t, err)
++	require.Equal(t, AgentUpgradeProposalStateOpen, proposal.State)
++	require.Empty(t, proposal.AcceptedVariantID)
++	var current types.AgentAdoptionEntity
++	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, adoption.ID).First(&current).Error)
++	require.Equal(t, advancedTo, current.AcceptedReleaseID)
++	require.NotEqual(t, targetReleaseID, advancedTo)
++}
++
+ func TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades(t *testing.T) {
+ 	svc, db := newAgentUpgradeServiceForTest(t)
+ 	ctx := context.Background()

@@ -137,7 +137,8 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 		}
 	}
 	if toRelease.DeprecatedAt != nil {
-		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentUpgradeStateConflict, toRelease.ID, successorHint(toRelease.SuccessorReleaseID))
+		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{},
+			fmt.Errorf("%w: proposed release %s is deprecated; successor: %s", ErrAgentUpgradeStateConflict, toRelease.ID, successorHint(toRelease.SuccessorReleaseID))
 	}
 	// 接受 = 以新 Release 创建一个新的草稿 Variant（spec §9）。随后走 #59
 	// 既有 mapping/test/publish 流程；本方法绝不触碰其他 Variant 或既有
@@ -161,8 +162,11 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) || errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: source listing or release is no longer eligible", ErrAgentUpgradeStateConflict)
+		}
 		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
-			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: adoption state changed before upgrade variant creation", ErrAgentUpgradeStateConflict)
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w", ErrAgentUpgradeStateConflict, err)
 		}
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, err
 	}
@@ -177,6 +181,9 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 	updated, err := s.repo.TransitionProposal(ctx, tenantID, row.ID, []string{AgentUpgradeProposalStateOpen}, AgentUpgradeProposalStateAccepted,
 		map[string]any{"accepted_variant_id": variant.ID, "resolved_by": actorID})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentUpgradeProposalTransition) {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w: source listing or release is no longer eligible", ErrAgentUpgradeStateConflict, err)
+		}
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, err
 	}
 	proposal, err := decodeUpgradeProposal(updated)
@@ -314,6 +321,11 @@ func (s *AgentUpgradeService) reconcileProposals(ctx context.Context, tenantID u
 			ToSemanticVersion: toRelease.SemanticVersion, DiffJSON: string(raw),
 			State: AgentUpgradeProposalStateOpen,
 		}); err != nil {
+			if errors.Is(err, repository.ErrAgentMarketplaceListingUnavailable) || errors.Is(err, repository.ErrAgentMarketplaceReleaseDeprecated) || errors.Is(err, repository.ErrAgentAdoptionTransition) {
+				// Eligibility changed after the reconcile snapshot; the transactional
+				// repository guard deliberately refuses stale materialization.
+				continue
+			}
 			return err
 		}
 		materialized[adoption.ID+"\x00"+toReleaseID] = struct{}{}

@@ -22,8 +22,6 @@ var (
 	ErrAgentMarketplaceReviewConflict       = errors.New("agent marketplace submission already has a review")
 	ErrAgentMarketplaceVersionAgentMismatch = errors.New("agent marketplace version does not belong to source agent")
 	ErrAgentLicenseIDRequired               = errors.New("agent marketplace license id is required")
-	ErrAgentMarketplaceLifecycleTransition  = errors.New("agent marketplace lifecycle transition failed")
-	ErrAgentMarketplaceLifecycleInvalid     = errors.New("invalid agent marketplace lifecycle request")
 )
 
 const reviewAndPublishAttempts = 5
@@ -45,6 +43,8 @@ type AgentMarketplaceRepository interface {
 	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
 	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
 	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
+	TransitionListingState(context.Context, uint64, string, string, string, map[string]any) (*types.AgentMarketplaceListingEntity, error)
+	DeprecateRelease(context.Context, uint64, string, string, string) (*types.AgentReleaseEntity, error)
 	UnlistTenantListing(context.Context, uint64, string, string, string) (*types.AgentMarketplaceListingEntity, error)
 	DeprecateTenantRelease(context.Context, uint64, string, string, string, string) (*types.AgentReleaseEntity, error)
 }
@@ -65,74 +65,6 @@ type agentMarketplaceRepository struct{ db *gorm.DB }
 
 func NewAgentMarketplaceRepository(db *gorm.DB) AgentMarketplaceRepository {
 	return &agentMarketplaceRepository{db: db}
-}
-
-// UnlistTenantListing records a tenant-owned catalog transition by CAS. The
-// Listing and its immutable Releases remain present for existing Adoptions.
-func (r *agentMarketplaceRepository) UnlistTenantListing(ctx context.Context, tenantID uint64, listingID, actorID, reason string) (*types.AgentMarketplaceListingEntity, error) {
-	listingID, actorID, reason = strings.TrimSpace(listingID), strings.TrimSpace(actorID), strings.TrimSpace(reason)
-	if tenantID == 0 || listingID == "" || actorID == "" || reason == "" {
-		return nil, ErrAgentMarketplaceLifecycleInvalid
-	}
-	now := time.Now().UTC()
-	result := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).
-		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, "listed").
-		Updates(map[string]any{"state": "unlisted", "unlisted_by": actorID, "unlisted_at": now, "unlist_reason": reason, "updated_at": now})
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected != 1 {
-		var count int64
-		if err := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", tenantID, listingID).Count(&count).Error; err != nil {
-			return nil, err
-		}
-		if count == 0 {
-			return nil, ErrAgentMarketplaceNotFound
-		}
-		return nil, ErrAgentMarketplaceLifecycleTransition
-	}
-	return r.GetListing(ctx, tenantID, listingID)
-}
-
-// DeprecateTenantRelease appends lifecycle metadata to an immutable Release.
-// A replacement must be a different Release from the same tenant Listing.
-func (r *agentMarketplaceRepository) DeprecateTenantRelease(ctx context.Context, tenantID uint64, releaseID, replacementID, actorID, reason string) (*types.AgentReleaseEntity, error) {
-	releaseID, replacementID = strings.TrimSpace(releaseID), strings.TrimSpace(replacementID)
-	actorID, reason = strings.TrimSpace(actorID), strings.TrimSpace(reason)
-	if tenantID == 0 || releaseID == "" || replacementID == "" || releaseID == replacementID || actorID == "" || reason == "" {
-		return nil, ErrAgentMarketplaceLifecycleInvalid
-	}
-	var changed types.AgentReleaseEntity
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var current types.AgentReleaseEntity
-		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&current).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrAgentMarketplaceNotFound
-			}
-			return err
-		}
-		var replacement types.AgentReleaseEntity
-		if err := tx.Where("tenant_id = ? AND listing_id = ? AND id = ?", tenantID, current.ListingID, replacementID).First(&replacement).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrAgentMarketplaceLifecycleInvalid
-			}
-			return err
-		}
-		now := time.Now().UTC()
-		updated := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ? AND deprecated_at IS NULL", tenantID, releaseID).
-			Updates(map[string]any{"deprecated_by": actorID, "deprecated_at": now, "deprecation_reason": reason, "replacement_release_id": replacementID})
-		if updated.Error != nil {
-			return updated.Error
-		}
-		if updated.RowsAffected != 1 {
-			return ErrAgentMarketplaceLifecycleTransition
-		}
-		return tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&changed).Error
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &changed, nil
 }
 
 func (r *agentMarketplaceRepository) CreateSubmission(ctx context.Context, listing *types.AgentMarketplaceListingEntity, submission *types.AgentReleaseSubmissionEntity) (*types.AgentReleaseSubmissionEntity, error) {
@@ -377,4 +309,77 @@ func (r *agentMarketplaceRepository) GetListing(ctx context.Context, tenantID ui
 		return nil, err
 	}
 	return &row, nil
+}
+
+var (
+	// 兼容 HEAD 世代的 lifecycle API（service 层旧调用方在用）；实现与
+	// TransitionListingState 同底（CAS + 审计列），只是窄语义封装。
+	ErrAgentMarketplaceLifecycleTransition = errors.New("agent marketplace lifecycle transition failed")
+	ErrAgentMarketplaceLifecycleInvalid    = errors.New("invalid agent marketplace lifecycle request")
+)
+
+func (r *agentMarketplaceRepository) UnlistTenantListing(ctx context.Context, tenantID uint64, listingID, actorID, reason string) (*types.AgentMarketplaceListingEntity, error) {
+	listingID, actorID, reason = strings.TrimSpace(listingID), strings.TrimSpace(actorID), strings.TrimSpace(reason)
+	if tenantID == 0 || listingID == "" || actorID == "" || reason == "" {
+		return nil, ErrAgentMarketplaceLifecycleInvalid
+	}
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, listingID, "listed").
+		Updates(map[string]any{"state": "unlisted", "unlisted_by": actorID, "unlisted_at": now, "unlist_reason": reason, "updated_at": now})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		var count int64
+		if err := r.db.WithContext(ctx).Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", tenantID, listingID).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			return nil, ErrAgentMarketplaceNotFound
+		}
+		return nil, ErrAgentMarketplaceLifecycleTransition
+	}
+	return r.GetListing(ctx, tenantID, listingID)
+}
+
+// DeprecateTenantRelease appends lifecycle metadata to an immutable Release.
+// A replacement must be a different Release from the same tenant Listing.
+func (r *agentMarketplaceRepository) DeprecateTenantRelease(ctx context.Context, tenantID uint64, releaseID, replacementID, actorID, reason string) (*types.AgentReleaseEntity, error) {
+	releaseID, replacementID = strings.TrimSpace(releaseID), strings.TrimSpace(replacementID)
+	actorID, reason = strings.TrimSpace(actorID), strings.TrimSpace(reason)
+	if tenantID == 0 || releaseID == "" || replacementID == "" || releaseID == replacementID || actorID == "" || reason == "" {
+		return nil, ErrAgentMarketplaceLifecycleInvalid
+	}
+	var changed types.AgentReleaseEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current types.AgentReleaseEntity
+		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentMarketplaceNotFound
+			}
+			return err
+		}
+		var replacement types.AgentReleaseEntity
+		if err := tx.Where("tenant_id = ? AND listing_id = ? AND id = ?", tenantID, current.ListingID, replacementID).First(&replacement).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentMarketplaceLifecycleInvalid
+			}
+			return err
+		}
+		now := time.Now().UTC()
+		updated := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ? AND deprecated_at IS NULL", tenantID, releaseID).
+			Updates(map[string]any{"deprecated_by": actorID, "deprecated_at": now, "deprecation_reason": reason, "replacement_release_id": replacementID})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrAgentMarketplaceLifecycleTransition
+		}
+		return tx.Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&changed).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &changed, nil
 }

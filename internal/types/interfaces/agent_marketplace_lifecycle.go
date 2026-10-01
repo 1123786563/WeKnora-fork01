@@ -6,7 +6,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// AgentMarketplaceLifecycleService owns Tenant marketplace lifecycle actions.
+// AgentMarketplaceLifecycleService performs tenant-scoped lifecycle changes
+// for adopted variants, adoptions, listings, and releases.
 type AgentMarketplaceLifecycleService interface {
 	RetireVariant(ctx context.Context, tenantID uint64, actorID, variantID string) (AdoptionVariantView, error)
 	EndAdoption(ctx context.Context, tenantID uint64, actorID, adoptionID string) (AdoptionView, error)

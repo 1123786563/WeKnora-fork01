@@ -20,12 +20,19 @@
 
 | Task | Self-consistency check | Status |
 |---|---|---|
-| 2 | Specified transactional end precondition/CAS, listing CAS, release deprecation CAS, tenant scoping and retired-agent query each have explicit repository tests and exact signatures | Ready |
+| 2 | Transactional end precondition, tenant/id/expected-state Adoption guard shared with CreateVariant, listing/release CAS, and retired-agent query have explicit repository/service concurrency tests and exact signatures | Verified |
 
 ## Task status
 - Task 1: verified and integrated; versioned/PostgreSQL runtime remains unverified and must remain a stated risk.
-- Task 2: implementation and tenant-identity guard commits remain integrated. Repair round 1 is committed at `4fed833ab28c3846ede6c8a71260e3fcddbd0603` from BASE `3b2429119d4b11a6a5b4d4f15238dd65c0be3118`; plan/report: `.superpowers/sdd/plan-t63/task-2-fix-round1-plan.md`, `.superpowers/sdd/plan-t63/task-2-fix-round1-report.md`. Review Package `.superpowers/sdd/plan-t63/task-2-fix-round1-review.patch` SHA-256 `09f96650133c775d459e9b4209ddb8dd220a7e96a38c33434c3fb7de22871690`. Targeted SQLite/service and race checks pass; repair round 1 independently reviewed PASS. Repair round 2 code commit `1d957470b2032cc876924d469f90ef8ca0fc1668` (BASE `7dd4074323c658d51c3012a87533d260fc1066cb`) is independently reviewed PASS. Round 2 plan/report: `.superpowers/sdd/plan-t63/task-2-fix-round2-plan.md`, `.superpowers/sdd/plan-t63/task-2-fix-round2-report.md`; exact patch SHA-256 `2a5400cd43df81250bcc9478bfcd07c64bf2fade4cb1b42345f0eb72c41c63dc`. Full repository package test was stopped after ~6m20s after two delivery collaboration HTTP test failures; see Task 2 report.
-- Task 3: blocked on T2 review/integration.
+- Task 2: verified and integrated. Initial implementation commit `6346ca0ee8e194e87080f858f5ba2f27660a0752`, tenant identity repair `81abe4136d654f8e272ab8531dcb9bbe08624f42`, race serialization repair `4fed833ab28c3846ede6c8a71260e3fcddbd0603`, and concurrent-upgrade conflict repair `1d957470b2032cc876924d469f90ef8ca0fc1668`; integrated HEAD through docs checkpoint `c02c603ac`. Round 1 fixed CreateVariant/EndAdoption interleaving using the shared expected-state row UPDATE guard; independent review found one medium regression in concurrent upgrade acceptance. Round 2 maps that sentinel to `ErrAgentUpgradeStateConflict`; gated test proves an end committed after upgrade prechecks returns conflict and inserts no Variant. Round 2 review package `.superpowers/sdd/plan-t63/task-2-fix-round2-review.patch`, SHA-256 `2a5400cd43df81250bcc9478bfcd07c64bf2fade4cb1b42345f0eb72c41c63dc`; Spec PASS / Quality PASS. Evidence: repository lifecycle tests and focused service suite passed on integration; implementer also reports 5 repeated SQLite interleavings and service `-race` PASS. PostgreSQL runtime is unavailable; lock semantics were verified from guarded UPDATE behavior by reviewer. Initial full repository run stopped at two delivery collaboration fixture failures; a BASE reproduction is running in `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep` to determine whether those are pre-existing.
+- Task 3: ready; all Task 2 interfaces/code are reviewed and integrated at current T63 head.
 - Task 4: blocked on T3.
 - Task 5: blocked on T2/T3.
 - Task 6: blocked on T4/T5.
+
+## Task 2 review and integration checkpoint
+
+- Integration branch: `codex/issue30-b6-t63-cont`; BASE `197794496`, integrated Task 2 HEAD before this documentation update: `c02c603ac`.
+- Independent round-1 reviewer confirmed the shared tenant/id/state guarded UPDATE closes the CreateVariant/EndAdoption race under PostgreSQL READ COMMITTED and SQLite; found the upgrade acceptance error mapping regression, fixed in round 2.
+- Task 2 integration verification: `go test ./internal/application/repository/ -run 'Test(EndAdoptionRequiresAllVariantsRetiredAndIsTransactional|CreateVariantAndEndAdoptionSerializeOnAdoptionRow|TransitionListingStateIsCAS|DeprecateReleaseIsCASAndPointsAtSuccessor|RetiredVariantAgentExists|AgentMarketplaceLifecycleMigrationColumns)$' -count=1` PASS; `go test ./internal/application/service/ -run 'TestAcceptUpgradeProposalMapsConcurrentAdoptionEndToConflict|TestAgentUpgradeService' -count=1` PASS; `git diff --check` PASS.
+- External repo-wide failures remain under baseline comparison; they do not involve Task 2 owned files.

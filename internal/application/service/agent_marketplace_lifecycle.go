@@ -19,13 +19,13 @@ var (
 
 const AgentAdoptionStateEnded = "ended"
 
-var _ interfaces.AgentMarketplaceLifecycleService = (*AgentMarketplaceLifecycleService)(nil)
-
 type AgentMarketplaceLifecycleService struct {
 	adoptions repository.AgentAdoptionRepository
 	listings  repository.AgentMarketplaceRepository
 	now       func() time.Time
 }
+
+var _ interfaces.AgentMarketplaceLifecycleService = (*AgentMarketplaceLifecycleService)(nil)
 
 func NewAgentMarketplaceLifecycleService(adoptions repository.AgentAdoptionRepository, listings repository.AgentMarketplaceRepository) *AgentMarketplaceLifecycleService {
 	return &AgentMarketplaceLifecycleService{adoptions: adoptions, listings: listings, now: time.Now}
@@ -41,7 +41,7 @@ func (s *AgentMarketplaceLifecycleService) RetireVariant(ctx context.Context, te
 		return interfaces.AdoptionVariantView{}, err
 	}
 	if variant == nil {
-		return interfaces.AdoptionVariantView{}, repository.ErrAgentAdoptionNotFound
+		return interfaces.AdoptionVariantView{}, ErrAgentAdoptionNotFound
 	}
 	updated, err := s.adoptions.UpdateVariantState(ctx, tenantID, variantID,
 		[]string{AgentVariantStateDraft, AgentVariantStateMapped, AgentVariantStateTested, AgentVariantStatePublished},
@@ -57,9 +57,9 @@ func (s *AgentMarketplaceLifecycleService) EndAdoption(ctx context.Context, tena
 	if tenantID == 0 || actorID == "" || adoptionID == "" {
 		return interfaces.AdoptionView{}, ErrAgentMarketplaceLifecycleInvalidInput
 	}
-	row, err := s.adoptions.EndAdoption(ctx, tenantID, adoptionID, actorID, "ended")
+	row, err := s.adoptions.TransitionAdoption(ctx, tenantID, adoptionID, AgentAdoptionStateActive, AgentAdoptionStateEnded, map[string]any{"ended_by": actorID})
 	if err != nil {
-		if errors.Is(err, repository.ErrAgentAdoptionEndPrecondition) || errors.Is(err, repository.ErrAgentAdoptionTransition) {
+		if errors.Is(err, repository.ErrAgentAdoptionEndPrecondition) {
 			return interfaces.AdoptionView{}, fmt.Errorf("%w: %v", ErrAgentAdoptionStateConflict, err)
 		}
 		return interfaces.AdoptionView{}, err
@@ -72,7 +72,7 @@ func (s *AgentMarketplaceLifecycleService) UnlistListing(ctx context.Context, te
 	if tenantID == 0 || actorID == "" || listingID == "" {
 		return interfaces.TenantListingView{}, ErrAgentMarketplaceLifecycleInvalidInput
 	}
-	row, err := s.listings.UnlistTenantListing(ctx, tenantID, listingID, actorID, "unlisted")
+	row, err := s.listings.TransitionListingState(ctx, tenantID, listingID, "listed", "unlisted", map[string]any{"unlisted_by": actorID})
 	if err != nil {
 		return interfaces.TenantListingView{}, err
 	}
@@ -80,10 +80,8 @@ func (s *AgentMarketplaceLifecycleService) UnlistListing(ctx context.Context, te
 }
 
 func (s *AgentMarketplaceLifecycleService) DeprecateRelease(ctx context.Context, tenantID uint64, actorID, releaseID, successorReleaseID string) (*types.AgentReleaseEntity, error) {
-	actorID = strings.TrimSpace(actorID)
-	releaseID = strings.TrimSpace(releaseID)
-	successorReleaseID = strings.TrimSpace(successorReleaseID)
-	if tenantID == 0 || actorID == "" || releaseID == "" || successorReleaseID == "" || successorReleaseID == releaseID {
+	actorID, releaseID, successorReleaseID = strings.TrimSpace(actorID), strings.TrimSpace(releaseID), strings.TrimSpace(successorReleaseID)
+	if tenantID == 0 || actorID == "" || releaseID == "" || successorReleaseID == "" || releaseID == successorReleaseID {
 		return nil, ErrAgentMarketplaceLifecycleInvalidInput
 	}
 	release, err := s.listings.GetRelease(ctx, tenantID, releaseID)
@@ -97,16 +95,14 @@ func (s *AgentMarketplaceLifecycleService) DeprecateRelease(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if successor == nil {
-		return nil, fmt.Errorf("%w: successor release %s not found", ErrAgentMarketplaceLifecycleInvalidInput, successorReleaseID)
+	if successor == nil || successor.ListingID != release.ListingID || successor.DeprecatedAt != nil {
+		return nil, fmt.Errorf("%w: successor release must exist, be active, and belong to the same listing", ErrAgentMarketplaceLifecycleInvalidInput)
 	}
-	if successor.ListingID != release.ListingID {
-		return nil, fmt.Errorf("%w: successor release must belong to the same listing", ErrAgentMarketplaceLifecycleInvalidInput)
+	row, err := s.listings.DeprecateRelease(ctx, tenantID, releaseID, actorID, successorReleaseID)
+	if errors.Is(err, repository.ErrAgentReleaseSuccessorInvalid) {
+		return nil, fmt.Errorf("%w: successor release must remain active and belong to the same listing", ErrAgentMarketplaceLifecycleInvalidInput)
 	}
-	if successor.DeprecatedAt != nil {
-		return nil, fmt.Errorf("%w: successor release %s is already deprecated", ErrAgentMarketplaceLifecycleInvalidInput, successorReleaseID)
-	}
-	return s.listings.DeprecateTenantRelease(ctx, tenantID, releaseID, actorID, successorReleaseID, "deprecated")
+	return row, err
 }
 
 func (s *AgentMarketplaceLifecycleService) adoptionViewOf(ctx context.Context, tenantID uint64, row *types.AgentAdoptionEntity) (interfaces.AdoptionView, error) {
@@ -126,23 +122,21 @@ func (s *AgentMarketplaceLifecycleService) adoptionViewOf(ctx context.Context, t
 }
 
 func (s *AgentMarketplaceLifecycleService) variantViewOf(ctx context.Context, tenantID uint64, variant *types.AgentAdoptionVariantEntity) (interfaces.AdoptionVariantView, error) {
-	manifest, err := releaseManifest(ctx, s.adoptions, tenantID, variant.ReleaseID)
+	missing, err := missingCapabilitiesOf(ctx, s.adoptions, tenantID, variant)
 	if err != nil {
 		return interfaces.AdoptionVariantView{}, err
 	}
-	mappings, err := s.adoptions.ListCapabilityMappings(ctx, tenantID, variant.ID)
-	if err != nil {
-		return interfaces.AdoptionVariantView{}, err
-	}
-	return interfaces.AdoptionVariantView{
-		AgentAdoptionVariantEntity: *variant,
-		MissingCapabilities:        missingCapabilities(manifest.CapabilityRequirements, mappings),
-	}, nil
+	return interfaces.AdoptionVariantView{AgentAdoptionVariantEntity: *variant, MissingCapabilities: missing}, nil
 }
 
-func successorHint(successorReleaseID string) string {
-	if successorReleaseID == "" {
-		return "none declared"
+func missingCapabilitiesOf(ctx context.Context, repo repository.AgentAdoptionRepository, tenantID uint64, variant *types.AgentAdoptionVariantEntity) ([]string, error) {
+	manifest, err := releaseManifest(ctx, repo, tenantID, variant.ReleaseID)
+	if err != nil {
+		return nil, err
 	}
-	return successorReleaseID
+	mappings, err := repo.ListCapabilityMappings(ctx, tenantID, variant.ID)
+	if err != nil {
+		return nil, err
+	}
+	return missingCapabilities(manifest.CapabilityRequirements, mappings), nil
 }

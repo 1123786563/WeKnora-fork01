@@ -20,10 +20,7 @@ func openUpgradeProposalDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.Tenant{}, &types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{},
-		&types.AgentReleaseEntity{}, &types.TenantIntroducedReleaseEntity{},
-		&types.AgentReleaseRevocationEntity{}, &types.AgentDependencyRevocationEntity{}))
-	require.NoError(t, db.Create(&types.Tenant{ID: 1, Name: "tenant-1"}).Error)
+	require.NoError(t, db.AutoMigrate(&types.AgentUpgradeProposalEntity{}, &types.AgentAdoptionEntity{}, &types.AgentMarketplaceListingEntity{}, &types.AgentReleaseEntity{}))
 	// AutoMigrate 不创建 uq_agent_upgrade_proposals_scope（实体无 uniqueIndex
 	// tag）；显式补建使 FindOrCreateProposal 的竞态分支由真实唯一索引驱动，
 	// 与迁移 000120/000200 的生产 DDL 一致。
@@ -94,12 +91,13 @@ func TestAgentUpgradeRepositoryTransitionProposalCAS(t *testing.T) {
 	db := openUpgradeProposalDB(t)
 	repo := NewAgentUpgradeRepository(db)
 	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "agent1", DisplayName: "Agent", State: "listed"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "v1", SourceAgentID: "agent1", SemanticVersion: "1.0.0", BundleDigest: "d1", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "v2", SourceAgentID: "agent1", SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin"}).Error)
 	require.NoError(t, db.Create(&types.AgentUpgradeProposalEntity{
 		TenantID: 1, ID: "p1", AdoptionID: "a1", ListingID: "l1",
 		FromReleaseID: "r1", ToReleaseID: "r2", State: "open",
-	}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseEntity{
-		TenantID: 1, ID: "r2", ListingID: "l1", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("{}"),
 	}).Error)
 
 	updated, err := repo.TransitionProposal(ctx, 1, "p1", []string{"open"}, "accepted",
@@ -120,6 +118,23 @@ func TestAgentUpgradeRepositoryTransitionProposalCAS(t *testing.T) {
 	// 不存在的行：明确 not found 哨兵。
 	_, err = repo.TransitionProposal(ctx, 1, "missing", []string{"open"}, "accepted", nil)
 	require.ErrorIs(t, err, ErrAgentUpgradeProposalNotFound)
+}
+
+func TestAgentUpgradeRepositoryTransitionProposalPreservesStorageError(t *testing.T) {
+	db := openUpgradeProposalDB(t)
+	repo := NewAgentUpgradeRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "agent1", DisplayName: "Agent", State: "listed"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "v2", SourceAgentID: "agent1", SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "a1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin"}).Error)
+	require.NoError(t, db.Create(&types.AgentUpgradeProposalEntity{TenantID: 1, ID: "p1", AdoptionID: "a1", ListingID: "l1", FromReleaseID: "r1", ToReleaseID: "r2", State: "open"}).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER fail_adoption_guard BEFORE UPDATE ON agent_adoptions BEGIN SELECT RAISE(ABORT, 'injected adoption storage failure'); END`).Error)
+
+	_, err := repo.TransitionProposal(ctx, 1, "p1", []string{"open"}, "accepted", map[string]any{"accepted_variant_id": "v9"})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrAgentUpgradeProposalTransition)
+	require.NotErrorIs(t, err, ErrAgentUpgradeProposalNotFound)
+	require.Contains(t, err.Error(), "injected adoption storage failure")
 }
 
 func TestAgentUpgradeRepositoryProposalTenantScope(t *testing.T) {

@@ -31,7 +31,7 @@ func newLifecycleServiceForTest(t *testing.T) (*AgentMarketplaceLifecycleService
 func seedLifecycleFixture(t *testing.T, db *gorm.DB, wantVariants map[string]string) {
 	t.Helper()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
-	createLifecycleReleaseFixture(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av1", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d1", ManifestJSON: `{"capability_requirements":[]}`, DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")})
+	seedLifecycleRelease(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av1", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d1", ManifestJSON: `{"capability_requirements":[]}`, DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")})
 	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "l1").Update("current_release_id", "r1").Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active", CreatedBy: "admin"}).Error)
 	for id, state := range wantVariants {
@@ -43,6 +43,21 @@ func seedLifecycleFixture(t *testing.T, db *gorm.DB, wantVariants map[string]str
 	}
 }
 
+// seedLifecycleRelease creates the schema-required version and submission
+// parents before inserting a release; lifecycle tests still exercise the real
+// migration schema with foreign keys enabled.
+func seedLifecycleRelease(t *testing.T, db *gorm.DB, release types.AgentReleaseEntity) {
+	t.Helper()
+	if string(release.Bundle) == "b" {
+		release.Bundle = []byte(upgradeBundleV1)
+	}
+	var existingVersions int64
+	require.NoError(t, db.Model(&types.AgentVersionEntity{}).Where("tenant_id = ? AND agent_id = ?", release.TenantID, release.SourceAgentID).Count(&existingVersions).Error)
+	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: release.AgentVersionID, TenantID: release.TenantID, AgentID: release.SourceAgentID, VersionNumber: int(existingVersions) + 1, Snapshot: `{}`, SourceSHA256: "sha", FrozenBy: "admin"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: release.SubmissionID, TenantID: release.TenantID, ListingID: release.ListingID, AgentVersionID: release.AgentVersionID, SourceAgentID: release.SourceAgentID, AuthorID: "admin", SemanticVersion: release.SemanticVersion, BundleDigest: release.BundleDigest, ManifestJSON: release.ManifestJSON, DependencyLockJSON: release.DependencyLockJSON, Bundle: release.Bundle, Status: "approved"}).Error)
+	require.NoError(t, db.Create(&release).Error)
+}
+
 func seedListingTwo(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l2", SourceAgentID: "a2", DisplayName: "d2", State: "listed"}).Error)
@@ -50,26 +65,10 @@ func seedListingTwo(t *testing.T, db *gorm.DB) {
 		{TenantID: 1, ID: "r2", ListingID: "l2", SubmissionID: "s2", AgentVersionID: "av2", SourceAgentID: "a2", ReleaseNumber: 1, SemanticVersion: "2.0.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")},
 		{TenantID: 1, ID: "r2b", ListingID: "l2", SubmissionID: "s2b", AgentVersionID: "av2b", SourceAgentID: "a2", ReleaseNumber: 2, SemanticVersion: "2.1.0", BundleDigest: "d2b", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")},
 	} {
-		createLifecycleReleaseFixture(t, db, row)
+		seedLifecycleRelease(t, db, row)
 	}
 	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "l2").Update("current_release_id", "r2").Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad-l2", ListingID: "l2", AcceptedReleaseID: "r2", State: "active", CreatedBy: "admin"}).Error)
-}
-
-func createLifecycleReleaseFixture(t *testing.T, db *gorm.DB, release types.AgentReleaseEntity) {
-	t.Helper()
-	require.NoError(t, db.Create(&types.AgentVersionEntity{
-		ID: release.AgentVersionID, TenantID: release.TenantID, AgentID: release.SourceAgentID,
-		VersionNumber: release.ReleaseNumber, Snapshot: "{}", SourceSHA256: "sha-" + release.ID,
-	}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{
-		ID: release.SubmissionID, TenantID: release.TenantID, ListingID: release.ListingID,
-		AgentVersionID: release.AgentVersionID, SourceAgentID: release.SourceAgentID,
-		SemanticVersion: release.SemanticVersion, BundleDigest: release.BundleDigest,
-		ManifestJSON: release.ManifestJSON, DependencyLockJSON: release.DependencyLockJSON,
-		Bundle: release.Bundle, Status: "approved",
-	}).Error)
-	require.NoError(t, db.Create(&release).Error)
 }
 
 func TestRetireVariantIsCASAndKeepsRows(t *testing.T) {
@@ -84,9 +83,8 @@ func TestRetireVariantIsCASAndKeepsRows(t *testing.T) {
 
 	_, err = lifecycle.RetireVariant(ctx, 1, "admin", "v1")
 	require.ErrorIs(t, err, repository.ErrAgentAdoptionVariantTransition)
-	repo := repository.NewAgentAdoptionRepository(db)
-	err = repo.ReplaceCapabilityMappings(ctx, 1, "v1", nil, "draft")
-	require.ErrorIs(t, err, repository.ErrAgentAdoptionRemapStateConflict)
+	_, err = adoptions.UpdateCapabilityMapping(ctx, 1, "admin", "v1", nil)
+	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
 	_, err = adoptions.TestVariant(ctx, 1, "admin", "v1")
 	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
 
@@ -150,9 +148,9 @@ func TestDeprecateSuccessorValidation(t *testing.T) {
 	seedLifecycleFixture(t, db, nil)
 	seedListingTwo(t, db)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l3", SourceAgentID: "a3", DisplayName: "d3", State: "listed"}).Error)
-	createLifecycleReleaseFixture(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r3", ListingID: "l3", SubmissionID: "s3", AgentVersionID: "av3", SourceAgentID: "a3", ReleaseNumber: 1, SemanticVersion: "3.0.0", BundleDigest: "d3", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")})
+	seedLifecycleRelease(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r3", ListingID: "l3", SubmissionID: "s3", AgentVersionID: "av3", SourceAgentID: "a3", ReleaseNumber: 1, SemanticVersion: "3.0.0", BundleDigest: "d3", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")})
 	now := time.Now().UTC()
-	createLifecycleReleaseFixture(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r4", ListingID: "l2", SubmissionID: "s4", AgentVersionID: "av4", SourceAgentID: "a2", ReleaseNumber: 3, SemanticVersion: "2.2.0", BundleDigest: "d4", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), DeprecatedAt: &now, DeprecatedBy: "admin", SuccessorReleaseID: "r2b"})
+	seedLifecycleRelease(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r4", ListingID: "l2", SubmissionID: "s4", AgentVersionID: "av4", SourceAgentID: "a2", ReleaseNumber: 3, SemanticVersion: "2.2.0", BundleDigest: "d4", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), DeprecatedAt: &now, DeprecatedBy: "admin", SuccessorReleaseID: "r2b"})
 	for _, tc := range []struct{ name, successor string }{
 		{"missing", "nope"}, {"self", "r1"}, {"cross-listing", "r3"}, {"already-deprecated", "r4"}, {"empty", ""},
 	} {
@@ -167,10 +165,7 @@ func TestUpgradeReconcileSkipsDeprecatedTarget(t *testing.T) {
 	lifecycle, _, upgrades, db := newLifecycleServiceForTest(t)
 	ctx := context.Background()
 	seedLifecycleFixture(t, db, nil)
-	createLifecycleReleaseFixture(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "av2", SourceAgentID: "a", ReleaseNumber: 2, SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: upgradeManifestV2, DependencyLockJSON: upgradeLockV2, Bundle: []byte(upgradeBundleV2)})
-	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, "r1").Updates(map[string]any{
-		"manifest_json": upgradeManifestV1, "dependency_lock_json": upgradeLockV1, "bundle": []byte(upgradeBundleV1),
-	}).Error)
+	seedLifecycleRelease(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r2", ListingID: "l1", SubmissionID: "s2", AgentVersionID: "av2", SourceAgentID: "a", ReleaseNumber: 2, SemanticVersion: "1.1.0", BundleDigest: "d2", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")})
 	require.NoError(t, db.Exec("UPDATE agent_marketplace_listings SET current_release_id='r2' WHERE id='l1'").Error)
 	_, err := lifecycle.DeprecateRelease(ctx, 1, "admin", "r2", "r1")
 	require.NoError(t, err)
