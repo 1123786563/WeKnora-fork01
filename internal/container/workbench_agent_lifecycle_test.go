@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -29,6 +30,7 @@ func TestWorkbenchAdmissionRejectsRetiredAgentFromProductionProvider(t *testing.
 	coordinator := NewWorkbenchAdmissionCoordinator(
 		&config.Config{}, db, repository.NewAgentRunStore(db),
 		repository.NewExecutionTargetStore(db), repository.NewAgentAdoptionRepository(db),
+		appservice.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db)),
 	)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
