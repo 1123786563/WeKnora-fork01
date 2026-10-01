@@ -103,7 +103,6 @@ test('a 409 state conflict rejects with the ApiError shape intact for recovery t
     (error: any) => error.status === 409 && error.body?.code === 'code_delivery_state_conflict',
   );
 });
-<<<<<<< HEAD
 
 test('production ApiError 409 conflicts propagate through both recovery methods', async () => {
   for (const method of ['dispatchDelivery', 'resolveDelivery'] as const) {
@@ -133,5 +132,3 @@ test('recovery target 404 rejects instead of mapping to null', async () => {
     );
   }
 });
-=======
->>>>>>> codex/issue30-b6-t55-task5
