@@ -56,7 +56,11 @@ var noAuthAPI = map[string][]string{
 	"/api/v1/auth/oidc/url":           {"GET"},
 	"/api/v1/auth/oidc/start":         {"GET"},
 	"/api/v1/auth/oidc/callback":      {"GET"},
-	"/api/v1/auth/oidc/exchange":      {"POST"},
+	"/api/v1/auth/oidc/exchange": {"POST"},
+	// Mobile OIDC exchange: the native client presents a one-time callback
+	// code + state, not a bearer token; identity is proven downstream via
+	// the OIDC provider, so the global Auth middleware must pass through.
+	"/api/v1/auth/mobile/exchange": {"POST"},
 	// MCP OAuth provider redirect: the third-party authorization server
 	// redirects the browser here without a WeKnora bearer token. The request
 	// is authenticated by the opaque, single-use `state` parameter instead.
