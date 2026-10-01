@@ -181,8 +181,8 @@ func TestDeprecateReleaseIsCASAndPointsAtSuccessor(t *testing.T) {
 	require.NoError(t, db.Create(&types.AgentVersionEntity{TenantID: 1, ID: "av", AgentID: "a", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha"}).Error)
 	for i, id := range []string{"r1", "r2"} {
 		submissionID := "s" + id
-		require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: submissionID, ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
-		require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: "l1", SubmissionID: submissionID, AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: i + 1, SemanticVersion: id + ".0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+		require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: submissionID, ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+		require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: "l1", SubmissionID: submissionID, AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: i + 1, SemanticVersion: id + ".0.0", BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
 	}
 	row, err := repo.DeprecateRelease(ctx, 1, "r1", "admin", "r2")
 	require.NoError(t, err)
@@ -199,8 +199,8 @@ func seedAtomicLifecycleRelease(t *testing.T, db *gorm.DB, id, listingID string,
 	t.Helper()
 	versionID, submissionID := "av-"+id, "s-"+id
 	require.NoError(t, db.Create(&types.AgentVersionEntity{ID: versionID, TenantID: 1, AgentID: "a", VersionNumber: number, Snapshot: "{}", SourceSHA256: "sha"}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: submissionID, TenantID: 1, ListingID: listingID, AgentVersionID: versionID, SourceAgentID: "a", AuthorID: "admin", SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b"), Status: "approved"}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: listingID, SubmissionID: submissionID, AgentVersionID: versionID, SourceAgentID: "a", ReleaseNumber: number, SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{ID: submissionID, TenantID: 1, ListingID: listingID, AgentVersionID: versionID, SourceAgentID: "a", AuthorID: "admin", SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b"), Status: "approved"}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: id, ListingID: listingID, SubmissionID: submissionID, AgentVersionID: versionID, SourceAgentID: "a", ReleaseNumber: number, SemanticVersion: id, BundleDigest: id, ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
 }
 
 func TestAdoptListingRechecksListingAndReleaseAtWriteBoundary(t *testing.T) {
@@ -378,8 +378,8 @@ func TestRetiredVariantAgentExists(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
 	require.NoError(t, db.Create(&types.AgentVersionEntity{TenantID: 1, ID: "av", AgentID: "a", VersionNumber: 1, Snapshot: "{}", SourceSHA256: "sha"}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: "s1", ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
-	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseSubmissionEntity{TenantID: 1, ID: "s1", ListingID: "l1", AgentVersionID: "av", SourceAgentID: "a", SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d", ManifestJSON: "{}", DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "ad1", ListingID: "l1", AcceptedReleaseID: "r1", State: "active"}).Error)
 	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{TenantID: 1, ID: "v1", AdoptionID: "ad1", ReleaseID: "r1", Name: "sales", State: "retired", LocalAgentID: "agent-x"}).Error)
 	ok, err := repo.RetiredVariantAgentExists(ctx, 1, "agent-x")
