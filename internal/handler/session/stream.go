@@ -293,6 +293,23 @@ func (h *Handler) StopSession(c *gin.Context) {
 		return
 	}
 
+	// T34 #64 8D: a claimed agent turn must be durably cancelled (claim
+	// state + generation bump + placeholder terminalized) BEFORE the stop
+	// event fires, so the watcher fences local execution on committed state.
+	// No claim row for this assistant message = an ordinary unclaimed turn.
+	if h.agentChatTurnClaimStore != nil {
+		_, _, cancelErr := h.agentChatTurnClaimStore.CancelByOwner(
+			ctx, tenantIDUint, sessionID, session.UserID, assistantMessageID, "user_requested")
+		if cancelErr != nil && !stderrors.Is(cancelErr, gorm.ErrRecordNotFound) {
+			logger.ErrorWithFields(ctx, cancelErr, map[string]interface{}{
+				"session_id": sessionID,
+				"message_id": assistantMessageID,
+			})
+			c.JSON(500, gin.H{"error": "Failed to cancel agent turn claim"})
+			return
+		}
+	}
+
 	// Write stop event to StreamManager for distributed support
 	stopEvent := interfaces.StreamEvent{
 		ID:        fmt.Sprintf("stop-%d", time.Now().UnixNano()),

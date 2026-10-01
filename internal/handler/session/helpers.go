@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -323,6 +324,7 @@ func (h *Handler) setupStopEventHandler(
 	sessionUserID string,
 	assistantMessage *types.Message,
 	cancel context.CancelFunc,
+	claim *repository.AgentChatTurnClaim,
 ) {
 	eventBus.On(event.EventStop, func(ctx context.Context, evt event.Event) error {
 		logger.Infof(ctx, "Received stop event, cancelling async operations for session: %s", sessionID)
@@ -335,8 +337,10 @@ func (h *Handler) setupStopEventHandler(
 			types.TenantIDContextKey, sessionTenantID,
 		)
 		// The stopped turn still consumed tokens; attribute them to the session
-		// owner (SP12) alongside the message completion.
-		h.completeAssistantMessage(updateCtx, assistantMessage, "", "", sessionTenantID, sessionUserID) // empty query: stopped conversations are not indexed
+		// owner (SP12) alongside the message completion. The stopped turn's
+		// claim was already cancelled by CancelByOwner in StopSession, so the
+		// fenced terminal write inside is refused by design.
+		h.completeAssistantMessage(updateCtx, assistantMessage, "", "", sessionTenantID, sessionUserID, claim, "failed") // empty query: stopped conversations are not indexed
 		return nil
 	})
 }
