@@ -1,3 +1,4 @@
+import './hermes-crypto.ts';
 import { createElement, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
 import { createWeKnoraClient } from '@weknora/api-client';
