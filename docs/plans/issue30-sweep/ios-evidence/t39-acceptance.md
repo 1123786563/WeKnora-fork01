@@ -138,3 +138,9 @@ emit-acceptance-record.ts **exit 0**（13 条目：11 evidenced / 2 blocked-残�
 
 ### 本轮栈/数据变更（复核用）
 后端二进制 `/tmp/t39r/server-a95ff7883`（日志 `/tmp/t39r/logs/backend-a95ff7883.log`）；nginx/Casdoor/sim 沿用；本轮新增 run `a6bbded9`（D8/D9 证据，留存 10001）；harness 两轮活体 signOut（app 侧会话如失效重登即可）；**networksetup 逐服务 bypass 附加项已还原**（Wi-Fi 回 *.local+169.254/16，GeLink 回空）——若复跑仍遇模拟器 TLS -9816，优先切 IPv6 字面量 origin。
+
+---
+
+## 2026-10-03 终局判词（T39 #69）
+
+依用户裁定（2026-10-02：模拟器证据=app 端验收证据；外部凭据项可跳过）与本轮三轮活体（九流×2 + D8 复验）+ D1-D9 修复链（3963541d7..26963b08b），独立终审判词（task-3-review.md）：**#69 closure-ready（裁定口径内）**。AC1-3 全满足；终态门 13 条目 11 evidenced / 2 blocked-env（弱网活体史上首过、后台恢复/撤销/冷启/拒权/离线草稿全实证）。三个 residual 均裁为具名 follow-up 非票面 blocker：①workbench→graph 执行集成（unbuilt feature，app 端 202/SSE/投影/零重复派发已 evidenced，executor 显式失败为 a95ff7883 设计裁决）；②notification 写入方接线（读/深链已验，双注记在档）；③APNs/真机（裁定明示 blocked-env）。Follow-up：F1 agent_run.go:1182 用户文本写 wait_reason 无围栏（D9 同类）、iOS 侧 D9 活体复验（Android 已旁证）、delivery 500 迁移残留。

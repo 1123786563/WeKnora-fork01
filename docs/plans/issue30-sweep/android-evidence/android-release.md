@@ -45,3 +45,9 @@ apksigner `Verifies`（v2 scheme）。正式发布前换 EAS 托管凭据（keys
 | 弱网恢复 | 断网→离线草稿加密保存→派发被 Offline Gate 拒→联网后显式 resync | **evidenced**：`w7-offline-submit-gate`（Offline Gate 拒+加密草稿文案）→`w7-back-online`（草稿留存）→`POST /workbench/executions 202`→`w7-final-list`（新任务 failed=executor 边界显式结算） |
 
 证据回填到本目录（截图/日志），完成后在 Issue #70 勾选验收项——在此之前任何项不得勾选。
+
+---
+
+## 2026-10-03 终局判词（T40 #70）
+
+模拟器口径内（用户裁定 2026-10-02）**closure-ready**（独立终审 task-3-review.md）：Release 构建+本地 keystore 签名（v2 Verifies，指纹 07:F8:…:61:35）+ 真实 OIDC 全链登录留证；七工作流①②⑤⑦ evidenced、③通知两路径 evidenced（FCM 送达=外部凭据 blocked-env）、④⑥部分项有据归因（模拟器原生录音 capture-failed 真机挂账；材料项依赖 executor 集成，同 #69 口径）。证据 `2026-10-02-live/`（48 png SHA 全校、提交 a252c5e51）。Runbook 行为措辞差异（⑥拒权=保留入口+引导而非隐藏）已记录。Follow-up：真机录音链、FCM 送达、executor 集成联动项。
