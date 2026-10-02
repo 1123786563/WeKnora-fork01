@@ -66,6 +66,11 @@ var versionedSQLiteColumns = map[string][]string{
 	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id", "usage_binding_json"}, // 000057, 000071
 	"execution_target_identities": {"credential_version", "external_target_id"},                             // 000057
 	"execution_workspaces":        {"target_id", "root_ref"},                                                // 000057
+	// T39 #69 D4: NotificationStore.Claim joins mobile_devices.app_id against
+	// mobile_notification_intents.app_id (sqlite 000118 / versioned 000197).
+	// A drifted deployment missing these columns errors every claim.
+	"mobile_devices":              {"app_id"},
+	"mobile_notification_intents": {"app_id"},
 }
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
