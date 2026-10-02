@@ -11,32 +11,37 @@
 - 模板默认权限（READ/WRITE_EXTERNAL_STORAGE ≤32、SYSTEM_ALERT_WINDOW）当前不被剔除（`android.blockedPermissions` 探测无效，plan-t70 差异记录 5）。
 - 库 manifest（expo-notifications 的 RECEIVE_BOOT_COMPLETED 等）在 Gradle 构建期合并，不在 prebuild 产物中。
 
-## Release 构建（blocked-env：本环境无 Gradle/Android SDK）
+## Release 构建（2026-10-02/03 已尽实：模拟器工程验收，证据 `2026-10-02-live/`）
 
 前置：Android Studio 或命令行 Android SDK（ANDROID_HOME）、JDK 17（已在：openjdk 17.0.19）、`pnpm install` 完成。
 
     cd apps/mobile/android
+    JAVA_HOME=<jdk17> ANDROID_HOME=<sdk> \
+    EXPO_PUBLIC_WEKNORA_CLOUD_ORIGIN=https://<authorized-origin> \
+    WK_RELEASE_STORE_FILE=<local keystore> WK_RELEASE_STORE_PASSWORD=... \
+    WK_RELEASE_KEY_ALIAS=... WK_RELEASE_KEY_PASSWORD=... \
     ./gradlew assembleRelease    # 产物 app/build/outputs/apk/release/app-release.apk
-    # 或 EAS 队列：npx eas-cli build -p android --profile preview
 
-## 签名（blocked-env：无 release Keystore）
+`signingConfigs.release` 由 `WK_RELEASE_*` 环境变量驱动（`android/` 整体 gitignored；未设变量时回退 debug signing 兼容本地联调）。
 
-现状：`android/app/build.gradle` release buildType 回退 debug signing（模板默认）。
-正式发布前（EAS 托管凭据路径，keystore 不入库）：
+## 签名（2026-10-02 已尽实：本地 release keystore，工程验收口径）
 
-    npx eas-cli credentials       # 生成/绑定 production keystore
-    # 或本地 keystore + android/app/ 自定义 signingConfig（keystore 与口令绝不入库，走环境变量/密钥服务）
+本地 keystore `/tmp/t40r/weknora-release.keystore`（PKCS12，alias `weknora-release`，不入库），证书 SHA-256
+`07:F8:88:0C:F6:18:B5:FC:53:F7:C7:38:8D:9A:34:72:AF:26:FF:C6:02:B9:31:56:CC:95:A3:AE:27:18:61:35`；
+apksigner `Verifies`（v2 scheme）。正式发布前换 EAS 托管凭据（keystore 不入库）。
 
-## 真机验收清单（对应 Issue #70 七工作流；全部 blocked-env，待真机轮执行）
+## 七工作流验收矩阵（2026-10-02/03 模拟器 live 轮；用户裁定：模拟器证据=app 端验收证据）
 
-| 工作流 | 验证点 |
-|---|---|
-| 系统返回 | 返回键/手势逐级回退；OIDC 返回后返回不复活已登出内容；weknora://oidc 冷/热返回 |
-| 后台限制 | 后台→前台触发权威同步（前台同步环）；Doze 下的行为记录 |
-| 通知 | POST_NOTIFICATIONS 首启弹窗（Task 1/2）；授权/拒绝两路径的设备注册结果；FCM 送达（需推送凭据部署） |
-| 文件 URI | 录音→file:// URI→multipart 上载→转写后/取消即删（Task 3/4）；材料签名链接下载/分享 |
-| Keystore | SecureStore 凭据/Vault/意图日志落盘；系统备份规则排除（manifest fullBackupContent 已由 expo-secure-store 注入） |
-| 麦克风 | RECORD_AUDIO 拒权→听写入口隐藏（fail closed）；授权→录音→转写 |
-| 弱网恢复 | 断网→离线草稿加密保存→派发被 Offline Gate 拒→联网后显式 resync |
+证据根：`2026-10-02-live/`（截图+`logs/`+`SHA256SUMS`+`README.md` 逐行判词）。
+
+| 工作流 | 验证点 | 判定与证据 |
+|---|---|---|
+| 系统返回 | 返回键/手势逐级回退；OIDC 返回后返回不复活已登出内容；weknora://oidc 冷/热返回 | **evidenced**：`w1-back-1/2`（detail→tasks→home）、`w1-warm-return`、`w1-cold-return`、`w1-signed-out/after-back/revive-check` |
+| 后台限制 | 后台→前台触发权威同步（前台同步环）；Doze 下的行为记录 | **evidenced**：`w2-background/foreground-sync`（恢复即 `GET /workbench/inbox 200`）、`w2-detail-synced`（已同步+failed 结算短码）；deviceidle ACTIVE 如实 |
+| 通知 | POST_NOTIFICATIONS 首启弹窗（Task 1/2）；授权/拒绝两路径的设备注册结果；FCM 送达（需推送凭据部署） | 弹窗两路径 **evidenced**：`13/14-oidc-authorized`、`w3-deny-dialog/denied-after`（appops allow）；设备注册 no-token 短路 + **FCM 送达 blocked-env**（无推送凭据） |
+| 文件 URI | 录音→file:// URI→multipart 上载→转写后/取消即删（Task 3/4）；材料签名链接下载/分享 | **部分 evidenced**：麦克风授权弹窗 `w4-mic-dialog`；模拟器原生录音捕获稳定 capture-failed（fail-closed 文案+手打不受影响，`w4-recording/dictate-retry`，**真机录音链挂账**）；材料页空态 `w4-materials`；签名链接下载/分享 **blocked**（无 executor 产出材料，同 #69 flow7 口径） |
+| Keystore | SecureStore 凭据/Vault/意图日志落盘；系统备份规则排除（manifest fullBackupContent 已由 expo-secure-store 注入） | **evidenced**：冷启动/冷深链授权态恢复（`w1-cold-return`）+离线草稿加密留存（`w7-back-online`）；`logs/manifest-tree.txt` + `logs/backup-rules.txt`（exclude sharedpref/SecureStore） |
+| 麦克风 | RECORD_AUDIO 拒权→听写入口隐藏（fail closed）；授权→录音→转写 | 拒权 fail-closed **evidenced**：`w6-mic-denied-copy`（denied 文案+RETRY+不崩溃；注：实现语义=权限拒绝保留入口+引导，adapter 缺失才隐藏——见 2026-10-02-live/README 口径差异）；授权→录音→转写 **blocked-env**（模拟器 capture-failed，真机挂账） |
+| 弱网恢复 | 断网→离线草稿加密保存→派发被 Offline Gate 拒→联网后显式 resync | **evidenced**：`w7-offline-submit-gate`（Offline Gate 拒+加密草稿文案）→`w7-back-online`（草稿留存）→`POST /workbench/executions 202`→`w7-final-list`（新任务 failed=executor 边界显式结算） |
 
 证据回填到本目录（截图/日志），完成后在 Issue #70 勾选验收项——在此之前任何项不得勾选。
