@@ -511,9 +511,18 @@ func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repositor
 		case "rejected":
 			return agentruntime.Run{}, fmt.Errorf("%w: %s", ErrRequestRejected, current.Reason)
 		case "pending":
-			if current.RunID != "" {
-				return a.admitPending(ctx, current, in, current.RunID, current.ReservationRef)
+			if current.RunID == "" {
+				// T39 #69 D3: the previous admission was interrupted before a
+				// run identity existed (e.g. a dropped client connection).
+				// Spinning here stranded the request pending forever; instead
+				// claim an identity once and re-drive the admission.
+				claimed, claimErr := a.requests.ClaimPendingRunID(ctx, current, uuid.NewString())
+				if claimErr != nil {
+					return agentruntime.Run{}, claimErr
+				}
+				current.RunID = claimed
 			}
+			return a.admitPending(ctx, current, in, current.RunID, current.ReservationRef)
 		}
 		req = current
 		time.Sleep(5 * time.Millisecond)
@@ -536,6 +545,9 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	}
 	binding, err := bindingResolver.Resolve(ctx, req.TenantID, req.ActorID, in)
 	if err != nil {
+		// T39 #69 D3: settle so the durable request state machine terminates
+		// (mirrors the budget.Ensure failure path below).
+		_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, err.Error())
 		return agentruntime.Run{}, err
 	}
 	if binding.Upper <= 0 {
@@ -545,7 +557,9 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		binding.Upper = 1
 	}
 	if binding.Revision <= 0 || binding.Source == "" || binding.Funding == "" || binding.Service == "" || binding.PriceVersion == "" || len(binding.Dimensions) == 0 {
-		return agentruntime.Run{}, errors.New("trusted admission binding is incomplete")
+		err := errors.New("trusted admission binding is incomplete")
+		_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, err.Error())
+		return agentruntime.Run{}, err
 	}
 	replayAssistantID := ""
 	if strings.TrimSpace(in.AgentID) != "" && a.publishedAgentVersionResolver != nil {
@@ -566,6 +580,7 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		if !committed {
 			snapshot, releaseID, adopted, resolveErr := a.publishedAgentVersionResolver.ResolvePublishedAgentVersion(ctx, req.TenantID, in.AgentID)
 			if resolveErr != nil {
+				_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, resolveErr.Error())
 				return agentruntime.Run{}, resolveErr
 			}
 			if adopted {
@@ -592,6 +607,10 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	}
 	if registrar, ok := a.budget.(taskRunRegistrar); ok {
 		if err = registrar.BindRun(ctx, req.TenantID, runID, binding.ParentRunID, binding.Upper, deadline); err != nil {
+			_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, err.Error())
+			if ownedReservation {
+				_ = a.budget.ReleaseUnstarted(ctx, reservation)
+			}
 			return agentruntime.Run{}, err
 		}
 	}

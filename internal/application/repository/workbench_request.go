@@ -113,6 +113,26 @@ func (r *WorkbenchRequestRepository) UpdatePending(ctx context.Context, request 
 	return nil
 }
 
+// ClaimPendingRunID atomically installs a run identity on a pending request
+// whose admission was interrupted before one was persisted. Exactly one
+// concurrent caller generates the identity; the others observe the winner's.
+func (r *WorkbenchRequestRepository) ClaimPendingRunID(ctx context.Context, request WorkbenchRequest, runID string) (string, error) {
+	result := r.db.WithContext(ctx).Model(&workbenchRequestRow{}).
+		Where("tenant_id = ? AND actor_id = ? AND request_id = ? AND request_hash = ? AND state = 'pending' AND run_id = ''", request.TenantID, request.ActorID, request.RequestID, request.RequestHash).
+		Updates(map[string]any{"run_id": runID, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if result.Error != nil {
+		return "", result.Error
+	}
+	if result.RowsAffected == 1 {
+		return runID, nil
+	}
+	current, err := r.Get(ctx, request.TenantID, request.ActorID, request.RequestID)
+	if err != nil {
+		return "", err
+	}
+	return current.RunID, nil
+}
+
 // RejectPendingWithoutRun atomically rejects a pending admission only if its
 // AgentRun has not committed. It takes the same session write lock as
 // AgentRunStore.Admit before checking the run table, so a concurrent admission

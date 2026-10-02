@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/modules/execution"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
@@ -189,4 +190,43 @@ func openAdmissionConcurrencyDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec("INSERT INTO sessions (id,tenant_id,title,user_id,engine_type) VALUES ('s1',1,'s1','u1','trpc')").Error)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return db
+}
+
+// T39 #69 D3: an admission interrupted before it persisted a run identity
+// (e.g. a dropped client connection) left workbench_requests pending with an
+// empty run_id forever — retries spun inside resumeExisting and LookupRequest
+// never reached a terminal state.
+func TestAdmissionRedrivesPendingRequestWithoutRunIdentity(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status) VALUES (1,'u1','owner','active')").Error)
+	requests := repository.NewWorkbenchRequestRepository(db)
+	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), &retrySafeBudget{}, nil)
+	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+	in := StartInput{SessionID: "s1", TargetID: "platform", RequestID: "d3-redrive", Text: "hello", BudgetUpper: 1}
+	require.NoError(t, requests.CreatePending(ctx, repository.WorkbenchRequest{TenantID: 1, ActorID: "u1", RequestID: in.RequestID, RequestHash: requestHash(in), SessionID: "s1", TargetID: "platform", Text: "hello", BudgetUpper: 1}))
+
+	run, err := coordinator.Start(ctx, in)
+	require.NoError(t, err, "retry must re-drive the interrupted admission instead of spinning pending")
+	stored, err := requests.Get(ctx, 1, "u1", in.RequestID)
+	require.NoError(t, err)
+	require.Equal(t, "admitted", stored.State)
+	require.Equal(t, run.Key.RunID, stored.RunID)
+}
+
+// T39 #69 D3: admission failures inside admitPending must settle the durable
+// request (mirroring the budget.Ensure failure path) so LookupRequest
+// terminates instead of reporting pending forever.
+func TestAdmissionBindingFailureSettlesPendingRequest(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status) VALUES (1,'u1','owner','active')").Error)
+	requests := repository.NewWorkbenchRequestRepository(db)
+	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), &retrySafeBudget{}, nil)
+	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+	in := StartInput{SessionID: "s1", TargetID: "paseo", RequestID: "d3-bind-fail", Text: "hello", BudgetUpper: 1}
+
+	_, err := coordinator.Start(ctx, in)
+	require.ErrorIs(t, err, execution.ErrTargetUntrusted)
+	stored, err := requests.Get(ctx, 1, "u1", in.RequestID)
+	require.NoError(t, err)
+	require.Equal(t, "rejected", stored.State, "admission failure must terminally reject the pending request")
 }
