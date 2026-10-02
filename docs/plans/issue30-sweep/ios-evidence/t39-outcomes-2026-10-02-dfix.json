@@ -1,0 +1,83 @@
+{
+  "build": {
+    "appPath": "apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app",
+    "builtAt": "2026-10-02T16:53:00+08:00",
+    "buildLog": "docs/plans/issue30-sweep/ios-evidence/t39/2026-10-02-dfix/xcodebuild-release.log"
+  },
+  "entries": [
+    {
+      "subject": "sign-in",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/03-home-authorized.png (Release build of main 75a175006, real deployment https://[240e:...]:8443; prior 04b upgrade-required anomaly re-attributed: idb ui text truncated '@' inside a mixed segment leaving password empty -> login 400 'Password required' -> runtime safe() surface; segmented typing (type-secret.py) logs in cleanly — login 200 / me 200 / capabilities 200 / overview 200 in 19-nginx-sequence.txt; NOT a product defect)"
+    },
+    {
+      "subject": "tenant-switch",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/04-switch-tap-right.png + 05-switch-back-10001.png + 19-nginx-sequence.txt (D6 fixed: in-app switch now sends POST /api/v1/auth/switch-tenant WITH Authorization -> 200 both directions 10001<->10044; follow-up me returns the new tenant context (10044 response = 1158 bytes, byte-identical to a curl switch to 10044); no upgrade-required screen)"
+    },
+    {
+      "subject": "task",
+      "disposition": "blocked-env",
+      "reason": "residual defect D8 after D1/D7 landed: POST /api/v1/sessions now 201 with engine_type=trpc persisted and POST /api/v1/workbench/executions 202 admitted for builtin-quick-answer (D1+D7 verified, no 409), and the D2 durable worker does lease the run (queued->running with worker lease_owner), BUT the worker's ParseDurableRunSnapshot (internal/application/service/agent_run_graph.go, DisallowUnknownFields, expects version/query/model_id/runtime) rejects the workbench platform admission-map snapshot that contains mobile fields (admission.go:593: text/agent_id/...) -> 'decode durable run snapshot: json: unknown field \"text\"' (17-backend-d4-pass-d8-defect.txt, 6 occurrences across two submissions); zero events, detail shows 已接收事件 0 (13-deeplink-task-detail.png), run terminalizes only via 10-min deadline as failed/deadline_exceeded (18-agent-runs-d8-both-runs.txt)"
+    },
+    {
+      "subject": "background-recovery",
+      "disposition": "blocked-env",
+      "reason": "not re-run this round: the >=35s background->foreground state-restore + zero-duplicate-dispatch leg was already partially evidenced 2026-10-02 (t39/2026-10-02/10,11); the stream-resume leg stays unverifiable because runs still produce zero events (residual defect D8, see task entry)"
+    },
+    {
+      "subject": "offline-draft",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/09-draft-restored.png + 10-resubmit-bound.png (D5 fixed in Release/Hermes: draft survives TWO process kills plus a full re-login and restores verbatim in the New-task screen; resubmit binds: POST /sessions 201 + POST /executions 202, draft cleared by the bound branch) — scope note: the offline-gate interception leg is not naturally simulable on this sim (expo-network isInternetReachable probes the system, unresponsive to a frozen origin; sim has no airplane mode), so it was approximated by freezing nginx (SIGSTOP) which left the submit pending->failed with the draft retained (07-offline-gate.png)"
+    },
+    {
+      "subject": "notification",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/11-inbox.png + 12-inbox-received.png + 13-deeplink-task-detail.png (D4 fixed: backend mobile-notification sweep runs clean — zero SQLSTATE 42703 in 17-backend-d4-pass-d8-defect.txt vs every-2s errors last round; GET /workbench/inbox 200; a notification row reached the device Inbox (未读 1) and tapping it deep-linked to /tasks/detail of the referenced run) — scope note: the notification row was inserted directly into workbench_notifications because the read model has no wired writer and natural completion notifications are blocked by residual defect D8; APNs remote delivery remains blocked-env (no credentials)"
+    },
+    {
+      "subject": "download-share",
+      "disposition": "blocked-env",
+      "reason": "no material to share: runs exist and GET /executions/:id/artifacts returns 200 with an empty list because runs produce zero output under residual defect D8 (14-materials.png is the honest empty materials surface with research/terminal/citation entries rendered); the system share sheet was therefore never presented — true external share-sheet acceptance also remains real-device per spec"
+    },
+    {
+      "subject": "voice-permission",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/15-mic-denied.png (simctl privacy revoke microphone -> Dictate -> actionable copy '麦克风权限被拒绝；可直接输入文字，或在系统设置授权后重试。', process alive)"
+    },
+    {
+      "subject": "secure-storage",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/08-coldboot-restore.png + 09-draft-restored.png (authorized session cold-boot-restored across three terminate/relaunch cycles AND scoped-vault draft persistence now works in Release/Hermes — D5 — closing the 'local-save-failed' gap of 2026-10-02)"
+    },
+    {
+      "subject": "weak-network",
+      "disposition": "blocked-env",
+      "reason": "not re-run this round: the live-harness weakNetwork=pending-retained evidence stands (t39/2026-10-02/20-weak-network-live-output.json); the reconciled-same-run convergence leg is still blocked because runs produce zero events under residual defect D8 (formerly attributed to the D1 Start defect)"
+    },
+    {
+      "subject": "permission-denied",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/15-mic-denied.png (denied microphone: actionable copy, text input remains usable, no crash)"
+    },
+    {
+      "subject": "cold-start",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/08-coldboot-restore.png (authorized Home restored after process kill; three cold restarts this round all restored the authorized surface once the test stack pinned JWT_SECRET — see environment note: user.go getJwtSecret falls back to a per-process random secret when JWT_SECRET is unset, so backend restarts had been invalidating every token)"
+    },
+    {
+      "subject": "revocation",
+      "disposition": "evidenced",
+      "source": "installed-package",
+      "evidence": "ios-evidence/t39/2026-10-02-dfix/16-revocation-cold-start.png (Sign out -> terminate -> cold start stays on the Sign-in screen, no session revival)"
+    }
+  ]
+}

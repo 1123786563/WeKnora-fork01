@@ -85,3 +85,22 @@
 - 弱网腿（blocked 五项之④重判）：真实部署活体复刻（`20`）——首枚 Start 断链后意图先落盘、reconcile 同 requestId、**零重复派发**（pending-retained）；同 run 收敛被 ③ 阻断，非弱网机制问题。宿主 sudo pf 未动。core-workflow 活体另证 `coldBootRestore=authorized-restored`、`signIn=authorized`（`21`）。
 - 其余 blocked 重判：①真机按裁定挂账（模拟器口径已尽实）；②APNs 保持 blocked；③授权面自动化已尽实（idb+API 全链）；④弱网见上；⑤分享面板见 ⑦。
 - 本轮新发现缺陷清单（HEAD，阻塞项与档案）：**(D1)** 移动端 createSession 缺 engine_type→Start 409（`packages/api-client/src/mobile/task-office.ts:125`，一行修复点）；**(D2)** 单进程部署无平台 run 执行器（admitted 后永驻 queued）；**(D3)** admission 失败把 workbench_requests 留在 pending（客户端 lookup 永不终结，本轮靠 DB 手工置 rejected 解锁）；**(D4)** mobile_notification 轮询 SQL 缺列 d.app_id（每 2s 报错）；**(D5)** Release 包 scoped-vault 持久化失败（草稿/任务投影丢失）；**(D6)** runtime switchTenant 未带 Authorization→401（切租户坏）；**(D7)** ListAgents 合成内置 agent 无 custom_agents 行→agent security admission 拒绝（「可见不可跑」，本轮为 10043 补种 builtin 行作 provisioning）。**#69 结论：授权面读路径+逆境语义（撤销/拒权/冷启/弱网单写者）在真实部署上成立；任务执行主链（Start→SSE→通知→材料/分享）被 D1/D2/D6 阻断，closure 不可宣布，缺陷清单移交修复轮。**
+
+## 2026-10-02 D-fix verification（#69 D1-D7 修复后复跑，main@75a175006）
+
+- 被测：main HEAD `75a175006`（D1-D7 七提交全部落地）重新构建的 Release 包（`t39/2026-10-02-dfix/xcodebuild-release.log`），同一授权部署与 iPhone 18 Pro sim；后端以同 env 约定从 HEAD 重建（新增两项由本轮踩坑固化的栈约定：**JWT_SECRET 必须固定**——`user.go getJwtSecret` 在 env 缺省时按进程随机生成，后端一重启全体 token 即失效（冷启复验曾被该点污染）；**WEKNORA_AGENT_RECOVERY_ENABLED=true** 是 D2 durable worker 的启用开关）。
+- 机器门：`t39-outcomes-2026-10-02-dfix.json` → `emit-acceptance-record.ts` **exit 0**（13 条目：9 evidenced / 4 blocked-env；`t39/2026-10-02-dfix/t39-record.json`；门单测 6/6）。
+- 逐流终判（证据均在 `t39/2026-10-02-dfix/`）：
+  1. **sign-in evidenced**（03 + 19）：04b upgrade-required 异常**复归因——非产品缺陷**：idb `ui text` 对混排段中的 `@` 截断 → password 空 → login 400 `Password required` → runtime `safe()` 落 upgrade 屏；分段输入后 login/me/capabilities/overview 全 200。
+  2. **tenant-switch evidenced（D6 修复实证）**（04/05/19）：app 内切换带 Authorization，`POST /auth/switch-tenant` 双向 200（10001↔10044）；切换后 me 精确返回新租户上下文（10044 响应 1158 字节与 curl 直切逐字节一致）；无 upgrade 屏。
+  3. **task blocked-残余缺陷 D8**（06/13/17/18）：D1 ✓（`POST /sessions` 201，engine_type=trpc 入库）、D7 ✓（builtin-quick-answer 准入放行，`POST /workbench/executions` 202，无 409）、D2 部分（durable worker 已启用并 lease run，queued→running）；**但 worker 的 `ParseDurableRunSnapshot`（agent_run_graph.go，DisallowUnknownFields，期望 version/query/model_id/runtime）拒绝 workbench 平台 admission-map 快照（admission.go:593 含 text/agent_id 等 mobile 字段）→ `unknown field "text"`（两次提交均复现，共 6 次）→ 0 事件、详情「已接收事件 0」、run 仅在 10 分钟 deadline 后 failed/deadline_exceeded**。详情读路径与状态投影正常（snapshot 200）。
+  4. **background-recovery blocked-env**：本轮未重验（≥35s 后台恢复上轮已部分实证）；续流腿仍因 D8（run 零事件）不可证。
+  5. **offline-draft evidenced（D5 修复实证）**（07/09/10）：Release/Hermes scoped-vault 生效——草稿经两次杀进程 + 一次完整重登后逐字回显；重提交 bound（201+202，草稿按 bound 分支清除）。口径注记：离线门拦截腿在本 sim 不可自然模拟（expo-network isInternetReachable 探测系统级网络、对冻结 origin 无响应，sim 无飞行模式），以「SIGSTOP 冻结 nginx → 提交挂起失败 → 草稿保留」近似替代（07）。
+  6. **notification evidenced（D4 修复实证，双注记）**（11/12/13/17）：后端 mobile-notification 轮询 **0 次 SQLSTATE 42703**（上轮每 2s 报错），provider_state 查询正常执行；GET /workbench/inbox 200；通知行到达设备 Inbox（未读 1）并 tap 深链落 `/tasks/detail` 任务详情。注记 ①：该通知行为 DB 直插——`workbench_notifications` 读模型**无写入方接线**（repo 无 INSERT 调用方）且自然完成通知被 D8 阻断（测试行验证后已删）；② APNs 远程投递仍 blocked-env（无凭据）。
+  7. **download-share blocked-env**（14）：run 存在、artifacts API 200（空列表）、材料面（研究批注/只读终端/证据引用）渲染，但 run 零产出 → 无材料可分享，分享面板未呈现；真机口径保留。
+  8. **voice-permission / permission-denied evidenced**（15）：拒权可行动文案 + 进程存活。
+  9. **secure-storage evidenced**（08/09）：授权会话三次冷启恢复 + scoped-vault 草稿持久化（D5）双证，闭合上轮「local-save-failed」缺口。
+  10. **cold-start evidenced**（08）；**revocation evidenced**（16）：signOut→terminate→冷启停登录页。
+  11. **weak-network blocked-env**：活体 pending-retained 证据沿用上轮（20）；reconciled-same-run 收敛腿由 D1 改判为仍被 **D8** 阻断。
+- **#69 结论**：D1/D4/D5/D6/D7 五项修复实证生效；D2 worker 已启用但 mobile workbench platform run 的执行链在快照解码处断裂（**新残余缺陷 D8**：`agent_run_graph.go ParseDurableRunSnapshot` vs `admission.go:593` 平台 admission-map 快照 schema 不兼容），任务主链的 run 推进/SSE 事件流/材料产出仍被其阻断；另登记 notification 写入管线未接线。closure 仍不可宣布，D8 移交修复轮。
+- 本轮栈/数据变更（复核用）：后端重建自 75a175006 并固定 JWT_SECRET（`/tmp/t39r/jwt-secret`）；FUNC 账号补种 tenant_members(10044, admin) 一行（flow 2 第二空间，保留）；workbench_notifications 测试行 `t39dfix-notify-1` 已删除；agent_runs 两行测试 run 留存于 10001（D8 复现证据，见 18）。
