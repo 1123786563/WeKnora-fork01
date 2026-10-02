@@ -7,7 +7,7 @@ import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources
 import { createJsonTransport } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
-import { createScopedVault, createWebCryptoCipher, createInMemoryTaskProjectionStore } from '@weknora/mobile-core';
+import { createScopedVault, createInMemoryTaskProjectionStore } from '@weknora/mobile-core';
 import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@weknora/mobile-core';
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
 import { createTaskMaterial } from '@weknora/mobile-core';
@@ -26,6 +26,7 @@ import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
 import type { SecureStorePort } from './adapters/secure-store.ts';
 import { createSecureVaultKeyStore, createSecureVaultStorage } from './adapters/vault-adapters.ts';
+import { createHermesVaultCipher } from './adapters/vault-cipher.ts';
 import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
 import { streamAuthorizedSse, type SseFetchLike } from './adapters/sse-stream.ts';
@@ -91,14 +92,16 @@ function nativeFetch(input: string, init?: { method?: string; headers?: Record<s
   return fetch(input, init as RequestInit);
 }
 
-/** Wires the Scoped Vault only where Web Crypto exists. Native crypto seam completes in T10 (#40); absence must not break login. */
+/** T39 #69 D5: Hermes 无 crypto.subtle，WebCrypto cipher 会把整个 vault fail-soft
+ * 成 undefined（Release 草稿/投影全丢）。改用 @noble/ciphers 纯 JS AES-GCM，
+ * 只要求 hermes-crypto shim 的 getRandomValues；absence must not break login。 */
 function createNativeScopedVaultIfAvailable(): ScopedVault | undefined {
   try {
     const secure = require('expo-secure-store') as SecureStorePort;
     return createScopedVault({
       keyStore: createSecureVaultKeyStore(secure),
       storage: createSecureVaultStorage(secure),
-      cipher: createWebCryptoCipher(),
+      cipher: createHermesVaultCipher(),
     });
   } catch {
     return undefined;
