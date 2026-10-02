@@ -209,7 +209,7 @@ test('task office remote creates the goal session, starts the durable run and re
   assert.deepEqual(lookup, { state: 'admitted', run_id: 'run-77' });
 
   assert.deepEqual(requests, [
-    { method: 'POST', path: '/api/v1/sessions', body: { title: '整理本周反馈并生成周报' } },
+    { method: 'POST', path: '/api/v1/sessions', body: { title: '整理本周反馈并生成周报', engine_type: 'trpc' } },
     { method: 'POST', path: '/api/v1/workbench/executions', body: { request_id: 'req-77', session_id: 'session-77', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '整理本周反馈并生成周报', budget_upper: 200 } },
     { method: 'GET', path: '/api/v1/workbench/executions/requests/req-77', body: undefined },
   ]);

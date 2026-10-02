@@ -59,7 +59,7 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
     async get(sessionId: string, signal?: AbortSignal): Promise<ChatSession> {
       return parseChatSessionResponse(await request({ method: 'GET', path: sessionPath(sessionId), ...(signal === undefined ? {} : { signal }) }));
     },
-    async create(input: { title?: string; description?: string } = {}): Promise<ChatSession> {
+    async create(input: { title?: string; description?: string; engine_type?: 'builtin' | 'trpc' } = {}): Promise<ChatSession> {
       return parseChatSessionResponse(await request({ method: 'POST', path: '/api/v1/sessions', body: input }));
     },
     /**

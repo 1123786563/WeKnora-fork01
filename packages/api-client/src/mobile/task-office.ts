@@ -122,7 +122,8 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
       };
     },
     async createSession(input: { title: string }): Promise<{ sessionId: string }> {
-      const session = await sessionsApi.create({ title: input.title });
+      // engine_type 不可省略：省略即 builtin，workbench admission 会以 409 agent runtime conflict 拒绝（T39 #69 D1）。
+      const session = await sessionsApi.create({ title: input.title, engine_type: 'trpc' });
       return { sessionId: session.id };
     },
     async start(input: StartExecutionInput): Promise<StartAck> {
