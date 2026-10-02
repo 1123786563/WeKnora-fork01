@@ -1,0 +1,56 @@
+{
+  "action": "baseline",
+  "helper": {
+    "image_id": "sha256:b44642d221e5cafc73454c35e7a42d12250400552b97b99c8508bbd0380dee59",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 244487706031041,
+  "payload": {
+    "default_routes": [],
+    "interfaces": [
+      "lo"
+    ],
+    "netns": "net:[4026534548]",
+    "raw_link_json": "[{\"address\": \"00:00:00:00:00:00\", \"broadcast\": \"00:00:00:00:00:00\", \"flags\": [\"LOOPBACK\", \"UP\", \"LOWER_UP\"], \"group\": \"default\", \"ifindex\": 1, \"ifname\": \"lo\", \"link_type\": \"loopback\", \"linkmode\": \"DEFAULT\", \"mtu\": 65536, \"operstate\": \"UNKNOWN\", \"qdisc\": \"noqueue\", \"txqlen\": 1000}]",
+    "raw_route_json": "{\"ipv4\": [], \"ipv6\": []}",
+    "raw_ruleset": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.6\", \"release_name\": \"Commodore Bullmoose #7\", \"json_schema_version\": 1}}]}\n",
+    "routes": {
+      "ipv4": [],
+      "ipv6": []
+    }
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 9062,
+      "path": "0001-container-inspect-after.json",
+      "sha256": "4f51d829a4361e8e37ea04934566c84fc3b50f8d87652b0b2659b913da852614"
+    },
+    "container_inspect_raw": {
+      "bytes": 9062,
+      "path": "0001-container-inspect-before.json",
+      "sha256": "4f51d829a4361e8e37ea04934566c84fc3b50f8d87652b0b2659b913da852614"
+    },
+    "raw_link_json": {
+      "bytes": 281,
+      "path": "0001-links.json",
+      "sha256": "a91b440b8d66bba7c817889e9e2ba13e3db843deb2b9a36fdacefe3a4115e9ae"
+    },
+    "raw_route_json": {
+      "bytes": 24,
+      "path": "0001-routes.json",
+      "sha256": "c17947defdbdf3bc32d801fdf75d3d3ad8796e8b5bc52c7f47fe18e2ec707426"
+    },
+    "raw_ruleset": {
+      "bytes": 119,
+      "path": "0001-nft-ruleset.json",
+      "sha256": "7be6ae8168b91af389f92984b66540c243addb40df33350407b6de9818d11ffd"
+    }
+  },
+  "sequence": 1,
+  "target": {
+    "container_id": "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+    "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+    "container_pid": 2243281,
+    "netns": "net:[4026534548]"
+  }
+}

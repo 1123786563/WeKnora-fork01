@@ -1,0 +1,60 @@
+{
+  "ack_after": {
+    "client_to_driver": {
+      "handle": 6,
+      "packets": 4
+    },
+    "driver_to_client": {
+      "handle": 7,
+      "packets": 4
+    }
+  },
+  "ack_before": {
+    "client_to_driver": {
+      "handle": 6,
+      "packets": 4
+    },
+    "driver_to_client": {
+      "handle": 7,
+      "packets": 4
+    }
+  },
+  "ack_counter_deltas": {
+    "client_to_driver": 0,
+    "driver_to_client": 0
+  },
+  "after_record": 9,
+  "before_record": 8,
+  "evidence": {
+    "bind_succeeded": true,
+    "connect_attempted": true,
+    "connect_errno": null,
+    "connect_error": "timed out",
+    "connect_error_type": "TimeoutError",
+    "connect_timeout_ms": 500,
+    "connected": false,
+    "destination_addr": "127.0.0.1",
+    "destination_port": 9515,
+    "elapsed_ms": 502,
+    "source_addr": "127.0.0.1",
+    "source_port": 49892
+  },
+  "handles_match": true,
+  "loopback_drop_delta": 1,
+  "monotonic_ended_ns": 244492394716375,
+  "monotonic_started_ns": 244491842812750,
+  "passed": true,
+  "probe_command": [
+    "docker",
+    "exec",
+    "--user",
+    "10001:10001",
+    "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+    "python3",
+    "-c",
+    "import json,socket,time;e={'source_addr':'127.0.0.1','source_port':49892,'destination_addr':'127.0.0.1','destination_port':9515,'bind_succeeded':False,'connect_attempted':False,'connected':False,'connect_errno':None,'connect_timeout_ms':500,'elapsed_ms':0};s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.settimeout(.5);\ntry:\n s.bind((e['source_addr'],e['source_port']));e['bind_succeeded']=True\nexcept OSError as x:\n e['bind_errno']=x.errno\nif e['bind_succeeded']:\n t=time.monotonic();e['connect_attempted']=True\n try:\n  s.connect((e['destination_addr'],e['destination_port']));e['connected']=True\n except OSError as x:\n  e['connect_errno']=x.errno;e['connect_error_type']=type(x).__name__;e['connect_error']=str(x)\n finally:e['elapsed_ms']=int((time.monotonic()-t)*1000)\ns.close();print(json.dumps(e,sort_keys=True))"
+  ],
+  "probe_returncode": 0,
+  "probe_stderr": "",
+  "probe_stdout": "{\"bind_succeeded\": true, \"connect_attempted\": true, \"connect_errno\": null, \"connect_error\": \"timed out\", \"connect_error_type\": \"TimeoutError\", \"connect_timeout_ms\": 500, \"connected\": false, \"destination_addr\": \"127.0.0.1\", \"destination_port\": 9515, \"elapsed_ms\": 502, \"source_addr\": \"127.0.0.1\", \"source_port\": 49892}\n"
+}

@@ -1,0 +1,195 @@
+[
+  {
+    "address": "10.0.0.1",
+    "after": {
+      "bytes": 60,
+      "counter_id": "policy-target-private-http-drop",
+      "destination": "10.0.0.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 1,
+      "protocol": "tcp"
+    },
+    "before": {
+      "bytes": 0,
+      "counter_id": "policy-target-private-http-drop",
+      "destination": "10.0.0.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 0,
+      "protocol": "tcp"
+    },
+    "command": [
+      "docker",
+      "exec",
+      "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+      "python3",
+      "-c",
+      "import socket;s=socket.socket();s.settimeout(.3);exec(\"try:\\n s.connect(('10.0.0.1',80))\\n print('connected')\\nexcept OSError as e:\\n print(type(e).__name__)\")"
+    ],
+    "counter": "private_http",
+    "port": 80,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "TimeoutError\n"
+  },
+  {
+    "address": "169.254.169.254",
+    "after": {
+      "bytes": 60,
+      "counter_id": "policy-target-metadata-http-drop",
+      "destination": "169.254.169.254",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 1,
+      "protocol": "tcp"
+    },
+    "before": {
+      "bytes": 0,
+      "counter_id": "policy-target-metadata-http-drop",
+      "destination": "169.254.169.254",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 0,
+      "protocol": "tcp"
+    },
+    "command": [
+      "docker",
+      "exec",
+      "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+      "python3",
+      "-c",
+      "import socket;s=socket.socket();s.settimeout(.3);exec(\"try:\\n s.connect(('169.254.169.254',80))\\n print('connected')\\nexcept OSError as e:\\n print(type(e).__name__)\")"
+    ],
+    "counter": "metadata_http",
+    "port": 80,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "TimeoutError\n"
+  },
+  {
+    "address": "172.17.0.1",
+    "after": {
+      "bytes": 60,
+      "counter_id": "policy-target-gateway-http-drop",
+      "destination": "172.17.0.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 1,
+      "protocol": "tcp"
+    },
+    "before": {
+      "bytes": 0,
+      "counter_id": "policy-target-gateway-http-drop",
+      "destination": "172.17.0.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 0,
+      "protocol": "tcp"
+    },
+    "command": [
+      "docker",
+      "exec",
+      "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+      "python3",
+      "-c",
+      "import socket;s=socket.socket();s.settimeout(.3);exec(\"try:\\n s.connect(('172.17.0.1',80))\\n print('connected')\\nexcept OSError as e:\\n print(type(e).__name__)\")"
+    ],
+    "counter": "gateway_http",
+    "port": 80,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "TimeoutError\n"
+  },
+  {
+    "address": "1.1.1.1",
+    "after": {
+      "bytes": 60,
+      "counter_id": "policy-target-public-http-drop",
+      "destination": "1.1.1.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 1,
+      "protocol": "tcp"
+    },
+    "before": {
+      "bytes": 0,
+      "counter_id": "policy-target-public-http-drop",
+      "destination": "1.1.1.1",
+      "destination_ports": [
+        80,
+        443
+      ],
+      "packets": 0,
+      "protocol": "tcp"
+    },
+    "command": [
+      "docker",
+      "exec",
+      "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+      "python3",
+      "-c",
+      "import socket;s=socket.socket();s.settimeout(.3);exec(\"try:\\n s.connect(('1.1.1.1',443))\\n print('connected')\\nexcept OSError as e:\\n print(type(e).__name__)\")"
+    ],
+    "counter": "public_https",
+    "port": 443,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "TimeoutError\n"
+  },
+  {
+    "dns_packet": {
+      "command": "import json,socket,struct\nname='craft-render-boundary-probe.invalid'\nq=b''.join(bytes([len(x)])+x.encode() for x in name.split('.'))+b'\\x00'\npacket=struct.pack('!HHHHHH',0x4a31,0x0100,1,0,0,0)+q+struct.pack('!HH',1,1)\ns=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)\ntry:\n n=s.sendto(packet,('203.0.113.53',53))\n e=None\nexcept OSError as exc:\n n=0\n e={'type':type(exc).__name__,'errno':exc.errno,'message':str(exc)}\nprint(json.dumps({'qname':name,'destination':'203.0.113.53:53/udp','bytes':n,'send_error':e,'query_id':0x4a31}))\n",
+      "counter_after": {
+        "bytes": 81,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 1,
+        "protocol": "udp"
+      },
+      "returncode": 0,
+      "stdout": "{\"qname\": \"craft-render-boundary-probe.invalid\", \"destination\": \"203.0.113.53:53/udp\", \"bytes\": 0, \"send_error\": {\"type\": \"PermissionError\", \"errno\": 1, \"message\": \"[Errno 1] Operation not permitted\"}, \"query_id\": 18993}\n"
+    },
+    "name_only_failure": {
+      "command": "import socket;socket.getaddrinfo('craft-render-boundary-probe.invalid',None,flags=socket.AI_NUMERICHOST)",
+      "dns_counter_after": {
+        "bytes": 0,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 0,
+        "protocol": "udp"
+      },
+      "dns_counter_before": {
+        "bytes": 0,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 0,
+        "protocol": "udp"
+      },
+      "returncode": 1
+    }
+  }
+]

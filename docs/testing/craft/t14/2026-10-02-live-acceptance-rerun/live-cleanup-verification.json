@@ -1,0 +1,108 @@
+{
+  "checked_at_monotonic_ns": 244528574948416,
+  "commands": {
+    "any_policy_helper_label": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "label=io.weknora.craft.policy-helper=true"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "docker_info": {
+      "argv": [
+        "docker",
+        "info",
+        "--format",
+        "{{.ID}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "14b511b7-7c9b-4716-9e76-2eaec03f0cc6\n"
+    },
+    "helpers_by_policy": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "label=io.weknora.craft.policy-helper=true",
+        "--filter",
+        "label=io.weknora.craft.policy-id=t14_21bd87efaee5"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "helpers_by_renderer": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "label=io.weknora.craft.policy-helper=true",
+        "--filter",
+        "label=io.weknora.craft.renderer-id=3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "policy_named_containers": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "-q",
+        "--filter",
+        "name=t14_21bd87efaee5"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "renderer_inspect": {
+      "argv": [
+        "docker",
+        "inspect",
+        "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28"
+      ],
+      "returncode": 1,
+      "stderr": "error: no such object: 3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28\n",
+      "stdout": "[]\n"
+    }
+  },
+  "counter_canary": {
+    "ack_exception_counter_deltas_frozen": {
+      "client_to_driver": 0,
+      "driver_to_client": 0
+    },
+    "final_loopback_v4_drop_packets": {
+      "client_to_driver": {
+        "handle": 6,
+        "packets": 4
+      },
+      "driver_to_client": {
+        "handle": 7,
+        "packets": 4
+      }
+    },
+    "note": "counters lived in the renderer netns; renderer absence after teardown makes any post-teardown counter read impossible, which is itself the isolation proof",
+    "same_port_loopback_drop_delta": 1,
+    "source": "test_target_counters_cover_random_preview_loopback_and_controlled_dns/same-port-syn-proof.json"
+  },
+  "docker_daemon_available": true,
+  "ephemeral_policy_helpers_absent": true,
+  "no_test_named_containers_remain": true,
+  "policy_id": "t14_21bd87efaee5",
+  "renderer_absent_after_teardown": true,
+  "renderer_id": "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+  "renderer_was_active_in_policy_record": true
+}

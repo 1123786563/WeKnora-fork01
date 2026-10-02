@@ -1,0 +1,241 @@
+{
+  "action": "snapshot",
+  "helper": {
+    "image_id": "sha256:b44642d221e5cafc73454c35e7a42d12250400552b97b99c8508bbd0380dee59",
+    "image_ref": "craft-t14-policy-helper:2026-09-24"
+  },
+  "monotonic_ns": 244497642279833,
+  "payload": {
+    "counters": {
+      "isolated_ipv4_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "isolated_ipv6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "loopback_drop": {
+        "bytes": 180,
+        "packets": 3
+      },
+      "loopback_v4_drop": {
+        "bytes": 180,
+        "packets": 3
+      },
+      "loopback_v6_drop": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "target_counters": {
+        "dns_invalid": {
+          "bytes": 0,
+          "counter_id": "policy-target-invalid-dns-drop",
+          "destination": "203.0.113.53",
+          "destination_ports": [
+            53
+          ],
+          "packets": 0,
+          "protocol": "udp"
+        },
+        "gateway_http": {
+          "bytes": 60,
+          "counter_id": "policy-target-gateway-http-drop",
+          "destination": "172.17.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 1,
+          "protocol": "tcp"
+        },
+        "metadata_http": {
+          "bytes": 60,
+          "counter_id": "policy-target-metadata-http-drop",
+          "destination": "169.254.169.254",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 1,
+          "protocol": "tcp"
+        },
+        "private_http": {
+          "bytes": 60,
+          "counter_id": "policy-target-private-http-drop",
+          "destination": "10.0.0.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 1,
+          "protocol": "tcp"
+        },
+        "public_https": {
+          "bytes": 0,
+          "counter_id": "policy-target-public-http-drop",
+          "destination": "1.1.1.1",
+          "destination_ports": [
+            80,
+            443
+          ],
+          "packets": 0,
+          "protocol": "tcp"
+        }
+      }
+    },
+    "default_routes": [],
+    "interfaces": [
+      "lo",
+      "policy0"
+    ],
+    "netns": "net:[4026534548]",
+    "policy_id": "t14_21bd87efaee5",
+    "raw_link_json": "[{\"address\": \"00:00:00:00:00:00\", \"broadcast\": \"00:00:00:00:00:00\", \"flags\": [\"LOOPBACK\", \"UP\", \"LOWER_UP\"], \"group\": \"default\", \"ifindex\": 1, \"ifname\": \"lo\", \"link_type\": \"loopback\", \"linkmode\": \"DEFAULT\", \"mtu\": 65536, \"operstate\": \"UNKNOWN\", \"qdisc\": \"noqueue\", \"txqlen\": 1000}, {\"address\": \"a2:e7:6c:f6:38:8f\", \"broadcast\": \"ff:ff:ff:ff:ff:ff\", \"flags\": [\"BROADCAST\", \"NOARP\", \"UP\", \"LOWER_UP\"], \"group\": \"default\", \"ifindex\": 2, \"ifname\": \"policy0\", \"link_type\": \"ether\", \"linkmode\": \"DEFAULT\", \"mtu\": 1500, \"operstate\": \"UNKNOWN\", \"qdisc\": \"noqueue\", \"txqlen\": 1000}]",
+    "raw_route_json": "{\"ipv4\": [{\"dev\": \"policy0\", \"dst\": \"1.1.1.1\", \"flags\": [], \"scope\": \"link\"}, {\"dev\": \"policy0\", \"dst\": \"10.0.0.1\", \"flags\": [], \"scope\": \"link\"}, {\"dev\": \"policy0\", \"dst\": \"169.254.169.254\", \"flags\": [], \"scope\": \"link\"}, {\"dev\": \"policy0\", \"dst\": \"172.17.0.1\", \"flags\": [], \"scope\": \"link\"}, {\"dev\": \"policy0\", \"dst\": \"198.18.10.0/24\", \"flags\": [], \"scope\": \"link\"}, {\"dev\": \"policy0\", \"dst\": \"203.0.113.53\", \"flags\": [], \"scope\": \"link\"}], \"ipv6\": [{\"dev\": \"policy0\", \"dst\": \"2001:db8:10::/64\", \"flags\": [], \"metric\": 1024, \"pref\": \"medium\"}, {\"dev\": \"policy0\", \"dst\": \"fe80::/64\", \"flags\": [], \"metric\": 256, \"pref\": \"medium\", \"protocol\": \"kernel\"}]}",
+    "raw_rules": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.6\", \"release_name\": \"Commodore Bullmoose #7\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"inet\", \"name\": \"t14_21bd87efaee5\", \"handle\": 1}}, {\"chain\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"name\": \"output\", \"handle\": 1, \"type\": \"filter\", \"hook\": \"output\", \"prio\": -150, \"policy\": \"drop\"}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 2, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 58005}}, {\"counter\": {\"packets\": 4, \"bytes\": 216}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 3, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 58005}}, {\"counter\": {\"packets\": 4, \"bytes\": 226}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 4, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip6\", \"field\": \"daddr\"}}, \"right\": \"::1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 58005}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 5, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip6\", \"field\": \"saddr\"}}, \"right\": \"::1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 58005}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 6, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 49892}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 9515}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"&\": [{\"payload\": {\"protocol\": \"tcp\", \"field\": \"flags\"}}, {\"|\": [\"syn\", \"ack\"]}]}, \"right\": \"ack\"}}, {\"counter\": {\"packets\": 4, \"bytes\": 213}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 7, \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"sport\"}}, \"right\": 9515}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": 49892}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"127.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"&\": [{\"payload\": {\"protocol\": \"tcp\", \"field\": \"flags\"}}, {\"|\": [\"syn\", \"ack\"]}]}, \"right\": \"ack\"}}, {\"counter\": {\"packets\": 4, \"bytes\": 216}}, {\"accept\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 8, \"comment\": \"policy-loopback-v4-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": {\"prefix\": {\"addr\": \"127.0.0.0\", \"len\": 8}}}}, {\"counter\": {\"packets\": 3, \"bytes\": 180}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 9, \"comment\": \"policy-loopback-v6-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip6\", \"field\": \"daddr\"}}, \"right\": \"::1\"}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 10, \"comment\": \"policy-isolated-ipv4-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": {\"prefix\": {\"addr\": \"198.18.10.0\", \"len\": 24}}}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 11, \"comment\": \"policy-isolated-ipv6-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip6\", \"field\": \"daddr\"}}, \"right\": {\"prefix\": {\"addr\": \"2001:db8:10::\", \"len\": 64}}}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 13, \"comment\": \"policy-target-private-http-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"10.0.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": {\"set\": [80, 443]}}}, {\"counter\": {\"packets\": 1, \"bytes\": 60}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 15, \"comment\": \"policy-target-metadata-http-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"169.254.169.254\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": {\"set\": [80, 443]}}}, {\"counter\": {\"packets\": 1, \"bytes\": 60}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 17, \"comment\": \"policy-target-gateway-http-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"172.17.0.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": {\"set\": [80, 443]}}}, {\"counter\": {\"packets\": 1, \"bytes\": 60}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 19, \"comment\": \"policy-target-public-http-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"1.1.1.1\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"tcp\", \"field\": \"dport\"}}, \"right\": {\"set\": [80, 443]}}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"drop\": null}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"t14_21bd87efaee5\", \"chain\": \"output\", \"handle\": 20, \"comment\": \"policy-target-invalid-dns-drop\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"203.0.113.53\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 53}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}, {\"drop\": null}]}}]}\n",
+    "raw_rules_sha256": "a75057c762e3700eae8da62928746d9a2025fef8afa498a860863880d36bc306",
+    "routes": {
+      "ipv4": [
+        {
+          "dev": "policy0",
+          "dst": "1.1.1.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "10.0.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "169.254.169.254",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "172.17.0.1",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "198.18.10.0/24",
+          "flags": [],
+          "scope": "link"
+        },
+        {
+          "dev": "policy0",
+          "dst": "203.0.113.53",
+          "flags": [],
+          "scope": "link"
+        }
+      ],
+      "ipv6": [
+        {
+          "dev": "policy0",
+          "dst": "2001:db8:10::/64",
+          "flags": [],
+          "metric": 1024,
+          "pref": "medium"
+        },
+        {
+          "dev": "policy0",
+          "dst": "fe80::/64",
+          "flags": [],
+          "metric": 256,
+          "pref": "medium",
+          "protocol": "kernel"
+        }
+      ]
+    },
+    "target_counters": {
+      "dns_invalid": {
+        "bytes": 0,
+        "counter_id": "policy-target-invalid-dns-drop",
+        "destination": "203.0.113.53",
+        "destination_ports": [
+          53
+        ],
+        "packets": 0,
+        "protocol": "udp"
+      },
+      "gateway_http": {
+        "bytes": 60,
+        "counter_id": "policy-target-gateway-http-drop",
+        "destination": "172.17.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 1,
+        "protocol": "tcp"
+      },
+      "metadata_http": {
+        "bytes": 60,
+        "counter_id": "policy-target-metadata-http-drop",
+        "destination": "169.254.169.254",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 1,
+        "protocol": "tcp"
+      },
+      "private_http": {
+        "bytes": 60,
+        "counter_id": "policy-target-private-http-drop",
+        "destination": "10.0.0.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 1,
+        "protocol": "tcp"
+      },
+      "public_https": {
+        "bytes": 0,
+        "counter_id": "policy-target-public-http-drop",
+        "destination": "1.1.1.1",
+        "destination_ports": [
+          80,
+          443
+        ],
+        "packets": 0,
+        "protocol": "tcp"
+      }
+    }
+  },
+  "raw_refs": {
+    "container_inspect_after_raw": {
+      "bytes": 9062,
+      "path": "0016-container-inspect-after.json",
+      "sha256": "4f51d829a4361e8e37ea04934566c84fc3b50f8d87652b0b2659b913da852614"
+    },
+    "container_inspect_raw": {
+      "bytes": 9062,
+      "path": "0016-container-inspect-before.json",
+      "sha256": "4f51d829a4361e8e37ea04934566c84fc3b50f8d87652b0b2659b913da852614"
+    },
+    "raw_link_json": {
+      "bytes": 573,
+      "path": "0016-links.json",
+      "sha256": "3ae666892496db31a4bf29e3191f4075598d45ffe3e7c6b9dff7340896724390"
+    },
+    "raw_route_json": {
+      "bytes": 654,
+      "path": "0016-routes.json",
+      "sha256": "ff00f2f59057a6a4d873bd91f7a4559c1b77f311a1c37fb64c4038ae9b654182"
+    },
+    "raw_rules": {
+      "bytes": 6662,
+      "path": "0016-nft-rules.json",
+      "sha256": "a75057c762e3700eae8da62928746d9a2025fef8afa498a860863880d36bc306"
+    }
+  },
+  "sequence": 16,
+  "target": {}
+}

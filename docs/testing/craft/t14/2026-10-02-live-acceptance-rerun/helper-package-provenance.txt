@@ -1,0 +1,2 @@
+iproute2-7.0.0-r0 aarch64 {iproute2} (GPL-2.0-or-later) [installed]
+nftables-1.1.6-r1 aarch64 {nftables} (GPL-2.0-or-later) [installed]

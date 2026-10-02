@@ -27,8 +27,8 @@
 
 | 原文件 | 档案 SHA-256（fix1-report §88） | 状态 |
 | --- | --- | --- |
-| `controller.py` | `9e6840357d22e4f2da1d4f79d52a01f5953991766fe9a30b9433973902f0a439` | 缺失。宿主侧编排器（测试以 `python3 controller.py --helper-image …` 调用），活体复跑（Task 2）前须重写并过独立审查 |
-| `barrier_adapter.py` | `598502bb9015d440a7696a399b486b33111a1982487b8798cdb3d2763004b1ec` | 缺失 |
+| `controller.py` | `9e6840357d22e4f2da1d4f79d52a01f5953991766fe9a30b9433973902f0a439` | 2026-10-02 Task 2 以重写件替代（`4dcad2b1…`）：宿主侧编排器，满足恢复测试文件全部 API；活体验收复跑七判据全过（`docs/testing/craft/t14/2026-10-02-live-acceptance-rerun/`） |
+| `barrier_adapter.py` | `598502bb9015d440a7696a399b486b33111a1982487b8798cdb3d2763004b1ec` | 2026-10-02 Task 2 以重写件替代（`7c9969ba…`）：发现脚本 + 七字段 flow join |
 | `Dockerfile` | `d9a1e8f450f831ba6cd364014c934beb62069b08b3928f89f89fc22d74804deb` | 字节不可推导（128 种 history 兼容格式组合穷举无一命中）。以 `build.sh` 代替：按 `docker history` 四层 + 精确 base digest 复现镜像 |
 
 ## 离线检查

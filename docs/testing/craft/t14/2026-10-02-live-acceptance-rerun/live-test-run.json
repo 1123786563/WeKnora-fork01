@@ -1,0 +1,25 @@
+{
+  "command": "cd deploy/craft/render-boundary/policy-helper/tests && DOCKER_BUILDKIT=0 POLICY_HELPER_RUN_DOCKER_TESTS=1 POLICY_HELPER_EVIDENCE_DIR=/Users/wuyongjun/trea/WeKnora-fork01/docs/testing/craft/t14/2026-10-02-live-acceptance-rerun python3 -m unittest test_controller_integration.PolicyControllerIntegrationTests.test_target_counters_cover_random_preview_loopback_and_controlled_dns -v",
+  "result": "passed",
+  "exit_code": 0,
+  "duration_seconds": 14.322,
+  "test": "test_controller_integration.PolicyControllerIntegrationTests.test_target_counters_cover_random_preview_loopback_and_controlled_dns",
+  "acceptance": [
+    "same-fd websocket marker positive bidirectional counters",
+    "same-source-port SYN denied with errno null timeout and zero ACK-exception counter delta",
+    "different-source-port fresh SYN denied",
+    "loopback service denied",
+    "random preview served",
+    "mandatory drop-counter canary",
+    "target policy receipts"
+  ],
+  "cleanup_receipt": "live-cleanup-verification.json",
+  "source_checkpoint": {
+    "helper.py": "c8d30121927350e3cea5fd3b5823ca2308f1b4f550af1d730d29ac7e92fd87c2",
+    "test_controller_integration.py": "9c95492af5f2f72c78c1f95f742a82aed5d1e03c3269561be97007586a3c0bf8",
+    "controller.py (rewrite)": "4dcad2b16109f843e175374ba3f2ac0886aef72516fa6219909a442f4f6f9db2",
+    "barrier_adapter.py (rewrite)": "7c9969ba529184dba0b0cbdd93b466f2406fe4cebaa6ea6e2435d36641d59ca7",
+    "note": "helper.py/test recovered by Task 1 (hash-chain MATCH); controller.py/barrier_adapter.py are Task 2 rewrites (originals 9e684035\u2026/598502bb\u2026 unrecoverable, see RECOVERY.md)"
+  },
+  "environment_drift": "DOCKER_BUILDKIT=0 required: the configured registry mirror (docker.m.daocloud.io) answers 403 to manifest HEAD for the pinned base digest; the local python:3.12-alpine tag's image ID equals the pinned digest 4c47124a\u2026 so the Dockerfile references the local tag with the digest documented in a comment and in build.sh"
+}

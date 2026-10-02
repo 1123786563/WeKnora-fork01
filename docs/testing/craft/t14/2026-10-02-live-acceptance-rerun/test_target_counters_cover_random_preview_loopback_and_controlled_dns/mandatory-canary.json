@@ -1,0 +1,57 @@
+{
+  "after_packets": 1,
+  "after_record": 4,
+  "before_packets": 0,
+  "before_record": 3,
+  "counter_id": "policy-loopback-v4-drop",
+  "delta_packets": 1,
+  "destination": "127.0.0.1:8081/tcp",
+  "kind": "post-policy-loopback-drop-canary",
+  "monotonic_ended_ns": 244488883759166,
+  "monotonic_started_ns": 244488478085750,
+  "passed": true,
+  "probe": {
+    "returncode": 1,
+    "stderr": "",
+    "stdout": "TimeoutError:timed out\n"
+  },
+  "probe_argv": [
+    "docker",
+    "exec",
+    "--user",
+    "10001:10001",
+    "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+    "python3",
+    "-c",
+    "import socket,sys;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.settimeout(.35);\ntry:s.connect(('127.0.0.1',8081));print('unexpected-connect');sys.exit(0)\nexcept OSError as exc:print(type(exc).__name__+':'+str(exc));sys.exit(1)"
+  ],
+  "webdriver_same_listener_canary": {
+    "after_packets": 2,
+    "before_packets": 1,
+    "connect_attempted": true,
+    "connect_elapsed_ms": 504,
+    "connected": false,
+    "counter_id": "policy-loopback-v4-drop",
+    "delta_packets": 1,
+    "destination": "127.0.0.1:9515/tcp",
+    "errno": null,
+    "error_type": "TimeoutError",
+    "monotonic_ended_ns": 244489853820250,
+    "monotonic_started_ns": 244489297603875,
+    "passed": true,
+    "probe_argv": [
+      "docker",
+      "exec",
+      "--user",
+      "10001:10001",
+      "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+      "python3",
+      "-c",
+      "import socket,sys,json,errno,time;family=socket.AF_INET;address='127.0.0.1';port=9515;s=socket.socket(family,socket.SOCK_STREAM);s.settimeout(.5);s.bind((('127.0.0.1' if family==socket.AF_INET else '::1'),0));local=s.getsockname()[1];out={'destination':address,'destination_port':port,'source_port':local,'connect_attempted':False};\nif local==49892:print(json.dumps(out));sys.exit(3)\nout['connect_attempted']=True;started=time.monotonic();\ntry:s.connect((address,port));out.update({'connected':True,'error_type':None,'errno':None});print(json.dumps(out));sys.exit(0)\nexcept OSError as exc:out.update({'connected':False,'error_type':type(exc).__name__,'errno':exc.errno,'connect_elapsed_ms':int((time.monotonic()-started)*1000)});print(json.dumps(out));sys.exit(1)"
+    ],
+    "returncode": 1,
+    "source_port": 47405,
+    "stderr": "",
+    "stdout": "{\"destination\": \"127.0.0.1\", \"destination_port\": 9515, \"source_port\": 47405, \"connect_attempted\": true, \"connected\": false, \"error_type\": \"TimeoutError\", \"errno\": null, \"connect_elapsed_ms\": 504}\n"
+  }
+}

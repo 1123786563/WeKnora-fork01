@@ -1,0 +1,209 @@
+[
+    {
+        "Id": "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+        "Created": "2026-10-02T01:10:09.169137425Z",
+        "Path": "python3",
+        "Args": [
+            "-c",
+            "import ctypes,os,socket; pid=os.fork()\nif pid==0:\n libc=ctypes.CDLL(None); libc.prctl(15,b'chromedriver',0,0,0);  d=socket.socket(); d.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);  d.bind(('127.0.0.1',9515)); d.listen(); exec('while True:\\n c,a=d.accept(); data=c.recv(32); c.sendall(b\\\"reuse-ok\\\"); c.close()'); os._exit(0)\nw=socket.create_connection(('127.0.0.1',9515)); import signal\ndef reuse(signum,frame):\n w.sendall(b'reuse'); result=w.recv(32); open('/tmp/reuse-proof','wb').write(result); signal.signal(signal.SIGUSR1,signal.SIG_IGN)\ndef close_client(signum,frame):\n w.close(); open('/tmp/close-proof','wb').write(b'client-fd-closed'); signal.signal(signal.SIGUSR2,signal.SIG_IGN)\nsignal.signal(signal.SIGUSR1,reuse); signal.signal(signal.SIGUSR2,close_client); s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',58005)); s.listen(); exec('while True:\\n c,a=s.accept(); c.sendall(b\\\"preview-ok\\\"); c.close()')"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 2243281,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-10-02T01:10:09.242975605Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+        "ResolvConfPath": "/var/lib/docker/containers/3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28/hostname",
+        "HostsPath": "/var/lib/docker/containers/3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28/hosts",
+        "LogPath": "/var/lib/docker/containers/3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28/3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28-json.log",
+        "Name": "/t14_21bd87efaee5",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {
+                    "max-file": "5",
+                    "max-size": "20m"
+                }
+            },
+            "NetworkMode": "none",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": [
+                "ALL"
+            ],
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": true,
+            "SecurityOpt": [
+                "no-new-privileges"
+            ],
+            "Tmpfs": {
+                "/tmp": "rw,noexec,nosuid,size=16m"
+            },
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 4196401152,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "3d4b4afa30dd",
+            "Domainname": "",
+            "User": "10001:10001",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/tmp/renderer-home",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PYTHONUNBUFFERED=1"
+            ],
+            "Cmd": [
+                "-c",
+                "import ctypes,os,socket; pid=os.fork()\nif pid==0:\n libc=ctypes.CDLL(None); libc.prctl(15,b'chromedriver',0,0,0);  d=socket.socket(); d.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);  d.bind(('127.0.0.1',9515)); d.listen(); exec('while True:\\n c,a=d.accept(); data=c.recv(32); c.sendall(b\\\"reuse-ok\\\"); c.close()'); os._exit(0)\nw=socket.create_connection(('127.0.0.1',9515)); import signal\ndef reuse(signum,frame):\n w.sendall(b'reuse'); result=w.recv(32); open('/tmp/reuse-proof','wb').write(result); signal.signal(signal.SIGUSR1,signal.SIG_IGN)\ndef close_client(signum,frame):\n w.close(); open('/tmp/close-proof','wb').write(b'client-fd-closed'); signal.signal(signal.SIGUSR2,signal.SIG_IGN)\nsignal.signal(signal.SIGUSR1,reuse); signal.signal(signal.SIGUSR2,close_client); s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',58005)); s.listen(); exec('while True:\\n c,a=s.accept(); c.sendall(b\\\"preview-ok\\\"); c.close()')"
+            ],
+            "Image": "craft-t14-task3-validation:2026-09-24-e2f335dc",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "python3"
+            ],
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "SandboxID": "6609ceea3954f86105ee3c56f0c2ae712746879134075dc9dee498054955afbb",
+            "SandboxKey": "/var/run/docker/netns/6609ceea3954",
+            "Ports": {},
+            "Networks": {
+                "none": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb",
+                    "EndpointID": "13715948f5d4f4e6136653c0d24aa949c21a6e8afd90afd3fa33f70dbc368c58",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:2e45653f5ea9a95b15bfa906e67eeda819e472d50a0b17e1566b25206105c17c",
+            "size": 862,
+            "platform": {
+                "architecture": "arm64",
+                "os": "linux"
+            }
+        }
+    }
+]

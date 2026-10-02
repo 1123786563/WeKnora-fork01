@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "docker",
+    "exec",
+    "--user",
+    "10001:10001",
+    "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+    "python3",
+    "-c",
+    "import json,socket,sys;port=int(sys.argv[1]);s=socket.create_connection(('127.0.0.1',port),1);s.close();print(json.dumps({'connected':True,'port':port}))",
+    "58005"
+  ],
+  "connected": true,
+  "container_id": "3d4b4afa30dd8f0052023e7e72b7b81e1a72f1a89c2d1199470405e3de9caf28",
+  "container_image_id": "sha256:a0303363266f66e2d23ce64363cf28393fdb07f84624122db5faf1cdc4aa4f03",
+  "container_pid_after": 2243281,
+  "container_pid_before": 2243281,
+  "monotonic_ended_ns": 244487237353375,
+  "monotonic_started_ns": 244487201704208,
+  "port": 58005,
+  "returncode": 0,
+  "source": "host-issued-docker-exec-loopback-listener-connect",
+  "stderr": "",
+  "stdout": "{\"connected\": true, \"port\": 58005}\n"
+}
