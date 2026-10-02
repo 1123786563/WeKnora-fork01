@@ -173,6 +173,18 @@ func checkLocalAgentReleaseAdmissionTx(tx *gorm.DB, sourceTenantID uint64, local
 	if err := query.Find(&variants).Error; err != nil {
 		return "", false, err
 	}
+	// T39 #69 D7: builtin synthetic agents are listed by ListAgents but never
+	// have tenant-owned custom_agents rows or Variant lineage. The #64 8E
+	// guard contract's open rule ("empty/builtin identity stays open")
+	// extends to this closed compile-time family only — and only without a
+	// client-supplied Version pin, which a builtin can never classify. Every
+	// other rowless identity fails closed below.
+	if len(variants) == 0 && types.IsKnownBuiltinAgentID(localAgentID) {
+		if localAgentVersionID != "" {
+			return "", false, ErrAgentSecurityReleaseUnresolvable
+		}
+		return "", false, nil
+	}
 	// The local Agent is the tenant-owned runtime identity for both adopted
 	// and ordinary Agents. Lock it after Variant lineage and before Version so
 	// a concurrent delete cannot turn a stale Marketplace mapping into an

@@ -20,6 +20,7 @@ func TestCheckLocalAgentReleaseAdmissionTx(t *testing.T) {
 		duplicate    bool
 		missingAgent bool
 		deletedAgent bool
+		builtin      bool
 		wantID       string
 		wantAdopt    bool
 		wantErr      error
@@ -36,13 +37,23 @@ func TestCheckLocalAgentReleaseAdmissionTx(t *testing.T) {
 		{name: "same version different digest allowed", version: "version-1", variant: true, deps: `{"dependencies":[{"type":"skill","id":"dep","version":"1","digest":"sha-b"}]}`, depRevoke: true, wantID: "release-1", wantAdopt: true},
 		{name: "duplicate eligible mappings fail closed", version: "version-1", variant: true, duplicate: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
 		{name: "missing local agent fails closed", version: "version-1", variant: true, missingAgent: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
+		// T39 #69 D7: builtin synthetic agents are visible in ListAgents but
+		// never have tenant-owned custom_agents rows. The #64 8E guard
+		// contract's open rule extends to the closed compile-time builtin
+		// family; every other rowless identity keeps failing closed.
+		{name: "builtin id without custom_agents row stays open", builtin: true},
+		{name: "builtin id with stale version pin still fails closed", builtin: true, version: "version-1", wantErr: ErrAgentSecurityReleaseUnresolvable},
+		{name: "unknown non-builtin id without row fails closed", missingAgent: true, wantErr: ErrAgentSecurityReleaseUnresolvable},
 		{name: "soft deleted local agent fails closed", version: "version-1", variant: true, deletedAgent: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openRunTestDB(t)
 			localAgent := "local-agent"
-			if !tt.missingAgent {
+			if tt.builtin {
+				localAgent = types.BuiltinWikiFixerID
+			}
+			if !tt.missingAgent && !tt.builtin {
 				require.NoError(t, db.Create(&types.CustomAgent{ID: localAgent, TenantID: 1, Name: "Ordinary"}).Error)
 				if tt.deletedAgent {
 					require.NoError(t, db.Delete(&types.CustomAgent{}, "id = ? AND tenant_id = ?", localAgent, 1).Error)

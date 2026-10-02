@@ -626,6 +626,30 @@ func GetBuiltinAgentIDs() []string {
 	return builtinAgentIDsOrdered
 }
 
+// builtinAgentIDFamily is the closed compile-time builtin identity family:
+// the picker agents plus the two programmatic agents (wiki fixer, skill
+// installer). Security admission uses it as its open rule, so it must not
+// depend on the YAML-populated BuiltinAgentRegistry (empty before startup
+// config load).
+var builtinAgentIDFamily = map[string]struct{}{
+	BuiltinQuickAnswerID:          {},
+	BuiltinSmartReasoningID:       {},
+	BuiltinWikiResearcherID:       {},
+	BuiltinDeepResearcherID:       {},
+	BuiltinDataAnalystID:          {},
+	BuiltinKnowledgeGraphExpertID: {},
+	BuiltinDocumentAssistantID:    {},
+	BuiltinWikiFixerID:            {},
+	BuiltinSkillInstallerID:       {},
+}
+
+// IsKnownBuiltinAgentID reports whether id belongs to the closed compile-time
+// builtin family, independent of config loading.
+func IsKnownBuiltinAgentID(id string) bool {
+	_, ok := builtinAgentIDFamily[id]
+	return ok
+}
+
 // IsBuiltinAgentID checks if the given ID is a built-in agent ID
 func IsBuiltinAgentID(id string) bool {
 	_, exists := BuiltinAgentRegistry[id]
