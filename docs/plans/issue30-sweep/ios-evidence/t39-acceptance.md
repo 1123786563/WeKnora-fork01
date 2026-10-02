@@ -67,3 +67,21 @@
 1. **06 截图与 05 逐字节相同（md5 `3c79e97263b12ce0ea7e062eacdcf3cb`）**：推送探针后画面无 UI 变化，06 无独立视觉信息量。处置：`t39-outcomes.json` notification reason 与本报告 AC2/证据清单均改为——fail-closed 存活证明由 `push-process-alive.txt`（PID 20402）承担；06 仅作管线存证、不计独立视觉证据。文件保留（验收脚本 `ios-acceptance-run.sh` 及其 TDD 用例钉住该产物名，删档会造成脚本与证据集失配），结论不变（notification 本已诚实降级 blocked-env）。
 2. **revocation 条目 scope 说明**：`t39-outcomes.json` 该条 `evidence` 字段追加 scope 文本——只证未授权面 fail-closed，signOut→第三实例不复活的真实部署活体仍 blocked-env；机器门重发 `t39-record.json`（exit 0，13 条目）携带同一 scope 文本。#71 消费记录时按报告口径解读，不得据 record 单层推断 signOut 撤销已在包上验证。
 3. **5s 墙钟断言宿主负载抖动**（`packages/domain/src/mobile/compatibility.test.ts`）：审查实跑全量回归复现一次 fail（best pass 5561.76ms > 5000ms，全套件 267s vs 首轮 145s），隔离重跑 11/11 pass，该文件在交付 range 内零改动。处置：断言加文档化宿主负载裕度系数 3（门限 = 冻结 5000ms × 3 = 15000ms；冻结目标保留为每次运行的日志参考值），吸收共享宿主三遍同时被抢占的膨胀；隔离基线 best ~0.8-2.6s 对 15s 门限仍保有 ~6x 余量，粗大（约 6x 级）代码成本回归仍会挂门。
+
+## 2026-10-02 模拟器授权面九流尽实轮（#69，真实部署，模拟器口径）
+
+- 被测：main HEAD `3840ab56c` Release 包（构建日志 `t39/2026-10-02/xcodebuild-release.log`），iPhone 18 Pro sim（iOS 27），授权部署 `https://192-168-3-33.nip.io:8443`（nginx TLS→后端 :8084）+ Casdoor t01-live-user（凭据 env-only，未入库）。idb（fb-idb 1.6.1 + companion）承担 tap/text/AX 树自动化——2026-09-26 轮的「idb 不可用」已过时。
+- 机器门：`t39-outcomes-2026-10-02.json` → `emit-acceptance-record.ts` **exit 0**，13 条目（`t39/2026-10-02/t39-record.json`；outcomes/record 凭据字样零命中；`ios-release-evidence.test.ts` 6 用例全过）。
+- 九流判定（细目与产物指针见 record；截图均在 `t39/2026-10-02/`）：
+  1. **sign-in evidenced**（01/02/03 + harness signIn=authorized）。
+  2. **tenant-switch 降级 blocked**：runtime `switchTenant` 不带 Authorization→401→upgrade-required 面（`04b`；**`04-tenant-switched.png` 实为同款 upgrade-required 屏，前轮标签有误**；curl 带 header 可切=服务端正常，缺陷在客户端）。
+  3. **task blocked（结构性断裂）**：移动端 `createSession` 不传 `engine_type`（`task-office.ts:124-126`）→ 会话默认 builtin → workbench 平台 driver admission 拒绝非 trpc 会话（409 `agent runtime conflict`，`06/22`）；API 建 trpc 会话可 202 admitted，但**单进程栈无执行器，run 永驻 queued、SSE 0 事件**（`07/08/09`）。读面（agents/tasks/detail/inbox）全通。
+  4. **background-recovery blocked（部分实证）**：≥35s 后台→前台状态恢复、**零重复派发**、进程不变（`10/11`）；续流腿因执行器缺位不可证。
+  5. **offline-draft blocked**：sim 无飞行模式开关；**且 Release 包 scoped-vault 持久化失败**——Keep draft→杀进程→重启草稿丢失、详情页「本地保存失败」（`12/13/14`）；offline-vault 活体 harness 被 admitted 前置卡死（同 ③）。
+  6. **notification blocked**：APNs 依旧缺凭据；**后端 mobile-notification 轮询每 2s 报 SQLSTATE 42703（d.app_id 缺列）**（`23`）；Inbox 本地面正常渲染（`15`）。
+  7. **download-share blocked**：无 run→无材料（`16` 空态面）；真机口径不变。
+  8. **voice-permission/permission-denied evidenced**：拒权→可行动文案+重试+无崩溃（`17`）。
+  9. **revocation evidenced（补上前轮 scope 缺口）**：signOut→terminate→冷启动停留登录页（`18/19/19b`）；harness `revocation=revoked` 活体（`21`）。
+- 弱网腿（blocked 五项之④重判）：真实部署活体复刻（`20`）——首枚 Start 断链后意图先落盘、reconcile 同 requestId、**零重复派发**（pending-retained）；同 run 收敛被 ③ 阻断，非弱网机制问题。宿主 sudo pf 未动。core-workflow 活体另证 `coldBootRestore=authorized-restored`、`signIn=authorized`（`21`）。
+- 其余 blocked 重判：①真机按裁定挂账（模拟器口径已尽实）；②APNs 保持 blocked；③授权面自动化已尽实（idb+API 全链）；④弱网见上；⑤分享面板见 ⑦。
+- 本轮新发现缺陷清单（HEAD，阻塞项与档案）：**(D1)** 移动端 createSession 缺 engine_type→Start 409（`packages/api-client/src/mobile/task-office.ts:125`，一行修复点）；**(D2)** 单进程部署无平台 run 执行器（admitted 后永驻 queued）；**(D3)** admission 失败把 workbench_requests 留在 pending（客户端 lookup 永不终结，本轮靠 DB 手工置 rejected 解锁）；**(D4)** mobile_notification 轮询 SQL 缺列 d.app_id（每 2s 报错）；**(D5)** Release 包 scoped-vault 持久化失败（草稿/任务投影丢失）；**(D6)** runtime switchTenant 未带 Authorization→401（切租户坏）；**(D7)** ListAgents 合成内置 agent 无 custom_agents 行→agent security admission 拒绝（「可见不可跑」，本轮为 10043 补种 builtin 行作 provisioning）。**#69 结论：授权面读路径+逆境语义（撤销/拒权/冷启/弱网单写者）在真实部署上成立；任务执行主链（Start→SSE→通知→材料/分享）被 D1/D2/D6 阻断，closure 不可宣布，缺陷清单移交修复轮。**

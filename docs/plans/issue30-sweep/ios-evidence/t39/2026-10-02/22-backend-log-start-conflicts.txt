@@ -1,0 +1,33 @@
+20630:INFO [2026-10-02 12:01:17.206] [f62404b3-da97-4877-82c2-268f6005ca58 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=3.243208ms method=GET path=/api/v1/workbench/executions/requests/df7969f9
+20702:WARNING[2026-10-02 12:01:24.199] [0d76a96d-6cce-4827-b27b-2d0e16e3413d client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=25.804375ms method=POST path=/api/v1/workbench/executions request_body=
+21154:WARNING[2026-10-02 12:02:10.224] [794b41df-5a2a-4e67-aef9-c7f91d8c65cf client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=18.943291ms method=POST path=/api/v1/workbench/executions request_body=
+22262:ERROR[2026-10-02 12:04:05.791] [1b61b26b-af1d-46c6-9b4b-324c4db0f384 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=36.812666ms method=POST path=/api/v1/workbench/executions request_body={"
+23557:INFO [2026-10-02 12:06:19.518] [024845f9-3fdc-4eb8-9adb-1a3382decb3a client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=57.894292ms method=POST path=/api/v1/workbench/executions request_body={"
+24320:INFO [2026-10-02 12:07:39.589] [102bf1a6-9b62-45aa-8f3d-637d6d0d2d04 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=7.984709917s method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-4
+25273:INFO [2026-10-02 12:09:20.334] [1f5b3250-dccc-4b84-bf20-8a62928fcc3b client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=6.990709ms method=GET path=/api/v1/workbench/executions?limit=20 response
+25355:ERROR[2026-10-02 12:09:27.927] [b55fd097-53ad-40f2-a3cf-45c2bfa44cc1 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=4.312959ms method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-437
+25358:INFO [2026-10-02 12:09:27.939] [e170e6f6-6908-4c2b-808c-8c5c417c0e57 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=8.745458ms method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-437
+28808:WARNING[2026-10-02 12:15:28.433] [f12d48c2-89d1-487d-9298-6757ea95fb09 client_ip=192.168.3.33 latency=22.708µs method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10044,"refres
+29134:INFO [2026-10-02 12:16:00.262] [d3a24045-cfd8-49fa-ac0b-e0c6deb10e95 client_ip=192.168.3.33 latency=34.690541ms method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10044,"refre
+29232:INFO [2026-10-02 12:16:08.862] [9e1dae7f-599a-41e1-86f1-4d4114a14db2 client_ip=192.168.3.33 latency=26.761209ms method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10044,"refre
+29238:INFO [2026-10-02 12:16:08.933] [4e8665b1-7b1a-4645-bf61-aafe1d461b2c client_ip=192.168.3.33 latency=14.071125ms method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10043,"refre
+29298:INFO [2026-10-02 12:16:16.524] [3f694fe5-2e73-4d12-9887-e1e911b608eb client_ip=192.168.3.33 latency=21.445333ms method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10044,"refre
+30245:WARNING[2026-10-02 12:17:51.011] [8d8c5950-2b1a-4507-b730-6fa8cf6d61dc client_ip=192.168.3.33 latency=29.416µs method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10043,"refres
+30355:INFO [2026-10-02 12:18:01.769] [c175434c-ab62-483c-9b42-8d7344abaac8 client_ip=192.168.3.33 latency=13.923542ms method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10043,"refre
+31755:WARNING[2026-10-02 12:20:24.205] [6fce71f3-9ed2-49be-8b36-02cbbfb12ad9 client_ip=192.168.3.33 latency=15.459µs method=POST path=/api/v1/auth/switch-tenant request_body={"tenant_id":10044,"refres
+32358:INFO [2026-10-02 12:21:22.980] [92dfe561-ab2a-4305-b97e-ce9e4793c13c client_ip=192.168.3.33 latency=8.3775ms method=GET path=/api/v1/workbench/executions/requests/bed2818d-189c-4a3b-89e5-b111a6b
+32364:INFO [2026-10-02 12:21:22.985] [3fdd5572-967b-43bf-b3c1-a129464abd6a client_ip=192.168.3.33 latency=1.322875ms method=GET path=/api/v1/workbench/executions/requests/bed2818d-189c-4a3b-89e5-b111a
+32367:INFO [2026-10-02 12:21:22.998] [bfaad61a-6fdc-47b6-b781-05b56d538ac8 client_ip=192.168.3.33 latency=10.506958ms method=GET path=/api/v1/workbench/executions?limit=20 response_body={"data":{"item
+32578:INFO [2026-10-02 12:21:43.667] [c9a54c98-a0dd-4963-80dd-c22d841b3101 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=5.618958ms method=GET path=/api/v1/workbench/executions/requests/df7969f9
+32581:INFO [2026-10-02 12:21:43.673] [13fc2a8f-55be-4c8c-8f9d-10e75a85c3d8 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=3.774875ms method=GET path=/api/v1/workbench/executions/requests/694b8003
+32584:INFO [2026-10-02 12:21:43.679] [6338be49-12b5-442f-963e-961f0629a009 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=3.0945ms method=GET path=/api/v1/workbench/executions/requests/f752c5d3-f
+32880:INFO [2026-10-02 12:22:11.792] [a7f9d97c-1943-4472-aa37-a85162d5c74f client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=961.25µs method=GET path=/api/v1/workbench/executions/requests/df7969f9-5
+32883:INFO [2026-10-02 12:22:11.794] [ddab11d7-28e9-4a4c-9bf2-7ca7f0c2555a client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=759.25µs method=GET path=/api/v1/workbench/executions/requests/694b8003-9
+32886:INFO [2026-10-02 12:22:11.797] [6f2fd285-d7ad-4428-aff4-e28aba28d477 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=2.439ms method=GET path=/api/v1/workbench/executions/requests/f752c5d3-f8
+33329:INFO [2026-10-02 12:22:57.470] [fada72dc-8c67-4831-aded-8bb9be5eefbd client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=5.262666ms method=GET path=/api/v1/workbench/executions?limit=20 response
+33354:ERROR[2026-10-02 12:22:59.771] [d5a3ac38-1e57-4a5b-a922-b46b597e08b2 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=14.720042ms method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-43
+33357:INFO [2026-10-02 12:22:59.781] [5f2391e6-dd5b-4424-b12f-a2f71efcf22f client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=10.510083ms method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-43
+33379:INFO [2026-10-02 12:23:02.083] [caae5e01-affb-4554-a5a0-d05bf7950ef6 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=9.175583ms method=GET path=/api/v1/workbench/executions/3b31db1f-d0d5-437
+34292:INFO [2026-10-02 12:24:32.765] [3d027a1a-9c81-49a8-a733-473bcea37292 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=1.969958ms method=GET path=/api/v1/workbench/executions/requests/df7969f9
+34295:INFO [2026-10-02 12:24:32.769] [b67b1a50-5c09-4797-8792-7c6f995f62d0 client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=1.599333ms method=GET path=/api/v1/workbench/executions/requests/694b8003
+34298:INFO [2026-10-02 12:24:32.772] [e400bc70-35fa-42fa-bb72-20bdfd673adb client_ip=240e:39a:92:3981:2ca0:4220:e683:3 latency=1.222ms method=GET path=/api/v1/workbench/executions/requests/f752c5d3-f8

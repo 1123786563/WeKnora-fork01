@@ -1,0 +1,14 @@
+{
+  "note": "ios-core-workflow-integration-smoke live run, real deployment https://192-168-3-33.nip.io:8443, t01-live-user, 2026-10-02T04:15:28Z",
+  "evidence": {
+    "signIn": "authorized",
+    "coldBootRestore": "authorized-restored",
+    "revocation": "revoked",
+    "tenantSwitch": "failed",
+    "weakNetwork": "failed",
+    "weakNetworkStartRequests": null,
+    "runVisibleInTasks": "not-attempted",
+    "errorReason": "RUNTIME_UNAUTHORIZED"
+  },
+  "caveats": "tenantSwitch failed: runtime switchTenant POST /api/v1/auth/switch-tenant sends no Authorization header -> 401 (reproduced standalone); cascade left runtime unauthorized so the in-harness weakNetwork phase aborted (weak-network leg re-run standalone, see 20-weak-network-live-output.json)."
+}
