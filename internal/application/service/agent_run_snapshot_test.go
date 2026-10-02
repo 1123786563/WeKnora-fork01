@@ -229,6 +229,44 @@ func rewriteCraftWorkspaceSeed(t *testing.T, raw json.RawMessage, value any, pre
 	return rewritten
 }
 
+// T39 #69 D8: the workbench admission lane persists an admission-map snapshot
+// (session/agent/text identity plus the repository's server-owned usage
+// binding merge). The strict durable reader rejected it with
+// `unknown field "text"`, so every leased workbench run produced zero events
+// and died at its deadline. The admission identity and usage binding are
+// server-owned durable snapshot data and must sit inside the strict schema.
+func TestParseDurableRunSnapshotAcceptsWorkbenchAdmissionSnapshot(t *testing.T) {
+	raw := json.RawMessage(`{
+		"session_id": "s1", "agent_id": "builtin-quick-answer", "target_id": "platform",
+		"workspace_ref": "", "space_id": "space-7", "request_id": "req-d8", "text": "整理本周周报",
+		"budget_upper": 1,
+		"usage_source": "platform_gateway", "usage_funding": "platform", "usage_service": "connector",
+		"price_version": "remote-v1", "usage_upper": 1, "usage_revision": 1,
+		"usage_status": "final", "usage_dimensions": {"connector": 1}
+	}`)
+	parsed, err := ParseDurableRunSnapshot(raw)
+	require.NoError(t, err, "the persisted workbench admission snapshot must satisfy the strict durable reader")
+	require.NotNil(t, parsed.WorkbenchAdmissionSnapshot, "admission identity decodes as an explicit typed group")
+	require.Equal(t, "整理本周周报", parsed.WorkbenchAdmissionSnapshot.Text)
+	require.Equal(t, "req-d8", parsed.WorkbenchAdmissionSnapshot.RequestID)
+	require.Equal(t, "builtin-quick-answer", parsed.WorkbenchAdmissionSnapshot.AgentID)
+	require.Equal(t, "space-7", parsed.WorkbenchAdmissionSnapshot.SpaceID)
+	require.NotNil(t, parsed.RunUsageBindingSnapshot, "server-owned usage binding decodes as an explicit typed group")
+	require.Equal(t, int64(1), parsed.RunUsageBindingSnapshot.UsageUpper)
+	require.Equal(t, "platform_gateway", parsed.RunUsageBindingSnapshot.UsageSource)
+	require.Equal(t, map[string]int64{"connector": 1}, parsed.RunUsageBindingSnapshot.UsageDimensions)
+	require.Empty(t, parsed.ModelID, "workbench admissions carry no graph execution core; the executor fails them explicitly")
+}
+
+// Strictness is the security feature: admitting the workbench field group
+// into the typed schema must not open the door to unknown fields.
+func TestParseDurableRunSnapshotRejectsUnknownFieldOnWorkbenchAdmission(t *testing.T) {
+	raw := json.RawMessage(`{"session_id": "s1", "request_id": "req-d8", "text": "t", "rogue_field": 1}`)
+	_, err := ParseDurableRunSnapshot(raw)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rogue_field")
+}
+
 func parseCraftWorkspaceSeedValue(t *testing.T, raw json.RawMessage, value any) error {
 	t.Helper()
 	returnErr := rewriteCraftWorkspaceSeed(t, raw, value, true)

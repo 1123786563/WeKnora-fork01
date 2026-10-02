@@ -62,6 +62,49 @@ type DurableRunSnapshot struct {
 	CraftInputManifest      *[]craft.Input                   `json:"craft_input_manifest,omitempty"`
 	CraftKnowledgeSelection *CraftKnowledgeSelectionSnapshot `json:"craft_knowledge_selection,omitempty"`
 	CraftWorkspaceSeed      *CraftWorkspaceSeedSnapshot      `json:"craft_workspace_seed,omitempty"`
+	// WorkbenchAdmission and RunUsageBinding carry the mobile workbench
+	// admission lane's flat snapshot fields. They are embedded (anonymous) so
+	// their JSON keys stay top-level, matching the persisted bytes exactly.
+	// Presence of the admission identity classifies a snapshot as a workbench
+	// admission; graph snapshots never carry these keys.
+	*WorkbenchAdmissionSnapshot
+	*RunUsageBindingSnapshot
+}
+
+// WorkbenchAdmissionSnapshot is the request identity the workbench admission
+// coordinator persists for a mobile task run (single-writer admission lane).
+// It is deliberately NOT the graph execution core: the durable executor fails
+// these runs explicitly until workbench→graph execution integration freezes
+// a model identity at admission. The fence, the queue-next restart port and
+// the remote dispatch path all consume this identity leniently; the strict
+// reader must still know every key or the run cannot be leased at all
+// (T39 #69 D8: `unknown field "text"` → zero events → deadline death).
+type WorkbenchAdmissionSnapshot struct {
+	SessionID    string `json:"session_id"`
+	AgentID      string `json:"agent_id,omitempty"`
+	TargetID     string `json:"target_id,omitempty"`
+	WorkspaceRef string `json:"workspace_ref,omitempty"`
+	SpaceID      string `json:"space_id,omitempty"`
+	RequestID    string `json:"request_id"`
+	Text         string `json:"text"`
+	BudgetUpper  int64  `json:"budget_upper,omitempty"`
+}
+
+// RunUsageBindingSnapshot mirrors the server-owned usage binding that
+// repository persistUsageBinding unconditionally merges into every
+// usage-bound admitted snapshot. A writer cannot omit these fields, so the
+// strict reader types them explicitly instead of rejecting them.
+type RunUsageBindingSnapshot struct {
+	ParentRunID       string           `json:"parent_run_id,omitempty"`
+	CredentialVersion int64            `json:"credential_version,omitempty"`
+	UsageSource       string           `json:"usage_source,omitempty"`
+	UsageFunding      string           `json:"usage_funding,omitempty"`
+	UsageService      string           `json:"usage_service,omitempty"`
+	PriceVersion      string           `json:"price_version,omitempty"`
+	UsageUpper        int64            `json:"usage_upper,omitempty"`
+	UsageRevision     int64            `json:"usage_revision,omitempty"`
+	UsageStatus       string           `json:"usage_status,omitempty"`
+	UsageDimensions   map[string]int64 `json:"usage_dimensions,omitempty"`
 }
 
 // CraftKnowledgeSelectionSnapshot freezes the admitted retrieval query and
@@ -242,6 +285,17 @@ func ParseDurableRunSnapshot(raw json.RawMessage) (DurableRunSnapshot, error) {
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has trailing data")
+	}
+	// Workbench admission snapshots (mobile task lane) carry their request
+	// identity and the server-owned usage binding instead of the graph
+	// execution core. Strictness still applies to every field; only the
+	// graph-class requirements (version, query/model/config core, Craft
+	// groups) are scoped to graph snapshots.
+	if _, isAdmission := fields["request_id"]; isAdmission {
+		if snapshot.WorkbenchAdmissionSnapshot == nil || snapshot.WorkbenchAdmissionSnapshot.RequestID == "" || snapshot.WorkbenchAdmissionSnapshot.Text == "" {
+			return DurableRunSnapshot{}, fmt.Errorf("workbench admission snapshot is missing its request identity")
+		}
+		return snapshot, nil
 	}
 	if snapshot.Version != durableRunSnapshotVersion {
 		return DurableRunSnapshot{}, fmt.Errorf("unsupported durable run snapshot version %d", snapshot.Version)
@@ -501,6 +555,12 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	snapshot, err := ParseDurableRunSnapshot(run.Snapshot)
 	if err != nil {
 		return fmt.Errorf("durable run %s: %w", fence.RunID, err)
+	}
+	// Workbench admission snapshots have no frozen graph identity. Fail the
+	// run terminally with an explicit reason instead of dying at the deadline
+	// (T39 #69 D8) — execution lands when admission freezes model+config.
+	if snapshot.WorkbenchAdmissionSnapshot != nil && snapshot.ModelID == "" {
+		return fmt.Errorf("durable run %s: workbench admission snapshot carries no frozen graph execution identity", fence.RunID)
 	}
 	ctx, actorID, isCraftTask, err := s.durableRunActorContext(ctx, run, snapshot)
 	if err != nil {

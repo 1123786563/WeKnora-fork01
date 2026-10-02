@@ -6,7 +6,9 @@ import (
 	"errors"
 	"testing"
 
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
@@ -122,4 +124,30 @@ func TestProductionAdmissionPersistsPlatformBYOKParentBinding(t *testing.T) {
 	if got["parent_run_id"] != "root-run" || got["credential_version"] != float64(7) || got["price_version"] != "pv-byok" {
 		t.Fatalf("BYOK binding not persisted: %#v", got)
 	}
+}
+
+// T39 #69 D8: the strict durable reader that leases and executes platform
+// runs must accept what this admission lane actually persists (admission map
+// plus the repository's server-owned usage binding merge). The live failure
+// shape was `unknown field "text"` → zero events → deadline death.
+func TestAdmittedWorkbenchSnapshotRoundTripsStrictDurableReader(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status) VALUES (1,'u1','owner','active')").Error)
+	runs := repository.NewAgentRunStore(db)
+	coordinator := NewAdmissionCoordinator(db, runs, &retrySafeBudget{}, nil)
+	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+	run, err := coordinator.Start(ctx, StartInput{SessionID: "s1", AgentID: "builtin-quick-answer", TargetID: "platform", RequestID: "d8-roundtrip", Text: "整理本周周报", BudgetUpper: 1})
+	require.NoError(t, err)
+
+	stored, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: run.Key.RunID})
+	require.NoError(t, err)
+	parsed, err := appservice.ParseDurableRunSnapshot(stored.Snapshot)
+	require.NoError(t, err, "the real persisted admission snapshot must round-trip the strict durable reader")
+	require.NotNil(t, parsed.WorkbenchAdmissionSnapshot)
+	require.Equal(t, "整理本周周报", parsed.WorkbenchAdmissionSnapshot.Text)
+	require.Equal(t, "d8-roundtrip", parsed.WorkbenchAdmissionSnapshot.RequestID)
+	require.Equal(t, "builtin-quick-answer", parsed.WorkbenchAdmissionSnapshot.AgentID)
+	require.NotNil(t, parsed.RunUsageBindingSnapshot)
+	require.Equal(t, "platform_gateway", parsed.RunUsageBindingSnapshot.UsageSource)
+	require.Empty(t, parsed.ModelID, "workbench admissions carry no graph execution core")
 }
