@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -326,7 +327,11 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			}
 			return
 		}
-		status, reason = "failed", err.Error()
+		status, reason = "failed", "executor_failed"
+		// wait_reason 列契约是 VARCHAR(64) 短码（消费面全按等值过滤），executor
+		// 错误是自由文本；原样入库在 postgres 上 22001 → 终态写不进 → claim
+		// 循环重领（T39 #69 D9）。完整语义保留在日志行。
+		log.Printf("[AgentRunWorker] durable run %d/%s failed: %v", fence.TenantID, fence.RunID, err)
 	}
 	// A terminal state is durable and fenced; a cancelled/draining worker
 	// leaves the run non-terminal for lease based takeover.

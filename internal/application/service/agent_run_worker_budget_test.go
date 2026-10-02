@@ -10,9 +10,14 @@ package service
 // 决策，见 ocr-fix-increment-b3.md）；全部数据访问走 ORM 参数绑定。
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +82,14 @@ func openBudgetParkDB(t *testing.T) *gorm.DB {
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&budgetParkAgentRun{}, &budgetParkSession{}))
+	// Scan 的 claimableSQL 与 SetStatus 的 RunView/charge 效果围栏按等值子查询
+	// 这两张表；空表即放行（镜像列集取自查询触达列）。
+	require.NoError(t, db.Exec(`CREATE TABLE craft_charge_start_journal (
+		tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, activity_key TEXT NOT NULL, state TEXT NOT NULL,
+		PRIMARY KEY (tenant_id, run_id, activity_key))`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE craft_run_view_effect_intents (
+		tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, state TEXT NOT NULL,
+		PRIMARY KEY (tenant_id, run_id, state))`).Error)
 	userID := "u1"
 	require.NoError(t, db.Create(&budgetParkSession{ID: "s1", TenantID: 7, UserID: &userID}).Error)
 	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
@@ -157,4 +170,33 @@ func TestWorkerParksBudgetExhaustedRunDurable(t *testing.T) {
 		status, _ := runStatusReason(t, db, "fail-r2")
 		return status == "failed"
 	}, 5*time.Second, 20*time.Millisecond, "ordinary failures stay terminal")
+}
+
+// TestWorkerTerminalFailureReasonFitsWaitReasonColumn 钉 T39 (#69) D9 活体形态：
+// executor 显式失败语义是自由文本（活体 ~190 字符），agent_runs.wait_reason
+// 列契约是 VARCHAR(64) 短码（消费面全部等值过滤）。终态写入必须落稳定短码，
+// 否则 postgres SQLSTATE 22001 → failed 写不进 → claim 循环重领（revision
+// 2→12），仅 deadline 路径（17 字符）可终结；完整错误语义保留在 worker 日志行。
+// SQLite 不强制列宽，故此处钉入参契约而非 DB 拒写本身。
+func TestWorkerTerminalFailureReasonFitsWaitReasonColumn(t *testing.T) {
+	db := openBudgetParkDB(t)
+	seedClaimableBudgetRun(t, db, "d9-r1")
+	store := repository.NewAgentRunStore(db)
+	execErr := fmt.Errorf("durable run %s: workbench admission snapshot carries no frozen graph execution identity",
+		strings.Repeat("a6bbded9-", 11)) // ~190 字符，对齐活体证据 17/18
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	worker, err := NewAgentRunWorker(store, func(context.Context, agentruntime.Fence) error {
+		return execErr
+	}, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: 15 * time.Second,
+		ScanInterval: 5 * time.Second, MaxWorkers: 4})
+	require.NoError(t, err)
+	require.NoError(t, worker.Tick(context.Background()))
+	require.Eventually(t, func() bool {
+		status, reason := runStatusReason(t, db, "d9-r1")
+		return status == "failed" && reason == "executor_failed"
+	}, 5*time.Second, 20*time.Millisecond, "terminal write must settle once with the stable short code")
+	require.Contains(t, logs.String(), "carries no frozen graph execution identity",
+		"full executor error text must survive in the worker log line")
 }
