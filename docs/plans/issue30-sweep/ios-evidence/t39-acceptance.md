@@ -104,3 +104,37 @@
   11. **weak-network blocked-env**：活体 pending-retained 证据沿用上轮（20）；reconciled-same-run 收敛腿由 D1 改判为仍被 **D8** 阻断。
 - **#69 结论**：D1/D4/D5/D6/D7 五项修复实证生效；D2 worker 已启用但 mobile workbench platform run 的执行链在快照解码处断裂（**新残余缺陷 D8**：`agent_run_graph.go ParseDurableRunSnapshot` vs `admission.go:593` 平台 admission-map 快照 schema 不兼容），任务主链的 run 推进/SSE 事件流/材料产出仍被其阻断；另登记 notification 写入管线未接线。closure 仍不可宣布，D8 移交修复轮。
 - 本轮栈/数据变更（复核用）：后端重建自 75a175006 并固定 JWT_SECRET（`/tmp/t39r/jwt-secret`）；FUNC 账号补种 tenant_members(10044, admin) 一行（flow 2 第二空间，保留）；workbench_notifications 测试行 `t39dfix-notify-1` 已删除；agent_runs 两行测试 run 留存于 10001（D8 复现证据，见 18）。
+
+## 2026-10-02 D8 verification（#69 D8 修复后复验，main@a95ff7883）
+
+被测：后端从 main@`a95ff7883`（D8 修复：`DurableRunSnapshot` 读侧类型化扩展 `WorkbenchAdmissionSnapshot` + `RunUsageBindingSnapshot`）全新构建重启（固定 JWT_SECRET / :8084 / durable worker 开），Release 包沿用 75a175006 构建（a95ff7883 相对 75a175006 仅改 3 个后端 Go 文件，apps/mobile 零改动）。**栈环境变更（重要）**：轮间宿主 GeLink/CoreTunnel 系统代理（127.0.0.1:17890）被开启，模拟器 CFNetwork 到 LAN nip.io host 的流量全部经其 CONNECT 且被掐（TLS -9816，curl -x 实证外网放行/LAN 超时）；networksetup 逐服务 bypass 无法穿透其全局 scutil 字典。解法=app origin 切 IPv6 字面量 `https://[240e:39a:...]:8443`（代理放行 IPv6 CONNECT、nginx 现行 tls-v6 证书 SAN 覆盖该 IP、该 origin 本就在 app 注册部署列表）。
+
+### 逐流终判表（证据 t39/2026-10-02-d8/，15 文件；门 t39-record.json 13 条目 exit 0）
+
+| flow | 终判 | 依据 |
+|---|---|---|
+| sign-in | **evidenced** | f1-after-login-v6.png：分段输入 → login 200 → 双空间 Home（IPv6 origin 绕行系统代理） |
+| tenant-switch | **evidenced** | 20b（harness 活体 tenantSwitch=switched）+ dfix 轮 04/05 双向 200 |
+| task | **blocked-残余（双因）** | f3-1/2/3 + 17/18：见下「D8 实证 + 新 D9」 |
+| background-recovery | **evidenced（本轮新增）** | f4-1/f4-2：22:44:46 退后台（claim 循环进行中）→ ~22:51 前台同进程恢复（PID 17930），「已连接→已同步」，failed/settled 投影无手动刷新；整夜仅 1 条 run = 零重复派发 |
+| offline-draft | evidenced（沿用 dfix + 本轮活体再证） | dfix 09/10；本轮草稿文本跨 terminate+relaunch 逐字回显 |
+| notification | evidenced（沿用 dfix） | 11/12/13；写入方未接线与 APNs 非目标口径不变 |
+| download-share | **blocked-残余（归因细化）** | f7-1/f7-2：artifacts/delivery/snapshot 全 200 空列表，材料面渲染但无实体 → 分享面板未呈现；解除条件=workbench→graph 执行集成落地 |
+| voice-permission / permission-denied | evidenced（沿用 dfix） | 15 |
+| secure-storage | evidenced（沿用 dfix + 本轮冷启免重登再证） | 08/09/10 + f3-2 |
+| cold-start | evidenced | f0（过期凭证冷启落登录页不崩）+ 流程中三次重启 ~8s 恢复授权面 |
+| revocation | evidenced | 20b（harness 活体 revoked）+ dfix 16 |
+| weak-network | **evidenced（史上首次活体全过）** | 20-weaknet-harness.txt 4/4 pass（含活体组合）+ 20b：signIn=authorized / coldBootRestore=authorized-restored / revocation=revoked / tenantSwitch=switched / **weakNetwork=pending-retained，weakNetworkStartRequests=1**——首枚 Start 派发被注入拦断、重续仅 lookup 对账不重发（单写者幂等真部署成立）；reconciled-same-run 分支由 fake-server 死接线回归覆盖（同套件通过） |
+
+### D8 修复实证与新残余 D9
+
+- **D8 修复生效（实证）**：`POST /workbench/executions` 202 准入（run `a6bbded9`）→ durable worker **成功 claim（lease_owner/lease_until 实写入）** → `ParseDurableRunSnapshot` 不再拒（`unknown field "text"` 彻底消失）→ executor 进入并返回**显式语义错误**「workbench admission snapshot carries no frozen graph execution identity」——与 a95ff7883 提交设计一致（准入快照无冻结执行核心，executor 显式失败而非解码即死）。
+- **events>0 未达成（设计性，非回归）**：workbench 准入未冻结 model+config，executor 在建图前显式失败 → 0 事件依旧、无材料产出（材料/分享腿被同一上游卡点约束）。**「run leased & EXECUTES」的前半句（lease+执行进入）已证，后半句（图执行出事件）待 workbench→graph 集成**。
+- **新残余缺陷 D9（登记移交）**：上述显式错误串（~190 字符）超 `agent_runs.wait_reason` varchar(64) → 终态 UPDATE 报 **SQLSTATE 22001**（10 次，17-d9-wait-reason-overflow.txt）→ failed 写不进、worker 循环重领（revision 2→12），run 仅在 deadline 路径以 `failed/deadline_exceeded`（17 字符，可容）终结于 14:49:33Z。修复点任选：截断/短码化 wait_reason 写入，或放宽列宽。
+- 任务列表注记：run 处于 claim 循环期间，Tasks 列表曾在两轮轮询间闪失该 running 项（DB 状态未变），疑列表查询与 lease 瞬态相关，未深究（非本轮验收面）。
+
+### 门与提交
+emit-acceptance-record.ts **exit 0**（13 条目：11 evidenced / 2 blocked-残余，t39/2026-10-02-d8/t39-record.json；outcomes/record 凭据字样扫描零命中）。提交 test-evidence(ios): T39 #69 D8 修复后任务主链/SSE/分享/后台/弱网复验。
+
+### 本轮栈/数据变更（复核用）
+后端二进制 `/tmp/t39r/server-a95ff7883`（日志 `/tmp/t39r/logs/backend-a95ff7883.log`）；nginx/Casdoor/sim 沿用；本轮新增 run `a6bbded9`（D8/D9 证据，留存 10001）；harness 两轮活体 signOut（app 侧会话如失效重登即可）；**networksetup 逐服务 bypass 附加项已还原**（Wi-Fi 回 *.local+169.254/16，GeLink 回空）——若复跑仍遇模拟器 TLS -9816，优先切 IPv6 字面量 origin。
