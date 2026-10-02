@@ -168,11 +168,14 @@ test('switchTenant posts the wire body and unwraps the active tenant session', a
   });
   const remote = createMobileRuntimeRemote({ origin: ORIGIN, request: spy.request });
 
-  const switched = await remote.switchTenant({ tenantId: '9', refreshToken: refreshTokenFixture });
+  const switched = await remote.switchTenant({ tenantId: '9', refreshToken: refreshTokenFixture, accessToken: 'switched-bearer' });
 
   assert.deepEqual(switched, { credential: { token: 'switched-a', refreshToken: 'switched-r' }, tenant: { id: 9, name: 'Beta' } });
   assert.equal(spy.seen.length, 1);
   assert.equal(spy.seen[0]!.method, 'POST');
+  // T39 #69 D6: 后端 SwitchTenant 以 GetCurrentUser 鉴权（@Security Bearer），
+  // 请求必须携带 Authorization，否则 401。
+  assert.equal((spy.seen[0]!.headers as Record<string, string> | undefined)?.authorization, 'Bearer switched-bearer');
   assert.deepEqual(spy.seen[0]!.body, { tenant_id: 9, refresh_token: refreshTokenFixture });
 });
 
@@ -182,6 +185,8 @@ test('switchTenant rejects a non-positive or non-numeric tenant id before any re
 
   await assert.rejects(remote.switchTenant({ tenantId: 'abc', refreshToken: 'refresh-1' }), /positive integer/);
   await assert.rejects(remote.switchTenant({ tenantId: '0', refreshToken: 'refresh-1' }), /positive integer/);
+  await assert.rejects(remote.switchTenant({ tenantId: '9', refreshToken: 'refresh-1' }), /access token/);
+  await assert.rejects(remote.switchTenant({ tenantId: '9', refreshToken: 'refresh-1', accessToken: ' ' }), /access token/);
   await assert.rejects(remote.switchTenant({ tenantId: '9', refreshToken: ' ' }), /refreshToken is required/);
 
   assert.equal(spy.seen.length, 0, 'invalid input must not reach the wire');

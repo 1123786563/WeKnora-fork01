@@ -93,11 +93,13 @@ export function createMobileRuntimeRemote(options: MobileRuntimeRemoteOptions): 
     refresh(refreshToken: string) {
       return auth.refresh(refreshToken);
     },
-    async switchTenant(input: { tenantId: string; refreshToken: string }) {
+    async switchTenant(input: { tenantId: string; refreshToken: string; accessToken: string }) {
       const tenantId = Number(input.tenantId);
       if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('switchTenant tenantId must be a positive integer');
       if (typeof input.refreshToken !== 'string' || input.refreshToken.trim() === '') throw new Error('switchTenant refreshToken is required');
-      const session = await auth.switchTenant(tenantId, input.refreshToken);
+      // T39 #69 D6: SwitchTenant 以 GetCurrentUser 鉴权，请求必须带 Bearer。
+      const authorized = createAuthApi(bearerRequest(request, requireAccessToken(input.accessToken)));
+      const session = await authorized.switchTenant(tenantId, input.refreshToken);
       return {
         credential: { token: session.token, refreshToken: session.refreshToken },
         tenant: session.tenant,

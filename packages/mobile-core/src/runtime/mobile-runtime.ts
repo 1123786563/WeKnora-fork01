@@ -442,7 +442,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
           const credential = await ports.credentialStore.read(deployment.origin);
           if (!current(requestEpoch, deployment)) return state;
           if (!credential) return safe(requestEpoch, deployment, 'authentication-required');
-          const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken });
+          const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken, accessToken: credential.token });
           if (!current(requestEpoch, deployment)) return state;
           if (!await persistCredential(requestEpoch, deployment, switched.credential)) return state;
           return await authenticate(requestEpoch, deployment, switched.credential);

@@ -557,7 +557,7 @@ test('activateTenant re-issues the credential, publishes the new active tenant, 
 
   const snapshot = await runtime.activateTenant('2');
 
-  assert.deepEqual(switches, [{ tenantId: '2', refreshToken: 'refresh-1' }]);
+  assert.deepEqual(switches, [{ tenantId: '2', refreshToken: 'refresh-1', accessToken: 'access-1' }]);
   assert.equal(snapshot.identity?.activeTenantId, 'tenant-2');
   assert.notEqual(runtime.scopeLease(), priorLease);
   assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-2');

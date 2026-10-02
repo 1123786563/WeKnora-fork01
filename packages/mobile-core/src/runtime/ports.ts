@@ -38,7 +38,8 @@ export interface RuntimeRemote {
   oidcExchange(code: string, state: string, codeVerifier?: string): Promise<StoredCredential>;
   oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<StoredCredential>;
   refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }>;
-  switchTenant(input: { tenantId: string; refreshToken: string }): Promise<{ credential: StoredCredential; tenant?: Record<string, unknown> | null }>;
+  // T39 #69 D6: 后端以 Bearer 鉴权换签，必须携带当前 access token。
+  switchTenant(input: { tenantId: string; refreshToken: string; accessToken: string }): Promise<{ credential: StoredCredential; tenant?: Record<string, unknown> | null }>;
 }
 
 /** Declared here for Task 4, which owns persistence and one-time callback consumption. */
