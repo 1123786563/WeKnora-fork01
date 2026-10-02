@@ -388,3 +388,8 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
   - 证据：docs/plans/issue-72-flow-evidence-82/t9-live-run.txt（双扫脱敏 CLEAN）
 - 测试侧修复（harness 漂移，非产品缺陷）：① purchase harness 补 OutboundAllowLoopback（3aa2e84db，#82 出站收紧后漏配）；② settle harness 接入真实授予服务缝（3187d2a59）；③ inbound_webhooks.payload v1.53 双重编码谓词修正（同 3187d2a59，先对 live DB 验证）。
 - **判词：#82 的「live T9 environment-backed run」挂起项闭合；开放面收窄为仅 AC4（真实支付宝沙箱凭据，外部不可得，不伪造）。** 预存在失败（benefits 日期敏感、TestFakeGrantPurchaseWalletNoMonthlyCollision）与本轮无关，登记 follow-up。
+
+## 用户裁定 R-82a（2026-10-02，会话指令）：AC4 真实支付宝证据豁免
+
+- 用户明示「支付宝可以先跳过」：#82 [Lago 10] 的 AC4（真实支付宝沙箱付款证据）按 owner 裁定豁免，不阻塞 #82 收口。激活链语义已由 Stripe TEST 模式全链实证（T02/T09 run + live T9 三测全绿，t9-live-run.txt）+ 渠道语义差异收窄在 Adapter 层（spec L127 同笔付款外部事实归一）。真实支付宝沙箱凭据到位后可补证，非阻塞。
+- 判词：#82 的全部验收面闭合（live T9 ✅、AC1-AC3 ✅、AC4 owner 豁免）→ **#82 closure-ready**。下游 #83-#105 解除 #82 直接阻塞（各自验收仍按票面）。
