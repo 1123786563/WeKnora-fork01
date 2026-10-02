@@ -519,6 +519,11 @@ start_app() {
 
     enable_anydoc_build_tag
 
+    # T39 #69 D2：workbench 平台 admission 默认开，而 durable worker 默认关
+    # （agent.recovery.enabled opt-in）——单进程栈不显式启用 worker 时，
+    # admitted runs 永驻 queued（SSE 0 事件）。设 =0 可显式关闭。
+    export WEKNORA_AGENT_RECOVERY_ENABLED="${WEKNORA_AGENT_RECOVERY_ENABLED:-true}"
+
     # 检查是否安装了 Air（热重载工具）
     if command -v air &> /dev/null; then
         log_success "检测到 Air，使用热重载模式启动..."
