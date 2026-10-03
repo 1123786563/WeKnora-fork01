@@ -25,7 +25,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
   'react-native-safe-area-context': "module.exports = { initialWindowMetrics: null, SafeAreaProvider: function SafeAreaProvider(p) { return p.children; }, SafeAreaView: function SafeAreaView(p) { return p.children; } }",
-  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch' }",
+  'react-native': "let scheme = 'light'; module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch', useColorScheme() { return scheme; }, __setScheme(next) { scheme = next; } }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, __values() { return values; }, __snapshot() { return { values: [...values], cursor, pendingEffects: [...pendingEffects], effectCleanups: [...effectCleanups] }; }, __restore(snapshot) { values = [...snapshot.values]; cursor = snapshot.cursor; pendingEffects = [...snapshot.pendingEffects]; effectCleanups = [...snapshot.effectCleanups]; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, useCallback(callback) { cursor++; return callback; }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
   'react/jsx-runtime': "const jsx = (type, props, key) => ({ type, props: { ...(props || {}), ...(key === undefined ? {} : { key }) } }); module.exports = { Fragment: Symbol.for('react.fragment'), jsx, jsxs: jsx };",
 };
@@ -78,6 +78,28 @@ test('app module exports an application root', async () => {
     'function',
     'src/app/_layout.tsx must default-export the application root component',
   );
+});
+
+test('root layout paints the surface with the design-token background for the system color scheme', async () => {
+  const reactNative = require('react-native') as typeof import('react-native') & { __setScheme(scheme: 'light' | 'dark' | null): void };
+  const layout = await import('./app/_layout.tsx');
+  const { nativeTokens } = await import('../../../packages/design-tokens/src/mobile/native-tokens.ts');
+  const paintedBackgrounds = (tree: unknown): { root?: string; screens?: string } => {
+    const nodes = descendants(tree);
+    const root = nodes.find(({ props }) => typeof (props?.style as { backgroundColor?: string } | undefined)?.backgroundColor === 'string');
+    const stack = nodes.find(({ type, props }) => (type as { name?: string })?.name === 'Stack' || (props?.screenOptions as { contentStyle?: { backgroundColor?: string } } | undefined)?.contentStyle !== undefined);
+    return {
+      root: (root?.props.style as { backgroundColor: string }).backgroundColor,
+      screens: (stack?.props.screenOptions as { contentStyle: { backgroundColor: string } } | undefined)?.contentStyle?.backgroundColor,
+    };
+  };
+
+  reactNative.__setScheme('dark');
+  assert.deepEqual(paintedBackgrounds(render(layout.default, {})), { root: nativeTokens.colors.dark.bg, screens: nativeTokens.colors.dark.bg }, 'dark scheme must paint the token dark background on the root surface and on every native screen container (react-native-screens containers are opaque and would otherwise stay white)');
+  reactNative.__setScheme('light');
+  assert.deepEqual(paintedBackgrounds(render(layout.default, {})), { root: nativeTokens.colors.light.bg, screens: nativeTokens.colors.light.bg }, 'light scheme must keep the token light background at the root surface');
+  reactNative.__setScheme(null);
+  assert.deepEqual(paintedBackgrounds(render(layout.default, {})), { root: nativeTokens.colors.light.bg, screens: nativeTokens.colors.light.bg }, 'an unreported scheme must fall back to the light background');
 });
 
 test('OIDC callback route forwards the untouched deep link before returning to the app root', async () => {
