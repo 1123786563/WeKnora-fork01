@@ -608,6 +608,11 @@ func TestDurableRunClassificationLookupFailureAndManifestDisagreementFailClosed(
 		config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}}
 		snapshot, err := BuildDurableCraftRunSnapshot("mismatched registration", nil, "model-1", "", config, []craft.Input{})
 		require.NoError(t, err)
+		require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+		_, wsErr := repository.NewCraftStore(db).PutWorkspace(durableRunCtx(), craft.Workspace{
+			Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"},
+		}, 0)
+		require.NoError(t, wsErr)
 		key := admitDurableCraftRunAsActor(t, store, snapshot, "u1")
 		fence, err := store.Claim(durableRunCtx(), key, "worker-mismatch", time.Minute)
 		require.NoError(t, err)
