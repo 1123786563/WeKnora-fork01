@@ -224,6 +224,7 @@ export function ParserSettingsSection({ engines, loading, error, rules, onChange
               {/* Vue t-select（KBParserSettings.vue）：无可用引擎时 warning
                   状态 + noEngine placeholder（不禁用），弹层内高 240px。 */}
               <span
+                role="group"
                 data-parser-group={group.key}
                 aria-label={group.label}
                 style={{ display: 'block' }}

@@ -628,6 +628,12 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
    bg+border #07c05f，::after 对勾 2px #fff（top 6 left 3 w5 h9
    rotate(45deg) scale(1) translate(-50%,-50%)）；禁用选中 bg #eee、边 #dcdcdc、
    对勾 rgba(0,0,0,.26)。 */
+/* 视觉隐藏的原生 input 仍可键盘聚焦；聚焦态由可见面孔承担（焦点环）。 */
+.indexing-check-head input:focus-visible + .kb-checkbox-input {
+  outline: 2px solid var(--wk-color-brand, #07c05f);
+  outline-offset: 2px;
+}
+
 .kb-checkbox-input {
   position: relative;
   display: inline-block;

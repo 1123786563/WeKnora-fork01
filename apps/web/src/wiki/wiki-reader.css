@@ -267,8 +267,8 @@
 .wk-wiki-search .t-input {
   height: 32px;
   border-radius: 3px;
-  border-color: #dcdcdc;
-  background: #fff;
+  border-color: var(--wk-color-border, #dcdcdc);
+  background: var(--wk-color-surface, #fff);
   font-size: 14px;
 }
 
