@@ -312,3 +312,33 @@ test('a scope switch clears the whole reconcile surface: receipt, attempt, and c
  assert.equal(sent.length, 2)
  assert.notEqual(sent[1]?.requestId, sent[0]?.requestId, 'the new space reconciles under a fresh request ID, never the leaked one')
 })
+
+test('an unknown reconcile attempt survives a remount through per-scope storage (CAREER-OCR H11)', async () => {
+ const recovered: ReconcileReceipt = {
+  kind: 'opportunities_reconciled', requestId: 'reconcile-remount', decision: 'side_by_side', targetId: 'opp/1', candidateId: 'opp/4', suspectedDuplicate: false,
+  evidence: { target: { jobCode: '12345' }, candidate: { jobCode: '' } },
+  createdAt: '2026-09-26T10:10:00Z',
+ }
+ const posts: unknown[] = []
+ const career: CareerStub = {
+  opportunityStatus: async () => staleStatus,
+  opportunityReconciliations: async () => ({ reconciliations: [] }),
+  reconcileOpportunities: async (input: unknown) => { posts.push(input); throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out' }) },
+  reconciliationReceipt: async (requestId: string) => ({ ...recovered, requestId }),
+ }
+ const first = mountStatus(career)
+ await act(async () => { await settle() })
+ await act(async () => { setInput(first.querySelector<HTMLInputElement>('[aria-label="候选记录编号"]')!, 'opp/4') })
+ await act(async () => { byLabel(first, 'button', '对账判定').click(); await settle() })
+ assert.match(first.textContent ?? '', /暂时无法确认/)
+ assert.ok([...Object.keys(dom.window.sessionStorage)].some((key) => key.startsWith('weknora:career:reconcile-attempt:')), 'the unknown attempt is persisted per scope')
+ await act(async () => { root?.unmount(); root = undefined; host?.remove(); host = undefined; document.body.replaceChildren() })
+
+ const second = mountStatus(career)
+ await act(async () => { await settle() })
+ assert.match(second.textContent ?? '', /有一次结果未知的对账/, 'the unknown state survives the remount')
+ assert.match(second.textContent ?? '', /原请求编号/, 'the original request id is restored')
+ await act(async () => { byLabel(second, 'button', '查询原请求回执').click(); await settle() })
+ assert.match(second.textContent ?? '', /并列展示/)
+ assert.ok(![...Object.keys(dom.window.sessionStorage)].some((key) => key.startsWith('weknora:career:reconcile-attempt:')), 'accepting the receipt clears the persisted attempt')
+})

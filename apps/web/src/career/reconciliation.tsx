@@ -40,6 +40,28 @@ function EvidenceColumn({ title, evidence }: { title: string; evidence: Reconcil
  </dl></div>
 }
 
+// CAREER-OCR H11（与 InboxPage H10 同族）：unknown 对账的 attempt 必须跨刷新/
+// 路由切换存续——恢复文案承诺「原请求编号已保留」。按 scope 隔离持久化，
+// 验收成功或确定性失败即清除。
+type ReconcileAttempt = { requestId: string; targetId: string; candidateId: string }
+const reconcileAttemptKey = (userId: string | null, tenantId: string | null): string => `weknora:career:reconcile-attempt:${userId ?? ''}:${tenantId ?? ''}`
+const reconcileSessionStorage = (): Storage | undefined => (typeof window === 'undefined' ? undefined : window.sessionStorage)
+function persistReconcileAttempt(scope: { userId: string | null; tenantId: string | null }, attempt: ReconcileAttempt): void {
+ try { reconcileSessionStorage()?.setItem(reconcileAttemptKey(scope.userId, scope.tenantId), JSON.stringify(attempt)) } catch { /* private mode */ }
+}
+function clearReconcileAttempt(scope: { userId: string | null; tenantId: string | null }): void {
+ try { reconcileSessionStorage()?.removeItem(reconcileAttemptKey(scope.userId, scope.tenantId)) } catch { /* private mode */ }
+}
+function readReconcileAttempt(scope: { userId: string | null; tenantId: string | null }): ReconcileAttempt | undefined {
+ try {
+  const raw = reconcileSessionStorage()?.getItem(reconcileAttemptKey(scope.userId, scope.tenantId))
+  if (!raw) return undefined
+  const parsed = JSON.parse(raw) as ReconcileAttempt
+  if (typeof parsed.requestId !== 'string' || typeof parsed.targetId !== 'string' || typeof parsed.candidateId !== 'string') return undefined
+  return parsed
+ } catch { return undefined }
+}
+
 export function OpportunityStatusPanel({ client, scopeController, opportunityId }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string }): ReactNode {
  const scope = scopeController.current()
  const [phase, setPhase] = useState<'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'>('loading')
@@ -55,7 +77,17 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
  const [reconcilePhase, setReconcilePhase] = useState<'idle' | 'busy' | 'unknown' | 'saved' | 'error'>('idle')
  const [reconcileMessage, setReconcileMessage] = useState('')
  const [receipt, setReceipt] = useState<ReconcileReceipt>()
- const [attempt, setAttempt] = useState<{ requestId: string; targetId: string; candidateId: string }>()
+ const [attempt, setAttempt] = useState<ReconcileAttempt>()
+
+ // CAREER-OCR H11: restore an unknown attempt persisted before the refresh/
+ // route change (per scope; nothing to restore after settlement).
+ useEffect(() => {
+  const requestScope = scopeController.current()
+  const stored = readReconcileAttempt(requestScope.scope)
+  if (!stored || stored.targetId !== opportunityId) return
+  setAttempt(stored); setReconcilePhase('unknown')
+  setReconcileMessage(`有一次结果未知的对账（原请求编号 ${stored.requestId}）。请先查询原请求回执，或用同一编号重试。`)
+ }, [scopeController, scope.scope.generation, opportunityId])
 
  useEffect(() => {
   const requestScope = scopeController.current()
@@ -129,21 +161,21 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
    const next = await client.career.reconcileOpportunities(currentAttempt, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (next.requestId !== currentAttempt.requestId) throw new ReceiptMismatchError('对账回执与本次请求编号不匹配')
-   setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); setReload((value) => value + 1)
+   setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); clearReconcileAttempt(requestScope.scope); setReload((value) => value + 1)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    // OCR ocr2-082：回执不匹配是确定性协议错误，直接置 error，不得判
    // unknown 路由进回执恢复（「确定性协议错误不得路由进回执恢复」红线）。
-   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('对账回执与本次请求编号不匹配，本次判定已中止。请更换新的请求编号重试。'); return }
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); clearReconcileAttempt(requestScope.scope); setReconcilePhase('error'); setReconcileMessage('对账回执与本次请求编号不匹配，本次判定已中止。请更换新的请求编号重试。'); return }
    const parsed = errorDetails(cause)
-   if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
+   if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); clearReconcileAttempt(requestScope.scope); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
    if (parsed.code === 'idempotency_conflict') { setReconcilePhase('error'); setReconcileMessage('请求编号已对应其他对账内容，服务器拒绝了本次判定。请更换新的请求编号重试。'); return }
    // The backend maps ErrOpportunityNotFound into the unified `not_found`
    // code (internal/modules/career/handler.go writeError); there is no
    // `opportunity_not_found` wire code.
    if (parsed.code === 'invalid_request') { setReconcilePhase('error'); setReconcileMessage(`对账请求未被接受：${parsed.message}`); return }
    if (parsed.code === 'not_found') { setReconcilePhase('error'); setReconcileMessage('对账的岗位记录不存在（可能不属于当前空间）。请检查目标与候选记录编号。'); return }
-   if (isUncertainWrite(cause)) { setReconcilePhase('unknown'); setReconcileMessage('暂时无法确认对账结果。请先查询原请求回执，再决定是否使用同一编号重试。'); return }
+   if (isUncertainWrite(cause)) { setReconcilePhase('unknown'); persistReconcileAttempt(requestScope.scope, currentAttempt); setReconcileMessage('暂时无法确认对账结果。请先查询原请求回执，再决定是否使用同一编号重试。'); return }
    setReconcilePhase('error'); setReconcileMessage('对账未完成，请检查记录编号后重试。')
   }
  }
@@ -165,15 +197,16 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
    const next = await client.career.reconciliationReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (next.requestId !== attempt.requestId) throw new ReceiptMismatchError('对账回执与本次请求编号不匹配')
-   setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); setReload((value) => value + 1)
+   setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); clearReconcileAttempt(requestScope.scope); setReload((value) => value + 1)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    // OCR ocr2-082：查询路径同款——回执不匹配置 error 退出恢复，不再自成
    // 「unknown → 查询 → 又 mismatch → unknown」循环。
-   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('查得的对账回执与原请求编号不匹配，已退出恢复流程。请更换新的请求编号重试。'); return }
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); clearReconcileAttempt(requestScope.scope); setReconcilePhase('error'); setReconcileMessage('查得的对账回执与原请求编号不匹配，已退出恢复流程。请更换新的请求编号重试。'); return }
    const parsed = errorDetails(cause)
-   if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
+   if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); clearReconcileAttempt(requestScope.scope); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
    setReconcilePhase('unknown')
+   persistReconcileAttempt(requestScope.scope, attempt)
    setReconcileMessage(parsed.code === 'not_found' ? '尚未找到对账回执。可继续查询，或使用同一请求编号重试。' : '对账回执暂时无法读取。原请求编号已保留。')
   }
  }
