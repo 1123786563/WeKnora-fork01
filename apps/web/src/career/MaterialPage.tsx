@@ -3,7 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { CareerView } from '../../../../packages/career-core/src/contracts.ts'
 import type { ConfirmMaterialInput, EditMaterialInput, MaterialBody, MaterialClaim, MaterialExportDownload, MaterialExportFormat, MaterialExportReceipt, MaterialReceipt, MaterialVersionChange, MaterialVersionComparison, MaterialVersionView, MaterialView, PublishMaterialInput, RevokeMaterialExportInput } from '../../../../packages/api-client/src/career.ts'
-import { ReceiptMismatchError } from './protocol.ts'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
 import './material.css'
 
 type MaterialPhase = 'idle' | 'busy' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
@@ -13,23 +13,17 @@ type MaterialAttempt = { kind: 'edit' | 'confirm'; requestId: string; input: Edi
 type ExportAttempt = { kind: 'publish' | 'revoke'; requestId: string; input: PublishMaterialInput | RevokeMaterialExportInput }
 type ExportPhase = 'idle' | 'busy' | 'unknown' | 'error'
 type DownloadNote = { state: 'busy' | 'ok' | 'error'; note: string }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Mirrors MaxExportGrantTTL in internal/modules/career/rendering.go: a
 // career export download grant lives at most 15 minutes (OCR ocr2-064：
 // 原 600（10 分钟）把授权静默缩短 1/3，已对齐 900）。
 const EXPORT_GRANT_TTL_SECONDS = 900
 
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, currentRevision: error?.currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'material_claim_unconfirmed', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
+// CAREER-OCR H9（ocr3-054/055 同款迁移）：ReceiptMismatchError / errorDetails /
+// newRequestId 统一改用 protocol.ts 共享实现——本地副本已与共享版漂移（共享版
+// 把 currentRevision 规范化为 number、isUncertainWrite 内置 ReceiptMismatchError
+// 判定）；本页端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict', 'material_claim_unconfirmed']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
 function materialParamUrl(materialId?: string): string | undefined {
  if (typeof window === 'undefined' || !window.location) return undefined
  const params = new URLSearchParams(window.location.search)
