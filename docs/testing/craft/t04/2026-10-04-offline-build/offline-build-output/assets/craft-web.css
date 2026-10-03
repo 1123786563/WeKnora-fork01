@@ -1,0 +1,68 @@
+/* craft-web.css v1.0.0 — provisioned offline stylesheet of the Craft web
+ * toolchain. It ships as a local asset next to the entry; it declares no
+ * remote font/image origin and loads nothing from any network. */
+:root {
+  --craft-accent: #0052d9;
+  --craft-ink: #24292f;
+  --craft-muted: #57606a;
+  --craft-line: #d0d7de;
+  --craft-bg: #ffffff;
+  --craft-alt: #f6f8fa;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: var(--craft-ink);
+  background: var(--craft-bg);
+  line-height: 1.6;
+}
+
+.craft-header {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--craft-line);
+}
+
+.craft-header h1 { margin: 0; font-size: 1.5rem; color: var(--craft-accent); }
+
+.craft-subtitle { margin: 0.25rem 0 0; color: var(--craft-muted); font-size: 0.95rem; }
+
+.craft-main { padding: 1.5rem 2rem; max-width: 64rem; }
+
+.craft-main h2 { font-size: 1.15rem; border-left: 4px solid var(--craft-accent); padding-left: 0.5rem; }
+
+table.craft-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0 1.5rem;
+}
+
+table.craft-table th, table.craft-table td {
+  border: 1px solid var(--craft-line);
+  padding: 0.4rem 0.65rem;
+  text-align: left;
+}
+
+table.craft-table th { background: var(--craft-alt); }
+
+table.craft-table tbody tr:nth-child(even) { background: var(--craft-alt); }
+
+.craft-filter {
+  width: 100%;
+  max-width: 18rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--craft-line);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.craft-footer {
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--craft-line);
+  color: var(--craft-muted);
+  font-size: 0.85rem;
+}
+
+[data-craft-filter-hide] { display: none; }
