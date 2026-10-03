@@ -131,7 +131,7 @@ export function ModelSelector({ modelType, selectedModelId = '', disabled = fals
             );
           }),
           ...(!disabled ? [(
-            <TSelect.Option key="__add_model__" value="__add_model__" className="add-model-option">
+            <TSelect.Option key="__add_model__" value="__add_model__">
               <div className="model-option add">
                 <TIcon name="add" className="add-icon" />
                 <span className="model-name">{t('model.addModelInSettings')}</span>
