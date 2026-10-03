@@ -92,6 +92,11 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 	if release == nil || release.ListingID != listing.ID {
 		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: release does not belong to listing", ErrAgentAdoptionInvalidInput)
 	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionView{}, false, err
+		}
+	}
 	if release.DeprecatedAt != nil {
 		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))
 	}
@@ -154,6 +159,11 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 	}
 	if release == nil || release.ListingID != adoption.ListingID {
 		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: release does not belong to the adopted listing", ErrAgentAdoptionInvalidInput)
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionVariantView{}, err
+		}
 	}
 	if release.DeprecatedAt != nil {
 		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))
@@ -280,6 +290,11 @@ func (s *AgentAdoptionService) PublishVariant(ctx context.Context, tenantID uint
 	}
 	if variant == nil {
 		return interfaces.PublishVariantResult{}, ErrAgentAdoptionNotFound
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, variant.ReleaseID); err != nil {
+			return interfaces.PublishVariantResult{}, err
+		}
 	}
 	if len(missing) > 0 {
 		return interfaces.PublishVariantResult{}, notRunnable(missing)
