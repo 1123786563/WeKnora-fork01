@@ -918,6 +918,27 @@ func (s *CraftBudgetService) AuthorizeSandbox(ctx context.Context, grantID, acti
 // marker namespace, so sandbox sequences never collide with either.
 const craftSandboxCallModelID = "__craft_sandbox__"
 
+// F08 T-3: the fixed identity facets of the server-owned offline web build
+// activity. See docs/plans/2026-10-04-craft-f08-binding-proposal.md for the
+// rationale and the pending budget-owner sign-off; dispatchers must consume
+// CraftWebBuildCallBinding, never inline these values or accept caller input.
+const (
+	CraftWebBuildCallDelegationID = "web-build"
+	CraftWebBuildCallModelID      = "__craft_web_build__"
+)
+
+// CraftWebBuildCallBinding is the fail-closed binding for the fixed offline
+// web build activity: a named delegation facet, the non-model sentinel model
+// facet (the build exec consumes no model tokens) and platform funding per
+// PlatformAdmissionPolicy. Overrides require budget-owner sign-off.
+func CraftWebBuildCallBinding() CraftCallBinding {
+	return CraftCallBinding{
+		DelegationID: CraftWebBuildCallDelegationID,
+		ModelID:      CraftWebBuildCallModelID,
+		Funding:      commercial.FundingPlatform,
+	}
+}
+
 // reserveCall holds the commercial budget of one call WITHOUT dispatching it.
 // It exists for callers that must separate "reserved" from "dispatched"
 // (recovery tests, lease hand-off); production forwards use AuthorizeBinding.
