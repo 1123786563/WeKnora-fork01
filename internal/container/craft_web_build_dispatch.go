@@ -187,6 +187,9 @@ func (d *CraftWebBuildDispatcher) Dispatch(ctx context.Context, task craft.Task,
 		if maySend {
 			_ = d.runtime.finishAdmittedEffect(ctx, claim, craft.RunViewEffectOutcome{State: craft.RunViewEffectStateUnknown})
 		}
+		if execErr == nil {
+			execErr = fmt.Errorf("craft web build dispatch for run %s produced no receipt", task.Fence.RunID)
+		}
 		return repository.CraftWebBuildReceipt{}, execErr
 	}
 	recorded, recordErr := d.receipts.RecordTerminal(ctx, craftWebBuildTerminalReceipt(task, d.pin, request, requestSHA, view.Generation, result))
