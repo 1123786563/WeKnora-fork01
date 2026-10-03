@@ -69,6 +69,17 @@ func (s *t07EvidenceVersionStore) PublishWithEvidence(ctx context.Context, scope
 	return published, nil
 }
 
+// PublishWithDraftHead satisfies the DraftFencedVersionStore seam the web
+// promotion requires. The revision/identity fence has already been checked
+// against the draft-head store inside PromoteWebVersion; the transactional
+// re-fence belongs to the real database store, so the double only publishes.
+func (s *t07EvidenceVersionStore) PublishWithDraftHead(ctx context.Context, scope craft.Scope, v craft.Version, _ craft.DraftHead, evidence *craft.VersionEvidence) (craft.Version, error) {
+	if evidence != nil {
+		return s.PublishWithEvidence(ctx, scope, v, *evidence)
+	}
+	return s.Publish(ctx, scope, v)
+}
+
 func (s *t07EvidenceVersionStore) VersionEvidence(_ context.Context, scope craft.Scope, versionID string) (craft.VersionEvidence, error) {
 	s.mu.Lock()
 	stored, pinned := s.evidence[versionID]
