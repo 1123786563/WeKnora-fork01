@@ -14,6 +14,9 @@ const (
 	RunViewEffectDockerStart         RunViewEffectKind = "docker_start"
 	RunViewEffectDockerProbe         RunViewEffectKind = "docker_probe"
 	RunViewEffectOpenCodeCreate      RunViewEffectKind = "opencode_create"
+	// RunViewEffectWebBuild (F08 T-1) claims one fixed offline web build
+	// dispatch; it always binds the canonical staged request digest.
+	RunViewEffectWebBuild RunViewEffectKind = "web_build"
 )
 
 // RunViewEffectClaim is an opaque capability minted by the server after the

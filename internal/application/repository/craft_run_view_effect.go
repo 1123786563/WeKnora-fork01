@@ -402,7 +402,7 @@ func effectIntentMatchesRunIdentity(intent craftRunViewEffectIntentRow, run agen
 
 func validCraftRunViewProviderEffect(kind craft.RunViewEffectKind) bool {
 	switch kind {
-	case craft.RunViewEffectDockerNetworkCreate, craft.RunViewEffectDockerCreate, craft.RunViewEffectDockerStart, craft.RunViewEffectDockerProbe, craft.RunViewEffectOpenCodeCreate:
+	case craft.RunViewEffectDockerNetworkCreate, craft.RunViewEffectDockerCreate, craft.RunViewEffectDockerStart, craft.RunViewEffectDockerProbe, craft.RunViewEffectOpenCodeCreate, craft.RunViewEffectWebBuild:
 		return true
 	default:
 		return false
@@ -410,7 +410,7 @@ func validCraftRunViewProviderEffect(kind craft.RunViewEffectKind) bool {
 }
 
 func requiresRunViewEffectRequestDigest(kind craft.RunViewEffectKind) bool {
-	return kind == craft.RunViewEffectDockerNetworkCreate || kind == craft.RunViewEffectDockerProbe
+	return kind == craft.RunViewEffectDockerNetworkCreate || kind == craft.RunViewEffectDockerProbe || kind == craft.RunViewEffectWebBuild
 }
 
 func validRunViewEffectRequestDigest(value string) bool {

@@ -147,15 +147,18 @@ func admittedRunViewKey(task craft.Task) craft.RunViewKey {
 	return craft.RunViewKey{TenantID: task.Scope.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
 }
 
-// ResolveAdmitted binds a runtime using the original server-admitted Task. Every
-// provider mutation requires a matching durable claim immediately before the
-// call; a replay is observe-only and can never resend an unknown operation.
-func (c *CraftRunViewRuntimeCoordinator) ResolveAdmitted(ctx context.Context, task craft.Task) (CraftRunViewRuntimeHandle, error) {
+// ResolveAdmittedVerifiedContainer (F08 T-1 bounded interface) resolves the
+// admitted RunView and returns its LIVE-OBSERVED, admission-matched running
+// container observation — the only identity source allowed for minting a
+// provider handle — without driving the OpenCode session machinery. Every
+// provider mutation still claims its durable effect first; a replay is
+// observe-only and can never resend an unknown operation.
+func (c *CraftRunViewRuntimeCoordinator) ResolveAdmittedVerifiedContainer(ctx context.Context, task craft.Task) (craft.RunView, CraftRunViewContainerObservation, error) {
 	if ctx == nil || c == nil || c.authority == nil || c.store == nil || c.provider == nil {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("admitted coordinator is not initialized", nil)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("admitted coordinator is not initialized", nil)
 	}
 	if err := ctx.Err(); err != nil {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("admitted resolution canceled", err)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("admitted resolution canceled", err)
 	}
 	key := admittedRunViewKey(task)
 	// The Task snapshot digest is the durable admitted Run identity: a raw
@@ -165,42 +168,60 @@ func (c *CraftRunViewRuntimeCoordinator) ResolveAdmitted(ctx context.Context, ta
 		task.Fence.Owner == "" || task.Fence.Epoch <= 0 || task.SnapshotDigestVersion != 1 ||
 		!validSHA256Hex(task.SnapshotDigest) || task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion ||
 		task.Fence.SnapshotDigest != task.SnapshotDigest {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("original admitted Task identity is incomplete or inconsistent", err)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("original admitted Task identity is incomplete or inconsistent", err)
 	}
 
 	view, err := c.authority.AllocateAdmitted(ctx, task)
 	if err != nil {
-		return CraftRunViewRuntimeHandle{}, fmt.Errorf("%w: allocate admitted RunView: %w", ErrCraftRunViewRuntimeUnresolved, err)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, fmt.Errorf("%w: allocate admitted RunView: %w", ErrCraftRunViewRuntimeUnresolved, err)
 	}
 	if err := craft.ValidateRunView(view); err != nil {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("admitted allocation is invalid", err)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("admitted allocation is invalid", err)
 	}
 	if view.Key != key {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("admitted allocation scope differs from original Task", nil)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("admitted allocation scope differs from original Task", nil)
 	}
 	provider, ok := c.provider.(CraftRunViewAdmittedEffectProvider)
 	if !ok {
 		// The legacy provider combines inspect, network/layout setup, Docker
 		// create and Docker start. No single typed claim can safely authorize it.
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("provider does not separate observed state, Docker create, and Docker start; physical stage is fail-closed", nil)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("provider does not separate observed state, Docker create, and Docker start; physical stage is fail-closed", nil)
 	}
 
 	spec := c.containerSpec(view.Generation)
 	network, err := c.resolveAdmittedNetwork(ctx, task, provider, spec)
 	if err != nil {
-		return CraftRunViewRuntimeHandle{}, err
+		return craft.RunView{}, CraftRunViewContainerObservation{}, err
 	}
 	container, err := c.resolveAdmittedContainer(ctx, task, provider, spec, network)
 	if err != nil {
-		return CraftRunViewRuntimeHandle{}, err
+		return craft.RunView{}, CraftRunViewContainerObservation{}, err
 	}
 	container, err = c.resolveAdmittedContainerStart(ctx, task, provider, container)
 	if err != nil {
-		return CraftRunViewRuntimeHandle{}, err
+		return craft.RunView{}, CraftRunViewContainerObservation{}, err
 	}
 	container, found, err := provider.ObserveContainerState(ctx, container)
 	if err != nil || !found || container.State != "running" || !matchesAdmittedObservation(spec, network, container) {
-		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("started container identity cannot be observed", err)
+		return craft.RunView{}, CraftRunViewContainerObservation{}, unresolvedCraftRunView("started container identity cannot be observed", err)
+	}
+	return view, container, nil
+}
+
+// ResolveAdmitted binds a runtime using the original server-admitted Task. Every
+// provider mutation requires a matching durable claim immediately before the
+// call; a replay is observe-only and can never resend an unknown operation.
+func (c *CraftRunViewRuntimeCoordinator) ResolveAdmitted(ctx context.Context, task craft.Task) (CraftRunViewRuntimeHandle, error) {
+	view, container, err := c.ResolveAdmittedVerifiedContainer(ctx, task)
+	if err != nil {
+		return CraftRunViewRuntimeHandle{}, err
+	}
+	key := admittedRunViewKey(task)
+	spec := c.containerSpec(view.Generation)
+	provider, ok := c.provider.(CraftRunViewAdmittedEffectProvider)
+	if !ok {
+		// ResolveAdmittedVerifiedContainer already refused non-split providers.
+		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("provider does not separate observed state, Docker create, and Docker start; physical stage is fail-closed", nil)
 	}
 	if err := c.resolveAdmittedProbe(ctx, task, provider, container); err != nil {
 		return CraftRunViewRuntimeHandle{}, err
