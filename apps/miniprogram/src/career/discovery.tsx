@@ -53,6 +53,9 @@ export default function DiscoveryPage() {
     {pendingFactAction && <Notice tone='warning'>有结果未知的档案操作（{pendingFactAction.requestId.slice(0, 10)}…）。</Notice>}
     {pendingFactAction && <Action secondary loading={recoverBusy.busy} onClick={() => void recoverBusy.run(async () => { await career.reconcilePending(); query.reload(); })}>用原请求对账恢复</Action>}
     {pendingFactAction && <Action secondary onClick={() => void recoverBusy.run(async () => { const action = career.pendingAction(); if (action) await career.retryPending(action); query.reload(); })}>回执不存在时安全重发原操作</Action>}
+    {/* CAREER-OCR H1：对账/重发/同步失败必须如实呈现——此前 recoverBusy.error 全页无渲染点，
+        服务端 404 或网络失败时按钮 loading 结束却零反馈，恢复入口形同虚设。 */}
+    {recoverBusy.error && <Notice tone='danger'>{recoverBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再试一次安全重发（沿用原请求编号，服务端幂等）。</Notice>}
     {pendingImport && <><Notice tone='warning'>有一次结果未知的职位导入（{pendingImport.requestId.slice(0, 10)}…），原文已安全保存。</Notice>
       <Action secondary loading={reconcileBusy.busy} onClick={() => void reconcileBusy.run(async () => { setImported((receipt => ({ opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }))(await career.reconcileSharedImport())); })}>对账原职位导入</Action>
       <Action secondary onClick={() => void importBusy.run(async () => { const receipt = await career.retrySharedImport(); setImported({ opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }); })}>安全重发原职位导入</Action></>}
