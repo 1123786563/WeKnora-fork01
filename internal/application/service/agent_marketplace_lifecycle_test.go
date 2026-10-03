@@ -30,6 +30,7 @@ func newLifecycleServiceForTest(t *testing.T) (*AgentMarketplaceLifecycleService
 
 func seedLifecycleFixture(t *testing.T, db *gorm.DB, wantVariants map[string]string) {
 	t.Helper()
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test') ON CONFLICT(id) DO NOTHING`).Error)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
 	seedLifecycleRelease(t, db, types.AgentReleaseEntity{TenantID: 1, ID: "r1", ListingID: "l1", SubmissionID: "s1", AgentVersionID: "av1", SourceAgentID: "a", ReleaseNumber: 1, SemanticVersion: "1.0.0", BundleDigest: "d1", ManifestJSON: `{"capability_requirements":[]}`, DependencyLockJSON: `{"dependencies":[]}`, Bundle: []byte("b")})
 	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "l1").Update("current_release_id", "r1").Error)
