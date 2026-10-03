@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -113,6 +114,39 @@ func TestWorkbenchStartHTTPIntegrationAndIdentityIsolation(t *testing.T) {
 	resp = httptest.NewRecorder()
 	unauth.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/lookup/http-r1", nil))
 	require.Equal(t, http.StatusUnauthorized, resp.Code)
+}
+
+type failingGraphFreezer struct{ err error }
+
+func (f failingGraphFreezer) FreezeAdmissionGraph(context.Context, uint64, string, workbenchservice.StartInput) (json.RawMessage, error) {
+	return nil, f.err
+}
+
+// WB-GRAPH: a graph-resolution failure settles the admission as rejected —
+// the first failure must surface as the same 409 its idempotent replay gets,
+// with the freezer's short code intact in the body.
+func TestWorkbenchStartGraphResolutionFailureMapsToConflict(t *testing.T) {
+	db := openWorkbenchHTTPDB(t)
+	coordinator := workbenchservice.NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), &integrationBudget{}, nil)
+	coordinator.SetAdmissionGraphFreezer(failingGraphFreezer{
+		err: errors.New("model_unresolved: chat model is not configured: please set model_id on agent a1"),
+	})
+	h := NewWorkbenchStartHandler(coordinator)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/api/v1/workbench/executions", withIdentity(1, "u1"), h.Start)
+
+	body := `{"session_id":"s1","agent_id":"a1","target_id":"platform","request_id":"http-graph-fail","text":"hello","budget_upper":100}`
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workbench/executions", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusConflict, resp.Code)
+	require.Contains(t, resp.Body.String(), "model_unresolved")
+
+	var runs int64
+	require.NoError(t, db.Table("agent_runs").Where("request_id = ?", "http-graph-fail").Count(&runs).Error)
+	require.Zero(t, runs, "a rejected admission leaves no Run row")
 }
 
 func withIdentity(tenant uint64, actor string) gin.HandlerFunc {
