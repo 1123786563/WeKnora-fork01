@@ -29,3 +29,12 @@
 
 ## Self-Review
 覆盖：15 表判别→Task 1；重启验证→Task 1；抽查→Task 2；无占位。
+
+---
+
+## 终判（2026-10-03，Task 1 清偿后）
+
+- **判别**：15 表 = 14 账本缺号（建表方齐备，散点跳 189-202 除 192/193/197）+ 1 废弃（wiki_log_entries，000077 明确删除，不建）。**零「无建表方」型缺口 → 零补迁移零提交**（对照上轮 workbench_device_registrations 型）。
+- **清偿**：11 个 up.sql 按版本序直灌账本指针，14 表全在（11 ALTER 列、16 索引），5 表抽样列集与 gorm 模型全对齐（dd-dump.txt 全量在档）。
+- **重启+冒烟**：:8084 自 HEAD 3803d18b7 编译重启（同 env 配方）：/health 200、迁移日志干净、inbox 200 / delivery 404-clean / devices 200、workbench 往返 202→succeeded→events=2。
+- **Follow-up**：①启动期漂移检测缺位（force-skip 可复发）②builtin-llm-mock 端点不可达（冒烟用本机 ollama）③跨租户 rerank 拒绝发生在 worker 期（准入期不拒）——均登记不阻塞。
