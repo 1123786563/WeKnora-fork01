@@ -484,6 +484,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         {preview.artifact ? <div className="wk-chat-artifact-drawer-resize" role="separator" aria-orientation="vertical" aria-label={t.artifacts} onPointerDown={startArtifactResize} /> : null}
       </aside>
     </> : null}
+    {suggestions?.status === 'generating' ? <div className="wk-chat-suggestions wk-vc-message-list-26 wk-chat-suggestions-loading" role="status" aria-live="polite"><span className="wk-vc-message-list-28">{t.followUpLoading}</span></div> : null}
     {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions wk-vc-message-list-26" aria-label={t.followUpQuestions}>
       <div className="wk-chat-suggestions-heading wk-vc-message-list-27"><h2 className="wk-vc-message-list-28">{t.followUpQuestions}</h2><div><button type="button" className="wk-vc-message-list-29" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" className="wk-vc-message-list-29" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
       <div className="wk-chat-suggestions-grid wk-vc-message-list-30">{suggestions.questions.map((question) => <button type="button" key={question.id} className="wk-vc-message-list-31" onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small className="wk-vc-message-list-32">FAQ</small> : null}</button>)}</div>

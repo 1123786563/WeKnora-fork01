@@ -147,3 +147,23 @@ test('activating Load more invokes history loading once and loading state blocks
     container.remove();
   }
 });
+
+test('a generating suggestion set renders the follow-up loading hint, not the grid', async () => {
+  const container = document.createElement('div');
+  const root: Root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(MessageList, {
+        copy: resolveChatCopy('en-US'),
+        messages: [],
+        suggestions: { id: 'sg-1', session_id: 's1', assistant_message_id: 'm1', status: 'generating', allow_regenerate: false, questions: [] },
+      }));
+    });
+    assert.ok(container.querySelector('.wk-chat-suggestions-loading'), 'loading hint renders');
+    assert.ok((container.textContent ?? '').includes('Loading suggested questions'));
+    assert.equal(container.querySelectorAll('.wk-chat-suggestions-grid').length, 0, 'no question grid while generating');
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});

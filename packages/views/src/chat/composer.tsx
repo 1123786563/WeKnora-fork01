@@ -381,6 +381,34 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
     setMentionGroupType(null);
     setActiveMentionIndex(0);
   }
+  // Vue triggerMention：锚定 textarea 左缘，优先上方（8px 间距）。
+  function positionMentionMenu(): void {
+    const textarea = draftRef.current;
+    if (!textarea) return;
+    const rect = textarea.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const menuHeight = 320;
+    const spaceAbove = rect.top;
+    const spaceBelow = vh - rect.bottom;
+    if (spaceAbove > menuHeight || spaceAbove > spaceBelow) {
+      setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, bottom: `${vh - rect.top + 8}px`, top: 'auto' });
+    } else {
+      setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, top: `${rect.bottom + 8}px`, bottom: 'auto' });
+    }
+  }
+  // The menu is position:fixed, so any ancestor scroll (message list, page)
+  // or a window resize must recompute the anchor — Vue re-anchors on every
+  // trigger, React only did once per open.
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const reposition = () => positionMentionMenu();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [mentionOpen]);
   function toggleMentions(): void {
     if (disabled) return;
     const next = !mentionOpen;
@@ -391,21 +419,8 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
       setMentionGroupType(null);
       setMentionGroupActiveIndex(0);
       onMentionOpen?.();
-      // Vue triggerMention：锚定 textarea 左缘，优先上方（8px 间距）。
-      const textarea = draftRef.current;
-      if (textarea) {
-        const rect = textarea.getBoundingClientRect();
-        const vh = window.innerHeight;
-        const menuHeight = 320;
-        const spaceAbove = rect.top;
-        const spaceBelow = vh - rect.bottom;
-        if (spaceAbove > menuHeight || spaceAbove > spaceBelow) {
-          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, bottom: `${vh - rect.top + 8}px`, top: 'auto' });
-        } else {
-          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, top: `${rect.bottom + 8}px`, bottom: 'auto' });
-        }
-      }
-      textarea?.focus();
+      positionMentionMenu();
+      draftRef.current?.focus();
     }
   }
   function closeMentions(): void {

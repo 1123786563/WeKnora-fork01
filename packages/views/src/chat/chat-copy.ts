@@ -253,6 +253,8 @@ conversationTimeThisYear: '{month}月{day}日 {time}',
 conversationTimeOtherYear: '{year}年{month}月{day}日 {time}',
 /** chatHeader.moreActions */
 moreActions: '更多对话操作',
+/** chat.followUpQuestionsLoading */
+followUpLoading: '加载推荐问题',
 /** menu.pin */
 pin: '置顶',
 /** menu.unpin */
@@ -714,6 +716,7 @@ referencesDocAndWebCount: 'Referenced {docCount} document(s) and {webCount} web 
   conversationTimeThisYear: '{month}/{day} {time}',
   conversationTimeOtherYear: '{month}/{day}/{year} {time}',
   moreActions: 'More conversation actions',
+  followUpLoading: 'Loading suggested questions',
   pin: 'Pin',
   unpin: 'Unpin',
   renameSession: 'Rename',
@@ -1092,6 +1095,7 @@ referencesDocAndWebCount: '{docCount}件のドキュメントと{webCount}件の
   conversationTimeThisYear: '{month}/{day} {time}',
   conversationTimeOtherYear: '{year}/{month}/{day} {time}',
   moreActions: 'その他の会話操作',
+  followUpLoading: '質問候補を読み込み中',
   pin: 'ピン留め',
   unpin: 'ピン留めを解除',
   renameSession: 'タイトルを変更',
@@ -1470,6 +1474,7 @@ referencesDocAndWebCount: '{docCount}개 문서와 {webCount}개 웹페이지 �
   conversationTimeThisYear: '{month}월 {day}일 {time}',
   conversationTimeOtherYear: '{year}년 {month}월 {day}일 {time}',
   moreActions: '대화 추가 작업',
+  followUpLoading: '추천 질문 로딩 중',
   pin: '고정',
   unpin: '고정 해제',
   renameSession: '제목 수정',
@@ -1848,6 +1853,7 @@ referencesDocAndWebCount: 'Использовано {docCount} документ(
   conversationTimeThisYear: '{day}.{month} {time}',
   conversationTimeOtherYear: '{day}.{month}.{year} {time}',
   moreActions: 'Другие действия с диалогом',
+  followUpLoading: 'Загрузка рекомендуемых вопросов',
   pin: 'Закрепить',
   unpin: 'Открепить',
   renameSession: 'Переименовать',

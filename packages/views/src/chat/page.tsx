@@ -719,7 +719,7 @@ export function ChatPage(props: ChatPageProps) {
             {selectedSession?.is_pinned === true ? <svg className="t-icon t-icon-pin chat-header__pin" viewBox="0 0 24 24" width="12px" height="12px" fill="none" aria-hidden="true"><use href="#t-icon-pin" /></svg> : null}
             <span className="chat-header__title-text">{headerTitle}</span>
           </h1>
-          <button type="button" className="chat-header__menu-btn wk-chat-header-menu" aria-label={copy.moreActions}>
+          <button type="button" className="chat-header__menu-btn wk-chat-header-menu" aria-label={copy.moreActions} disabled aria-disabled="true">
             <svg className="t-icon t-icon-ellipsis" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-ellipsis" /></svg>
           </button>
         </header>
@@ -789,9 +789,19 @@ export function ChatPage(props: ChatPageProps) {
       <div
         className="scroll-to-bottom-btn wk-chat-scroll-bottom"
         style={{ display: userScrolledUp ? undefined : 'none' }}
+        role="button"
+        tabIndex={0}
+        aria-label="scroll to bottom"
         onClick={() => {
           const box = scrollBoxRef.current;
           if (box) box.scrollTo({ top: box.scrollHeight });
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const box = scrollBoxRef.current;
+            if (box) box.scrollTo({ top: box.scrollHeight });
+          }
         }}
       >
         <svg className="t-icon t-icon-chevron-down" viewBox="0 0 24 24" width="20px" height="20px" fill="none" aria-hidden="true"><use href="#t-icon-chevron-down" /></svg>
