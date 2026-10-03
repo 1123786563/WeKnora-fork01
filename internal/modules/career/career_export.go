@@ -291,6 +291,9 @@ func (o *Office) ExportCareer(ctx context.Context, input CareerExportInput) (Car
 
 	var receipt CareerExportReceipt
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		var head profile
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
@@ -300,9 +303,6 @@ func (o *Office) ExportCareer(ctx context.Context, input CareerExportInput) (Car
 			// same tolerant read evaluation and material already apply.
 			head.Revision = 0
 		} else if e != nil {
-			return e
-		}
-		if e := requireGateActiveTx(tx, s); e != nil {
 			return e
 		}
 		if head.Revision != input.ExpectedRevision {

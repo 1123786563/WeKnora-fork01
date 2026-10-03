@@ -708,8 +708,14 @@ func (o *Office) claimRulePeriod(ctx context.Context, s Scope, scanned searchRul
 	var claim claimedRulePeriod
 	var existing *searchRuleRunRecord
 	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Match SetRule's profile -> rule lock order, then lock the durable
-		// deletion gate before admitting this period.
+		// Fence first: the gate row lock must precede the profile lock or
+		// this writer AB-BA deadlocks the fence-first writers on PostgreSQL.
+		// The claim admission below re-locks a gate this transaction already
+		// holds, so it can stay coupled to the period checks — a stale
+		// candidate still rolls back without ever having admitted.
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		var head profile
 		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; e != nil && !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e

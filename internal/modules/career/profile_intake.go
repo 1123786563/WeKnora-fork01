@@ -259,6 +259,9 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 		} else if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e = admitLifecycleClaimTx(tx, s, "source_upload", upload.RequestID, upload.IntentHash); e != nil {
+			return e
+		}
 		p := profile{TenantID: s.TenantID, UserID: s.UserID}
 		if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&p).Error; e != nil {
 			return e
@@ -270,9 +273,6 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 		}
 		var last uint64
 		if e = tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Select("COALESCE(MAX(revision),0)").Scan(&last).Error; e != nil {
-			return e
-		}
-		if e = admitLifecycleClaimTx(tx, s, "source_upload", upload.RequestID, upload.IntentHash); e != nil {
 			return e
 		}
 		now := time.Now().UTC()
