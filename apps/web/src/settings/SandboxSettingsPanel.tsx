@@ -1634,8 +1634,10 @@ function buildCardWarnings(record: SandboxConfigRecord, dockerBackendEnabled: bo
 
 /* Vue SandboxBackendBadge.vue（frontend/src/components/settings/）：同一枚
    后端徽章供列表卡与（后续收编的）配置抽屉复用；有 mono logo（docker）时
-   用 ::before mask，否则回落 TDesign glyph（cube→server、其余→cloud）。 */
-function SandboxBackendBadge({ type, size = 'md' }: { type: string; size?: 'xs' | 'sm' | 'md' }) {
+   用 ::before mask，否则回落 TDesign glyph（cube→server、其余→cloud）。
+   SkillSettingsPanel 复用同一枚（OCR-M 去重）。 */
+export function SandboxBackendBadge({ type, size = 'md' }: { type?: string; size?: 'xs' | 'sm' | 'md' }) {
+  if (!type) return null;
   const logo = providerLogo('sandbox', type);
   const iconName = type === 'cube' ? 'server' : type === 'disabled' ? 'minus-circle' : 'cloud';
   const className = `sandbox-badge sandbox-badge--${type} sandbox-badge--${size}${logo?.mode === 'mono' ? ' sandbox-badge--mono' : ''}`;

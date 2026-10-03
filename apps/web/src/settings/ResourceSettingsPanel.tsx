@@ -243,6 +243,8 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
         className="number-input"
         value={raw}
         placeholder={field.default != null ? String(field.default) : ' '}
+        min={field.min ?? 1}
+        max={field.max ?? (isReplicaField(field.name) ? 10 : 64)}
         onChange={(value) => {
           const text = String(value).trim();
           if (!text) { onChange(undefined); return; }

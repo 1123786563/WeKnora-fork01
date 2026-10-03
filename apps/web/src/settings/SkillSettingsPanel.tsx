@@ -18,7 +18,7 @@ import { SettingDrawer } from './SettingDrawer.tsx';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { pushSettingsToast } from './settings-toast.tsx';
-import { providerLogo } from './providerLogos.ts';
+import { SandboxBackendBadge } from './SandboxSettingsPanel.tsx';
 import { navigate } from '../platform/navigation.ts';
 import { observeUploadProgress } from '../platform/http.ts';
 import {
@@ -182,19 +182,6 @@ const LAST_CHAT_MODEL_KEY = 'weknora_last_chat_model_id';
 const SKILL_POLL_INTERVAL_MS = 2500;
 /** Vue SKILL_ICON（frontend/src/types/mention.ts:4）——卡片徽章与抽屉头图标同名。 */
 const SKILL_ICON = 'system-code';
-
-/* Vue SandboxBackendBadge.vue（frontend/src/components/settings/）：同一枚后端
-   徽章与 sandbox 面板共用，样式平移块在 settings.td.css（.sandbox-badge 家族）；
-   有 mono logo（docker）时用 ::before mask，否则回落 TDesign glyph
-   （cube→server、其余→cloud）。 */
-function SandboxBackendBadge({ type, size = 'md' }: { type?: string; size?: 'xs' | 'sm' | 'md' }) {
-  if (!type) return null;
-  const logo = providerLogo('sandbox', type);
-  const iconName = type === 'cube' ? 'server' : type === 'disabled' ? 'minus-circle' : 'cloud';
-  const className = `sandbox-badge sandbox-badge--${type} sandbox-badge--${size}${logo?.mode === 'mono' ? ' sandbox-badge--mono' : ''}`;
-  const style = logo?.mode === 'mono' ? { '--logo-url': `url("${logo.url}")` } as CSSProperties : undefined;
-  return <span className={className} style={style} aria-hidden="true">{logo ? null : <TIcon name={iconName} />}</span>;
-}
 
 /**
  * Vue SkillSettings.vue:3-12 section-header：20px/600 标题行（标题 + 帮助图标，

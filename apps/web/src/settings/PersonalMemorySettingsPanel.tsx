@@ -232,7 +232,7 @@ function Popconfirm({ open, message, confirmLabel, cancelLabel, danger = true, b
     </span>
   );
 }
-export function PersonalMemorySettingsPanel({ client, initialSettings }: { client: WeKnoraClient; initialSettings: unknown }) {
+export function PersonalMemorySettingsPanel({ client, initialSettings, loadError, loadLoading }: { client: WeKnoraClient; initialSettings: unknown; loadError?: string | null; loadLoading?: boolean }) {
   const t = settingsT(readInitialLocale());
   const [settings, setSettings] = useState<MemoryRow | null>(
     initialSettings !== null && typeof initialSettings === 'object' && !Array.isArray(initialSettings) ? initialSettings as MemoryRow : null,
@@ -863,6 +863,8 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
         </div>
       </div>
 
+      {loadLoading ? <Status>{t('common.loading')}</Status> : null}
+      {!loadLoading && loadError ? <Status tone='error'>{loadError}</Status> : null}
       {error ? <Status tone='error'>{error}</Status> : null}
       {notice ? <Status tone={noticeTone === 'info' ? 'neutral' : noticeTone}>{notice}</Status> : null}
 

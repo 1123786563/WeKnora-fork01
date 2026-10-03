@@ -721,7 +721,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </>
       ),
     }] : []),
-  ]), [tr, canManage, locale]);
+  ]), [tr, canManage, locale, revoke]);
 
   const memberTableColumns = useMemo(() => ([
     {
