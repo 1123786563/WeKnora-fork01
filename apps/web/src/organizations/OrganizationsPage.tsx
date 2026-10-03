@@ -11,7 +11,7 @@
 //  - 列表加载失败的重试态（React 韧性补充，Vue 模板无对应 UI）。
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
