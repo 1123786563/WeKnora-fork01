@@ -232,7 +232,7 @@ async function readIntent(mp) {
       const afterQuota = await snapshotMatching(page, /搜索额度不足/) ?? quotaText;
       record('F1 quota-keeps-recovery', /有一次结果未知的搜索/.test(afterQuota), 'refused resend keeps the pending intent for later recovery');
       record('F1 facts-still-readable', /意向：远程办公/.test(afterQuota), 'profile facts remain readable while quota is refused');
-      await verifiedShot(mp, page, 'F1-quota-refused', /搜索额度不足[\s\S]*仍可查看既有档案与申请记录/, 'F1 专属提示可达：typed 429（search_quota_refused，经 quota-inject-proxy 在冻结合同边界注入；生产 gate 为 passThrough、真实账本属 T21）→ 真实 ApiError/errorMessage → 页面 warning Notice', /搜索额度不足/);
+      await verifiedShot(mp, page, 'F1-quota-refused', /搜索额度不足[\s\S]*仍可查看既有档案与申请记录/, 'F1 专属提示可达：typed 429（search_quota_refused，经 quota-inject-proxy 在冻结合同边界注入；生产 gate 为 T21 真实额度账本 searchUsageGate，注入仅为 DevTools 受控触发）→ 真实 ApiError/errorMessage → 页面 warning Notice', /搜索额度不足/);
     } finally {
       fs.rmSync(FLAG, { force: true }); // 无论成败都关掉注入
     }

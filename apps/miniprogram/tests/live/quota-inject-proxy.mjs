@@ -1,8 +1,10 @@
 /* T24 修复轮 F1 DevTools 复验辅助（自动化脚手架，非业务逻辑，不进构建产物）。
  *
- * 背景（如实声明构造法）：生产 Office 的 SearchQuotaGate 是 passThrough
- * （internal/modules/career/office.go:299；真实额度账本属 T21，未落地），
- * 真实 Lite 服务器无法产出 typed 429。本代理只在小程序信任的 API origin 的
+ * 背景（如实声明构造法，CAREER-OCR H3 更正）：生产 Office 的 SearchQuotaGate
+ * 是真实额度账本 searchUsageGate（internal/modules/career/office.go:389 以
+ * searchUsageGate 覆盖 passThrough 初值；usage.go 自述其为生产 gate）——T21 已
+ * 落地，真实服务器在额度耗尽时能原生产出 typed 429。本代理仍按注入法触发：
+ * 只在小程序信任的 API origin 的
  * 冻结合同边界（POST /api/v1/career/searches）按 T11 handler.go 的响应形状
  * （429 + {"error":{"code":"search_quota_refused"}}）回放拒绝，其余请求原样
  * 转发上游 Lite 服务器。小程序侧全链路真实：真实构建、真实 transport、
