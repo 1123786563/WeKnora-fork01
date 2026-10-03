@@ -830,6 +830,17 @@
   place-items: center;
 }
 
+/* CAREER-OCR H12: the device-screen and floating-panel preview iframes have
+   no size rules anywhere (the legacy .wk-embed-preview-screen iframe rule
+   was dropped in the port); without this they render at the browser default
+   300x150 instead of filling their frame. */
+.wk-vi-24 iframe,
+.wk-vi-28 iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 .wk-vi-25 {
   padding-inline: 32px;
   padding-block: 28px;
