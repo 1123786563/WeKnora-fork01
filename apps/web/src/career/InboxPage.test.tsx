@@ -272,3 +272,28 @@ test('cross-tenant reads answer a scoped error and missing sources answer a type
  assert.match(second.textContent ?? '', /来源事件不存在/)
  assert.match(second.textContent ?? '', /不属于当前空间|不属于本空间/)
 })
+
+test('an unknown write survives a remount through per-scope storage (CAREER-OCR H10)', async () => {
+ const sent: SetReminderInput[] = []
+ let todos: ReminderView[] = []
+ const career: CareerStub = {
+  open: async () => view(4),
+  reminders: async () => ({ reminders: todos }),
+  setReminder: async (input: SetReminderInput) => { sent.push(input); todos = [progressTodo()]; throw Object.assign(new Error('timed out'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  reminderReceipt: async (requestId: string) => { todos = [progressTodo()]; return reminderReceipt({ requestId }) },
+ }
+ const storage = dom.window.sessionStorage
+ const first = await mount(career)
+ await submitTodo(first, 'evt /1')
+ assert.match(first.textContent ?? '', /暂时无法确认/)
+ const requestId = sent[0]!.requestId
+ assert.ok([...Object.keys(storage)].some((key) => key.startsWith('weknora:career:inbox-write:')), 'the unknown attempt is persisted per scope')
+ await act(async () => { root?.unmount(); root = undefined; host?.remove(); host = undefined; document.body.replaceChildren() })
+
+ const second = await mount(career)
+ assert.match(second.textContent ?? '', /有一次结果未知的写入/, 'the unknown state survives the remount')
+ assert.match(second.textContent ?? '', new RegExp(requestId), 'the original request id is restored')
+ await act(async () => { click(button(second, '查询待办回执')); await settle(); await settle() })
+ assert.doesNotMatch(second.textContent ?? '', /暂时无法确认/)
+ assert.ok(![...Object.keys(storage)].some((key) => key.startsWith('weknora:career:inbox-write:')), 'accepting the receipt clears the persisted attempt')
+})

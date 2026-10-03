@@ -12,6 +12,27 @@ import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertain
 const endpointDefiniteCodes: readonly string[] = ['revision_conflict']
 const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
 
+// CAREER-OCR H10: the unknown write attempt must survive a refresh/route
+// change — the UI promises "原请求编号已保留". Persisted per scope; restored
+// only when the scope matches, cleared once the receipt settles the attempt.
+const inboxWriteKey = (userId: string | null, tenantId: string | null): string => `weknora:career:inbox-write:${userId ?? ''}:${tenantId ?? ''}`
+const inboxSessionStorage = (): Storage | undefined => (typeof window === 'undefined' ? undefined : window.sessionStorage)
+function persistInboxWrite(scope: { userId: string | null; tenantId: string | null }, attempt: WriteAttempt): void {
+ try { inboxSessionStorage()?.setItem(inboxWriteKey(scope.userId, scope.tenantId), JSON.stringify(attempt)) } catch { /* private mode */ }
+}
+function clearInboxWrite(scope: { userId: string | null; tenantId: string | null }): void {
+ try { inboxSessionStorage()?.removeItem(inboxWriteKey(scope.userId, scope.tenantId)) } catch { /* private mode */ }
+}
+function readInboxWrite(scope: { userId: string | null; tenantId: string | null }): WriteAttempt | undefined {
+ try {
+  const raw = inboxSessionStorage()?.getItem(inboxWriteKey(scope.userId, scope.tenantId))
+  if (!raw) return undefined
+  const parsed = JSON.parse(raw) as WriteAttempt
+  if ((parsed.kind !== 'reminder' && parsed.kind !== 'subscription') || typeof parsed.requestId !== 'string') return undefined
+  return parsed
+ } catch { return undefined }
+}
+
 
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
@@ -112,6 +133,16 @@ export function InboxPage({ client, scopeController, deletionGeneration = 0 }: {
   }
  }, [client, scopeController])
 
+ // CAREER-OCR H10: restore an unknown attempt persisted before the
+ // refresh/route change (per scope; nothing to restore after settlement).
+ useEffect(() => {
+  const requestScope = scopeController.current()
+  const stored = readInboxWrite(requestScope.scope)
+  if (!stored) return
+  setAttempt(stored); setWritePhase('unknown')
+  setMessage(`有一次结果未知的写入（原请求编号 ${stored.requestId}）。请先用原请求编号查询回执，或用同一编号重试；不会自动更换请求编号。`)
+ }, [scopeController, scope.scope.generation])
+
  useEffect(() => {
   let active = true
   const requestScope = scopeController.current()
@@ -157,13 +188,13 @@ export function InboxPage({ client, scopeController, deletionGeneration = 0 }: {
 
  const acceptReminderReceipt = (next: ReminderReceipt, expectedRequestId: string): void => {
   if (next.requestId !== expectedRequestId) throw new ReceiptMismatchError('待办回执与本次请求不匹配')
-  setAttempt(undefined); setWritePhase('idle'); setSourceId(''); setMessage('')
+  setAttempt(undefined); setWritePhase('idle'); setSourceId(''); setMessage(''); clearInboxWrite(scopeController.current().scope)
   setNotice([next.deduplicated ? '该来源已有待办：同一来源事件只保留一条，未新增第二条。' : '待办已登记。', pushOutcomeNote(next)].filter(Boolean).join(' '))
   refresh()
  }
  const acceptSubscriptionReceipt = (next: CareerReceipt, expected: SubscriptionAttempt): void => {
   if (next.requestId !== expected.requestId) throw new ReceiptMismatchError('订阅回执与本次请求不匹配')
-  setAttempt(undefined); setWritePhase('idle'); setMessage('')
+  setAttempt(undefined); setWritePhase('idle'); setMessage(''); clearInboxWrite(scopeController.current().scope)
   setNotice(expected.value === PUSH_UNSUBSCRIBED ? '推送提醒已退订：不再发送推送，已存在的站内待办仍可读取。' : '已重新订阅推送提醒。')
   refresh()
  }
@@ -196,19 +227,20 @@ export function InboxPage({ client, scopeController, deletionGeneration = 0 }: {
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问收件箱，已清除内容。'); return }
    if (parsed.code === 'revision_conflict') {
-    setAttempt(undefined); setWritePhase('error')
+    setAttempt(undefined); setWritePhase('error'); clearInboxWrite(requestScope.scope)
     setMessage(`档案已更新${parsed.currentRevision !== undefined ? `（当前修订 ${parsed.currentRevision}）` : ''}。请刷新后重新提交；新提交会使用新的请求编号。`)
     await readView()
     return
    }
    if (['invalid_request', 'idempotency_conflict', 'not_found', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
-    setAttempt(undefined); setWritePhase('error')
+    setAttempt(undefined); setWritePhase('error'); clearInboxWrite(requestScope.scope)
     setMessage(parsed.code === 'not_found' ? (current.kind === 'reminder' ? '来源事件不存在（可能不属于当前空间）。请核对来源编号后重试。' : '订阅状态暂时无法读取。请刷新后重试。') : parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次提交。请重新提交。' : `操作未被接受：${parsed.message}`)
     return
    }
    if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage(`操作未完成：${cause.message}`); return }
-   if (!isUncertainWrite(cause)) { setAttempt(undefined); setWritePhase('error'); setMessage(`操作未完成：${parsed.message}`); return }
+   if (!isUncertainWrite(cause)) { setAttempt(undefined); setWritePhase('error'); setMessage(`操作未完成：${parsed.message}`); clearInboxWrite(requestScope.scope); return }
    setWritePhase('unknown')
+   persistInboxWrite(requestScope.scope, current)
    setMessage(`暂时无法确认操作是否已保存（原请求编号 ${current.requestId}）。请先用原请求编号查询回执，或用同一编号重试；不会自动更换请求编号。`)
   } finally { writeInFlight.current = false }
  }
@@ -232,7 +264,7 @@ export function InboxPage({ client, scopeController, deletionGeneration = 0 }: {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问收件箱，已清除内容。'); return }
-   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage(`操作未完成：${cause.message}`); return }
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage(`操作未完成：${cause.message}`); clearInboxWrite(requestScope.scope); return }
    setWritePhase('unknown')
    setMessage(parsed.code === 'not_found' ? `尚未找到回执（原请求编号 ${current.requestId}）。可以继续查询，或使用原请求编号重试。` : '回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }
