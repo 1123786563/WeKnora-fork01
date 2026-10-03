@@ -695,6 +695,31 @@ test('runtime save submits the exact Vue payload shape and closes on success', a
   assert.match(container.textContent ?? '', new RegExp(t('common.saveSuccess')));
 });
 
+test('clearing a runtime number field stays undefined — no 0/NaN payload pollution (OCR H-A3)', async () => {
+  // TDesign InputNumber reports a cleared field as undefined (never ''),
+  // so the legacy `value === ""` check never matched and Number() coerced the
+  // sentinel into 0/NaN on every docker/cube/e2b numeric field.
+  let updateInput: unknown;
+  const { client } = makeClient(() => okCatalog(catalogTemplates, 'tpl-ready'), [cubeRecord]);
+  (client as unknown as { sandboxConfigurations: { update: (id: string, input: unknown) => Promise<unknown> } }).sandboxConfigurations.update = async (_id, input) => {
+    updateInput = input;
+    return {};
+  };
+  const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
+  await openCardMenu(container, 'Cube cluster');
+  await clickMenuItem(t('common.edit'));
+  const editor = container.querySelector<HTMLElement>('[data-testid="sandbox-editor"]')!;
+  const runtimeStep = Array.from(editor.querySelectorAll('nav .wk-sandbox-step'))[2] as HTMLButtonElement;
+  await act(async () => runtimeStep.click());
+  const timeoutInput = Array.from(editor.querySelectorAll('input')).find((input) => input.placeholder === '30')!;
+  await act(async () => setInputValue(timeoutInput, '30'));
+  await act(async () => setInputValue(timeoutInput, ''));
+  await submitEditor(editor);
+  const cube = (updateInput as { config: { cube: Record<string, unknown> } }).config.cube;
+  assert.ok(cube.http_timeout_sec !== 0 && !Number.isNaN(cube.http_timeout_sec as number), 'cleared field must not coerce the clear sentinel into 0/NaN');
+  assert.equal(cube.http_timeout_sec, undefined, 'cleared field falls back to the server default');
+});
+
 test('a sandboxes_still_live save refusal keeps the drawer open with the Vue conflict alert (drawer.vue:63-81, 1634-1641)', async () => {
   const refusal = Object.assign(new Error('sandboxes still live'), {
     code: 'sandboxes_still_live',
