@@ -187,7 +187,6 @@
   border-color: #e7e7e7;
   padding-inline: 8px;
   padding-block: 4px;
-  font-size: 13px;
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -636,7 +635,6 @@
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  font-weight: inherit;
   font-weight: 650 !important;
 }
 

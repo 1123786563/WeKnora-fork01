@@ -747,7 +747,7 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   line-height: 22px;
   color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
 }
-.kb-text-input:focus { outline: none; border-color: none; }
+.kb-text-input:focus { outline: none; }
 .kb-textarea {
   width: 100%;
   box-sizing: border-box;

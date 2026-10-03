@@ -709,7 +709,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                       : (selectedSlug ?? hoveredSlug)!)
                     : null;
                   const stroke = focusSlug ? (GRAPH_NODE_FILL[nodeBySlug.get(focusSlug)?.page_type ?? ''] ?? '#0052d9') : '#c0c4cc';
-                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? `url(#wk-graph-arrow-end${lit ? '-hl' : ''})` : undefined} markerStart={showArrows && edge.bidirectional ? `url(#wk-graph-arrow-start${lit ? '-hl' : ''})` : undefined} className=" wk-graph-arrow-stroke wk-kg-4" style={highlight ? { stroke, strokeWidth: lit ? 2 : 1, strokeOpacity: lit ? 0.9 : 0.08, transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' } : undefined} />;
+                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? `url(#wk-graph-arrow-end${lit ? '-hl' : ''})` : undefined} markerStart={showArrows && edge.bidirectional ? `url(#wk-graph-arrow-start${lit ? '-hl' : ''})` : undefined} className="wk-graph-arrow-stroke wk-kg-4" style={highlight ? { stroke, strokeWidth: lit ? 2 : 1, strokeOpacity: lit ? 0.9 : 0.08, transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' } : undefined} />;
                 })}
                 {visible.nodes.map((node, index) => {
                   const position = displayPositions[index]!;
