@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -40,6 +41,7 @@ func TestMemoryConsistencyPostgres(t *testing.T) {
 	testMemoryConsistencyMigration(t, db, "postgres")
 	execMemoryMigration(t, db, "../../../../migrations/versioned/000094_memory_consistency.up.sql")
 	repo := NewMemoryRepository(db)
+	repo := repository.NewMemoryRepository(db)
 	ctx := context.Background()
 	scope := interfaces.MemoryScope{TenantID: 7, SubjectID: "alice"}
 	_, err = repo.EnsureSubject(ctx, scope)

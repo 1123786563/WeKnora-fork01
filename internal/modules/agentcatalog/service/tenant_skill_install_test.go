@@ -275,8 +275,9 @@ func TestCacheBudgetGuardKeepsSmallWipesBig(t *testing.T) {
 func TestCleanImageScratchCommandShape(t *testing.T) {
 	cmd := cleanImageScratchCommand()
 
-	require.Contains(t, cmd, "rm -rf /workspace/* /tmp/* /workspace/.[!.]* || true",
-		"the scratch wipe covers /tmp too: installers leave archives and locks there")
+	require.Contains(t, cmd, "rm -rf /workspace/* /tmp/* /workspace/.[!.]* /run/desktop || true",
+		"the scratch wipe covers /tmp and /run/desktop: a leftover websockify "+
+			"secret would be reused by every sandbox booted from the snapshot")
 	require.Contains(t, cmd, "mkdir -p")
 	require.Contains(t, cmd, "status=$?")
 	require.Contains(t, cmd, "exit $status")
@@ -749,9 +750,10 @@ func TestInstallSkillRecoversFromNameConflict(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "sk-1", id,
 		"the upload that lost the unique index must reuse the row that won")
-	skill, getErr := fx.skillRepo.GetSkill(context.Background(), 7, "cfg-1", "sk-1")
-	require.NoError(t, getErr)
-	require.Equal(t, types.SkillStatusInstalling, skill.Status)
+	// The install runs in the background and the fixture row already starts at
+	// installing, so an immediate status read raced the goroutine and proved
+	// nothing. The run finishing on the reused row is what shows it was taken.
+	waitBackgroundInstallReady(t, fx, "the install must run on the row that won")
 }
 
 func TestInstallSkillRefusesWhenBundleCannotBeStored(t *testing.T) {
@@ -2109,6 +2111,7 @@ func newInstallFixture(t *testing.T) *installFixture {
 		&transcriptStreams{},
 		&transcriptMessages{},
 		adapters,
+		HostSandboxManager{},
 	)
 	fx.svc.now = func() time.Time { return time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC) }
 	return fx
@@ -3146,8 +3149,11 @@ func (s *installCustomAgentService) ListAgents(context.Context) ([]*types.Custom
 }
 
 func (s *installCustomAgentService) UpdateAgent(
-	_ context.Context, agent *types.CustomAgent,
+	_ context.Context, agent *types.CustomAgent, avatar *string,
 ) (*types.CustomAgent, error) {
+	if avatar != nil {
+		agent.Avatar = *avatar
+	}
 	return agent, nil
 }
 
@@ -3237,6 +3243,9 @@ func (e *installAgentEngine) Execute(
 }
 func (e *installAgentEngine) SetMemoryPrompt(string)            {}
 func (e *installAgentEngine) SetSteerSink(sink types.SteerSink) { e.sink = sink }
+func (e *installAgentEngine) SetMemoryPrompt(string)                               {}
+func (e *installAgentEngine) SetSteerSink(sink types.SteerSink)                    { e.sink = sink }
+func (e *installAgentEngine) SetContextCheckpointSink(types.ContextCheckpointSink) {}
 
 type installSessionService struct {
 	fx *installFixture
@@ -3350,9 +3359,9 @@ func (s *installSessionService) KnowledgeQAByEvent(context.Context, *types.ChatM
 }
 
 func (s *installSessionService) SearchKnowledge(
-	context.Context, []string, []string, []types.TagScope, string,
-) ([]*types.SearchResult, error) {
-	return nil, nil
+	context.Context, []string, []string, []types.TagScope, string, *types.KnowledgeSearchOptions,
+) (*types.RetrievalResult, error) {
+	return &types.RetrievalResult{}, nil
 }
 
 func (s *installSessionService) AgentQA(context.Context, *types.QARequest, *event.EventBus) error {
@@ -3366,6 +3375,10 @@ type installModelService struct {
 }
 
 func (s *installModelService) CreateModel(context.Context, *types.Model) error { return nil }
+func (s *installModelService) CopyModel(context.Context, string, string) (*types.Model, error) {
+	return nil, nil
+}
+
 func (s *installModelService) GetModelByID(context.Context, string) (*types.Model, error) {
 	return nil, nil
 }

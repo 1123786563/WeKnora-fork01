@@ -30,7 +30,8 @@ func shellCommandOutput(ctx context.Context, command string) (func(string, []byt
 		_ = meta.EventBus.Emit(ctx, event.Event{
 			ID: uuid.NewString(), Type: event.EventAgentCommandOutput, SessionID: meta.SessionID,
 			Data: event.CommandOutputData{
-				ToolCallID: meta.ToolCallID, Command: maskCommandAssignments(command), StartedAt: started,
+				ToolCallID: meta.ToolCallID,
+				Command:    maskCommandAssignments(command), StartedAt: started,
 				Output: strings.ToValidUTF8(tail, ""), Done: done,
 			},
 		})

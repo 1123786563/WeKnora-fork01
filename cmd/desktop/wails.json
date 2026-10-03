@@ -7,6 +7,7 @@
   "frontend:build": "pnpm --dir ../.. build:desktop-renderer",
   "frontend:dev": "pnpm --dir ../.. --filter @weknora/desktop-renderer dev",
   "wailsjsdir": "../../apps/desktop/src/wailsjs",
+  "build:tags": "desktop",
   "author": {
     "name": "WeKnora Team",
     "email": ""

@@ -102,7 +102,7 @@ func TestListCatalogReturnsDefinitionsAndInstallations(t *testing.T) {
 			}},
 		}},
 	}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/skills/catalog", nil))
@@ -121,7 +121,7 @@ func TestListCatalogReturnsDefinitionsAndInstallations(t *testing.T) {
 
 func TestRegisterCatalogFromSource(t *testing.T) {
 	catalog := &fakeSkillCatalog{registerID: "cat-9"}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	body, err := json.Marshal(map[string]string{"source": "@owner/pdf"})
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestRegisterCatalogFromSource(t *testing.T) {
 
 func TestRegisterCatalogFromSourceRejectsAnOversizedJSONBody(t *testing.T) {
 	catalog := &fakeSkillCatalog{registerID: "cat-9"}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	req := httptest.NewRequest(http.MethodPost, "/skills/catalog",
 		bytes.NewReader(oversizedSkillSourceJSON(1)))
@@ -150,7 +150,7 @@ func TestRegisterCatalogFromSourceRejectsAnOversizedJSONBody(t *testing.T) {
 
 func TestInstallCatalogRejectsAnOversizedJSONBody(t *testing.T) {
 	catalog := &fakeSkillCatalog{installs: map[string]string{"cfg-1": "sk-1"}}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	req := httptest.NewRequest(http.MethodPost, "/skills/catalog/cat-1/install",
 		bytes.NewReader(oversizedSkillSourceJSON(1)))
@@ -165,7 +165,7 @@ func TestInstallCatalogRejectsAnOversizedJSONBody(t *testing.T) {
 
 func TestInstallCatalogAcceptsPerConfigIDs(t *testing.T) {
 	catalog := &fakeSkillCatalog{installs: map[string]string{"cfg-1": "sk-1"}}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	body, err := json.Marshal(map[string][]string{"sandbox_config_ids": {"cfg-1"}})
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestInstallCatalogIncludesPerConfigErrors(t *testing.T) {
 		installs:    map[string]string{"cfg-1": "sk-1"},
 		installErrs: map[string]string{"cfg-2": "sandbox config not found"},
 	}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	body, err := json.Marshal(map[string][]string{"sandbox_config_ids": {"cfg-1", "cfg-2"}})
 	require.NoError(t, err)
@@ -208,7 +208,7 @@ func TestDeleteCatalogRefusesWhileInstalled(t *testing.T) {
 	catalog := &fakeSkillCatalog{
 		deleteErr: apperrors.NewConflictError("remove this skill from every sandbox"),
 	}
-	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog, nil))
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/skills/catalog/cat-1", nil))

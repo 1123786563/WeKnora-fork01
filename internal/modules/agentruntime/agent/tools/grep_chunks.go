@@ -305,19 +305,6 @@ func (t *GrepChunksTool) resolveGrepScope() (fullKBIDs, knowledgeIDs []string, t
 	return fullKBIDs, knowledgeIDs, tagTargets
 }
 
-func dedupNonEmptyStrings(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
-}
-
 // scopeClause builds the SQL predicate restricting chunks to the active scope.
 // Specific knowledge IDs, tag-constrained KB scopes, and full-KB (kb, tenant)
 // pairs are OR'd together so a turn that mentions @KB + @tag + @file searches
@@ -709,20 +696,6 @@ func buildGrepChunkResults(results []chunkWithTitle, compiled []*regexp.Regexp) 
 	return out
 }
 
-// regexMatchesAny reports whether text matches at least one of the compiled
-// patterns. Used to flag title hits without counting occurrences.
-func regexMatchesAny(text string, compiled []*regexp.Regexp) bool {
-	if text == "" || len(compiled) == 0 {
-		return false
-	}
-	for _, re := range compiled {
-		if re != nil && re.MatchString(text) {
-			return true
-		}
-	}
-	return false
-}
-
 // countRegexHits returns the total number of matches per (compiled) pattern
 // within content, keyed by the original (uncompiled) pattern string.
 func countRegexHits(content string, compiled []*regexp.Regexp, patterns []string) map[string]int {
@@ -738,93 +711,6 @@ func countRegexHits(content string, compiled []*regexp.Regexp, patterns []string
 		counts[patterns[i]] = len(matches)
 	}
 	return counts
-}
-
-// extractChunkMatchSnippet returns a preview for tool output. FAQ chunks only
-// surface the matched question plus answers from metadata (answers are not
-// stored in chunk content for question_only index mode). Other chunk types
-// use regex context around the first body match.
-func extractChunkMatchSnippet(chunk *types.Chunk, compiled []*regexp.Regexp) string {
-	if chunk != nil && chunk.ChunkType == types.ChunkTypeFAQ {
-		if s := faqMatchSnippet(chunk, compiled); s != "" {
-			return s
-		}
-	}
-	if chunk == nil {
-		return ""
-	}
-	return extractSnippetRegex(chunk.Content, compiled)
-}
-
-// extractSnippetRegex returns a short context snippet around the earliest
-// regex match across any of the provided compiled patterns. Result is
-// compressed to a single line and bounded in length on both sides of the
-// match to keep the XML output concise.
-func extractSnippetRegex(content string, compiled []*regexp.Regexp) string {
-	if content == "" || len(compiled) == 0 {
-		return ""
-	}
-
-	earliest := -1
-	earliestEnd := -1
-	for _, re := range compiled {
-		if re == nil {
-			continue
-		}
-		loc := re.FindStringIndex(content)
-		if loc == nil {
-			continue
-		}
-		if earliest < 0 || loc[0] < earliest {
-			earliest = loc[0]
-			earliestEnd = loc[1]
-		}
-	}
-	if earliest < 0 {
-		return ""
-	}
-
-	matchStr := content[earliest:earliestEnd]
-	before := content[:earliest]
-	after := content[earliestEnd:]
-
-	beforeRunes := []rune(before)
-	if len(beforeRunes) > snippetContextRunes {
-		beforeRunes = beforeRunes[len(beforeRunes)-snippetContextRunes:]
-	}
-	afterRunes := []rune(after)
-	if len(afterRunes) > snippetContextRunes {
-		afterRunes = afterRunes[:snippetContextRunes]
-	}
-	matchRunes := []rune(matchStr)
-	if len(matchRunes) > snippetMaxMatchRunes {
-		matchRunes = append(matchRunes[:snippetMaxMatchRunes], []rune("...")...)
-	}
-
-	snippet := string(beforeRunes) + string(matchRunes) + string(afterRunes)
-	snippet = strings.ReplaceAll(snippet, "\n", " ")
-	for strings.Contains(snippet, "  ") {
-		snippet = strings.ReplaceAll(snippet, "  ", " ")
-	}
-	snippet = strings.TrimSpace(snippet)
-	if len([]rune(snippet)) > snippetMaxTotalRunes {
-		snippet = string([]rune(snippet)[:snippetMaxTotalRunes]) + "..."
-	}
-	return "... " + snippet + " ..."
-}
-
-// xmlEscape replaces characters that would break simple XML attribute /
-// element values. It is intentionally minimal because the rendered output is
-// consumed by the LLM (forgiving parser) rather than a strict XML processor.
-func xmlEscape(s string) string {
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		"\"", "&quot;",
-		"'", "&apos;",
-	)
-	return replacer.Replace(s)
 }
 
 // deduplicateChunks removes duplicate or near-duplicate chunks using content signature

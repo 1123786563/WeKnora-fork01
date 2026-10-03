@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -447,11 +448,6 @@ func (h *Handler) writeAgentQueryEvent(
 	}
 }
 
-// getRequestID gets the request ID from gin context
-func getRequestID(c *gin.Context) string {
-	return c.GetString(types.RequestIDContextKey.String())
-}
-
 // Helper function for type assertion with default value
 func getString(m map[string]interface{}, key string) string {
 	if val, ok := m[key].(string); ok {
@@ -499,6 +495,14 @@ func searchResultFromMap(refMap map[string]interface{}) *types.SearchResult {
 			}
 		}
 		sr.Metadata = metadata
+	}
+	if raw, ok := refMap["source_locators"]; ok && raw != nil {
+		if b, err := json.Marshal(raw); err == nil {
+			var locators types.SourceLocators
+			if json.Unmarshal(b, &locators) == nil {
+				sr.SourceLocators = locators
+			}
+		}
 	}
 	return sr
 }

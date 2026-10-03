@@ -119,6 +119,7 @@ func NewTenantSkillService(
 	redisClient *redis.Client,
 	streams interfaces.StreamManager,
 	messages interfaces.MessageRepository,
+	host HostSandboxManager,
 ) *TenantSkillService {
 	return acatsvc.NewTenantSkillService(skillsRepo, configsRepo, resolver, sandboxes,
 		agents, customAgents, sessions, models, redisClient, streams, messages,

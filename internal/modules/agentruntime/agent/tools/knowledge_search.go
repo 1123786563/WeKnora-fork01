@@ -1329,64 +1329,6 @@ func (t *KnowledgeSearchTool) tokenizeSimple(text string) map[string]struct{} {
 	return TokenizeSimple(text)
 }
 
-// extractSnippetForQueries tries to produce a short contextual snippet around
-// the first occurrence of any token extracted from the provided queries.
-// When no token matches (common for fully paraphrased semantic queries) it
-// falls back to the leading 160 runes of content so callers always get
-// something to scan. The snippet is single-lined and bounded in length to
-// keep the rendered XML compact.
-func extractSnippetForQueries(content string, queries []string) string {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return ""
-	}
-
-	tokens := searchQueryTokens(queries)
-
-	lowered := strings.ToLower(content)
-	earliest := -1
-	earliestEnd := -1
-	for _, tok := range tokens {
-		idx := strings.Index(lowered, tok)
-		if idx < 0 {
-			continue
-		}
-		end := idx + len(tok)
-		if earliest < 0 || idx < earliest {
-			earliest = idx
-			earliestEnd = end
-		}
-	}
-
-	if earliest < 0 {
-		runes := []rune(content)
-		if len(runes) > snippetContextRunes*2 {
-			return strings.TrimSpace(string(runes[:snippetContextRunes*2])) + " ..."
-		}
-		return content
-	}
-
-	matchStr := content[earliest:earliestEnd]
-	before := content[:earliest]
-	after := content[earliestEnd:]
-
-	beforeRunes := []rune(before)
-	if len(beforeRunes) > snippetContextRunes {
-		beforeRunes = beforeRunes[len(beforeRunes)-snippetContextRunes:]
-	}
-	afterRunes := []rune(after)
-	if len(afterRunes) > snippetContextRunes {
-		afterRunes = afterRunes[:snippetContextRunes]
-	}
-
-	snippet := string(beforeRunes) + matchStr + string(afterRunes)
-	snippet = strings.ReplaceAll(snippet, "\n", " ")
-	for strings.Contains(snippet, "  ") {
-		snippet = strings.ReplaceAll(snippet, "  ", " ")
-	}
-	return "... " + strings.TrimSpace(snippet) + " ..."
-}
-
 // jaccard calculates Jaccard similarity between two token sets
 func (t *KnowledgeSearchTool) jaccard(a, b map[string]struct{}) float64 {
 	return Jaccard(a, b)

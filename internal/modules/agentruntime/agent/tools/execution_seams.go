@@ -87,7 +87,7 @@ var ErrTimeout = sandbox.ErrTimeout // sandbox.go:101
 
 // ResolveWorkspacePath R2 seam（remove_at: ib3）— 门面合法化后随本文件消除
 func ResolveWorkspacePath(value string) string { // sandbox/workspace_path.go:10
-	return sandbox.ResolveWorkspacePath(value)
+	return sandbox.ResolveWorkspacePathIn(sandbox.RemoteWorkspaceLayout(), value)
 }
 
 // ShellQuote R2 seam（remove_at: ib3）— 门面合法化后随本文件消除

@@ -130,6 +130,14 @@ func RecordKBActivity(
 	for key, value := range details {
 		activityDetails[key] = value
 	}
+	if id, name, ok := kbActivityAPIKey(ctx); ok {
+		if _, exists := activityDetails["api_key_id"]; !exists && id > 0 {
+			activityDetails["api_key_id"] = id
+		}
+		if _, exists := activityDetails["api_key_name"]; !exists && name != "" {
+			activityDetails["api_key_name"] = name
+		}
+	}
 	if task, ok := ctx.Value(kbActivityTaskContextKey{}).(kbActivityTaskMetadata); ok {
 		if task.TaskID != "" {
 			if _, exists := activityDetails["task_id"]; !exists {

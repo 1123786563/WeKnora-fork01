@@ -394,34 +394,21 @@ func listAllKBFiles(
 				return nil, nil, err
 			}
 			for _, raw := range resp.KnowledgeList {
-				// Probe each entry: an entry with a non-empty folder_id is a
-				// folder; otherwise it's a knowledge item (file / note / etc.).
-				var probe struct {
-					FolderID string `json:"folder_id"`
-					MediaID  string `json:"media_id"`
-				}
-				_ = json.Unmarshal(raw, &probe)
-
-				if probe.FolderID != "" && probe.MediaID == "" {
-					var fi folderInfo
-					if err := json.Unmarshal(raw, &fi); err != nil {
-						continue
-					}
-					child := cur.path
-					if child == "" {
-						child = fi.Name
-					} else {
-						child = cur.path + "/" + fi.Name
-					}
-					folderPath[fi.FolderID] = child
-					stack = append(stack, todo{folderID: fi.FolderID, path: child})
-					continue
-				}
-				if probe.MediaID == "" {
+				var ki knowledgeInfo
+				if err := json.Unmarshal(raw, &ki); err != nil || ki.MediaID == "" {
 					continue // unrecognized shape, skip defensively
 				}
-				var ki knowledgeInfo
-				if err := json.Unmarshal(raw, &ki); err != nil {
+				if ki.MediaType == mediaTypeFolder {
+					// List entries identify folders by media_type. Their full
+					// media_id (including the folder_ prefix) is the recursion key.
+					child := cur.path
+					if child == "" {
+						child = ki.Title
+					} else {
+						child = cur.path + "/" + ki.Title
+					}
+					folderPath[ki.MediaID] = child
+					stack = append(stack, todo{folderID: ki.MediaID, path: child})
 					continue
 				}
 				out = append(out, walkedFile{
@@ -464,8 +451,11 @@ func fetchNote(
 		return types.FetchedItem{}, fetchFailed
 	}
 	if strings.TrimSpace(content) == "" {
-		logger.Infof(ctx, "[IMA] note %s (title=%q) is empty, skipping", noteID, f.Title)
-		return types.FetchedItem{}, fetchSkipped
+		// A cleared note still exists. Keep its title as content so ingestion
+		// replaces the stale body instead of silently acknowledging the edit:
+		// skipping here would leave the old text indexed forever.
+		logger.Infof(ctx, "[IMA] note %s (title=%q) is empty, syncing its title only", noteID, f.Title)
+		content = "# " + f.Title + "\n"
 	}
 
 	fileName := datasource.SanitizeFileName(f.Title)

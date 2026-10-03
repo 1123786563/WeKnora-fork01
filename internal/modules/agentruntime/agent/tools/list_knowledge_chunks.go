@@ -397,38 +397,6 @@ func (t *ListKnowledgeChunksTool) buildOutput(
 	return b.String()
 }
 
-func writeChunkImagesMarkdown(b *strings.Builder, c *types.Chunk) {
-	if c == nil || c.ImageInfo == "" {
-		return
-	}
-	var imageInfos []types.ImageInfo
-	if err := json.Unmarshal([]byte(c.ImageInfo), &imageInfos); err != nil || len(imageInfos) == 0 {
-		return
-	}
-	for _, img := range imageInfos {
-		if imageMarkdown := BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
-			b.WriteString(imageMarkdown)
-			b.WriteString("\n")
-		}
-	}
-}
-
-// faqStandardQuestion returns the FAQ standard question for an FAQ-type chunk,
-// or "" for non-FAQ chunks (or when metadata is missing/unparseable). All FAQ
-// entries inside one knowledge share the same knowledge title, so surfacing the
-// standard question gives each entry a distinct, human-readable identity in
-// tool output that would otherwise look like duplicate same-titled chunks.
-func faqStandardQuestion(c *types.Chunk) string {
-	if c == nil || c.ChunkType != types.ChunkTypeFAQ {
-		return ""
-	}
-	meta, err := c.FAQMetadata()
-	if err != nil || meta == nil {
-		return ""
-	}
-	return strings.TrimSpace(meta.StandardQuestion)
-}
-
 // summarizeContent summarizes the content of a chunk
 func summarizeContent(content string) string {
 	cleaned := strings.TrimSpace(content)

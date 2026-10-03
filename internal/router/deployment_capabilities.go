@@ -12,7 +12,9 @@ func deploymentCapabilitiesFromRouter(params RouterParams) handler.DeploymentCap
 		IM:            params.IMHandler != nil,
 		// Match RegisterEmbedChannelRoutes: management routes depend on handler only.
 		Embed: params.EmbedChannelHandler != nil,
-		API:   params.TenantHandler != nil && params.TenantAPIKeyService != nil,
+		// Match RegisterMCPEndpointRoutes / RegisterMCPServerRoutes.
+		MCPServer: params.MCPEndpointHandler != nil && params.MCPServer != nil && params.MCPEndpointService != nil,
+		API:       params.TenantHandler != nil && params.TenantAPIKeyService != nil,
 		MCP: params.MCPServiceHandler != nil &&
 			params.MCPCredentialsHandler != nil &&
 			params.MCPOAuthHandler != nil,
@@ -23,6 +25,8 @@ func deploymentCapabilitiesFromRouter(params RouterParams) handler.DeploymentCap
 		Storage:       params.StorageBackendHandler != nil,
 		Sandbox:       params.SandboxConfigHandler != nil,
 		SandboxDocker: sandbox.DockerBackendEnabled(),
+		SandboxHost:   params.HostSandbox.Manager != nil,
+		SandboxRemote: params.SandboxConfigHandler != nil && !params.HostSandbox.Desktop,
 	})
 	// W37 carry-forward: advertise the config-resolved protocol compatibility
 	// window (defaults aligned with the TS SERVER_PROTOCOL_WINDOW; env/yaml

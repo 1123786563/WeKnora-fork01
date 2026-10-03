@@ -1021,6 +1021,7 @@ func (h *Handler) claimNextSteerFollowUp(
 	followUp := *prevReqCtx
 	followUp.ctx = ctx
 	followUp.query = first.Content
+	followUp.userInput = first.Content
 	followUp.requestID = uuid.New().String()
 	followUp.channel = getString(first.Data, "channel")
 	if followUp.channel == "" {

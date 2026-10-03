@@ -10,6 +10,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -19,10 +20,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // Handler handles all HTTP requests related to conversation sessions
 type Handler struct {
+	browserSkill         *browserskill.Manager
 	messageService       interfaces.MessageService // Service for managing messages
 	suggestionService    interfaces.MessageSuggestionService
 	sessionService       interfaces.SessionService       // Service for managing sessions
@@ -63,6 +66,12 @@ type Handler struct {
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
+	desktopService *service.SandboxDesktopService
+	desktopTickets  service.SandboxDesktopTicketStore
+	desktopLast     service.SandboxDesktopLastStore
+	// redis backs the distributed desktop slot. Nil in Lite mode, where the
+	// in-process limiter is the correct degradation.
+	redis *redis.Client
 	agentRunService *service.AgentRunService
 	// craftTombstoner starts the craft resource teardown of a session being
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
@@ -200,6 +209,8 @@ func NewHandler(
 	imageResolver *docparser.ImageResolver,
 	temporaryDocuments interfaces.TemporaryDocumentService,
 	artifactCollector *service.ArtifactCollector,
+	workspaceCheckpointer *service.WorkspaceCheckpointer,
+	sandboxIDLookup SandboxIDLookup,
 	memoryService interfaces.MemoryService,
 	// forkService branches a session at a chosen user or assistant message.
 	// May be nil in deployments where fork is not wired; ForkSession checks.
@@ -222,6 +233,12 @@ func NewHandler(
 	// (SP13 Task 4). Concrete-typed parameter so dig can inject it; the
 	// field keeps the narrow interface for stub-based tests.
 	queryHistoryExport *service.QueryHistoryExportService,
+	desktopService     *service.SandboxDesktopService,
+	desktopTickets     service.SandboxDesktopTicketStore,
+	desktopLast        service.SandboxDesktopLastStore,
+	rdb                *redis.Client,
+	rewindService      *service.SessionRewindService,
+	approvedProjectDirs HostProjectDirsLoader,
 ) *Handler {
 	return &Handler{
 		sessionService:        sessionService,
@@ -250,6 +267,12 @@ func NewHandler(
 		browserSkill:          browserSkill,
 		usageRecorder:         usageRecorder,
 		queryHistoryExport:    queryHistoryExport,
+		desktopService:        desktopService,
+		desktopTickets:        desktopTickets,
+		desktopLast:           desktopLast,
+		redis:                 rdb,
+		rewindService:         rewindService,
+		approvedProjectDirs:   approvedProjectDirs,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,
@@ -257,6 +280,13 @@ func NewHandler(
 			modelService,
 		),
 	}
+	if forkService != nil {
+		h.forkService = forkService
+	}
+	if rewindService != nil {
+		h.rewindService = rewindService
+	}
+	return h
 }
 
 // CreateSession godoc
@@ -297,6 +327,12 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		"Processing session creation request, tenant ID: %d",
 		tenantID,
 	)
+
+	hostDir, ok := bindHostWorkspaceDir(request.ProjectDir, h.approvedDirs())
+	if !ok {
+		_ = c.Error(errors.NewBadRequestError("project_dir is not an approved project directory"))
+		return
+	}
 
 	// Create session object with base properties
 	engine, parseErr := types.ParseAgentEngine(string(request.EngineType))
@@ -815,6 +851,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 	h.browserSkill.Forget(browserSkillScope(ctx), sanitizedIDs)
 
+	h.browserSkill.Forget(browserSkillScope(ctx), sanitizedIDs)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Sessions deleted successfully",

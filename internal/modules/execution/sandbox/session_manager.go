@@ -27,13 +27,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -59,6 +59,18 @@ const sessionInputEnvVar = "WEKNORA_SESSION_INPUT_DIR"
 // SessionWorkspaceRoot is the writable workspace root inside remote sandboxes.
 // shell_exec work_dir must stay underneath this path.
 const SessionWorkspaceRoot = "/workspace"
+
+// SessionGitDir is the git metadata directory for per-turn workspace
+// checkpoints. It lives on the sandbox root filesystem so a fork snapshot
+// still copies the object store, but outside SessionWorkspaceRoot so
+// `rm -rf /workspace` (or an agent cleaning the work tree) cannot drop
+// checkpoint history that rewind and fork later reset to.
+//
+// Checkpoints used to live in SessionWorkspaceRoot/.git, and sandboxes
+// provisioned before this constant existed still hold theirs there. The
+// shared git preamble adopts that repository on first use so SHAs recorded
+// before the move keep resolving; see gitWorkspaceAdoptLegacyRepo.
+const SessionGitDir = "/var/lib/weknora/workspace.git"
 
 // sessionArtifactDirBootstrapTimeout bounds directory creation and access
 // checks, performed with the execution identity.
@@ -237,9 +249,9 @@ func (m *SessionBoundManager) GetType() SandboxType {
 	return m.activeType
 }
 
-// TerminalIdleDisconnect is how long an open PTY may sit idle before the
-// WebSocket is closed. Missing or out-of-range workspace values are clamped
-// onto the built-in default so a stored 0 still disconnects.
+// TerminalIdleDisconnect is how long an open PTY or desktop relay may sit
+// idle before the WebSocket is closed. Missing or out-of-range workspace
+// values are clamped onto the built-in default so a stored 0 still disconnects.
 func (m *SessionBoundManager) TerminalIdleDisconnect() time.Duration {
 	if m == nil || m.config == nil {
 		return DefaultTerminalIdleDisconnect
@@ -317,11 +329,8 @@ func (m *SessionBoundManager) ensureSessionWorkspaceDirs(
 func (m *SessionBoundManager) prepareSessionDirs(
 	ctx context.Context, handle RemoteSandboxHandle, user string, dirs ...string,
 ) (prepErr error) {
-	ctx, span := langfuse.GetManager().StartSpan(ctx, langfuse.SpanOptions{
-		Name:     "sandbox.ensure_workspace",
-		Input:    map[string]interface{}{"directories": dirs, "user": user},
-		Metadata: sandboxHandleMeta(handle),
-	})
+	ctx, span := startSandboxSpan(ctx, "sandbox.ensure_workspace",
+		map[string]interface{}{"directories": dirs, "user": user}, sandboxHandleMeta(handle))
 	defer func() { span.Finish(nil, nil, prepErr) }()
 	result, err := m.client.Exec(ctx, handle, RemoteExecRequest{
 		Shell:   true,
@@ -531,7 +540,7 @@ func (m *SessionBoundManager) WriteSessionInputFile(
 
 // WriteSessionWorkspaceFile writes a model-authored file into the session's
 // remote sandbox, provisioning the sandbox on first call. Paths must sit
-// under /workspace and must not land in /workspace/input.
+// inside the session sandbox and must not land in /workspace/input.
 func (m *SessionBoundManager) WriteSessionWorkspaceFile(
 	ctx context.Context, sessionID, filePath string, content []byte,
 ) error {
@@ -716,14 +725,14 @@ type ShellExecOptions struct {
 	Timeout time.Duration
 	Env     map[string]string
 
-	// AllowSkillsRoot lets installer calls work inside the skills image root.
+	// AllowSkillsRoot selects the installer workspace/skills working-directory scope.
 	// See cleanSessionWorkDir for why the work_dir allowlist is lexical only.
 	// Never set this from a model-authored tool such as shell_exec.
 	AllowSkillsRoot bool
 	// AsRoot forces root and selects the maintenance bootstrap: only WorkDir
 	// is prepared, without requiring /workspace/input or /workspace/output.
 	// The default account is already root, but the bootstrap still differs.
-	// AllowSkillsRoot separately permits a work_dir under the skills image root;
+	// AllowSkillsRoot separately selects the installer working-directory scope;
 	// it is not a filesystem boundary for commands running as root.
 	AsRoot bool
 	// SkipWorkspacePrep omits prepareSessionDirs. Desktop maintenance and
@@ -733,8 +742,7 @@ type ShellExecOptions struct {
 }
 
 // ExecShellCommand runs a shell one-liner inside the session's persistent
-// sandbox. It preserves the shell_exec tool contract: /workspace-only work_dir
-// validation and provider default user.
+// sandbox. work_dir may name any absolute directory inside that sandbox.
 func (m *SessionBoundManager) ExecShellCommand(
 	ctx context.Context,
 	sessionID string,
@@ -905,6 +913,40 @@ func (m *SessionBoundManager) SessionInstallShellExecutor() SessionInstallShellE
 	return m
 }
 
+// SessionWorkspaceLayout reports the /workspace contract every remote
+// session shares. sessionID is ignored: remote layouts are not per-session.
+// A validated WEKNORA_SKILL_OUTPUT_DIR overlays OutputDir and the matching
+// ReadRoots entry; RemoteWorkspaceLayout itself stays the constant baseline.
+func (m *SessionBoundManager) SessionWorkspaceLayout(context.Context, string) (WorkspaceLayout, error) {
+	return withValidatedSkillOutputDir(RemoteWorkspaceLayout()), nil
+}
+
+func withValidatedSkillOutputDir(layout WorkspaceLayout) WorkspaceLayout {
+	raw := strings.TrimSpace(os.Getenv(skillOutputEnvVar))
+	if raw == "" {
+		return layout
+	}
+	clean, ok := ValidatedSessionOutputDir(raw)
+	if !ok {
+		return layout
+	}
+	previous := layout.OutputDir
+	layout.OutputDir = clean
+	if previous == clean || len(layout.ReadRoots) == 0 {
+		return layout
+	}
+	roots := append([]string(nil), layout.ReadRoots...)
+	for i, root := range roots {
+		if root == previous {
+			roots[i] = clean
+		}
+	}
+	layout.ReadRoots = roots
+	return layout
+}
+
+var _ SessionWorkspaceLayoutProvider = (*SessionBoundManager)(nil)
+
 // SessionFileStore advertises the session-scoped filesystem capability while
 // a real remote backend is active and the provider implements the enumeration
 // operations (ListDir / Stat / MakeDir / Remove).
@@ -949,18 +991,8 @@ func (m *SessionBoundManager) OpenSessionTerminal(
 		return nil, ErrTerminalUnsupported
 	}
 	if !opts.AllowResume {
-		state, bound, err := m.peekBoundSandboxState(ctx, sessionID)
-		if err != nil {
+		if err := m.RequireRunningSessionSandbox(ctx, sessionID); err != nil {
 			return nil, err
-		}
-		if !bound {
-			return nil, ErrNoLiveSessionSandbox
-		}
-		// Only a List-confirmed running sandbox is safe to Connect:
-		// paused/transitioning Connect resumes (and re-bills), and a
-		// list miss with a stale binding is not "no sandbox".
-		if state != RemoteStateRunning {
-			return nil, ErrSandboxPaused
 		}
 	}
 	handle, found, err := m.lookupSessionHandle(ctx, sessionID)
@@ -974,6 +1006,94 @@ func (m *SessionBoundManager) OpenSessionTerminal(
 }
 
 var _ SessionTerminalProvider = (*SessionBoundManager)(nil)
+
+// SessionDesktopManager advertises the graphical-desktop capability while a
+// real remote backend is active, the provider can relay a data-plane
+// WebSocket (E2B and Cube do; Docker is not scheduled), and this config's
+// base image is a desktop template. DesktopEnabled is the stored bit that
+// survives skill snapshots replacing template_id with a UUID; without it the
+// tab would Exec ensure.sh on a CLI image and only then report unsupported.
+func (m *SessionBoundManager) SessionDesktopManager() SessionDesktopManager {
+	if m == nil || m.remoteDisabled() {
+		return nil
+	}
+	if m.config == nil || !m.config.DesktopEnabled {
+		return nil
+	}
+	if _, ok := DesktopManagerFrom(m.client); !ok {
+		return nil
+	}
+	return m
+}
+
+// RequireRunningSessionSandbox reports ErrNoLiveSessionSandbox or
+// ErrSandboxPaused without Connect. Lookup-only terminal and desktop opens
+// use it so opening a panel cannot resume (and re-bill) a paused instance.
+// Only a List-confirmed running sandbox is safe: paused/transitioning
+// Connect resumes, and a list miss with a stale binding is not "no sandbox".
+func (m *SessionBoundManager) RequireRunningSessionSandbox(
+	ctx context.Context,
+	sessionID string,
+) error {
+	if m == nil {
+		return ErrNoLiveSessionSandbox
+	}
+	state, bound, err := m.peekBoundSandboxState(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if !bound {
+		return ErrNoLiveSessionSandbox
+	}
+	if state != RemoteStateRunning {
+		return ErrSandboxPaused
+	}
+	return nil
+}
+
+// OpenSessionDesktop dials the desktop of the sandbox currently bound to the
+// session.
+//
+// Unlike OpenSessionTerminal there is no AllowResume branch: by the time this
+// runs, SandboxDesktopService has already driven the same
+// resolveSandboxForExecution path a chat turn uses, so the sandbox is live
+// and — critically — its inbound token is registered on THIS replica.
+// Reaching here with no binding means the sandbox went away in between,
+// which is an error, not a reason to provision.
+func (m *SessionBoundManager) OpenSessionDesktop(
+	ctx context.Context,
+	sessionID string,
+	opts RemoteDesktopOptions,
+) (*SessionDesktopConn, error) {
+	if m.SessionDesktopManager() == nil {
+		return nil, ErrDesktopUnsupported
+	}
+	desktop, ok := DesktopManagerFrom(m.client)
+	if !ok {
+		return nil, ErrDesktopUnsupported
+	}
+	handle, found, err := m.lookupSessionHandle(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, ErrNoLiveSessionSandbox
+	}
+	conn, err := desktop.DialDesktop(ctx, handle, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := &SessionDesktopConn{Conn: conn, SandboxID: handle.ID()}
+	if refresher, ok := DesktopTTLRefresherFrom(m.client); ok {
+		bound := handle
+		out.StartTTLRefresh = func(ttlCtx context.Context) {
+			refresher.StartDesktopTTLRefresh(ttlCtx, bound)
+		}
+	}
+	return out, nil
+}
+
+var _ SessionDesktopProvider = (*SessionBoundManager)(nil)
 
 // Cleanup marks the manager closed. Session sandboxes are not force-deleted
 // here: their lifecycle is authoritative in the binding store and would
@@ -1047,6 +1167,45 @@ func (m *SessionBoundManager) HasActiveTurn(ctx context.Context, sessionID strin
 	}
 	active, _, err := leaser.TurnState(ctx, key)
 	return active, err
+}
+
+// TryLockRewind takes an exclusive rewind lock for sessionID. Stores that do
+// not implement rewind locking succeed as a no-op so local tests without a
+// lease store still rewind.
+func (m *SessionBoundManager) TryLockRewind(ctx context.Context, sessionID string) (func(), error) {
+	noop := func() {}
+	if m == nil {
+		return noop, nil
+	}
+	locker, ok := m.bindings.(interface {
+		TryLockRewind(context.Context, SessionSandboxKey) (func(), error)
+	})
+	if !ok {
+		return noop, nil
+	}
+	key, err := m.sessionKey(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return locker.TryLockRewind(ctx, key)
+}
+
+// HasRewindLock reports whether rewind currently holds sessionID.
+func (m *SessionBoundManager) HasRewindLock(ctx context.Context, sessionID string) (bool, error) {
+	if m == nil {
+		return false, nil
+	}
+	reader, ok := m.bindings.(interface {
+		HasRewindLock(context.Context, SessionSandboxKey) (bool, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	key, err := m.sessionKey(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	return reader.HasRewindLock(ctx, key)
 }
 
 // CreateForkSnapshot snapshots the session's already-bound sandbox. It never
@@ -1444,7 +1603,7 @@ func cleanSessionInputPath(filePath string) (string, error) {
 // cleanSessionWorkspaceWritePath normalizes model-authored sandbox writes and
 // protects staged attachments. The remote session binding isolates the files.
 func cleanSessionWorkspaceWritePath(filePath string) (string, error) {
-	clean := ResolveWorkspacePath(filePath)
+	clean := ResolveWorkspacePathIn(RemoteWorkspaceLayout(), filePath)
 	if !path.IsAbs(clean) || clean == "." || clean == "/" {
 		return "", fmt.Errorf("sandbox: workspace write path %q must be an absolute file path", filePath)
 	}

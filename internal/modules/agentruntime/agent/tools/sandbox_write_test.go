@@ -172,6 +172,26 @@ func TestSandboxWriteAppendAndEditTemporaryFiles(t *testing.T) {
 	require.Equal(t, "hello sandbox", string(editor.files["/tmp/task/check.txt"]))
 	require.Empty(t, result.OutputFiles)
 }
+func TestSandboxWriteAndEditRejectTemporaryFiles(t *testing.T) {
+	sink := &fakeSandboxFileSink{}
+	writer := NewWriteSandboxFileTool(sink, 0)
+	args, err := json.Marshal(WriteSandboxFileInput{
+		Path: "../tmp/task/check.txt", Content: "hello",
+	})
+	require.NoError(t, err)
+	result, err := writer.Execute(sandboxFileTestContext(), args)
+	require.NoError(t, err)
+	require.False(t, result.Success)
+	require.Contains(t, result.Error, "outside that scope")
+	require.Zero(t, sink.calls)
+
+	editor := &fakeSandboxFileEditor{}
+	result, err = NewEditSandboxFileTool(editor).Execute(sandboxFileTestContext(),
+		json.RawMessage(`{"path":"/tmp/task/check.txt","edits":[{"old_string":"world","new_string":"sandbox"}]}`))
+	require.NoError(t, err)
+	require.False(t, result.Success)
+	require.Contains(t, result.Error, "outside that scope")
+}
 
 func TestWriteSandboxFileRefusesBinaryAndOversize(t *testing.T) {
 	sink := &fakeSandboxFileSink{}

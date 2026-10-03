@@ -430,7 +430,7 @@ func (c *RemoteAPIChat) processStreamDelta(
 			state.firstReasoningSeen = true
 			logger.Infof(ctx, "[LLM Stream] First reasoning_content at OpenAI layer "+
 				"(len=%d, preview=%q, elapsed_ms=%d)",
-				len(reasoningContent), truncateForDebug(reasoningContent, 80), state.elapsedMs())
+				len(reasoningContent), api.TruncateForDebug(reasoningContent, 80), state.elapsedMs())
 		}
 		state.emit(streamChan, reasoningContent)
 	}
@@ -444,7 +444,7 @@ func (c *RemoteAPIChat) processStreamDelta(
 			state.firstContentSeen = true
 			logger.Infof(ctx, "[LLM Stream] First delta.Content at OpenAI layer "+
 				"(len=%d, preview=%q, tool_call_seen=%t, thinking_seen=%t, elapsed_ms=%d)",
-				len(delta.Content), truncateForDebug(delta.Content, 80),
+				len(delta.Content), api.TruncateForDebug(delta.Content, 80),
 				state.firstToolCallSeen, state.firstReasoningSeen, state.elapsedMs())
 		}
 		// If we had thinking content and this is the first answer chunk,
