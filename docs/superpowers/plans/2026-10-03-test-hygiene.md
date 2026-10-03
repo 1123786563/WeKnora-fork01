@@ -28,3 +28,12 @@
 
 ## Self-Review
 覆盖：定位→Task 1；修复→Task 2（条件任务契约明确）；判词→Task 3。
+
+---
+
+## 终判（2026-10-03）
+
+- **定性修正**：32 例非顺序串扰，而是 09-25~10-01 生产收紧后的**确定性 fixture 漂移**（9 簇：actor 门播种/Craft 准入/直插 pin/租户 guard/control 授权/快照围栏/假库接口/budget 库/compliance UNIQUE）+ handler/session 1 簇。
+- **治愈**：service 32/32（全包 `-count=1` ok 288s）+ handler/session 2/2（ok 35s）；8×`test(hygiene)` 提交。
+- **安全级真缺陷（本轮最重要发现）**：坏合并 215eba788 丢失 adoption 安全门 3 处调用（6f8f091d4 布置、09-29 侧分支删除、10-01 合并只复活 setter 未复活调用）——**撤销的 release 此前仍可建 Variant/本地发布**。证据链（容器仍装门/setter 文档/契约测试三重）证明非刻意；修复 `eec97936f` 按 ed6968dd8 原样恢复，controller 亲核 diff + 焦点测试复绿后推送。Adopt 路径恰被 09-29 新增 repo 层门兜底，实际暴露面=CreateVariant/PublishVariant。
+- main 推至 eec97936f。
