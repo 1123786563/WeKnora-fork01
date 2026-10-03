@@ -87,7 +87,7 @@ func (s *t17StopIntentStore) GetStopIntent(_ context.Context, scope craft.Scope,
 // TestCraftT17Journey is the T17 acceptance journey (see the file header).
 func TestCraftT17Journey(t *testing.T) {
 	db := openCraftSessionDB(t)
-	ctx := context.Background()
+	ctx := f17Context("u1")
 	const taskID = "s-t17" // Task ID == Session ID
 	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: taskID}
 	require.NoError(t, db.Exec(
@@ -183,6 +183,7 @@ func TestCraftT17Journey(t *testing.T) {
 	intents.seq = seq
 	svc := NewCraftControlService(runs, delegations, executor, newFakeInteractionStore(), nil)
 	svc.SetStopIntents(intents)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 	stopReq := CraftStopRequest{Scope: scope, RunKey: agentruntime.RunKey{TenantID: 1, RunID: "run-2"}, TaskID: "dlg-t17"}
 
 	// stopFacts assembles the authoritative lease facts of the stop journey:
@@ -229,6 +230,7 @@ func TestCraftT17Journey(t *testing.T) {
 	refreshedExecutor.onObserve = executor.onObserve
 	refreshed := NewCraftControlService(runs, delegations, refreshedExecutor, newFakeInteractionStore(), nil)
 	refreshed.SetStopIntents(intents)
+	refreshed.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 	polled, err := refreshed.DelegationStatus(ctx, scope, stopReq.RunKey, "dlg-t17")
 	require.NoError(t, err)
 	require.Equal(t, "stopping", polled.Phase, "after a page refresh the stop state survives: still stopping")

@@ -83,15 +83,16 @@ func TestStopUsesPostConstructionExecutor(t *testing.T) {
 		return craft.Observation{Aborted: true, Idle: true, SessionID: "oc-1"}, nil
 	}
 	svc := NewCraftControlService(fixture.runs, fixture.store, nil, fixture.interactions, nil)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 
 	// Before the injection the stop degrades honestly to the recorded intent.
-	before, err := svc.Stop(context.Background(), fixture.stopRequestFor())
+	before, err := svc.Stop(f17Context("u1"), fixture.stopRequestFor())
 	require.NoError(t, err)
 	require.Equal(t, "stopping", before.Phase)
 	require.Zero(t, fixture.abortExecutor.AbortCount(), "no executor, no abort")
 
 	svc.SetExecutor(fixture.abortExecutor)
-	after, err := svc.Stop(context.Background(), fixture.stopRequestFor())
+	after, err := svc.Stop(f17Context("u1"), fixture.stopRequestFor())
 	require.NoError(t, err)
 	require.Equal(t, "canceled", after.Phase, "the injected executor must drive the verified abort")
 	require.Equal(t, 1, fixture.abortExecutor.AbortCount())

@@ -60,6 +60,7 @@ func seedControlStopJourney(t *testing.T, sessionID, runID string, exec craft.Ex
 	intents := &memoryStopIntentStore{}
 	svc := NewCraftControlService(runs, delegations, exec, nil, nil)
 	svc.SetStopIntents(intents)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 	return svc, intents, runs, agentruntime.RunKey{TenantID: 1, RunID: runID}, scope
 }
 
@@ -81,7 +82,7 @@ func TestControlStopCrashWindowBackfillsConfirmedMarker(t *testing.T) {
 	_, err := intents.PutStopIntent(ctx, scope, craft.StopIntent{RunID: key.RunID, Status: craft.StopRequested})
 	require.NoError(t, err)
 
-	status, err := svc.Stop(context.Background(), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
+	status, err := svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
@@ -105,7 +106,7 @@ func TestControlStopUnknownNeverDowngradesTerminalCanceledRun(t *testing.T) {
 	_, err := intents.PutStopIntent(ctx, scope, craft.StopIntent{RunID: key.RunID, Status: craft.StopRequested})
 	require.NoError(t, err)
 
-	status, err := svc.Stop(context.Background(), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
+	status, err := svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
@@ -124,7 +125,7 @@ func TestControlStopNonStopCancelReplayDoesNotClaimStopJourney(t *testing.T) {
 
 	require.NoError(t, svc.runs.Cancel(ctx, key))
 
-	status, err := svc.Stop(context.Background(), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
+	status, err := svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-r3"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
@@ -144,7 +145,7 @@ func TestControlStatusPollProjectsNoOutcomeWithoutStopJourney(t *testing.T) {
 	}
 	svc, _, _, key, scope := seedControlStopJourney(t, "s-t17r3d", "run-t17r3d", exec)
 
-	status, err := svc.DelegationStatus(context.Background(), scope, key, "dlg-r3")
+	status, err := svc.DelegationStatus(f17Context("u1"), scope, key, "dlg-r3")
 	require.NoError(t, err)
 	require.Equal(t, "running", status.Phase)
 	require.Empty(t, status.Outcome.RunID, "no stop journey on record — no outcome to project")
@@ -169,7 +170,7 @@ func TestControlStatusPollSupersededBypassesStaleIntent(t *testing.T) {
 	_, err := intents.PutStopIntent(ctx, scope, craft.StopIntent{RunID: key.RunID, Status: craft.StopUnknown})
 	require.NoError(t, err)
 
-	status, err := svc.DelegationStatus(context.Background(), scope, key, "dlg-r3")
+	status, err := svc.DelegationStatus(f17Context("u1"), scope, key, "dlg-r3")
 	require.NoError(t, err)
 	require.Equal(t, "completed", status.Phase)
 	require.Equal(t, craft.StopRequested, status.Outcome.Status,
@@ -188,7 +189,7 @@ func TestControlStatusPollTailReplaysTerminalRow(t *testing.T) {
 	svc, _, _, key, scope := seedControlStopJourney(t, "s-t17r3f", "run-t17r3f", &controlExecutor{})
 	require.NoError(t, svc.runs.Cancel(ctx, key))
 
-	status, err := svc.DelegationStatus(context.Background(), scope, key, "")
+	status, err := svc.DelegationStatus(f17Context("u1"), scope, key, "")
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase, "the row's terminal fact answers without an observation")
 	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
@@ -210,7 +211,7 @@ func TestControlStatusPollNeverFabricatesStopOnCleanSupersession(t *testing.T) {
 	svc, intents, _, key, scope := seedControlStopJourney(t, "s-t17r4a", "run-t17r4a", exec)
 	require.Empty(t, intents.rows, "no stop journey on record")
 
-	status, err := svc.DelegationStatus(context.Background(), scope, key, "dlg-r3")
+	status, err := svc.DelegationStatus(f17Context("u1"), scope, key, "dlg-r3")
 	require.NoError(t, err)
 	require.Equal(t, "completed", status.Phase)
 	require.Empty(t, status.Outcome.RunID, "a clean completion projects no stop outcome")
@@ -243,7 +244,7 @@ func TestControlStatusPollNeverFabricatesStopOnCleanSupersession(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, finalizer.Finalize(context.Background(), fence, json.RawMessage(`{"done":true}`)))
 
-	status3, err := svc3.DelegationStatus(context.Background(), scope3, key3, "dlg-r3")
+	status3, err := svc3.DelegationStatus(f17Context("u1"), scope3, key3, "dlg-r3")
 	require.NoError(t, err)
 	require.Equal(t, "completed", status3.Phase, "the settled row overtakes the stale unknown (no stopping/unknown forever)")
 	require.Equal(t, craft.StopRequested, status3.Outcome.Status, "the journey IS on record — the overtaken ask projects honestly")

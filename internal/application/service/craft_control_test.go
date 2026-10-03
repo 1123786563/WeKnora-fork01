@@ -11,7 +11,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -276,7 +278,9 @@ func newControlFixture(t *testing.T) (*CraftControlService, *fakeControlRuns, *f
 	exec.seq = seq
 	interactions.seq = seq
 	reply.seq = seq
-	return NewCraftControlService(runs, store, exec, interactions, reply), runs, store, exec, interactions, reply, seq
+	svc := NewCraftControlService(runs, store, exec, interactions, reply)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
+	return svc, runs, store, exec, interactions, reply, seq
 }
 
 func controlScope() craft.Scope {
@@ -499,7 +503,7 @@ func TestControlStopRecordsIntentThenAbortsAndVerifies(t *testing.T) {
 	exec.onObserve = func(craft.Task) (craft.Observation, error) {
 		return craft.Observation{Aborted: true, Idle: true, SessionID: "oc-1"}, nil
 	}
-	status, err := svc.Stop(context.Background(), controlStopRequest())
+	status, err := svc.Stop(f17Context("u1"), controlStopRequest())
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, 1, exec.AbortCount())
@@ -515,7 +519,7 @@ func TestControlStopStaysStoppingWhenAbortAcceptedButStillRunning(t *testing.T) 
 		// The abort HTTP call returned success, but the session is still busy.
 		return craft.Observation{SessionID: "oc-1", Idle: false, PendingTool: true}, nil
 	}
-	status, err := svc.Stop(context.Background(), controlStopRequest())
+	status, err := svc.Stop(f17Context("u1"), controlStopRequest())
 	require.NoError(t, err)
 	require.Equal(t, "stopping", status.Phase, "HTTP success on abort alone never confirms cancellation")
 	require.Equal(t, 1, exec.AbortCount())
@@ -523,7 +527,7 @@ func TestControlStopStaysStoppingWhenAbortAcceptedButStillRunning(t *testing.T) 
 
 func TestControlStopPreservesEarlierCompletion(t *testing.T) {
 	svc, runs, store, exec, _, _, _ := newControlFixture(t)
-	ctx := context.Background()
+	ctx := f17Context("u1")
 	require.NoError(t, store.SaveResult(ctx, controlFence(),
 		craft.Result{TaskID: "dlg_ctl", Status: "succeeded", Summary: "done"}))
 
@@ -546,7 +550,7 @@ func TestControlStopPreservesEarlierCompletion(t *testing.T) {
 
 func TestControlStopKeepsResultWhenCompletionRacesAbort(t *testing.T) {
 	svc, runs, store, exec, _, _, _ := newControlFixture(t)
-	ctx := context.Background()
+	ctx := f17Context("u1")
 	saved := craft.Result{TaskID: "dlg_ctl", Status: "succeeded", Summary: "finished at the wire"}
 	exec.onObserve = func(craft.Task) (craft.Observation, error) {
 		// The worker commits the successful result inside the abort window:
@@ -575,14 +579,14 @@ func TestControlStopRemoteUnknownStaysStopping(t *testing.T) {
 	exec.onObserve = func(craft.Task) (craft.Observation, error) {
 		return craft.Observation{}, errors.New("runtime unreachable")
 	}
-	status, err := svc.Stop(context.Background(), controlStopRequest())
+	status, err := svc.Stop(f17Context("u1"), controlStopRequest())
 	require.NoError(t, err)
 	require.Equal(t, "stopping", status.Phase, "an unclear remote stays waiting, never canceled")
 	require.NotEmpty(t, status.Note)
 
 	exec.onAbort = func(craft.Task) error { return errors.New("abort delivery failed") }
 	exec.onObserve = nil
-	status, err = svc.Stop(context.Background(), controlStopRequest())
+	status, err = svc.Stop(f17Context("u1"), controlStopRequest())
 	require.NoError(t, err)
 	require.Equal(t, "stopping", status.Phase)
 	require.NotEmpty(t, status.Note, "the undelivered abort keeps the stop pending")
@@ -685,7 +689,7 @@ func TestControlStopSurvivesRequesterDisconnect(t *testing.T) {
 		return craft.Observation{Aborted: true, Idle: true}, nil
 	}
 	// The stop request's own connection dropped after the user clicked stop.
-	disconnected, cancel := context.WithCancel(context.Background())
+	disconnected, cancel := context.WithCancel(f17Context("u1"))
 	cancel()
 
 	status, err := svc.Stop(disconnected, controlStopRequest())
@@ -701,7 +705,7 @@ func TestControlDelegationStatusIsReadOnly(t *testing.T) {
 	exec.onObserve = func(craft.Task) (craft.Observation, error) {
 		return craft.Observation{Aborted: true, Idle: true}, nil
 	}
-	status, err := svc.DelegationStatus(context.Background(), controlScope(),
+	status, err := svc.DelegationStatus(f17Context("u1"), controlScope(),
 		agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"}, "dlg_ctl")
 	require.NoError(t, err)
 	require.Equal(t, "running", status.Phase, "no stop requested yet")
@@ -711,7 +715,7 @@ func TestControlDelegationStatusIsReadOnly(t *testing.T) {
 
 	// After the durable cancel the same read reports the verified phase.
 	require.NoError(t, runs.Cancel(context.Background(), agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"}))
-	status, err = svc.DelegationStatus(context.Background(), controlScope(),
+	status, err = svc.DelegationStatus(f17Context("u1"), controlScope(),
 		agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"}, "dlg_ctl")
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
@@ -726,18 +730,23 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 	db := openDurableRunTestDB(t)
 	ctx := durableRunCtx()
 	runStore := repository.NewAgentRunStore(db)
-	key := admitDurableRun(t, runStore, durableRunSnapshot(t))
-	fence, err := runStore.Claim(ctx, key, "worker-1", time.Minute)
-	require.NoError(t, err)
-
-	craftStore := repository.NewCraftStore(db)
 	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}
-	_, err = craftStore.PutWorkspace(ctx, craft.Workspace{
+	// Craft 委托要求 Craft 准入（craft_sessions + workspace + manifest 快照），
+	// Claim 返回的 fence 携带已准入快照摘要，供 PrepareTask 的围栏身份校验。
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	craftStore := repository.NewCraftStore(db)
+	_, err := craftStore.PutWorkspace(ctx, craft.Workspace{
 		Scope: scope, SandboxID: "sbx-1", Generation: "g1",
 		OpenCodeSessionID: "oc-1", RuntimeDigest: "digest-craft",
 	}, 0)
 	require.NoError(t, err)
 	ws, err := craftStore.GetWorkspace(ctx, scope)
+	require.NoError(t, err)
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	snapshot, err := BuildDurableCraftRunSnapshot("stop blocks dispatch", nil, "model-1", "", config, []craft.Input{})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, runStore, snapshot, "u1")
+	fence, err := runStore.Claim(ctx, key, "worker-1", time.Minute)
 	require.NoError(t, err)
 
 	plan := agentruntime.ToolPlan{
@@ -750,6 +759,7 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 	task := craft.Task{
 		ID: "dlg-real", ToolCallID: plan.CallID, Prompt: "fix it", PromptMessageID: "msg_real",
 		RequestHash: "hash-real", WorkspaceID: ws.ID, Scope: scope, Fence: fence,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 	}
 	_, err = craftStore.PrepareTask(ctx, task)
 	require.NoError(t, err)
@@ -759,8 +769,9 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 		return craft.Observation{Aborted: true, Idle: true}, nil
 	}
 	svc := NewCraftControlService(NewAgentRunService(runStore), craftStore, exec, nil, nil)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 
-	status, err := svc.Stop(ctx, CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-real"})
+	status, err := svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-real"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, 1, exec.AbortCount())
@@ -790,13 +801,14 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 	_, err = craftStore.PrepareTask(ctx, craft.Task{
 		ID: "dlg-after", ToolCallID: "call-after-stop", Prompt: "again", PromptMessageID: "msg_after",
 		RequestHash: "h", WorkspaceID: ws.ID, Scope: scope, Fence: fence,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 	})
 	require.ErrorIs(t, err, craft.ErrConflict, "a canceled run must refuse new craft delegation")
 	err = craftStore.SaveResult(ctx, fence, craft.Result{TaskID: "dlg-real", Status: "succeeded"})
 	require.ErrorIs(t, err, craft.ErrConflict, "a canceled run must refuse result writes")
 
 	// A late stop replays idempotently and never flips to a wrong phase.
-	status, err = svc.Stop(ctx, CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-real"})
+	status, err = svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: key, TaskID: "dlg-real"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, 2, exec.AbortCount())
@@ -862,8 +874,9 @@ func TestControlStopExecutorCanceledResultConverges(t *testing.T) {
 	intents := &memoryStopIntentStore{}
 	svc := NewCraftControlService(runs, delegations, exec, nil, nil)
 	svc.SetStopIntents(intents)
+	svc.SetTaskAccess(f17TaskAccess{roles: map[string]craft.TaskRole{"u1": craft.TaskRoleOwner}})
 
-	status, err := svc.Stop(context.Background(), CraftStopRequest{Scope: scope, RunKey: agentruntime.RunKey{TenantID: 1, RunID: runID}, TaskID: "dlg-r2"})
+	status, err := svc.Stop(f17Context("u1"), CraftStopRequest{Scope: scope, RunKey: agentruntime.RunKey{TenantID: 1, RunID: runID}, TaskID: "dlg-r2"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase, "the executor's canceled confirmation must converge the stop (not early-return)")
 	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
