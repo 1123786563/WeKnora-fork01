@@ -507,6 +507,8 @@ func openCraftRecoveryProviderDB(path string) (*gorm.DB, error) {
 		"INSERT OR IGNORE INTO tenants (id, name, business) VALUES (1, 'craft', 'recovery')",
 		"INSERT OR IGNORE INTO users (id, username, email, password_hash, tenant_id)" +
 			" VALUES ('craft-user','craft','craft@example.test','x',1)",
+		"INSERT OR IGNORE INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)" +
+			" VALUES (1,'craft-user','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
 		"INSERT OR IGNORE INTO sessions (id, tenant_id, title, user_id, engine_type)" +
 			" VALUES ('" + craftProcSessionID + "',1,'craft','craft-user','trpc')",
 	}

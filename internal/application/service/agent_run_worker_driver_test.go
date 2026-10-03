@@ -90,6 +90,7 @@ func seedWorkerDriverFixtures(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES
 		('s1', 1, 'platform', 'u1', 'trpc'),
 		('s2', 1, 'paseo', 'u1', 'builtin')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, status) VALUES (1, 'u1', 'active')`).Error)
 }
 
 func workerDriverAdmission(runID, sessionID, requestID, assistantID, driver string) agentruntime.Admission {
