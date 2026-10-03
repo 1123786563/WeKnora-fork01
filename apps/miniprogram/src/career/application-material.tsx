@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Taro from '@tarojs/taro';
 import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, Empty, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
@@ -42,6 +42,10 @@ export default function ApplicationMaterialPage() {
   const [application, setApplication] = useState<ApplicationReceipt>();
   const [appErrCode, setAppErrCode] = useState<string>();
   const [materialId, setMaterialId] = useState('');
+  // CAREER-OCR H4：「读取材料」在途时编号可能被改（onChange 只失效后续新读取），
+  // 完成时必须与最新输入核对，绝不把 A 的正文/编辑态落进 B 名下。
+  const materialIdRef = useRef('');
+
   const [material, setMaterial] = useState<MaterialView>();
   // F4：多节全量编辑模型——读取时载入全部小节与 claims，保存原样回传（绝不静默丢弃）。
   const [sections, setSections] = useState<career.EditableMaterialSection[]>([]);
@@ -199,7 +203,7 @@ export default function ApplicationMaterialPage() {
     {(application || materialId) && <Card>
       <Text className='wk-h3'>结构化正文材料</Text>
       <Field label='材料编号（创建后自动带入；重进页面可粘贴读取）' value={materialId} onChange={value => {
-        setMaterialId(value);
+        setMaterialId(value); materialIdRef.current = value;
         // 编号一旦改动，已读取的正文/版本/导出/校验即失效——绝不把 A 的 sections 写进
         // B 名下（OCR high-11）。保存草稿成功后写入的编号走 setMaterialId 原始 setter，
         // 不经过这里的失效逻辑。
@@ -210,7 +214,9 @@ export default function ApplicationMaterialPage() {
         setChecks([]);
       }} placeholder='材料编号' />
       <Action secondary loading={matLoadBusy.busy} onClick={() => void matLoadBusy.run(async () => {
+        materialIdRef.current = materialId;
         const view = await career.material(materialId);
+        if (view.materialId !== materialIdRef.current.trim()) return; // 读取在途时编号已改：丢弃过期响应
         setMaterial(view);
         // F4：全量载入编辑态——每个小节与全部 claims 进入编辑模型，保存原样回传。
         setSections(career.editableFromBody(view.body));
