@@ -451,7 +451,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const systemGlobalPanel = key === 'system-global' && role === 'system-admin' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
     const platformApiKeysPanel = key === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
     const systemAuditPanel = key === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={sectionPayload} /> : null;
-    const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} onMutated={() => void load(true)} /> : null;
+    const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} loadError={sectionError} loadLoading={sectionLoading} onRetry={() => { void load(true); }} onMutated={() => void load(true)} /> : null;
     const mcpPanel = key === 'mcp'
       ? <McpSettingsPanel client={client} role={role} initialServices={key in payloadCache ? (Array.isArray(sectionPayload) ? sectionPayload as never : []) : undefined} />
       : null;

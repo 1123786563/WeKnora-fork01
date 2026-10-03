@@ -75,6 +75,8 @@ function failingClient(section: string): { client: WeKnoraClient; calls: Record<
     return Promise.resolve(value);
   };
   const base = {
+    // EnvVarSettingsPanel fetches the sandbox catalog via client.request.
+    request: async () => [],
     auth: {
       registrationConfig: async () => ({ complexPasswordEnabled: false }),
       me: async () => ({ user: { id: 'u-1' } }),
@@ -100,6 +102,7 @@ function failingClient(section: string): { client: WeKnoraClient; calls: Record<
         backends: { list: () => (section === 'storage' ? fail('storage.list') : succeed('storage.list', [])) },
         legacy: { status: () => (section === 'storage' ? fail('storage.legacy') : succeed('storage.legacy', {})) },
       },
+      envVars: { list: () => (section === 'envvars' ? fail('envVars.list') : succeed('envVars.list', [])) },
     },
     configuration: {
       models: { list: () => (section === 'models' ? fail('models.list') : succeed('models.list', [])) },
@@ -213,6 +216,23 @@ test('members: inline banner passes the backend message through and retries the 
   await act(async () => { retry!.click(); });
   await settle();
   assert.ok((calls['members.list'] ?? 0) > listCallsBefore, 'retry re-sends the same members list request');
+});
+
+test('envvars: load failure replaces the body with the backend error + retry (Vue EnvVarSettings.vue:29-33)', async () => {
+  // OCR H-A4: the self-header shell branch rendered the panel with a failed
+  // payload as a silent empty list — Vue shows env-state--error with a retry.
+  const { client, calls } = failingClient('envvars');
+  const container = await mountPage(client, '?section=envvars');
+  await settle();
+  assert.ok(headingTexts(container).includes('沙箱密钥'), 'the envvars h2 keeps rendering on load failure');
+  assert.ok(container.textContent?.includes(UPSTREAM_FAILURE), 'the backend error text surfaces instead of a silent empty list');
+  assert.ok(!container.textContent?.includes('还没有沙箱'), 'the noConfig empty state does not mask the load failure');
+  const retry = findRetryButton(container, '重试');
+  assert.ok(retry, 'the error state offers a retry button');
+  const listCallsBefore = calls['envVars.list'] ?? 0;
+  await act(async () => { retry!.click(); });
+  await settle();
+  assert.ok((calls['envVars.list'] ?? 0) > listCallsBefore, 'retry re-sends the same envvars load');
 });
 
 // R481 A1 — 模式映射红测试：R480 浏览器锚定把 storage 从 banner-retry 改判为

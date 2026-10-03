@@ -45,7 +45,7 @@ function configOptions(payload: unknown): SandboxConfigOption[] {
     .filter((option) => option.id);
 }
 
-export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { client: WeKnoraClient; initialPayload: unknown; onMutated?: () => void }) {
+export function EnvVarSettingsPanel({ client, initialPayload, onMutated, loadError, loadLoading, onRetry }: { client: WeKnoraClient; initialPayload: unknown; onMutated?: () => void; loadError?: string | null; loadLoading?: boolean; onRetry?: () => void }) {
   const t = settingsT(readInitialLocale());
   const [scope, setScope] = useState<EnvVarScope>('skill');
   const [scopeId, setScopeId] = useState('');
@@ -131,6 +131,22 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     </div>
     <p className="section-description">{t('envVarSettings.description')}</p>
   </div>;
+
+  // Vue EnvVarSettings.vue:24-33 — loading/error replace the panel body (retry
+  // included); the self-owned section header keeps rendering above them.
+  if (loadLoading) {
+    return <div className="env-settings" data-testid="envvar-panel">
+      {sectionHeader}
+      <Status>{t('envVarSettings.loading')}</Status>
+    </div>;
+  }
+  if (loadError) {
+    return <div className="env-settings" data-testid="envvar-panel">
+      {sectionHeader}
+      <Status tone="error">{loadError}</Status>
+      <Button type="button" variant="outline" size="small" onClick={onRetry}>{t('envVarSettings.retry')}</Button>
+    </div>;
+  }
 
   if (sandboxes !== null && sandboxes.length === 0) {
     // Vue EnvVarSettings.vue .env-empty: gray fill, no border, no card.
