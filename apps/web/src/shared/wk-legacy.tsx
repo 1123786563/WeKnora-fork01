@@ -186,7 +186,6 @@ export function WkSheet({ open, title, children, onClose, closeLabel = 'Close', 
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          aria-label={String(title)}
           data-side={side}
           className={cn('wk-sheet', `wk-sheet--${side}`, className)}
           style={{ width: resizable ? `${panelWidth}px` : width, animation: side === 'right' ? 'sheet-in-right .2s ease-out' : 'sheet-in-left .2s ease-out' } as CSSProperties}
