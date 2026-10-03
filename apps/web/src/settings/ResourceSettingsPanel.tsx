@@ -237,8 +237,9 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
   }
   if (field.type === 'number') {
     const raw = value == null || value === '' ? '' : String(value);
-    // Vue VectorStoreSettings.vue:331-332 binds :min/:max; tdesign-react Input
-    // has no min/max props, so the same bounds are applied on commit instead.
+    // Vue VectorStoreSettings.vue:331-332 binds native :min/:max, which never
+    // rewrites keystrokes; tdesign-react Input has no min/max props, so the
+    // same bounds are applied on blur instead of per-keystroke.
     const min = field.min ?? 1;
     const max = field.max ?? (isReplicaField(field.name) ? 10 : 64);
     return <FormItem label={label} required={field.required}>
@@ -251,7 +252,11 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
           const text = String(value).trim();
           if (!text) { onChange(undefined); return; }
           const parsed = Number(text);
-          onChange(Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : text);
+          onChange(Number.isFinite(parsed) ? parsed : text);
+        }}
+        onBlur={() => {
+          const parsed = Number(raw);
+          if (raw !== '' && Number.isFinite(parsed)) onChange(Math.min(Math.max(parsed, min), max));
         }}
       />
     </FormItem>;

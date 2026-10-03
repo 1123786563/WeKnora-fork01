@@ -358,6 +358,18 @@ test('an interleaved add failure rolls back by wasFavorited, not a blind re-togg
   assert.deepEqual(mirrorIds(), [], 'localStorage mirrors the targeted rollback');
 });
 
+// parity-lock：agents 错误面未接线是文档化裁决项（task-report M-A4）——在此之前
+// list 加载失败必须保持 Vue 的静默空态：空态可见、raw payload 与 error 面均不落 DOM。
+test('list-load failure renders the silent empty state, no raw error payload (Vue parity)', async () => {
+  const { client } = favoritesSpyClient();
+  client.configuration.agents.listWithState = async () => { throw new Error('{"message":"mock failure"}'); };
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  assert.ok(document.querySelector('.empty-state'), 'empty state renders instead of a stuck spinner');
+  assert.doesNotMatch(document.body.textContent ?? '', /mock failure/);
+  assert.doesNotMatch(document.body.innerHTML, /wk-status.*error|tone=.error/, 'no error status surface');
+});
+
 // --- data loading (mocked client) ----------------------------------------------
 
 test('loadAgentsPageData fetches agents, organizations and shared agents', async () => {
