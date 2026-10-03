@@ -76,7 +76,7 @@
   position: fixed;
   z-index: 250;
   width: 360px;
-  max-width: calc(100vw-20px);
+  max-width: calc(100vw - 20px);
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
@@ -345,7 +345,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100%+4px);
+  top: calc(100% + 4px);
   z-index: 20;
   display: grid;
   max-height: 240px;
@@ -856,7 +856,7 @@
 
 .wk-kd-71 {
   position: absolute;
-  top: calc(100%+4px);
+  top: calc(100% + 4px);
   z-index: 5;
   display: flex;
   max-height: 180px;
@@ -2703,7 +2703,7 @@
 
 .wk-kdd-101:hover {
   border-style: solid;
-  border-color: #07c05f]/4;
+  border-color: rgba(7, 192, 95, 0.4);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -467,7 +467,9 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
     <div
       className={'doc-action-menu-item' + (danger ? ' danger' : '')}
       role="menuitem"
+      tabIndex={0}
       onClick={(event) => { event.stopPropagation(); close(); handler(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); close(); handler(); } }}
     >{icon}<span>{label}</span></div>
   );
   // Vue handleAction keeps the popup open for the move sub-flow (and its
@@ -476,7 +478,9 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
     <div
       className="doc-action-menu-item"
       role="menuitem"
+      tabIndex={0}
       onClick={(event) => { event.stopPropagation(); handler(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); handler(); } }}
     >{icon}<span>{label}</span></div>
   );
   const icons: Record<DocumentMenuAction, ReactNode> = {
@@ -2802,7 +2806,6 @@ export function KnowledgeDocumentsPage({
   // packages/i18n still misses (common.confirm/common.clear/tenant.loadMore).
   const tt = tagSurfaceT(locale);
   const [reloadToken, setReloadToken] = useState(0);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingDeleteDocument, setConfirmingDeleteDocument] = useState<KnowledgeDocument | null>(null);
   const [state, setState] = useState<KnowledgeDocumentListState>({
     status: "loading",
@@ -4761,7 +4764,7 @@ export function KnowledgeDocumentsPage({
                             confirmBtn={{ content: t("knowledgeBase.confirmDelete"), theme: "danger" }}
                             cancelBtn={{ content: t("common.cancel") }}
                             placement="top"
-                            onConfirm={() => setConfirmingDelete(true)}
+                            onConfirm={() => { void deleteSelected(); }}
                           >
                             <TdButton theme="danger" variant="outline" size="small" disabled={selected.size === 0 || batchDownloading} icon={<TIcon name="delete" size="14px" />}>
                               {t("knowledgeBase.batchDelete")}
@@ -5324,27 +5327,6 @@ export function KnowledgeDocumentsPage({
           <div className="wk-list-actions wk-kd-109">
             <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.cancelParse")}</TdButton>
             <TdButton type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</TdButton>
-          </div>
-        </Dialog>
-      ) : null}
-      {confirmingDelete && canContribute ? (
-        <Dialog
-          open
-          title={t("knowledgeBase.documents.delete")}
-          onClose={() => setConfirmingDelete(false)}
-        >
-          <p>
-            {t("knowledgeBase.documents.selectedTotal", {
-              count: selected.size,
-            })}
-          </p>
-          <div className="wk-list-actions wk-kd-109">
-            <TdButton type="button" onClick={() => void deleteSelected()}>
-              {t("knowledgeBase.documents.delete")}
-            </TdButton>
-            <TdButton type="button" onClick={() => setConfirmingDelete(false)}>
-              {t("knowledgeBase.documents.cancel")}
-            </TdButton>
           </div>
         </Dialog>
       ) : null}

@@ -178,7 +178,11 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
         setChunksTotal(result.total);
         setChunkSeed({ chunks: result.data, total: result.total });
       }
-    }).catch(() => {});
+    }).catch((error: unknown) => {
+      // Vue getfDetails surfaces chunkLoadError; React keeps the badge at 0 and
+      // lets DocumentChunks' own load path own the visible error state.
+      console.error('[ChunkLoad] prefetch failed', { documentId, error });
+    });
     return () => { active = false; };
   }, [client, documentId, loadAttempt]);
   useEffect(() => {
