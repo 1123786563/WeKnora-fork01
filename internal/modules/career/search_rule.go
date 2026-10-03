@@ -616,10 +616,16 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 		return nil, err
 	}
 	outcomes := []RuleRunSummary{}
+	var failed []error
 	for _, run := range started {
 		outcome, recoverErr := o.recoverRuleRun(ctx, s, run, now)
 		if recoverErr != nil {
-			return nil, recoverErr
+			// CAREER-OCR H8: one failing rule must not abort the sweep nor
+			// discard the outcomes already earned — the failing rule keeps
+			// its place at the head of the due order, so returning here
+			// starved every other rule in the scope.
+			failed = append(failed, recoverErr)
+			continue
 		}
 		outcomes = append(outcomes, outcome)
 	}
@@ -637,11 +643,12 @@ func (o *Office) TriggerDueRules(ctx context.Context, now time.Time) ([]RuleRunS
 			if errors.Is(triggerErr, errRuleCandidateStale) {
 				continue
 			}
-			return nil, triggerErr
+			failed = append(failed, triggerErr)
+			continue
 		}
 		outcomes = append(outcomes, outcome)
 	}
-	return outcomes, nil
+	return outcomes, errors.Join(failed...)
 }
 
 // triggerRulePeriod runs one due period of one rule. The period request ID is

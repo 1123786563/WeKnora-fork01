@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -684,4 +685,32 @@ func TestStartedRuleRunRecoversAfterRestartEvenWhenPaused(t *testing.T) {
 	require.NoError(t, o.db.Where("id=?", rule.ID).First(&storedRule).Error)
 	require.Equal(t, uint64(0), storedRule.LastPeriod, "legacy started recovery must not fabricate a claim-time schedule advancement")
 	require.Nil(t, storedRule.NextDueAt)
+}
+
+// CAREER-OCR H8: one failing due rule must not abort the whole sweep nor
+// discard the outcomes already earned. The failing rule stays first in the
+// due order (earlier next_due_at), so the old `return nil, triggerErr`
+// starved every other rule in the scope.
+type failingAdmissionForRule struct{ ruleID string }
+
+func (g failingAdmissionForRule) AdmitSearch(_ context.Context, _ Scope, requestID, _ string) error {
+	if strings.HasPrefix(requestID, "rule:"+g.ruleID+":") {
+		return ErrAdmissionUnavailable
+	}
+	return nil
+}
+
+func TestTriggerDueRulesContinuesPastFailingRule(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	first, err := o.SetRule(ctx, ruleInput("rule-fail-first", 30, RuleStatusEnabled))
+	require.NoError(t, err)
+	second, err := o.SetRule(ctx, ruleInput("rule-fail-second", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	o.searchQuotaGate = failingAdmissionForRule{ruleID: first.RuleID}
+
+	outcomes, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(61*time.Minute))
+	require.ErrorIs(t, err, ErrAdmissionUnavailable)
+	require.Len(t, outcomes, 1, "the healthy later-due rule must still run when an earlier one fails")
+	require.Equal(t, second.RuleID, outcomes[0].RuleID)
+	require.Equal(t, RuleRunStatusCompleted, outcomes[0].Status)
 }
