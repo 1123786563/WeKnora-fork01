@@ -758,10 +758,17 @@ test('graph section copy resolves five locales from the ported Vue table', () =>
   assert.equal(uploadConfirmMessage('zh-CN', 'common.confirm'), '确认');
 });
 
-test('graph feedback keeps Vue success, warning, and error message semantics', () => {
-  assert.equal(stageNoticeClass('success'), 'wk-documents-toast success');
-  assert.equal(stageNoticeClass('warning'), 'wk-documents-toast warning');
-  assert.equal(stageNoticeClass('error'), 'wk-documents-toast error');
+test('stage notice classes carry a spaced tone modifier backed by real CSS rules', () => {
+  // OCR H-A2: the toast used to emit wk-documents-toast (no CSS anywhere) +
+  // a bare tone (documents.td.css only defines .wk-stage-notice.is-*), glued
+  // onto wk-stage-notice without a space — one merged token, zero styling.
+  const css = readFileSync(new URL('./documents.td.css', import.meta.url), 'utf8');
+  for (const tone of ['neutral', 'success', 'warning', 'error'] as const) {
+    assert.equal(stageNoticeClass(tone), `wk-stage-notice is-${tone}`);
+    for (const token of stageNoticeClass(tone).split(' ')) {
+      assert.ok(new RegExp(`\\.${token}(?![\\w-])`).test(css), `.${token} has a documents.td.css rule`);
+    }
+  }
 });
 
 test('graph textareas use the Vue autosize row bounds', () => {

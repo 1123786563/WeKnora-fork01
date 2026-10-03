@@ -2783,17 +2783,10 @@ export function UploadProgressMask({ percent, title = "Uploading", formats = ["p
 
 // --- Page ---------------------------------------------------------------------
 
+// documents.td.css defines .wk-stage-notice + .wk-stage-notice.is-{tone}.
 export function stageNoticeClass(tone: "neutral" | "success" | "warning" | "error") {
-  return `wk-documents-toast ${tone}`;
+  return `wk-stage-notice is-${tone}`;
 }
-
-/** documents.css toast tone palette, now inlined as utilities (class stays a hook). */
-const STAGE_NOTICE_TONE_CLASS: Record<"neutral" | "success" | "warning" | "error", string> = {
-  neutral: "wk-kd-notice-neutral",
-  success: "wk-kd-notice-success",
-  warning: "wk-kd-notice-warning",
-  error: "wk-kd-notice-error",
-};
 
 export function KnowledgeDocumentsPage({
   client,
@@ -4356,7 +4349,7 @@ export function KnowledgeDocumentsPage({
 
   return (
     <div className="knowledge-layout">
-      {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)}wk-stage-notice`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
+      {stageNotice ? <div className={stageNoticeClass(stageNotice.tone)} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <div className="document-header">
         <div className="document-header-title">
           <DocumentsBreadcrumb
