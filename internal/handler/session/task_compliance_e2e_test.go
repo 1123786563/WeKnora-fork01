@@ -124,9 +124,11 @@ func seedComplianceE2E(t *testing.T, db *gorm.DB) {
 		{"u2", types.TenantRoleViewer},
 		{"u9", types.TenantRoleAdmin},
 	} {
-		require.NoError(t, db.Create(&types.TenantMember{
-			UserID: m.user, TenantID: 1, Role: m.role, Status: types.TenantMemberStatusActive, JoinedAt: time.Now().UTC(),
-		}).Error)
+		// openCraftHTTPDB 已为 u1 预播 owner 成员行；UPSERT 保留本场景的角色语义。
+		require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)
+			VALUES (1,?,?,'active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+			ON CONFLICT(user_id, tenant_id) DO UPDATE SET role=excluded.role, updated_at=CURRENT_TIMESTAMP`,
+			m.user, m.role).Error)
 	}
 	require.NoError(t, db.Exec(
 		"INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'task-s1', 'u1', 'trpc')").Error)
