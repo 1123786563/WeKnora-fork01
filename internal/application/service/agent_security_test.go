@@ -139,9 +139,11 @@ func TestRevokeReleaseRecordsAuditScopeAndCancelsRuns(t *testing.T) {
 	publishSecurityVariant(t, db, adoption, r2, "V2", "local-agent-r2")
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'security test', 'u1', 'trpc')`).Error)
 	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'sec-live-1' WHERE tenant_id = 1 AND id = 's1'`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
-		(1, 'sec-live-1', 's1', 'u1', 'req-1', 'm1', 'h1', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
-		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-1","text":"hi"}`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline,
+		security_agent_id, security_local_agent_version_id, security_release_id, security_pin_source) VALUES
+		(1, 'sec-live-1', 's1', 'u1', 'req-1', 'm1', 'h1', 'trpc', 'running', ?, datetime('now','+1 hour'),
+		'local-agent-r1', 'ver-local-agent-r1', ?, 'admission')`,
+		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-1","text":"hi"}`, r1).Error)
 
 	view, err := svc.RevokeRelease(context.Background(), 1, "sec-admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "CVE-2026-0001", ReplacementReleaseID: r2})
 	require.NoError(t, err)
@@ -264,12 +266,16 @@ func TestRevokeDependencyCancelTouchesOnlyExactLockedAgentInTenant(t *testing.T)
 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES ('u2','u2','u2@example.test','x',2)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type, active_agent_run_id) VALUES
 		('s-match', 1, 'matching', 'u1', 'trpc', 'run-match'), ('s-other', 1, 'other', 'u1', 'trpc', 'run-other'), ('s-foreign', 2, 'foreign', 'u2', 'trpc', 'run-foreign')`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
-		(1, 'run-match', 's-match', 'u1', 'req-match', 'm-match', 'h-match', 'trpc', 'running', ?, datetime('now','+1 hour')),
-		(1, 'run-other', 's-other', 'u1', 'req-other', 'm-other', 'h-other', 'trpc', 'running', ?, datetime('now','+1 hour')),
-		(2, 'run-foreign', 's-foreign', 'u2', 'req-foreign', 'm-foreign', 'h-foreign', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
-		`{"session_id":"s-match","agent_id":"local-agent-matching","request_id":"req-match"}`,
-		`{"session_id":"s-other","agent_id":"local-agent-other","request_id":"req-other"}`,
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline,
+		security_agent_id, security_local_agent_version_id, security_release_id, security_pin_source) VALUES
+		(1, 'run-match', 's-match', 'u1', 'req-match', 'm-match', 'h-match', 'trpc', 'running', ?, datetime('now','+1 hour'),
+		'local-agent-matching', 'ver-local-agent-matching', ?, 'admission'),
+		(1, 'run-other', 's-other', 'u1', 'req-other', 'm-other', 'h-other', 'trpc', 'running', ?, datetime('now','+1 hour'),
+		'local-agent-other', 'ver-local-agent-other', ?, 'admission'),
+		(2, 'run-foreign', 's-foreign', 'u2', 'req-foreign', 'm-foreign', 'h-foreign', 'trpc', 'running', ?, datetime('now','+1 hour'),
+		NULL, NULL, NULL, NULL)`,
+		`{"session_id":"s-match","agent_id":"local-agent-matching","request_id":"req-match"}`, matchingRelease,
+		`{"session_id":"s-other","agent_id":"local-agent-other","request_id":"req-other"}`, otherRelease,
 		`{"session_id":"s-foreign","agent_id":"local-agent-matching","request_id":"req-foreign"}`).Error)
 
 	view, err := svc.RevokeDependency(context.Background(), 1, "sec-admin", interfaces.DependencyRevocationInput{
@@ -319,9 +325,11 @@ func TestRevokeReleaseAllowLeavesActiveRunsAndDuplicateAppendsHistory(t *testing
 	publishSecurityVariant(t, db, adoption, r1, "V1", "local-agent-r1")
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'security test', 'u1', 'trpc')`).Error)
 	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'sec-live-2' WHERE tenant_id = 1 AND id = 's1'`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
-		(1, 'sec-live-2', 's1', 'u1', 'req-2', 'm2', 'h2', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
-		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-2","text":"hi"}`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline,
+		security_agent_id, security_local_agent_version_id, security_release_id, security_pin_source) VALUES
+		(1, 'sec-live-2', 's1', 'u1', 'req-2', 'm2', 'h2', 'trpc', 'running', ?, datetime('now','+1 hour'),
+		'local-agent-r1', 'ver-local-agent-r1', ?, 'admission')`,
+		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-2","text":"hi"}`, r1).Error)
 	first, err := svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "reason", InFlightDisposition: interfaces.AgentSecurityInFlightAllow})
 	require.NoError(t, err)
 	require.Zero(t, first.CanceledRunCount)
