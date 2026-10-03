@@ -1,4 +1,4 @@
-import React, { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 /**
  * Embed 本地按钮（T15：packages/ui 旧栈退役后的 1:1 生效值复刻）。
