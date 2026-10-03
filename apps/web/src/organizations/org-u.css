@@ -926,7 +926,7 @@
 }
 
 .wk-org-67 {
-  max-height: calc(90vh-120px);
+  max-height: calc(90vh - 120px);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;

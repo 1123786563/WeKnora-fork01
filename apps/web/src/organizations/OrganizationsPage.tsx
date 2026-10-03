@@ -1029,7 +1029,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     const rowHidden = selection === 'all' && collapsedSections.has(sectionOf(org));
     cardRows.push(
       <div key={org.id || index} className={'org-card' + (owner ? '' : ' joined-org')} style={rowHidden ? { display: 'none' } : undefined}
-        onClick={() => openSettingsModal(org)}>
+        role="button"
+        tabIndex={0}
+        onClick={() => openSettingsModal(org)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openSettingsModal(org); }
+        }}>
         {/* 装饰：协作网络感图形（Vue :77-90 逐 path 复刻）。 */}
         <div className="card-decoration">
           <svg className="card-deco-svg" width="56" height="40" viewBox="0 0 56 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
