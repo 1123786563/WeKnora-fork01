@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Taro from '@tarojs/taro';
 import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
