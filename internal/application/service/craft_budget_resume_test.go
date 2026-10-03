@@ -18,16 +18,12 @@ import (
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func openResumeCraftDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
-		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
+	db := openCraftUsageServiceDB(t)
 	if pool, err := db.DB(); err == nil {
 		pool.SetMaxOpenConns(1)
 	}
@@ -51,6 +47,7 @@ func TestCraftBudgetResumeAfterExtensionDoesNotDoubleCharge(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	seedCraftFundedTenant(t, db, 7, 100000) // 既有 helper（craft_budget_test.go:72-81）
+	seedCraftBudgetRun(t, db, 7, "resume-run-1", "s1")
 
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 7, UserID: "u1", SessionID: "s1"}, "resume-run-1")
 	require.NoError(t, err)
@@ -68,6 +65,9 @@ func TestCraftBudgetResumeAfterExtensionDoesNotDoubleCharge(t *testing.T) {
 
 	// 授权扩额（+2000）。
 	require.NoError(t, svc.Extend(ctx, g.ID, "k-resume-1", 5, commercial.Credits(2000)))
+	// 达限停靠是持久状态：恢复前先复位 Run 行（同 TestCraftBudgetExtendRaisesCallCapAndCommercialLimit）。
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 7, "resume-run-1").
+		Updates(map[string]any{"status": "running", "wait_reason": ""}).Error)
 
 	// 恢复后：新调用成功；历史 callID 重放幂等（不产生第二笔预占）。
 	callC, err := svc.AuthorizeBinding(ctx, g.ID, binding)
@@ -77,21 +77,25 @@ func TestCraftBudgetResumeAfterExtensionDoesNotDoubleCharge(t *testing.T) {
 	require.NoError(t, svc.AuthorizeCall(ctx, g.ID, callA)) // 再重放仍幂等
 	require.Len(t, craftReservations(t, db, 7), 3, "resume replays never add reservations")
 
-	// 任务行不变量：limit 恰好 +2000 一次；held=3×1000；spent 仍 0（未结算）。
+	// 任务行不变量：limit 落在根行（Task=Session），恰好 +2000 一次；held=3×1000；spent 仍 0（未结算）。
 	var task repocommercial.TaskBudgetRow
-	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, "resume-run-1").First(&task).Error)
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, "s1").First(&task).Error)
 	require.EqualValues(t, 4000, task.LimitMicro)
 	require.EqualValues(t, 3000, task.HeldMicro)
 	require.EqualValues(t, 0, task.SpentMicro)
+	var child repocommercial.TaskBudgetRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, "resume-run-1").First(&child).Error)
+	require.Equal(t, "s1", child.RootRunID)
+	require.Zero(t, child.LimitMicro)
 
 	// 同 key 扩额重放：整体幂等，双 fence 均不再动。
 	require.NoError(t, svc.Extend(ctx, g.ID, "k-resume-1", 5, commercial.Credits(2000)))
-	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, "resume-run-1").First(&task).Error)
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 7, "s1").First(&task).Error)
 	require.EqualValues(t, 4000, task.LimitMicro, "same-key replay never raises twice")
 	var grants int64
 	require.NoError(t, db.Model(&CraftBudgetGrantRow{}).Where("grant_id = ?", g.ID).Count(&grants).Error)
 	require.EqualValues(t, 1, grants)
 	var calls int64
 	require.NoError(t, db.Model(&CraftBudgetCallRow{}).Where("grant_id = ?", g.ID).Count(&calls).Error)
-	require.EqualValues(t, 3, calls, "denied call was compensated; only accepted calls ledger")
+	require.EqualValues(t, 4, calls, "A/B/被拒尝试/C 各记一行；重放不加行，无重复计费由 reservations==3 保证")
 }
