@@ -97,6 +97,15 @@ type f08WebBuildDispatchFixture struct {
 
 func newF08WebBuildDispatchFixture(t *testing.T) *f08WebBuildDispatchFixture {
 	t.Helper()
+	normal := &f08WebBuildNormalProvider{}
+	return newF08WebBuildDispatchFixtureWithEngine(t, normal, normal)
+}
+
+// newF08WebBuildDispatchFixtureWithEngine lets a journey substitute the
+// provider engine (e.g. a partial-transport variant); normal stays the
+// counter probe shared with the substituted engine.
+func newF08WebBuildDispatchFixtureWithEngine(t *testing.T, engine craftDockerNormalEngine, normal *f08WebBuildNormalProvider) *f08WebBuildDispatchFixture {
+	t.Helper()
 	t.Setenv("SYSTEM_AES_KEY", "01234567890123456789012345678901")
 	db := openCraftT20PolicyDB(t)
 	task := admittedTask()
@@ -133,9 +142,8 @@ func newF08WebBuildDispatchFixture(t *testing.T) *f08WebBuildDispatchFixture {
 	coordinator, err := NewCraftRunViewAdmittedRuntimeCoordinator(store, authority, provider, "/srv/craft")
 	require.NoError(t, err)
 
-	normal := &f08WebBuildNormalProvider{}
 	audit := service.NewAuditLogService(repository.NewAuditLogRepository(db))
-	faces, err := newCraftDockerExecCommandFaces(db, repository.NewCraftStore(db), budget, audit, normal, f08WebBuildOutputless{}, time.Second)
+	faces, err := newCraftDockerExecCommandFaces(db, repository.NewCraftStore(db), budget, audit, engine, f08WebBuildOutputless{}, time.Second)
 	require.NoError(t, err)
 
 	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
@@ -294,8 +302,9 @@ func TestCraftF08WebBuildEvidenceFlipsOnServerReceipt(t *testing.T) {
 }
 
 // TestCraftF08WebBuildPromotionReceiptFence drives the promotion-side receipt
-// re-read over the real repository: a bound succeeded receipt verifies, a
-// missing or non-success receipt refuses, a sealed manifest mismatch refuses.
+// re-read over the real repository: a bound succeeded receipt verifies only
+// once the collector sealed its candidate manifest, an unsealed receipt
+// refuses, a sealed mismatch refuses, and the seal latches exactly once.
 func TestCraftF08WebBuildPromotionReceiptFence(t *testing.T) {
 	fixture := newF08WebBuildDispatchFixture(t)
 	ctx := context.Background()
@@ -303,34 +312,36 @@ func TestCraftF08WebBuildPromotionReceiptFence(t *testing.T) {
 	require.NoError(t, err)
 
 	fence := craftWebBuildPromotionReceipts{receipts: fixture.receipts, pin: fixture.pin}
-	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, receipt.CandidateManifestSHA256))
-	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, ""))
 
-	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, "run-never-dispatched", "")
+	// The dispatched receipt is UNSEALED until the collector lane seals it:
+	// an unsealed receipt can never pass the promotion fence.
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("ff", 32))
+	require.ErrorIs(t, err, craft.ErrConflict, "an unsealed receipt cannot confirm any candidate digest")
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, "")
+	require.ErrorIs(t, err, craft.ErrConflict, "an unsealed receipt cannot promote")
+
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, "run-never-dispatched", strings.Repeat("ff", 32))
 	require.ErrorIs(t, err, craft.ErrConflict, "a run without a bound receipt cannot promote")
 
-	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, "ws-foreign", fixture.task.Fence.RunID, "")
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, "ws-foreign", fixture.task.Fence.RunID, strings.Repeat("ff", 32))
 	require.ErrorIs(t, err, craft.ErrConflict, "a receipt bound to another workspace cannot verify")
 
-	// An UNSEALED receipt (collector manifest sealing is a separate lane)
-	// cannot confirm a candidate digest and does not refuse one.
-	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("ff", 32)))
+	// The collector seals the candidate manifest digest into the bound
+	// receipt; the seal flips OutputComplete truthfully for the complete
+	// build, and the fence then binds build to candidate content.
+	require.NoError(t, fence.SealCandidateManifest(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("aa", 32)))
+	sealedReceipt, err := fixture.receipts.Read(ctx, receipt.Key())
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("aa", 32), sealedReceipt.CandidateManifestSHA256)
+	require.True(t, sealedReceipt.OutputComplete, "a complete build's receipt flips truthful with the seal")
+	require.Equal(t, "succeeded", sealedReceipt.ProcessState, "process facts stay frozen")
 
-	// A SEALED receipt must agree with the candidate manifest.
-	sealedTask := fixture.task
-	sealedTask.Fence.RunID = "run-sealed-build"
-	sealedRequest, err := craftWebBuildFixedRequest(sealedTask, fixture.pin)
-	require.NoError(t, err)
-	sealedSHA, err := craftWebBuildRequestDigest(sealedRequest)
-	require.NoError(t, err)
-	sealed := receipt
-	sealed.RunID = sealedTask.Fence.RunID
-	sealed.ActivityKey = craftWebBuildActivityKey
-	sealed.RequestSHA256 = sealedSHA
-	sealed.CandidateManifestSHA256 = strings.Repeat("aa", 32)
-	_, err = fixture.receipts.RecordTerminal(ctx, sealed)
-	require.NoError(t, err)
-	require.NoError(t, fence.VerifyPromotionBuild(ctx, sealedTask.Scope, sealedTask.WorkspaceID, sealedTask.Fence.RunID, strings.Repeat("aa", 32)))
-	err = fence.VerifyPromotionBuild(ctx, sealedTask.Scope, sealedTask.WorkspaceID, sealedTask.Fence.RunID, strings.Repeat("bb", 32))
+	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("aa", 32)))
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("bb", 32))
 	require.ErrorIs(t, err, craft.ErrConflict, "a sealed manifest digest that differs from the candidate's must refuse promotion")
+
+	// The seal latches exactly once: a second, different digest means the
+	// output mutated after the build and is refused.
+	err = fence.SealCandidateManifest(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("cc", 32))
+	require.ErrorIs(t, err, repository.ErrCraftWebBuildReceiptConflict)
 }

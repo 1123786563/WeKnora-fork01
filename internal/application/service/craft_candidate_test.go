@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -173,4 +175,50 @@ func TestCraftArtifactWebHTMLScreenRejectsScriptShapes(t *testing.T) {
 		candidateSource("run-ok", "gen-ok", "<!doctype html><html><body><h1>fine</h1><p>only = 3</p></body></html>"), "gen-ok")
 	require.NoError(t, err)
 	require.Len(t, candidates.byRun, 1)
+}
+
+// sealingWebBuildReceipts records the collector's seal invocations (the real
+// latch lives in the repository; the container journeys prove it).
+type sealingWebBuildReceipts struct {
+	mu      sync.Mutex
+	seals   [][4]string // workspaceID, runID, digest — scope asserted separately
+	err     error
+	lastCtx context.Context
+}
+
+func (s *sealingWebBuildReceipts) VerifyPromotionBuild(context.Context, craft.Scope, string, string, string) error {
+	return nil
+}
+
+func (s *sealingWebBuildReceipts) SealCandidateManifest(_ context.Context, _ craft.Scope, workspaceID, runID, digest string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seals = append(s.seals, [4]string{workspaceID, runID, digest})
+	return s.err
+}
+
+// TestCraftArtifactCollectCandidateSealsManifestIntoBuildReceipt is the F08
+// collector-seal fence: a successful candidate collection seals the server-
+// computed manifest digest into the Run's build receipt; a refusing seal
+// never fails the collection itself (the promotion fence holds the line).
+func TestCraftArtifactCollectCandidateSealsManifestIntoBuildReceipt(t *testing.T) {
+	ctx := context.Background()
+	fence := &sealingWebBuildReceipts{}
+	svc := NewCraftArtifactServiceWithCandidates(
+		candidateSource("run-seal", "gen-seal", "<h1>seal</h1>"), newDirBackedFileService(t), newMemVersionStore(), &memoryCandidateStore{}, nil,
+		CraftArtifactConfig{OutputDir: craftTestOutputDir},
+	).WithWebBuildReceipt(fence)
+
+	task := craftArtifactTask("s1", "ws-seal", "run-seal")
+	candidate, err := svc.CollectCandidate(ctx, task, craft.KindWeb, candidateSource("run-seal", "gen-seal", "<h1>seal</h1>"), "gen-seal")
+	require.NoError(t, err)
+	require.Len(t, fence.seals, 1, "collection must seal the candidate manifest digest")
+	require.Equal(t, [4]string{"ws-seal", "run-seal", candidate.ManifestDigest}, fence.seals[0])
+
+	fence.err = errors.New("sealed digest conflicts: output mutated")
+	refusedTask := craftArtifactTask("s1", "ws-seal", "run-seal-next")
+	refused, err := svc.CollectCandidate(ctx, refusedTask, craft.KindWeb, candidateSource("run-seal-next", "gen-next", "<h1>next</h1>"), "gen-next")
+	require.NoError(t, err, "a refused seal never fails the collection; promotion refuses on digest mismatch")
+	require.NotEqual(t, candidate.ManifestDigest, refused.ManifestDigest)
+	require.Len(t, fence.seals, 2, "every successful collection attempts its seal")
 }

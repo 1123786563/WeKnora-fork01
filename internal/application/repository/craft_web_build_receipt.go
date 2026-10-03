@@ -151,6 +151,64 @@ func (r *CraftWebBuildReceiptRepository) RecordTerminal(ctx context.Context, rec
 	return prior, nil
 }
 
+// SealCandidateManifest latches the collector's candidate manifest digest
+// into the attempt's receipt. It is the only mutation the schema permits:
+// the empty seal fills exactly once (a different digest is a conflict — the
+// output mutated after the build) and OutputComplete flips to its truthful
+// sealed value (complete only when the exec transport was complete); every
+// process fact stays frozen. A missing receipt reports NotFound.
+func (r *CraftWebBuildReceiptRepository) SealCandidateManifest(ctx context.Context, key CraftWebBuildReceiptKey, manifestDigest string) (CraftWebBuildReceipt, error) {
+	if r == nil || r.db == nil {
+		return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptUnavailable
+	}
+	if err := validateCraftWebBuildReceiptKey(key); err != nil {
+		return CraftWebBuildReceipt{}, err
+	}
+	if !craftWebBuildReceiptSHA256Pattern.MatchString(manifestDigest) {
+		return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptInvalid
+	}
+	prior, err := r.readRow(ctx, key)
+	if err != nil {
+		return CraftWebBuildReceipt{}, err
+	}
+	if prior.CandidateManifestSHA256 == manifestDigest {
+		return prior, nil
+	}
+	if prior.CandidateManifestSHA256 != "" {
+		return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptConflict
+	}
+	updated := r.db.WithContext(ctx).Model(&craftWebBuildReceiptRow{}).
+		Where("tenant_id = ? AND task_id = ? AND session_id = ? AND workspace_id = ? AND run_id = ? AND activity_key = ? AND request_sha256 = ? AND candidate_manifest_sha256 = ''",
+			key.TenantID, key.TaskID, key.SessionID, key.WorkspaceID, key.RunID, key.ActivityKey, key.RequestSHA256).
+		Updates(map[string]any{"candidate_manifest_sha256": manifestDigest, "output_complete": prior.TransportComplete})
+	if updated.Error != nil {
+		if err := ctx.Err(); err != nil {
+			return CraftWebBuildReceipt{}, err
+		}
+		return CraftWebBuildReceipt{}, fmt.Errorf("%w: %v", ErrCraftWebBuildReceiptUnavailable, updated.Error)
+	}
+	if updated.RowsAffected == 0 {
+		sealed, err := r.readRow(ctx, key)
+		if err != nil {
+			return CraftWebBuildReceipt{}, err
+		}
+		if sealed.CandidateManifestSHA256 != manifestDigest {
+			return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptConflict
+		}
+		return sealed, nil
+	}
+	return r.readRow(ctx, key)
+}
+
+func validateCraftWebBuildReceiptKey(key CraftWebBuildReceiptKey) error {
+	if key.TenantID == 0 || strings.TrimSpace(key.TaskID) == "" || strings.TrimSpace(key.SessionID) == "" ||
+		strings.TrimSpace(key.WorkspaceID) == "" || strings.TrimSpace(key.RunID) == "" || strings.TrimSpace(key.ActivityKey) == "" ||
+		!craftWebBuildReceiptSHA256Pattern.MatchString(key.RequestSHA256) {
+		return ErrCraftWebBuildReceiptInvalid
+	}
+	return nil
+}
+
 // Read returns a receipt only for the complete tenant/task/session/workspace/
 // Run/activity/request identity. A different request digest cannot inherit
 // the attempt's server-observed process outcome.
@@ -158,10 +216,8 @@ func (r *CraftWebBuildReceiptRepository) Read(ctx context.Context, key CraftWebB
 	if r == nil || r.db == nil {
 		return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptUnavailable
 	}
-	if key.TenantID == 0 || strings.TrimSpace(key.TaskID) == "" || strings.TrimSpace(key.SessionID) == "" ||
-		strings.TrimSpace(key.WorkspaceID) == "" || strings.TrimSpace(key.RunID) == "" || strings.TrimSpace(key.ActivityKey) == "" ||
-		!craftWebBuildReceiptSHA256Pattern.MatchString(key.RequestSHA256) {
-		return CraftWebBuildReceipt{}, ErrCraftWebBuildReceiptInvalid
+	if err := validateCraftWebBuildReceiptKey(key); err != nil {
+		return CraftWebBuildReceipt{}, err
 	}
 	return r.readRow(ctx, key)
 }

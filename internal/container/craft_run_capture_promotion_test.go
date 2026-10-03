@@ -42,6 +42,10 @@ func (f08CaptureReceiptFence) VerifyPromotionBuild(context.Context, craft.Scope,
 	return nil
 }
 
+func (f08CaptureReceiptFence) SealCandidateManifest(context.Context, craft.Scope, string, string, string) error {
+	return nil
+}
+
 func openCraftT20PromotionDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)

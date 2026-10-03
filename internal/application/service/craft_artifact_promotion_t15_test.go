@@ -93,6 +93,10 @@ func (v verifiedWebBuildReceipts) VerifyPromotionBuild(context.Context, craft.Sc
 	return nil
 }
 
+func (v verifiedWebBuildReceipts) SealCandidateManifest(context.Context, craft.Scope, string, string, string) error {
+	return nil
+}
+
 func (p *scriptedPageProbe) set(reachable, loaded craft.CheckOutcome) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

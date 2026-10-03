@@ -24,8 +24,6 @@ import (
 )
 
 func TestCraftWebBuildReceiptRepositoryRecordsFirstTerminalObservationOnly(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	forEachCraftWebBuildReceiptDB(t, func(t *testing.T, db *gorm.DB) {
 		ctx := context.Background()
 		repo := NewCraftWebBuildReceiptRepository(db)
@@ -65,8 +63,6 @@ func TestCraftWebBuildReceiptRepositoryRecordsFirstTerminalObservationOnly(t *te
 }
 
 func TestCraftWebBuildReceiptRepositoryScopesLookupAndRejectsMalformedFacts(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	forEachCraftWebBuildReceiptDB(t, func(t *testing.T, db *gorm.DB) {
 		ctx := context.Background()
 		repo := NewCraftWebBuildReceiptRepository(db)
@@ -131,8 +127,6 @@ func TestCraftWebBuildReceiptRepositoryScopesLookupAndRejectsMalformedFacts(t *t
 }
 
 func TestCraftWebBuildReceiptRepositoryRetainsIncompleteUnknownObservation(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	forEachCraftWebBuildReceiptDB(t, func(t *testing.T, db *gorm.DB) {
 		receipt := craftWebBuildReceiptFixture()
 		receipt.ProcessState = "unknown"
@@ -148,8 +142,6 @@ func TestCraftWebBuildReceiptRepositoryRetainsIncompleteUnknownObservation(t *te
 }
 
 func TestCraftWebBuildReceiptDatabaseRejectsMutationAndDeletion(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	forEachCraftWebBuildReceiptDB(t, func(t *testing.T, db *gorm.DB) {
 		receipt := craftWebBuildReceiptFixture()
 		_, err := NewCraftWebBuildReceiptRepository(db).RecordTerminal(context.Background(), receipt)
@@ -162,8 +154,6 @@ func TestCraftWebBuildReceiptDatabaseRejectsMutationAndDeletion(t *testing.T) {
 }
 
 func TestCraftWebBuildReceiptRepositoryPreservesCancellation(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	db := openCraftWebBuildReceiptDB(t, "sqlite")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -193,8 +183,6 @@ func TestCraftWebBuildReceiptPostgresDialectorUsesSimpleProtocol(t *testing.T) {
 }
 
 func TestCraftWebBuildReceiptSQLiteMigrationUpDownUp(t *testing.T) {
-	// ponytail: craft 迁移重排（161-189/242-270）后相邻号假设失效，需按新链重校准
-	t.Skip("craft 迁移重排待校准")
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
@@ -202,7 +190,7 @@ func TestCraftWebBuildReceiptSQLiteMigrationUpDownUp(t *testing.T) {
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	m := newCraftWebBuildReceiptMigrator(t, sqlDB, filepath.Join(root, "migrations/sqlite/000138_craft_web_build_receipt.up.sql"), "sqlite3", "")
+	m := newCraftWebBuildReceiptMigrator(t, sqlDB, filepath.Join(root, "migrations/sqlite/000189_craft_web_build_receipt.up.sql"), "sqlite3", "")
 	assertCraftWebBuildReceiptMigrationCycles(t, m, sqlDB, "sqlite_master", "type = 'table' AND name = 'craft_web_build_receipts'")
 }
 
@@ -229,7 +217,7 @@ func TestCraftWebBuildReceiptPostgresMigrationUpDownUp(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	m := newCraftWebBuildReceiptMigrator(t, conn, filepath.Join(root, "migrations/versioned/000217_craft_web_build_receipt.up.sql"), "postgres", schema)
+	m := newCraftWebBuildReceiptMigrator(t, conn, filepath.Join(root, "migrations/versioned/000270_craft_web_build_receipt.up.sql"), "postgres", schema)
 	assertCraftWebBuildReceiptMigrationCycles(t, m, conn, "information_schema.tables", "table_schema = current_schema() AND table_name = 'craft_web_build_receipts'")
 }
 
@@ -266,7 +254,7 @@ func openCraftWebBuildReceiptDB(t *testing.T, dialect string) *gorm.DB {
 		dsn := "file:" + filepath.Join(t.TempDir(), "craft-web-build-receipt.db") + "?_foreign_keys=on"
 		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 		require.NoError(t, err)
-		migration, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000138_craft_web_build_receipt.up.sql"))
+		migration, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000189_craft_web_build_receipt.up.sql"))
 		require.NoError(t, err)
 		require.NoError(t, db.Exec(string(migration)).Error)
 		t.Cleanup(func() {
@@ -298,7 +286,7 @@ func openCraftWebBuildReceiptDB(t *testing.T, dialect string) *gorm.DB {
 	t.Cleanup(func() {
 		_ = conn.Close()
 	})
-	m := newCraftWebBuildReceiptMigrator(t, conn, filepath.Join(root, "migrations/versioned/000217_craft_web_build_receipt.up.sql"), "postgres", schema)
+	m := newCraftWebBuildReceiptMigrator(t, conn, filepath.Join(root, "migrations/versioned/000270_craft_web_build_receipt.up.sql"), "postgres", schema)
 	require.NoError(t, m.Up())
 	return db
 }
@@ -352,4 +340,124 @@ func assertCraftWebBuildReceiptMigrationCycles(t *testing.T, m *migrate.Migrate,
 	assertAbsent()
 	require.NoError(t, m.Up())
 	assertPresent()
+}
+
+// TestCraftWebBuildReceiptRepositorySealsCandidateManifestOnce is the F08
+// collector-seal fence: the attempt's receipt accepts exactly one manifest
+// seal, OutputComplete flips truthfully with it (a fully-transported build
+// whose output was collected is complete; a partial transport never is), and
+// every process fact stays frozen at the database boundary.
+func TestCraftWebBuildReceiptRepositorySealsCandidateManifestOnce(t *testing.T) {
+	db := openCraftDB(t)
+	ctx := context.Background()
+	repo := NewCraftWebBuildReceiptRepository(db)
+	receipt := craftWebBuildReceiptFixture()
+	receipt.CandidateManifestSHA256 = ""
+	receipt.OutputComplete = false
+	stored, err := repo.RecordTerminal(ctx, receipt)
+	require.NoError(t, err)
+	require.False(t, stored.OutputComplete, "a recorded receipt predates collection: output is not yet complete")
+
+	digest := strings.Repeat("9", 64)
+	sealed, err := repo.SealCandidateManifest(ctx, receipt.Key(), digest)
+	require.NoError(t, err)
+	require.Equal(t, digest, sealed.CandidateManifestSHA256)
+	require.True(t, sealed.OutputComplete, "a fully-transported build whose output was collected seals complete")
+
+	again, err := repo.SealCandidateManifest(ctx, receipt.Key(), digest)
+	require.NoError(t, err, "sealing the same digest again is idempotent")
+	require.Equal(t, sealed, again)
+
+	_, err = repo.SealCandidateManifest(ctx, receipt.Key(), strings.Repeat("8", 64))
+	require.ErrorIs(t, err, ErrCraftWebBuildReceiptConflict, "a second, different digest means the output mutated after the build")
+
+	got, err := repo.Read(ctx, receipt.Key())
+	require.NoError(t, err)
+	require.Equal(t, sealed, got)
+	require.Equal(t, "succeeded", got.ProcessState, "process facts are unchanged by the seal")
+
+	_, err = repo.SealCandidateManifest(ctx, receipt.Key(), "short")
+	require.ErrorIs(t, err, ErrCraftWebBuildReceiptInvalid)
+
+	missing := receipt.Key()
+	missing.RunID = "run-never-dispatched"
+	_, err = repo.SealCandidateManifest(ctx, missing, digest)
+	require.ErrorIs(t, err, ErrCraftWebBuildReceiptNotFound)
+
+	require.Error(t, db.Table("craft_web_build_receipts").Where("tenant_id = ?", receipt.TenantID).Update("exit_code", 9).Error,
+		"the seal exception never widens into mutating process facts")
+
+	partial := craftWebBuildReceiptFixture()
+	partial.RunID = "run-transport-partial"
+	partial.RequestSHA256 = strings.Repeat("7", 64)
+	partial.ProcessState = "unknown"
+	partial.ExitCode = nil
+	partial.Started = false
+	partial.TransportComplete = false
+	partial.OutputComplete = false
+	partial.CandidateManifestSHA256 = ""
+	_, err = repo.RecordTerminal(ctx, partial)
+	require.NoError(t, err)
+	partialSealed, err := repo.SealCandidateManifest(ctx, partial.Key(), digest)
+	require.NoError(t, err)
+	require.Equal(t, digest, partialSealed.CandidateManifestSHA256)
+	require.False(t, partialSealed.OutputComplete, "output completeness stays truthful: a partial transport never seals complete")
+}
+
+// TestCraftWebBuildReceiptSealMigrationSQLiteUpDownUp verifies the F08
+// collector-seal trigger amendment cycles cleanly: up admits exactly the
+// one-way manifest seal, down restores absolute immutability.
+func TestCraftWebBuildReceiptSealMigrationSQLiteUpDownUp(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+	dsn := "file:" + filepath.Join(t.TempDir(), "craft-web-build-receipt-seal-migration.db") + "?_foreign_keys=on"
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	base, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000189_craft_web_build_receipt.up.sql"))
+	require.NoError(t, err)
+	_, err = sqlDB.Exec(string(base))
+	require.NoError(t, err)
+
+	m := newCraftWebBuildReceiptMigrator(t, sqlDB, filepath.Join(root, "migrations/sqlite/000192_craft_web_build_receipt_seal.up.sql"), "sqlite3", "")
+
+	receipt := craftWebBuildReceiptFixture()
+	insert := `INSERT INTO craft_web_build_receipts (id, tenant_id, task_id, session_id, workspace_id, run_id, activity_key, request_sha256,
+		command_sha256, runtime_digest, toolchain_digest, template_version, template_sha256, timeout_ms, output_limit,
+		provider, container_id, exec_id, process_state, exit_code, started, transport_complete, output_complete,
+		output_generation, candidate_manifest_sha256, observed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	args := []any{uuid.NewString(), receipt.TenantID, receipt.TaskID, receipt.SessionID, receipt.WorkspaceID, receipt.RunID, receipt.ActivityKey,
+		receipt.RequestSHA256, receipt.CommandSHA256, receipt.RuntimeDigest, receipt.ToolchainDigest, receipt.TemplateVersion, receipt.TemplateSHA256,
+		receipt.TimeoutMillis, receipt.OutputLimit, receipt.Provider, receipt.ContainerID, receipt.ExecID, "succeeded", 0, true, true, false,
+		receipt.OutputGeneration, "", receipt.ObservedAt}
+
+	assertSealAccepted := func(want bool) {
+		_, err := sqlDB.Exec(`UPDATE craft_web_build_receipts SET candidate_manifest_sha256 = ?, output_complete = 1 WHERE run_id = ?`,
+			strings.Repeat("9", 64), receipt.RunID)
+		if want {
+			require.NoError(t, err)
+		} else {
+			require.Error(t, err, "before the amendment (or after its down) the receipt is absolutely immutable")
+		}
+	}
+
+	_, err = sqlDB.Exec(insert, args...)
+	require.NoError(t, err)
+	assertSealAccepted(false) // the strict 000189 trigger refuses any mutation
+
+	require.NoError(t, m.Up())
+	assertSealAccepted(true) // the amendment admits exactly the one-way seal
+
+	// A second, different digest on the already-sealed row is refused even
+	// with the amendment: the exception needs the empty prior seal.
+	_, err = sqlDB.Exec(`UPDATE craft_web_build_receipts SET candidate_manifest_sha256 = ? WHERE run_id = ?`,
+		strings.Repeat("8", 64), receipt.RunID)
+	require.Error(t, err)
+
+	require.NoError(t, m.Down())
+	assertSealAccepted(false) // down restored absolute immutability
+	require.NoError(t, m.Up())
+	assertSealAccepted(false) // the once-sealed row stays sealed through the cycle: the exception needs the empty prior seal
 }

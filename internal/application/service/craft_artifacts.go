@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime"
 	"path"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -140,10 +142,15 @@ type CraftArtifactService struct {
 
 // WebBuildReceiptSource re-reads the server-owned web build receipt for the
 // promotion fence (F08 T-2). Implementations must verify the receipt's Run
-// and workspace binding and refuse anything but a verified success; a sealed
-// candidate manifest digest, when present, must match the candidate's.
+// and workspace binding and refuse anything but a verified success carrying
+// the collector-sealed candidate manifest digest. The collector itself seals
+// the server-computed manifest digest into the Run's bound build receipt
+// after a successful candidate staging; a missing bound receipt (no F08
+// dispatch happened) reports ErrCraftWebBuildReceiptNotFound and leaves the
+// candidate staged.
 type WebBuildReceiptSource interface {
 	VerifyPromotionBuild(ctx context.Context, scope craft.Scope, workspaceID, runID, manifestDigest string) error
+	SealCandidateManifest(ctx context.Context, scope craft.Scope, workspaceID, runID, manifestDigest string) error
 }
 
 // RunBoundSandboxArtifactSource identifies the verified generation it reads.
@@ -570,6 +577,17 @@ func (s *CraftArtifactService) CollectCandidate(
 	if err != nil {
 		logger.Warnf(ctx, "[CraftArtifact] candidate seal failed for run %s: %v (uploaded objects stay for O03 deferred reclamation)", task.Fence.RunID, err)
 		return craft.Candidate{}, err
+	}
+	// F08 collector seal: the staged candidate's server-computed manifest
+	// digest is latched into the Run's bound build receipt, binding build to
+	// output content. A missing bound receipt (no dispatched build) leaves
+	// the candidate staged; a refused seal (mutated output) never fails the
+	// staging itself — the promotion fence refuses on the digest mismatch.
+	if s.webReceipts != nil {
+		if sealErr := s.webReceipts.SealCandidateManifest(ctx, task.Scope, task.WorkspaceID, task.Fence.RunID, digest); sealErr != nil &&
+			!errors.Is(sealErr, repository.ErrCraftWebBuildReceiptNotFound) {
+			logger.Warnf(ctx, "[CraftArtifact] candidate manifest seal refused for run %s: %v", task.Fence.RunID, sealErr)
+		}
 	}
 	return stored, nil
 }
