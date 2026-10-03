@@ -241,3 +241,75 @@ func craftWebBuildTerminalReceipt(
 		ObservedAt:        time.Now().UTC(),
 	}
 }
+
+// craftWebBuildReceiptExitCode reads the dispatcher's immutable receipt for
+// the task's fixed build attempt and returns its server-observed exit code —
+// only for a terminal receipt with start evidence; anything else reports the
+// not-found sentinel so the evidence source stays fail-closed.
+func craftWebBuildReceiptExitCode(receipts craftWebBuildReceiptStore, pin CraftWebToolchainPin) func(context.Context, craft.Task) (*int, error) {
+	return func(ctx context.Context, task craft.Task) (*int, error) {
+		request, err := craftWebBuildFixedRequest(task, pin)
+		if err != nil {
+			return nil, err
+		}
+		requestSHA, err := craftWebBuildRequestDigest(request)
+		if err != nil {
+			return nil, err
+		}
+		receipt, err := receipts.Read(ctx, repository.CraftWebBuildReceiptKey{
+			TenantID: task.Scope.TenantID, TaskID: task.Scope.SessionID, SessionID: task.Scope.SessionID,
+			WorkspaceID: task.WorkspaceID, RunID: task.Fence.RunID,
+			ActivityKey: craftWebBuildActivityKey, RequestSHA256: requestSHA,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !receipt.Started || receipt.ExitCode == nil ||
+			(receipt.ProcessState != "succeeded" && receipt.ProcessState != "failed") {
+			return nil, repository.ErrCraftWebBuildReceiptNotFound
+		}
+		return receipt.ExitCode, nil
+	}
+}
+
+// craftWebBuildPromotionReceipts adapts the immutable receipt repository to
+// the promotion fence (F08 T-2): the Run being promoted must carry a bound,
+// terminal-succeeded build receipt; when the receipt seals a candidate
+// manifest digest it must equal the candidate's.
+type craftWebBuildPromotionReceipts struct {
+	receipts craftWebBuildReceiptStore
+	pin      CraftWebToolchainPin
+}
+
+func (a craftWebBuildPromotionReceipts) VerifyPromotionBuild(ctx context.Context, scope craft.Scope, workspaceID, runID, manifestDigest string) error {
+	task := craft.Task{Scope: scope, WorkspaceID: workspaceID}
+	task.Fence.RunID = runID
+	request, err := craftWebBuildFixedRequest(task, a.pin)
+	if err != nil {
+		return err
+	}
+	requestSHA, err := craftWebBuildRequestDigest(request)
+	if err != nil {
+		return err
+	}
+	receipt, err := a.receipts.Read(ctx, repository.CraftWebBuildReceiptKey{
+		TenantID: scope.TenantID, TaskID: scope.SessionID, SessionID: scope.SessionID,
+		WorkspaceID: workspaceID, RunID: runID,
+		ActivityKey: craftWebBuildActivityKey, RequestSHA256: requestSHA,
+	})
+	if errors.Is(err, repository.ErrCraftWebBuildReceiptNotFound) {
+		return fmt.Errorf("%w: run %s has no bound web build receipt; promotion requires the F08 dispatch receipt", craft.ErrConflict, runID)
+	}
+	if err != nil {
+		return err
+	}
+	if receipt.ProcessState != "succeeded" || receipt.ExitCode == nil || *receipt.ExitCode != 0 {
+		return fmt.Errorf("%w: run %s web build receipt is not a verified success (state %s)", craft.ErrConflict, runID, receipt.ProcessState)
+	}
+	// An unsealed receipt (the collector's manifest sealing is a separate
+	// lane) cannot confirm a candidate digest; a sealed one must agree.
+	if receipt.CandidateManifestSHA256 != "" && manifestDigest != "" && receipt.CandidateManifestSHA256 != manifestDigest {
+		return fmt.Errorf("%w: run %s build receipt seals manifest %s, not the candidate's %s", craft.ErrConflict, runID, receipt.CandidateManifestSHA256, manifestDigest)
+	}
+	return nil
+}

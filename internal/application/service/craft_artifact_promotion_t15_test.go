@@ -13,6 +13,7 @@ package service
 //   - foreign scope → nothing promoted
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -80,6 +81,18 @@ func (p *scriptedPageProbe) ProbeWebPage(_ context.Context, _ craft.Scope, _ cra
 	return p.reachable, p.loaded
 }
 
+// verifiedWebBuildReceipts is the F08 T-2 fence double for service-level
+// promotion journeys: the real receipt fence journey lives in the container
+// package tests; here the fence's decision is scripted.
+type verifiedWebBuildReceipts struct{ refuse bool }
+
+func (v verifiedWebBuildReceipts) VerifyPromotionBuild(context.Context, craft.Scope, string, string, string) error {
+	if v.refuse {
+		return fmt.Errorf("%w: scripted receipt fence refusal", craft.ErrConflict)
+	}
+	return nil
+}
+
 func (p *scriptedPageProbe) set(reachable, loaded craft.CheckOutcome) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -104,7 +117,7 @@ func TestCraftT15Journey(t *testing.T) {
 	svc := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), filesSvc, versionStore, candidateStore, buildEvidence,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(draftHeads, probe)
+	).WithWebPromotion(draftHeads, probe).WithWebBuildReceipt(verifiedWebBuildReceipts{})
 
 	// stage collects one Run's output as a private candidate and advances the
 	// workspace draft head to that Run's revision.
@@ -262,4 +275,23 @@ func TestCraftT15PromotionFailsClosedWithoutAssembly(t *testing.T) {
 		WorkspaceID: "ws-1", RunID: "run-1", CandidateID: "cand_" + "a", Revision: 1,
 	})
 	require.ErrorIs(t, err, craft.ErrInvalidInput, "an unassembled candidate store refuses promotion")
+}
+
+// TestCraftT15PromotionRequiresBoundBuildReceipt is the F08 T-2 fence: a
+// promotion without the receipt fence wired is refused (ErrUnsupported), and
+// a fence that finds no bound receipt for the Run refuses with a conflict.
+func TestCraftT15PromotionRequiresBoundBuildReceipt(t *testing.T) {
+	ctx := context.Background()
+	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s-f08"}
+	probe := &scriptedPageProbe{}
+	probe.set(craft.WebCheckPassed, craft.WebCheckPassed)
+
+	unfenced := NewCraftArtifactServiceWithCandidates(
+		craftSourceWith(nil, nil), newDirBackedFileService(t), newMemVersionStore(), &memoryCandidateStore{}, nil,
+		CraftArtifactConfig{OutputDir: craftTestOutputDir},
+	).WithWebPromotion(&stubDraftHeadStore{heads: map[string]craft.DraftHead{}}, probe)
+	_, err := unfenced.PromoteWebVersion(ctx, scope, craft.WebPromotionRequest{
+		WorkspaceID: "ws-f08", RunID: "run-f08", CandidateID: "cand_f08", Revision: 1,
+	})
+	require.ErrorIs(t, err, craft.ErrUnsupported, "an assembly without the receipt fence refuses promotion outright")
 }

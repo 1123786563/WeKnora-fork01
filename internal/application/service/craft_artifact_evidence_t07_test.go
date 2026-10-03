@@ -137,7 +137,7 @@ func TestCraftT07Journey(t *testing.T) {
 	svc := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), filesSvc, versionStore, candidateStore, buildEvidence,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(draftHeads, probe).WithVersionEvidence(records)
+	).WithWebPromotion(draftHeads, probe).WithWebBuildReceipt(verifiedWebBuildReceipts{}).WithVersionEvidence(records)
 
 	// The Run-side knowledge journey: each Run's record is saved once with
 	// the facts it actually observed, exactly as the T05 build does.
@@ -354,7 +354,7 @@ func TestCraftT07EvidenceFailsClosedWithoutEvidenceStore(t *testing.T) {
 	unwired := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), newDirBackedFileService(t), newT07EvidenceVersionStore(), &memoryCandidateStore{}, nil,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(&stubDraftHeadStore{heads: map[string]craft.DraftHead{}}, &scriptedPageProbe{})
+	).WithWebPromotion(&stubDraftHeadStore{heads: map[string]craft.DraftHead{}}, &scriptedPageProbe{}).WithWebBuildReceipt(verifiedWebBuildReceipts{})
 	require.Nil(t, unwired.runEvidence, "the evidence port stays optional")
 }
 

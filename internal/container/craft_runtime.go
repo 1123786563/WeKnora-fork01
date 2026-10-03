@@ -183,7 +183,10 @@ func newCraftRuntimeExecutor(
 		// any other runtime is foreign even when the toolchain pins match.
 		pin.RuntimeDigest = runtimeDigest
 		webToolchainPin = &pin
-		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
+		// F08 T-2: the trusted build exit status comes from the dispatch
+		// receipt repository, never from the sandbox-writable log itself.
+		buildReceipts := repository.NewCraftWebBuildReceiptRepository(db)
+		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin, craftWebBuildReceiptExitCode(buildReceipts, pin))
 		// T04 integration wiring: build the T03 execution policy and the
 		// fixed-shape web build command gate at the SAME site as the pin,
 		// so the central dispatch point (T20 lane) attaches the SAME gate
@@ -267,7 +270,7 @@ func newCraftRuntimeExecutor(
 				return nil, fs.ErrNotExist
 			}
 			return runViewLogReader(ctx, task)
-		}, runViewPin)
+		}, runViewPin, craftWebBuildReceiptExitCode(repository.NewCraftWebBuildReceiptRepository(db), runViewPin))
 	}
 	runViewArtifacts := service.NewCraftArtifactServiceWithCandidates(closedCraftArtifactSource{}, files, versions,
 		repository.NewCraftCandidateStore(db), runViewEvidence,
@@ -288,6 +291,14 @@ func newCraftRuntimeExecutor(
 	// implementation lands, and promotion then fails closed on the not_run
 	// page facts by contract.
 	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), RegisteredCraftWebPageLoadProbe())
+	// F08 T-2: promotion re-reads the immutable build receipt inside the
+	// fence — a Run without a bound, succeeded dispatch receipt cannot
+	// promote, and a sealed candidate manifest digest must agree. Without a
+	// pinned toolchain there is no fixed build to verify and the fence stays
+	// unwired, so promotion refuses with ErrUnsupported (fail-closed).
+	if webToolchainPin != nil {
+		runViewArtifacts.WithWebBuildReceipt(craftWebBuildPromotionReceipts{receipts: repository.NewCraftWebBuildReceiptRepository(db), pin: *webToolchainPin})
+	}
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
 	// pending decision is decidable through the HTTP surface. The registrar

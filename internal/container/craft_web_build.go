@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -330,14 +331,17 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin, obser
 
 // craftWebBuildEvidenceSource wraps one preview evidence source with the
 // delegated run's build log: preview verdicts keep flowing, and the build
-// fact is added only when the log exists, decodes under the strict contract
-// and matches the pinned toolchain. Anything else — missing file, malformed
-// JSON, foreign toolchain — leaves the build fact exactly as the inner
-// source reported it (unobserved), never fabricated.
+// fact is added only when the log exists, decodes under the strict contract,
+// matches the pinned toolchain AND the F08 T-1 dispatch receipt supplies the
+// trusted exit status (readReceipt). Anything else — missing file, malformed
+// JSON, foreign toolchain, missing receipt — leaves the build fact exactly as
+// the inner source reported it (unobserved), never fabricated. A nil
+// readReceipt keeps the historical fail-closed not_run behavior.
 func craftWebBuildEvidenceSource(
 	inner service.ArtifactEvidenceSource,
 	readLog func(context.Context, craft.Task) ([]byte, error),
 	pin CraftWebToolchainPin,
+	readReceipt func(context.Context, craft.Task) (*int, error),
 ) service.ArtifactEvidenceSource {
 	return func(ctx context.Context, task craft.Task) craft.ArtifactEvidence {
 		evidence := craft.ArtifactEvidence{}
@@ -371,10 +375,19 @@ func craftWebBuildEvidenceSource(
 			return evidence
 		}
 		// The session artifact source exposes only sandbox-writable files and
-		// carries no trusted process outcome. Until the execution coordinator
-		// supplies a server-owned receipt, the log can be parsed for diagnostics
-		// but cannot establish BuildRan or its exit status.
-		build, err := CraftWebBuildEvidence(log, pin, nil)
+		// carries no trusted process outcome: the log alone can never
+		// establish the build fact. The trusted exit status comes exclusively
+		// from the server-owned dispatch receipt re-read here; without a
+		// terminal started receipt the fact stays unobserved (fail-closed).
+		observedExitCode := (*int)(nil)
+		if readReceipt != nil {
+			code, receiptErr := readReceipt(ctx, task)
+			observedExitCode = code
+			if receiptErr != nil && !errors.Is(receiptErr, repository.ErrCraftWebBuildReceiptNotFound) {
+				logger.Warnf(ctx, "[CraftWebBuild] receipt read failed for run %s: %v", task.Fence.RunID, receiptErr)
+			}
+		}
+		build, err := CraftWebBuildEvidence(log, pin, observedExitCode)
 		if err != nil {
 			// A log naming a foreign toolchain is refused whole — and is
 			// precisely the alert-worthy case, so it is never silent.

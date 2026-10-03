@@ -48,7 +48,7 @@ func TestCraftT12Journey(t *testing.T) {
 	svc := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), filesSvc, versionStore, candidateStore, buildEvidence,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(draftHeads, probe).WithVersionEvidence(records)
+	).WithWebPromotion(draftHeads, probe).WithWebBuildReceipt(verifiedWebBuildReceipts{}).WithVersionEvidence(records)
 
 	t1 := time.Date(2026, 9, 25, 1, 2, 3, 0, time.UTC)
 	t2 := t1.Add(2 * time.Hour)

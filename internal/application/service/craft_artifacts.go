@@ -131,6 +131,19 @@ type CraftArtifactService struct {
 	// recorded unpinned behavior; the evidence read then honestly answers
 	// ErrNotFound instead of reconstructing history.
 	runEvidence VersionEvidenceSource
+	// webReceipts re-reads the immutable web build receipt inside the
+	// promotion fence (F08 T-2): a Run without a bound, terminal-succeeded
+	// dispatch receipt cannot promote. Nil refuses promotion (ErrUnsupported)
+	// like the missing draft-head store — the fence is not optional.
+	webReceipts WebBuildReceiptSource
+}
+
+// WebBuildReceiptSource re-reads the server-owned web build receipt for the
+// promotion fence (F08 T-2). Implementations must verify the receipt's Run
+// and workspace binding and refuse anything but a verified success; a sealed
+// candidate manifest digest, when present, must match the candidate's.
+type WebBuildReceiptSource interface {
+	VerifyPromotionBuild(ctx context.Context, scope craft.Scope, workspaceID, runID, manifestDigest string) error
 }
 
 // RunBoundSandboxArtifactSource identifies the verified generation it reads.
@@ -219,6 +232,15 @@ func (s *CraftArtifactService) WithVersionEvidence(source VersionEvidenceSource)
 	return s
 }
 
+// WithWebBuildReceipt wires the F08 T-2 promotion receipt fence.
+func (s *CraftArtifactService) WithWebBuildReceipt(receipts WebBuildReceiptSource) *CraftArtifactService {
+	if s == nil {
+		return s
+	}
+	s.webReceipts = receipts
+	return s
+}
+
 // PromoteWebVersion is T15's four-check release gate: promote one Run's
 // private web candidate to an immutable published version — eligible for the
 // default preview seat — only after build, entry, preview reachability and
@@ -249,6 +271,9 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 	}
 	if s.drafts == nil {
 		return craft.Version{}, fmt.Errorf("%w: promotion requires the Workspace draft-head store (revision fence)", craft.ErrUnsupported)
+	}
+	if s.webReceipts == nil {
+		return craft.Version{}, fmt.Errorf("%w: promotion requires the web build receipt fence", craft.ErrUnsupported)
 	}
 
 	// The candidate store's own scope ACL runs here: a foreign session does
@@ -289,6 +314,13 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 	}
 	if head.ManifestDigest != candidate.ManifestDigest {
 		return craft.Version{}, fmt.Errorf("%w: workspace revision %d is sealed from manifest %s, not the candidate's manifest %s", craft.ErrConflict, head.Revision, head.ManifestDigest, candidate.ManifestDigest)
+	}
+
+	// F08 T-2 receipt fence: the promoting Run must carry its own bound,
+	// server-observed build receipt — a candidate whose build fact came from
+	// anywhere but the F08 dispatch cannot ride this gate.
+	if err := s.webReceipts.VerifyPromotionBuild(ctx, scope, candidate.WorkspaceID, candidate.RunID, candidate.ManifestDigest); err != nil {
+		return craft.Version{}, err
 	}
 
 	// The four facts, each from its own observation source.

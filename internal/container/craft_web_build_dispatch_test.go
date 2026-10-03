@@ -13,6 +13,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -251,4 +253,84 @@ func TestCraftF08WebBuildDispatchFailsClosedWithoutVerifiedContainer(t *testing.
 
 	_, err = NewCraftWebBuildDispatcher(fixture.coordinator, nil, nil, fixture.receipts, fixture.pin)
 	require.ErrorIs(t, err, craft.ErrInvalidInput, "an unassembled gate or face must fail constructor-closed")
+}
+
+// TestCraftF08WebBuildEvidenceFlipsOnServerReceipt is the T-2 flip: the same
+// build log that stays not_run without a receipt establishes BuildRan once
+// the dispatcher's immutable receipt supplies the trusted exit code.
+func TestCraftF08WebBuildEvidenceFlipsOnServerReceipt(t *testing.T) {
+	fixture := newF08WebBuildDispatchFixture(t)
+	ctx := context.Background()
+	receipt, err := fixture.dispatcher.Dispatch(ctx, fixture.task, fixture.grantID)
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", receipt.ProcessState)
+
+	// A real build log from the shipped toolchain, matching the pins.
+	workspace := t.TempDir()
+	inputDir, outputDir := filepath.Join(workspace, "input"), filepath.Join(workspace, "output")
+	craftWebTestContent(t, inputDir)
+	code, log := runCraftWebBuild(t, craftWebToolchainAbsDir(t), inputDir, outputDir, fixture.pin.RuntimeDigest)
+	require.Zero(t, code, "offline build must succeed:\n%s", log)
+	rawLog, err := os.ReadFile(filepath.Join(outputDir, "build-log.json"))
+	require.NoError(t, err)
+
+	readReceipt := craftWebBuildReceiptExitCode(fixture.receipts, fixture.pin)
+	inner := func(context.Context, craft.Task) craft.ArtifactEvidence {
+		return craft.ArtifactEvidence{PreviewRan: true, PreviewPassed: true}
+	}
+	readLog := func(context.Context, craft.Task) ([]byte, error) { return rawLog, nil }
+
+	merged := craftWebBuildEvidenceSource(inner, readLog, fixture.pin, readReceipt)(ctx, fixture.task)
+	require.True(t, merged.BuildRan, "a matching log plus the server receipt must establish the build fact")
+	require.Zero(t, merged.BuildExitCode)
+	require.True(t, merged.PreviewRan, "preview verdicts still flow")
+
+	// A run with NO receipt stays not_run — the fail-closed contract holds.
+	foreignTask := fixture.task
+	foreignTask.Fence.RunID = "run-without-receipt"
+	unobserved := craftWebBuildEvidenceSource(inner, readLog, fixture.pin, readReceipt)(ctx, foreignTask)
+	require.False(t, unobserved.BuildRan, "without a bound receipt the build fact stays unobserved")
+	require.True(t, unobserved.PreviewRan)
+}
+
+// TestCraftF08WebBuildPromotionReceiptFence drives the promotion-side receipt
+// re-read over the real repository: a bound succeeded receipt verifies, a
+// missing or non-success receipt refuses, a sealed manifest mismatch refuses.
+func TestCraftF08WebBuildPromotionReceiptFence(t *testing.T) {
+	fixture := newF08WebBuildDispatchFixture(t)
+	ctx := context.Background()
+	receipt, err := fixture.dispatcher.Dispatch(ctx, fixture.task, fixture.grantID)
+	require.NoError(t, err)
+
+	fence := craftWebBuildPromotionReceipts{receipts: fixture.receipts, pin: fixture.pin}
+	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, receipt.CandidateManifestSHA256))
+	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, ""))
+
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, "run-never-dispatched", "")
+	require.ErrorIs(t, err, craft.ErrConflict, "a run without a bound receipt cannot promote")
+
+	err = fence.VerifyPromotionBuild(ctx, fixture.task.Scope, "ws-foreign", fixture.task.Fence.RunID, "")
+	require.ErrorIs(t, err, craft.ErrConflict, "a receipt bound to another workspace cannot verify")
+
+	// An UNSEALED receipt (collector manifest sealing is a separate lane)
+	// cannot confirm a candidate digest and does not refuse one.
+	require.NoError(t, fence.VerifyPromotionBuild(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("ff", 32)))
+
+	// A SEALED receipt must agree with the candidate manifest.
+	sealedTask := fixture.task
+	sealedTask.Fence.RunID = "run-sealed-build"
+	sealedRequest, err := craftWebBuildFixedRequest(sealedTask, fixture.pin)
+	require.NoError(t, err)
+	sealedSHA, err := craftWebBuildRequestDigest(sealedRequest)
+	require.NoError(t, err)
+	sealed := receipt
+	sealed.RunID = sealedTask.Fence.RunID
+	sealed.ActivityKey = craftWebBuildActivityKey
+	sealed.RequestSHA256 = sealedSHA
+	sealed.CandidateManifestSHA256 = strings.Repeat("aa", 32)
+	_, err = fixture.receipts.RecordTerminal(ctx, sealed)
+	require.NoError(t, err)
+	require.NoError(t, fence.VerifyPromotionBuild(ctx, sealedTask.Scope, sealedTask.WorkspaceID, sealedTask.Fence.RunID, strings.Repeat("aa", 32)))
+	err = fence.VerifyPromotionBuild(ctx, sealedTask.Scope, sealedTask.WorkspaceID, sealedTask.Fence.RunID, strings.Repeat("bb", 32))
+	require.ErrorIs(t, err, craft.ErrConflict, "a sealed manifest digest that differs from the candidate's must refuse promotion")
 }

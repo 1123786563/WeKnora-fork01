@@ -229,7 +229,7 @@ func TestCraftWebEvidenceKeepsUnobservedOnForeignLog(t *testing.T) {
 		raw := fmt.Sprintf(`{"schema":1,"kind":"web","runtime_digest":"sha256:%s","toolchain_digest":"%s","template_version":"1.0.0","template_sha256":"%s","exit_code":0,"entry":"index.html","assets":["assets/craft-web.css"],"egress":"denied","error":""}`,
 			strings.Repeat("cd", 32), strings.Repeat("ee", 32), pin.TemplateSHA256)
 		return []byte(raw), nil
-	}, pin)
+	}, pin, nil)
 	got := source(context.Background(), craft.Task{})
 	require.True(t, got.PreviewRan, "inner evidence flows")
 	require.False(t, got.BuildRan, "a foreign-toolchain log never becomes build evidence")
@@ -259,7 +259,7 @@ func TestCraftWebEvidenceDoesNotTrustForgedWritableLog(t *testing.T) {
 
 	got := craftWebBuildEvidenceSource(nil, func(context.Context, craft.Task) ([]byte, error) {
 		return mustJSON(t, log), nil
-	}, pin)(context.Background(), craft.Task{})
+	}, pin, nil)(context.Background(), craft.Task{})
 	require.False(t, got.BuildRan, "the production log-only reader has no trusted outcome to bind")
 }
 

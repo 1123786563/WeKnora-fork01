@@ -157,7 +157,7 @@ func TestCraftT04Journey(t *testing.T) {
 	task.Scope = craft.Scope{TenantID: 1, UserID: "u1", SessionID: "t04-run"}
 	merged := craftWebBuildEvidenceSource(inner, func(context.Context, craft.Task) ([]byte, error) {
 		return os.ReadFile(filepath.Join(outputDir, "build-log.json"))
-	}, pin)(context.Background(), task)
+	}, pin, nil)(context.Background(), task)
 	require.True(t, innerRan, "preview evidence source is still consulted")
 	require.False(t, merged.BuildRan, "sandbox-writable logs cannot establish execution evidence without a server receipt")
 	require.True(t, merged.PreviewRan && merged.PreviewPassed, "preview verdicts survive the merge")
@@ -201,7 +201,7 @@ func TestCraftT04Journey(t *testing.T) {
 	ignored := craftWebBuildEvidenceSource(inner, func(context.Context, craft.Task) ([]byte, error) {
 		raw, _ := json.Marshal(foreignLog)
 		return raw, nil
-	}, pin)(context.Background(), task)
+	}, pin, nil)(context.Background(), task)
 	require.False(t, ignored.BuildRan, "foreign-toolchain log must not fabricate a build fact")
 
 	// 5. Malformed logs are rejected by the strict contract: smuggled
@@ -237,7 +237,7 @@ func TestCraftT04Journey(t *testing.T) {
 	// A missing log is not an error: the build fact simply stays unobserved.
 	missing := craftWebBuildEvidenceSource(inner, func(context.Context, craft.Task) ([]byte, error) {
 		return nil, os.ErrNotExist
-	}, pin)(context.Background(), task)
+	}, pin, nil)(context.Background(), task)
 	require.False(t, missing.BuildRan)
 	require.True(t, missing.PreviewRan)
 

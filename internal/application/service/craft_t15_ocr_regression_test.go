@@ -32,7 +32,7 @@ func TestCraftT15StaleCandidateRidingCurrentRevisionIsRefused(t *testing.T) {
 	svc := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), filesSvc, versionStore, candidateStore, buildEvidence,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(draftHeads, probe)
+	).WithWebPromotion(draftHeads, probe).WithWebBuildReceipt(verifiedWebBuildReceipts{})
 
 	stage := func(runID, content string, revision int64) craft.Candidate {
 		t.Helper()
@@ -105,7 +105,7 @@ func TestCraftT15EmptyHeadCannotPromoteUnsealedContent(t *testing.T) {
 	svc := NewCraftArtifactServiceWithCandidates(
 		craftSourceWith(nil, nil), filesSvc, versionStore, candidateStore, buildEvidence,
 		CraftArtifactConfig{OutputDir: craftTestOutputDir},
-	).WithWebPromotion(draftHeads, probe)
+	).WithWebPromotion(draftHeads, probe).WithWebBuildReceipt(verifiedWebBuildReceipts{})
 
 	task := craftArtifactTask(scope.SessionID, workspaceID, "run-early")
 	task.Scope = scope

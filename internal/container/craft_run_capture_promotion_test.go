@@ -33,6 +33,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// f08CaptureReceiptFence is the F08 T-2 promotion receipt fence double for
+// capture-coordinator journeys (the real fence is proven in
+// craft_web_build_dispatch_test.go).
+type f08CaptureReceiptFence struct{}
+
+func (f08CaptureReceiptFence) VerifyPromotionBuild(context.Context, craft.Scope, string, string, string) error {
+	return nil
+}
+
 func openCraftT20PromotionDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
@@ -168,7 +177,7 @@ func t20PromotionStack(t *testing.T, db *gorm.DB, probe service.WebPageLoadProbe
 	artifacts := service.NewCraftArtifactServiceWithCandidates(
 		closedCraftArtifactSource{}, files, versions, repository.NewCraftCandidateStore(db), nil,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir},
-	).WithWebPromotion(repository.NewCraftDraftHeadStore(db), probe)
+	).WithWebPromotion(repository.NewCraftDraftHeadStore(db), probe).WithWebBuildReceipt(f08CaptureReceiptFence{})
 	return newCraftPostTerminalPromoter(db, artifacts, repository.NewCraftDraftHeadStore(db), versions), versions
 }
 
@@ -332,7 +341,7 @@ func TestCraftT20PromotionRejectsHeadAdvancedAfterValidationSQLite(t *testing.T)
 		closedCraftArtifactSource{}, newCaptureWiringFiles(t, db), versions,
 		repository.NewCraftCandidateStore(db), nil,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir},
-	).WithWebPromotion(drafts, probe)
+	).WithWebPromotion(drafts, probe).WithWebBuildReceipt(f08CaptureReceiptFence{})
 	result := make(chan error, 1)
 	go func() {
 		_, err := artifacts.PromoteWebVersion(context.Background(), scope, craft.WebPromotionRequest{
