@@ -261,8 +261,8 @@ test('popup menu items and the more button are keyboard operable', async () => {
     agent: card, t, viewer: admin, locale: 'zh-CN',
     favorited: false, menuOpen: true,
     onOpen: noop, onToggleFavorite: noop,
-    onToggleMenu: (id) => toggles.push(id),
-    onMenuAction: (action) => fired.push(action),
+    onToggleMenu: (id: string | null) => toggles.push(id),
+    onMenuAction: (action: string) => fired.push(action),
   } as never));
   const item = document.querySelector('.popup-menu-item[data-action="delete"]') as HTMLElement | null;
   assert.ok(item, 'menu renders via portal at menuOpen=true');
@@ -466,8 +466,7 @@ test('builtin cards stay inside the builtin section with mode gradients', () => 
 
 test('card shows avatar, name, description fallback and capability chips with zh titles', () => {
   const agent = fixtureRows().find((row) => row.id === 'a-own')!;
-  const html = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent, t, viewer: admin, favorited: false, menuOpen: false,
+  const html = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(html, /我的助手/);
@@ -481,8 +480,7 @@ test('card shows avatar, name, description fallback and capability chips with zh
 
 test('card falls back to 暂无描述 and shared cards carry the org source pill', () => {
   const shared = fixtureRows().find((row) => row.id === 'a-shared')!;
-  const html = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: shared, t, viewer: admin, favorited: false, menuOpen: false,
+  const html = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: shared, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(html, /暂无描述/);
@@ -501,8 +499,7 @@ test('corner badge rules suppress redundant pills when section headers show', ()
 test('card menu lists 编辑/复制/停用/删除 per permission and hides delete for builtin', async () => {
   // tdesign Popup content 走 body portal —— 静态标记不可见，改 jsdom 挂载断言
   const menuText = async (agent: AgentCardModel) => {
-    const root = await mountToBody(React.createElement(AgentCard, {
-      agent, t, viewer: admin, favorited: false, menuOpen: true,
+    const root = await mountToBody(React.createElement(AgentCard, { locale: 'zh-CN',      agent, t, viewer: admin, favorited: false, menuOpen: true,
       onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
     }));
     await act(async () => { await Promise.resolve(); });
@@ -529,8 +526,7 @@ test('card menu lists 编辑/复制/停用/删除 per permission and hides delet
 
 test('disabled own agents show the 已停用 tag', () => {
   const rows = buildAllViewRows([{ id: 'a-off', name: '停用助手', is_builtin: false, created_by: 'user-1', config: {} }], [], { userId: 'user-1', disabledOwnIds: ['a-off'] });
-  const html = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: rows[0]!, t, viewer: admin, favorited: false, menuOpen: false,
+  const html = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: rows[0]!, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(html, /已停用/);
@@ -542,16 +538,14 @@ test('cards carry the expert provenance badge only when config.expert_source nam
   const rows = buildAllViewRows([
     { id: 'a-expert', name: '股票助手', is_builtin: false, created_by: 'user-1', config: { agent_mode: 'quick-answer', expert_source: { expert_id: 'stock-assistant', source: 'builtin', slug: '' } } },
   ], [], { userId: 'user-1', disabledOwnIds: [] });
-  const html = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: rows[0]!, t, viewer: admin, favorited: false, menuOpen: false,
+  const html = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: rows[0]!, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(html, /data-agent-expert-badge/);
   assert.match(html, /专家·stock-assistant/);
 
   const plain = fixtureRows().find((row) => row.id === 'a-own')!;
-  const plainHtml = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: plain, t, viewer: admin, favorited: false, menuOpen: false,
+  const plainHtml = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: plain, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.doesNotMatch(plainHtml, /data-agent-expert-badge/);
@@ -658,15 +652,13 @@ test('space view cards show no org source pill (Vue card-bottom carries only bad
   const mineShared = buildSpaceViewRows([
     { agent: { id: 'a-mine', name: '我的助手', is_builtin: false, config: {} }, share_id: 's-mine', organization_id: 'org-1', org_name: '空间一', permission: 'editor', source_tenant_id: 10001, disabled_by_me: false, is_mine: true },
   ])[0]!;
-  const html = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: mineShared, t, viewer: admin, favorited: false, menuOpen: false,
+  const html = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: mineShared, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.doesNotMatch(html, /空间一/);
 
   const otherShared = fixtureRows().find((row) => row.id === 'a-shared')!;
-  const otherHtml = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: otherShared, t, viewer: admin, favorited: false, menuOpen: false,
+  const otherHtml = renderToStaticMarkup(React.createElement(AgentCard, { locale: 'zh-CN',    agent: otherShared, t, viewer: admin, favorited: false, menuOpen: false,
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(otherHtml, /空间一/);

@@ -237,19 +237,21 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
   }
   if (field.type === 'number') {
     const raw = value == null || value === '' ? '' : String(value);
+    // Vue VectorStoreSettings.vue:331-332 binds :min/:max; tdesign-react Input
+    // has no min/max props, so the same bounds are applied on commit instead.
+    const min = field.min ?? 1;
+    const max = field.max ?? (isReplicaField(field.name) ? 10 : 64);
     return <FormItem label={label} required={field.required}>
       <TInput
         type="number"
         className="number-input"
         value={raw}
         placeholder={field.default != null ? String(field.default) : ' '}
-        min={field.min ?? 1}
-        max={field.max ?? (isReplicaField(field.name) ? 10 : 64)}
         onChange={(value) => {
           const text = String(value).trim();
           if (!text) { onChange(undefined); return; }
           const parsed = Number(text);
-          onChange(Number.isFinite(parsed) ? parsed : text);
+          onChange(Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : text);
         }}
       />
     </FormItem>;
