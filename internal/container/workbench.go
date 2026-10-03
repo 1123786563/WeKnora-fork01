@@ -30,7 +30,12 @@ func NewWorkbenchReadHandler(
 	ingestor *repository.ExecutionObservationStore,
 	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
+	// CAREER-OCR H6: WithGrantedRuns keeps the T12 task-grant read fallback
+	// alive in production — without it grant holders' task detail/snapshot
+	// reads degrade to owner-only 404 while the grant routes keep issuing
+	// grants ("grantable but unreadable"). research/delivery wire the same
+	// reader on their handlers.
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists).WithGrantedRuns(runs)
 }
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
@@ -207,7 +212,17 @@ func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
 }
 
 func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
-	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
+	// CAREER-OCR H5: the registration side must consume the same
+	// MOBILE_ENTERPRISE_APP_ID declaration the push routing side reads
+	// (newMobileAppNotificationRouting), or a declared enterprise app can be
+	// pushed to but never registers. Invalid or official values fail closed
+	// to the official-only zero policy.
+	enterpriseApp := strings.TrimSpace(os.Getenv("MOBILE_ENTERPRISE_APP_ID"))
+	if enterpriseApp == "" || enterpriseApp == repository.MobileAppIDOfficial || repository.ValidateMobileAppID(enterpriseApp) != nil {
+		enterpriseApp = ""
+	}
+	return handler.NewMobileDeviceHandler(store, mobileEnvironment()).
+		WithMobileAppPolicy(handler.MobileAppPolicy{EnterpriseAppID: enterpriseApp})
 }
 
 // NewWorkbenchTaskStateHandler wires the task archive lifecycle to the same
