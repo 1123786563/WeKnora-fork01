@@ -553,7 +553,7 @@ export function AgentDetailDrawer({ kind, agent, t, onClose, onUseInChat }: {
       <div className="shared-detail-drawer">
         <div className="shared-detail-drawer-header">
           <h3 className="shared-detail-drawer-title">{t('agent.detail.title')}</h3>
-          <button type="button" className="shared-detail-drawer-close" aria-label={t('general.close')} onClick={onClose}>
+          <button type="button" className="shared-detail-drawer-close" aria-label={t('common.close')} onClick={onClose}>
             <TIcon name="close" />
           </button>
         </div>
