@@ -2,6 +2,60 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement these tasks. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 2026-10-03 复选框核销与 low 发现裁定（核销轮对账）
+
+**结论：本计划 25 个任务、124 个步骤复选框全部核销为已完成。** 此前未勾选状态是**文档落后于代码的漂移**，非工作未做：R2 波次实际经 sweep-integration 合并（`34d1412ee`，携带 405 提交）+ 13 个 `issue140-r2-*` 合并 + 8 个 task 合并全部落入 main，计划文件本身未回头核销。本核销以 2026-10-03 审计报告（`.superpowers/sdd/2026-10-03-career-audit/report.md`，main @ a315f79d0 只读核实）为证据源：§3 五项 Review Focus 逐项给出 file:line 代码证据，§4 career/workbench Go 套件全绿（exit 0）。
+
+**勘误：** 审计报告 §2 与核销计划所称「33 个复选框」为计数误差——该计划文件在 a315f79d0 与 HEAD 上均含 **124** 个步骤复选框（25 任务 × 3–7 步）。漂移性质结论不变，本次按实际 124 个全部核销。
+
+### 任务级核销证据表（每任务内复选框由该行证据整体覆盖）
+
+| 任务 | 落地证据（审计 §3 行 × main 合并 SHA × 分支代表提交） |
+|---|---|
+| T1 删除完整性 | §3 删栅/撤销行（lifecycle_gate.go `admitLifecycleClaim`、career_export.go:1126 `deletionPurgeCareerData`）× merge `536f5f2e6` × d21b1ddb0 |
+| T2 导出边界保真 | §3 撤销行（`purgeCareerRows` 枚举含 revoked 行）× `536f5f2e6` × d21b1ddb0 |
+| T3a 规则重校验+列表 | §3 规则行（search_rule.go:21/:610）× `1a35d2a29` × 1f44705c9 |
+| T3b Web 规则恢复 | `1f93483b9` × f63f6f053/25ef240c9 |
+| T4 提交绑定 | §3 回执行 × `3e2e22205` × 04f08470c |
+| T5 Web 档案录入/清除 | `35f14215c`（6bf56e0be/fa82b9d55）+ `7f4fb4a08` × 44bb18a49 |
+| T6 Web 搜索恢复 | `db4771f46` × c2ab52569 |
+| T7 小程序写持久化 | `6b6778cdd` × 5a2e3d73d 等 |
+| T8 移动 auth smoke | `fc63fde70` × 507427b24/4d0b7fdc7 |
+| T9 迁移身份保全（验证型） | 迁移现序 SQLite 124–145 / versioned 203–225（143–145 为 T13/T21/T17 追加，零重编号）；审计 §4 全绿；2026-09-30 用户裁定见 addendum |
+| T11 周期 claim 原子化 | §3 规则行 × `e7c4d1e7e` × 18de01641 |
+| T12 RulePage 恢复锁 | `1f93483b9` × 25ef240c9 |
+| T13 跨实例删除门 | §3 删栅行 × `aecb713d0` × 76809f586/d1d85ddda |
+| T14 保存编辑如实报告 | `6b6778cdd` × fd1d1b636 |
+| T15 推送意图持久化 | `6b6778cdd` × 413c52601 |
+| T16 scope 绑定 | `6b6778cdd` × 7112cf0c7 |
+| T17 规则编辑保护 | §3 规则行 × `70d047b4a` × 7bfc8fbca |
+| T18 可空 nextDueAt 解码 | `1f93483b9` × 271508f5c |
+| T19 畸形回执边界 | `6b6778cdd` × 5eec14e06/ddb1893dc |
+| T20 写锁/陈旧读围栏 | `1f93483b9` × 271508f5c |
+| T21 上传 claim 所有权 | §3 unknown-request 行 × `c3e593449` × f3d542427/78f04fa7d（审计引 99e1d55a8/d420bb042 为同义短 SHA） |
+| T22 提交→进度投影 | §3 回执行 × `7d384edd8` × a66cbf155 |
+| T23 物料身份传递 | `3e2e22205` × 9fc83ceec |
+| T24 直查回执绑定 | `db4771f46` × 24e9ef4db |
+| T25 物料传递集成测试 | `3e2e22205` × c4b0a06d4 |
+
+### 11 条 low OCR 历史发现裁定（源自部分会话 b5b5cf36，comments 导出 /tmp/issue140-ocr-fresh-comments.json；2026-10-03 对 main @ 210e164a1 逐条核码）
+
+| # | 位置 | 裁定 | 理由/证据 |
+|---|---|---|---|
+| 1 | wx-driver.cjs:22-26 辅助函数与 t24r1 驱动重复 | accept-with-reason | T33 冻结证据快照（一次性重放工件），头部已注明「复用 T24/T26 模式」；非长期维护产品码，抽共享模块反而破坏证据自包含性 |
+| 2 | wx-driver.cjs:40-42 静默 catch 吞错 | accept-with-reason | 同上，证据脚本定位为可归因 FAIL 断言；轮询容错的静默 catch 属驱动惯例 |
+| 3 | button.tsx 复刻无回归护栏 | **fixed-by-r2** | `1db12dcca`（在 main）新增 apps/embed/src/embed-styles.test.ts：embed-btn--primary/--text、wk-emb-34、text-underline-offset 均有断言，embed 套件 21/21 绿 |
+| 4 | button.tsx:1 死 React 默认导入 | accept-with-reason | tsconfig `jsx: react-jsx` 下零行为影响（现核：文件内无 `React.` 引用）；下次触碰该文件顺手移除，不值得立票 |
+| 5 | EmbedEntryPage.tsx:826 死类+下划线偏移丢失 | **fixed-by-r2** | `1db12dcca` 已在 .wk-emb-34:hover 补 `text-underline-offset: 2px`（embed-u.css:320-323）并加测试断言；残留 `underline-offset-2` 类串因 Tailwind 已移除而 inert，无行为 |
+| 6 | break-all 译为 overflow-wrap:anywhere 语义漂移 | accept-with-reason | anywhere 优先整词断行，窄容器长 URL/标题观感优于逐字符 break-all，属改良；若要求严格保真一行改回 `word-break: break-all` |
+| 7 | #f8fafc→#f3f3f3 例外未在文件头标注 | accept-with-reason | 行内注释（embed-u.css:225）已载明对齐 Vue 基线 `--td-bg-color-secondarycontainer` 的依据；单一有据例外，头注重构收益不抵扰动 |
+| 8 | miniprogram config 闭包种子 'button/button' 硬编码 | **needs-followup** | 真实护栏缺口：未来页面引入新 TDesign 组件（如 t-dialog）时构建期不报错、真机复现 D1 同款白屏；现仅 button 在用故未触发。建议按页面 usingComponents 反向扫描自动收集种子或构建期 throw |
+| 9 | config/index.ts realpathSync 先于友好报错抛 ENOENT | accept-with-reason | 原生 ENOENT 已点名完整缺失路径，可诊断；「run pnpm install first」属 DX 打磨非缺陷 |
+| 10 | files.ts ".pdf"（dot==0）扩展名边界 | accept-with-reason | 触发需服务端下发无主体名的隐藏文件 ".pdf"，现实中不可达（现核 dot>0 仍在）；`dot>=0` 一行可封，随下次触碰顺手修 |
+| 11 | files.ts unlink 时机+清理错误文案坍缩 | accept-with-reason | 清理失败已置为业务失败对外可见（finally 块注释明示承诺），路径信息保留在 cause；真机查看器按需读取风险并入已阻塞的 T33/#172 真机验收门一并复核 |
+
+**裁定统计：** fixed-by-r2 2 / accept-with-reason 8 / needs-followup 1（#8 闭包种子护栏，建议随下一代码轮立票）。核销轮未改任何生产码。
+
 **Goal:** Resolve verified career workflow and privacy findings from independent review of `db234c5eb171f2dde7427d382b55b503a038f879..e7edfa72728c5d44940d9f145a0b5489089f4692`.
 
 **Architecture:** Keep Career Office as the source of career facts and use existing scope/revision/idempotency contracts. Make deletion a complete barrier across stored files, Career rows, Workbench projections and receipts. Preserve unknown write identities until a receipt or same-request replay resolves them.
@@ -40,12 +94,12 @@
 
 **Steps:**
 
-- [ ] Add regressions for revoke-export then delete (both PDF and DOCX bytes absent), publish paused across deletion finalization, and application commit paused before Workbench linking while deletion runs.
-- [ ] Run the three regressions and record the current leak/race failures.
-- [ ] Implement the smallest profile-owned deletion fence or equivalent serialized lifecycle contract; enumerate all export rows regardless of `revoked` status; remove late-created objects before removing their locators; repeat/serialize Workbench projection removal before writing the terminal receipt.
-- [ ] Ensure failed physical deletion or a still-running writer prevents `deleted` from being returned; retain retryability/idempotency for cleanup.
-- [ ] Run `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container` and `git diff --check`; expected: all deletion races leave no files/rows and a retry completes safely.
-- [ ] Commit only owned paths and report BASE/HEAD plus race evidence.
+- [x] Add regressions for revoke-export then delete (both PDF and DOCX bytes absent), publish paused across deletion finalization, and application commit paused before Workbench linking while deletion runs.
+- [x] Run the three regressions and record the current leak/race failures.
+- [x] Implement the smallest profile-owned deletion fence or equivalent serialized lifecycle contract; enumerate all export rows regardless of `revoked` status; remove late-created objects before removing their locators; repeat/serialize Workbench projection removal before writing the terminal receipt.
+- [x] Ensure failed physical deletion or a still-running writer prevents `deleted` from being returned; retain retryability/idempotency for cleanup.
+- [x] Run `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container` and `git diff --check`; expected: all deletion races leave no files/rows and a retry completes safely.
+- [x] Commit only owned paths and report BASE/HEAD plus race evidence.
 
 **Acceptance:** After a successful deletion receipt, no Career export bytes (including revoked versions), Career rows, Workbench sessions/runs/application mappings, or reachable receipts remain for the captured owner scope; concurrent writes either complete before cleanup or fail without creating orphaned data.
 
@@ -61,11 +115,11 @@
 
 **Steps:**
 
-- [ ] Change archive fixture to include a non-empty preparation body, sources and version anchor; assert the exported archive preserves them.
-- [ ] Add an injected count-query error test and assert the boundary returns the error instead of a successful zero count.
-- [ ] Run tests RED, propagate query errors, and serialize the complete preparation receipt into the archive using the existing decoder/validation contract.
-- [ ] Run `go test -count=1 ./internal/modules/career -run 'TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders|TestCareerDeletionBoundary'` and `git diff --check`; expected: payload retained and DB error fails closed.
-- [ ] Commit only owned paths and report evidence.
+- [x] Change archive fixture to include a non-empty preparation body, sources and version anchor; assert the exported archive preserves them.
+- [x] Add an injected count-query error test and assert the boundary returns the error instead of a successful zero count.
+- [x] Run tests RED, propagate query errors, and serialize the complete preparation receipt into the archive using the existing decoder/validation contract.
+- [x] Run `go test -count=1 ./internal/modules/career -run 'TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders|TestCareerDeletionBoundary'` and `git diff --check`; expected: payload retained and DB error fails closed.
+- [x] Commit only owned paths and report evidence.
 
 **Acceptance:** Export-before-delete preserves every preparation fact promised by the boundary; unavailable counts are reported as unavailable/error, never as absence.
 
@@ -81,11 +135,11 @@
 
 **Steps:**
 
-- [ ] Add failing service tests where a pause/edit commits after due-row collection but before quota/search; assert no new charged search begins. Add list contract tests for scope isolation, empty response shape, sort order, exact summary fields, and authentication.
-- [ ] Run RED tests and capture the stale-dispatch failure.
-- [ ] Implement the pre-charge revalidation and list signature/handler; register the route and add contract tests without changing quota or multi-rule policy.
-- [ ] Run `go test -count=1 ./internal/modules/career -run 'Rule|TriggerDue'` plus the route/handler contract test and `git diff --check`; report which checks started external I/O.
-- [ ] Commit only owned backend files and report exact behavior.
+- [x] Add failing service tests where a pause/edit commits after due-row collection but before quota/search; assert no new charged search begins. Add list contract tests for scope isolation, empty response shape, sort order, exact summary fields, and authentication.
+- [x] Run RED tests and capture the stale-dispatch failure.
+- [x] Implement the pre-charge revalidation and list signature/handler; register the route and add contract tests without changing quota or multi-rule policy.
+- [x] Run `go test -count=1 ./internal/modules/career -run 'Rule|TriggerDue'` plus the route/handler contract test and `git diff --check`; report which checks started external I/O.
+- [x] Commit only owned backend files and report exact behavior.
 
 **Acceptance:** A committed pause/edit prevents any later scheduled search from starting; the scoped list returns bounded summaries with the frozen response contract.
 
@@ -101,11 +155,11 @@
 
 **Steps:**
 
-- [ ] Add failing tests for empty localStorage with an existing rule, multiple-rule selection, malformed/failed list decode, and reload after unknown create proving same request ID/revision and no duplicate create.
-- [ ] Run RED tests and record existing duplicate/create-on-storage-loss behavior.
-- [ ] Implement strict list decoding and server-first rule discovery/selection plus scope-keyed unknown-write persistence and receipt recovery.
-- [ ] Run API client contract tests, RulePage tests, Web typecheck and `git diff --check`; record executable test results.
-- [ ] Commit only the API client and RulePage files.
+- [x] Add failing tests for empty localStorage with an existing rule, multiple-rule selection, malformed/failed list decode, and reload after unknown create proving same request ID/revision and no duplicate create.
+- [x] Run RED tests and record existing duplicate/create-on-storage-loss behavior.
+- [x] Implement strict list decoding and server-first rule discovery/selection plus scope-keyed unknown-write persistence and receipt recovery.
+- [x] Run API client contract tests, RulePage tests, Web typecheck and `git diff --check`; record executable test results.
+- [x] Commit only the API client and RulePage files.
 
 **Acceptance:** Storage loss cannot hide an existing server rule or create a duplicate while an earlier write is unresolved; all rule access remains user/tenant scoped.
 
@@ -121,11 +175,11 @@
 
 **Steps:**
 
-- [ ] Add a two-Office/shared-DB race test that blocks after candidate scan, commits pause/edit through another Office, then proves no claim/search starts. Add a second test where claim commits first and pause follows, proving the same request ID completes/reconciles as an already-started run. Add pagination tests for same-timestamp IDs, empty end page, malformed cursor, and >50 rules.
-- [ ] Run regressions RED and record which race is currently accepted.
-- [ ] Implement transactionally serialized claims and restart reconciliation without time-only claim takeover; do not hold a DB transaction over quota/network I/O. Add bounded cursor pagination and nullable `nextDueAt` schema/contract behavior.
-- [ ] Run focused Career Go tests and the SQLite migration/up-down tests; run Postgres migration integration if configured, plus `git diff --check`.
-- [ ] Commit only owned backend/schema paths and report exact linearization/recovery semantics.
+- [x] Add a two-Office/shared-DB race test that blocks after candidate scan, commits pause/edit through another Office, then proves no claim/search starts. Add a second test where claim commits first and pause follows, proving the same request ID completes/reconciles as an already-started run. Add pagination tests for same-timestamp IDs, empty end page, malformed cursor, and >50 rules.
+- [x] Run regressions RED and record which race is currently accepted.
+- [x] Implement transactionally serialized claims and restart reconciliation without time-only claim takeover; do not hold a DB transaction over quota/network I/O. Add bounded cursor pagination and nullable `nextDueAt` schema/contract behavior.
+- [x] Run focused Career Go tests and the SQLite migration/up-down tests; run Postgres migration integration if configured, plus `git diff --check`.
+- [x] Commit only owned backend/schema paths and report exact linearization/recovery semantics.
 
 **Acceptance:** A pause/edit that commits before a due-period claim prevents the external search; a committed claim resolves under the same deterministic request ID after restart; each list page is bounded and stable.
 
@@ -141,11 +195,11 @@
 
 **Steps:**
 
-- [ ] Add failing tests for paused/disabled `nextDueAt:null`, paged lists, pending create during slow receipt lookup, failed detail read, and out-of-order selection responses.
-- [ ] Run tests RED; verify a new create is currently possible during each incomplete state.
-- [ ] Implement strict cursor and nullable-field decoding; keep the form unavailable until initialization/recovery completes; fence detail responses by scope and selection generation.
-- [ ] Run API-client tests, RulePage tests, Web typecheck, and `git diff --check`.
-- [ ] Commit only API-client and RulePage paths; report race timelines and cursor termination evidence.
+- [x] Add failing tests for paused/disabled `nextDueAt:null`, paged lists, pending create during slow receipt lookup, failed detail read, and out-of-order selection responses.
+- [x] Run tests RED; verify a new create is currently possible during each incomplete state.
+- [x] Implement strict cursor and nullable-field decoding; keep the form unavailable until initialization/recovery completes; fence detail responses by scope and selection generation.
+- [x] Run API-client tests, RulePage tests, Web typecheck, and `git diff --check`.
+- [x] Commit only API-client and RulePage paths; report race timelines and cursor termination evidence.
 
 **Acceptance:** No second rule write can start before existing rule state and unresolved requests are known; delayed reads cannot overwrite the user's latest selection.
 
@@ -161,12 +215,12 @@
 
 **Steps:**
 
-- [ ] Add deterministic two-Office tests with a shared database/storage/linker/search seam: pause an application linker, material writer and rule search after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while any admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
-- [ ] Run the regressions and record the current cross-instance leak/order failure.
-- [ ] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Integrate rule-period claim creation and lifecycle admission in the same transaction. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
-- [ ] Ensure SQLite and PostgreSQL transitions serialize on the same durable row with conditional updates/row locks, and that failure or process restart leaves a retryable, non-terminal state.
-- [ ] Run focused race and recovery tests, relevant Career/Workbench/container suites, migration tests, and `git diff --check`; expected: two Offices observe one ordering and no effect can appear after a successful deletion receipt.
-- [ ] Commit owned paths and report schema IDs, claim recovery behavior, and exact test evidence.
+- [x] Add deterministic two-Office tests with a shared database/storage/linker/search seam: pause an application linker, material writer and rule search after admission, start deletion through a second Office, and assert deletion cannot return terminal `deleted` while any admitted effect is unresolved; also assert new work is rejected after deletion enters `deleting`.
+- [x] Run the regressions and record the current cross-instance leak/order failure.
+- [x] Add a persistent scope gate and operation claims. Admit each external effect before its first side effect; retain claims until the operation outcome or compensation is durably known. Integrate rule-period claim creation and lifecycle admission in the same transaction. Deletion transitions active→deleting only after claims are reconciled, retains deleting through cleanup and the terminal receipt, and rejects new claims. Do not expire claims by elapsed time alone; expose retry/recovery by original request ID.
+- [x] Ensure SQLite and PostgreSQL transitions serialize on the same durable row with conditional updates/row locks, and that failure or process restart leaves a retryable, non-terminal state.
+- [x] Run focused race and recovery tests, relevant Career/Workbench/container suites, migration tests, and `git diff --check`; expected: two Offices observe one ordering and no effect can appear after a successful deletion receipt.
+- [x] Commit owned paths and report schema IDs, claim recovery behavior, and exact test evidence.
 
 **Acceptance:** Across separately constructed handlers/processes, every application link, material object effect and paid rule-period dispatch is admitted by the shared gate; deletion cannot finalize while an earlier claim is unresolved and no later operation is admitted after deletion begins.
 
@@ -182,11 +236,11 @@
 
 **Steps:**
 
-- [ ] Add regressions for (a) preflight claim read failure, and (b) edit success followed by material-detail read failure; assert only (a) says the edit remains unsubmitted and both retain enough recovery state.
-- [ ] Run tests RED and capture the contradictory saved/not-saved message on (b).
-- [ ] Move the preflight read into the handled local-draft error path; isolate post-commit detail refresh from the edit failure catch and keep the committed receipt/success state visible.
-- [ ] Run focused preparation tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
-- [ ] Commit only the page and its focused tests.
+- [x] Add regressions for (a) preflight claim read failure, and (b) edit success followed by material-detail read failure; assert only (a) says the edit remains unsubmitted and both retain enough recovery state.
+- [x] Run tests RED and capture the contradictory saved/not-saved message on (b).
+- [x] Move the preflight read into the handled local-draft error path; isolate post-commit detail refresh from the edit failure catch and keep the committed receipt/success state visible.
+- [x] Run focused preparation tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
+- [x] Commit only the page and its focused tests.
 
 **Acceptance:** Once `editMaterial` resolves successfully, no later read error can tell the user that the edit was not submitted; a preflight failure remains an explicit non-submission with recoverable local draft.
 
@@ -202,11 +256,11 @@
 
 **Steps:**
 
-- [ ] Add tests for accepted authorization followed by successful preference write, accepted authorization with missing revision, rejected/unavailable results leaving preference untouched, and unknown preference-write recovery without a second native request.
-- [ ] Run tests RED.
-- [ ] Persist the subscription fact after accepted native authorization; display separate authorization and server-preference states and do not claim message delivery.
-- [ ] Run focused rules/reminder tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
-- [ ] Commit only owned reminder UI/test files.
+- [x] Add tests for accepted authorization followed by successful preference write, accepted authorization with missing revision, rejected/unavailable results leaving preference untouched, and unknown preference-write recovery without a second native request.
+- [x] Run tests RED.
+- [x] Persist the subscription fact after accepted native authorization; display separate authorization and server-preference states and do not claim message delivery.
+- [x] Run focused rules/reminder tests, Mini Program typecheck where executable, and `git diff --check`; report existing unrelated type errors separately.
+- [x] Commit only owned reminder UI/test files.
 
 **Acceptance:** Users who opt back in update the shared Career push preference; permission is never represented as delivery, and ambiguous preference writes remain recoverable.
 
@@ -222,11 +276,11 @@
 
 **Steps:**
 
-- [ ] Add behavior tests for account A→B while native prompt is pending (no B marker/write), accepted authorization→missing revision→opt-out→resubscribe (fresh prompt required), malformed success receipt (contract violation is not retryable unknown), and local draft removal failure after successful edit (committed state remains visible).
-- [ ] Run RED against current implementation and save exact reproductions.
-- [ ] Bind all pending push state and request IDs to the captured scope; revalidate after every await; clear unsynced authorization on confirmed opt-out; use `decodeAs` for write and receipt payloads. Split the `editMaterial` failure catch from all post-commit cleanup/readback effects and report each independently.
-- [ ] Run focused rule/reminder and preparation tests, Mini Program typecheck where executable, and `git diff --check`; report unrelated account-page type errors separately.
-- [ ] Commit only the owned Mini Program files and report exact scope-switch, consent, malformed-receipt, and post-commit-cleanup evidence.
+- [x] Add behavior tests for account A→B while native prompt is pending (no B marker/write), accepted authorization→missing revision→opt-out→resubscribe (fresh prompt required), malformed success receipt (contract violation is not retryable unknown), and local draft removal failure after successful edit (committed state remains visible).
+- [x] Run RED against current implementation and save exact reproductions.
+- [x] Bind all pending push state and request IDs to the captured scope; revalidate after every await; clear unsynced authorization on confirmed opt-out; use `decodeAs` for write and receipt payloads. Split the `editMaterial` failure catch from all post-commit cleanup/readback effects and report each independently.
+- [x] Run focused rule/reminder and preparation tests, Mini Program typecheck where executable, and `git diff --check`; report unrelated account-page type errors separately.
+- [x] Commit only the owned Mini Program files and report exact scope-switch, consent, malformed-receipt, and post-commit-cleanup evidence.
 
 **Acceptance:** Authorization cannot cross account scope or survive explicit opt-out as an implicit new consent; malformed receipts stop safely; once an edit receipt is committed, cleanup/readback failure cannot label the edit unsubmitted.
 
@@ -242,12 +296,12 @@
 
 **Steps:**
 
-- [ ] Add tests for malformed subscribed receipt followed by the visible sync action; assert no second POST until a verified profile refresh clears the guard.
-- [ ] Add the combined-state test: a subscribed intent is pending, opt-out receives a malformed success receipt, and the retry action is attempted; assert the retry seam and control cannot send while profile reconciliation is required.
-- [ ] Add an opt-out action test where the server may have committed but its 200 receipt is malformed; assert the old accepted marker is already invalidated and a later subscribe requires a fresh native prompt.
-- [ ] Run the tests RED against Task 16, then enforce the invalid-receipt lock in every shared persistence/retry seam and disable all retry/sync controls while reconciliation is required; invalidate authorization at opt-out intent time while retaining uncertainty messaging.
-- [ ] Run focused reminder tests, Mini Program typecheck where executable, and `git diff --check`; separate existing account-page type errors from task diagnostics.
-- [ ] Commit only owned Mini Program files and report the exact recovery timeline and tests.
+- [x] Add tests for malformed subscribed receipt followed by the visible sync action; assert no second POST until a verified profile refresh clears the guard.
+- [x] Add the combined-state test: a subscribed intent is pending, opt-out receives a malformed success receipt, and the retry action is attempted; assert the retry seam and control cannot send while profile reconciliation is required.
+- [x] Add an opt-out action test where the server may have committed but its 200 receipt is malformed; assert the old accepted marker is already invalidated and a later subscribe requires a fresh native prompt.
+- [x] Run the tests RED against Task 16, then enforce the invalid-receipt lock in every shared persistence/retry seam and disable all retry/sync controls while reconciliation is required; invalidate authorization at opt-out intent time while retaining uncertainty messaging.
+- [x] Run focused reminder tests, Mini Program typecheck where executable, and `git diff --check`; separate existing account-page type errors from task diagnostics.
+- [x] Commit only owned Mini Program files and report the exact recovery timeline and tests.
 
 **Acceptance:** No subscribed write can be retried through a secondary UI entry while the receipt is invalid; profile reconciliation is required. An opt-out attempt cannot leave stale consent that suppresses the next native authorization prompt, including malformed-success outcomes.
 
@@ -263,11 +317,11 @@
 
 **Steps:**
 
-- [ ] Add a controlled claim→enabled edit→run completion test; assert exact edited schedule/revision/updatedAt survive. Add lock-order/concurrent pause-vs-claim test and deletion-vs-rule-claim test using two Office instances/shared DB. Add query-plan or schema assertion for the keyset index and reject unknown cursor versions.
-- [ ] Preserve existing production usage evidence: `usageReservationRecord` is unique by `(tenant,user,requestId)`, `admitSearchUsage` returns success for an existing reserved/settled request, and `TestDuplicateRequestDoesNotDoubleReserveOrCharge` asserts two admissions for one request retain one unit. Finding F3 from `/tmp/issue140-r2-task11-review.md` is ruled out for the production gate by this evidence; no new gate architecture is needed for it.
-- [ ] Run tests RED, then move period/schedule advancement into the claim transaction; ensure both PostgreSQL lock order and SQLite conditional write serialize with `SetRule`; use the transaction-scoped deletion-gate claim. Make terminalization update only run/todos. Add page index migration 145/224 and versioned cursor/summary-only query.
-- [ ] Run `go test -count=1 ./internal/modules/career`, `go test -count=1 ./internal/database` including migration 143/144/145 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
-- [ ] Commit only owned backend/schema files and report race timelines, lock order, lifecycle-claim ordering, index migration and quota-idempotency ruling.
+- [x] Add a controlled claim→enabled edit→run completion test; assert exact edited schedule/revision/updatedAt survive. Add lock-order/concurrent pause-vs-claim test and deletion-vs-rule-claim test using two Office instances/shared DB. Add query-plan or schema assertion for the keyset index and reject unknown cursor versions.
+- [x] Preserve existing production usage evidence: `usageReservationRecord` is unique by `(tenant,user,requestId)`, `admitSearchUsage` returns success for an existing reserved/settled request, and `TestDuplicateRequestDoesNotDoubleReserveOrCharge` asserts two admissions for one request retain one unit. Finding F3 from `/tmp/issue140-r2-task11-review.md` is ruled out for the production gate by this evidence; no new gate architecture is needed for it.
+- [x] Run tests RED, then move period/schedule advancement into the claim transaction; ensure both PostgreSQL lock order and SQLite conditional write serialize with `SetRule`; use the transaction-scoped deletion-gate claim. Make terminalization update only run/todos. Add page index migration 145/224 and versioned cursor/summary-only query.
+- [x] Run `go test -count=1 ./internal/modules/career`, `go test -count=1 ./internal/database` including migration 143/144/145 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
+- [x] Commit only owned backend/schema files and report race timelines, lock order, lifecycle-claim ordering, index migration and quota-idempotency ruling.
 
 **Acceptance:** A committed edit is never overwritten by a running period; pause/edit and dispatch claim share a deadlock-safe linearization order across PostgreSQL and SQLite; deletion is ordered against rule dispatch; list pagination is indexed, summary-only and cursor-versioned. Existing quota idempotency remains covered by the current ledger test.
 
@@ -283,10 +337,10 @@
 
 **Steps:**
 
-- [ ] Add contract tests for enabled, paused and disabled list, detail and write receipt JSON; run RED against the current optional-string detail/receipt types.
-- [ ] Update client types and strict decoders for required nullable fields; preserve the valid Task 12 list behavior and fail closed on inconsistent status/time pairs.
-- [ ] Run Career API-client tests, RulePage tests, Web typecheck and `git diff --check`.
-- [ ] Commit only owned API/client test files and report exact JSON fixtures and command results.
+- [x] Add contract tests for enabled, paused and disabled list, detail and write receipt JSON; run RED against the current optional-string detail/receipt types.
+- [x] Update client types and strict decoders for required nullable fields; preserve the valid Task 12 list behavior and fail closed on inconsistent status/time pairs.
+- [x] Run Career API-client tests, RulePage tests, Web typecheck and `git diff --check`.
+- [x] Commit only owned API/client test files and report exact JSON fixtures and command results.
 
 **Acceptance:** Every rule read/write surface has the same explicit timestamp-or-null schedule field and validates its status relationship.
 
@@ -302,11 +356,11 @@
 
 **Steps:**
 
-- [ ] Add a listed-rule `not_found` detail test with another rule present; assert no create/write is enabled until rediscovery resolves the inconsistency.
-- [ ] Add mismatched write-receipt test; assert the original durable ID and unknown lock survive a second submit attempt and remount/recovery.
-- [ ] Add save-A → select-B → late refresh-A test; assert B remains selected and is the only rule ID on the next save.
-- [ ] Run tests RED, then make the smallest state-machine changes to keep unresolved writes locked and fence every read by selection generation and selected ID.
-- [ ] Run focused RulePage tests, Web typecheck and `git diff --check`; commit only owned RulePage files and report each tested interleaving.
+- [x] Add a listed-rule `not_found` detail test with another rule present; assert no create/write is enabled until rediscovery resolves the inconsistency.
+- [x] Add mismatched write-receipt test; assert the original durable ID and unknown lock survive a second submit attempt and remount/recovery.
+- [x] Add save-A → select-B → late refresh-A test; assert B remains selected and is the only rule ID on the next save.
+- [x] Run tests RED, then make the smallest state-machine changes to keep unresolved writes locked and fence every read by selection generation and selected ID.
+- [x] Run focused RulePage tests, Web typecheck and `git diff --check`; commit only owned RulePage files and report each tested interleaving.
 
 **Acceptance:** No list/detail inconsistency or mismatched receipt can unlock a new rule write, and stale post-save reads cannot change the currently selected edit target.
 
@@ -322,13 +376,13 @@
 
 **Steps:**
 
-- [ ] Add production-shaped storage test whose adapter allocates a fresh physical key on each call and loses the first response; assert retry reuses the same key or the first key remains discoverable and is deleted before terminal deletion.
-- [ ] Add a two-Office exact-same-request interleaving: attempt A owns and pauses before effect, attempt B retries, deletion races; assert B cannot independently release A's ownership and deletion cannot finalize until all effects resolve.
-- [ ] Add a two-Office resume-upload/deletion interleaving paused before `SaveBytes` or catalog binding; assert deletion waits or upload is rejected before any external write.
-- [ ] Reproduce all three findings against Task 13; introduce owner-token/attempt state, stable physical object-key contract, and upload lifecycle admission with crash/replay recovery.
-- [ ] Append migration IDs only when required (next pair SQLite144/versioned223); test up/down and uniqueness while preserving 112–143 / 191–222.
-- [ ] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
-- [ ] Commit owned backend/storage changes and report the three race timelines, object-key guarantees, migration IDs and exact verification evidence.
+- [x] Add production-shaped storage test whose adapter allocates a fresh physical key on each call and loses the first response; assert retry reuses the same key or the first key remains discoverable and is deleted before terminal deletion.
+- [x] Add a two-Office exact-same-request interleaving: attempt A owns and pauses before effect, attempt B retries, deletion races; assert B cannot independently release A's ownership and deletion cannot finalize until all effects resolve.
+- [x] Add a two-Office resume-upload/deletion interleaving paused before `SaveBytes` or catalog binding; assert deletion waits or upload is rejected before any external write.
+- [x] Reproduce all three findings against Task 13; introduce owner-token/attempt state, stable physical object-key contract, and upload lifecycle admission with crash/replay recovery.
+- [x] Append migration IDs only when required (next pair SQLite144/versioned223); test up/down and uniqueness while preserving 112–143 / 191–222.
+- [x] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
+- [x] Commit owned backend/storage changes and report the three race timelines, object-key guarantees, migration IDs and exact verification evidence.
 
 **Acceptance:** A `deleted` receipt is issued only after every application/material/upload external effect admitted before deletion is terminal and all discoverable private object keys are removed. Duplicate retries cannot release another attempt's claim, and storage retries cannot orphan an untracked prior object.
 
@@ -344,12 +398,12 @@
 
 **Steps:**
 
-- [ ] Add RED tests that record both a known-export and explicit-unknown submission, read `ApplicationProgress`, and assert one linked submitted event, correct stage, channel/time/version facts and stable replay without duplicate events.
-- [ ] Test transaction rollback so a failed progress-event write leaves neither a submission nor a timeline event.
-- [ ] Implement an atomic link or deterministic projection from the submission record; reject generic submitted/resubmitted events as Task4 already requires.
-- [ ] If a `submission_id` link column is necessary, append SQLite146/versioned225 after Task17's 145/224, add up/down and uniqueness coverage in the task-owned submission migration test file, and do not modify `career_migration_test.go`.
-- [ ] Run focused submission/progress tests, Career package and database migrations, and `git diff --check`; run PostgreSQL transactional test when configured, otherwise report the limitation.
-- [ ] Commit only backend event/link/test/schema files and document replay, ordering and correction semantics.
+- [x] Add RED tests that record both a known-export and explicit-unknown submission, read `ApplicationProgress`, and assert one linked submitted event, correct stage, channel/time/version facts and stable replay without duplicate events.
+- [x] Test transaction rollback so a failed progress-event write leaves neither a submission nor a timeline event.
+- [x] Implement an atomic link or deterministic projection from the submission record; reject generic submitted/resubmitted events as Task4 already requires.
+- [x] If a `submission_id` link column is necessary, append SQLite146/versioned225 after Task17's 145/224, add up/down and uniqueness coverage in the task-owned submission migration test file, and do not modify `career_migration_test.go`.
+- [x] Run focused submission/progress tests, Career package and database migrations, and `git diff --check`; run PostgreSQL transactional test when configured, otherwise report the limitation.
+- [x] Commit only backend event/link/test/schema files and document replay, ordering and correction semantics.
 
 **Acceptance:** A confirmed actual submission becomes visible in `ApplicationProgress` and advances the projected stage exactly once; its channel/time/material version remains traceable, including the explicit unknown-version state.
 
@@ -365,10 +419,10 @@
 
 **Steps:**
 
-- [ ] Add a test for the ApplicationPage→ProgressPage→SubmissionPage path where the application has a known submittable export; assert the already loaded material ID reaches the page and its exact export ID/version is submitted.
-- [ ] Add a case for absent material/export that still offers only an explicit unknown version or a clear unavailable state.
-- [ ] Run tests RED, pass the real application material ID through the entry seam, and preserve the existing scope/revision behavior.
-- [ ] Run focused ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only owned Web file/test changes.
+- [x] Add a test for the ApplicationPage→ProgressPage→SubmissionPage path where the application has a known submittable export; assert the already loaded material ID reaches the page and its exact export ID/version is submitted.
+- [x] Add a case for absent material/export that still offers only an explicit unknown version or a clear unavailable state.
+- [x] Run tests RED, pass the real application material ID through the entry seam, and preserve the existing scope/revision behavior.
+- [x] Run focused ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only owned Web file/test changes.
 
 **Acceptance:** A user confirming from the progress timeline can bind the actual exported material version when known, while unknown or unavailable versions remain explicit and honest.
 
@@ -384,10 +438,10 @@
 
 **Steps:**
 
-- [ ] Add a RED direct-response test with matching request ID and mismatched query; assert result is not shown, pending identity remains, and a second charged search is blocked.
-- [ ] Add remount coverage proving the original query/request ID is looked up and cannot be overwritten by the mismatched response.
-- [ ] Compare both request ID and query in the direct completion path, retain unknown state on mismatch, and keep safe receipt recovery available.
-- [ ] Run focused SearchPage tests, Web typecheck and `git diff --check`; commit only SearchPage source/tests and report both interleavings.
+- [x] Add a RED direct-response test with matching request ID and mismatched query; assert result is not shown, pending identity remains, and a second charged search is blocked.
+- [x] Add remount coverage proving the original query/request ID is looked up and cannot be overwritten by the mismatched response.
+- [x] Compare both request ID and query in the direct completion path, retain unknown state on mismatch, and keep safe receipt recovery available.
+- [x] Run focused SearchPage tests, Web typecheck and `git diff --check`; commit only SearchPage source/tests and report both interleavings.
 
 **Acceptance:** No charged-search result can clear a durable attempt unless request ID and query identify the same submitted operation.
 
@@ -403,9 +457,9 @@
 
 **Steps:**
 
-- [ ] Add an ApplicationPage-level regression for the full owner→child material ID prop handoff using the existing MaterialPage/application seam.
-- [ ] Run RED if the integration currently drops the ID; otherwise document that the behavioral path is already correct and the test closes the coverage gap.
-- [ ] Run focused ApplicationPage/ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only test changes unless RED proves a production wiring correction is needed.
+- [x] Add an ApplicationPage-level regression for the full owner→child material ID prop handoff using the existing MaterialPage/application seam.
+- [x] Run RED if the integration currently drops the ID; otherwise document that the behavioral path is already correct and the test closes the coverage gap.
+- [x] Run focused ApplicationPage/ProgressPage/SubmissionPage tests, Web typecheck and `git diff --check`; commit only test changes unless RED proves a production wiring correction is needed.
 
 **Acceptance:** The test exercises actual parent state propagation and proves a known export remains selectable and bound through the user-facing confirmation path.
 
@@ -421,11 +475,11 @@
 
 **Steps:**
 
-- [ ] Add server test rejecting generic `submitted` and `resubmitted` events without a bound submission; add UI test that the generic timeline omits those event choices and submission confirmation remains available through the dedicated flow.
-- [ ] Run RED tests.
-- [ ] Reject unbound event types at the service boundary and route Web users to the dedicated submission confirmation flow; keep timeline projection unchanged for legacy already-bound events.
-- [ ] Run focused career progress/submission Go tests and ProgressPage tests; `git diff --check` must pass.
-- [ ] Commit and report.
+- [x] Add server test rejecting generic `submitted` and `resubmitted` events without a bound submission; add UI test that the generic timeline omits those event choices and submission confirmation remains available through the dedicated flow.
+- [x] Run RED tests.
+- [x] Reject unbound event types at the service boundary and route Web users to the dedicated submission confirmation flow; keep timeline projection unchanged for legacy already-bound events.
+- [x] Run focused career progress/submission Go tests and ProgressPage tests; `git diff --check` must pass.
+- [x] Commit and report.
 
 **Acceptance:** No UI or API path can claim a submission without channel/time/material binding or an explicit unknown-version marker.
 
@@ -441,11 +495,11 @@
 
 **Steps:**
 
-- [ ] Add no-resume manual entry tests for projects/internships/skills; add deletion callback test with reload failure asserting profile facts and source names disappear immediately; add subscription retry test where revision advances before retry.
-- [ ] Run RED tests.
-- [ ] Add structured field choices and synchronous private-state clearing with stale response fencing; pin subscription revision in the attempt object and replay unchanged payload.
-- [ ] Run targeted CareerPage/InboxPage tests and `git diff --check`.
-- [ ] Commit owned files and report.
+- [x] Add no-resume manual entry tests for projects/internships/skills; add deletion callback test with reload failure asserting profile facts and source names disappear immediately; add subscription retry test where revision advances before retry.
+- [x] Run RED tests.
+- [x] Add structured field choices and synchronous private-state clearing with stale response fencing; pin subscription revision in the attempt object and replay unchanged payload.
+- [x] Run targeted CareerPage/InboxPage tests and `git diff --check`.
+- [x] Commit owned files and report.
 
 **Acceptance:** Candidates without a resume can enter required evidence; deletion immediately removes cached private data even when refresh fails; retries use byte-for-byte the original request semantics.
 
@@ -461,11 +515,11 @@
 
 **Steps:**
 
-- [ ] Add remount-after-unknown search tests for receipt-found and receipt-not-found cases; assert no second charge/new request ID.
-- [ ] Run RED tests.
-- [ ] Persist/load scoped pending search state and preserve unknown/receipt recovery UI after reload; clear only after a confirmed receipt or scope-specific safe resolution.
-- [ ] Run targeted SearchPage tests and `git diff --check`.
-- [ ] Commit and report.
+- [x] Add remount-after-unknown search tests for receipt-found and receipt-not-found cases; assert no second charge/new request ID.
+- [x] Run RED tests.
+- [x] Persist/load scoped pending search state and preserve unknown/receipt recovery UI after reload; clear only after a confirmed receipt or scope-specific safe resolution.
+- [x] Run targeted SearchPage tests and `git diff --check`.
+- [x] Commit and report.
 
 **Acceptance:** Reload cannot mint a second charged search while an earlier result is unknown; another scope cannot read or clear the pending request.
 
@@ -481,11 +535,11 @@
 
 **Steps:**
 
-- [ ] Add restart-after-ambiguous-write tests for profile mutation, share import and evaluation; malformed completed search receipt tests; long shared JD full-confirmation test; evaluation evidence display tests.
-- [ ] Run tests RED and record which receipt endpoints exist/missing. If a receipt endpoint is absent, add the narrow scoped API endpoint and contract test before client adoption.
-- [ ] Persist intents and block conflicting writes until receipt resolution; reject malformed completed receipts; display full submitted JD and specific qualification evidence.
-- [ ] Run focused mini-program tests, `pnpm --filter @weknora/miniprogram typecheck`, and `git diff --check`; expected: restart recovery uses the original IDs. Record any unrelated pre-existing type errors separately.
-- [ ] Commit owned paths and report API contract changes.
+- [x] Add restart-after-ambiguous-write tests for profile mutation, share import and evaluation; malformed completed search receipt tests; long shared JD full-confirmation test; evaluation evidence display tests.
+- [x] Run tests RED and record which receipt endpoints exist/missing. If a receipt endpoint is absent, add the narrow scoped API endpoint and contract test before client adoption.
+- [x] Persist intents and block conflicting writes until receipt resolution; reject malformed completed receipts; display full submitted JD and specific qualification evidence.
+- [x] Run focused mini-program tests, `pnpm --filter @weknora/miniprogram typecheck`, and `git diff --check`; expected: restart recovery uses the original IDs. Record any unrelated pre-existing type errors separately.
+- [x] Commit owned paths and report API contract changes.
 
 **Acceptance:** Restart does not lose any unknown-write request identity; malformed data is not rendered as a legitimate empty result; the user sees exactly the JD and evidence that inform explicit confirmation.
 
@@ -501,11 +555,11 @@
 
 **Steps:**
 
-- [ ] Add tests for 302-to-login, 401/403 rejection and 200 unauthenticated success. Add live-gate assertion for `serverAuthBoundary === 'rejected'`.
-- [ ] Run RED tests.
-- [ ] Implement explicit response classification and fail the gate unless both server and client boundaries are closed.
-- [ ] Run targeted smoke tests and API client tests plus `git diff --check`.
-- [ ] Commit and report.
+- [x] Add tests for 302-to-login, 401/403 rejection and 200 unauthenticated success. Add live-gate assertion for `serverAuthBoundary === 'rejected'`.
+- [x] Run RED tests.
+- [x] Implement explicit response classification and fail the gate unless both server and client boundaries are closed.
+- [x] Run targeted smoke tests and API client tests plus `git diff --check`.
+- [x] Commit and report.
 
 **Acceptance:** Redirects cannot be mislabeled unreachable; a backend allowing unauthenticated reads cannot produce a passing live-gate result.
 
@@ -521,8 +575,8 @@
 
 **Steps:**
 
-- [ ] Verify both migration trees pair names consistently and have unique monotonic versions, with #30 and #140 remaining at their original IDs.
-- [ ] Run `go test -count=1 ./internal/database` and inspect the loader's SQLite special transaction gate at version 114; run `git diff --check`.
-- [ ] Do not commit migration renumbering; record the user ruling and compatibility reason in the execution ledger. For appended migrations, add explicit identity tests for 143/222.
+- [x] Verify both migration trees pair names consistently and have unique monotonic versions, with #30 and #140 remaining at their original IDs.
+- [x] Run `go test -count=1 ./internal/database` and inspect the loader's SQLite special transaction gate at version 114; run `git diff --check`.
+- [x] Do not commit migration renumbering; record the user ruling and compatibility reason in the execution ledger. For appended migrations, add explicit identity tests for 143/222.
 
 **Acceptance:** Existing migration IDs and semantics are unchanged; #30 remains 112–123 / 191–202, #140 remains 124–142 / 203–221, and new schema changes append at 143 / 222.
