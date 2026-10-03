@@ -921,6 +921,65 @@ func TestExecuteDurableRunRejectsSupersededFence(t *testing.T) {
 	require.True(t, errors.Is(err, agentruntime.ErrLeaseLost), "want ErrLeaseLost, got %v", err)
 }
 
+// WB-GRAPH: a workbench admission that froze the graph execution core
+// (ModelID non-empty) passes the D8 fence naturally — no executor semantics
+// change, the run executes through the production graph with a fake model and
+// produces events and output without any Craft workspace seed requirement.
+func TestExecuteDurableRunWorkbenchAdmissionWithGraphCore(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	store := repository.NewAgentRunStore(db)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	graphCore, err := BuildDurableRunSnapshot("整理本周周报", nil, "model-1", "", config)
+	require.NoError(t, err)
+	var combined map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(graphCore, &combined))
+	admissionKeys := map[string]string{
+		"session_id": "s1", "agent_id": "builtin-quick-answer", "target_id": "platform",
+		"request_id": "req-wb-graph", "text": "整理本周周报",
+	}
+	for key, value := range admissionKeys {
+		encoded, err := json.Marshal(value)
+		require.NoError(t, err)
+		combined[key] = encoded
+	}
+	snapshot, err := json.Marshal(combined)
+	require.NoError(t, err)
+
+	key := admitDurableRun(t, store, snapshot)
+	fence, err := store.Claim(durableRunCtx(), key, "worker-wb-graph", time.Minute)
+	require.NoError(t, err)
+
+	model := &recordingDurableRunChat{}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	access := &runActorTaskAccessChecker{registered: false}
+	svc := &sessionService{
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{mcpManager: manager},
+		craftTaskAccess: access,
+	}
+	require.NoError(t, svc.ExecuteDurableRun(durableRunCtx(), fence), "the D8 fence passes because the model identity is frozen")
+
+	run, err := store.Get(durableRunCtx(), key)
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", run.Status)
+	require.NotEmpty(t, model.messages, "the frozen graph core drives a real model turn")
+	events, err := store.ReadEvents(durableRunCtx(), key, 0, 10)
+	require.NoError(t, err)
+	typesSeen := map[string]bool{}
+	for _, evt := range events {
+		typesSeen[evt.Type] = true
+	}
+	require.True(t, typesSeen["run_started"], "events: %v", events)
+	require.True(t, typesSeen["run_completed"], "events: %v", events)
+	require.Zero(t, access.calls, "a non-Craft workbench session never consults the Craft task gate")
+}
+
 func TestWorkerParksWaitClassFailureDurable(t *testing.T) {
 	db := openDurableRunTestDB(t)
 	store := repository.NewAgentRunStore(db)

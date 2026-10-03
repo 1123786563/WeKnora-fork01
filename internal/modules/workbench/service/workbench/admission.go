@@ -22,11 +22,12 @@ import (
 )
 
 var (
-	ErrBudgetDenied         = errors.New("budget denied")
-	ErrRequestPending       = errors.New("request admission pending")
-	ErrRequestRejected      = errors.New("request rejected")
-	ErrAgentUseDenied       = agentruntime.ErrAgentUseDenied
-	ErrAgentSecurityBlocked = errors.New("agent security policy refused the admission")
+	ErrBudgetDenied          = errors.New("budget denied")
+	ErrRequestPending        = errors.New("request admission pending")
+	ErrRequestRejected       = errors.New("request rejected")
+	ErrAgentUseDenied        = agentruntime.ErrAgentUseDenied
+	ErrAgentSecurityBlocked  = errors.New("agent security policy refused the admission")
+	ErrGraphResolutionFailed = errors.New("graph resolution failed")
 )
 
 // TrustedAdmissionBinding is resolved by a server-side policy/target service.
@@ -69,6 +70,18 @@ type PublishedAgentVersionResolver interface {
 // and actor ownership before returning a binding.
 type AdmissionBindingResolver interface {
 	Resolve(context.Context, uint64, string, StartInput) (TrustedAdmissionBinding, error)
+}
+
+// AdmissionGraphFreezer is the server-owned seam that resolves the graph
+// execution identity (model, agent config, runtime) at admission time and
+// returns the graph-core snapshot bytes (version/query/model_id/
+// agent_config/runtime/...) to be merged into the admission snapshot. A
+// resolution failure carries an explicit short code (model_unresolved /
+// model_unavailable / rerank_unresolved / config_unbuildable); admitPending
+// attaches ErrGraphResolutionFailed before settling the rejection. A nil
+// freezer keeps the legacy snapshot shape.
+type AdmissionGraphFreezer interface {
+	FreezeAdmissionGraph(ctx context.Context, tenantID uint64, actor string, in StartInput) (json.RawMessage, error)
 }
 
 type AdmissionBindingResolverFunc func(context.Context, uint64, string, StartInput) (TrustedAdmissionBinding, error)
@@ -183,6 +196,10 @@ type AdmissionCoordinator struct {
 	// pins copied into every agent-backed admission. nil leaves pins empty and
 	// the 8C repository guard fails closed for adopted agents.
 	publishedAgentVersionResolver PublishedAgentVersionResolver
+	// admissionGraphFreezer resolves and freezes the graph execution core
+	// into admitted snapshots. nil keeps the legacy admission-only shape
+	// (the durable executor then fails those runs explicitly, D8 semantics).
+	admissionGraphFreezer AdmissionGraphFreezer
 }
 
 // SetAdmissionGate installs the W34 capability gate consulted by Start
@@ -220,6 +237,16 @@ func (a *AdmissionCoordinator) SetPublishedAgentVersionResolver(resolver Publish
 		return
 	}
 	a.publishedAgentVersionResolver = resolver
+}
+
+// SetAdmissionGraphFreezer installs the server-owned graph identity freezer.
+// Passing nil removes it for compatibility with deployments that have not yet
+// bridged workbench admission into the durable graph executor.
+func (a *AdmissionCoordinator) SetAdmissionGraphFreezer(freezer AdmissionGraphFreezer) {
+	if a == nil {
+		return
+	}
+	a.admissionGraphFreezer = freezer
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -589,10 +616,33 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 			}
 		}
 	}
-	snapshot, _ := json.Marshal(map[string]any{
+	snapshotFields := map[string]any{
 		"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "space_id": in.SpaceID, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper,
 		"parent_run_id": binding.ParentRunID, "credential_version": binding.CredentialVersion, "usage_source": binding.Source, "usage_funding": binding.Funding, "usage_service": binding.Service, "price_version": binding.PriceVersion, "usage_upper": binding.Upper, "usage_revision": binding.Revision, "usage_status": binding.Status, "usage_dimensions": binding.Dimensions,
-	})
+	}
+	// WB-GRAPH: freeze the server-resolved graph execution core into the SAME
+	// snapshot object. A resolution failure settles the request as rejected at
+	// the same point as a binding-resolution failure: no Run row, no dispatch.
+	if a.admissionGraphFreezer != nil {
+		graphCore, freezeErr := a.admissionGraphFreezer.FreezeAdmissionGraph(ctx, req.TenantID, req.ActorID, in)
+		if freezeErr != nil {
+			if !errors.Is(freezeErr, ErrGraphResolutionFailed) {
+				freezeErr = fmt.Errorf("%w: %v", ErrGraphResolutionFailed, freezeErr)
+			}
+			_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, freezeErr.Error())
+			return agentruntime.Run{}, freezeErr
+		}
+		var coreFields map[string]json.RawMessage
+		if err := json.Unmarshal(graphCore, &coreFields); err != nil {
+			freezeErr = fmt.Errorf("%w: config_unbuildable: admission graph freezer returned malformed snapshot bytes: %v", ErrGraphResolutionFailed, err)
+			_ = a.requests.UpdatePending(ctx, req, "rejected", req.ReservationRef, req.RunID, freezeErr.Error())
+			return agentruntime.Run{}, freezeErr
+		}
+		for key, value := range coreFields {
+			snapshotFields[key] = value
+		}
+	}
+	snapshot, _ := json.Marshal(snapshotFields)
 	deadline := time.Now().Add(10 * time.Minute)
 	if reservation == "" {
 		reservation, err = a.budget.Ensure(ctx, req.TenantID, req.ActorID, req.RequestID, binding.Upper, deadline)

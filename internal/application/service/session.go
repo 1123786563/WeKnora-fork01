@@ -124,6 +124,7 @@ type sessionService struct {
 	tenantRepo            interfaces.TenantRepository            // Repository for tenant rows (query-history policy lookups)
 	eventManager          *chatpipeline.EventManager             // Event manager for chat pipeline
 	agentService          interfaces.AgentService                // Service for agent operations
+	customAgents          interfaces.CustomAgentService          // Service for loading custom/builtin agents (admission graph freezer)
 	knowledgeService      interfaces.KnowledgeService            // Service for knowledge operations
 	chunkService          interfaces.ChunkService                // Service for chunk operations
 	webSearchStateRepo    interfaces.WebSearchStateService       // Service for web search state
@@ -158,6 +159,7 @@ func NewSessionService(cfg *config.Config,
 	tenantRepo interfaces.TenantRepository,
 	eventManager *chatpipeline.EventManager,
 	agentService interfaces.AgentService,
+	customAgents interfaces.CustomAgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
 	webSearchProviderRepo interfaces.WebSearchProviderRepository,
 	kbShareService interfaces.KBShareService,
@@ -190,6 +192,7 @@ func NewSessionService(cfg *config.Config,
 		tenantRepo:            tenantRepo,
 		eventManager:          eventManager,
 		agentService:          agentService,
+		customAgents:          customAgents,
 		webSearchStateRepo:    webSearchStateRepo,
 		webSearchProviderRepo: webSearchProviderRepo,
 		kbShareService:        kbShareService,
@@ -207,6 +210,10 @@ func NewSessionService(cfg *config.Config,
 	// The durable tRPC worker resolves its graph executor lazily because the
 	// runtime is constructed before this service in the dependency graph.
 	RegisterGraphExecutor(svc.ExecuteDurableRun)
+	// WB-GRAPH: the workbench admission coordinator freezes graph execution
+	// identities through the same lazy registry (it assembles independently
+	// of this service in the container graph).
+	RegisterAdmissionGraphCoreFreezer(svc.freezeAdmissionGraphCore)
 	installDurableOAuthPark()
 	return svc
 }

@@ -258,6 +258,46 @@ func TestParseDurableRunSnapshotAcceptsWorkbenchAdmissionSnapshot(t *testing.T) 
 	require.Empty(t, parsed.ModelID, "workbench admissions carry no graph execution core; the executor fails them explicitly")
 }
 
+// WB-GRAPH: a workbench admission that froze the server-resolved graph core
+// merges version/query/model_id/agent_config/runtime into the same snapshot
+// object as the admission identity and usage binding. The strict reader must
+// decode the combined shape — this is the exact byte shape the workbench
+// admission coordinator persists once a graph freezer is installed.
+func TestParseDurableRunSnapshotAcceptsWorkbenchGraphCoreSnapshot(t *testing.T) {
+	raw := json.RawMessage(`{
+		"version": 1, "query": "整理本周周报", "model_id": "model-9",
+		"agent_config": {"max_iterations": 5, "allowed_tools": ["knowledge_search"]},
+		"runtime": {"sandbox_config_id": "ws-1"},
+		"session_id": "s1", "agent_id": "builtin-quick-answer", "target_id": "platform",
+		"space_id": "space-7", "request_id": "req-wb-graph", "text": "整理本周周报", "budget_upper": 1,
+		"usage_source": "platform_gateway", "usage_funding": "platform", "usage_service": "connector",
+		"price_version": "remote-v1", "usage_upper": 1, "usage_revision": 1,
+		"usage_status": "final", "usage_dimensions": {"connector": 1}
+	}`)
+	parsed, err := ParseDurableRunSnapshot(raw)
+	require.NoError(t, err, "the combined workbench admission + graph core snapshot must satisfy the strict durable reader")
+	require.Equal(t, "model-9", parsed.ModelID)
+	require.Equal(t, 1, parsed.Version)
+	require.Equal(t, "整理本周周报", parsed.Query)
+	require.Equal(t, "ws-1", parsed.Runtime.SandboxConfigID)
+	config, err := parsed.RestoreAgentConfig()
+	require.NoError(t, err, "the frozen agent config round-trips the strict config decoder")
+	require.Equal(t, 5, config.MaxIterations)
+	require.NotNil(t, parsed.WorkbenchAdmissionSnapshot, "admission identity still classifies the snapshot")
+	require.Equal(t, "req-wb-graph", parsed.WorkbenchAdmissionSnapshot.RequestID)
+	require.NotNil(t, parsed.RunUsageBindingSnapshot)
+	require.Equal(t, "platform_gateway", parsed.RunUsageBindingSnapshot.UsageSource)
+
+	var combined map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &combined))
+	combined["rogue_field"] = json.RawMessage(`1`)
+	rogueRaw, err := json.Marshal(combined)
+	require.NoError(t, err)
+	_, err = ParseDurableRunSnapshot(rogueRaw)
+	require.Error(t, err, "strictness still applies to the combined shape")
+	require.Contains(t, err.Error(), "rogue_field")
+}
+
 // Strictness is the security feature: admitting the workbench field group
 // into the typed schema must not open the door to unknown fields.
 func TestParseDurableRunSnapshotRejectsUnknownFieldOnWorkbenchAdmission(t *testing.T) {

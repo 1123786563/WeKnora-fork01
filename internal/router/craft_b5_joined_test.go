@@ -98,7 +98,7 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	files := &craftB5FileService{data: []byte("<!doctype html><title>pinned-b5</title>")}
 	sessionsRepo := repository.NewSessionRepository(db)
 	sessionSvc := service.NewSessionService(
-		&config.Config{}, sessionsRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		&config.Config{}, sessionsRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, struct{ interfaces.FeedbackRepository }{}, access,
 	)
 	runs := service.NewAgentRunService(repository.NewAgentRunStore(db))

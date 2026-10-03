@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -88,6 +89,27 @@ func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *rep
 
 func NewWorkbenchStartHandler(admission *workbenchservice.AdmissionCoordinator) *session.WorkbenchStartHandler {
 	return session.NewWorkbenchStartHandler(admission)
+}
+
+// admissionGraphFreezerFunc adapts the session service's plain-parameter
+// freezer onto the coordinator's seam type. The indirection exists because
+// the workbench package's test binary imports the application service, so
+// the service must stay independent of the workbench types.
+type admissionGraphFreezerFunc func(ctx context.Context, tenantID uint64, actor, sessionID, agentID, text string) (json.RawMessage, error)
+
+func (f admissionGraphFreezerFunc) FreezeAdmissionGraph(ctx context.Context, tenantID uint64, actor string, in workbenchservice.StartInput) (json.RawMessage, error) {
+	return f(ctx, tenantID, actor, in.SessionID, in.AgentID, in.Text)
+}
+
+// wireWorkbenchAdmissionGraphFreezer installs the session service's
+// server-resolved graph core freezer onto the admission coordinator. The
+// session service depends on the agent graph, so the freezer reaches this
+// assembly through the lazy registry (same pattern as RegisterGraphExecutor);
+// pulling interfaces.SessionService forces its construction before the read.
+func wireWorkbenchAdmissionGraphFreezer(_ interfaces.SessionService, admission *workbenchservice.AdmissionCoordinator) {
+	if core := appservice.RegisteredAdmissionGraphCoreFreezer(); core != nil {
+		admission.SetAdmissionGraphFreezer(admissionGraphFreezerFunc(core))
+	}
 }
 
 func NewWorkbenchInteractionStore(db *gorm.DB) *workbenchservice.GormInteractionStore {
