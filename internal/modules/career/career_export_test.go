@@ -472,10 +472,13 @@ func TestDeleteCareerSweepRemovesRowsCommittedDuringPausedDeletion(t *testing.T)
 	require.Equal(t, DeletionStatusPartial, partial.Status)
 
 	// While the deletion sits partial, a racing write commits a fresh career
-	// row after the purge already ran.
-	sneaky, err := o.ImportJD(ctx, ImportJDInput{RequestID: "sneaky-job", RawText: "仅限2027届。Go 服务端工程师。"})
-	require.NoError(t, err)
-	require.NotEmpty(t, sneaky.OpportunityID)
+	// row after the purge already ran. The public writers are fenced behind
+	// the lifecycle gate now (H7), so the torn writer is simulated by a direct
+	// row insert — the transaction of a writer whose admission passed before
+	// the phase flipped.
+	require.NoError(t, db.Create(&opportunity{
+		ID: "sneaky-job-opp", TenantID: 1951, UserID: "owner-1", CreatedAt: time.Now().UTC(),
+	}).Error)
 	require.EqualValues(t, 1, countScopeRows(t, db, "career_opportunities"),
 		"the sneaked row is committed after the purge step ran")
 

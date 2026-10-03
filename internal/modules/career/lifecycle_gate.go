@@ -13,6 +13,53 @@ import (
 var ErrCareerDeleting = errors.New("career space is deleting")
 var ErrCareerOperationsBusy = errors.New("career operations are still unresolved")
 
+// requireGateActiveTx is the claim-free writer's half of the deletion fence.
+// It locks the same gate row beginLifecycleDeletion flips, so a racing writer
+// either commits before the finalize sweep (its rows are purged there) or
+// observes the deleting phase and fails closed — never committing rows a
+// terminal receipt can no longer sweep. It must run inside the writer's commit
+// transaction, after the replay lookup so idempotent retries still replay.
+// A scope with no gate row has never admitted claims nor requested deletion,
+// so the absent row reads as active; the busy state (phase active with a
+// deletion request waiting on unresolved claims) also reads as active because
+// the purge has not run yet and will sweep whatever commits now.
+func requireGateActiveTx(tx *gorm.DB, s Scope) error {
+	var current lifecycleGate
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if current.Phase != "active" {
+		return ErrCareerDeleting
+	}
+	return nil
+}
+
+// requireGateOpenTx is the strict form for writers whose side effects outrun
+// their transaction (CreateApplication commits, then links externally under a
+// claim that admission will refuse once a deletion was requested): they must
+// not even start while a deletion is merely pending.
+func requireGateOpenTx(tx *gorm.DB, s Scope) error {
+	if err := requireGateActiveTx(tx, s); err != nil {
+		return err
+	}
+	var current lifecycleGate
+	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&current).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if current.DeletionRequestID != "" {
+		return ErrCareerDeleting
+	}
+	return nil
+}
+
 // admitLifecycleClaim durably admits an external effect before it can start.
 // Re-admission of the same request is the recovery path after process restart.
 func (o *Office) admitLifecycleClaim(ctx context.Context, s Scope, operation, requestID string, intentFingerprint ...string) error {

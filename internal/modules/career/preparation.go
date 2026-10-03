@@ -395,6 +395,9 @@ func (o *Office) attemptPreparationReserve(ctx context.Context, s Scope, input G
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		// House expected-revision CAS against the profile head.
 		var head profile
 		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).

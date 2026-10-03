@@ -322,6 +322,9 @@ func (o *Office) EditMaterial(ctx context.Context, input EditMaterialInput) (Mat
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		var head profile
 		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
@@ -516,6 +519,9 @@ func (o *Office) ConfirmMaterial(ctx context.Context, input ConfirmMaterialInput
 			return decodeMaterialReceipt(stored.Body, &receipt)
 		}
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
+			return e
+		}
+		if e := requireGateActiveTx(tx, s); e != nil {
 			return e
 		}
 		var head profile

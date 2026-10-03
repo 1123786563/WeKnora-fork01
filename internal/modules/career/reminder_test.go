@@ -177,7 +177,9 @@ func TestReconcileReminderSourceDoesNotRecreateReceiptAfterDeletion(t *testing.T
 
 	receipt, found, err := o.reconcileReminderSource(ctx, Scope{TenantID: 921, UserID: "reminder-owner"},
 		reminderInput("reconcile-delete-late", ReminderSourceProgressEvent, eventID, head), strings.Repeat("a", 64))
-	require.NoError(t, err)
+	// H7: a deleted space fails closed. The silent no-recreate outcome kept
+	// the zero-row guarantee; the typed error adds the honest refusal.
+	require.ErrorIs(t, err, ErrCareerDeleting)
 	require.False(t, found)
 	require.Empty(t, receipt.ReminderID)
 	require.Zero(t, countReminderRows(t, db, "career_reminders"))

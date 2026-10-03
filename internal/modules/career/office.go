@@ -767,6 +767,9 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 			if !errors.Is(e, gorm.ErrRecordNotFound) {
 				return e
 			}
+			if e := requireGateActiveTx(tx, s); e != nil {
+				return e
+			}
 			next := rev + 1
 			updated := tx.Model(&profile{}).Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, rev).Update("revision", next)
 			if updated.Error != nil {

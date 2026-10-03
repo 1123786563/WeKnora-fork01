@@ -225,6 +225,9 @@ func (o *Office) admitSearchUsage(ctx context.Context, s Scope, requestID string
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := requireGateActiveTx(tx, s); err != nil {
+			return err
+		}
 		now := time.Now().UTC()
 		start, end := usagePeriod(now)
 		reserved, settled, totalsErr := usageTotalsTx(tx, s, start)

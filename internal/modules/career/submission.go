@@ -242,6 +242,9 @@ func (o *Office) attemptSubmissionWrite(ctx context.Context, s Scope, input Reco
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		// The submission binds to exactly one application under the
 		// authenticated scope.
 		var application applicationRecord

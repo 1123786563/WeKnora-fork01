@@ -335,6 +335,9 @@ func (o *Office) attemptProgressWrite(ctx context.Context, s Scope, intent progr
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		// The event binds to exactly one application that must exist under the
 		// authenticated scope; the row lock also serializes seq allocation.
 		var application applicationRecord

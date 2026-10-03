@@ -210,6 +210,9 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 			persistenceMayHaveCommitted = isSQLiteBusy(err)
 			return err
 		}
+		if err := requireGateActiveTx(tx, s); err != nil {
+			return err
+		}
 
 		fields, status := o.extractOpportunity(input.RawText)
 		extracted, err := json.Marshal(fields)

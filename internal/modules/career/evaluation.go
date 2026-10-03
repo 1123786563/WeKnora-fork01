@@ -148,6 +148,9 @@ func (o *Office) EvaluateOpportunity(ctx context.Context, input EvaluateInput) (
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := requireGateActiveTx(tx, scope); err != nil {
+			return err
+		}
 		if o.afterEvaluationReceiptMiss != nil {
 			o.afterEvaluationReceiptMiss()
 		}

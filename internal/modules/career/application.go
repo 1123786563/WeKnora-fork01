@@ -170,6 +170,12 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		// The deletion fence runs before the first Career commit: a fresh
+		// application must never strand a linking row the claim admission
+		// below would immediately reject.
+		if e := requireGateOpenTx(tx, scope); e != nil {
+			return e
+		}
 
 		// Resolve the opportunity through the merge chain first: after a
 		// reconciliation merged the input ID away, its snapshots, evaluations,

@@ -1518,6 +1518,9 @@ func (o *Office) RevokeMaterialExport(ctx context.Context, input RevokeMaterialE
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		var head profile
 		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error

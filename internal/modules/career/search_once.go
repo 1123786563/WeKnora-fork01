@@ -375,6 +375,9 @@ func (o *Office) claimSearchRequest(ctx context.Context, s Scope, input SearchOn
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := requireGateActiveTx(tx, s); err != nil {
+			return err
+		}
 		// The expected revision pins the caller's observed profile view. A
 		// search never mutates the profile, so no revision is advanced.
 		var head profile

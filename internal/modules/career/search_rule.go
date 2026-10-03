@@ -352,6 +352,9 @@ func (o *Office) SetRule(ctx context.Context, input SetRuleInput) (SetRuleReceip
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		// The expected revision pins the caller's observed profile view; a
 		// rule never mutates the profile, so no revision is advanced.
 		var head profile

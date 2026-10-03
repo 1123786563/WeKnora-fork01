@@ -292,6 +292,9 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := requireGateActiveTx(tx, s); err != nil {
+			return err
+		}
 		for _, id := range []string{input.TargetID, input.CandidateID} {
 			var row opportunity
 			if err := tx.Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, id).First(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {

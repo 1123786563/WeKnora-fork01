@@ -302,6 +302,9 @@ func (o *Office) ExportCareer(ctx context.Context, input CareerExportInput) (Car
 		} else if e != nil {
 			return e
 		}
+		if e := requireGateActiveTx(tx, s); e != nil {
+			return e
+		}
 		if head.Revision != input.ExpectedRevision {
 			return &RevisionConflictError{CurrentRevision: head.Revision}
 		}

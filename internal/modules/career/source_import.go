@@ -681,6 +681,9 @@ func (o *Office) claimImportURLRequest(ctx context.Context, s Scope, requestID, 
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := requireGateActiveTx(tx, s); err != nil {
+			return err
+		}
 		claimBody, err := claimJSON()
 		if err != nil {
 			return err
