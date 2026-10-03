@@ -189,6 +189,8 @@ function favoritesSpyClient(options?: {
   favoriteRows?: Array<{ resource_id: string }>;
   addError?: Error;
   removeError?: Error;
+  add?: (type: string, id: string) => Promise<void>;
+  remove?: (type: string, id: string) => Promise<void>;
 }) {
   const calls: Array<{ op: 'list' | 'add' | 'remove'; type: string; id?: string }> = [];
   const client = {
@@ -211,8 +213,8 @@ function favoritesSpyClient(options?: {
     },
     userFavorites: {
       list: async (type: string) => { calls.push({ op: 'list', type }); return options?.favoriteRows ?? []; },
-      add: async (type: string, id: string) => { calls.push({ op: 'add', type, id }); if (options?.addError) throw options.addError; },
-      remove: async (type: string, id: string) => { calls.push({ op: 'remove', type, id }); if (options?.removeError) throw options.removeError; },
+      add: async (type: string, id: string) => { calls.push({ op: 'add', type, id }); if (options?.add) return options.add(type, id); if (options?.addError) throw options.addError; },
+      remove: async (type: string, id: string) => { calls.push({ op: 'remove', type, id }); if (options?.remove) return options.remove(type, id); if (options?.removeError) throw options.removeError; },
     },
   };
   return { client, calls };
@@ -285,6 +287,34 @@ test('a rapid second click inside one batch dispatches add after remove, not add
     { op: 'add', type: 'agent', id: 'a-own' },
   ], 'second click reads the ref-mirrored set: remove then add, never add+add');
   assert.ok(isFavorited('a-own'), 'net state stays favorited');
+});
+
+test('an interleaved add failure rolls back by wasFavorited, not a blind re-toggle', async () => {
+  // OCR H-A1: the rollback used to re-toggle the CURRENT set, so when a
+  // later operation already moved the star, a late failure flipped it to the
+  // opposite of the DB (failed add + succeeded remove → star back ON).
+  window.localStorage.clear();
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+  const addGate = deferred<void>();
+  const removeGate = deferred<void>();
+  const { client } = favoritesSpyClient({ add: () => addGate.promise, remove: () => removeGate.promise });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  assert.equal(isFavorited('a-own'), false, 'precondition: not favorited');
+  await act(async () => { starOf('a-own')?.click(); }); // add pending → optimistic favorite
+  assert.ok(isFavorited('a-own'), 'optimistic favorite while add is in flight');
+  await act(async () => { starOf('a-own')?.click(); }); // remove pending → optimistic unfavorite
+  assert.equal(isFavorited('a-own'), false, 'optimistic unfavorite while remove is in flight');
+  removeGate.resolve(); // remove lands
+  addGate.reject(new Error('boom')); // add fails after the star already moved on
+  await settlePage(10);
+  assert.equal(isFavorited('a-own'), false, 'failed add rolls back to wasFavorited=false; a blind re-toggle would flip the star back on');
+  assert.deepEqual(mirrorIds(), [], 'localStorage mirrors the targeted rollback');
 });
 
 // --- data loading (mocked client) ----------------------------------------------

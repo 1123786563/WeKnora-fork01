@@ -1011,7 +1011,11 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     const persist = wasFavorited ? favoritesApi?.remove?.('agent', id) : favoritesApi?.add?.('agent', id);
     if (!persist) return;
     void persist.catch(() => {
-      const rollback = new Set(toggleFavoriteId([...favoritesRef.current], id));
+      // Roll back to THIS click's prior state, not a re-toggle of the current
+      // set: a later in-flight op may already have moved the star, and
+      // re-toggling would flip it to the opposite of the DB.
+      const rollback = new Set(favoritesRef.current);
+      if (wasFavorited) rollback.add(id); else rollback.delete(id);
       favoritesRef.current = rollback;
       writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...rollback]);
       setFavorites(rollback);
