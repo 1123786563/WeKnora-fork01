@@ -156,13 +156,12 @@ const baseViewProps = {
   isSectioned: true,
   favorites: new Set<string>(),
   openMenuId: null as string | null,
-  error: null as string | null,
   drawer: null as null,
   editor: null as null,
   deleteTarget: null as AgentCardModel | null,
   deleting: false,
   collapsedSections: new Set<string>(),
-  notice: null as string | null,
+  locale: 'zh-CN' as const,
   canCreate: true,
   onSpaceChange: noop,
   onOpenCard: noop,
@@ -187,6 +186,7 @@ const baseViewProps = {
 
 function favoritesSpyClient(options?: {
   favoriteRows?: Array<{ resource_id: string }>;
+  list?: (type: string) => Promise<Array<{ resource_id: string }>>;
   addError?: Error;
   removeError?: Error;
   add?: (type: string, id: string) => Promise<void>;
@@ -212,7 +212,7 @@ function favoritesSpyClient(options?: {
       },
     },
     userFavorites: {
-      list: async (type: string) => { calls.push({ op: 'list', type }); return options?.favoriteRows ?? []; },
+      list: async (type: string) => { calls.push({ op: 'list', type }); return options?.list ? options.list(type) : (options?.favoriteRows ?? []); },
       add: async (type: string, id: string) => { calls.push({ op: 'add', type, id }); if (options?.add) return options.add(type, id); if (options?.addError) throw options.addError; },
       remove: async (type: string, id: string) => { calls.push({ op: 'remove', type, id }); if (options?.remove) return options.remove(type, id); if (options?.removeError) throw options.removeError; },
     },
@@ -234,6 +234,47 @@ test('favorites hydrate from the DB list and render the star state', async () =>
   assert.deepEqual(calls.filter((c) => c.op === 'list'), [{ op: 'list', type: 'agent' }], 'GET /user/favorites?type=agent fires once');
   assert.ok(isFavorited('a-own'), 'the DB-favorited agent renders is-favorited');
   assert.deepEqual(mirrorIds(), ['a-own'], 'localStorage mirrors the DB set');
+});
+
+test('a slow hydration snapshot resolving after a user toggle does not clobber the star', async () => {
+  window.localStorage.clear();
+  let resolveList: (rows: Array<{ resource_id: string }>) => void = () => {};
+  const hangList = () => new Promise<Array<{ resource_id: string }>>((resolve) => { resolveList = resolve; });
+  const { client } = favoritesSpyClient({ list: () => hangList() });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(10);
+  // Favorite BEFORE the server snapshot lands (localStorage starts empty).
+  await act(async () => { starOf('a-own')?.click(); });
+  assert.ok(isFavorited('a-own'), 'optimistic favorite lights the star');
+  // The stale snapshot says "no favorites" — it must lose to the user toggle.
+  await act(async () => { resolveList([]); });
+  await settlePage(10);
+  assert.ok(isFavorited('a-own'), 'late hydration snapshot does not clobber the user toggle');
+  assert.deepEqual(mirrorIds(), ['a-own'], 'localStorage keeps the local set');
+});
+
+test('popup menu items and the more button are keyboard operable', async () => {
+  const fired: string[] = [];
+  const toggles: Array<string | null> = [];
+  const card = fixtureRows().find((row) => row.id === 'a-own')!;
+  await mountToBody(React.createElement(AgentCard, {
+    agent: card, t, viewer: admin, locale: 'zh-CN',
+    favorited: false, menuOpen: true,
+    onOpen: noop, onToggleFavorite: noop,
+    onToggleMenu: (id) => toggles.push(id),
+    onMenuAction: (action) => fired.push(action),
+  } as never));
+  const item = document.querySelector('.popup-menu-item[data-action="delete"]') as HTMLElement | null;
+  assert.ok(item, 'menu renders via portal at menuOpen=true');
+  assert.equal(item!.getAttribute('role'), 'menuitem', 'menuitem role');
+  assert.equal(item!.tabIndex, 0, 'menu item is tab-reachable');
+  await act(async () => { item!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  assert.deepEqual(fired, ['delete'], 'Enter on the menu item fires the action');
+  const more = document.querySelector('.more-wrap') as HTMLElement | null;
+  assert.equal(more?.getAttribute('role'), 'button', 'more trigger exposes button role');
+  assert.equal(more?.tabIndex, 0, 'more trigger is tab-reachable');
+  await act(async () => { more!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })); });
+  assert.deepEqual(toggles, [null], 'Space on the more trigger toggles the menu');
 });
 
 test('toggling the star writes through to add/remove with the right arguments', async () => {
@@ -350,18 +391,6 @@ test('page header shows agent title, subtitle and the sparkles create button', (
     flatCards: [{ id: 'agent-1', name: '助手', is_builtin: false, isMine: true }],
   }));
   assert.doesNotMatch(populated, /bg-\[#07c05f\]/, 'populated Vue list has no extra green text create button');
-
-test('list-load failure renders no raw error payload (Vue parity: silent empty state)', () => {
-  const html = renderToStaticMarkup(React.createElement(AgentsPageView, {
-    ...baseViewProps,
-    error: '{"message":"mock failure"}',
-    flatCards: [],
-    sections: [],
-    isSectioned: false,
-  }));
-  assert.doesNotMatch(html, /mock failure/);
-  assert.doesNotMatch(html, /wk-status.*error|Status tone=.error/, 'no error status surface');
-});
   assert.match(html, /data-guide="agent-list-create"/);
   const viewerOnly = renderToStaticMarkup(React.createElement(AgentsPageView, { ...baseViewProps, viewer: { userId: 'u', isAdmin: false, isContributor: false }, canCreate: false }));
   assert.doesNotMatch(viewerOnly, /创建智能体/);

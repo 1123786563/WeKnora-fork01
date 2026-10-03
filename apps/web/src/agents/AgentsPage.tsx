@@ -252,16 +252,17 @@ export function SpaceAvatar({ name, size = 'medium' }: { name: string; size?: 's
 
 const ORIGIN_ICON: Record<string, string> = { mine: 'user', tenant: 'usergroup', creator: 'user', space: 'building', shared: 'share' };
 
-export function ResourceOriginBadge({ variant, creatorName, tenantName }: {
+export function ResourceOriginBadge({ variant, creatorName, tenantName, locale }: {
   variant: 'mine' | 'tenant' | 'creator' | 'space' | 'shared';
   creatorName?: string;
   tenantName?: string;
+  locale: Locale;
 }) {
-  const text = variant === 'mine' ? formatMessage('zh-CN', 'resourceOrigin.mine')
-    : variant === 'creator' ? (creatorName || formatMessage('zh-CN', 'resourceOrigin.tenant'))
-      : variant === 'space' ? (tenantName || formatMessage('zh-CN', 'resourceOrigin.space'))
-        : variant === 'shared' ? (tenantName || formatMessage('zh-CN', 'resourceOrigin.shared'))
-          : (tenantName || formatMessage('zh-CN', 'resourceOrigin.tenant'));
+  const text = variant === 'mine' ? formatMessage(locale, 'resourceOrigin.mine')
+    : variant === 'creator' ? (creatorName || formatMessage(locale, 'resourceOrigin.tenant'))
+      : variant === 'space' ? (tenantName || formatMessage(locale, 'resourceOrigin.space'))
+        : variant === 'shared' ? (tenantName || formatMessage(locale, 'resourceOrigin.shared'))
+          : (tenantName || formatMessage(locale, 'resourceOrigin.tenant'));
   return (
     <span className={`resource-origin-badge origin-${variant}`}>
       <TIcon name={ORIGIN_ICON[variant] ?? 'usergroup'} size="12px" className="badge-icon" />
@@ -382,10 +383,11 @@ function featureBadgeIcon(badge: string): { icon: string; size: string } | null 
   return { icon, size: modeBadge ? '14px' : '16px' };
 }
 
-export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = false, onOpen, onToggleFavorite, onToggleMenu, onMenuAction }: {
+export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = false, locale, onOpen, onToggleFavorite, onToggleMenu, onMenuAction }: {
   agent: AgentCardModel;
   t: Translate;
   viewer: AgentViewer;
+  locale: Locale;
   favorited: boolean;
   menuOpen: boolean;
   /** Vue v-show="!isAgentRowHidden(agent)"：折叠组保留 DOM 仅隐藏（§3.2）。 */
@@ -446,13 +448,18 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = fals
             placement="bottom-right"
             onVisibleChange={(visible) => { if (!visible) onToggleMenu(null); }}
             content={(
-              <div className="popup-menu">
+              <div className="popup-menu" role="menu">
                 {actions.map((action) => (
                   <div
                     key={action}
+                    role="menuitem"
+                    tabIndex={0}
                     className={`popup-menu-item${action === 'delete' ? ' delete' : ''}`}
                     data-action={action}
                     onClick={() => onMenuAction(action, agent)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onMenuAction(action, agent); }
+                    }}
                   >
                     <TIcon className="menu-icon" name={ACTION_META[action]!.icon} />
                     <span>{t(action === 'toggle' && agent.disabledByMe ? 'agent.enable' : ACTION_META[action]!.labelKey)}</span>
@@ -463,10 +470,15 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = fals
           >
             <div
               className={`more-wrap${menuOpen ? ' active-more' : ''}`}
+              role="button"
+              tabIndex={0}
               aria-label={t('agent.manageAgents')}
               aria-haspopup="menu"
               aria-expanded={menuOpen ? 'true' : 'false'}
               onClick={(event) => { event.stopPropagation(); onToggleMenu(menuOpen ? null : agent.id); }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onToggleMenu(menuOpen ? null : agent.id); }
+              }}
             >
               <img className="more-icon" src={MORE_PNG} alt="" />
             </div>
@@ -508,7 +520,7 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = fals
               <span>{t('agent.builtin')}</span>
             </div>
           ) : (
-            <ResourceOriginBadge variant="creator" creatorName={badge.name} />
+            <ResourceOriginBadge variant="creator" creatorName={badge.name} locale={locale} />
           )
         ) : expertBadgeId ? (
           /* Octop M2 溯源徽章（React 侧增量，Vue 无对应分支；样式走平移 CSS 同款 pill） */
@@ -633,6 +645,7 @@ export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
 export interface AgentsPageViewProps {
   t: Translate;
   editorT: Translate;
+  locale: Locale;
   client: WeKnoraClient;
   viewer: AgentViewer;
   loading: boolean;
@@ -645,8 +658,6 @@ export interface AgentsPageViewProps {
   isSectioned: boolean;
   favorites: ReadonlySet<string>;
   openMenuId: string | null;
-  error: string | null;
-  notice: string | null;
   drawer: { kind: 'shared'; agent: AgentCardModel } | null;
   editor: { mode: 'create' | 'edit'; agent: AgentCardModel | null; initialSection?: string; initialHighlight?: string; readOnly?: boolean } | null;
   deleteTarget: AgentCardModel | null;
@@ -751,7 +762,7 @@ function AgentSection({ section, t, viewer, collapsed, onToggle, cardProps }: {
 export function AgentsPageView(props: AgentsPageViewProps) {
   const { t, editorT, viewer, loading, space, spaceLoading, rail, sections, flatCards, isSectioned, favorites, openMenuId, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
   const cardProps = (agent: AgentCardModel) => ({
-    agent, t, viewer,
+    agent, t, viewer, locale: props.locale,
     favorited: favorites.has(agent.id),
     menuOpen: openMenuId === agent.id,
     onOpen: props.onOpenCard,
@@ -889,6 +900,9 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   // this component keeps the ref in the same tick.
   const favoritesRef = useRef<ReadonlySet<string>>(favorites);
   favoritesRef.current = favorites;
+  // Set on the first local toggle; a hydration snapshot that resolves after a
+  // user toggle would clobber it, so stale-server wins are discarded.
+  const favoritesDirtyRef = useRef(false);
   const [recents, setRecents] = useState<PinEntry[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
@@ -927,7 +941,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       const listFavorites = favoritesApi?.list?.bind(favoritesApi);
       if (listFavorites) {
         void listFavorites('agent').then((rows) => {
-          if (!active) return;
+          if (!active || favoritesDirtyRef.current) return;
           const ids = rows.map((row) => row.resource_id).filter(Boolean);
           favoritesRef.current = new Set(ids);
           setFavorites(new Set(ids));
@@ -1001,6 +1015,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     // add where remove was meant (UI unfavored, DB still favorited — the
     // star would flip back after reload).
     const wasFavorited = favoritesRef.current.has(id);
+    favoritesDirtyRef.current = true;
     const next = new Set(toggleFavoriteId([...favoritesRef.current], id));
     favoritesRef.current = next;
     writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...next]);
@@ -1175,6 +1190,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     <AgentsPageView
       t={t}
       editorT={editorT}
+      locale={locale}
       client={client}
       viewer={viewer}
       loading={!data && !loadError}
@@ -1186,8 +1202,6 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       isSectioned={isSectionedView(effectiveSpace)}
       favorites={favorites}
       openMenuId={openMenuId}
-      error={loadError}
-      notice={null}
       drawer={drawer}
       editor={editor}
       deleteTarget={deleteTarget}
