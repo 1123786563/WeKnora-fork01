@@ -93,7 +93,7 @@ func TestCraftDraftHeadMigrationUpDownUp(t *testing.T) {
 		require.NoError(t, pgdb.Exec(`CREATE TABLE agent_runs (tenant_id BIGINT NOT NULL, run_id VARCHAR(64) NOT NULL, PRIMARY KEY (tenant_id, run_id))`).Error)
 		singleMigrationDir := t.TempDir()
 		for _, direction := range []string{"up", "down"} {
-			contents, readErr := os.ReadFile(filepath.Join(root, "migrations/versioned/000195_craft_workspace_draft_head."+direction+".sql"))
+			contents, readErr := os.ReadFile(filepath.Join(root, "migrations/versioned/000248_craft_workspace_draft_head."+direction+".sql"))
 			require.NoError(t, readErr)
 			require.NoError(t, os.WriteFile(filepath.Join(singleMigrationDir, "000001_craft_workspace_draft_head."+direction+".sql"), contents, 0600))
 		}
