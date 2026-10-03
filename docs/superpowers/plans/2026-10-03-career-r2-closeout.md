@@ -29,3 +29,12 @@
 
 ## Self-Review
 覆盖：核销→Task 1；门禁→Task 2；判词→Task 3；无占位。
+
+---
+
+## 终判（2026-10-03，Task 3 controller）
+
+- **核销**：R2 计划 124 复选框（25 任务；审计 §2 的「33」系计数误差已勘误）全部核销，证据表=审计 §3 × r2-*/task merge SHA（dd2517053）。11 条 low：fixed-by-r2 2（1db12dcca）/accept 8/needs-followup 1（TDesign 闭包种子硬编码，真机白屏隐患，建议立票）。
+- **OCR 门禁：仍开放（partial，第 6 次受阻）**——99 分钟跑满不杀，333 项中 82 败于 provider 429/1302；**首次产出完整报告产物**（docs/plans/issue-140/ocr/，75% 覆盖，378 findings=0 critical/13 high/120 medium/245 low；3941acc47）。High/Medium digest 133 条待单独裁定轮（注意范围终点 b3d48d5cb 早于三个后续修复提交，部分发现可能在 main 已修）；Low 245 不对 partial 快照终裁。
+- **族判词**：33 子票代码与测试在 main 全验证（审计+本轮核销）；**closure 为门禁约束非代码约束**——OCR 完整过门 + High/Medium 裁定后，#141-#171/#173 可进 closure；#172（T33）移动验收阻塞维持（Harmony 真机/生产源 allowlist/运维检查，owner 裁量）。
+- **下轮**：①`ocr review --resume 0f0bcb06`（配额窗口）或改 `--to 1f7ca8519` 重试补全 82 项；②High/Medium digest 裁定轮（对照 main 已修项）；③TDesign 种子票（如 owner 同意）。
