@@ -1234,10 +1234,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 	must(container.Invoke(wireTaskDeletionGuard))
-	// WB-GRAPH: freeze the server-resolved graph execution identity into
-	// workbench admissions (nil-safe: deployments without the session service
-	// freezer keep the legacy admission-only snapshot shape).
-	must(container.Invoke(wireWorkbenchAdmissionGraphFreezer))
 	// T11 (#128): the restricted-share consent surface (read/decision/
 	// revocation feature routes) over the shared version/file/record
 	// stores and the persistent TaskAccess checker.
@@ -1264,6 +1260,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// router.NewRouter, which mounts the security routes. dig.Invoke resolves
 	// eagerly at call order, so this position is load-bearing.
 	provideAgentSecurity(container)
+
+	// WB-GRAPH: freeze the server-resolved graph execution identity into
+	// workbench admissions (nil-safe: deployments without the session service
+	// freezer keep the legacy admission-only snapshot shape). dig resolves
+	// eagerly at call order and the coordinator depends on
+	// AgentSecurityService, so this must sit after provideAgentSecurity —
+	// the same load-bearing-position rule documented above.
+	must(container.Invoke(wireWorkbenchAdmissionGraphFreezer))
 
 	// IB2（K5 Brief (b)/(c)）：knowledge 模块门面装配——18 worker 双栈注册的
 	// 处理器集合与 recoverPendingWikiTasks 生命周期挂点改经模块门面单一注册
