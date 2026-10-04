@@ -295,7 +295,7 @@ func TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment(t *testing.T) {
 		if winner.State != repocommercial.PaymentAttemptStateSucceeded || winner.ProviderTransactionID == nil || *winner.ProviderTransactionID != lateTxn {
 			t.Fatalf("late success must claim the immutable winner, got state=%s txn=%v", winner.State, winner.ProviderTransactionID)
 		}
-		fulfiller, err := NewFulfillmentService(db, &stubGateway{}, nil)
+		fulfiller, err := NewFulfillmentService(db, &stubGateway{}, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

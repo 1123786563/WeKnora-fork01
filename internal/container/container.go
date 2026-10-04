@@ -1093,6 +1093,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (The gateway/execution-gate/remote-usage providers this drains through
 	// are registered earlier, before the craft Invoke that first resolves
 	// newAgentRuntime.)
+	// (#85 G-B) Top-up fulfillment rides the commercial platform wallet
+	// rail — dig injects the platform provider registered beside the
+	// commercial handler into NewFulfillmentService; the OpenMeter gateway
+	// keeps only the subscription/upgrade/refund lines (#105 owns its
+	// removal).
 	must(container.Provide(commercialsvc.NewPurchaseFulfiller))
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))

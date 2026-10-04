@@ -49,7 +49,7 @@ func setupPurchaseFulfillment(t *testing.T) (*PurchaseFulfiller, *FulfillmentSer
 		t.Fatal(err)
 	}
 	gw := &stubGateway{findable: true}
-	svc, err := NewFulfillmentService(db, gw, purchaser)
+	svc, err := NewFulfillmentService(db, gw, nil, purchaser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1171,7 +1171,7 @@ func TestPurchaseFulfillQuoteSnapshotCorruptTurnsAttention(t *testing.T) {
 
 func TestFulfillmentQuotedTopUpLineUsesTopUpRoute(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrderRaw(t, store, db, 901, "ord-quoted-topup", `{"line_items":[{"kind":"top_up"}]}`, 9900, false)
 	if err := svc.Recover(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1200,7 +1200,7 @@ func TestFulfillmentInvalidQuotedLineItemsSurfaceAttentionAndRemainPending(t *te
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gw := &stubGateway{findable: true}
-			svc, db, store := setupFulfillment(t, gw)
+			svc, db, store := setupFulfillment(t, gw, nil)
 			orderID := "ord-invalid-quote-" + tc.name
 			seedPaidOrderRaw(t, store, db, 902, orderID, tc.json, 9900, false)
 			if tc.quoteMutation == "missing" {
@@ -1242,7 +1242,7 @@ func TestFulfillmentInvalidQuotedLineItemsSurfaceAttentionAndRemainPending(t *te
 
 func TestFulfillmentTransientQuoteReadStaysPendingWithoutAttention(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	const orderID = "ord-transient-quote-read"
 	seedPaidOrderRaw(t, store, db, 904, orderID, `{"line_items":[{"kind":"top_up"}]}`, 9900, false)
 	readErr := errors.New("temporary quote store failure")

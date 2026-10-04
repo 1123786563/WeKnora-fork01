@@ -814,6 +814,38 @@ func (h *CommercialHandler) CreateQuote(c *gin.Context) {
 	}
 }
 
+// CreateTopUpQuote serves POST /commercial/topup-quotes (#85 G-A): cut a
+// one-shot credit top-up offer at the closed book rate
+// (CreditsMicro = AmountFen × 100). Whole-CNY amounts only — anything
+// else is a client fact and answers 400.
+func (h *CommercialHandler) CreateTopUpQuote(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	var req struct {
+		AmountFen int64 `json:"amount_fen"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.AmountFen <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount_fen is required"})
+		return
+	}
+	q, err := h.orders.CreateTopUpQuote(c.Request.Context(), tenantID, req.AmountFen)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": quoteWire(q)})
+	case errors.Is(err, repocommercial.ErrInvalidQuoteRow):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount_fen must be a positive whole-CNY fen amount"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
 // CreateOrder serves POST /commercial/orders: consume a quote of the
 // caller space and open one pending order with a channel checkout.
 func (h *CommercialHandler) CreateOrder(c *gin.Context) {

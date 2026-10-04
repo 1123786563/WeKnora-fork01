@@ -1,6 +1,8 @@
 package commercial
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -195,10 +197,17 @@ func WalletRank(batches []WalletRankInput) (map[string]int, error) {
 // period grant sets PurchaseWalletName so purchase credits never collide
 // with the Base monthly batch (F11: grant idempotency matches by name AND
 // metadata — a shared name would trigger grant content conflicts).
+//
+// TopUp (additive, #85 G-B) selects the one-shot top-up family: no period
+// identity (a period-less wallet of this tenant is exactly the top-up
+// batch the #86 snapshot classification reads back), a REQUIRED
+// deterministic WalletName as the read-before-create idempotency anchor of
+// a lost response's recovery, and its own TTL (the 12-month accumulation
+// class) instead of the exclusive period end.
 type GrantIncludedCreditsPayload struct {
 	TenantID           uint64
 	ExternalCustomerID string    // derived-equality enforced
-	Period             string    // "YYYY-MM", UTC
+	Period             string    // "YYYY-MM", UTC; empty allowed only for TopUp
 	CreditsMicro       int64     // > 0 and cent-aligned (CreditsMicro % 10_000 == 0)
 	ExpiresAt          time.Time // exclusive period end, > grant time
 	WalletName         string    // optional; empty = MonthlyWalletName (Base batch)
@@ -208,11 +217,14 @@ type GrantIncludedCreditsPayload struct {
 	// provider default. The invariant's authority is the refresh-time
 	// rebalance; this initial value only reduces rebalance writes.
 	Priority int
+	// TopUp marks the #85 one-shot purchase grant family.
+	TopUp bool
 }
 
-// Validate enforces the monthly grant contract: derived identity, strict
-// period form, cent-aligned positive integer credits, and the exclusive
-// period end still in the future.
+// Validate enforces the grant contract per family: derived identity,
+// cent-aligned positive integer credits, the priority class, and — per
+// family — the monthly form (strict period, exclusive period end) or the
+// top-up form (named wallet, own expiry still in the future).
 func (p GrantIncludedCreditsPayload) Validate() error {
 	if p.TenantID == 0 {
 		return errors.New("invalid grant payload: tenant is required")
@@ -220,12 +232,18 @@ func (p GrantIncludedCreditsPayload) Validate() error {
 	if p.ExternalCustomerID != ExternalCustomerID(p.TenantID) {
 		return errors.New("invalid grant payload: external_customer_id must equal ExternalCustomerID(tenant)")
 	}
-	end, err := PeriodEnd(p.Period)
-	if err != nil {
-		return fmt.Errorf("invalid grant payload: %v", err)
-	}
-	if !p.ExpiresAt.Equal(end) {
-		return fmt.Errorf("invalid grant payload: expires_at must be the exclusive period end %s", end.Format(time.RFC3339))
+	if p.TopUp {
+		if p.WalletName == "" {
+			return errors.New("invalid grant payload: a top-up grant requires its deterministic wallet name")
+		}
+	} else {
+		end, err := PeriodEnd(p.Period)
+		if err != nil {
+			return fmt.Errorf("invalid grant payload: %v", err)
+		}
+		if !p.ExpiresAt.Equal(end) {
+			return fmt.Errorf("invalid grant payload: expires_at must be the exclusive period end %s", end.Format(time.RFC3339))
+		}
 	}
 	if p.ExpiresAt.Compare(time.Now().UTC()) <= 0 {
 		return errors.New("invalid grant payload: expires_at must be after the grant time")
@@ -267,6 +285,24 @@ func MonthlyWalletName(tenantID uint64, period string) string {
 // the Base monthly wallet).
 func PurchaseWalletName(tenantID uint64, period string) string {
 	return ExternalPurchaseSubscriptionID(tenantID) + "-" + period
+}
+
+// TopUpWalletName derives the deterministic wallet identity of one paid
+// top-up order (#85): "<ext-customer>-topup-<hash12(orderID)>". The
+// "-topup-" suffix never parses as a period, so both adapters classify the
+// batch source=topup (the period-less family of the #86 snapshot
+// classification); the same name on every replay is the read-before-create
+// idempotency anchor of a lost response's recovery (E3).
+func TopUpWalletName(tenantID uint64, orderID string) string {
+	sum := sha256.Sum256([]byte("topup:" + orderID))
+	return ExternalCustomerID(tenantID) + "-topup-" + hex.EncodeToString(sum[:6])
+}
+
+// TopUpGrantCommandKey derives the seam command idempotency identity of one
+// order's top-up grant — deterministic per order, never colliding with the
+// monthly (customer, period) key space.
+func TopUpGrantCommandKey(tenantID uint64, orderID string) string {
+	return string(CommandKindGrantIncludedCredits) + ":topup:" + TopUpWalletName(tenantID, orderID)
 }
 
 // Wallet metadata keys — the E3 recovery-by-metadata obligation: a grant

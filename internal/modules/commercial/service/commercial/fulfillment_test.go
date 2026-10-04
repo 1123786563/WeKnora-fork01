@@ -112,7 +112,7 @@ func (g *stubGateway) setRevokeErr(err error) {
 	g.revokeErr = err
 }
 
-func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentService, *gorm.DB, *repocommercial.OrderStore) {
+func setupFulfillment(t *testing.T, gw domain.CommercialGateway, platform domain.CommercialPlatform) (*FulfillmentService, *gorm.DB, *repocommercial.OrderStore) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
 	if err != nil {
@@ -126,7 +126,7 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 		t.Fatal(err)
 	}
 	store := repocommercial.NewOrderStore(db)
-	svc, err := NewFulfillmentService(db, gw, nil)
+	svc, err := NewFulfillmentService(db, gw, platform, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func fulfillmentRecords(t *testing.T, db *gorm.DB, orderID string) []Fulfillment
 
 func TestFulfillmentTopUpRejectsContradictoryWinningAttempt(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord-topup-mismatch", 7, 2500, db)
 	seedPaidOrder(t, store, "ord-topup-following", 7, 400)
 	if err := db.Create(&repocommercial.QuoteRow{ID: "q-ord-topup-following", TenantID: 7, SnapshotJSON: `{"line_items":[{"kind":"top_up"}]}`}).Error; err != nil {
@@ -247,7 +247,7 @@ func TestFulfillmentTopUpRejectsContradictoryWinningAttempt(t *testing.T) {
 
 func TestFulfillmentTopUpMissingWinningAttemptIsRetained(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord-topup-no-attempt", 7, 2500, db)
 	if err := db.Where("id = ?", "att-ord-topup-no-attempt").Delete(&repocommercial.PaymentAttemptRow{}).Error; err != nil {
 		t.Fatal(err)
@@ -286,7 +286,7 @@ func TestFulfillmentTopUpMissingWinningAttemptIsRetained(t *testing.T) {
 
 func TestFulfillmentTopUpFulfilledOpenExceptionRequiresWinnerAndReceipt(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord-topup-fulfilled-exception", 7, 2500, db)
 	var ev repocommercial.OutboxEvent
 	if err := db.Where("event_key = ?", "fulfill:ord-topup-fulfilled-exception").First(&ev).Error; err != nil {
@@ -368,7 +368,7 @@ func TestFulfillmentTopUpFulfilledOpenExceptionRequiresWinnerAndReceipt(t *testi
 
 func TestFulfillmentTopUpExceptionStorageFailureDoesNotAcknowledge(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord-topup-exception-write-failure", 7, 2500, db)
 	if err := db.Where("id = ?", "att-ord-topup-exception-write-failure").Delete(&repocommercial.PaymentAttemptRow{}).Error; err != nil {
 		t.Fatal(err)
@@ -405,7 +405,7 @@ func TestFulfillmentTopUpExceptionStorageFailureDoesNotAcknowledge(t *testing.T)
 
 func TestFulfillmentTopUpTransientWinningAttemptReadRetries(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord-topup-retry", 7, 2500, db)
 	beforeAttempt := attemptForTest(t, db, "att-ord-topup-retry")
 	var beforeEvent repocommercial.OutboxEvent
@@ -678,7 +678,7 @@ func TestFulfillEventFailsClosedWhenDiscriminationUnprovable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gw := &stubGateway{findable: true}
-			svc, db, store := setupFulfillment(t, gw)
+			svc, db, store := setupFulfillment(t, gw, nil)
 			if err := db.AutoMigrate(&repocommercial.QuoteRow{}); err != nil {
 				t.Fatal(err)
 			}
@@ -744,7 +744,7 @@ func TestFulfillEventFailsClosedWhenDiscriminationUnprovable(t *testing.T) {
 // nor grants again.
 func TestFulfillmentUpgradeSwitchesPlanAndGrantsDelta(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	if err := db.AutoMigrate(&repocommercial.Subscription{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{}); err != nil {
 		t.Fatal(err)
 	}
@@ -856,7 +856,7 @@ func TestFulfillmentUpgradeSwitchesPlanAndGrantsDelta(t *testing.T) {
 }
 func TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce(t *testing.T) {
 	gw := &stubGateway{applyErr: domain.ErrGatewayIndeterminate}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord_drop", 7, 2500, db)
 	ctx := context.Background()
 
@@ -923,7 +923,7 @@ func TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce(t *testing.T) {
 // one fulfillment and one outbox event.
 func TestFulfillmentWorkerConcurrentClaimsApplyExactlyOnce(t *testing.T) {
 	gw := &stubGateway{}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord_race", 8, 1200, db)
 	ctx := context.Background()
 
@@ -969,7 +969,7 @@ func TestFulfillmentWorkerConcurrentClaimsApplyExactlyOnce(t *testing.T) {
 // pass once the gateway accepts completes it.
 func TestFulfillmentWorkerPaidNotFulfilledStaysRecoverable(t *testing.T) {
 	gw := &stubGateway{applyErr: domain.ErrGatewayBusinessRefusal}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	seedPaidOrder(t, store, "ord_ref", 9, 800, db)
 	ctx := context.Background()
 
@@ -1043,7 +1043,7 @@ func overPaymentEvent(t *testing.T, db *gorm.DB) repocommercial.OutboxEvent {
 // fulfillment_records 恰一行 applied、订单只履约一次。
 func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	ctx := context.Background()
 	const orderID = "ord-over-1"
 	seedPaidOrder(t, store, orderID, 7, 9900, db)
@@ -1081,7 +1081,7 @@ func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
 
 func TestOverPaymentSameAttemptDifferentTransactionUsesDurableAnomalyBinding(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	ctx := context.Background()
 	const orderID = "ord-over-same-attempt"
 	const tenant = uint64(79)
@@ -1165,7 +1165,7 @@ func TestOverPaymentContradictoryIdentityIsDeadWithoutAnomaly(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gw := &stubGateway{findable: true}
-			svc, db, store := setupFulfillment(t, gw)
+			svc, db, store := setupFulfillment(t, gw, nil)
 			const orderID = "ord-over-contradiction"
 			seedPaidOrder(t, store, orderID, 77, 9900, db)
 			seedSecondChannelSuccess(t, store, orderID, 77, 9900)
@@ -1266,7 +1266,7 @@ func TestOverPaymentTransientPersistenceFailuresRemainPending(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gw := &stubGateway{findable: true}
-			svc, db, store := setupFulfillment(t, gw)
+			svc, db, store := setupFulfillment(t, gw, nil)
 			const orderID = "ord-over-transient"
 			seedPaidOrder(t, store, orderID, 78, 9900, db)
 			seedSecondChannelSuccess(t, store, orderID, 78, 9900)
@@ -1308,7 +1308,7 @@ func TestOverPaymentTransientPersistenceFailuresRemainPending(t *testing.T) {
 // 该列（运营按 merchant_order_id 关联渠道单据时对不上的口径分裂）。
 func TestOverPaymentAnomalyCarriesMerchantOrderID(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	ctx := context.Background()
 	const orderID = "ord-over-mid"
 	seedPaidOrder(t, store, orderID, 7, 9900)
@@ -1383,7 +1383,7 @@ func seedSecondChannelSuccessOn(t *testing.T, store *repocommercial.OrderStore, 
 // 行数仍为 1。
 func TestOverPaymentDrainReplayYieldsSingleAnomaly(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	ctx := context.Background()
 	const orderID = "ord-over-2"
 	seedPaidOrder(t, store, orderID, 7, 9900, db)
@@ -1413,7 +1413,7 @@ func TestOverPaymentDrainReplayYieldsSingleAnomaly(t *testing.T) {
 // 事件保持 pending 等下一轮，整体不报错不 panic。
 func TestOverPaymentDisposeFailureDoesNotBlockFulfillDrain(t *testing.T) {
 	gw := &stubGateway{findable: true}
-	svc, db, store := setupFulfillment(t, gw)
+	svc, db, store := setupFulfillment(t, gw, nil)
 	ctx := context.Background()
 	const orderID = "ord-over-3"
 	seedPaidOrder(t, store, orderID, 7, 9900, db)

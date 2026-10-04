@@ -421,3 +421,17 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 缺口（均为产品裁决门，本轮不实现）：
 - **G-A 充值商品面不存在**：无充值 SKU/quote 类型（CreateQuote 仅 subscription_fee 形态，order.go:254）、无管理员充值路由/UI。换算率 TopUpCredits 1 Credit/CNY（fulfillment.go:105-107）计划明示「无已批准来源确认为产品政策」——待 owner 裁决定价与换算后才能最小实现。
 - **G-B 付费 top-up 履约走 OpenMeter 非 Lago**：legacy top-up（空 QuoteID）与 quoted top_up 均路由 FulfillmentService.ApplyBenefit → openmeter.Gateway（container.go:263）。「Lago 付款确认后恰一次 Credits 到账」的端到端付费链未接线；Lago 侧仅有直建钱包+rebalance 证据。#75-a2 十二个月到期的运行时证明仍 BLOCKED（t03 verdict）。
+
+### #85 实现轮（2026-10-04，worktree /tmp/wk-l85 @ fix/lago-85，基 c59c77e88）— 裁定 closure-ready（evidence-only）
+
+控制器裁定 R-GA/R-GB 填补上节两缺口，四 AC 全落链（RED→GREEN，TDD）：
+
+- **R-GA 商品面**：`OrderService.CreateTopUpQuote`（service/commercial/order.go）——一次性购买（无订阅/无版本/无周期），换算 **CreditsMicro = AmountFen × 100**（1 元=10,000 micro，BasePlanSeed 口径），quote 冻结单行 `top_up` line item（发票面），整元校验保证 cent-aligned；路由 `POST /commercial/topup-quotes`（handler/commercial.go + routes_commercial.go）。复用既有 Quote→Invoice→Payment 链：CreateOrder/openOrder 泛化消费冻结 PriceFen，订阅分类器识别 top_up 落履约腿。`TopUpCredits` 同步切至 fen×100。
+- **R-GB 履约切轨**：`FulfillmentService` 增 `CommercialPlatform` 依赖（dig 注入 container.go:1027 平台；接线注释见 :1096 块），top-up 线走 `CommandKindGrantIncludedCredits` 的 TopUp 家族：确定性钱包名 `TopUpWalletName`=ext+`-topup-`+hash12(orderID)、**无 period 元数据键**→#86 快照分类 source=topup、12 个月 TTL、priority=2、per-order 命令键；OpenMeter gateway 保留订阅/升级/退款线（#105 移除）。lago 适配器：top-up 不盖 period 键、仅按名匹配（byMeta 守卫防跨族 content-conflict 误伤）；fulfilled+open-exception 对账分支的平台侧只读证明（ReadSnapshot 扫批次，绝不 re-grant）。
+- 四 AC 映射（service/commercial/topup_test.go，8 用例）：
+  - **AC①** 未付款零入账：无钱包/无记录/订单 pending，legacy 轨零触碰（TestTopUpAC1UnpaidOrderGrantsNoCredits）。
+  - **AC②** 恰一次+来源/到期：record applied×1（ExternalID=钱包名）、批次 source=topup、balance=fen×100、12 个月到期、重放不加倍；读模 BatchView{Source,ExpiresAt} 既有（benefits.go:68-69）（TestTopUpAC2PaidArrivesExactlyOnceWithSourceAndExpiry）。
+  - **AC③** 权益处理中：响应丢失→订单留 paid+record attention、零回执，绝不记成功；前端 order-state.ts 映射既在位（#84 审计已证）（TestTopUpAC3UnconfirmedArrivalStaysProcessing）。
+  - **AC④** 原始身份恢复：同钱包名/命令键 replay→fulfilled、余额单计（FakeAdapter 持久化但响应丢失建模）（TestTopUpAC4LostResponseRecoversByOriginalIdentity）。
+- 门禁：`go test ./internal/modules/commercial/... ./internal/container/ -count=1` 8 包全 ok（container 439s 含新构造签名 dig 装配活体门）；`internal/router` 全 ok（新路由）；`internal/handler` 仅预存失败 TestCraftEgressAdapterJoinedWithRealGateway（基线 c59c77e88 复跑同败，与本轮无关）；gofmt/vet 干净。
+- 残差登记：①nil platform 保留 legacy OpenMeter top-up 腿——仅测试可达，容器恒注平台，#105 一并移除；②预部署遗留 attention 态 top-up 记录切轨后按平台身份重放，OpenMeter 侧「已持久化但 FindBenefit 长期未恢复」的极端窗口登记为迁移注意项；③充值入口 UI（按钮/金额选择）不在票面，API 面已闭合。

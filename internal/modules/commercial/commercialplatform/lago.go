@@ -909,10 +909,16 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 	// The metadata period key follows the batch family (D4): the purchase
 	// wallet stamps purchase_period, the Base monthly batch period — the
 	// two families never match each other's metadata (F11 anti-collision).
+	// (#85) A top-up stamps NO period key: a period-less wallet of this
+	// tenant is exactly the top-up batch the snapshot classification reads
+	// back, and a top-up matches by name only.
 	periodMetaKey := commercial.WalletMetaPeriod
-	if walletName != "" {
+	switch {
+	case payload.TopUp:
+		periodMetaKey = ""
+	case walletName != "":
 		periodMetaKey = commercial.WalletMetaPurchasePeriod
-	} else {
+	default:
 		walletName = commercial.MonthlyWalletName(payload.TenantID, payload.Period)
 	}
 	grantCents := payload.CreditsMicro / 10_000
@@ -925,7 +931,8 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 		for _, w := range wallets {
 			meta := w.meta()
 			byName := w.Name == walletName
-			byMeta := meta[commercial.WalletMetaTenant] == payload.ExternalCustomerID &&
+			byMeta := periodMetaKey != "" &&
+				meta[commercial.WalletMetaTenant] == payload.ExternalCustomerID &&
 				meta[periodMetaKey] == payload.Period
 			if !byName && !byMeta {
 				continue
@@ -989,6 +996,12 @@ func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.Grant
 	if err != nil {
 		return 0, nil, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 	}
+	metadata := map[string]string{
+		commercial.WalletMetaTenant: payload.ExternalCustomerID,
+	}
+	if periodMetaKey != "" {
+		metadata[periodMetaKey] = payload.Period
+	}
 	body := map[string]any{
 		"wallet": map[string]any{
 			"external_customer_id": payload.ExternalCustomerID,
@@ -998,10 +1011,7 @@ func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.Grant
 			"rate_amount":          "1",
 			"expiration_at":        payload.ExpiresAt.UTC().Format(time.RFC3339),
 			"priority":             payload.Priority,
-			"metadata": map[string]string{
-				commercial.WalletMetaTenant: payload.ExternalCustomerID,
-				periodMetaKey:               payload.Period,
-			},
+			"metadata":             metadata,
 		},
 	}
 	status, respBody, err := a.do(ctx, http.MethodPost, "/api/v1/wallets", body)

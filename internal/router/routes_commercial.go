@@ -46,6 +46,10 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		// checks above apply; tenant comes exclusively from the authenticated
 		// context. Checkout names the channel provider explicitly.
 		commercialGroup.POST("/quotes", commercialHandler.CreateQuote)
+		// #85 G-A: the one-shot credit top-up offer. Same checkout chain
+		// as /quotes; the amount is the caller's choice within the closed
+		// whole-CNY book rate.
+		commercialGroup.POST("/topup-quotes", commercialHandler.CreateTopUpQuote)
 		commercialGroup.POST("/orders", commercialHandler.CreateOrder)
 		commercialGroup.GET("/orders/:id", commercialHandler.GetOrder)
 		// W5 (#81): the payment-gated purchase. The POST submits a frozen

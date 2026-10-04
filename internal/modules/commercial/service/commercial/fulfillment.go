@@ -100,10 +100,12 @@ func TopUpOrderLines(order domain.Order) []FulfillmentLine {
 	}}
 }
 
-// TopUpCredits converts a paid CNY amount to credits at the fixed book
-// rate of one Credit per CNY (credits are millionths; amounts are fen).
+// TopUpCredits converts a paid CNY amount to credits at the #85 R-GA book
+// rate: CreditsMicro = AmountFen × 100 — one CNY buys 10,000 micro-credits
+// (the BasePlanSeedIncludedCreditsMicro convention). Quote-side validation
+// keeps amounts whole-CNY so the result stays cent-aligned.
 func TopUpCredits(amount domain.CNYFen) domain.Credits {
-	return domain.Credits(amount) * 10_000
+	return domain.Credits(amount) * 100
 }
 
 // OrderCustomerID derives the provider customer from the ORDER's tenant —
@@ -151,6 +153,7 @@ type FulfillmentService struct {
 	db        *gorm.DB
 	orders    *repocommercial.OrderStore
 	gateway   domain.CommercialGateway
+	platform  domain.CommercialPlatform
 	purchaser *PurchaseFulfiller
 	lines     func(domain.Order) []FulfillmentLine
 	leaseTTL  time.Duration
@@ -164,8 +167,12 @@ type FulfillmentService struct {
 // NewFulfillmentService validates its wiring and migrates the fulfillment
 // record table. The gateway arriving unconfigured (blocked-env) is legal:
 // recovery passes will classify its calls as unknown and leave orders paid
-// until the connector is configured.
-func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, purchaser *PurchaseFulfiller) (*FulfillmentService, error) {
+// until the connector is configured. The platform (#85 G-B) owns the
+// TOP-UP fulfillment rail (the wallet command path); a nil platform keeps
+// the legacy OpenMeter top-up leg — test-only reach, the container always
+// wires the real platform, and #85's replacement of the gateway rail ends
+// at #105's gateway removal.
+func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, platform domain.CommercialPlatform, purchaser *PurchaseFulfiller) (*FulfillmentService, error) {
 	if db == nil {
 		return nil, ErrFulfillmentDatabaseMissing
 	}
@@ -179,6 +186,7 @@ func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, purcha
 		db:        db,
 		orders:    repocommercial.NewOrderStore(db),
 		gateway:   gateway,
+		platform:  platform,
 		purchaser: purchaser,
 		lines:     TopUpOrderLines,
 		leaseTTL:  time.Minute,
@@ -338,6 +346,12 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 				return winnerErr
 			}
 			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		// (#85) A platform-rail top-up proves its receipt read-only — by the
+		// authority wallet — before the exception closes; the legacy gateway
+		// lookup below keeps serving pre-#85 records.
+		if s.platform != nil && s.topUpReceiptConfirmed(ctx, order.TenantID, domain.TopUpWalletName(order.TenantID, order.ID)) {
+			return s.completeFulfilledEvent(ctx, ev, order.ID)
 		}
 		gwCtx := domain.WithBenefitCustomer(ctx, OrderCustomerID(order.TenantID))
 		receipt, err := s.gateway.FindBenefit(gwCtx, domain.FulfillmentKey(order.ID, "credits"))
@@ -854,6 +868,12 @@ func (s *FulfillmentService) processRecord(ctx context.Context, rec FulfillmentR
 	if !s.leaseRecord(ctx, &rec, now) {
 		return nil // another worker owns this record right now
 	}
+	// (#85 G-B) Top-up lines ride the commercial platform wallet rail —
+	// never the legacy OpenMeter gateway. Subscription/upgrade lines keep
+	// the gateway below (#105 owns its removal).
+	if rec.Kind == domain.BenefitKindTopUp && s.platform != nil {
+		return s.processTopUpRecord(ctx, rec, now)
+	}
 	gwCtx := domain.WithBenefitCustomer(ctx, rec.CustomerID)
 	receipt, err := s.gateway.FindBenefit(gwCtx, rec.Key)
 	switch domain.ClassifyFulfillment(err) {
@@ -894,6 +914,65 @@ func (s *FulfillmentService) processRecord(ctx context.Context, rec FulfillmentR
 		// The lookup itself was indeterminate: no license to re-apply.
 		return s.recordAttention(ctx, rec)
 	}
+}
+
+// processTopUpRecord drives one top-up line over the commercial platform
+// wallet rail (#85 G-B). The grant command is idempotent on the
+// deterministic wallet name (the adapters' read-before-create), so a lost
+// response replays by the ORIGINAL identity and never grants twice; an
+// unreachable/unconfigured platform stays attention — the paid order keeps
+// showing 权益处理中 — and a definitive conflict/refusal is a failure,
+// never success.
+func (s *FulfillmentService) processTopUpRecord(ctx context.Context, rec FulfillmentRecord, now time.Time) error {
+	receipt, err := s.platform.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindGrantIncludedCredits,
+		Key:   domain.TopUpGrantCommandKey(rec.TenantID, rec.OrderID),
+		Actor: "fulfiller", Reason: "top-up credits",
+		Payload: domain.GrantIncludedCreditsPayload{
+			TenantID:           rec.TenantID,
+			ExternalCustomerID: domain.ExternalCustomerID(rec.TenantID),
+			CreditsMicro:       rec.Credits,
+			ExpiresAt:          domain.FirstEffectiveAt(rec.EffectiveAt, now).AddDate(1, 0, 0),
+			WalletName:         domain.TopUpWalletName(rec.TenantID, rec.OrderID),
+			Priority:           domain.TopUpWalletPriority,
+			TopUp:              true,
+		},
+	})
+	switch {
+	case err == nil:
+		if receipt.ExternalID == "" {
+			// An empty receipt proves nothing; it is never a success.
+			return s.recordAttention(ctx, rec)
+		}
+		return s.recordApplied(ctx, rec, domain.BenefitReceipt{ExternalID: receipt.ExternalID})
+	case errors.Is(err, domain.ErrPlatformInvalidResponse), errors.Is(err, domain.ErrPlatformUnsupported):
+		// Definitive platform answer (grant content conflict, malformed
+		// response): a failure, never success.
+		return s.recordState(ctx, rec, domain.FulfillmentStateRefused)
+	default:
+		// Timeout / dropped response / unconfigured platform: the remote
+		// may have persisted — attention, reconciled by identity next pass.
+		return s.recordAttention(ctx, rec)
+	}
+}
+
+// topUpReceiptConfirmed is the READ-ONLY platform proof that a paid
+// top-up's wallet exists in the authority — the recovery check of an
+// already-fulfilled top-up order replaying with an open exception. It
+// never re-grants; a missing wallet falls back to the gateway lookup.
+func (s *FulfillmentService) topUpReceiptConfirmed(ctx context.Context, tenantID uint64, wallet string) bool {
+	snap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindBenefits, TenantID: tenantID,
+	})
+	if err != nil || snap.Benefits == nil {
+		return false
+	}
+	for _, b := range snap.Benefits.Batches {
+		if b.WalletRef == wallet && b.Source == domain.BatchSourceTopUp {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *FulfillmentService) leaseRecord(ctx context.Context, rec *FulfillmentRecord, now time.Time) bool {

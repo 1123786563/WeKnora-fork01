@@ -276,6 +276,52 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 	}, nil
 }
 
+// CreateTopUpQuote cuts a one-shot credit top-up offer (#85 G-A / R-GA):
+// CreditsMicro = AmountFen × 100 — one CNY buys 10,000 micro-credits, the
+// BasePlanSeedIncludedCreditsMicro convention. No plan version, no
+// subscription, no recurrence: the frozen quote's single top_up line is
+// the invoice face the payment channel collects, and the same
+// Quote→Invoice→Payment chain as a subscription purchase settles it.
+// Amounts are whole-CNY only — the product keeps the granted credits
+// cent-aligned (the platform grant contract).
+func (s *OrderService) CreateTopUpQuote(ctx context.Context, tenantID uint64, amountFen int64) (QuoteView, error) {
+	if tenantID == 0 || amountFen <= 0 || amountFen%100 != 0 {
+		return QuoteView{}, fmt.Errorf("%w: top-up amount must be a positive whole-CNY fen amount", repocommercial.ErrInvalidQuoteRow)
+	}
+	subVersion, err := s.subs.LatestVersion(ctx, tenantID)
+	if err != nil {
+		return QuoteView{}, err
+	}
+	snap := quoteSnapshot{
+		PlanKey:      "credits",
+		PriceFen:     amountFen,
+		CreditsMicro: amountFen * 100,
+		Currency:     domain.CurrencyCNY,
+		LineItems:    []QuoteLineItem{{Kind: "top_up", Name: "充值 Credits", AmountFen: amountFen}},
+	}
+	snapJSON, err := json.Marshal(snap)
+	if err != nil {
+		return QuoteView{}, err
+	}
+	id := "qt_" + newLeaseToken()
+	expires := time.Now().Add(quoteValidity)
+	if err := s.quotes.CreateQuote(ctx, repocommercial.QuoteRow{
+		ID:                  id,
+		TenantID:            tenantID,
+		SubscriptionVersion: subVersion,
+		SnapshotJSON:        string(snapJSON),
+		ExpiresAt:           expires,
+	}); err != nil {
+		return QuoteView{}, err
+	}
+	return QuoteView{
+		ID: id, PlanKey: snap.PlanKey,
+		AmountFen: snap.PriceFen, CreditsMicro: snap.CreditsMicro,
+		ExpiresAt: expires.UTC().Format(time.RFC3339),
+		Currency:  snap.Currency, LineItems: snap.LineItems,
+	}, nil
+}
+
 // OrderView is the produced order projection. CheckoutURL carries the
 // customer-facing payment link when a channel adapter produced one.
 // CheckoutError is non-empty when the channel call failed AFTER the order
