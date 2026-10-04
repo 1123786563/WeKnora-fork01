@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Operator lifecycle for the pinned local Lago Community v1.53.0 stack.
 #
-# Usage: ./deploy/lago/lago.sh init|up|down|status|config|contract-probe
+# Usage: ./deploy/lago/lago.sh init|up|down|status|config|contract-probe|backup|restore
 #
 #   init           generate deploy/lago/.env with random secrets (mode 600)
 #   up             validate secrets, then docker compose up -d --wait
@@ -9,6 +9,9 @@
 #   status         print the Task 1 health snapshot JSON
 #   config         print the resolved Compose config with secrets redacted
 #   contract-probe run the real Customer create/delete contract probe (API key comes from the caller environment)
+#   backup         dump the authority (pg_dump -Fc), object storage (tar) and
+#                  pending work (redis RDB) into deploy/lago/backups/<utcstamp>
+#   restore        destroy the stack data volumes and reinstate a backup (#104)
 
 set -euo pipefail
 
@@ -28,7 +31,7 @@ die() {
 }
 
 usage() {
-  sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -179,6 +182,66 @@ cmd_contract_probe() {
   exec python3 "$LAGO_DIR/contract_probe.py" "$@"
 }
 
+# --- #104 [Lago 32]: backup / restore -----------------------------------
+# A backup is three artifacts under one directory (gitignored):
+#   lago.dump    pg_dump custom format -- the billing authority
+#   storage.tar  the object-storage volume (generated PDFs, CSV exports)
+#   redis.rdb    an RDB snapshot of the pending-work (Sidekiq) state
+# RPO is a method property, not a command property: locally it is the
+# backup cadence the operator chooses; the production design (WAL
+# archiving, RPO <= 5 min) is documented in
+# docs/upstream-parity/lago-production-observability.md.
+
+# The RDB for this stack is tiny, so BGSAVE can finish before the first
+# poll -- baseline LASTSAVE is taken BEFORE issuing BGSAVE.
+wait_redis_bgsave() {
+  local before="$1" now i
+  for i in $(seq 1 40); do
+    now="$(compose exec -T redis redis-cli -p "${REDIS_PORT:-6379}" LASTSAVE | tr -d '\r')"
+    [[ "$now" != "$before" ]] && return 0
+    sleep 0.5
+  done
+  die "redis BGSAVE did not finish within 20s"
+}
+
+cmd_backup() {
+  check_secrets
+  local out="${1:-$LAGO_DIR/backups/$(date -u +%Y%m%dT%H%M%SZ)}"
+  [[ -e "$out" ]] && die "backup target $out already exists"
+  mkdir -p "$out" && chmod 700 "$out"
+  local lastsave
+  lastsave="$(compose exec -T redis redis-cli -p "${REDIS_PORT:-6379}" LASTSAVE | tr -d '\r')"
+  compose exec -T db pg_dump -U "${POSTGRES_USER:-lago}" -d "${POSTGRES_DB:-lago}" -Fc > "$out/lago.dump"
+  compose exec -T redis redis-cli -p "${REDIS_PORT:-6379}" BGSAVE > /dev/null
+  wait_redis_bgsave "$lastsave"
+  compose run --rm --no-deps --entrypoint tar -v "$out":/backup api -cf /backup/storage.tar -C /app/storage .
+  compose run --rm --no-deps --entrypoint sh -v "$out":/backup redis -c 'cp /data/dump.rdb /backup/redis.rdb'
+  printf '{"created_at":"%s","release":"v1.53.0","contents":["lago.dump","storage.tar","redis.rdb"]}\n' \
+    "$(date -u +%FT%TZ)" > "$out/backup.json"
+  echo "backup written to $out"
+}
+
+# restore DESTROYS the current stack data (down -v) and reinstates a
+# backup taken by cmd_backup. This is the #104 recovery path: the RTO drill
+# (deploy/lago/restore_drill.py) times exactly this command.
+cmd_restore() {
+  check_secrets
+  local src="${1:-}"
+  [[ -n "$src" ]] || die "usage: lago.sh restore <backup-dir>"
+  [[ -f "$src/lago.dump" ]] || die "$src/lago.dump missing -- not a lago.sh backup"
+  echo "lago.sh: restore will DESTROY the current stack data and reinstate $src"
+  sleep 3
+  compose down -v
+  compose up -d db --wait
+  compose exec -T db pg_restore -U "${POSTGRES_USER:-lago}" -d "${POSTGRES_DB:-lago}" --no-owner < "$src/lago.dump"
+  compose run --rm --no-deps --entrypoint tar -v "$src":/backup api -xf /backup/storage.tar -C /app/storage
+  if [[ -f "$src/redis.rdb" ]]; then
+    compose run --rm --no-deps --entrypoint sh -v "$src":/backup redis -c 'cp /backup/redis.rdb /data/dump.rdb'
+  fi
+  compose up -d --wait
+  echo "lago.sh: restore complete -- stack reports healthy"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
     init) shift; cmd_init "$@" ;;
@@ -187,6 +250,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     status) shift; cmd_status "$@" ;;
     config) shift; cmd_config "$@" ;;
     contract-probe) shift; cmd_contract_probe "$@" ;;
+    backup) shift; cmd_backup "$@" ;;
+    restore) shift; cmd_restore "$@" ;;
     -h|--help|help) usage ;;
     *) usage ;;
   esac

@@ -120,3 +120,6 @@ docs/plans/**/seed-login-*.json
 # 落盘前脱敏是第一防线；此精确规则防止当前未跟踪快照被意外正常暂存。
 # Git ignore 不保护强制添加或已跟踪文件。
 docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot
+
+# #104 restore drill artifacts (operator-local, never commit)
+deploy/lago/backups/

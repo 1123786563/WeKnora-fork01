@@ -1,0 +1,67 @@
+{
+  "drill": "lago-restore-t32",
+  "started_at": "2026-10-04T21:35:59.529358+00:00",
+  "base_url": "http://127.0.0.1:48889",
+  "tenant": "780104",
+  "backup_dir": "/private/tmp/wk-l104/deploy/lago/backups/20261004T213614Z",
+  "backup_seconds": 8.5,
+  "rto_seconds": 111.6,
+  "rto_budget_seconds": 3600,
+  "rto_within_budget": true,
+  "rpo": {
+    "budget_seconds": 300,
+    "method": "local: operator backup cadence (lago.sh backup); production design: WAL archiving per docs/upstream-parity/lago-production-observability.md",
+    "evidence": "method default, not measured by this drill"
+  },
+  "classes": {
+    "customer": {
+      "pre": 13,
+      "post": 13,
+      "equal": true
+    },
+    "invoice": {
+      "pre": 15,
+      "post": 15,
+      "equal": true
+    },
+    "payment": {
+      "pre": 9,
+      "post": 9,
+      "equal": true
+    },
+    "subscription": {
+      "pre": 9,
+      "post": 9,
+      "equal": true
+    },
+    "wallet": {
+      "pre": 6,
+      "post": 6,
+      "equal": true
+    },
+    "pending_work": {
+      "pre": 1,
+      "post": 1,
+      "equal": true
+    },
+    "billing_projections": {
+      "pre": 28,
+      "post": 28,
+      "equal": true
+    }
+  },
+  "billing_projections_scratch_restore": {
+    "tables": 28,
+    "rows_total": 17,
+    "counts_equal": true,
+    "pg_restore_stderr_tail": "\n\npg_restore: warning: errors ignored on restore: 3"
+  },
+  "replay_idempotency": {
+    "before": 1,
+    "after": 1,
+    "identity_stable": true,
+    "no_duplicate": true
+  },
+  "finished_at": "2026-10-04T21:39:33.470094+00:00",
+  "verdict": "pass"
+}
