@@ -544,3 +544,23 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - **残差 R-101a**：法务批准人类门禁（gate 关闭非代码缺口）；**R-101b**：外部 secret manager 未接（部署前提）；**R-101c**：Lago usage event 通道不存在（settlement 走 openmeter），落地票补 events payload 审计；**R-101d**：/features 版图归属待核（v1.53.0）。
 
 **门禁**：commercial 7 包全绿 -count=1（无 Go 改动）；前端 commercial 域 5 文件 41 用例绿+settings 回归绿+contracts/api-client 冒烟绿（Node 26）；worktree 先 pnpm install（T09 教训）。新测试 3 支（envelope 解析/状态标签/权限提示）+loader 用例重塑。
+
+## 批量轮 #102+#103（2026-10-05，worktree /tmp/wk-l102 @ fix/lago-102-103）
+
+### #102 [Lago 30] 空间注销时停止收费、去标识化并保留财务历史 — closure-ready（本轮实施交付：seam close 命令/终态/去标识化/guard 接线全补，1 残差）
+- AC① 注销后新命令/收费被拒：域 sentinel ErrWorkspaceClosed（closure_command.go:19）+tombstone 表 commercial_workspace_closures（closure.go:26，portable DDL 沿 QuotaGuard 先例）；收费守卫 denyClosedWorkspace 挂 reserve 事务（budget_closure.go:13+budget_reservation.go:132，#90 lag 门同构）；购买守卫 purchase.go:110；ensure 守卫 billing_account.go:78；handler 409 映射 commercial.go:483。TestReserveDeniesClosedWorkspace / TestClosedWorkspaceRefusesNewCommercialWork（三入口）。
+- AC② 保留策略处置：seam additive 命令 close_workspace+载荷（身份等式+去标识名强制）；lago 适配器 closeWorkspace（lago.go:824：客户级订阅终止→ANCHORED active 钱包终止→去标识化；重放收敛零写）；终态 SubscriptionStateTerminated（subscription_command.go:387+快照映射）；本地投影 RecordWorkspaceClosure 封顶 paid_until（subscription.go:267）。lago_closure_test.go 3 支+TestRecordWorkspaceClosureCapsPaidTerm。
+- AC③ 财务可查：closure 路径零 DELETE 于订单/支付/退款/credit note/订阅行。TestCloseWorkspaceKeepsFinancialHistoryReadable。
+- AC④ 身份永不复用：tombstone 任一状态拒 ensure；首 closed_at 审计事实跨重放不变；闭后 identity 保持 linked（真栈实证）。TestClosureTombstoneIsSingleRowAndIdempotent。
+- 注销集成（票面缺口「DeleteTenant 与商业域零集成」）：TenantDeletionGuard additive CloseCommercialWorkspace（tenant.go:48）+DeleteTenant 闭不确认则拒绝（tenant.go:262，fail closed）；生产 guard CommercialDeletionGuard（tombstone/租户级 grant 吊销 space_grant.go:73/真键 pending 列举/闭处置）+container Decorate 装配（container.go:1044）。tenant_deletion_test.go 增 2 支。
+- 真栈实证（v1.53.0）：TestLagoCloseWorkspaceIntegration PASS（终止+终态快照+余额清零+identity linked+去标识化+replay 收敛）；**发现 v1.53 无 customer update 路由（routes.rb 仅 create/index/show/destroy）——去标识化改 create-on-external_id UPSERT（t06 运行时判定先例）**。
+- **残差 R-102a**：真实 HTTP 注销端到端留活体轮；production 版迁移文件未加（portable DDL 口径同 QuotaGuard）。
+
+### #103 [Lago 31] 部署可观测的生产 Lago 并满足计费延迟目标 — closure-ready（代码+文档混合交付，3 残差）
+- AC① TLS/备份/容量：blocked-env（AGPL 生产门未批准，#101 记录）；合理默认值交付 docs/upstream-parity/lago-production-observability.md（Helm digest 锁定/HA PG+TLS+WAL RPO≤5min/Redis 分离/S3/容量基线外推）。
+- AC② readiness 分类：health.py classify_service/overall_status（ready/degraded/unavailable 逐依赖）+seam ReadinessState 闭合词表；活体 :48889 overall=ready（compose 行缺失 fail-closed unavailable 亦实证）。
+- AC③ 指标与告警：**本轮代码交付** BillingHealthService.ScanBillingHealth（health_scan.go:84）四闭合 face：pricing_lag（#90 面 5/15min 阈值随发）/commercial_timeout（unknown）/webhook_backlog（inbox 死信）/negative_balance（可用<0），计数+最老年龄，缺表站下；Prometheus 管道配方文档化（blocked-env）。health_scan_test.go 2 支。
+- AC④ p95≤60s：measure.py 方法学（P95_TARGET_SECONDS=60，18 单测绿）+#76 lab 证据 6.893s；生产实测 blocked-env（同方法学配方）。
+- **残差 R-103a** helm chart 未创建（AGPL 门后）；**R-103b** Prometheus 管道未部署；**R-103c** 生产 p95 未实测。
+
+**门禁**：commercial 7 包全绿 -count=1（commercialplatform 73.0s）；appconnector repo 绿；真栈集成 1 支 PASS；go build ./internal/... ./cmd/... + go vet（含 lago_integration tag）干净。internal/application/service 全包需 -timeout 30m（craft 域单支 ~50s，包时长超默认 10m 上限——预存测试债，见 test-debt 轮）；与 commercial 并发同跑会随机超时（flake 家族已知）。新测试 16 支。
