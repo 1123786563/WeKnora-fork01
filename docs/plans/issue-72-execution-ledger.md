@@ -564,3 +564,34 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - **残差 R-103a** helm chart 未创建（AGPL 门后）；**R-103b** Prometheus 管道未部署；**R-103c** 生产 p95 未实测。
 
 **门禁**：commercial 7 包全绿 -count=1（commercialplatform 73.0s）；appconnector repo 绿；真栈集成 1 支 PASS；go build ./internal/... ./cmd/... + go vet（含 lago_integration tag）干净。internal/application/service 全包需 -timeout 30m（craft 域单支 ~50s，包时长超默认 10m 上限——预存测试债，见 test-debt 轮）；与 commercial 并发同跑会随机超时（flake 家族已知）。新测试 16 支。
+
+## 收官轮 #104+#105+#72 终判（2026-10-05，worktree /tmp/wk-l104 @ fix/lago-104-105）
+
+### #104 [Lago 32] 从备份恢复 Lago 并完成商业对账 — closure-ready（本轮实施交付：backup/restore 生命周期+七类恢复演练，1 残差）
+- AC① 恢复七类对象：lago.sh backup|restore 新增（pg_dump -Fc 权威面+storage 卷 tar+redis RDB；restore=down -v→裸卷重建全流程，BGSAVE 基线先行修复时序竞态）；restore_drill.py 活体演练销毁→恢复后七类全等：customer 13/subscription 9/wallet 6/invoice 15/payment 9/pending_work（dead 集 1）/billing_projections 28 表（证据 deploy/lago/evidence/t32-restore-drill.json+t32-run.txt）。栈内七类非空（历轮集成测试数据即对账基数）。
+- AC② pending 不重复副作用：恢复后同 external id ensure 重放 identity 稳定零重复（replay_idempotency）+WeKnora 侧 outbox 原键重放语义沿用 recovery.go 既有测试（fail-closed/query-only/已投递拒重放）。
+- AC③ 恢复后对账：drill 级权威面 pre/post 指纹全等（身份+状态+金额字段）+WeKnora 投影全库 dump→scratch 库恢复 28 表行数全等（模板 schema 冲突 3 条无害已录）；流式对账修复面沿 R-98a（env-gated 轨道）。
+- AC④ RPO/RTO 证据：RTO 实测 111.6s ≤3600s 预算（余量 32×，backup 8.5s）；RPO=方法默认——本地=lago.sh backup 操作节奏、生产=WAL 归档设计（lago-production-observability.md，RPO≤5min）。
+- **残差 R-104a**：生产级备份编排（WAL/定时/异地/演练常态化）AGPL 门后（同 R-103a 轨道）。
+
+### #105 [Lago 33] 切换 Lago、关闭回退窗口并移除 OpenMeter — closure-ready（代码级切换完成；生产切换被 AGPL 门诚实阻止，1 残差）
+- AC① 全部 gate 通过：**未全绿**——AGPL 生产批准=未批准（R-101a 人类门禁，法务拥有者=仓库所有者）+生产 p95 未实测（R-103c）。矩阵 1-24 逐项切换面处置见 docs/upstream-parity/lago-cutover-runbook.md §4。
+- AC② 默认只写 Lago 无长期双写：OpenMeter 删除后不存在第二写面——platform 家族仅 lago+测试 fake（#77 起即如此）；CommercialGateway 轨道 parked fail-closed（commercialsvc.ParkedGateway 五方法一律 ErrGatewayUnconfigured，与删除前 env 未配置姿态逐字节一致：ClassifyFulfillment→Unknown→attention）；无 env 可达 OpenMeter。Lago usage-event 通道=R-101c 既有残差（落地票）。
+- AC③ OpenMeter 全链路删除：internal/modules/commercial/openmeter/ + deploy/openmeter/（含镜像锁/smoke）git rm；container 装配 NewParkedGateway；全仓 grep 仅存历史文档/注释与 git 历史——spec 矩阵第 24 项判据满足。
+- AC④ deprecated 标记+回退窗口关闭：关闭前回退轨道重验（openmeter 套件 4 契约测试全绿，证据 .superpowers/sdd/2026-10-05-lago-final/，包随后删除）；本地 pinned 栈无真实商业数据（票面「无真实商业数据」分支）；窗口自本轮关闭、仅前向修复；cutover-runbook §2 留痕，§3 记录批准后生产步骤（secret manager→helm→WAL→灰度→全量）。
+- **残差 R-105a**：生产默认切换+生产 Lago 部署（R-101a AGPL 批准后，沿 R-101b/R-103a-c 轨道）。
+
+**门禁**：commercial 6 包全绿 -count=1（openmeter 包已删；commercialplatform 72.8s/payment 13.6s）；go build ./... + go vet ./internal/... 干净（ld 重复库警告为 macOS 工具链噪音）；bootsmoke FAIL=HEAD 预存（stash 对照复证：interfaces.TenantService already decorated，#102 Decorate 与测试双建容器交互，非本轮引入）。restore_drill_test.py 10 支纯逻辑单测绿。
+
+### #72 家族终判（Lago 01-33 = #73-#105）
+
+**33/33 子票全部 disposition 完成且可追溯**：#74=done（第五次修订维持，集成证据 t02-*.json）；其余 32 票 closure-ready——每票在台账有独立小节（验收标准逐条处置+具名残差+门禁证据），实施分布：纯实施交付（#77 seam/#79/#80/#81/#84/#85/#88/#98/#99/#102/#105 等）、代码+文档混合（#100/#103/#104）、evidence-only（#78/#86/#87/#89-#97/#101 等，代码面已在族内前序票或既有仓库事实成立）。真栈（pinned v1.53.0 :48889）实证贯穿：customer/plan/benefits/credits-order/purchase/settlement/closure 八族集成测试族 + t32 恢复演练。
+
+**家族级结构性残差（全部具名、有归属、非隐藏）**：
+1. AGPL 生产门族（R-101a 未批准→R-103a-c helm/Prometheus/p95、R-104a 生产备份编排、R-105a 生产切换）——共同根因=法务批准人类门禁，批准后按 runbook §3 顺序执行；
+2. 真实支付凭据族（R-97a 微信真环境、R-83a 豁免推定、#82 支付宝沙箱 R-4 边界）——外部输入缺失，stub 证据+披露边界；
+3. Lago usage-event 通道（R-101c）——gateway 轨道 parked 的解除条件，落地票范围；
+4. 流式对账（R-98a）与投影重读器注册（R-98b）——对账修复面 env-gated 轨道；
+5. 活体故障注入矩阵（R-99a）与真实 HTTP 注销端到端（R-102a）——活体轮轨道。
+
+**终判**：#72 作为家族 umbrella 达成其编排使命（DAG 全节点 disposition、裁决全留痕、无隐藏阻塞）；Lago 迁移的代码面在本仓库完成（Lago-only 写面+OpenMeter 删除+恢复演练）；生产面停在 AGPL 人类门禁前，边界由 lago-agpl-production-gate.md 与 lago-cutover-runbook.md 双文档诚实记录。GitHub 关票操作归用户（治理项沿用历轮约定）。
