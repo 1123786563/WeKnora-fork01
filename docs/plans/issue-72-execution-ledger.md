@@ -435,3 +435,19 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
   - **AC④** 原始身份恢复：同钱包名/命令键 replay→fulfilled、余额单计（FakeAdapter 持久化但响应丢失建模）（TestTopUpAC4LostResponseRecoversByOriginalIdentity）。
 - 门禁：`go test ./internal/modules/commercial/... ./internal/container/ -count=1` 8 包全 ok（container 439s 含新构造签名 dig 装配活体门）；`internal/router` 全 ok（新路由）；`internal/handler` 仅预存失败 TestCraftEgressAdapterJoinedWithRealGateway（基线 c59c77e88 复跑同败，与本轮无关）；gofmt/vet 干净。
 - 残差登记：①nil platform 保留 legacy OpenMeter top-up 腿——仅测试可达，容器恒注平台，#105 一并移除；②预部署遗留 attention 态 top-up 记录切轨后按平台身份重放，OpenMeter 侧「已持久化但 FindBenefit 长期未恢复」的极端窗口登记为迁移注意项；③充值入口 UI（按钮/金额选择）不在票面，API 面已闭合。
+
+## #88+#89 收口（2026-10-05，controller 亲审）
+
+### #88 [Lago 16] Settlement Batch — closure-ready（evidence-only）
+- AC① 端到端追踪：lago.go SubmitUsage+resolveBillableMetric（dimension→metric ID）→ lago_settlement.go 全链（provider rails/ambiguous intent/residual sibling）+ 21 测试 PASS（TestLagoSettle*、TestInboundWebhook*、TestPaymentIntent*）
+- AC② event acceptance 后预占仍在：budget_reservation.go 持久 hold + ReleaseReservation 仅在 settle 后（:224-233）
+- AC③ rating 后 capture+释放差额：budget_task.go settle 路径 + ReleaseReservation 释放
+- AC④ 重复/丢失/冲突稳定：TestLagoSettleAmbiguousIntentsFailClosed + TestInboundWebhookReplayGateAndCanonicalCollection + TestLagoSettleResidualSiblingIntentReplaysIdempotently
+
+### #89 [Lago 17] 并发/委派共享 Task Budget — closure-ready（evidence-only）
+- AC① 最后额度竞争单获准：TestBudgetReserveConcurrentWinnersMatchDB（20 并发 DB 一致）
+- AC② 父子/Connector 不复制：execution_test.go:86-87 parent rollup 拒绝双计
+- AC③ 重试幂等+不同身份：TestBudgetReserveConcurrentSameKeyReplayIdempotent（20 worker 同 key 单 hold）
+- AC④ 高重复并发不变量：CAS 纪律 + 6 支并发套件 PASS
+
+**套件**：commercial 7 包全绿（commercialplatform 72.8s、payment 15.8s 等）。
