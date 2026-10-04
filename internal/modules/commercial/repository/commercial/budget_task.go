@@ -264,3 +264,35 @@ func (s *BudgetStore) tryExtendTaskLimit(ctx context.Context, tenantID uint64, r
 // stored owner/fence pair no longer matches, so its late commit is
 // rejected by VerifyLeaseCommit. Recovery never lets two workers commit
 // against one hold.
+
+// SuspendTask durably pauses one task's new charge actions (#90 / Lago 18:
+// the abnormal-cost pause). It resolves a child run to its owner exactly
+// like RenewTaskBudgetDeadline and is idempotent: an already-suspended task
+// replays as success without touching the reason or timestamp. Nothing in
+// the reserve or settle paths lifts a suspension.
+func (s *BudgetStore) SuspendTask(ctx context.Context, tenantID uint64, runID, reason string, now time.Time) error {
+	if tenantID == 0 || runID == "" || reason == "" || now.IsZero() {
+		return ErrInvalidBudgetRequest
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, runID).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskBudgetMissing
+			}
+			return err
+		}
+		ownerRun := row.RunID
+		if row.RootRunID != "" {
+			ownerRun = row.RootRunID
+		}
+		res := tx.Model(&TaskBudgetRow{}).
+			Where("tenant_id = ? AND run_id = ? AND suspended_reason = ''", tenantID, ownerRun).
+			Updates(map[string]any{
+				"suspended_reason": reason,
+				"suspended_at":     now.UTC(),
+				"version":          gorm.Expr("version + 1"),
+			})
+		return res.Error
+	})
+}

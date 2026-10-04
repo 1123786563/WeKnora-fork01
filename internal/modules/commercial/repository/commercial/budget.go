@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"sync"
+
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/gorm"
 	"time"
@@ -23,6 +25,12 @@ var (
 	ErrReservationKeyConflict    = errors.New("reservation_key_conflict")
 	ErrStaleWatermark            = errors.New("stale_watermark")
 	ErrBudgetContention          = errors.New("budget_contention")
+	// #90 / Lago 18: ErrTaskPricingLagged denies only the lagged run's NEW
+	// charge actions while its settlements stay unconfirmed (reversible —
+	// confirmation lifts it); ErrTaskSuspended is the durable abnormal-cost
+	// pause, lifted only by an operator.
+	ErrTaskPricingLagged = errors.New("task_pricing_lagged")
+	ErrTaskSuspended     = errors.New("task_suspended")
 )
 
 // budgetErrorCode keeps a stable code when a budget error crosses graph SDK
@@ -75,6 +83,11 @@ type TaskBudgetRow struct {
 	HeldMicro  int64     `gorm:"column:held_micro;not null;default:0"`
 	Deadline   time.Time `gorm:"column:deadline;not null"`
 	Version    int64     `gorm:"column:version;not null;default:1"`
+	// #90 / Lago 18: a non-empty SuspendedReason durably pauses the task's
+	// new charge actions (abnormal cost); it is lifted only by an operator,
+	// never by a reserve or settle path.
+	SuspendedReason string     `gorm:"column:suspended_reason;not null;default:''"`
+	SuspendedAt     *time.Time `gorm:"column:suspended_at"`
 }
 
 func (TaskBudgetRow) TableName() string { return "commercial_task_budgets" }
@@ -142,6 +155,12 @@ func (BudgetLotAllocationRow) TableName() string { return "commercial_budget_lot
 // transaction; there is deliberately no process mutex.
 type BudgetStore struct {
 	db *gorm.DB
+	// #90 / Lago 18: the pricing-lag guard reads the settlement-store table
+	// (created by the settlement service's AutoMigrate). Where that table
+	// is absent — a deployment wiring the budget store without settlement
+	// traffic — the guard stands down instead of breaking every Reserve.
+	lagTableOnce sync.Once
+	lagTableOK   bool
 }
 
 func NewBudgetStore(db *gorm.DB) *BudgetStore { return &BudgetStore{db: db} }

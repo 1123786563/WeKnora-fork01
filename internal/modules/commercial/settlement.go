@@ -42,6 +42,15 @@ var ErrInvalidSettlement = errors.New("invalid_settlement")
 // never a licence to release spend.
 func KeepProtection(state string) bool { return state != SettlementStateConfirmed }
 
+// Pricing-lag thresholds (#90 / Lago 18): a dispatched settlement that is
+// still unconfirmed after the pause threshold has its run's NEW charge
+// actions refused (the run only — holds stay, other runs continue); the
+// alert threshold is the operator-facing escalation.
+const (
+	SettlementLagPauseThreshold = 5 * time.Minute
+	SettlementLagAlertThreshold = 15 * time.Minute
+)
+
 // Settlement is one call's final consumption handed to the commercial
 // provider. ID is the settlement idempotency key derived from the usage
 // revision identity (SettlementKey), so replays, lost responses, and

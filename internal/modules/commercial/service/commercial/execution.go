@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
@@ -145,5 +146,18 @@ func (s *ExecutionGateService) Finish(ctx context.Context, reservationID string,
 	if err != nil {
 		return err
 	}
-	return s.stopped(st.Amount, domain.Credits(res.UpperMicro))
+	if err := s.stopped(st.Amount, domain.Credits(res.UpperMicro)); err != nil {
+		// #90 / Lago 18: a settle above the reserved upper bound keeps the
+		// usage recorded but must durably pause the run — a dispatcher
+		// restart must not be a licence to keep spending. The settle stays
+		// committed; the suspension joins the error so a failed suspend is
+		// visible and a Finish replay re-attempts it.
+		if errors.Is(err, domain.ErrAbnormalCost) {
+			if serr := s.budget.SuspendTask(ctx, fact.TenantID, fact.RunID, "abnormal_cost", time.Now().UTC()); serr != nil {
+				return errors.Join(err, serr)
+			}
+		}
+		return err
+	}
+	return nil
 }

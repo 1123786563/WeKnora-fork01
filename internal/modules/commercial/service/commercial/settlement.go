@@ -60,6 +60,7 @@ type SettlementRecord struct {
 	State          string    `gorm:"column:state;not null;default:dispatched"`
 	ExternalID     string    `gorm:"column:external_id;not null;default:''"`
 	Watermark      string    `gorm:"column:watermark;not null;default:''"`
+	LastError      string    `gorm:"column:last_error;not null;default:''"`
 	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
 }
@@ -377,6 +378,12 @@ func (s *SettlementService) dispatchEvent(ctx context.Context, ev repocommercial
 	gctx := domain.WithBenefitCustomer(ctx, OrderCustomerID(rec.TenantID))
 	receipt, err := s.gateway.Settle(gctx, st)
 	if err != nil {
+		// #90 / Lago 18: the failed dispatch's error is retained durably
+		// (the events.errors face) so lag alerts can surface provider
+		// rejections, not just age. Recording is best-effort — the dispatch
+		// error below stays the caller's answer.
+		_ = s.db.WithContext(ctx).Model(&SettlementRecord{}).Where("key = ?", rec.Key).
+			Updates(map[string]any{"last_error": err.Error(), "updated_at": s.now()}).Error
 		if errors.Is(err, domain.ErrGatewayIndeterminate) {
 			// The remote outcome is unknown: retain for reconciliation —
 			// never flip to a terminal state without evidence.
@@ -479,4 +486,43 @@ func (s *SettlementService) markEventSent(eventKey string) error {
 	return s.db.Model(&repocommercial.OutboxEvent{}).
 		Where("event_key = ? AND state = ?", eventKey, repocommercial.OutboxStatePending).
 		Update("state", repocommercial.OutboxStateSent).Error
+}
+
+// SettlementLagAlert is one operator-facing pricing-lag alert (#90 / Lago
+// 18): a settlement that is still unconfirmed past the alert threshold, or
+// one whose last dispatch failed (the events.errors face).
+type SettlementLagAlert struct {
+	TenantID      uint64
+	RunID         string
+	SettlementKey string
+	State         string
+	LastError     string
+	Age           time.Duration
+}
+
+// ScanLagAlerts projects the operator alert face of the pricing-lag
+// protections: every settlement older than the alert threshold that is not
+// confirmed, plus every settlement whose last dispatch attempt errored
+// regardless of age. Confirmed settlements never alert.
+func (s *SettlementService) ScanLagAlerts(ctx context.Context) ([]SettlementLagAlert, error) {
+	now := s.now()
+	var rows []SettlementRecord
+	if err := s.db.WithContext(ctx).
+		Where("state <> ? AND (updated_at <= ? OR last_error <> '')",
+			domain.SettlementStateConfirmed, now.Add(-domain.SettlementLagAlertThreshold)).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	alerts := make([]SettlementLagAlert, 0, len(rows))
+	for _, r := range rows {
+		age := now.Sub(r.UpdatedAt)
+		if age < 0 {
+			age = 0
+		}
+		alerts = append(alerts, SettlementLagAlert{
+			TenantID: r.TenantID, RunID: r.RunID, SettlementKey: r.Key,
+			State: r.State, LastError: r.LastError, Age: age,
+		})
+	}
+	return alerts, nil
 }

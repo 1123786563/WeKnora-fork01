@@ -117,6 +117,16 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 				return err
 			}
 		}
+		// #90 / Lago 18 task pauses, both scoped to THIS task only: a durable
+		// abnormal-cost suspension, and the reversible pricing lag — the
+		// run's oldest unconfirmed settlement past the pause threshold.
+		// Existing holds and other runs are untouched either way.
+		if task.SuspendedReason != "" {
+			return ErrTaskSuspended
+		}
+		if err := s.denyPricingLaggedTask(tx, req.TenantID, ownerRun, now); err != nil {
+			return err
+		}
 		res = tx.Exec(`UPDATE commercial_task_budgets
 			SET held_micro = held_micro + ?, version = version + 1
 			WHERE tenant_id = ? AND run_id = ? AND version = ?
