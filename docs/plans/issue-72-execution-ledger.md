@@ -511,3 +511,20 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - **残差 R-99a**：真实进程 kill/系统化故障注入矩阵留活体栈轮（沿 T01/T14 先例）；**R-99b**：CheckNewConsumption 未直连 Lago readiness（fail closed 由 lag 门间接达成，5min 窗口内放行=「堆积等待」语义，票面一致）。
 
 **门禁**：commercial 8 包全绿 -count=1（commercialplatform 73.2s / payment 19.2s / service 10.1s 等）；`go build ./internal/container/`+`go vet` 干净；新测试 6 支（credit_note_command_test.go 2 + credit_note_test.go 3 + settlement_worker_test.go 2，其中 1 支纯幂等烟测）。
+
+## 批量轮 #97+#98（2026-10-05，worktree /tmp/wk-l97 @ fix/lago-97-98）
+
+### #97 [Lago 25] 微信退款达到与支付宝相同的商业语义 — closure-ready（本地模型，本轮补齐 REFUND.* 通路，1 残差）
+- AC① 稳定键+状态映射：wechat.go Refund（OutRefundNo=RefundID 自有稳定键/OutTradeNo=原单）+QueryRefund（原键重查）+mapWechatRefundState（SUCCESS→succeeded、PROCESSING/ACCEPT→pending、ABNORMAL→abnormal、CLOSED→closed、timeout→unknown）；mapChannelState（service refund.go:133）把 abnormal/unknown/空折叠 RefundChannelUnknown——与 alipay REFUND_* 同词表。新 TestWechatRefundUsesStableRefundKey / TestWechatRefundMapsStatus。
+- AC② 受理≠成功、unknown 保持锁定：driveRefund indeterminate→park reviewing+ChannelUnknown→重查原键（refund.go:194-216）+TransitionRefundOnChannel unknown→reviewing/终态冻结（refund.go:76-95）。预存 TestRefundUnknownChannelRequeriesOriginalKey+新 timeout 场景。
+- AC③ 重复请求/通知不重复出款：请求侧 out_refund_no 渠道幂等+reviewing 只重查不重发；**通知侧本轮补齐真缺口**（原 wechat.go:279 仅放行 TRANSACTION.*，REFUND.* 被 ErrMalformedCallback 拒）：Verify 放行 REFUND.* 同 WX-02 链验签解密（wechatRefundNotificationResource，mchid/appid 匹配）→PaymentFact.RefundID（domain order.go additive）→handler 分派（payment_callbacks.go，退款 fact 绝不进 ConfirmPayment/attempt 解析）→RefundService.ReconcileRefundNotification（通知=重读触发：非 pending/reviewing no-op，QueryRefund 原键+applyChannelResult 版本守卫幂等）。新 TestRefundNotificationRequeriesOriginalKeyAndIsIdempotent / TestWechatVerifyAcceptsRefundNotification / TestWechatVerifyRejectsUnknownEventFamily / TestWechatRefundCallbackDispatchesToRefundService；container 装配（callback handler 携 blocked-env refunds，#96 R-96c 同口径）。
+- AC④ 真实微信退款两路径证据：无微信商户凭据，沿 #83 R-83a 豁免推定。**残差 R-97a**。
+
+### #98 [Lago 26] Webhook 与定期对账使商业投影收敛 — closure-ready（本轮实施交付：票面缺口消费端/迁移/worker 全补，3 残差）
+- AC① 伪造签名拒绝：verifyWebhook（HMAC-SHA256 over raw body，GitHub/Stripe 式 sha256=<hex>）→ErrWebhookSignatureRejected；HTTP 面 POST /commercial/webhooks/:provider（匿名面+1MiB cap 同 callbacks 先例）401。TestWebhookForgedSignatureRejected / TestCommercialWebhookForgedSignatureIsRejected / TestCommercialWebhookUnconfiguredProviderFailsClosed（503）。
+- AC② 重复/乱序不倒退：commercial_webhook_inbox unique(provider,event_id)（迁移 000184）冲突=收据 no-op；通知只触发权威重读（ProjectionReReader），权威快照覆盖 last-write-wins——乱序天然不倒退，重复不二次重读。TestWebhookDuplicateDeliveryIsNoOp / TestWebhookOutOfOrderDoesNotRegress。
+- AC③ 丢失通知可对账修复：ReconciliationService.ReconcileOnce 持久游标→CommercialPlatform.Reconcile 流式变更→逐变更触发同一重读→审计；authority unavailable 游标不动（下次同游标重放）。TestReconciliationRecoversMissedNotification（含水位推进后同变更不重复处理）。
+- AC④ 差异/修复/水位可审计：commercial_projection_audit（source=webhook|reconcile、action=received|repaired、detail=游标）+commercial_reconciliation_state 单调水位（SaveCursor 空值不写）。StartBackground/Stop（1min 循环，FulfillmentService 先例+ResourceCleaner）+container 装配 drain-only（authority fail-closed 静默 no-op，ErrPlatformUnsupported 不告警）。
+- **残差 R-98a**：lago adapter（及 fake）Reconcile 仍 fail-closed——真栈流式对账 env-gated（R-94a 轨道）；**R-98b**：生产投影重读器空注册（inbox/审计/水位已工作，readers 随投影 owner 采用接线）；**R-98c**：Lago v1.53.0 真实 webhook 签名为 JWT——seam 契约 provider-neutral（HMAC），真实 JWT 验签在真栈轨道落地。
+
+**门禁**：commercial 8 包全绿 -count=1；handler 包唯一失败 TestCraftEgressAdapterJoinedWithRealGateway 为 HEAD 预存（stash 对照复证）；router 编译+测试绿；go build ./internal/... ./cmd/... 干净。新测试 11 支。
