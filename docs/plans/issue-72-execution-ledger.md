@@ -528,3 +528,19 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - **残差 R-98a**：lago adapter（及 fake）Reconcile 仍 fail-closed——真栈流式对账 env-gated（R-94a 轨道）；**R-98b**：生产投影重读器空注册（inbox/审计/水位已工作，readers 随投影 owner 采用接线）；**R-98c**：Lago v1.53.0 真实 webhook 签名为 JWT——seam 契约 provider-neutral（HMAC），真实 JWT 验签在真栈轨道落地。
 
 **门禁**：commercial 8 包全绿 -count=1；handler 包唯一失败 TestCraftEgressAdapterJoinedWithRealGateway 为 HEAD 预存（stash 对照复证）；router 编译+测试绿；go build ./internal/... ./cmd/... 干净。新测试 11 支。
+
+## 批量轮 #100+#101（2026-10-05，worktree /tmp/wk-l100 @ fix/lago-100-101）
+
+### #100 [Lago 28] Billing Center 统一展示稳定产品状态 — closure-ready（本轮补齐最后两个 UI 缺口，1 残差）
+- AC① 十状态→七组全覆盖：购买三态（purchase_command.go:110/125+PURCHASE_STATE_LABEL 共享词表）/fulfillment processing（orderWire）/insufficient Credits（ErrInsufficientBudgetGate+budget_exhausted→craft budgetPause 视图）/refund review+channel pending（refund.go:25-27+refundMessage）/revocation pending（refund.go:28）/operator attention（attention 不变量+admin 队列）均有面；**waiting for billing synchronization 本轮补齐**——billing_account pending 信封原被 api-client account() 丢弃（只回 credits），新 parseCommercialAccountView（contracts，闭合 state 词表校验）+accountStateLabel「等待账务同步」+BillingPage 状态行（原先 pending=卡片静默隐藏、状态不可见）。
+- AC② 四分区：benefitsWire balance/held/refund_locked/available+批次近到期标记（#86 口径沿用，零改动）。
+- AC③ 权限差异化：服务端 CanManageBilling（owner/grant，admin 不隐含）+写门 403 既有；**can_manage_billing 前端零消费本轮补齐**——billingManageNotice 闭合提示（无权者渲染、管理者不渲染）。
+- AC④ 响应卫生：闭合 token 映射沿用；新 parse 拒收开放 state 词表。
+- **残差 R-100a**：Vue frontend 无 Billing Center 面（Lago 系列一贯 apps/web 产品增量轨道，沿 parity 待裁决）。
+
+### #101 [Lago 29] 计费数据最小化、凭据隔离和 AGPL 上线门槛 — closure-ready（evidence-only+可审计记录交付，4 残差）
+- AC① 凭据 env-only 全族（commercialplatform/config.go 拆串防扫描/payment providers_env/container.go:2841 webhook secret），前端+移动端 grep 零命中；AC② 钱包 metadata 仅关联身份+周期、UsageRow 无内容字段、**#98 webhook 通道一并审**（inbox 仅关联身份、raw body 不留存）；AC③ FulfillmentExceptionRow sanitized+闭合错误映射。AC①-③ 零代码改动（证据面成立）。
+- AC④ **本轮交付 docs/upstream-parity/lago-agpl-production-gate.md**：Community/Premium 清单（adapter 实际调用 7 资源面；/features 待法务核对）+AGPL 生产批准记录——**结论=未批准（gate 关闭）**，法务拥有者为仓库所有者。
+- **残差 R-101a**：法务批准人类门禁（gate 关闭非代码缺口）；**R-101b**：外部 secret manager 未接（部署前提）；**R-101c**：Lago usage event 通道不存在（settlement 走 openmeter），落地票补 events payload 审计；**R-101d**：/features 版图归属待核（v1.53.0）。
+
+**门禁**：commercial 7 包全绿 -count=1（无 Go 改动）；前端 commercial 域 5 文件 41 用例绿+settings 回归绿+contracts/api-client 冒烟绿（Node 26）；worktree 先 pnpm install（T09 教训）。新测试 3 支（envelope 解析/状态标签/权限提示）+loader 用例重塑。
