@@ -144,7 +144,8 @@ func TestFakeSettleUnknownSubscriptionFailsClosed(t *testing.T) { // (c)
 func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)
 	f := NewFakeAdapter()
 	tenant := uint64(23)
-	period := "2026-09"
+	// ponytail: dynamic current month — a hardcoded period expires the month after (2026-10 failure mode)
+	period := commercial.MonthlyPeriod(time.Now().UTC())
 	monthly := commercial.GrantIncludedCreditsPayload{
 		TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 		Period: period, CreditsMicro: 100_00_00, // 1.00 credit in micro

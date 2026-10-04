@@ -483,23 +483,28 @@ func (p *AlipayProvider) Query(ctx context.Context, providerID string) (AttemptR
 	if id == "" {
 		id = providerID
 	}
-	// (#84/G2) The collected amount (total_amount → fen) rides along for the
-	// recovery paths' collected-vs-face comparison. An unparsable amount
-	// degrades to 0 (= channel did not report) and never fails the query:
-	// a missing amount must not block the state mapping.
-	// (OCR84-R1-10) A PARSED amount is by definition denominated in CNY
-	// (alipay total_amount's only unit) — the currency rides along exactly
-	// like the wechat leg's amount.total currency, so the recovery path's
-	// wrong-currency guard (collectedAmountMismatch) actually compares
-	// instead of silently skipping on an empty reported currency.
+	// (#84/G2, cb85d0b0a restore — its alipay.go hunk was lost in the
+	// 78c717818 merge while its tests survived) The collected amount
+	// (total_amount → fen) rides along for the recovery paths'
+	// collected-vs-face comparison. A SUCCEEDED trade whose amount is
+	// unparsable or nonpositive is not a confirmable observation — failing
+	// closed here beats degrading to "not reported", which would skip the
+	// comparison and launder a wrong-amount collection through the recovery
+	// path. Non-success states carry no collection and keep 0.
+	// (OCR84-R1-10) Alipay's total_amount contract fixes the transaction
+	// currency to CNY — report it explicitly so the wrong-currency guard
+	// compares instead of skipping on an empty reported currency.
+	state := mapAlipayTradeStatus(out.TradeStatus)
 	collected := int64(0)
-	currency := ""
-	if fen, err := ParseCNYAmount(out.TotalAmount); err == nil {
-		collected = fen
-		currency = "CNY"
+	if state == StateSucceeded {
+		parsed, parseErr := ParseCNYAmount(out.TotalAmount)
+		if parseErr != nil || parsed <= 0 {
+			return AttemptResult{State: StateUnknown, ProviderID: id}, fmt.Errorf("alipay query %s: invalid collected total_amount", providerID)
+		}
+		collected = parsed
 	}
-	return AttemptResult{State: mapAlipayTradeStatus(out.TradeStatus), ProviderID: id,
-		AmountFen: collected, AmountCurrency: currency}, nil
+	return AttemptResult{State: state, ProviderID: id,
+		AmountFen: collected, AmountCurrency: "CNY"}, nil
 }
 
 // Close cancels a pending channel order by its original identifier.

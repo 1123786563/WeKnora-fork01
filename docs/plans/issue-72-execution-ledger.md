@@ -393,3 +393,31 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 
 - 用户明示「支付宝可以先跳过」：#82 [Lago 10] 的 AC4（真实支付宝沙箱付款证据）按 owner 裁定豁免，不阻塞 #82 收口。激活链语义已由 Stripe TEST 模式全链实证（T02/T09 run + live T9 三测全绿，t9-live-run.txt）+ 渠道语义差异收窄在 Adapter 层（spec L127 同笔付款外部事实归一）。真实支付宝沙箱凭据到位后可补证，非阻塞。
 - 判词：#82 的全部验收面闭合（live T9 ✅、AC1-AC3 ✅、AC4 owner 豁免）→ **#82 closure-ready**。下游 #83-#105 解除 #82 直接阻塞（各自验收仍按票面）。
+
+## #84+#85 审计轮（2026-10-04，worktree /tmp/wk-lago @ fix/lago-84-85）
+
+### #84 [Lago 12] — 裁定 closure-ready（evidence-only）
+
+四 AC 全映射到实现+测试+真栈证据（flow-evidence-84 四幕）：
+- AC① 错金额/错币种/部分付款不激活：`repository/commercial/order.go:706-744`（ConfirmPayment 状态门+attempt 面/币种比对+mismatch→ErrPaymentMismatch 事务外留痕）；`payment_anomaly.go:81-89`（ClassifyPaymentAnomaly：currency→partial→amount）；恢复路径双维比对 `service/commercial/order.go:538-572`（collectedAmountMismatch，防错币种洗白——Task 7 实抓缺陷已修）。
+- AC② 多成功只履约一次、其余进多收款：`order.go:746-849`（attempt txn 不可变 winner 声明+版本 CAS 单履约 outbox+over_payment 异常与审计事件原子落库）；消费端 `service/commercial/fulfillment.go:544-636` disposeOverPayment 全身份校验。
+- AC③ 重复通知幂等且不重复写 Lago Payment：sameTxn 重放静默成功（order.go:817-819）；handler 双分支终态应答（payment_callbacks.go:111-141）；WeKnora 对 Lago 零 Payment 直写（lago_settlement.go:22-24 红线），settle 以 invoice 为幂等窗口（:199-201 F-1）+already-active 短路（:84-86）。
+- AC④ Billing UI 三态：handler/commercial.go:283-316（payment/fulfillment 分轴+payment_attention）；apps/web/src/commercial/order-state.ts:5-8（付款异常/已付款，权益处理中/权益已生效）+ order-state.test.ts 7 用例。
+
+### 本轮实修（RED 已在位 → GREEN）
+
+1. **merge 丢件回归修复**：cb85d0b0a（fail closed on unknown payment observations）的 alipay.go hunk 在 78c717818 合并中丢失而其测试存活——SUCCEEDED 查询的畸形/缺失 total_amount 降级为「未报告」→ 恢复路径跳过实收比对 → **错金额可经支付宝恢复路径洗白**。恢复 cb85d0b0a 语义（succeeded 且金额不可解析/非正 → StateUnknown+error fail-closed；currency 恒 CNY）。`go test ./internal/modules/commercial/payment/` 由 FAIL(2) → ok。
+2. **预存日期债清偿**：fake_purchase_test.go:147 硬编码 "2026-09" 过期致 TestFakeGrantPurchaseWalletNoMonthlyCollision 全月失败（ledger 2026-10-02 登记项）→ 改 `commercial.MonthlyPeriod(time.Now().UTC())`（沿用 c66207c95 动态月份修法）。commercialplatform 包 → ok。
+
+门禁：`go test ./internal/modules/commercial/... -count=1` 7 包全 ok；`internal/handler` payment/orderWire 聚焦 ok；gofmt 干净。
+
+### #85 [Lago 13] — 裁定：机制层完备，产品链两缺口待裁决（非 closure-ready）
+
+票面四 AC 逐条：
+- 未付款不增加可消费 Credits：✅ 机制在位（ConfirmPayment 仅 succeeded 铸履约事件；履约仅 paid 后；Lago 钱包 waitForWalletSettlement 后才计余额）。
+- 恰一次到账+来源/到期：✅ 机制在位（FulfillmentRecord 主键=FulfillmentKey + FindBenefit-first + grants idempotencyKey；BillingPage 批次来源「充值/套餐月度」+到期显示）；Lago 侧 top-up 钱包表示已实证（t14-credits-order 对账 RECONCILE PASS + credits-order 集成测试）。
+- 权益处理中：✅ order-state.ts「已付款，权益处理中」。
+- 响应丢失恢复：✅ FindBenefit 幂等恢复+E3 元数据锚定重查+订阅链 F-1 invoice 幂等窗。
+缺口（均为产品裁决门，本轮不实现）：
+- **G-A 充值商品面不存在**：无充值 SKU/quote 类型（CreateQuote 仅 subscription_fee 形态，order.go:254）、无管理员充值路由/UI。换算率 TopUpCredits 1 Credit/CNY（fulfillment.go:105-107）计划明示「无已批准来源确认为产品政策」——待 owner 裁决定价与换算后才能最小实现。
+- **G-B 付费 top-up 履约走 OpenMeter 非 Lago**：legacy top-up（空 QuoteID）与 quoted top_up 均路由 FulfillmentService.ApplyBenefit → openmeter.Gateway（container.go:263）。「Lago 付款确认后恰一次 Credits 到账」的端到端付费链未接线；Lago 侧仅有直建钱包+rebalance 证据。#75-a2 十二个月到期的运行时证明仍 BLOCKED（t03 verdict）。
