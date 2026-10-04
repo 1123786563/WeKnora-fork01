@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,14 +37,15 @@ func TestCraftRunCapturePromotionMigration(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _, _ = m.Close() })
 		// F08's receipt migration follows F06 in this integration chain. Roll
-		// both back so the promotion migration is the final down step. The
-		// agent_release_evaluations migration (000190) now trails them, so it
-		// rolls back and replays with the pair.
-		require.NoError(t, m.Steps(-3), "evaluations, receipt and promotion down migrations")
+		// everything above the promotion migration back so it is the final
+		// down step; migrations keep landing on top of the pair, so the step
+		// count is derived from the fixture by name, not pinned.
+		steps := sqliteStepsAboveNamed(t, root, "craft_run_capture_promotion")
+		require.NoError(t, m.Steps(-steps), "down migrations above and including the promotion scan")
 		require.False(t, db.Migrator().HasTable("craft_run_capture_promotion_cursor"))
 		require.False(t, db.Migrator().HasTable("craft_run_capture_promotion_attempts"))
 		require.False(t, db.Migrator().HasTable("craft_web_build_receipts"))
-		require.NoError(t, m.Steps(3), "promotion, receipt and evaluations up migrations replay")
+		require.NoError(t, m.Steps(steps), "the rolled-back migrations replay")
 		require.True(t, db.Migrator().HasTable("craft_run_capture_promotion_cursor"))
 		require.True(t, db.Migrator().HasTable("craft_run_capture_promotion_attempts"))
 		require.True(t, db.Migrator().HasTable("craft_web_build_receipts"))
@@ -259,6 +261,39 @@ func promotionRepoRoot(t *testing.T) string {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+}
+
+// sqliteStepsAboveNamed counts the SQLite fixture migrations from the
+// earliest migration whose file name contains namePart (inclusive) to the
+// head — the golang-migrate step count that rolls the chain back THROUGH it.
+// Versions are sparse and new migrations keep landing on top, so a pinned
+// step count rots.
+func sqliteStepsAboveNamed(t *testing.T, root, namePart string) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(root, "migrations", "sqlite"))
+	require.NoError(t, err)
+	target := 0
+	versions := make([]int, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		version, err := strconv.Atoi(strings.SplitN(entry.Name(), "_", 2)[0])
+		require.NoError(t, err, "migration file %s must start with its number", entry.Name())
+		versions = append(versions, version)
+		if strings.Contains(entry.Name(), namePart) && (target == 0 || version < target) {
+			target = version
+		}
+	}
+	require.Positivef(t, target, "sqlite fixture must contain migration %q", namePart)
+	steps := 0
+	for _, version := range versions {
+		if version >= target {
+			steps++
+		}
+	}
+	require.Positivef(t, steps, "sqlite fixture must contain migrations at and above %q", namePart)
+	return steps
 }
 
 func explainPromotionFreshScanAtCursor(t *testing.T, db *gorm.DB, cursor craftRunCapturePromotionCursorRow) string {
