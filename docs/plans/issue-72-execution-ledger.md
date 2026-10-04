@@ -451,3 +451,37 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - AC④ 高重复并发不变量：CAS 纪律 + 6 支并发套件 PASS
 
 **套件**：commercial 7 包全绿（commercialplatform 72.8s、payment 15.8s 等）。
+
+## #90+#91+#92+#93+#95 批量轮（2026-10-05，worktree /tmp/wk-l90 @ fix/lago-90-95，基 109b999c1）
+
+### #90 [Lago 18] 计价延迟/未知/超上界暂停 — closure-ready（实施交付，TDD RED→GREEN）
+- AC① 5min 未核对暂停+新收费拒绝：**新增** `denyPricingLaggedTask`（repository budget_lag.go，接入 tryReserve 任务面）——run 作用域 COUNT 未确认 settlement 超 `SettlementLagPauseThreshold=5min`（root settlement.go 常量）→ `ErrTaskPricingLagged`；可逆（确认即解除）、同 key held 重放不受阻、其他 run 不受累；settlement 表缺失时 HasTable 一次性豁免（无 settlement 流量即无 lag 可暂停，防线不炸 Reserve 地基）。TestReserveDeniesPricingLaggedRun / TestReserveLagIsReversible。
+- AC② 15min/events.errors 告警：**新增** `ScanLagAlerts`（service settlement.go）——`SettlementLagAlertThreshold=15min` 或 `last_error≠''`（dispatch 失败持久落盘，events.errors 面）；confirmed 永不告警。TestScanLagAlerts / TestDispatchRecordsLastError。
+- AC③ 未知不释放预占：既有 `KeepProtection`（root settlement.go:43，非 confirmed 全保护）+ dispatchEvent unknown→event 留 pending 同键重放 + reservation_state.go fail-closed 注释；本轮 r2 分支复证。
+- AC④ 实际>预占必暂停+保留用量：既有 `CheckAbnormal`（execution.go:143）已接 gate Finish；**新增** durable `SuspendTask`（budget_task.go，幂等、child→owner 解析）+ Finish 超上界 errors.Join 挂暂停（service execution.go）——dispatcher 重启也不得继续花。TestFinishAbnormalCostSuspendsTaskAndKeepsUsage（usage 保留断言+他 run 继续）。
+
+### #91 [Lago 19] BYOK 逐维度资金来源 — closure-ready（evidence-only）
+- AC① 模型维度零 Credits：BillableModel（usage.go:47 仅 platform）+ BillableDimensions 只豁免 model（usage.go:101）+ semantic_model_budget.go:55 BYOK 零 reserve。
+- AC② 解析/沙箱/Connector 照计：ServiceDimension 各服务独立计费维度（execution.go:66-88），豁免不外溢。
+- AC③ 不可伪造：ValidateFunding 拒未知来源（usage.go:51）+ TrustedUsageFact/ErrUntrustedUsage（execution.go:157）；funding 仅服务端凭据绑定可产（usage.go:8-10 契约）。
+- AC④ 不静默回退：semantic_model_budget.go:55-63 BYOK 缺 usage store/费率绑定即拒（ErrSemanticModelRatesUnavailable），绝不落 platform 计费凭据。
+
+### #92 [Lago 20] 用量修正不改写历史 — closure-ready（evidence-only，1 残差）
+- AC① 原 Fact 不覆盖：UsageRow UNIQUE(tenant,call,attempt,revision)（repository usage.go:34-37）+ ErrUsageRevisionConflict；append-only 修订指针（usage.go:27-31）。
+- AC② 补偿可追踪：Finalize 净额 delta 结算（service settlement.go:131-144）+ per-revision SettlementKey/outbox EventKey（:273）。
+- AC③ 不支持 Metric：ErrSettlementNetReversalUnsupported fail-closed（service settlement.go:29-35：fact 不落账+hold 保留，绝不静默清零删史）。**残差**：无 durable 修正审核队列（拒绝仅回错误，运营可见性靠任务失败面）——落点属产品决策（新表 vs 复用 anomaly 面），待 owner 裁决。
+- AC④ finalized Invoice 不重算：用量结算只动 wallet Credits（budget_settlement.go），与渠道 Invoice 面架构隔离；Credit Note=V03 reversal 能力 blocked-env 显式拒绝、历史永不删。
+
+### #93 [Lago 21] 升级立即生效补发差额 — closure-ready（evidence-only）
+- AC① Quote/Invoice 匹配：升级 order 面由 quote 冻结面 Prorate ceil 生成（order.go:851-870）+ #84 支付面 collectedAmountMismatch 拒错配（order.go:578）+ purchase 链 ErrInvoiceQuoteMismatch（purchase.go:26）。
+- AC② 付款后生效：prepareUpgrade 仅由 paid order 履约事件驱动（fulfillment.go:433）。
+- AC③ 补发按版本：Prorate big.Rat floor 防溢出（fulfillment.go:757-770）+ delta batch ExpiresAt=monthEnd + 固定 plan version 快照。
+- AC④ 重试不重复不重锚：plan_switch marker FulfillmentKey OnConflict-DoNothing 恰一次（fulfillment.go:771-817）+ anchor/paid_until 保持 + pinned delta 重放不重发。
+
+### #95 [Lago 23] 充值退款三段式 — closure-ready（evidence-only）
+- AC① 批准前重核：ApproveRefund 单事务重读+per-lot lock sums 核算消费/预占/既有退款（repository refund.go:202-330），不足全回滚零锁残留。
+- AC② 期间锁定：RefundAllocationRow + RefundLockedMicro 扣减可用面（budget_account.go:91）。
+- AC③ 渠道成功 Lago 失败：revokeAllocations 失败保 revocation_pending+锁、只重试撤权绝不二次出款（service refund.go:242-267）。
+- AC④ 稳定身份：rfd_ ID 即渠道退款键，重试复用原键（driveRefund）+ provider_refund_id UNIQUE。
+
+**门禁**：commercial 7 包全绿（repository 0.70s / service 5.6s / commercialplatform 72.8s / payment 15.9s 等）；`go build ./...` 仅预存链接警告；新测试 6 支（budget_lag_test.go 3 + settlement_lag_test.go 3）。
