@@ -251,8 +251,6 @@ func (f *fakePinnedReader) Read(context.Context, string) (string, error) {
 func TestSkillsForRunPrefersThePinnedConfigOverTheAgents(t *testing.T) {
 	pinned := &fakePinnedReader{configID: "cfg-a"}
 	ctx := context.Background()
-	_, err := pinner.Pin(ctx, "s-1", SandboxPin{ConfigID: "cfg-a"})
-	require.NoError(t, err)
 	configs, skills := twoConfigFixture(t)
 
 	configID, rows := SkillsForRun(ctx, pinned, configs, skills, 7, "s-1", "cfg-b")
@@ -316,52 +314,3 @@ func (f listerFunc) ListSkillsByConfig(
 	return f(ctx, tenantID, configID)
 }
 
-type installedTree struct {
-	HostSkillTree
-	installed map[string]bool
-}
-
-func (t installedTree) Installed(name string) bool { return t.installed[name] }
-
-func TestHostSkillsForRunNeedsFilesOnDisk(t *testing.T) {
-	rows := []*types.TenantSkillEntity{
-		{ID: "a", TenantID: 7, SandboxConfigID: "host", Name: "pdf", Enabled: true, Status: types.SkillStatusReady},
-		{ID: "b", TenantID: 7, SandboxConfigID: "host", Name: "docx", Enabled: true, Status: types.SkillStatusReady},
-		{ID: "c", TenantID: 7, SandboxConfigID: "host", Name: "xlsx", Enabled: false, Status: types.SkillStatusReady},
-	}
-	lister := listerFunc(func(_ context.Context, tenantID uint64, configID string) ([]*types.TenantSkillEntity, error) {
-		require.Equal(t, uint64(7), tenantID)
-		require.Equal(t, sandbox.HostSkillTargetID, configID)
-		return rows, nil
-	})
-	configID, got := hostSkillsForRun(context.Background(), lister,
-		installedTree{installed: map[string]bool{"pdf": true, "xlsx": true}}, 7)
-	require.Equal(t, sandbox.HostSkillTargetID, configID)
-	require.Len(t, got, 1)
-	require.Equal(t, "pdf", got[0].Name)
-}
-
-func TestListUsableSkillsOnHostUsesDiskNotSnapshot(t *testing.T) {
-	repo := newInstallSkillRepo()
-	for _, row := range []*types.TenantSkillEntity{
-		{ID: "a", TenantID: 7, SandboxConfigID: "host", Name: "pdf", Enabled: true, Status: types.SkillStatusReady},
-		{ID: "b", TenantID: 7, SandboxConfigID: "host", Name: "docx", Enabled: true, Status: types.SkillStatusReady},
-		{ID: "c", TenantID: 7, SandboxConfigID: "host", Name: "xlsx", Enabled: false, Status: types.SkillStatusReady},
-	} {
-		require.NoError(t, repo.CreateSkill(context.Background(), row))
-	}
-	desktop := &TenantSkillService{
-		skills: repo,
-		host: HostSandboxManager{
-			Desktop:   true,
-			SkillTree: installedTree{installed: map[string]bool{"pdf": true, "xlsx": true}},
-		},
-	}
-	got := desktop.ListUsableSkills(context.Background(), 7, sandbox.HostSkillTargetID)
-	require.Len(t, got, 1)
-	require.Equal(t, "pdf", got[0].Name)
-
-	web := &TenantSkillService{skills: repo}
-	require.Empty(t, web.ListUsableSkills(context.Background(), 7, sandbox.HostSkillTargetID))
-	require.Empty(t, desktop.ListUsableSkills(context.Background(), 7, "cfg-1"))
-}

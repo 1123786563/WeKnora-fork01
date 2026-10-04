@@ -61,7 +61,7 @@ func agentSecurityE2EApp(t *testing.T, locks ...types.DependencyLock) (*gin.Engi
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)
 		VALUES (2,'admin2','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 
-	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := appservice.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	market := appservice.NewAgentMarketplaceService(versions, &agentSecurityLockQueue{locks: locks}, repository.NewAgentMarketplaceRepository(db), t.TempDir())
 	adoptionsRepo := repository.NewAgentAdoptionRepository(db)

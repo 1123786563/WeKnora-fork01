@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	milvusRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/milvus"
+	milvusRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/milvus"
 	client "github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 

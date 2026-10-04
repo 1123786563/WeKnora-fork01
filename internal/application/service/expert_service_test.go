@@ -445,7 +445,7 @@ func (f *expertAgentsFake) GetAgentByIDAndTenant(context.Context, string, uint64
 
 func (f *expertAgentsFake) ListAgents(context.Context) ([]*types.CustomAgent, error) { return nil, nil }
 
-func (f *expertAgentsFake) UpdateAgent(_ context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
+func (f *expertAgentsFake) UpdateAgent(_ context.Context, agent *types.CustomAgent, _ *string) (*types.CustomAgent, error) {
 	return agent, nil
 }
 func (f *expertAgentsFake) DeleteAgent(context.Context, string) error { return nil }

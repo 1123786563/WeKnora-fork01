@@ -556,3 +556,36 @@ func (t *BrowserSkillTool) ValidateArguments(args json.RawMessage) error {
 	}
 	return nil
 }
+
+// browserCallParams copies model arguments into the official tool.* parameter
+// names. Page observations budget rendered tokens, so a character cap becomes
+// max_tokens at the extension's 4-characters-per-token heuristic.
+func browserCallParams(method string, input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for name, value := range input {
+		if name == "method" || name == "keep_open" {
+			continue
+		}
+		out[name] = value
+	}
+	switch method {
+	case "observe", "snapshot":
+		chars, ok := out["max_text_chars"]
+		if !ok {
+			break
+		}
+		delete(out, "max_text_chars")
+		out["max_tokens"] = observationTokensFromTextChars(chars)
+	}
+	return out
+}
+
+// observationTokensFromTextChars matches the extension heuristic of about four
+// characters per rendered token, rounding up.
+func observationTokensFromTextChars(value any) int {
+	chars := int(toFloat64(value))
+	if chars < 1 {
+		return 1
+	}
+	return (chars + 3) / 4
+}

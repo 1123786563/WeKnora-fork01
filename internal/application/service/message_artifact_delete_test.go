@@ -198,4 +198,4 @@ func TestDeleteSessionArtifactAllVersionsWithoutASourcePath(t *testing.T) {
 	require.Equal(t, 1, result.Deleted)
 }
 
-func ptr[T any](v T) *T { return &v }
+func messagePtr[T any](v T) *T { return &v }

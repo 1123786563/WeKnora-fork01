@@ -39,8 +39,6 @@ func TestCompletionPublishesReconciledArtifactContent(t *testing.T) {
 	next.URL = "resource://4N1nAo-FZZoDEExDQz2yoA"
 	stream := &completionEventRecorder{}
 	message := &types.Message{ID: "m", Content: "![deck](" + old.URL + ")", Artifacts: types.MessageArtifacts{next}}
-	handler := NewAgentStreamHandler(context.Background(), "s", "m", "req", 1, next.CreatedAt,
-		message, stream, nil, service.NewArtifactCollector(nil, nil, completionHistory{[]types.MessageArtifact{old}}, nil, service.ArtifactCollectorConfig{}), nil, nil)
 	handler := NewAgentStreamHandler(
 		context.Background(), "s", "m", "req", 1, next.CreatedAt,
 		message, stream, nil,

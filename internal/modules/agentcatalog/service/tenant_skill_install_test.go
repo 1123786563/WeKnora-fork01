@@ -2111,7 +2111,6 @@ func newInstallFixture(t *testing.T) *installFixture {
 		&transcriptStreams{},
 		&transcriptMessages{},
 		adapters,
-		HostSandboxManager{},
 	)
 	fx.svc.now = func() time.Time { return time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC) }
 	return fx
@@ -3241,8 +3240,6 @@ func (e *installAgentEngine) Execute(
 	}
 	return &types.AgentState{IsComplete: true}, nil
 }
-func (e *installAgentEngine) SetMemoryPrompt(string)            {}
-func (e *installAgentEngine) SetSteerSink(sink types.SteerSink) { e.sink = sink }
 func (e *installAgentEngine) SetMemoryPrompt(string)                               {}
 func (e *installAgentEngine) SetSteerSink(sink types.SteerSink)                    { e.sink = sink }
 func (e *installAgentEngine) SetContextCheckpointSink(types.ContextCheckpointSink) {}

@@ -30,7 +30,7 @@ func TestCubeSessionConnectReusesProbeHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, token, InboundTokenOf(handle))
-	handle, err := connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
+	handle, err = connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
 		SandboxID: created.ID(), TrafficAccessToken: "restored-token",
 	})
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func TestE2BSessionConnectReusesProbeHandleAndResumes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, token, InboundTokenOf(handle))
-	handle, err := connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
+	handle, err = connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
 		SandboxID: created.ID(), TrafficAccessToken: "restored-token",
 	})
 	require.NoError(t, err)

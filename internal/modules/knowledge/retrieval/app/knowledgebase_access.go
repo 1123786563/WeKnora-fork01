@@ -22,6 +22,13 @@ func KBReadPermissions(ctx context.Context, shares access.KBShareLookup) *access
 }
 
 func ResolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+	if kb != nil {
+		allowed, err := KBReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
+		if err == nil && allowed {
+			return kb.TenantID, nil
+		}
+	}
+	return 0, apperrors.NewForbiddenError("无权访问该知识库")
 }
 // kbWritableIDs returns the target KBs the caller may modify: those of its own
 // workspace, and those shared to it with at least editor permission (capped by

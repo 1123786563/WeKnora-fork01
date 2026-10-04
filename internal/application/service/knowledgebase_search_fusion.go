@@ -64,11 +64,11 @@ func fuseOrDeduplicate(
 		logger.Infof(ctx, "Result count after deduplication: %d", len(result))
 		return result
 	}
-	if len(vectorResults) == 0 {
+	if len(vectorLists) == 0 {
 		// Keyword-only: keep relative BM25 order, but fold unbounded
 		// scores into [0, 1] before they reach rerank/MMR. Raw BM25
 		// (often >10) saturates compositeScore's 0.3*base term.
-		result := deduplicateByScore(keywordResults)
+		result := deduplicateByScore(flattenLists(keywordLists))
 		rescaleUnboundedScores(result)
 		logger.Infof(ctx, "Result count after deduplication: %d", len(result))
 		return result

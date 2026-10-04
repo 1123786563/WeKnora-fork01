@@ -212,3 +212,14 @@ func RecordWikiContentActivity(
 		"wiki", kbID, types.AuditOutcomeSuccess,
 		map[string]any{"count": count, "actions": actions})
 }
+
+// kbActivityAPIKey reports the acting API key, if any, for activity attribution.
+func kbActivityAPIKey(ctx context.Context) (uint64, string, bool) {
+	if key, ok := types.AuditAPIKeyFromContext(ctx); ok {
+		return key.ID, key.Name, true
+	}
+	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && (scope.KeyID > 0 || scope.Name != "") {
+		return scope.KeyID, scope.Name, true
+	}
+	return 0, "", false
+}

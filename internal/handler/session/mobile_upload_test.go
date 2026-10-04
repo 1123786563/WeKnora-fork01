@@ -389,7 +389,7 @@ func (mobileUploadEnqueuer) Enqueue(_ *asynq.Task, _ ...asynq.Option) (*asynq.Ta
 }
 
 func newMobileUploadService(repo interfaces.TemporaryDocumentRepository, files interfaces.FileService) interfaces.TemporaryDocumentService {
-	return service.NewTemporaryDocumentService(repo, files, nil, nil, nil, nil, nil, mobileUploadEnqueuer{})
+	return service.NewTemporaryDocumentService(repo, files, nil, nil, nil, nil, nil, mobileUploadEnqueuer{}, nil)
 }
 
 func TestTemporaryDocumentCleanupExpiredDoesNotDeleteReferenced(t *testing.T) {

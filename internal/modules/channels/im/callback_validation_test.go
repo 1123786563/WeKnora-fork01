@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/im"
+	"github.com/Tencent/WeKnora/internal/modules/channels/im"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/dingtalk"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/feishu"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/mattermost"

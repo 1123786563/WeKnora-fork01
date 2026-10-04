@@ -50,7 +50,7 @@ func newLifecycleTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, is_active) VALUES ('admin', 'admin', 'admin@lifecycle.test', 'x', 1)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'admin', 'admin', 'active')`).Error)
 	require.NoError(t, db.Create(&types.CustomAgent{ID: "agent-owned", Name: "Lifecycle helper", TenantID: 1, CreatedBy: "contributor", Config: types.CustomAgentConfig{AgentMode: "smart-reasoning", SystemPrompt: "Be useful."}}).Error)
-	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	market := service.NewAgentMarketplaceService(versions, marketplaceHTTPResolver{}, repository.NewAgentMarketplaceRepository(db), t.TempDir())
 	adoptionsRepo := repository.NewAgentAdoptionRepository(db)
@@ -81,7 +81,7 @@ func newLifecycleTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 // resolver + security gate + published-version pins), see internal/container/workbench.go.
 func newLifecycleCoordinator(t *testing.T, db *gorm.DB) *workbenchservice.AdmissionCoordinator {
 	t.Helper()
-	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	security := service.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db))
 	security.SetAgentVersionService(versions)

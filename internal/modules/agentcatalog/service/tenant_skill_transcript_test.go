@@ -462,7 +462,7 @@ func TestInstallTranscriptWithoutActivityPublisherStaysSilent(t *testing.T) {
 func TestInstallTranscriptProjectsOutputWithoutCompletingTool(t *testing.T) {
 	streams := &transcriptStreams{}
 	bus := event.NewEventBus()
-	tr := newInstallTranscript(context.Background(), bus, streams, nil, "session", "message", nil)
+	tr := newInstallTranscript(context.Background(), bus, streams, nil, "session", "message", nil, transcriptSanitizer{})
 	tr.Subscribe()
 	require.NoError(t, bus.Emit(context.Background(), event.Event{
 		ID: "chunk", Type: event.EventAgentCommandOutput,
@@ -479,3 +479,4 @@ func TestInstallTranscriptProjectsOutputWithoutCompletingTool(t *testing.T) {
 	}))
 	require.Len(t, streams.events, 1)
 }
+

@@ -17,9 +17,7 @@ import (
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	"github.com/Tencent/WeKnora/internal/modelcontext"
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -170,11 +168,9 @@ func (e *AgentEngine) SetWorkspaceLayout(layout sandbox.WorkspaceLayout) {
 
 func (e *AgentEngine) systemPromptOptions(ctx context.Context) *BuildSystemPromptOptions {
 	opts := &BuildSystemPromptOptions{
-		Language:       types.LanguageNameFromContext(ctx),
-		Config:         e.appConfig,
-		PersonaSegment: e.personaSegment,
 		Language:         types.LanguageNameFromContext(ctx),
 		Config:           e.appConfig,
+		PersonaSegment:   e.personaSegment,
 		SkillInstallMode: e.config.SkillInstallMode(),
 		MemoryPrompt:     e.memoryPrompt,
 		ProtocolPrompt:   e.modelContext.ProtocolPrompt(),

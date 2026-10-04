@@ -56,6 +56,10 @@ func (s *chunkService) delegate() interfaces.ChunkService {
 	return s.impl
 }
 
+func (s *chunkService) ListImagesByKnowledgeBaseID(ctx context.Context, kbID string, page *types.Pagination, filter *types.ImageListFilter) (*types.PageResult, error) {
+	return s.delegate().ListImagesByKnowledgeBaseID(ctx, kbID, page, filter)
+}
+
 func (s *chunkService) CreateChunks(ctx context.Context, chunks []*types.Chunk) error {
 	return s.delegate().CreateChunks(ctx, chunks)
 }

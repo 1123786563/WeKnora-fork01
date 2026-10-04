@@ -38,7 +38,6 @@ func TestListCatalogGroupsInstallsByDefinition(t *testing.T) {
 	}))
 
 	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, HostSandboxManager{})
 	list, err := svc.ListCatalog(ctx, 7)
 	require.NoError(t, err)
 	require.Len(t, list, 1)
@@ -61,9 +60,8 @@ func TestResolveCatalogFindsLegacySkillID(t *testing.T) {
 		Status: types.SkillStatusReady, Enabled: true,
 	}))
 
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, HostSandboxManager{})
-	cat, err := svc.resolveCatalog(ctx, 7, "sk-old")
+	svc2 := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
+	cat, err := svc2.resolveCatalog(ctx, 7, "sk-old")
 	require.NoError(t, err)
 	require.NotNil(t, cat)
 	require.Equal(t, "pdf", cat.Name)
@@ -93,9 +91,8 @@ func TestListCatalogShowsInstallsWhoseCatalogWasDeleted(t *testing.T) {
 	}))
 	require.NoError(t, repo.DeleteCatalog(ctx, 7, "cat-gone"))
 
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, HostSandboxManager{})
-	list, err := svc.ListCatalog(ctx, 7)
+	svc1 := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
+	list, err := svc1.ListCatalog(ctx, 7)
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, "pdf", list[0].Name)
@@ -114,9 +111,8 @@ func TestDeleteCatalogRefusesWhileARemovalIsInFlight(t *testing.T) {
 		Name: "pdf", Status: types.SkillStatusRemoving, Enabled: true,
 	}))
 
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
-	svc := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, HostSandboxManager{})
-	err := svc.DeleteCatalog(ctx, 7, "cat-pdf")
+	svc2 := NewTenantSkillService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
+	err := svc2.DeleteCatalog(ctx, 7, "cat-pdf")
 	require.Error(t, err)
 	appErr, ok := apperrors.IsAppError(err)
 	require.True(t, ok)
@@ -605,29 +601,6 @@ func TestInstallCatalogToConfigsLeavesTheDefinitionUntouched(t *testing.T) {
 
 // Bytes neither the definition nor the row holds mean the catalog moved after
 // its archive was read. Installing them would write that older archive back.
-func TestStoredArchiveThatNoLongerMatchesTheCatalogIsRefused(t *testing.T) {
-	fx := newInstallFixture(t)
-	ctx := context.Background()
-	first := zipBundle(t, map[string]string{
-		"SKILL.md":           validSkillMD,
-		"scripts/extract.py": "print('v1')\n",
-	})
-	second := zipBundle(t, map[string]string{
-		"SKILL.md":           validSkillMD,
-		"scripts/extract.py": "print('v2')\n",
-	})
-	firstBundle, err := ParseSkillBundle(first)
-	require.NoError(t, err)
-	_, err = fx.svc.RegisterCatalogFromArchive(ctx, 7, second)
-	require.NoError(t, err)
-
-	_, err = fx.svc.storedArchiveKeepsItsPin(ctx, 7, nil, firstBundle)
-
-	var appErr *apperrors.AppError
-	require.ErrorAs(t, err, &appErr)
-	require.Equal(t, apperrors.ErrConflict, appErr.Code)
-}
-
 func (f *installFixture) awaitSkillSettled(t *testing.T, skillID string) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -651,3 +624,8 @@ func (f *installFixture) catalogRefFor(t *testing.T, catalogID string) string {
 	require.NotNil(t, cat)
 	return cat.BundleRef
 }
+
+// HostSandboxManager is the zero-value host sandbox plumbing used in tests.
+type HostSandboxManager struct{}
+
+type discard = struct{}

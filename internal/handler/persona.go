@@ -211,7 +211,7 @@ func (h *PersonaHandler) ApplyPersona(c *gin.Context) {
 	}
 	agent.Config.PersonaMBTI = code
 	agent.Config.PersonaStyle = strings.TrimSpace(body.Style)
-	updated, err := h.agentService.UpdateAgent(c.Request.Context(), agent)
+	updated, err := h.agentService.UpdateAgent(c.Request.Context(), agent, nil)
 	if err != nil {
 		_ = c.Error(personaAgentServiceError(err))
 		return
@@ -247,7 +247,7 @@ func (h *PersonaHandler) RemovePersona(c *gin.Context) {
 	}
 	agent.Config.PersonaMBTI = ""
 	agent.Config.PersonaStyle = ""
-	if _, err := h.agentService.UpdateAgent(c.Request.Context(), agent); err != nil {
+	if _, err := h.agentService.UpdateAgent(c.Request.Context(), agent, nil); err != nil {
 		_ = c.Error(personaAgentServiceError(err))
 		return
 	}

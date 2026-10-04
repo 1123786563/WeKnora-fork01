@@ -28,7 +28,7 @@ func TestRepairContentLinks(t *testing.T) {
 
 	ctx := context.Background()
 	repo := wiki.NewWikiPageRepository(db)
-	svc := wiki.NewWikiPageService(repo, nil, nil, nil, nil, wikiK3Seams())
+	svc := wiki.NewWikiPageService(repo, nil, nil, nil, nil, wikiK3Seams(), nil)
 	const kbID = "kb-repair"
 	now := time.Now()
 

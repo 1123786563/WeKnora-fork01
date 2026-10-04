@@ -175,7 +175,6 @@ func (s *knowledgeService) ReplaceKnowledgeFile(ctx context.Context,
 			existing.ID, err)
 	}
 
-	reparsed, err := s.ReparseKnowledge(ctx, existing.ID, nil)
 	reparsed, err := s.reparseKnowledge(ctx, existing.ID, nil, true)
 	if err != nil {
 		logger.Errorf(ctx, "Reparse after replacing the file of knowledge %s failed, restoring source: %v",

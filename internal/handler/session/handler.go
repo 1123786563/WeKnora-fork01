@@ -10,7 +10,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -25,7 +24,6 @@ import (
 
 // Handler handles all HTTP requests related to conversation sessions
 type Handler struct {
-	browserSkill         *browserskill.Manager
 	messageService       interfaces.MessageService // Service for managing messages
 	suggestionService    interfaces.MessageSuggestionService
 	sessionService       interfaces.SessionService       // Service for managing sessions
@@ -66,12 +64,12 @@ type Handler struct {
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
-	desktopService *service.SandboxDesktopService
+	desktopService  *service.SandboxDesktopService
 	desktopTickets  service.SandboxDesktopTicketStore
 	desktopLast     service.SandboxDesktopLastStore
 	// redis backs the distributed desktop slot. Nil in Lite mode, where the
 	// in-process limiter is the correct degradation.
-	redis *redis.Client
+	redis           *redis.Client
 	agentRunService *service.AgentRunService
 	// craftTombstoner starts the craft resource teardown of a session being
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
@@ -84,6 +82,10 @@ type Handler struct {
 	// browserSkill is the local-browser gateway (A13). Nil-safe by design:
 	// every browserskill.go handler treats the nil manager as disabled.
 	browserSkill *browserskill.Manager
+	// rewindService powers /sessions/:id/rewind (upstream).
+	rewindService *service.SessionRewindService
+	// approvedProjectDirs lists the host-sandbox project dirs (upstream).
+	approvedProjectDirs HostProjectDirsLoader
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
 	usageRecorder           interfaces.UsageRecorderService
@@ -217,10 +219,6 @@ func NewHandler(
 	// Concrete-typed parameter so dig can inject it; the field keeps the
 	// narrow interface for stub-based tests.
 	forkService *service.SessionForkService,
-	// workspaceCheckpointer + sandboxIDLookup back the per-turn git checkpoint
-	// hook (A11 phase 3); both may be nil on sandbox-less deployments.
-	workspaceCheckpointer *service.WorkspaceCheckpointer,
-	sandboxIDLookup SandboxIDLookup,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
@@ -233,11 +231,11 @@ func NewHandler(
 	// (SP13 Task 4). Concrete-typed parameter so dig can inject it; the
 	// field keeps the narrow interface for stub-based tests.
 	queryHistoryExport *service.QueryHistoryExportService,
-	desktopService     *service.SandboxDesktopService,
-	desktopTickets     service.SandboxDesktopTicketStore,
-	desktopLast        service.SandboxDesktopLastStore,
-	rdb                *redis.Client,
-	rewindService      *service.SessionRewindService,
+	desktopService *service.SandboxDesktopService,
+	desktopTickets service.SandboxDesktopTicketStore,
+	desktopLast service.SandboxDesktopLastStore,
+	rdb *redis.Client,
+	rewindService *service.SessionRewindService,
 	approvedProjectDirs HostProjectDirsLoader,
 ) *Handler {
 	return &Handler{
@@ -280,13 +278,6 @@ func NewHandler(
 			modelService,
 		),
 	}
-	if forkService != nil {
-		h.forkService = forkService
-	}
-	if rewindService != nil {
-		h.rewindService = rewindService
-	}
-	return h
 }
 
 // CreateSession godoc
@@ -341,10 +332,11 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		return
 	}
 	createdSession := &types.Session{
-		TenantID:    tenantID.(uint64),
-		Title:       request.Title,
-		Description: types.SanitizeClientSessionDescription(request.Description, ""),
-		EngineType:  string(engine),
+		TenantID:         tenantID.(uint64),
+		Title:            request.Title,
+		Description:      types.SanitizeClientSessionDescription(request.Description, ""),
+		EngineType:       string(engine),
+		HostWorkspaceDir: hostDir,
 	}
 	// Attach the calling user as the session owner when available.
 	// API-key callers scope sessions per external user when configured;

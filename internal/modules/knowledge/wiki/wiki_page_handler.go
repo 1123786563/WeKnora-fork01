@@ -979,7 +979,7 @@ func (h *WikiPageHandler) UpdateIssueStatus(c *gin.Context) {
 	}
 
 	if err := h.wikiService.UpdateIssueStatus(c.Request.Context(), kbID, issueID, req.Status); err != nil {
-		if stderrors.Is(err, repository.ErrWikiIssueNotFound) {
+		if stderrors.Is(err, ErrWikiIssueNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Issue not found"})
 			return
 		}

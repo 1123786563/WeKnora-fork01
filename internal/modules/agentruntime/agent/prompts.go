@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -397,6 +398,14 @@ type BuildSystemPromptOptions struct {
 	// placeholder resolution: the segment is treated as literal text and its
 	// content is never expanded as a template.
 	PersonaSegment string
+	// MemoryPrompt is the rendered long-term-memory block, prepended when the
+	// engine carries retrieved memories for this turn.
+	MemoryPrompt string
+	// ProtocolPrompt is the rendered model-context protocol block (MCP etc.).
+	ProtocolPrompt string
+	// WorkspaceLayout describes the sandbox workspace shape the prompt's
+	// path guidance assumes (remote container vs host project dir).
+	WorkspaceLayout sandbox.WorkspaceLayout
 }
 
 // PersonaSegmentSeparator joins the persona segment in front of the system
@@ -437,7 +446,14 @@ func BuildSystemPromptWithOptions(
 	systemPromptTemplate ...string,
 ) string {
 	sections := BuildSystemPromptSections(knowledgeBases, webSearchEnabled, options, systemPromptTemplate...)
-	return renderSystemPromptSections(sections)
+	rendered := renderSystemPromptSections(sections)
+	// The persona segment rides in front of whichever template was resolved —
+	// custom or default scaffolding — and is joined after placeholder
+	// resolution so its text is never expanded as template content.
+	if options != nil {
+		rendered = PrependPersonaSegment(options.PersonaSegment, rendered)
+	}
+	return rendered
 }
 
 func renderSystemPromptSections(sections []SystemPromptSection) string {
@@ -500,24 +516,7 @@ func BuildSystemPromptSections(
 		sections[2].Content += "\nUse " + language +
 			" by default; follow the user's explicit language and output-format requests."
 	}
-	var names []string
-	if options != nil {
-		names = options.SelectedTools
-	}
-	skillInstallMode := options != nil && options.SkillInstallMode
-	var layout sandbox.WorkspaceLayout
-	if options != nil {
-		layout = options.WorkspaceLayout
-	}
-
-	// The persona segment rides in front of whichever template was resolved —
-	// custom or default scaffolding — and is joined after placeholder
-	// resolution so its text is never expanded as template content.
-	if options != nil {
-		basePrompt = PrependPersonaSegment(options.PersonaSegment, basePrompt)
-	}
-
-	return basePrompt
+	return sections
 }
 
 // Apply to custom prompts too: mid-run delivery is a harness capability.

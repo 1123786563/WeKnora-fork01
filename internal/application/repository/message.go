@@ -173,6 +173,26 @@ func (r *messageRepository) ListMessagesBySessionAfterTime(
 	return messages, nil
 }
 
+// ListMessagesBySessionBeforeCursor pages a session backwards: up to limit
+// messages sorting strictly before (before, beforeID), newest first. A zero
+// cursor starts from the newest message.
+func (r *messageRepository) ListMessagesBySessionBeforeCursor(
+	ctx context.Context, sessionID string, before time.Time, beforeID string, limit int,
+) ([]*types.Message, error) {
+	var messages []*types.Message
+	query := r.db.WithContext(ctx).Where("session_id = ?", sessionID)
+	if !before.IsZero() || beforeID != "" {
+		query = query.Where("created_at < ? OR (created_at = ? AND id < ?)", before, before, beforeID)
+	}
+	if err := query.Order("created_at DESC, id DESC").Limit(limit).Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	if err := attachArtifacts(ctx, r.db, messages...); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
 // ListMessagesBySessionAfterCursor uses a stable tie-breaker for memory paging.
 func (r *messageRepository) ListMessagesBySessionAfterCursor(ctx context.Context, sessionID string, cursor types.MemoryMessageCursor, limit int) ([]*types.Message, error) {
 	var messages []*types.Message
@@ -187,18 +207,6 @@ func (r *messageRepository) ListMessagesBySessionAfterCursor(ctx context.Context
 		return nil, err
 	}
 	return messages, nil
-}
-
-// ListMessagesBySessionAfterCursor pages a session forward with the composite
-// (created_at, id) cursor — lossless ordering for the memory extraction walk.
-func (r *messageRepository) ListMessagesBySessionAfterCursor(ctx context.Context, sessionID string, cursor types.MemoryMessageCursor, limit int) ([]*types.Message, error) {
-	var messages []*types.Message
-	query := r.db.WithContext(ctx).Where("session_id = ?", sessionID)
-	if !cursor.At.IsZero() || cursor.ID != "" {
-		query = query.Where("created_at > ? OR (created_at = ? AND id > ?)", cursor.At, cursor.At, cursor.ID)
-	}
-	err := query.Order("created_at ASC, id ASC").Limit(limit).Find(&messages).Error
-	return messages, err
 }
 
 // UpdateMessage updates an existing message
@@ -570,40 +578,6 @@ func (r *messageRepository) UpdateMessageKnowledgeID(
 		Update("knowledge_id", knowledgeID).Error
 }
 
-// RewriteSandboxCheckpoints retargets copied checkpoints onto the forked
-// session's live sandbox. CommitSHA / CommittedAt are left untouched: the git
-// objects are in the snapshot, only the sandbox identity changed.
-func (r *messageRepository) RewriteSandboxCheckpoints(
-	ctx context.Context, sessionID, oldSandboxID, newSandboxID string,
-) error {
-	if sessionID == "" || oldSandboxID == "" || newSandboxID == "" || oldSandboxID == newSandboxID {
-		return nil
-	}
-	var messages []*types.Message
-	if err := r.db.WithContext(ctx).
-		Where("session_id = ?", sessionID).
-		Find(&messages).Error; err != nil {
-		return err
-	}
-	for _, message := range messages {
-		if message == nil || message.SandboxCheckpoint == nil {
-			continue
-		}
-		if message.SandboxCheckpoint.SandboxID != oldSandboxID {
-			continue
-		}
-		updated := *message.SandboxCheckpoint
-		updated.SandboxID = newSandboxID
-		if err := r.db.WithContext(ctx).
-			Model(&types.Message{}).
-			Where("id = ? AND session_id = ?", message.ID, sessionID).
-			Update("sandbox_checkpoint", updated).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // GetSessionArtifactRefs returns the same flattened artifact list as
 // GetSessionArtifacts, but keeps the owning message id and the artifact's
 // position inside that message's array. Signed download grants address a blob
@@ -644,39 +618,6 @@ func (r *messageRepository) GetSessionArtifactRefs(
 	return refs, nil
 }
 
-// RecordRestoredArtifactMtime updates ModTime (and ContentHash) on artifacts
-// in this session whose source path matches a same-content sandbox restore.
-func (r *messageRepository) RecordRestoredArtifactMtime(
-	ctx context.Context, sessionID, sourcePath string, mod time.Time, hash string,
-) error {
-	if sessionID == "" || sourcePath == "" {
-		return nil
-	}
-	var messages []*types.Message
-	if err := r.db.WithContext(ctx).
-		Select("id", "session_id", "artifacts").
-		Where("session_id = ?", sessionID).
-		Find(&messages).Error; err != nil {
-		return err
-	}
-	for _, message := range messages {
-		if message == nil {
-			continue
-		}
-		updated, changed := message.Artifacts.WithRestoredMtime(sourcePath, mod, hash)
-		if !changed {
-			continue
-		}
-		if err := r.db.WithContext(ctx).
-			Model(&types.Message{}).
-			Where("id = ? AND session_id = ?", message.ID, sessionID).
-			Update("artifacts", updated).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // GetSessionAttachments returns every user-uploaded attachment in every
 // order while projecting only the attachments JSON column.
 func (r *messageRepository) GetSessionAttachments(
@@ -702,4 +643,23 @@ func (r *messageRepository) GetSessionAttachments(
 		result = append(result, row.Attachments...)
 	}
 	return result, nil
+}
+
+// ListAssistantCheckpointsUpTo returns the assistant messages strictly before
+// the (boundary, boundaryID) cursor, oldest first, carrying only the columns
+// that identify a workspace checkpoint (rewind's reachability question).
+func (r *messageRepository) ListAssistantCheckpointsUpTo(
+	ctx context.Context, sessionID string, boundary time.Time, boundaryID string,
+) ([]*types.Message, error) {
+	var messages []*types.Message
+	if err := r.db.WithContext(ctx).
+		Model(&types.Message{}).
+		Select("id", "session_id", "role", "created_at", "sandbox_checkpoint").
+		Where("session_id = ? AND role = ?", sessionID, "assistant").
+		Where("created_at < ? OR (created_at = ? AND id < ?)", boundary, boundary, boundaryID).
+		Order("created_at ASC, id ASC").
+		Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	return messages, nil
 }

@@ -640,3 +640,20 @@ func (s *SessionRewindService) cleanupDeleted(
 		logger.Warnf(ctx, "[SessionRewind] tombstone artifacts for session %s: %v", sessionID, err)
 	}
 }
+
+// latestReachableCheckpoint walks kept assistant messages until it finds one
+// with a non-empty commit SHA. Rewind uses this so a failed last-turn
+// checkpoint does not skip an earlier SHA that can still reset the workspace.
+func latestReachableCheckpoint(history []*types.Message) *types.SandboxCheckpoint {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i] == nil || history[i].Role != "assistant" {
+			continue
+		}
+		cp := history[i].SandboxCheckpoint
+		if cp == nil || strings.TrimSpace(cp.CommitSHA) == "" {
+			continue
+		}
+		return cp
+	}
+	return nil
+}

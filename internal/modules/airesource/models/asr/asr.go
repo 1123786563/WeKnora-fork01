@@ -59,8 +59,11 @@ type Config struct {
 	ModelID   string
 	// Provider is the vendor id stored on the row; empty detects it from
 	// BaseURL.
-	Provider    string
-	Spec        *types.ModelSpecOverride `json:"spec,omitempty"`
+	Provider string
+	Spec     *types.ModelSpecOverride `json:"spec,omitempty"`
+	// Language is the operator's transcription language hint (e.g. "zh");
+	// empty lets the provider decide.
+	Language    string
 	ExtraConfig map[string]string
 	// CustomHeaders 允许在调用远程 API 时附加自定义 HTTP 请求头（类似 OpenAI Python SDK 的 extra_headers）。
 	CustomHeaders map[string]string

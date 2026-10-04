@@ -19,6 +19,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
 	trpcagent "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
@@ -618,7 +619,7 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	capabilities := caps.CapabilitySnapshot()
 	initial := trpcagent.State{Version: trpcagent.StateVersion, Capabilities: capabilities}
 	if fresh {
-		history, historyErr := LoadAgentHistory(ctx, s.messageRepo, run.SessionID, durableHistoryTurns(config))
+		history, _, historyErr := LoadAgentHistory(ctx, s.messageRepo, run.SessionID, agent.HistoryTokenBudget(config), false)
 		if historyErr != nil {
 			logger.Warnf(ctx, "durable run %s history load failed: %v", fence.RunID, historyErr)
 			history = nil

@@ -330,7 +330,6 @@ func (c *Connector) walk(
 				Title:            d.Title,
 				Content:          []byte(detail.Body),
 				ContentType:      "text/markdown",
-				FileName:         datasource.SanitizeFileName(d.Title) + ".md",
 				FileName:         fileName,
 				URL:              buildDocURL(cfg.GetBaseURL(), detail.Book.Namespace, d.Slug),
 				UpdatedAt:        parseContentUpdatedAt(d.ContentUpdatedAt),

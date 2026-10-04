@@ -2691,7 +2691,7 @@ func (s *Service) executeFAQMergeOperations(
 		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, false); err != nil {
 }
 		// 4. 重建索引。先删旧索引：ES v8、Qdrant 等引擎不会覆盖相同 SourceID。
-		if err := s.indexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, true); err != nil {
+		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, true); err != nil {
 			return mergedCount, fmt.Errorf("failed to re-index merged chunks: %w", err)
 		}
 
@@ -2718,40 +2718,6 @@ func (s *Service) executeFAQMergeOperations(
 	return mergedCount, nil
 }
 
-// loadFAQTagsForChunks resolves every distinct tag referenced by chunks with a
-// single query. Lookup failures are logged and yield an empty map so the
-// import result degrades to "no tag info" instead of aborting the batch.
-func (s *knowledgeService) loadFAQTagsForChunks(
-	ctx context.Context, tenantID uint64, chunks []*types.Chunk,
-) map[string]*types.KnowledgeTag {
-	tagsByID := make(map[string]*types.KnowledgeTag)
-	seen := make(map[string]struct{})
-	ids := make([]string, 0)
-	for _, chunk := range chunks {
-		if chunk == nil || chunk.TagID == "" {
-			continue
-		}
-		if _, ok := seen[chunk.TagID]; ok {
-			continue
-		}
-		seen[chunk.TagID] = struct{}{}
-		ids = append(ids, chunk.TagID)
-	}
-	if len(ids) == 0 {
-		return tagsByID
-	}
-	tags, err := s.tagRepo.GetByIDs(ctx, tenantID, ids)
-	if err != nil {
-		logger.Warnf(ctx, "Failed to load FAQ tags for import result: %v", err)
-		return tagsByID
-	}
-	for _, tag := range tags {
-		if tag != nil {
-			tagsByID[tag.ID] = tag
-		}
-	}
-	return tagsByID
-}
 
 // faqTagInfo returns the external (seq_id, name) pair for tagID, or zero values
 // when the chunk has no tag or the tag could not be loaded.
@@ -2929,4 +2895,39 @@ func (s *Service) UpdateLastFAQImportResultDisplayStatus(ctx context.Context, kb
 	}
 
 	return nil
+}
+
+// loadFAQTagsForChunks resolves every distinct tag referenced by chunks with a
+// single query. Lookup failures are logged and yield an empty map so the
+// import result degrades to "no tag info" instead of aborting the batch.
+func (s *Service) loadFAQTagsForChunks(
+	ctx context.Context, tenantID uint64, chunks []*types.Chunk,
+) map[string]*types.KnowledgeTag {
+	tagsByID := make(map[string]*types.KnowledgeTag)
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	for _, chunk := range chunks {
+		if chunk == nil || chunk.TagID == "" {
+			continue
+		}
+		if _, ok := seen[chunk.TagID]; ok {
+			continue
+		}
+		seen[chunk.TagID] = struct{}{}
+		ids = append(ids, chunk.TagID)
+	}
+	if len(ids) == 0 {
+		return tagsByID
+	}
+	tags, err := s.tagRepo.GetByIDs(ctx, tenantID, ids)
+	if err != nil {
+		logger.Warnf(ctx, "Failed to load FAQ tags for import result: %v", err)
+		return tagsByID
+	}
+	for _, tag := range tags {
+		if tag != nil {
+			tagsByID[tag.ID] = tag
+		}
+	}
+	return tagsByID
 }

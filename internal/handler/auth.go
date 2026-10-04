@@ -36,11 +36,6 @@ var liteSetupToken string
 // Web deployments leave it empty and cannot issue anonymous administrator tokens.
 func SetLiteSetupToken(token string) { liteSetupToken = token }
 
-const (
-	oidcNonceCookieName   = "weknora_oidc_nonce"
-	oidcNonceCookieMaxAge = 600
-)
-
 // AuthHandler implements HTTP request handlers for user authentication
 // Provides functionality for user registration, login, logout, and token management
 // through the REST API endpoints

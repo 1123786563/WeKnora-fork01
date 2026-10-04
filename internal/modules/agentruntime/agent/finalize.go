@@ -9,8 +9,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -189,4 +187,15 @@ func turnUsage(state *types.AgentState) *types.TokenUsage {
 	}
 	usage := state.TurnUsage
 	return &usage
+}
+
+// finalAnswerImageRequirement appends the image-carrying answer contract for
+// image-bearing turns.
+func finalAnswerImageRequirement(hasRetrievedImage bool) string {
+	if !hasRetrievedImage {
+		return ""
+	}
+	return `
+5. Retrieved tool results contain Markdown images. Unless the user explicitly requested text-only output or every image is clearly unrelated, the final answer MUST include at least one relevant Markdown image copied verbatim from the tool results. Preserve its complete URL exactly. Use ASCII half-width parentheses exactly as ![alt](url) and never use full-width （ or ）. Place the image immediately after the paragraph it supports. When multiple images support different sections, distribute them across those sections instead of stopping after the first image.
+6. Before finishing, silently verify that the answer contains a Markdown image when requirement 5 applies.`
 }

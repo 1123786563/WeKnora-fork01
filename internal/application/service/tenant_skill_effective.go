@@ -4,6 +4,8 @@ import (
 	"context"
 
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -23,8 +25,9 @@ func skillsForRun(
 ) (string, []*types.TenantSkillEntity) {
 	var pinned acatsvc.PinnedConfigReader
 	if pinner != nil {
-		pinned = pinner
+		pinned = pinnerConfigReader{pinner}
 	}
+
 	return acatsvc.SkillsForRun(ctx, pinned, configs, skills, tenantID, sessionID, agentConfigID)
 }
 
@@ -54,4 +57,16 @@ func hostSkillsForRun(
 		return sandbox.HostSkillTargetID, nil
 	}
 	return sandbox.HostSkillTargetID, usable
+}
+
+// pinnerConfigReader adapts *SessionSandboxPinner (returns SandboxPin) to the
+// agentcatalog seam that expects the pinned config id string.
+type pinnerConfigReader struct{ p *SessionSandboxPinner }
+
+func (a pinnerConfigReader) Read(ctx context.Context, sessionID string) (string, error) {
+	pin, err := a.p.Read(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+	return pin.ConfigID, nil
 }

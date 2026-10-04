@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
@@ -77,6 +78,35 @@ func sandboxOutputLinksIn(outputDir string, paths ...string) []string {
 		}
 		name := path.Base(filePath)
 		// Keep Unicode readable; escape only ASCII Markdown/URL delimiters.
+		var escaped strings.Builder
+		for _, char := range name {
+			if char >= 128 {
+				escaped.WriteRune(char)
+			} else {
+				escaped.WriteString(url.PathEscape(string(char)))
+			}
+		}
+		link := "sandbox:" + escaped.String()
+		if bytes+len(link) > 8*1024 {
+			break
+		}
+		links = append(links, link)
+		bytes += len(link)
+	}
+	return links
+}
+
+// sandboxOutputLinks filters paths to the skill artifact output dir and renders
+// sandbox: links (legacy no-dir form used by tests).
+func sandboxOutputLinks(paths ...string) []string {
+	links := []string{}
+	bytes := 0
+	for _, filePath := range paths {
+		filePath = path.Clean(filePath)
+		if !strings.HasPrefix(filePath, path.Clean(skills.ArtifactOutputDir())+"/") {
+			continue
+		}
+		name := path.Base(filePath)
 		var escaped strings.Builder
 		for _, char := range name {
 			if char >= 128 {

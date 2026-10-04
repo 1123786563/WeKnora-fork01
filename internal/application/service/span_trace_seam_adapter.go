@@ -191,7 +191,7 @@ func (s dataAnalysisToolSeam) LoadFromKnowledge(ctx context.Context, knowledge *
 }
 
 func (s dataAnalysisToolSeam) Execute(ctx context.Context, knowledgeID, sql string) (*types.ToolResult, error) {
-	input := tools.DataAnalysisInput{KnowledgeID: knowledgeID, Sql: sql}
+	input := tools.DataAnalysisInput{KnowledgeID: knowledgeID, SQL: sql}
 	jsonData, err := json.Marshal(input)
 	if err != nil {
 		return nil, err

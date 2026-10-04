@@ -8,14 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	"github.com/Tencent/WeKnora/internal/modelcontext"
-	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -274,7 +274,7 @@ func (e *AgentEngine) streamThinkingToEventBus(
 		MaxCompletionTokens: budget,
 		Tools:               tools,
 		Thinking:            e.config.Thinking,
-		ReasoningEffort:     chat.SanitizeReasoningEffort(ctx, e.config.ReasoningEffort, "agent config"),
+		ReasoningEffort:     api.SanitizeReasoningEffort(ctx, e.config.ReasoningEffort, "agent config"),
 		ParallelToolCalls:   &parallelToolCalls,
 		PromptCacheKey:      sessionID,
 	}

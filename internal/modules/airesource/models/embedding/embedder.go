@@ -41,15 +41,16 @@ type EmbedderType string
 
 // Config represents the embedder configuration
 type Config struct {
-	Source                    types.ModelSource `json:"source"`
-	BaseURL                   string            `json:"base_url"`
-	ModelName                 string            `json:"model_name"`
-	APIKey                    string            `json:"api_key"`
-	TruncatePromptTokens      int               `json:"truncate_prompt_tokens"`
-	Dimensions                int               `json:"dimensions"`
-	SupportsDimensionOverride bool              `json:"supports_dimension_override"`
-	ModelID                   string            `json:"model_id"`
-	Provider                  string            `json:"provider"`
+	Source                    types.ModelSource        `json:"source"`
+	BaseURL                   string                   `json:"base_url"`
+	ModelName                 string                   `json:"model_name"`
+	APIKey                    string                   `json:"api_key"`
+	TruncatePromptTokens      int                      `json:"truncate_prompt_tokens"`
+	Dimensions                int                      `json:"dimensions"`
+	SupportsDimensionOverride bool                     `json:"supports_dimension_override"`
+	ModelID                   string                   `json:"model_id"`
+	Provider                  string                   `json:"provider"`
+	Spec                      *types.ModelSpecOverride `json:"spec,omitempty"`
 	// MaxConcurrency caps concurrent background calls to this model; 0 falls
 	// back to the process-wide default (see limiter.GateN).
 	MaxConcurrency int               `json:"max_concurrency"`

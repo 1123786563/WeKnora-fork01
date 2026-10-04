@@ -15,6 +15,18 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// likeEscapeChar is the SQL ESCAPE character paired with escapeLikePattern.
+const likeEscapeChar = `\`
+
+// escapeLikePattern escapes LIKE / ILIKE metacharacters so the returned string
+// can be safely concatenated with % wildcards without unintended matches.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
+}
+
 // Pass B (23-knowledge-wikifaq) 拓扑裁定：5 个哨兵的物理定义留在宿主
 // repository 包（他 owner agentruntime/agent/tools 以
 // repository.ErrWikiPageNotFound 做 errors.Is；且 repository→wiki import
@@ -1427,4 +1439,56 @@ func (r *wikiPageRepository) UpdateIssueStatus(ctx context.Context, kbID string,
 		return ErrWikiIssueNotFound
 	}
 	return nil
+}
+
+// DeleteByKnowledgeBaseID soft-deletes all wiki pages in a knowledge base.
+func (r *wikiPageRepository) DeleteByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiPage{})
+}
+
+// ErrWikiIssueNotFound mirrors the repository sentinel (import-cycle-free).
+var ErrWikiIssueNotFound = errors.New("wiki issue not found")
+
+// deleteByTenantAndKnowledgeBase scopes a bulk delete to one tenant's KB.
+func (r *wikiPageRepository) deleteByTenantAndKnowledgeBase(
+	ctx context.Context, tenantID uint64, kbID string, model any,
+) error {
+	if kbID == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND knowledge_base_id = ?", tenantID, kbID).
+		Delete(model).Error
+}
+
+// DeleteFoldersByKnowledgeBaseID soft-deletes all wiki folders in a knowledge
+// base, bypassing the emptiness guard that DeleteFolder enforces.
+func (r *wikiPageRepository) DeleteFoldersByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiFolder{})
+}
+
+// DeleteIssuesByKnowledgeBaseID soft-deletes all wiki issues in a knowledge base.
+func (r *wikiPageRepository) DeleteIssuesByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiPageIssue{})
+}
+
+// DeleteRevisionsByKnowledgeBaseID hard-deletes all wiki page revisions in a
+// knowledge base: wiki_page_revisions stores immutable snapshots with no
+// deleted_at column, so GORM's Delete is a physical DELETE.
+func (r *wikiPageRepository) DeleteRevisionsByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	if kbID == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Unscoped().
+		Where("tenant_id = ? AND knowledge_base_id = ?", tenantID, kbID).
+		Delete(&types.WikiPageRevision{}).Error
 }

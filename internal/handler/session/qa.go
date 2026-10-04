@@ -23,7 +23,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
 	"github.com/Tencent/WeKnora/internal/stream"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -540,77 +539,11 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string, claimTurns bo
 		attachmentIDs = normalizedIDs
 	}
 
-	mentionScopes := tagScopesFromMentionedItems(request.MentionedItems)
-	requestTagIDs := dedupRequestStrings(request.TagIDs)
-	if err := validateUnscopedTagIDs(orphanTagIDsForScope(requestTagIDs, mentionScopes), secutils.SanitizeForLogArray(kbIDs)); err != nil {
-		return nil, nil, errors.NewBadRequestError(err.Error())
-	}
-	tagScopes := mergeTagScopesFromRequestIDs(mentionScopes, requestTagIDs, secutils.SanitizeForLogArray(kbIDs))
-	tagIDs := dedupRequestStrings(append(request.TagIDs, mentionedIDsByType(request.MentionedItems, "tag")...))
-	mcpServiceIDs := dedupRequestStrings(append(request.MCPServiceIDs, mentionedIDsByType(request.MentionedItems, "mcp")...))
-	skillNames := dedupRequestStrings(append(request.SkillNames, mentionedIDsByType(request.MentionedItems, "skill")...))
-	executionContext, agentID, agentTenantID, modelID := buildMessageExecutionContext(
-		ctx,
-		customAgent,
-		effectiveTenantID,
-		request.SummaryModelID,
-		secutils.SanitizeForLogArray(kbIDs),
-		secutils.SanitizeForLogArray(knowledgeIDs),
-		secutils.SanitizeForLogArray(tagIDs),
-		tagScopes,
-		secutils.SanitizeForLogArray(mcpServiceIDs),
-		secutils.SanitizeForLogArray(skillNames),
-		request.WebSearchEnabled,
-	)
-
-	executionContext.LocalBrowserEnabled = request.LocalBrowserEnabled
-
-	// Build request context
-	reqCtx := &qaRequestContext{
-		ctx:         ctx,
-		c:           c,
-		sessionID:   sessionID,
-		requestID:   requestID,
-		receivedAt:  receivedAt,
-		query:       modelQuery,
-		userInput:   request.Query,
-		session:     session,
-		customAgent: customAgent,
-		assistantMessage: &types.Message{
-			SessionID:        sessionID,
-			Role:             "assistant",
-			RequestID:        c.GetString(types.RequestIDContextKey.String()),
-			IsCompleted:      false,
-			Channel:          request.Channel,
-			AgentID:          agentID,
-			AgentTenantID:    agentTenantID,
-			ModelID:          modelID,
-			ExecutionContext: executionContext,
-		},
-		knowledgeBaseIDs:      secutils.SanitizeForLogArray(kbIDs),
-		knowledgeIDs:          secutils.SanitizeForLogArray(knowledgeIDs),
-		tagScopes:             tagScopes,
-		tagIDs:                secutils.SanitizeForLogArray(tagIDs),
-		mcpServiceIDs:         secutils.SanitizeForLogArray(mcpServiceIDs),
-		skillNames:            secutils.SanitizeForLogArray(skillNames),
-		summaryModelID:        secutils.SanitizeForLog(request.SummaryModelID),
-		reasoningEffort:       request.ReasoningEffort,
-		webSearchEnabled:      request.WebSearchEnabled,
-		localBrowserEnabled:   request.LocalBrowserEnabled,
-		mentionedItems:        convertMentionedItems(request.MentionedItems),
-		effectiveTenantID:     effectiveTenantID,
-		sharedAgentReadOnly:   sharedAgentReadOnly,
-		images:                request.Images,
-		channel:               request.Channel,
-		attachments:           processedAttachments,
-		attachmentIDs:         attachmentIDs,
-		attachmentMetas:       attachmentMetas,
-		suggestionAttribution: request.SuggestionAttribution,
-		questionOrigin:        request.QuestionOrigin,
-		reqAgentEnabled:       request.AgentEnabled,
-		reqAgentID:            request.AgentID,
-		resourceRewriter:      resourceRewriter,
-	}
+	reqCtx.attachmentIDs = attachmentIDs
+	reqCtx.attachmentMetas = attachmentMetas
+	reqCtx.localBrowserEnabled = request.LocalBrowserEnabled
+	reqCtx.reasoningEffort = request.ReasoningEffort
+	reqCtx.questionOrigin = request.QuestionOrigin
 
 	return reqCtx, &request, nil
 }
@@ -2147,7 +2080,8 @@ func (h *Handler) sessionTenantInfoContext(ctx context.Context) (context.Context
 func (h *Handler) completeStreamAssistantMessage(
 	ctx context.Context, streamCtx *sseStreamContext, query, userMessageID string,
 ) {
-	if err := h.completeAssistantMessage(ctx, streamCtx.assistantMessage, query, userMessageID); err != nil {
+	err := h.completeAssistantMessage(ctx, streamCtx.assistantMessage, query, userMessageID, 0, "", nil, "")
+	if err != nil {
 		if streamCtx.streamHandler != nil {
 			_ = streamCtx.streamHandler.handleError(ctx, event.Event{
 				ID: uuid.New().String(), Type: event.EventError, SessionID: streamCtx.assistantMessage.SessionID,
@@ -2174,7 +2108,7 @@ func (h *Handler) completeAssistantMessage(
 	ctx context.Context, assistantMessage *types.Message, userQuery, userMessageID string,
 	tenantID uint64, userID string,
 	claim *repository.AgentChatTurnClaim, claimTerminalState string,
-) {
+) error {
 	// LoadOrStore reports loaded=false only for the first completion path to
 	// reach this message — the losers skip, closing the concurrent
 	// double-count window a check-then-record on IsCompleted would leave open.
@@ -2289,4 +2223,20 @@ func (h *Handler) recordAnswerSources(ctx context.Context, assistantMessage *typ
 		})
 	}
 	h.memoryService.RecordAnswerSources(ctx, refs)
+}
+
+// uploadOnlyQuery returns the placeholder question for a request that carries
+// inline image or file content but no text (upstream).
+func uploadOnlyQuery(ctx context.Context, req *CreateKnowledgeQARequest) string {
+	hasUpload := false
+	for _, img := range req.Images {
+		hasUpload = hasUpload || strings.TrimSpace(img.Data) != ""
+	}
+	for _, att := range req.AttachmentUploads {
+		hasUpload = hasUpload || strings.TrimSpace(att.Data) != ""
+	}
+	if !hasUpload {
+		return ""
+	}
+	return types.UploadOnlyQuestion(types.LanguageFromContextOrDefault(ctx))
 }

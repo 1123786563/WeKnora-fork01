@@ -27,7 +27,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -294,36 +293,6 @@ func (b *ForkBootstrapper) resetWorkspace(
 	result, err := b.runner.ExecShellCommand(
 		ctx, sessionID, script, sandbox.SessionWorkspaceRoot, forkResetTimeout, nil,
 	)
-}
-// resetWorkspace rolls /workspace back to sha.
-//
-// AfterCreate runs under the session lifecycle lock and already holds the
-// handle Create returned, so the client path execs directly rather than going
-// through the runner, which would Resolve. Deployments without a client fall
-// back to the shared runner helper.
-func (b *ForkBootstrapper) resetWorkspace(
-	ctx context.Context, sessionID, sha string, handle sandbox.RemoteSandboxHandle,
-) error {
-	sha = strings.TrimSpace(sha)
-	if b.client == nil || handle == nil {
-		expectedID := ""
-		if handle != nil {
-			expectedID = handle.ID()
-		}
-		return resetWorkspaceToCommit(ctx, b.runner, sessionID, sha, expectedID)
-	}
-
-	script, err := workspaceResetScript(sandbox.SessionWorkspaceRoot, sandbox.SessionGitDir, sha)
-	if err != nil {
-		return err
-	}
-	result, err := b.client.Exec(ctx, handle, sandbox.RemoteExecRequest{
-		Command: script,
-		Shell:   true,
-		WorkDir: sandbox.SessionWorkspaceRoot,
-		Timeout: workspaceResetTimeout,
-		User:    sandbox.DefaultSandboxExecUser,
-	})
 	if err != nil {
 		return fmt.Errorf("fork bootstrap: git reset exec: %w", err)
 	}

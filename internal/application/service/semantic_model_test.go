@@ -518,3 +518,7 @@ func semanticTestBudget(reserve func(context.Context, semanticCapability) (domai
 	}
 	return b
 }
+
+func (g *semanticGatewayModels) CopyModel(ctx context.Context, sourceID, displayName string) (*types.Model, error) {
+	return nil, errors.New("not implemented in test fake")
+}

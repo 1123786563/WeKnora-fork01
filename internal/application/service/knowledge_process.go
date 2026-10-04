@@ -21,10 +21,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
-	"github.com/Tencent/WeKnora/internal/models/asr"
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/models/embedding"
-	"github.com/Tencent/WeKnora/internal/searchutil"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/sourceloc"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -388,7 +385,7 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 	}
 	if s.isKnowledgeSourceReplaced(ctx, knowledge) {
 		logger.Infof(ctx, "Knowledge source replaced, skipping chunk processing: %s", knowledge.ID)
-		return
+		return nil
 	}
 
 	// Get embedding model for vectorization — only needed when vector/keyword indexing is enabled
@@ -632,7 +629,7 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 	}
 	if s.isKnowledgeSourceReplaced(ctx, knowledge) {
 		logger.Infof(ctx, "Knowledge source replaced, skipping chunk write: %s", knowledge.ID)
-		return
+		return nil
 	}
 
 	// Save chunks to database — ALWAYS, regardless of indexing strategy.
@@ -720,7 +717,6 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 		// cancelled → user wants to keep what was already persisted, just stop.
 		if s.isKnowledgeSourceReplaced(ctx, knowledge) {
 			logger.Infof(ctx, "Knowledge source replaced, skipping indexing: %s", knowledge.ID)
-			return
 			return nil
 		}
 		if aborted, status := s.isKnowledgeAborted(ctx, knowledge.TenantID, knowledge.ID); aborted {
@@ -773,7 +769,6 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 		// and downstream stages skip via the entry guards.
 		if s.isKnowledgeSourceReplaced(ctx, knowledge) {
 			logger.Infof(ctx, "Knowledge source replaced, skipping completion: %s", knowledge.ID)
-			return
 			return nil
 		}
 		if aborted, status := s.isKnowledgeAborted(ctx, knowledge.TenantID, knowledge.ID); aborted {
@@ -4601,4 +4596,10 @@ func runKnowledgeListReparseSubmissions(
 		"%w: batch reparse submitted %d item(s) and failed %d: %w",
 		asynq.SkipRetry, outcome.Submitted, outcome.Failed, errors.Join(failures...),
 	)
+}
+
+// multimodalPendingKey is the Redis key holding how many image tasks a
+// knowledge is still waiting on (fan-out seeds, fan-in drains).
+func multimodalPendingKey(knowledgeID string) string {
+	return fmt.Sprintf("multimodal:pending:%s", knowledgeID)
 }

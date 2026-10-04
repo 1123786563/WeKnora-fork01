@@ -148,6 +148,11 @@ type sessionService struct {
 	// admin query-history audit snapshot (SP13).
 	feedbackRepo    interfaces.FeedbackRepository
 	craftTaskAccess craft.TaskRunAccess
+	// forkSnapshots retires provider snapshots when a forked session is deleted
+	// before its sandbox is provisioned. Nil uses NewResolverForkSnapshotDeleter
+	// from sandboxResolver/sandboxMgr.
+	forkSnapshots ForkSnapshotDeleter
+	busyGate      *SessionBusyGate
 }
 
 // NewSessionService creates a new session service instance with all required dependencies

@@ -65,7 +65,7 @@ func newAgentUpgradeTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 	}).Error)
 
 	marketRepo := repository.NewAgentMarketplaceRepository(db)
-	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	market := service.NewAgentMarketplaceService(versions, marketplaceHTTPResolver{}, marketRepo, t.TempDir())
 	adoptions := service.NewAgentAdoptionService(repository.NewAgentAdoptionRepository(db), customAgents, versions)
@@ -75,7 +75,7 @@ func newAgentUpgradeTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.DB) {
 	marketHandler := handler.NewAgentMarketplaceHandler(market, versions)
 	adoptionHandler := handler.NewAgentAdoptionHandler(adoptions)
 	upgradeHandler := handler.NewAgentUpgradeHandler(upgrades)
-	agentListHandler := handler.NewCustomAgentHandler(customAgents, nil, repository.NewTenantDisabledSharedAgentRepository(db), nil, nil)
+	agentListHandler := handler.NewCustomAgentHandler(customAgents, nil, repository.NewTenantDisabledSharedAgentRepository(db), nil, nil, service.HostSandboxManager{})
 
 	enabled := true
 	g := &rbacGuards{cfg: &config.Config{Tenant: &config.TenantConfig{EnableRBAC: &enabled}}, agentCreator: func(c *gin.Context) (string, error) {

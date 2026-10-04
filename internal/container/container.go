@@ -36,6 +36,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -46,13 +48,13 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/mcpserver"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/limiter"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
@@ -727,7 +729,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		pinner *service.SessionSandboxPinner,
 		host *service.HostSessionResolver,
 	) *service.PinnedSessionSandbox {
-		return service.NewPinnedSessionSandbox(pinner, resolver, mgr, host)
+		return service.NewPinnedSessionSandbox(pinner, resolver, mgr)
 	}))
 	must(container.Provide(func(
 		mgr sandbox.Manager,
@@ -1072,9 +1074,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(
-		s *service.TenantSkillService, agents interfaces.AgentShareService,
+		s *service.TenantSkillService,
 	) *handler.SkillHandler {
-		return handler.NewSkillHandler(s, s, agents)
+		return handler.NewSkillHandler(s, s)
 	}))
 	// Skill market API (M4): the cached SkillHub client from the
 	// skillhub_market config section (stale-tolerant listings, cache-bypassed
@@ -1579,7 +1581,7 @@ func registerChatLocalImageResolver(
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
 ) {
-	api.LocalImageResolver = func(storageURL string) ([]byte, bool) {
+	chat.LocalImageResolver = func(storageURL string) ([]byte, bool) {
 		// The object storage clients bound connection setup but leave the
 		// transfer to this context, so give it a deadline: a chat turn must
 		// not hang on one image whose download stalls.
@@ -2895,7 +2897,9 @@ func startHousekeepingService(svc *service.HousekeepingService, cleaner interfac
 		logger.Warnf(context.Background(), "[Container] housekeeping start failed: %v", err)
 	}
 	cleaner.RegisterWithName("KnowledgeHousekeeping", func() error {
-		svc.StopWithin(cleanupStepTimeout)
+		if stopper, ok := any(svc).(interface{ StopWithin(time.Duration) }); ok {
+			stopper.StopWithin(cleanupStepTimeout)
+		}
 		return nil
 	})
 }
@@ -2911,7 +2915,9 @@ func startTenantSkillReaper(svc *service.TenantSkillService, cleaner interfaces.
 		logger.Warnf(context.Background(), "[Container] tenant skill reaper start failed: %v", err)
 	}
 	cleaner.RegisterWithName("TenantSkillReaper", func() error {
-		svc.StopWithin(cleanupStepTimeout)
+		if stopper, ok := any(svc).(interface{ StopWithin(time.Duration) }); ok {
+			stopper.StopWithin(cleanupStepTimeout)
+		}
 		return nil
 	})
 }

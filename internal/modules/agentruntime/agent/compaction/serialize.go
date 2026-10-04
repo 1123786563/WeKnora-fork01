@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	agenttoken "github.com/Tencent/WeKnora/internal/agent/token"
-	"github.com/Tencent/WeKnora/internal/models/chat"
+	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
 )
 
 const (

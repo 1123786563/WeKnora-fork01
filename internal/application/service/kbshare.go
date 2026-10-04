@@ -222,7 +222,7 @@ func (s *kbShareService) RemoveShare(ctx context.Context, shareID string, userID
 			map[string]any{"organization_id": share.OrganizationID, "permission": share.Permission})
 		return nil
 	}
-	if !canManageShare(ctx, s.orgRepo, record, "", userID, tenantID) {
+	if !s.callerCanManageShare(ctx, share.SharedByUserID, share.SourceTenantID, share.OrganizationID, userID, tenantID) {
 		return ErrSharePermissionDenied
 	}
 	if err := s.shareRepo.Delete(ctx, shareID); err != nil {
@@ -258,6 +258,32 @@ type shareRecord struct {
 //	    tenant did: that would hand every editor member write access to
 //	    another tenant's KB. The tenant-role floor matches the
 //	    /organizations management routes.
+func (s *kbShareService) callerCanManageShare(
+	ctx context.Context,
+	shareSharedByUserID string,
+	shareSourceTenantID uint64,
+	shareOrgID string,
+	callerUserID string,
+	callerTenantID uint64,
+) bool {
+	// (1) Original sharer.
+	if shareSharedByUserID == callerUserID {
+		return true
+	}
+	// (2) Source-tenant Admin+ — Plan 3 ownership is tenant-level.
+	if callerTenantID != 0 && callerTenantID == shareSourceTenantID {
+		role := types.TenantRoleFromContext(ctx)
+		if role.HasPermission(types.TenantRoleAdmin) {
+			return true
+		}
+	}
+	// (3) Org admin in the target org (governance / sharer-left repair).
+	if tm, err := s.orgRepo.GetTenantMember(ctx, shareOrgID, callerTenantID); err == nil && tm.Role == types.OrgRoleAdmin {
+		return true
+	}
+	return false
+}
+
 func canManageShare(
 	ctx context.Context,
 	orgRepo interfaces.OrganizationRepository,

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	browserskill "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -136,4 +137,11 @@ func (t *BrowserSkillTool) Cleanup(ctx context.Context) {
 		t.keepOpen.Load() || t.failed.Load() || ctx.Err() != nil); err != nil {
 		logger.Warnf(cleanupCtx, "Failed to clean up local browser task: %v", err)
 	}
+}
+
+// BrowserSkillScope names the caller's browser. A shared agent runs in its
+// owner's workspace, but the browser stays paired to the member who asked.
+func BrowserSkillScope(ctx context.Context) browserskill.Scope {
+	caller := types.CallerFromContext(ctx)
+	return browserskill.Scope{Tenant: caller.TenantID, User: caller.UserID}
 }

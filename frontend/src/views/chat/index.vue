@@ -180,8 +180,7 @@
                 <ChatQuestionMinimap :scroll-container="scrollContainer" :messages="messagesList"
                     @jump="jumpToQuestion" />
             </div>
-        </transition>
-        <!-- 引擎身份不再对用户展示：会话引擎由智能体类型在创建时自动推导 -->
+        </div>
         <div class="input-container" :class="{ 'is-embedded': embeddedMode }">
             <InputField ref="inputFieldRef" :auto-focus="focusComposerOnMount"
                 @send-msg="(query, modelId, mentionedItems, imageFiles, attachmentFiles) => sendMsg(query, modelId, mentionedItems, imageFiles, attachmentFiles)"
@@ -217,10 +216,9 @@ import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vu
 import InputField from '../../components/Input-field.vue';
 import botmsg from './components/botmsg.vue';
 import usermsg from './components/usermsg.vue';
-import { getMessageList, getSession } from "@/api/chat/index";
+import { getMessageList, getSession, forkSession, rewindSession } from "@/api/chat/index";
 import { getAgentRun, getAgentRunEvents } from '@/api/chat/runs';
 import { createRunReplay, isTerminalRunStatus } from '@/utils/agentRunReplay';
-import { getMessageList, getSession, forkSession, rewindSession } from "@/api/chat/index";
 import { resolveForkAffordance } from './forkPoint';
 import { rewindSkipMessage } from './rewindNotice';
 import { rewindPrefillText, rewindBlockedByOutgoingWork, canReplaceRewindTranscript, shouldApplyRewindLocally, rewindHistoryHasMore, keepMessagesThroughRewindPoint, rewindableMessageIds, rewindHttpConflictCode, rewindConflictI18nKey } from './rewindView';

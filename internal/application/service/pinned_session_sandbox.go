@@ -14,7 +14,7 @@ import (
 // owns a session's binding. *SessionSandboxPinner is the production
 // implementation; tests use a stub so this does not need a database.
 type sessionSandboxPinReader interface {
-	Read(ctx context.Context, sessionID string) (string, error)
+	Read(ctx context.Context, sessionID string) (SandboxPin, error)
 }
 
 // PinnedSessionSandbox resolves the session's pinned sandbox manager at
@@ -49,8 +49,12 @@ func (a *PinnedSessionSandbox) manager(ctx context.Context, sessionID string) sa
 	if a.pinner == nil {
 		return nil
 	}
-	configID, err := a.pinner.Read(ctx, sessionID)
-	if err != nil || strings.TrimSpace(configID) == "" {
+	pin, err := a.pinner.Read(ctx, sessionID)
+	if err != nil {
+		return nil
+	}
+	configID := pin.ConfigID
+	if strings.TrimSpace(configID) == "" {
 		return nil
 	}
 	tenantID, _ := types.TenantIDFromContext(ctx)
@@ -161,3 +165,16 @@ var _ SandboxShellRunner = (*PinnedSessionSandbox)(nil)
 var _ SessionForkSandboxPort = (*PinnedSessionSandbox)(nil)
 
 var _ SessionForkSandboxPort = (*sandbox.SessionBoundManager)(nil)
+
+// TryLockRewind forwards the rewind lock to the pinned manager; managers that
+// do not expose the method are treated as free (upstream semantics).
+func (a *PinnedSessionSandbox) TryLockRewind(ctx context.Context, sessionID string) (func(), error) {
+	mgr := a.manager(ctx, sessionID)
+	type locker interface {
+		TryLockRewind(context.Context, string) (func(), error)
+	}
+	if l, ok := mgr.(locker); ok {
+		return l.TryLockRewind(ctx, sessionID)
+	}
+	return func() {}, nil
+}

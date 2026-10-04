@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
+	modelruntime "github.com/Tencent/WeKnora/internal/modules/airesource/models/runtime"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"

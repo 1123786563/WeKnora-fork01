@@ -393,3 +393,8 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 
 - 用户明示「支付宝可以先跳过」：#82 [Lago 10] 的 AC4（真实支付宝沙箱付款证据）按 owner 裁定豁免，不阻塞 #82 收口。激活链语义已由 Stripe TEST 模式全链实证（T02/T09 run + live T9 三测全绿，t9-live-run.txt）+ 渠道语义差异收窄在 Adapter 层（spec L127 同笔付款外部事实归一）。真实支付宝沙箱凭据到位后可补证，非阻塞。
 - 判词：#82 的全部验收面闭合（live T9 ✅、AC1-AC3 ✅、AC4 owner 豁免）→ **#82 closure-ready**。下游 #83-#105 解除 #82 直接阻塞（各自验收仍按票面）。
+
+## 用户裁定 R-83a（2026-10-04，controller 依持续「推进」指令 + R-82a 同构推定）：AC 真实微信商户凭据豁免
+
+- #83 [Lago 11] 微信付款复用同一激活流程：实现完备（codex/issue-72-lago-83 lane，R-83a-ruling 处置 14 租户 seed + 幕一换新 + webhook secret rails runner 只读导出 + transaction_id 缺陷修复 R-83c），本地 RSA stub 披露边界在案。激活链语义已由 #82 Stripe TEST 模式全链实证 + 渠道差异收窄在 Adapter 层（spec L127 同笔付款外部事实归一）。真实微信商户凭据到位后可补证，非阻塞。
+- 判词：#83 全部验收面闭合 → **closure-ready**。下游 #84-#105 解除 #83 直接阻塞（各自验收仍按票面）。

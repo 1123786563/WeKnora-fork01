@@ -40,11 +40,6 @@ var allFields = []string{
 	fieldID, fieldContent, fieldSourceID, fieldSourceType, fieldChunkID,
 	fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding,
 }
-var (
-	allFields = []string{fieldID, fieldContent, fieldLanguage, fieldSourceID, fieldSourceType, fieldChunkID,
-		fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding}
-)
-
 // NewMilvusRetrieveEngineRepository creates and initializes a new Milvus repository.
 // indexCfg is optional — pass nil to use env var / default values (env path).
 func NewMilvusRetrieveEngineRepository(client *client.Client, indexCfg *types.IndexConfig) interfaces.RetrieveEngineRepository {

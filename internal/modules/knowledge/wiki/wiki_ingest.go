@@ -24,8 +24,24 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
-	"gorm.io/gorm"
 )
+
+// wikiTaskType / wikiTaskScope address the bounded follow-up task queue.
+const (
+	wikiTaskType  = "wiki:ingest"
+	wikiTaskScope = "kb"
+)
+
+// attemptFromCtx mirrors service/knowledge.go: prefer the engine-carried
+// parse attempt; 0 means untracked.
+func attemptFromCtx(ctx context.Context) int {
+	if v, ok := ctx.Value(attemptCtxKey{}).(int); ok {
+		return v
+	}
+	return 0
+}
+
+type attemptCtxKey struct{}
 
 // ErrWikiIngestConcurrent is returned by the wiki ingest handler in Lite mode
 // when another batch is already running for the same KB (the in-process

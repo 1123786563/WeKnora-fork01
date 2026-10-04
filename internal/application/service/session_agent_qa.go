@@ -1,12 +1,15 @@
 package service
 
 import (
+	"slices"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/modules/policy/access"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
@@ -761,4 +764,40 @@ func targetsCoverDocument(targets types.SearchTargets, kbID, docID string) bool 
 		}
 	}
 	return false
+}
+
+// kbWritableIDs returns the target KBs the caller may modify: its own
+// workspace's KBs plus editor-permission shares. Read grants never make a KB
+// writable (upstream semantics; see retrieval/app/knowledgebase_access.go).
+func kbWritableIDs(
+	ctx context.Context, shares access.KBShareLookup, targets types.SearchTargets, roleEnforced bool,
+) []string {
+	caller := types.CallerFromContext(ctx)
+	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok {
+		if !scope.FullAccess && !scope.HasCapability(types.APIKeyCapabilityIngest) {
+			return nil
+		}
+	} else if roleEnforced && !caller.Role.HasPermission(types.TenantRoleContributor) {
+		return nil
+	}
+	if caller.UserID == "" {
+		shares = nil
+	}
+	permissions := access.NewKBSharePermissions(ctx, shares, caller.TenantID, caller.Role)
+	seen := make(map[string]bool, len(targets))
+	var ids []string
+	for _, target := range targets {
+		if target == nil || target.KnowledgeBaseID == "" || seen[target.KnowledgeBaseID] {
+			continue
+		}
+		seen[target.KnowledgeBaseID] = true
+		writable := caller.TenantID != 0 && target.TenantID == caller.TenantID
+		if !writable {
+			writable, _ = permissions.Check(target.KnowledgeBaseID, types.OrgRoleEditor)
+		}
+		if writable {
+			ids = append(ids, target.KnowledgeBaseID)
+		}
+	}
+	return ids
 }

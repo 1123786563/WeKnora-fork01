@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
-	"github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 

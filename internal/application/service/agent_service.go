@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -129,6 +128,13 @@ type agentService struct {
 	// craft is the optional Craft delegation assembly. nil leaves every
 	// session on the unchanged builtin tool set.
 	craft *CraftDelegation
+	// Host-sandbox plumbing (upstream): zero values until the container
+	// assembly passes a HostSandboxManager; every use site is nil-safe.
+	hostSandbox           sandbox.Manager
+	hostDesktop           bool
+	hostSkillInstaller    sandbox.Manager
+	hostSkillsRoot        string
+	hostSkillVersionsRoot string
 }
 
 // NewAgentService creates a new agent service
@@ -163,7 +169,6 @@ func NewAgentService(
 	svc := &agentService{
 		browserSkill:         browserSkill,
 		userRepo:             userRepo,
-		graphRepo:            graphRepo,
 		cfg:                  cfg,
 		modelService:         modelService,
 		knowledgeBaseService: knowledgeBaseService,
@@ -189,15 +194,8 @@ func NewAgentService(
 		sandboxResolver:  sandboxResolver,
 		sandboxPinner:    sandboxPinner,
 		sandboxPolicy:    sandboxPolicy,
-		browserSkill:     browserSkill,
-		userRepo:         userRepo,
 		pluginRepo:       pluginRepo,
 		craft:            craftDelegation,
-	}
-	if hostSandbox.SkillsAvailable() {
-		svc.hostSkillInstaller = hostSandbox.SkillInstaller
-		svc.hostSkillsRoot = hostSandbox.SkillTree.Root()
-		svc.hostSkillVersionsRoot = hostSandbox.SkillTree.VersionsRoot()
 	}
 	return svc
 }
@@ -242,19 +240,6 @@ func (s *agentService) CreateAgentEngine(
 	if capabilities.Skills != nil {
 		engine.SetSkillsManager(capabilities.Skills)
 	}
-
-	// Browser operations are native BrowserSkill RPCs, independent of shell and sandbox setup.
-	if config.LocalBrowserEnabled && s.browserSkill.Enabled() && !config.SkillInstallMode() {
-		scope := tools.BrowserSkillScope(ctx)
-		instructions, err := s.browserSearchInstructions(ctx)
-		if err != nil {
-			return nil, err
-		}
-		toolRegistry.RegisterTool(tools.NewBrowserSkillTool(s.browserSkill, scope, sessionID, instructions))
-	}
-
-	toolRegistry.BindSession(sessionID)
-	engine.SetWorkspaceLayout(s.lookupSessionWorkspaceLayout(ctx, sessionID, config))
 
 	return engine, nil
 }
@@ -1269,13 +1254,8 @@ func (s *agentService) registerTools(
 		case tools.ToolListDocuments:
 			toolToRegister = tools.NewListDocumentsTool(s.knowledgeService, config.SearchTargets)
 		case tools.ToolQueryKnowledgeGraph:
-			var chunkRepo interfaces.ChunkRepository
-			if s.chunkService != nil {
-				chunkRepo = s.chunkService.GetRepository()
-			}
 			toolToRegister = tools.NewQueryKnowledgeGraphTool(s.knowledgeBaseService, config.SearchTargets).
-				WithKnowledgeScope(s.knowledgeService).
-				WithGraph(s.graphRepo, chunkRepo)
+				WithKnowledgeScope(s.knowledgeService)
 		case tools.ToolSearchConversations:
 			// The owner is captured from the caller's identity here, not read
 			// from the model's arguments, so no prompt can redirect the search
@@ -1762,4 +1742,25 @@ func (s *agentService) resolvePinnedSkillInfos(config *types.AgentConfig) []*age
 		})
 	}
 	return result
+}
+
+// filterSharedAgentWriteTools enforces the read-only contract of AgentShare.
+// These tools write source-workspace Wiki state and otherwise bypass the HTTP
+// KB permission middleware because they execute inside the agent engine.
+func filterSharedAgentWriteTools(allowed []string) []string {
+	sourceWorkspaceWrites := map[string]bool{
+		tools.ToolWikiFlagIssue:   true,
+		tools.ToolWikiUpdateIssue: true,
+		tools.ToolWikiWritePage:   true,
+		tools.ToolWikiReplaceText: true,
+		tools.ToolWikiRenamePage:  true,
+		tools.ToolWikiDeletePage:  true,
+	}
+	filtered := make([]string, 0, len(allowed))
+	for _, name := range allowed {
+		if !sourceWorkspaceWrites[name] {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered
 }

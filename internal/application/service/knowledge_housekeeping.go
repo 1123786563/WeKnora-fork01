@@ -19,6 +19,7 @@
 package service
 
 import (
+	"encoding/json"
 	"context"
 	"fmt"
 	"os"
@@ -852,4 +853,24 @@ func housekeepingEnabled() bool {
 		return false
 	}
 	return true
+}
+// WikiPendingLanguage reports the language hint of a KB's newest pending wiki
+// ingest op, or "" when none is queued (upstream wiki_ingest.go:563).
+func WikiPendingLanguage(ctx context.Context, db *gorm.DB, tenantID uint64, kbID string) string {
+	if db == nil || kbID == "" {
+		return ""
+	}
+	var payloads []string
+	if err := db.WithContext(ctx).Model(&types.TaskPendingOp{}).
+		Where("tenant_id = ? AND task_type = ? AND scope = ? AND scope_id = ? AND op = ?",
+			tenantID, "wiki:ingest", "kb", kbID, "ingest").
+		Order("id DESC").Limit(1).
+		Pluck("payload", &payloads).Error; err != nil || len(payloads) == 0 {
+		return ""
+	}
+	var op struct{ Language string `json:"language"` }
+	if err := json.Unmarshal([]byte(payloads[0]), &op); err != nil {
+		return ""
+	}
+	return op.Language
 }

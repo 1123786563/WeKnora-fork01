@@ -21,7 +21,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/providers"
@@ -33,7 +33,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/ollama/ollama/api"
+	ollamaapi "github.com/ollama/ollama/api"
 )
 
 // DownloadTask 下载任务信息
@@ -1418,12 +1418,12 @@ func (h *InitializationHandler) pullModelWithProgress(ctx context.Context,
 	}
 
 	// 创建下载请求
-	pullReq := &api.PullRequest{
+	pullReq := &ollamaapi.PullRequest{
 		Name: modelName,
 	}
 
 	// 使用Ollama客户端的Pull方法，带进度回调
-	err = h.ollamaService.GetClient().Pull(ctx, pullReq, func(progress api.ProgressResponse) error {
+	err = h.ollamaService.GetClient().Pull(ctx, pullReq, func(progress ollamaapi.ProgressResponse) error {
 		progressPercent := 0.0
 		message := "下载中"
 

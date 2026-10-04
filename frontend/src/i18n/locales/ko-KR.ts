@@ -38,16 +38,10 @@ export default {
       unpublished: '미게시',
     },
     connections: {
-      title: '앱 연결',
-      description: '이 워크스페이스의 앱 연결입니다. 개인 연결과 스페이스 연결, 계정 소유를 구분하여 표시합니다. 런타임 주소, 시크릿 참조, 내부 별칭은 표시하지 않습니다.',
-      refresh: '새로 고침',
-      loadFailed: '연결을 불러오지 못했습니다',
-      empty: '연결이 없습니다',
       memberCannotManage: '현재 역할은 연결을 관리할 수 없습니다(워크스페이스 소유자 또는 관리자 필요).',
       colId: '연결',
       colKind: '유형',
       colAccount: '계정',
-      colState: '상태',
       colActions: '작업',
       kindPersonal: '개인',
       kindSpace: '스페이스',
@@ -63,10 +57,6 @@ export default {
       remoteCleanupNote: '로컬은 해제됨; 원격 정리는 비동기로 완료됩니다',
     },
     authorization: {
-      title: '권한 부여 상태',
-      description: '로컬 권한 부여 시도를 폴링하며 외부 권한 부여 완료를 기다립니다.',
-      refresh: '새로 고침',
-      loadFailed: '권한 부여 상태를 불러오지 못했습니다',
       attemptLabel: '권한 부여 시도',
       connectionLabel: '연결',
       statusLabel: '상태',
@@ -87,10 +77,6 @@ export default {
       },
     },
     actions: {
-      title: '액션 승인',
-      description: '서버가 고정한 호출 스냅샷(계정, 대상, 인자)입니다. 승인은 이 스냅샷에 정확히 연결됩니다.',
-      refresh: '새로 고침',
-      loadFailed: '액션을 불러오지 못했습니다',
       notFound: '액션이 없거나 이 워크스페이스에 속하지 않습니다',
       accountLabel: '계정(연결)',
       targetLabel: '대상',
@@ -113,8 +99,6 @@ export default {
         queued: '대기열 등록됨',
         dispatched: '전달됨',
         succeeded: '성공',
-        failed: '실패',
-        other: '상태: {state}',
       },
     },
   },
@@ -157,9 +141,6 @@ export default {
       "video": "비디오",
     },
     "source": {
-      "builtin": "내장",
-      "deployment": "배포 파일",
-      "console": "관리자 변경",
     },
     "rule": "패턴",
     "ruleTip": "이름 패턴으로 모델 계열에 기본값을 제공합니다. 모델 선택 목록에는 표시되지 않습니다.",
@@ -232,7 +213,6 @@ export default {
       "added": "추가",
       "removed": "제거",
       "updated": "변경",
-      "provider": "공급자",
     },
     "publishHint": "이 인스턴스에는 즉시 적용되고, 다른 인스턴스는 약 5초 내에 동기화됩니다.",
     "invalid": "providers 객체가 포함된 models.json을 입력하세요.",
@@ -247,9 +227,7 @@ export default {
     "historyNoOverrides": "관리자 변경 없음",
   },
   toolbox: {
-    "title": "도구함",
-    "description": "에이전트의 스킬, 외부 도구 및 브라우저 연결을 관리합니다.",
-    "unavailable": "현재 워크스페이스에서 사용할 수 있는 도구가 없습니다."
+    "unavailable": "현재 워크스페이스에서 사용할 수 있는 도구가 없습니다.",
   },
   localBrowser: {
     pipOpen: "미리보기 팝업 열기",
@@ -318,9 +296,7 @@ export default {
     "settingsDescription": "BrowserSkill로 내 Chrome 또는 Edge를 연결하면 대화에서 실제 웹페이지를 조작할 수 있습니다.",
     "openSettings": "연결 설정 열기",
     "settingsHint": "도구함에서 BrowserSkill을 연결하면 로컬 브라우저를 사용할 수 있습니다.",
-    "unavailable": "서버에서 로컬 브라우저가 활성화되지 않았습니다. 관리자에게 문의하세요.",
 
-    "source": "브라우저 연결 대상",
     "sandbox": "샌드박스 브라우저",
     "local": "로컬 브라우저",
     "paused": "일시 중지됨",
@@ -398,14 +374,12 @@ export default {
     nameDescending: 'Z–A',
   },
   platformApiKeys: {
-    title: '플랫폼 API 키',
     description: '워크스페이스 간 자동화를 위한 플랫폼 자격 증명입니다. 워크스페이스 API에는 X-Tenant-ID를 사용하세요.',
     securityNotice: '플랫폼 API 키는 모든 워크스페이스를 선택할 수 있습니다. 필요한 권한만 부여하고, 한 번 표시되는 키를 안전하게 보관하세요.',
     create: '플랫폼 API 키 만들기',
     createDescription: '플랫폼 키는 워크스페이스에 고정되지 않지만 모든 작업은 권한으로 제한됩니다.',
     loading: '불러오는 중…',
     empty: '플랫폼 API 키가 없습니다',
-    name: '이름',
     namePlaceholder: '예: 중앙 운영 자동화',
     key: '키',
     capability: '권한',
@@ -414,7 +388,6 @@ export default {
     capabilityHint: '워크스페이스 권한은 X-Tenant-ID 대상에, 시스템 권한은 플랫폼 제어 API에 적용됩니다.',
     lastUsed: '마지막 사용',
     createdAt: '생성 시간',
-    actions: '작업',
     never: '사용 안 함',
     systemCapabilityGroup: '플랫폼 제어 영역',
     createdTitle: '플랫폼 API 키가 생성되었습니다',
@@ -435,16 +408,10 @@ export default {
       settingsManage: '플랫폼 설정을 변경합니다.',
       runtimeRead: '작업 큐와 상세 정보를 조회합니다.',
       runtimeManage: '작업을 재시도, 실행, 취소 또는 삭제합니다.',
-      auditRead: '플랫폼 감사 로그를 조회합니다.'
+      auditRead: '플랫폼 감사 로그를 조회합니다.',
     },
     capabilities: {
-      tenantsRead: '워크스페이스 조회',
-      tenantsManage: '워크스페이스 관리',
-      settingsRead: '시스템 설정 조회',
-      settingsManage: '시스템 설정 관리',
-      runtimeRead: '런타임 조회',
-      runtimeManage: '런타임 관리',
-      auditRead: '시스템 감사 조회'
+      auditRead: '시스템 감사 조회',
     }
   },
   tenantInvitation: {
@@ -465,13 +432,9 @@ export default {
       alreadyMember: '이 사용자는 이미 멤버입니다.',
       notPending: '초대가 더 이상 대기 상태가 아닙니다.',
       forbidden: '초대 대상자만 수락 또는 거절할 수 있습니다.',
-      notFound: '초대를 찾을 수 없거나 이미 취소되었습니다.',
-      generic: '작업에 실패했습니다. 다시 시도해 주세요.'
+      generic: '작업에 실패했습니다. 다시 시도해 주세요.',
     },
     myInbox: {
-      title: '내 초대',
-      description: '다른 워크스페이스의 초대 목록입니다.',
-      empty: '대기 중인 초대가 없습니다.',
       acceptButton: '수락',
       declineButton: '거절',
       acceptSuccess: '"{tenant}"에 참여했습니다.',
@@ -479,7 +442,7 @@ export default {
       from: '초대자',
       tenantLabel: '워크스페이스',
       expiresIn: '만료: {date}',
-      messageLabel: '메시지'
+      messageLabel: '메시지',
     },
     status: {
       pending: '대기 중',
@@ -487,52 +450,42 @@ export default {
       accepted: '수락됨',
       declined: '거절됨',
       revoked: '취소됨',
-      expired: '만료됨'
+      expired: '만료됨',
     },
     columns: {
       invitee: '초대 대상',
       role: '역할',
       inviter: '초대자',
       expiresAt: '만료',
-      status: '상태',
-      operations: '작업'
+      operations: '작업',
     },
     revoke: {
       button: '취소',
       confirmBody: '취소 후 {email}은 이 초대를 수락할 수 없습니다.',
       confirm: '취소',
-      success: '초대가 취소되었습니다.'
+      success: '초대가 취소되었습니다.',
     },
     shareLink: {
-      button: '공유 링크 생성',
       cellTitle: '링크로 초대',
       cellAccepted: '{count}명 가입함',
       cellEmpty: '아직 가입한 사람이 없습니다',
       dialogTitle: '공유 초대 링크 생성',
-      description: '여러 명이 사용할 수 있는 가입 링크를 생성합니다. 받은 사람이 자신의 이메일로 가입하고 이 워크스페이스에 합류합니다. {days}일 후 만료되며, 목록에서 언제든지 취소할 수 있습니다.',
       generate: '링크 생성',
       resultTitle: '초대 링크가 생성되었습니다',
       resultBody: '아래 링크를 복사해 비공개 채널로 전달하세요. 목록에도 저장되어 다시 복사하거나 취소할 수 있습니다.',
-      revokeConfirm: '취소 후에는 미가입자가 이 링크를 사용할 수 없습니다. 다시 발급하려면 새 링크를 생성하세요.'
+      revokeConfirm: '취소 후에는 미가입자가 이 링크를 사용할 수 없습니다. 다시 발급하려면 새 링크를 생성하세요.',
     }
   },
   tenantMember: {
-    title: '멤버 관리',
     sectionDescription: '워크스페이스에 동료를 초대하고 역할을 관리합니다. 소유자만 멤버를 추가하거나 제거할 수 있습니다.',
     learnRbacGuide: 'RBAC 알아보기',
     listTitle: '워크스페이스 멤버',
-    loading: '멤버를 불러오는 중…',
     retry: '다시 시도',
-    empty: '아직 멤버가 없습니다. 동료를 초대해 시작하세요.',
     emptySearch: '"{q}"와 일치하는 멤버가 없습니다.',
     searchPlaceholder: '이름 또는 이메일로 검색',
     audit: {
       tabLabel: '감사 로그',
-      description: '이 워크스페이스의 멤버 변경 및 접근 거부 이벤트를 최신순으로 기록합니다. 1분 이내의 반복 거부는 자동으로 중복 제거됩니다.',
-      refresh: '새로고침',
       end: '마지막 항목입니다.',
-      empty: '감사 이벤트가 없습니다.',
-      forbidden: '감사 로그를 볼 권한이 없습니다.',
       systemActor: '시스템',
       requiredRole: '필요한 역할: {role}',
       expanded: {
@@ -540,11 +493,11 @@ export default {
         targetUserId: '대상 사용자 ID',
         targetType: '대상 유형',
         targetId: '대상 ID',
-        details: '원본 상세'
+        details: '원본 상세',
       },
       outcome: {
         success: '성공',
-        denied: '거부'
+        denied: '거부',
       },
       action: {
         'rbac.member_added': '멤버 추가',
@@ -556,7 +509,7 @@ export default {
         'rbac.invitation_accepted': '초대 수락',
         'rbac.invitation_declined': '초대 거절',
         'rbac.invitation_revoked': '초대 취소',
-        'rbac.invitation_expired': '초대 만료'
+        'rbac.invitation_expired': '초대 만료',
       },
       columns: {
         time: '시간',
@@ -564,70 +517,43 @@ export default {
         action: '이벤트',
         target: '대상',
         path: '요청',
-        outcome: '결과'
+        outcome: '결과',
       }
     },
-    errors: {
-      emailRequired: '이메일을 입력하세요',
-      emailFormat: '올바른 이메일 형식이 아닙니다',
-      roleRequired: '역할을 선택하세요',
-      userNotFound: '해당 이메일로 가입된 사용자가 없습니다. 먼저 가입을 요청하세요.',
-      lastOwner: '마지막 소유자를 강등, 제거, 또는 떠날 수 없습니다. 다른 멤버를 먼저 소유자로 승격하세요.',
-      notFound: '멤버를 찾을 수 없습니다.',
-      invalidRole: '역할은 owner / admin / contributor / viewer 중 하나여야 합니다.',
-      generic: '오류가 발생했습니다. 다시 시도해 주세요.'
-    },
     roleChange: {
-      success: '역할이 업데이트되었습니다'
+      success: '역할이 업데이트되었습니다',
     },
     leave: {
       confirmTitle: '이 워크스페이스에서 나가시겠어요?',
-      confirmBody: '이 워크스페이스의 모든 지식 베이스와 에이전트에 접근할 수 없게 됩니다. 나중에 다시 초대받을 수 있습니다.',
-      confirm: '나가기',
-      success: '워크스페이스에서 나갔습니다'
+      success: '워크스페이스에서 나갔습니다',
     },
     remove: {
-      button: '제거',
-      confirmBody: '{name} 님을 이 워크스페이스에서 제거하시겠어요? 즉시 접근 권한이 해제됩니다.',
-      confirm: '제거',
-      success: '멤버를 제거했습니다'
+      success: '멤버를 제거했습니다',
     },
     add: {
-      button: '멤버 초대',
-      dialogTitle: '멤버 초대',
       emailLabel: '이메일',
       emailPlaceholder: 'invitee{\'@\'}example.com',
-      roleLabel: '역할'
+      roleLabel: '역할',
     },
     role: {
       owner: '소유자',
       admin: '관리자',
       contributor: '기여자',
-      viewer: '뷰어'
-    },
-    columns: {
-      member: '이름 · 이메일',
-      role: '역할',
-      joinedAt: '가입일',
-      operations: '작업'
+      viewer: '뷰어',
     },
     permissions: {
-      title: '역할 권한',
       desc: '각 역할이 이 워크스페이스에서 할 수 있는 작업입니다. 서버에서 적용되며 UI 컨트롤은 표시만 합니다.',
       iconHint: '역할 권한 안내를 보려면 마우스를 올리세요',
       manageMembers: '멤버 관리',
       manageTenantConfig: '워크스페이스 설정 변경',
       manageInfra: '모델 / 벡터 저장소 / IM 채널 구성',
       createOwnKB: '내 지식 베이스 및 에이전트 생성/편집',
-      readAll: '워크스페이스 콘텐츠 조회'
+      readAll: '워크스페이스 콘텐츠 조회',
     }
   },
   userProfile: {
-    title: '사용자 정보',
-    description: '계정 기본 정보(사용자 ID, 사용자 이름, 이메일, 가입 시각)를 확인하고 비밀번호를 변경할 수 있습니다.',
     changePassword: {
       label: '비밀번호 변경',
-      description: '현재 비밀번호를 확인한 뒤 새 비밀번호를 설정합니다. 성공 시 모든 세션이 만료되어 다시 로그인해야 합니다.',
       currentLabel: '현재 비밀번호',
       currentPlaceholder: '현재 비밀번호를 입력하세요',
       currentRequired: '현재 비밀번호를 입력하세요',
@@ -636,7 +562,6 @@ export default {
       confirmLabel: '새 비밀번호 확인',
       confirmPlaceholder: '새 비밀번호를 다시 입력하세요',
       submit: '비밀번호 업데이트',
-      success: '비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해 주세요.',
       failed: '비밀번호 변경에 실패했습니다. 현재 비밀번호를 확인해 주세요.',
       policyFailed: '새 비밀번호는 8-32자이며 문자와 숫자를 포함해야 합니다',
       sameAsCurrent: '새 비밀번호는 현재 비밀번호와 같을 수 없습니다',
@@ -649,18 +574,16 @@ export default {
     unconfigured: '구성되지 않음',
     configure: '구성',
     update: '교체',
-    remove: '제거',
     inputPlaceholder: '값을 입력하세요',
     savedToast: 'credential이 저장되었습니다',
     saveFailed: 'credential 저장 실패',
     removedToast: 'credential이 제거되었습니다',
     removeFailed: 'credential 제거 실패',
     confirmRemovePrompt: '이 credential을 제거하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
-    confirmRemove: '제거 확인'
+    confirmRemove: '제거 확인',
   },
   integrations: {
     cli: {
-      title: 'WeKnora CLI',
       subtitle: '터미널에서 지식 베이스와 문서를 관리하고, 콘텐츠를 검색하고, 질문하세요. CLI 또는 MCP로 스크립트와 AI 도구를 연결할 수 있습니다.',
       docs: 'CLI 문서 보기',
       docsHint: '설치 안내 및 전체 명령어 참조',
@@ -678,7 +601,6 @@ export default {
       copy: '복사',
       copied: '복사됨',
     },
-    title: '게시 및 통합',
     selectAgentPlaceholder: '에이전트를 선택하세요',
     selectAgentHint: '먼저 에이전트를 선택하세요',
     boundAgent: '연결된 에이전트',
@@ -686,12 +608,9 @@ export default {
     filterByAgentWithName: '에이전트별 필터: {name}',
     filterAllAgents: '전체 에이전트',
     claw: {
-      title: 'WeKnora Skill',
-      subtitle: 'WeKnora REST API로 문서를 가져오고 하이브리드 검색(벡터+키워드)을 수행합니다. 파일/URL/Markdown 업로드 및 검색에 사용.',
       capabilitiesTitle: 'Skill 기능',
       stepsTitle: '구성 단계',
       openApiSettings: 'API 정보 열기',
-      copy: '복사',
       copyEnvSuccess: '환경 변수 예시가 복사되었습니다',
       copyCmdSuccess: '설치 명령이 복사되었습니다',
       ecosystemNote: 'Skill은 ClawHub({\'@\'}lyingbug/weknora)에 호스팅됩니다. 전체 API 문서는 ClawHub 페이지를 참고하세요.',
@@ -701,115 +620,58 @@ export default {
       steps: {
         verify: {
           title: '연결 확인',
-          desc: '에이전트로 지식베이스 목록 또는 검색을 실행해 연결을 확인하세요.'
+          desc: '에이전트로 지식베이스 목록 또는 검색을 실행해 연결을 확인하세요.',
         },
         install: {
-          title: 'Skill 설치',
-          desc: 'OpenClaw CLI가 설치된 환경에서 아래 명령을 실행하거나 ClawHub 안내를 따르세요.'
+          desc: 'OpenClaw CLI가 설치된 환경에서 아래 명령을 실행하거나 ClawHub 안내를 따르세요.',
         },
         env: {
-          title: '환경 변수 설정',
-          desc: '셸 또는 ~/.zshrc, ~/.bashrc에 WEKNORA_BASE_URL과 WEKNORA_API_KEY를 설정하세요. 아래 예시는 현재 API 주소를 사용하며, API Key는 실제 값으로 바꾸세요.'
+          desc: '셸 또는 ~/.zshrc, ~/.bashrc에 WEKNORA_BASE_URL과 WEKNORA_API_KEY를 설정하세요. 아래 예시는 현재 API 주소를 사용하며, API Key는 실제 값으로 바꾸세요.',
         },
         api: {
-          title: 'API 자격 증명',
-          desc: '설정 → API 정보에서 API Key와 주소를 복사하세요.'
+          desc: '설정 → API 정보에서 API Key와 주소를 복사하세요.',
         }
       },
       capabilities: {
         browse: {
-          title: '지식 탐색',
-          desc: '지식베이스·항목 목록, 상세 보기 및 관리.'
+          desc: '지식베이스·항목 목록, 상세 보기 및 관리.',
         },
         search: {
-          title: '하이브리드 검색',
-          desc: '단일 KB hybrid-search 및 교차 KB knowledge-search.'
+          desc: '단일 KB hybrid-search 및 교차 KB knowledge-search.',
         },
         manual: {
-          title: 'Markdown 작성',
-          desc: 'Markdown으로 지식 항목을 생성·편집.'
+          desc: 'Markdown으로 지식 항목을 생성·편집.',
         },
         url: {
-          title: 'URL 가져오기',
-          desc: 'URL로 웹 페이지를 지식베이스에 가져오고 파싱 상태를 확인.'
+          desc: 'URL로 웹 페이지를 지식베이스에 가져오고 파싱 상태를 확인.',
         },
         upload: {
-          title: '파일 업로드',
-          desc: 'PDF, Word, Excel 등을 업로드하고 자동 파싱·벡터화.'
+          desc: 'PDF, Word, Excel 등을 업로드하고 자동 파싱·벡터화.',
         }
       }
     },
     chrome: {
-      title: '지식 관리 어시스턴트',
-      subtitle: '자체 호스팅 WeKnora와 함께: 사이드바에서 질문하고, 웹 페이지를 클리핑하며, Markdown 메모를 지식베이스에 저장하세요.',
-      capabilitiesTitle: '핵심 기능',
-      stepsTitle: '구성 단계',
-      openApiSettings: 'API 정보 열기',
-      copy: '복사',
       copySuccess: 'API 주소가 복사되었습니다',
-      installCta: 'Chrome 웹 스토어',
-      installCtaHint: '공식 확장 · 새 탭에서 열림',
       storeMeta: 'Chrome 웹 스토어 · v1.0.0',
-      steps: {
-        connect: {
-          title: '확장에서 연결',
-          desc: '확장 설정에서 기업/개발자 모드를 선택하고 서비스 API 주소와 API Key를 입력하세요. 아래는 현재 서비스 주소입니다.'
-        },
-        install: {
-          title: 'Chrome 확장 설치',
-          desc: 'Chrome 웹 스토어에서 「지식 관리 어시스턴트」를 설치하세요.'
-        },
-        port: {
-          title: '데스크톱: 고정 포트(권장)',
-          desc: 'WeKnora 데스크톱에서는 API 정보에서 고정 포트(예: 37841)를 설정하세요.'
-        },
-        api: {
-          title: 'API 자격 증명',
-          desc: '설정 → API 정보에서 API Key와 API 주소를 복사하세요.'
-        }
-      },
       scenarios: {
         research: '자료 조사',
         learning: '학습 노트',
         tech: '기술 자료 수집',
-        work: '업무 지식 축적'
+        work: '업무 지식 축적',
       },
-      capabilities: {
-        shortcuts: {
-          title: '단축키',
-          desc: '질문, 사이드바 열기 등 단축키를 사용자 지정해 효율을 높이세요.'
-        },
-        notes: {
-          title: 'Markdown 빠른 메모',
-          desc: '내장 Markdown 편집기로 아이디어를 기록하고 한 번에 지식베이스에 저장.'
-        },
-        clip: {
-          title: '원클릭 웹 수집',
-          desc: 'URL 저장, AI 본문 추출, 영역 선택으로 지식베이스에 정확히 저장.'
-        },
-        qa: {
-          title: '지식베이스 Q&A',
-          desc: '사이드바 대화, 다중 지식베이스 전환, 빠름/심층/정밀 모드로 페이지를 떠나지 않고 질문.'
-        }
-      }
     },
     agentEditor: {
-      label: '게시 채널',
-      desc: 'IM 플랫폼 또는 웹사이트에 에이전트를 게시합니다. 통합 센터에서 관리하세요.'
+      desc: 'IM 플랫폼 또는 웹사이트에 에이전트를 게시합니다. 통합 센터에서 관리하세요.',
     },
     embedOverview: {
-      title: '웹 임베드 채널'
+      title: '웹 임베드 채널',
     },
     imOverview: {
-      title: '연결된 IM'
+      title: '연결된 IM',
     },
     api: {
-      title: 'API 연동',
-      subtitle: 'REST API로 서비스를 연동하고, 요청이 최종 사용자를 식별하는 방식을 설정합니다.',
       loading: 'API 통합 설정을 불러오는 중...',
       retry: '다시 시도',
-      copy: '복사',
-      copySuccess: '복사되었습니다',
       baseUrl: 'API Base URL',
       baseUrlDesc: 'REST API 경로와 함께 사용하세요.',
       apiKeys: 'API Keys',
@@ -955,16 +817,12 @@ export default {
       playgroundSuccess: '테스트 완료({ms}ms)',
       playgroundStopped: '테스트가 중지되었습니다',
       playgroundFailed: 'API Playground 테스트 실패',
-      loadFailed: 'API 통합 설정을 불러오지 못했습니다',
       saveFailed: 'API 통합 설정 저장 실패',
       saveSuccess: 'API 통합 설정이 저장되었습니다',
-      autoSaveNeedSecret: '서명 토큰 모드는 자동 저장 전에 HMAC secret이 필요합니다.'
+      autoSaveNeedSecret: '서명 토큰 모드는 자동 저장 전에 HMAC secret이 필요합니다.',
     },
     mcpserver: {
-      title: 'MCP 서버',
-      subtitle: '이 워크스페이스를 MCP 서버로 게시하여 Claude Desktop, Cursor, Claude Code 등 MCP 클라이언트가 직접 연결하게 합니다. 엔드포인트마다 별도의 토큰, 지식 베이스 범위, 도구 목록을 가집니다.',
       listTitle: '게시된 엔드포인트',
-      empty: '아직 MCP 엔드포인트가 없습니다',
       disabled: '비활성',
       cardSummary: '도구 {tools}개 · {scope}',
               scopeAll: '모든 지식 베이스',
@@ -1046,11 +904,9 @@ export default {
         stdioTitle: 'stdio 전용 클라이언트',
         stdioDesc: 'mcp-remote로 연결하며 클라이언트에 Node.js가 필요합니다.',
       },
-      loadFailed: 'MCP 엔드포인트를 불러오지 못했습니다',
       nameRequired: '이름을 입력하세요',
       updated: '엔드포인트가 업데이트되었습니다',
       created: '엔드포인트가 생성되었습니다',
-      saveFailed: '저장 실패',
       deleted: '엔드포인트가 삭제되었습니다',
       deleteFailed: '삭제 실패',
       rotated: '토큰이 교체되었습니다. 이전 토큰은 즉시 무효화됩니다',
@@ -1061,7 +917,6 @@ export default {
       menuDisable: '비활성화',
       menuEnable: '활성화',
       menuRotate: '토큰 교체',
-      copied: '복사됨',
       deleteConfirm: '이 엔드포인트를 사용하는 클라이언트가 즉시 끊깁니다. 삭제할까요?',
     },
     tabs: {
@@ -1071,19 +926,12 @@ export default {
       chrome: 'Chrome 확장',
       cli: 'CLI',
       claw: 'Claw Skill',
-      mcpserver: 'MCP 서버'
+      mcpserver: 'MCP 서버',
     }
   },
   datasource: {
-    title: '데이터 소스 관리',
-    description: '외부 데이터 소스를 구성하여 콘텐츠를 지식베이스에 자동 동기화',
-    add: '데이터 소스 추가',
-    empty: '구성된 데이터 소스가 없습니다',
     edit: '편집',
     delete: '삭제',
-    deleteConfirm: '이 데이터 소스를 삭제하시겠습니까? 동기화된 지식은 삭제되지 않습니다.',
-    deleteSuccess: '데이터 소스가 삭제되었습니다',
-    deleteFailed: '삭제 실패',
     deletePanelTitle: '데이터 소스 {name} 삭제',
     deletePanelKeep: '데이터 소스만 삭제되며 지식베이스에 동기화된 문서는 유지됩니다.',
     deletePanelCount: '동기화된 문서: {count}건',
@@ -1107,7 +955,6 @@ export default {
     createTitle: '데이터 소스 추가',
     editTitle: '데이터 소스 편집',
     nameLabel: '이름',
-    namePlaceholder: '데이터 소스 이름 입력',
     sectionBasic: '기본 정보',
     testConnection: '연결 테스트',
     testSuccess: '연결 성공',
@@ -1117,7 +964,6 @@ export default {
     isRequired: '은(는) 필수입니다',
     credentialsLabel: '자격 증명',
     gitlab: {
-      baseUrl: 'GitLab URL', accessToken: '개인 액세스 토큰', projects: 'GitLab 프로젝트',
       projectsHint: '프로젝트 ID 또는 네임스페이스 경로(예: group/project)를 입력하고, 필요에 따라 브랜치와 디렉터리를 지정하세요.',
       project: '프로젝트', projectId: '프로젝트 ID', projectIdPlaceholder: '예: 12345 또는 group/project',
       ref: '브랜치', refPlaceholder: '비워 두면 기본 브랜치를 사용합니다',
@@ -1145,7 +991,6 @@ export default {
     createAndSyncSuccess: '데이터 소스가 생성되었으며 동기화 작업이 제출되었습니다',
     createButSyncFailed: '데이터 소스가 생성되었으나 동기화 트리거에 실패했습니다',
     updateSuccessSyncHint: '데이터 소스가 업데이트되었습니다. 편집은 자동으로 동기화를 시작하지 않으므로 다시 가져오려면 동기화를 클릭하세요.',
-    saveFailed: '저장 실패',
     syncHistory: '동기화 이력',
     refreshLogs: '로그 새로고침',
     noLogs: '동기화 기록이 없습니다',
@@ -1229,14 +1074,14 @@ export default {
     resourceType: {
       wikiSpace: '위키 공간',
       docCategory: '문서 태그',
-      book: 'Yuque 지식베이스'
+      book: 'Yuque 지식베이스',
     },
     scheduleHuman: {
       '30min': '30분마다',
       '1h': '매시간',
       '6h': '6시간마다',
       '12h': '12시간마다',
-      '24h': '매일'
+      '24h': '매일',
     },
     field: {
       appId: 'App ID',
@@ -1256,24 +1101,19 @@ export default {
       operatorIdHint: '대상 지식베이스에 접근할 수 있는 DingTalk 사용자의 Union ID를 입력하세요.',
       imaClientId: 'IMA ClientID',
       imaApiKey: 'IMA APIKey',
-      baseUrl: 'Base URL',
       baseUrlHint: "비워두면 기본 퍼블릭 클라우드 주소가 사용됩니다. 프라이빗/엔터프라이즈 배포거나 리버스 프록시를 통해 액세스해야 하는 경우 사용자 정의 주소를 입력하세요 (예: https://api-proxy.example.com)",
       feedUrls: '피드 주소',
       feedUrlsHint: '한 줄에 하나씩 RSS / Atom 피드 주소를 입력하세요. 여러 개를 함께 입력할 수 있습니다.',
       authHeaders: '사용자 지정 헤더 (선택)',
       authHeadersHint: '비공개 피드 접근용. 한 줄에 하나씩 「이름: 값」 형식으로 입력하세요. 예: Authorization: Bearer xxxx',
-      confluenceEdition: 'Edition (server / cloud)',
-      confluenceUsername: 'Username',
-      confluenceApiToken: 'API Token',
       confluenceApiTokenHint: 'Required for the cloud edition',
-      confluencePassword: 'Password',
       confluencePasswordHint: 'Required for the server edition',
       dingtalkClientId: 'Client ID (AppKey)',
       dingtalkClientSecret: 'Client Secret (AppSecret)',
-      dingtalkOperatorId: 'Operator ID'
+      dingtalkOperatorId: 'Operator ID',
     },
     confluence: {
-      cloudFolderLimitation: 'Confluence Cloud는 아직 스페이스 최상위 폴더 등 컨테이너 아래의 페이지를 여기에 나열할 수 없습니다. 스페이스 전체를 선택하면 함께 동기화됩니다.'
+      cloudFolderLimitation: 'Confluence Cloud는 아직 스페이스 최상위 폴더 등 컨테이너 아래의 페이지를 여기에 나열할 수 없습니다. 스페이스 전체를 선택하면 함께 동기화됩니다.',
     },
     connectorDesc: {
       feishu: '페이슈 위키에서 문서, 스프레드시트, 파일 동기화',
@@ -1287,67 +1127,43 @@ export default {
       ima: 'Tencent IMA 지식베이스에서 문서, 노트 및 파일 동기화 (AI 세션과 동영상 분석은 지원되지 않음)',
       rss: 'RSS / Atom 피드에서 글 동기화',
       gitlab: 'GitLab 프로젝트의 파일 동기화',
-      confluence: 'Sync pages from Confluence spaces',
-      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     connector: {
-      feishu: '페이슈 (Feishu)',
-      lark: 'Lark (Feishu 글로벌)',
-      feishu_drive: "페이슈 드라이브",
-      lark_drive: "Lark 드라이브",
-      notion: 'Notion',
-      confluence: 'Confluence',
-      yuque: '위큐 (Yuque)',
-      dingtalk: 'DingTalk 문서',
-      ima: 'Tencent IMA',
-      rss: 'RSS / Atom 피드',
-      gitlab: 'GitLab',
-      confluence: 'Confluence',
-      dingtalk: 'DingTalk (Knowledge Base)'
+      dingtalk: 'DingTalk (Knowledge Base)',
     },
     logDetail: {
       startTime: '시작 시간',
       endTime: '종료 시간',
       failedItems: '실패한 문서',
       failedItemsMore: '표시되지 않은 실패 문서 {n}개',
-      docsFailedSummary: '문서 {n}개 동기화 실패'
+      docsFailedSummary: '문서 {n}개 동기화 실패',
     },
     logSummary: {
       total: '총 횟수',
-      success: '성공',
-      failed: '실패',
-      items: '동기화 항목'
+      items: '동기화 항목',
     },
     logMetric: {
-      total: '총계',
       skipped: '건너뜀',
-      failed: '실패'
+      failed: '실패',
     },
     logStatus: {
       running: '동기화 중',
-      success: '성공',
       partial: '부분 성공',
-      failed: '실패',
-      canceled: '취소됨'
+      canceled: '취소됨',
     },
     step: {
       selectType: '유형 선택',
       credentials: '인증 정보',
       resources: '리소스 선택',
-      strategy: '동기화 전략'
+      strategy: '동기화 전략',
     },
     conflict: {
       overwrite: '덮어쓰기',
-      skip: '기존 항목 건너뛰기'
-    },
-    status: {
-      active: '연결됨',
-      paused: '일시정지',
-      error: '오류'
+      skip: '기존 항목 건너뛰기',
     },
     syncMode: {
       incremental: '증분 동기화',
-      full: '전체 동기화'
+      full: '전체 동기화',
     },
     drive: {
       folderTokenLabel: "드라이브 폴더 토큰",
@@ -1383,18 +1199,16 @@ export default {
       confluence_rate_limited: 'Confluence API rate limited; will retry on the next sync',
       confluence_server_unavailable: 'Confluence service temporarily unavailable; will retry on the next sync',
       confluence_sync_failed: 'Confluence page could not be synced; see server logs',
-      dingtalk_document_failed: 'DingTalk document could not be read; retry on the next sync',
-      dingtalk_resource_failed: 'DingTalk resource is unavailable; check access and the saved selection, then retry',
       targeted_unsupported: 'This connector does not support retrying a single item; run a normal sync',
       not_found: 'The item no longer exists at the source',
-      fetch_failed: 'Refetch failed'
+      fetch_failed: 'Refetch failed',
     },
   },
   ollama: {
     unknown: '알 수 없음',
     today: '오늘',
     yesterday: '어제',
-    daysAgo: '{days}일 전'
+    daysAgo: '{days}일 전',
   },
   mermaid: {
     diagram: '다이어그램',
@@ -1404,18 +1218,15 @@ export default {
     reset: '초기화',
     download: '이미지 다운로드',
     close: '닫기',
-    downloading: '다운로드 중...'
+    downloading: '다운로드 중...',
   },
   faqManager: {
     import: {
       recentResult: '최근 가져오기 결과',
       totalData: '가져오기 데이터',
-      success: '성공',
       added: '신규',
       merged: '병합 업데이트',
       partialFailed: '부분 실패',
-      failed: '실패',
-      skipped: '건너뜀',
       progressHint: 'FAQ 데이터를 검증하고 가져오는 중...',
       downloadReasons: '원인 다운로드',
       appendMode: '추가 모드',
@@ -1425,14 +1236,12 @@ export default {
       importFailed: '가져오기 실패',
       waiting: '대기 중...',
       importInProgress: '가져오기가 진행 중입니다. 완료될 때까지 기다려 주세요.',
-      noFailedRecords: '다운로드할 실패 기록이 없습니다'
+      noFailedRecords: '다운로드할 실패 기록이 없습니다',
     }
   },
   agentEditor: {
     builtinHint: '내장 에이전트입니다. 이름과 설명은 수정할 수 없지만, 설정 매개변수는 조정할 수 있습니다.',
     fileTypes: {
-      label: '지원 파일 유형',
-      desc: '선택 가능한 파일 유형을 제한합니다. 비워두면 모든 유형을 지원합니다.',
       allTypes: '전체 유형',
       pdf: 'PDF 문서',
       word: 'Word 문서 (.docx/.doc)',
@@ -1442,44 +1251,35 @@ export default {
       csv: '쉼표로 구분된 값 파일',
       excel: 'Excel 스프레드시트 (.xlsx/.xls)',
       imageLabel: '이미지',
-      image: '이미지 파일 (.jpg/.jpeg/.png)'
+      image: '이미지 파일 (.jpg/.jpeg/.png)',
     },
     fallback: {
       fixed: '고정 응답',
-      model: '모델 생성'
+      model: '모델 생성',
     },
     dataAnalysis: {
       enableLabel: '표 데이터 분석 활성화',
-      enableDesc: '검색된 청크가 CSV/Excel 파일에서 온 경우, 답변 전에 LLM에 DuckDB SQL 쿼리를 생성하도록 요청합니다. LLM 호출이 한 번 더 발생하고 수 초의 지연이 추가되므로 SQL 스타일 분석이 실제로 필요할 때만 활성화하세요.'
+      enableDesc: '검색된 청크가 CSV/Excel 파일에서 온 경우, 답변 전에 LLM에 DuckDB SQL 쿼리를 생성하도록 요청합니다. LLM 호출이 한 번 더 발생하고 수 초의 지연이 추가되므로 SQL 스타일 분석이 실제로 필요할 때만 활성화하세요.',
     },
     faq: {
-      title: 'FAQ 우선 전략',
-      enableLabel: 'FAQ 우선 활성화',
-      enableDesc: 'FAQ 답변이 일반 문서보다 우선되어 응답 정확도가 향상됩니다',
       thresholdLabel: '직접 답변 임계값',
       thresholdDesc: '질문과 FAQ의 유사도가 이 값을 초과하면 FAQ 답변을 직접 사용합니다',
       boostLabel: 'FAQ 점수 가중치',
-      boostDesc: 'FAQ 관련성 점수에 이 계수를 곱하여 순위를 높입니다'
+      boostDesc: 'FAQ 관련성 점수에 이 계수를 곱하여 순위를 높입니다',
     },
     chatParser: {
-      label: '채팅 첨부 파싱 정책',
-      desc: '현재 에이전트의 채팅 첨부 파일 유형별 파서 엔진을 지정합니다.',
       waitTimeoutLabel: '첨부 파싱 대기 시간(초)',
-      waitTimeoutDesc: '한 번의 답변에서 파싱 중인 첨부를 기다리는 최대 시간이며, 초과하면 미완료 첨부는 건너뜁니다. 대용량/스캔 파일은 늘리세요. 0은 전역 기본값을 사용합니다.'
+      waitTimeoutDesc: '한 번의 답변에서 파싱 중인 첨부를 기다리는 최대 시간이며, 초과하면 미완료 첨부는 건너뜁니다. 대용량/스캔 파일은 늘리세요. 0은 전역 기본값을 사용합니다.',
     },
     audioUpload: {
-      label: '음성 업로드',
-      desc: '활성화하면 사용자가 대화에서 오디오 파일을 업로드할 수 있으며, ASR 모델로 자동 변환됩니다',
       asrModel: 'ASR 모델',
       asrModelDesc: '음성 인식 모델입니다. 설정하지 않으면 오디오 파일이 플레이스홀더로 전달됩니다',
-      asrModelPlaceholder: 'ASR 모델 선택'
+      asrModelPlaceholder: 'ASR 모델 선택',
     },
     imageUpload: {
       navLabel: '첨부 업로드',
       sectionTitle: '첨부 업로드',
       sectionDesc: '채팅에서 이미지, 문서, 오디오 등 첨부 업로드·파싱 및 관련 모델을 설정합니다',
-      label: '이미지 업로드',
-      desc: '활성화하면 사용자가 대화에서 이미지를 업로드하고 VLM으로 이해할 수 있습니다',
       vlmModel: 'VLM 모델',
       vlmModelDesc: '이미지 분석을 위한 비전 언어 모델',
       vlmModelPlaceholder: 'VLM 모델을 선택하세요',
@@ -1494,28 +1294,22 @@ export default {
       storageProviderPlaceholder: '저장 엔진 선택',
       storageDefault: '시스템 기본값',
       notConfigured: '미설정',
-      goStorageSettings: '저장소 설정으로 이동'
+      goStorageSettings: '저장소 설정으로 이동',
     },
     llmCallTimeout: {
-      label: 'LLM 호출 타임아웃',
-      desc: '단일 LLM 호출의 최대 대기 시간(초)입니다. 이 시간을 초과하면 호출이 중단됩니다',
       hint: '비워두거나 0이면 기본값(120초)을 사용합니다',
-      placeholder: '초 단위로 입력하세요. 권장 범위 60-1800'
+      placeholder: '초 단위로 입력하세요. 권장 범위 60-1800',
     },
     mcp: {
-      label: 'MCP 서비스',
-      desc: 'Agent가 호출할 수 있는 MCP 서비스를 선택하세요',
       selectLabel: 'MCP 서비스 선택',
       selectDesc: '활성화할 MCP 서비스를 선택하세요',
       selectPlaceholder: 'MCP 서비스 선택',
       authWaitTimeout: '인증 대기 시간(초)',
       authWaitTimeoutDesc: '대화 중 OAuth 인증이 필요할 때 인증 완료를 기다리는 최대 시간(초)이며, 초과하면 인증 요청을 건너뜁니다(OAuth를 사용하는 MCP 서비스에만 적용).',
       authWaitTimeoutPlaceholder: '기본 600초',
-      unavailableService: '사용할 수 없는 서비스'
+      unavailableService: '사용할 수 없는 서비스',
     },
     agentType: {
-      label: '에이전트 유형',
-      desc: '프리셋을 선택하면 시스템 프롬프트, 도구 목록, 권장 지식 베이스 범위가 자동으로 채워집니다.',
       defaultNamePattern: '나의 {label}',
       kbIncompatibleWarn: '선택된 {count}개의 지식 베이스가 현재 유형과 호환되지 않습니다. 수동으로 조정해 주세요.',
       kbMismatch: {
@@ -1524,17 +1318,12 @@ export default {
         hybridRagWiki: '활성화된 검색 수단 없음',
         dataAnalysis: 'RAG 필요 (FAQ 미지원)',
         quickAnswer: '빠른 답변 모드는 RAG 검색이 필요합니다',
-        generic: '현재 유형과 호환 안 됨'
+        generic: '현재 유형과 호환 안 됨',
       }
     },
     im: {
-      title: 'IM 통합',
-      description: '에이전트를 Feishu, Slack, Telegram, DingTalk, Mattermost, QQBot, Yunzhijia 등 인스턴트 메시징 플랫폼에 연결',
-      feishu: 'Feishu',
-      lark: 'Lark',
       slack: 'Slack',
       telegram: 'Telegram',
-      dingtalk: 'DingTalk',
       mattermost: 'Mattermost',
       wecom: 'WeCom',
       wechat: 'WeChat',
@@ -1542,9 +1331,7 @@ export default {
       yunzhijia: 'Yunzhijia',
       addChannel: '채널 추가',
       channelsTitle: 'IM 채널',
-      disabled: '비활성',
       editChannel: '채널 편집',
-      deleteConfirm: '이 채널을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
       channelName: '채널 이름',
       channelNamePlaceholder: '식별하기 쉬운 이름을 입력하세요',
       channelNameDefaultHint: '기본값은 플랫폼 이름이며, 직접 수정할 수 있습니다. 비워 두면 저장 시 플랫폼 이름이 사용됩니다',
@@ -1554,7 +1341,6 @@ export default {
       outputStream: '스트리밍',
       outputFull: '전체 응답',
       callbackUrl: '콜백 URL',
-      empty: 'IM 채널이 없습니다',
       unnamed: '이름 없는 채널',
       docLink: '통합 가이드 보기',
       wecomConsole: 'WeCom 관리 콘솔',
@@ -1627,11 +1413,10 @@ export default {
       sectionSession: '세션 설정',
       sectionCallback: '콜백 URL',
       sectionKnowledge: '파일 저장',
-      sectionStatus: '실행 상태'
+      sectionStatus: '실행 상태',
     },
     embed: {
-      title: '웹 페이지 임베드',
-      description: '에이전트를 웹 페이지에 임베드하여 방문자가 페이지 내 채팅창 또는 플로팅 버튼으로 대화할 수 있게 합니다. 지식베이스 범위는 이 에이전트 설정을 따릅니다.'
+      description: '에이전트를 웹 페이지에 임베드하여 방문자가 페이지 내 채팅창 또는 플로팅 버튼으로 대화할 수 있게 합니다. 지식베이스 범위는 이 에이전트 설정을 따릅니다.',
     },
     tools: {
       thinking: '사고',
@@ -1699,20 +1484,17 @@ export default {
       statusInactive: '{count}개의 체크된 도구가 현재 설정에서는 작동하지 않습니다',
       effectiveLabel: '최종 활성 도구',
       effectiveDesc: '현재 설정 기준 저장 시 에이전트가 실제 호출할 수 있는 도구 집합',
-      effectiveEmpty: '사용 가능한 도구가 없어 일반 모델 대화로 동작합니다'
+      effectiveEmpty: '사용 가능한 도구가 없어 일반 모델 대화로 동작합니다',
     },
     desc: {
       name: '에이전트를 쉽게 식별할 수 있는 이름을 설정하세요',
-      description: '에이전트의 용도와 특징을 간단히 설명하세요',
       systemPrompt: '에이전트의 동작과 역할을 정의하는 사용자 정의 시스템 프롬프트',
       promptInheritance: "템플릿 원문은 업데이트를 따르며, 수정한 내용은 사용자 지정 프롬프트로 저장됩니다. 에이전트 모드에서 역할과 작업 요구사항을 정의하며, 도구 권한과 각 요청의 소스 선택은 별도로 제어됩니다.",
       leaveEmptyDefault: '(비워두면 시스템 기본값 사용)',
       contextTemplate: '검색된 콘텐츠를 모델에 전달하기 전에 형식을 정의합니다',
-      model: '에이전트가 사용할 대규모 언어 모델을 선택하세요',
       temperature: '출력의 무작위성을 제어합니다. 0이 가장 확정적, 1이 가장 무작위',
       maxTokens: '모델 응답의 최대 토큰 수. 「기본값」은 2048입니다. 「사용자 지정」은 입력한 값을 그대로 저장합니다.',
       maxTokensAgent: '각 추론 라운드에서 생성할 최대 토큰 수(도구 호출 JSON 포함). 「기본값」은 샌드박스 없으면 4096, 파일 쓰기/편집이 가능하면 24576입니다. 「사용자 지정」은 입력한 값을 그대로 저장합니다.',
-      thinking: '모델의 확장 사고 기능 활성화 (모델 지원 필요)',
       conversationSection: '다중 턴 대화 및 질문 재작성 관련 매개변수 설정',
       conversationSectionAgent: '스마트 추론은 항상 다중 턴입니다. 이전 대화는 모델의 컨텍스트 창 범위까지 유지되며, 초과하면 오래된 내용이 자동으로 요약됩니다',
       multiTurn: '활성화하면 대화 기록 컨텍스트가 유지됩니다',
@@ -1726,7 +1508,6 @@ export default {
       selectTools: 'Agent가 사용할 수 있는 도구를 선택하세요',
       maxIterations: 'Agent가 한 작업에서 수행할 최대 추론 단계 수입니다. 「제한 없음」을 선택하면 모델이 스스로 끝나거나 직접 중지할 때까지 계속 실행됩니다.',
       kbScope: '에이전트가 접근할 수 있는 지식베이스 범위를 선택하세요',
-      webSearch: '활성화하면 에이전트가 인터넷에서 정보를 검색할 수 있습니다',
       webSearchProvider: '이 에이전트의 검색 엔진을 지정합니다. 비워두면 기본 검색 엔진을 사용합니다',
       webSearchMaxResults: '검색당 반환되는 최대 결과 수',
       webFetchEnabled: 'Rerank 후 상위 웹 페이지의 전체 콘텐츠를 자동으로 가져와 답변 품질을 향상시킵니다',
@@ -1740,12 +1521,12 @@ export default {
       rerankThreshold: '재순위의 최소 관련성 점수',
       fallbackStrategy: '지식베이스에서 관련 콘텐츠를 찾을 수 없을 때 처리 방식',
       fallbackResponse: '응답할 수 없을 때 반환할 고정 텍스트',
-      fallbackPrompt: '지식베이스에서 답변을 찾을 수 없을 때 모델 응답을 유도하는 프롬프트'
+      fallbackPrompt: '지식베이스에서 답변을 찾을 수 없을 때 모델 응답을 유도하는 프롬프트',
     },
     selection: {
       all: '전체',
       selected: '지정',
-      disabled: '비활성화'
+      disabled: '비활성화',
     },
     promptNav: {
       ariaLabel: '프롬프트 목차',
@@ -1754,25 +1535,20 @@ export default {
       intent: '의도 프롬프트',
       rewriteSystem: '재작성 · 시스템',
       rewriteUser: '재작성 · 사용자',
-      fallback: '검색 폴백'
+      fallback: '검색 폴백',
     },
     intentPrompts: {
-      title: '의도 프롬프트',
-      sectionDesc: '쿼리 의도별 시스템 프롬프트를 설정합니다. 사용자 정의가 없으면 기본 템플릿이 적용됩니다',
       intentLabel: '의도',
       promptPlaceholder: '사용자 정의 시스템 프롬프트 입력...',
       customized: '사용자 정의됨',
-      empty: '사용 가능한 의도 템플릿이 없습니다'
+      empty: '사용 가능한 의도 템플릿이 없습니다',
     },
     placeholders: {
       available: '사용 가능한 변수: ',
       clickToInsert: '(클릭하여 삽입)',
-      hint: '(클릭하여 삽입, 또는 {\'{{\'} 입력으로 목록 표시)'
+      hint: '(클릭하여 삽입, 또는 {\'{{\'} 입력으로 목록 표시)',
     },
     questionSuggestions: {
-      navLabel: '질문 추천',
-      title: '대화 질문 추천',
-      description: '대화 시작 질문과 답변 후 후속 질문을 에이전트 정책으로 통합 설정합니다.',
       startersTitle: '시작 질문',
       followUpsTitle: '답변 후 후속 질문',
       enableStarters: '시작 질문 표시',
@@ -1784,7 +1560,6 @@ export default {
       curatedItems: '운영 설정 질문',
       curatedItemsDesc: '혼합 모드에서 우선 표시됩니다.',
       addItem: '질문 추가',
-      model: '생성 모델',
       modelDesc: '비워 두면 현재 대화 모델을 사용합니다.',
       advancedSettings: '고급 생성 설정',
       displayRules: '표시 및 폴백 규칙',
@@ -1802,51 +1577,22 @@ export default {
       modeHybrid: '혼합',
       categoryClarify: '명확화',
       categoryDeepen: '심화',
-      categoryAction: '다음 단계'
+      categoryAction: '다음 단계',
     },
     navGroups: {
       basic: '기본',
       knowledge: '지식 검색',
       capability: '기능 확장',
-      integration: '게시 및 통합'
+      integration: '게시 및 통합',
     }
   },
   agentStream: {
     saveToKb: {
       emptyContent: '현재 응답이 비어 있어 지식베이스에 저장할 수 없습니다',
-      editorOpened: '편집기가 열렸습니다. 지식베이스를 선택한 후 저장하세요'
+      editorOpened: '편집기가 열렸습니다. 지식베이스를 선택한 후 저장하세요',
     },
     copy: {
-      emptyContent: '현재 응답이 비어 있어 복사할 수 없습니다',
-      success: '클립보드에 복사되었습니다',
-      failed: '복사 실패, 수동으로 복사하세요'
-    },
-    mcp: {
-      discoverTools: "MCP 도구 탐색",
-      listServers: "MCP 서비스 목록",
-      listTools: "MCP 도구 목록",
-      searchTools: "MCP 도구 검색",
-      describeTool: "도구 정의 읽기",
-      callTool: "MCP 도구 호출",
-      showing: "{total}개 중 {count}개 표시",
-      moreAvailable: "결과가 더 있습니다",
-      empty: "표시할 항목이 없습니다",
-      parameters: "매개변수",
-      expand: "설명 펼치기",
-      collapse: "접기",
-      required: "필수",
-      fullSchema: "전체 매개변수 정의",
-      failed: "MCP 작업 실패",
-      result: "실행 결과",
-      status: {
-        not_loaded: "로드되지 않음",
-        loading: "로드 중",
-        ready: "사용 가능",
-        needs_auth: "인증 필요",
-        error: "연결 실패",
-        disabled: "비활성화됨",
-        unavailable: "사용 불가",
-      },
+      failed: '복사 실패, 수동으로 복사하세요',
     },
     toolStatus: {
       calling: '{name} 호출 중...',
@@ -1854,11 +1600,9 @@ export default {
       searchKbFailed: '지식베이스 검색 실패',
       searchMixed: '지식베이스 및 웹 검색',
       searchMixedFailed: '검색 실패',
-      webSearch: '웹 검색',
       webSearchFailed: '웹 검색 실패',
       grepSearch: '키워드 검색',
       grepSearchFailed: '키워드 검색 실패',
-      getDocInfo: '문서 정보 조회',
       getDocInfoFailed: '문서 정보 조회 실패',
       viewDocument: 'View document',
       thinkingDone: '사고 완료',
@@ -1875,7 +1619,7 @@ export default {
       queryUnderstandDone: '질문 이해 완료',
       called: '{name} 호출 완료',
       calledFailed: '{name} 호출 실패',
-      shellExecRunning: '샌드박스 명령 실행 중...'
+      shellExecRunning: '샌드박스 명령 실행 중...',
     },
     ragPipeline: {
       searching: '지식베이스 검색 중...',
@@ -1884,25 +1628,25 @@ export default {
       searchingWebWithQuery: '웹 검색 중: 「{query}」',
       searchingMixed: '지식베이스 및 웹 검색 중...',
       searchingMixedWithQuery: '지식베이스 및 웹 검색 중: 「{query}」',
-      searchDone: '검색 완료'
+      searchDone: '검색 완료',
     },
     attachmentParsing: {
       parsedSummary: '첨부 파일 {count}개 파싱 완료',
       parsedWithSkipped: '첨부 파일 {parsed}개 파싱 완료, {skipped}개 미완료로 건너뜀',
-      noneReady: '사용 가능한 파싱된 첨부 파일이 없습니다'
+      noneReady: '사용 가능한 파싱된 첨부 파일이 없습니다',
     },
     knowledgeChunksList: {
       chunkRange: '{fetched} / {total} 청크 로드됨',
       page: '{page}페이지, 페이지당 {pageSize}개',
       offsetRange: '청크 {from}–{to}',
       queryMatches: '문서 내 검색 "{query}": {count}건 일치',
-      queryNoMatch: '문서 내 검색 "{query}": 일치 없음'
+      queryNoMatch: '문서 내 검색 "{query}": 일치 없음',
     },
     grepResults: {
       chunkHits: '청크 {count}개',
       keywordHits: '{count}회',
       titleMatch: '제목',
-      faqEntry: 'FAQ entry'
+      faqEntry: 'FAQ entry',
     },
     search: {
       noResults: '일치하는 내용을 찾을 수 없습니다',
@@ -1911,69 +1655,33 @@ export default {
       foundResults: '{count}개 결과 발견',
       foundMixedResults: '{count}개 결과 발견 ({docCount}개 문서, {webCount}개 웹)',
       webResults: '웹 결과 {count}개 발견',
-      grepSummary: '일치하는 청크 {chunks}개, 문서 {docs}개'
+      grepSummary: '일치하는 청크 {chunks}개, 문서 {docs}개',
     },
     plan: {
       inProgress: '진행 중',
-      pending: '대기 중',
-      completed: '완료'
+      completed: '완료',
     },
     toolSummary: {
       getDocument: '문서 조회: {title}',
       document: '문서',
-      listChunks: '보기 {title}',
       listFaqEntry: 'View FAQ: {question}',
-      deepThinking: '깊은 사고'
+      deepThinking: '깊은 사고',
     },
     citation: {
-      notFound: '콘텐츠를 찾을 수 없습니다',
-      loadFailed: '로드 실패',
-      noKbForWiki: '연결된 지식베이스를 식별할 수 없어 Wiki를 열 수 없습니다'
-    },
-    tools: {
-      searchKnowledge: '지식베이스 검색',
-      grepChunks: '텍스트 패턴 검색',
-      webSearch: '웹 검색',
-      webFetch: '웹 페이지 가져오기',
-      getDocumentInfo: '문서 정보 조회',
-      listKnowledgeChunks: '지식 청크 목록',
-      getRelatedDocuments: '관련 문서 찾기',
-      getDocumentContent: '문서 내용 가져오기',
-      wikiReadSourceDoc: '원본 문서 읽기',
-      readDocument: '문서 읽기',
-      listDocuments: '문서 목록 보기',
-      todoWrite: '계획 관리',
-      knowledgeGraphExtract: '지식 그래프 추출',
-      thinking: '사고',
-      attachmentParsing: '첨부 파일 파싱',
-      imageAnalysis: '이미지 내용 분석',
-      queryUnderstand: '질문 이해',
-      queryKnowledgeGraph: '지식 그래프 조회',
-      readSkill: '스킬 읽기',
-      executeSkillScript: '스킬 스크립트 실행',
-      listSandboxFiles: '샌드박스 파일 목록',
-      readFile: '파일 읽기',
-      readSandboxFile: '샌드박스 파일 읽기',
-      writeSandboxFile: '샌드박스 파일 쓰기',
-      editSandboxFile: '샌드박스 파일 편집',
-      shellExec: '샌드박스 명령 실행',
-      dataAnalysis: '데이터 분석',
-      dataSchema: '데이터 구조',
-      databaseQuery: '데이터베이스 조회'
+      noKbForWiki: '연결된 지식베이스를 식별할 수 없어 Wiki를 열 수 없습니다',
     },
     skillFiles: {
       heading: '스킬 파일',
       script: '스크립트',
-      instructions: '스킬 안내'
+      instructions: '스킬 안내',
     },
     sandboxFiles: {
       found: '파일 {count}개 발견',
-      empty: '파일 없음',
       truncated: '목록이 잘림',
       wrote: '씀',
       edited: '편집함',
       replacements: '{count}곳 치환',
-      moreLines: '{count}줄 더'
+      moreLines: '{count}줄 더',
     },
     shellExec: {
       workDir: '디렉터리',
@@ -1981,19 +1689,15 @@ export default {
       stdout: '표준 출력',
       stderr: '표준 에러',
       emptyOutput: '출력 없음',
-      truncated: '출력이 잘림',
       killed: '시간 초과로 종료됨',
-      binarySuppressed: '바이너리 출력은 생략되었습니다. 파일은 산출물 디렉터리에 저장한 뒤 다운로드하세요.'
+      binarySuppressed: '바이너리 출력은 생략되었습니다. 파일은 산출물 디렉터리에 저장한 뒤 다운로드하세요.',
     },
     mcpOAuth: {
-      waiting: '인증 대기 · {target}',
       waitingStatus: '인증 대기',
       targetWithTool: '{service} › {tool}',
       titleWithService: 'OAuth · {service}',
       titleWithTool: 'OAuth · {service} › {tool}',
-      desc: '인증을 누르면 새 창에서 로그인합니다. 인증이 완료되면 이 도구 호출이 자동으로 계속됩니다.',
       authorize: '인증하기',
-      skip: '건너뛰기',
       countdownShort: '{seconds}초',
       authorizedTag: '인증됨',
       timedOutTag: '인증 시간 초과',
@@ -2001,31 +1705,22 @@ export default {
       authorizedToast: '인증 성공, 계속 진행 중',
       startFailed: '인증 시작 실패',
       resumeFailed: '실행 재개 실패, 다시 시도하세요',
-      skipFailed: '건너뛰기 실패, 다시 시도하세요'
+      skipFailed: '건너뛰기 실패, 다시 시도하세요',
     },
     toolApproval: {
-      waiting: '승인 대기 · {target}',
-      waitingStatus: '승인 대기',
-      targetWithTool: '{service} › {tool}',
       titleWithTarget: '검토 · {service} › {tool}',
-      argsLabel: '인수',
       argsModified: '수정됨',
-      countdownShort: '{seconds}초',
-      approve: '승인 후 실행',
       reject: '거부',
       approvedTag: '승인됨',
       rejectedTag: '거부됨',
       invalidJson: '유효한 JSON이 아닙니다',
       submitted: '제출됨',
       submitFailed: '제출 실패',
-      userRejected: '사용자 거부'
+      userRejected: '사용자 거부',
     }
   },
   kbSettings: {
     parser: {
-      title: '파서 엔진',
-      description: '파일 유형별 문서 파서 엔진을 선택합니다. 미구성 파일 유형은 내장 파서를 사용합니다.',
-      loading: '로딩 중...',
       noEngineAvailable: '사용 가능한 파서 엔진이 없거나 문서 파싱 서비스가 구성되지 않았습니다.',
       default: '기본',
       goConfig: '구성으로 이동 →',
@@ -2045,48 +1740,38 @@ export default {
       engines: {
         opendataloader: {
           name: 'OpenDataLoader',
-          desc: 'OpenDataLoader PDF 파서 (레이아웃 분석, Java 11+ 및 opendataloader-pdf 필요)'
+          desc: 'OpenDataLoader PDF 파서 (레이아웃 분석, Java 11+ 및 opendataloader-pdf 필요)',
         },
         markitdown: {
-          name: 'MarkItDown',
-          desc: 'Microsoft MarkItDown 변환기 (PDF/Office/HTML 등)'
+          desc: 'Microsoft MarkItDown 변환기 (PDF/Office/HTML 등)',
         },
         weknoracloud: {
-          name: 'WeKnora Cloud',
-          desc: 'WeKnora Cloud를 통한 문서 파싱'
+          desc: 'WeKnora Cloud를 통한 문서 파싱',
         },
         paddleocr_vl_cloud: {
-          name: 'PaddleOCR-VL Cloud',
-          desc: 'PaddleOCR-VL Cloud API'
+          desc: 'PaddleOCR-VL Cloud API',
         },
         paddleocr_vl: {
-          name: 'PaddleOCR-VL',
-          desc: 'PaddleOCR-VL 자체 호스팅 서비스'
+          desc: 'PaddleOCR-VL 자체 호스팅 서비스',
         },
         mineru_cloud: {
-          name: 'MinerU Cloud',
-          desc: 'MinerU Cloud API'
+          desc: 'MinerU Cloud API',
         },
         mineru: {
-          name: 'MinerU',
-          desc: 'MinerU 자체 호스팅 서비스'
+          desc: 'MinerU 자체 호스팅 서비스',
         },
         simple: {
-          name: 'Simple',
-          desc: '간단한 형식 및 이미지 파싱 (외부 서비스 불필요)'
+          desc: '간단한 형식 및 이미지 파싱 (외부 서비스 불필요)',
         },
         anydoc: {
-          name: 'anydoc',
-          desc: '프로세스 내 오피스 문서 파싱 (외부 서비스 불필요)'
+          desc: '프로세스 내 오피스 문서 파싱 (외부 서비스 불필요)',
         },
         builtin: {
-          name: '내장',
-          desc: 'DocReader 내장 파서 엔진 (docx/pdf/xlsx 등 복잡한 형식)'
+          desc: 'DocReader 내장 파서 엔진 (docx/pdf/xlsx 등 복잡한 형식)',
         }
       }
     },
     storage: {
-      title: '스토리지 엔진',
       selectDescription: '이 지식베이스를 바인딩할 구체적인 스토리지 인스턴스를 선택하세요.',
       defaultTag: '기본',
       instanceLabel: '스토리지 인스턴스',
@@ -2094,12 +1779,9 @@ export default {
       migrateHint: '이 지식베이스에는 이미 파일이 있어 스토리지 마이그레이션 절차를 통해서만 인스턴스를 변경할 수 있습니다.',
       manageInstances: '스토리지 인스턴스 관리',
       localStorage: '로컬 스토리지',
-      loading: '로딩 중...'
+      loading: '로딩 중...',
     },
     vectorStore: {
-      title: '벡터 스토어',
-      description: '이 지식베이스가 사용할 벡터 스토어를 선택합니다. 생성 후에는 변경할 수 없습니다. 다른 스토어로 옮기려면 새 KB를 만들고 다시 인덱싱하세요.',
-      loading: '벡터 스토어 목록을 불러오는 중...',
       engineLabel: '벡터 스토어',
       engineDesc: '전역 벡터 스토어 설정에서 등록한 스토어를 선택하거나, \'시스템 기본값\'을 유지하면 워크스페이스의 RETRIEVE_DRIVER 엔진을 사용합니다.',
       boundLabel: '바인딩된 벡터 스토어',
@@ -2107,16 +1789,16 @@ export default {
       immutableHint: '생성 후 변경할 수 없습니다. 다른 스토어로 옮기려면 원하는 스토어에 바인딩된 새 KB를 만들고 다시 인덱싱하세요.',
       immutableEdit: '벡터 스토어 바인딩은 생성 후 변경할 수 없습니다.',
       unavailableHint: '바인딩된 벡터 스토어가 현재 사용할 수 없는 상태입니다. 설정 → 벡터 스토어에서 연결 상태를 확인하세요.',
-      goGlobalSettings: '벡터 스토어 설정으로 이동'
+      goGlobalSettings: '벡터 스토어 설정으로 이동',
     }
   },
   vectorStoreBadge: {
     systemDefault: '시스템 기본값',
     sharedFromOrg: '다른 조직에서 공유됨',
     unknownStore: '알 수 없는 스토어',
-    unavailable: '사용 불가'
+    unavailable: '사용 불가',
   },
-  tools: {
+  toolLabels: {
     multiKbSearch: '크로스 KB 검색',
     searchKnowledge: '지식베이스 검색',
     readDocument: '문서 읽기',
@@ -2129,7 +1811,7 @@ export default {
     getDocumentInfo: '문서 정보 조회',
     queryKnowledgeGraph: '지식 그래프 쿼리',
     think: '깊이 생각하기',
-    todoWrite: '계획 수립'
+    todoWrite: '계획 수립',
   },
   commandPalette: {
     placeholder: '지식베이스, 파일, 대화 검색…',
@@ -2141,12 +1823,11 @@ export default {
       enter: '열기',
       cmdNumber: '바로 이동',
       cmdEnter: '대화 시작',
-      esc: '닫기'
+      esc: '닫기',
     },
     empty: {
-      noResults: '일치하는 결과 없음',
       askAi: 'AI에게 직접 질문하기',
-      adjustRetrieval: '검색 설정 조정'
+      adjustRetrieval: '검색 설정 조정',
     },
     quick: {
       newChat: '새 대화',
@@ -2154,56 +1835,44 @@ export default {
       agents: '에이전트 열기',
       organizations: '공유 공간 열기',
       settings: '설정 열기',
-      productTour: '사용 가이드'
+      productTour: '사용 가이드',
     },
     match: {
       vector: '벡터',
-      keyword: '키워드'
+      keyword: '키워드',
     },
     group: {
       chunks: '지식베이스 파일',
       messages: '대화 메시지',
       kbs: '지식베이스',
-      agents: '에이전트',
       sessionsByTitle: '대화（제목별）',
       commands: '명령',
       recent: '최근 검색',
-      quickActions: '빠른 작업'
+      quickActions: '빠른 작업',
     },
     scope: {
-      placeholder: '이 지식베이스에서 검색…',
-      remove: '범위 해제 (Backspace)'
+      remove: '범위 해제 (Backspace)',
     }
   },
   preview: {
     tab: '미리보기',
-    loading: '문서 미리보기 로딩 중...',
-    loadFailed: '문서 미리보기 로드 실패',
-    retry: '재시도',
     unsupported: '이 파일 유형은 온라인 미리보기를 지원하지 않습니다',
     unsupportedHint: '파일을 다운로드하여 로컬 앱으로 열어주세요',
-    zoomIn: '확대',
-    zoomOut: '축소',
     fullscreen: '전체 화면',
     exitFullscreen: '전체 화면 종료',
     htmlRendered: '렌더링 미리보기',
     htmlSource: '원본 보기',
     audioLoading: '오디오 로딩 중…',
     audioNotSupported: '브라우저가 오디오 재생을 지원하지 않습니다',
-    videoNotSupported: '브라우저가 동영상 재생을 지원하지 않습니다'
+    videoNotSupported: '브라우저가 동영상 재생을 지원하지 않습니다',
   },
   organization: {
-    title: '공유 공간',
     subtitle: '공유 공간를 만들거나 참여하여 여러 스페이스가 함께 협업하고 지식베이스와 에이전트를 공유하세요.',
     createOrg: '공유 공간 생성',
     joinOrg: '공유 공간에 참여하기',
-    name: '공유 공간 이름',
-    namePlaceholder: '공유 공간 이름을 입력해주세요',
-    nameRequired: '공유 공간 이름을 입력해주세요',
     avatar: '공유 공간 아바타',
     avatarClear: '지우기',
     avatarPickerHint: '공유 공간 아바타로 이모티콘을 선택하세요',
-    description: '공유 공간 설명',
     descriptionPlaceholder: '공유 공간 설명을 입력하세요(선택사항).',
     noDescription: '아직 설명이 없습니다',
     memberCount: '회원 수',
@@ -2214,17 +1883,13 @@ export default {
     refreshInviteCode: '초대 코드 새로 고침',
     inviteCodeRefreshed: '초대 코드가 새로 고쳐졌습니다.',
     inviteCodeRefreshFailed: '초대 코드를 새로 고치지 못했습니다.',
-    leave: '공유 공간 나가기',
     leaveConfirmTitle: '공유 공간 나가기',
     leaveConfirmMessage: '정말로 "{name}" 공유 공간에서 나가시겠습니까? 나간 후에는 이 공유 공간에서 공유하는 지식베이스에 액세스할 수 없습니다.',
     leaveSuccess: '공유 공간을 나갔습니다.',
     leaveFailed: '공유 공간을 나가지 못했습니다.',
     deleteConfirmTitle: '공유 공간 삭제',
     deleteConfirmMessage: '"{name}" 공유 공간을 삭제하시겠습니까? 삭제 후에는 모든 구성원이 제거되며 이 작업은 되돌릴 수 없습니다.',
-    deleteSuccess: '공유 공간이 삭제되었습니다.',
-    deleteFailed: '공유 공간을 삭제하지 못했습니다.',
     createSuccess: '공유 공간이 생성되었습니다.',
-    createFailed: '공유 공간을 만들지 못했습니다.',
     joinSuccess: '공유 공간에 성공적으로 참여했습니다.',
     joinFailed: '공유 공간에 참여하지 못했습니다.',
     manageMembers: '회원관리',
@@ -2233,7 +1898,6 @@ export default {
     roleUpdateFailed: '역할을 업데이트하지 못했습니다.',
     memberRemoved: '회원이 삭제되었습니다.',
     memberRemoveFailed: '구성원을 제거하지 못했습니다.',
-    empty: '아직 공유 공간에 참여하지 않았습니다.',
     emptyDesc: '초대 코드를 사용하여 공유 공간을 만들거나 기존 공유 공간에 참여하세요.',
     createdByMe: '내가 생성한',
     joinedByMe: '내가 참여한',
@@ -2242,7 +1906,6 @@ export default {
     emptyJoined: '아직 공유 공간에 참여하지 않았습니다.',
     emptyJoinedDesc: '초대 코드를 통해 기존 공유 공간에 참여하기',
     share: {
-      title: '공유 공간에 공유',
       selectOrg: '공유 공간 선택',
       selectOrgPlaceholder: '공유할 공유 공간을 선택해주세요',
       permission: '권한',
@@ -2254,7 +1917,6 @@ export default {
       sharedTo: '공유된 스페이스',
       noShares: '아직 어떤 공유 공간에도 공유되지 않았습니다.',
       searchPlaceholder: '공유 공간 검색…',
-      loading: '로딩 중…',
       emptySearch: '「{q}」와(과) 일치하는 공유 공간이 없습니다',
       addShareDialogTitle: '공유 공간에 공유',
       unshareAction: '공유 해제',
@@ -2263,37 +1925,25 @@ export default {
       sharedFrom: '출처',
       permissionReadonly: '읽기 전용',
       permissionEditable: '편집 가능',
-      columns: {
-        space: '공유 공간',
-        permission: '권한',
-        sharedAt: '공유 시간',
-        operations: '작업'
-      }
     },
     addMember: {
-      button: '회원 추가',
-      dialogTitle: '회원 추가',
       tipTenant: '구성원의 최소 단위는 워크스페이스입니다: 한 워크스페이스가 가입하면 해당 워크스페이스의 모든 사용자가 이 스페이스 접근 권한을 공유합니다. 아래 결과는 워크스페이스 기준으로 중복 제거됩니다.',
       searchTenant: '워크스페이스 ID',
       searchTenantPlaceholder: '정확한 워크스페이스 ID 입력',
       searchTenantHint: '정확한 워크스페이스 ID로 조회하거나 초대 링크를 공유하세요.',
       selectRole: '역할 할당',
       confirmBtn: '추가',
-      success: '회원이 추가되었습니다.',
-      failed: '추가 실패'
+      failed: '추가 실패',
     },
     upgrade: {
       requestUpgrade: '업그레이드 신청',
-      pending: '검토 중',
-      dialogTitle: '업그레이드 신청',
       dialogDesc: '관리자 승인 후 역할이 업데이트됩니다.',
       currentRole: '현재 역할',
-      selectRole: '역할에 지원하세요',
       reason: '신청 이유(선택)',
       reasonPlaceholder: '더 높은 권한을 요청하는 이유를 간략하게 설명해주세요..',
       submitBtn: '신청 제출',
       submitSuccess: '권한 업그레이드 신청서가 제출되었으며 관리자의 검토를 기다리고 있습니다.',
-      submitFailed: '신청서를 제출하지 못했습니다.'
+      submitFailed: '신청서를 제출하지 못했습니다.',
     },
     editor: {
       navBasic: '기본정보',
@@ -2329,15 +1979,9 @@ export default {
       howToGetCode: '초대코드는 어떻게 받나요?',
       step1: '참여하려는 공유 공간의 관리자에게 문의하세요.',
       step2: '공유 공간 초대 코드를 공유하도록 요청하세요.',
-      step3: '위의 입력창에 초대코드를 붙여넣으세요'
-    },
-    navGroups: {
-      basic: '기본',
-      management: '멤버 및 협업',
-      resources: '공유 리소스'
+      step3: '위의 입력창에 초대코드를 붙여넣으세요',
     },
     settings: {
-      editTitle: '공유 공간 설정',
       membersDesc: '스페이스 구성원과 역할을 조회·관리합니다. 각 구성원은 하나의 워크스페이스를 의미하며, 같은 워크스페이스의 모든 사용자가 이 스페이스 접근 권한을 공유합니다.',
       permissionsIconHint: '역할별 권한 보기',
       sharedDesc: '이 공유 공간에 공유된 모든 지식베이스 보기',
@@ -2384,73 +2028,34 @@ export default {
       pendingJoinRequestsBadge: '가입 신청 대기 중',
       pendingReview: '승인 대기 중',
       assignRole: '역할 할당',
-      approve: '승인',
-      reject: '거절',
       approveSuccess: '신청이 통과되었습니다',
       rejectSuccess: '신청이 거부됨',
-      reviewFailed: '작업이 실패했습니다. 다시 시도해 주세요.'
+      reviewFailed: '작업이 실패했습니다. 다시 시도해 주세요.',
     },
     detail: {
       removeMemberConfirm: '"{name}" 구성원을 삭제하시겠습니까?',
-      removeMember: '회원 삭제'
-    },
-    role: {
-      admin: '관리자',
-      editor: '편집자',
-      viewer: '읽기 전용'
+      removeMember: '회원 삭제',
     },
     sharedResources: {
       kbListTitle: '공유 지식베이스',
       agentListTitle: '공유 에이전트',
-      loading: '로딩 중…',
-      columns: {
-        name: '이름',
-        sharedBy: '공유자',
-        sharedAt: '공유 시간',
-        permission: '권한'
-      }
     },
     joinRequests: {
-      listTitle: '대기 중인 신청',
-      searchPlaceholder: '신청자 검색…',
-      loading: '신청 로딩 중…',
-      emptySearch: '「{q}」와(과) 일치하는 신청이 없습니다',
       typeJoin: '가입',
       typeUpgrade: '업그레이드',
       rejectConfirm: '이 신청을 거절하시겠습니까?',
       approveTitle: '신청 승인',
       approveDesc: '승인 후 「{name}」에게 부여할 역할',
-      columns: {
-        applicant: '신청자',
-        type: '유형',
-        requestedRole: '신청 역할',
-        message: '신청 사유',
-        appliedAt: '신청 시간'
-      }
     },
     members: {
-      listTitle: '공유 공간 구성원',
-      searchPlaceholder: '구성원 검색…',
-      loading: '구성원 로딩 중…',
-      emptySearch: '「{q}」와(과) 일치하는 구성원이 없습니다',
-      columns: {
-        member: '구성원',
-        role: '역할',
-        joinedAt: '가입일',
-        operations: '작업'
-      }
     },
     invite: {
-      loading: '로드 중..',
       previewTitle: '공유 공간에 참여하기',
       inputDesc: '초대코드를 입력하거나 초대링크에 초대코드를 붙여넣고 공유 공간 정보를 확인 후 참여하세요',
       previewAction: '확인하다',
       primaryJoin: '참여',
       invalidCode: '초대 코드가 유효하지 않거나 만료되었습니다.',
       previewFailed: '미리보기에 실패했습니다. 나중에 다시 시도해 주세요.',
-      knowledgeBases: '지식베이스',
-      agents: '에이전트',
-      alreadyMember: '귀하는 이미 이 공유 공간의 회원입니다.',
       submitRequest: '가입 신청',
       requireApprovalTip: '이 공유 공간에 참여하려면 관리자의 검토가 필요합니다.',
       approvalLabel: '가입방법',
@@ -2458,30 +2063,22 @@ export default {
       noApproval: '검토가 필요하지 않습니다.',
       defaultRoleAfterJoin: '가입 후 기본 권한: {role}',
       requestRole: '역할에 지원하세요',
-      selectRole: '역할 선택',
       messagePlaceholder: '선택사항 : 지원서 설명(자기소개, 입사이유 등)',
       applicationNote: '신청방법(선택)',
       joinSuccess: '성공적으로 공유 공간에 합류했습니다!',
       joinFailed: '참여하지 못했습니다. 나중에 다시 시도해 주세요.',
       requestSubmitted: '신청서가 제출되었습니다. 관리자의 검토를 기다려주세요.',
       requestFailed: '신청서 제출에 실패했습니다. 나중에 다시 시도해 주세요.',
-      viewOrganization: '공유 공간 보기'
+      viewOrganization: '공유 공간 보기',
     },
     join: {
-      title: '공유 공간에 참여하기',
       joining: '공유 공간에 참여하는 중..',
-      success: '성공적으로 공유 공간에 합류했습니다!',
-      failed: '공유 공간에 참여하지 못했습니다.',
       noCode: '초대 코드를 찾을 수 없습니다',
       goToOrganizations: '공유 공간 목록으로 이동',
-      confirmTitle: '공유 공간에 참여하려면 확인하세요.',
-      confirm: '가입 확인',
       preview: '미리보기 및 참여',
       memberCount: '{count} 회원',
       shareCount: '{count} 공유 지식베이스',
       agentShareCount: '{count} 에이전트',
-      alreadyMember: '귀하는 이미 이 공유 공간의 회원입니다.',
-      invalidCode: '잘못된 초대 코드',
       byInviteCode: '초대코드를 입력하세요',
       searchSpaces: '공유 공간 검색',
       searchSpacesDesc: '검색이 가능한 공유 공간을 찾아보거나 검색해 보세요. 초대코드 없이도 참여할 수 있습니다.',
@@ -2490,13 +2087,13 @@ export default {
       noSearchResult: '일치하는 공유 공간을 찾을 수 없습니다.',
       noSearchableSpaces: '현재 검색 가능한 공개 공유 공간이 없거나, 키워드를 입력하여 검색하실 수 있습니다.',
       memberLimitReached: '회원이 꽉 찼습니다.',
-      backToSearch: '검색으로 돌아가기'
+      backToSearch: '검색으로 돌아가기',
     },
     rbac: {
       needTenantAdminTip: '이 작업은 현재 워크스페이스에서 admin 이상 역할이 필요합니다. 워크스페이스 소유자에게 문의하세요.',
       cannotCreate: '현재 워크스페이스 역할이 부족하여 공유 공간을 만들 수 없습니다',
       cannotJoin: '현재 워크스페이스 역할이 부족하여 공유 공간에 가입하거나 가입을 신청할 수 없습니다',
-      cannotManage: '현재 워크스페이스 역할이 부족하여 공유 공간을 관리할 수 없습니다'
+      cannotManage: '현재 워크스페이스 역할이 부족하여 공유 공간을 관리할 수 없습니다',
     }
   },
   promptTemplate: {
@@ -2506,15 +2103,13 @@ export default {
     resetDefault: '기본값 복원',
     default: '기본',
     withKnowledgeBase: '지식베이스',
-    withWebSearch: '웹 검색'
+    withWebSearch: '웹 검색',
   },
   mcpMetadata: {
     "searchTools": "도구 이름 또는 설명 검색",
     "retry": "다시 시도",
     "details": "상세",
-    "description": "설명",
     "parameters": "매개변수",
-    "required": "필수",
     "fullSchema": "전체 정의",
     "noDescription": "설명이 없습니다",
     "noParameters": "매개변수 정의가 없습니다",
@@ -2540,14 +2135,12 @@ export default {
     "serverDocumentation": "서버 원본 설명",
     "noServerDocumentation": "이 MCP 서버의 initialize 응답에 instructions / serverInfo.description이 없습니다(둘 다 선택 필드). 도구 설명은 아래 각 도구의 description에 있습니다.",
     "policyHint": "도구 활성화 및 승인 설정은 즉시 저장되며 목록을 새로 고쳐도 유지됩니다.",
-    "failed": "도구 목록을 불러오지 못했습니다",
     "setupProgress": "MCP 설정 단계",
     "connection": "연결 설정",
     "toolsAndUsage": "도구 및 용도",
     "previous": "이전",
     "usage": "서비스 용도",
     "usageHint": "모델은 이 개요를 읽은 후 필요한 도구를 불러옵니다. 새로 고침해도 입력한 내용은 유지됩니다.",
-    "summary": "용도 요약",
     "summaryPlaceholder": "예: 주문 상태, 배송 진행 상황 및 환불 내역 조회.",
     "usageInstructions": "사용 안내",
     "instructionsPlaceholder": "서비스의 용도, 사용 상황, 주요 제약을 간결하게 설명하세요.",
@@ -2556,22 +2149,17 @@ export default {
     "instructionsRequired": "사용 안내를 입력해 주세요",
     "generated": "생성되었습니다. 검토 후 저장해 주세요.",
     "generateFailed": "생성에 실패했습니다. 도구 동기화와 사용 가능한 대화 모델 설정을 확인한 후 다시 시도하세요.",
-    "saveNext": "저장하고 다음"
+    "saveNext": "저장하고 다음",
 },
   mcpServiceDialog: {
     addTitle: 'MCP 서비스 추가',
     addDesc: '외부 MCP 서비스를 연결하면 에이전트가 해당 도구를 호출할 수 있습니다.',
-    editTitle: 'MCP 서비스 편집',
     basicSection: '기본',
     connectionSection: '연결',
     enableServiceDesc: '비활성화 시 이 서비스가 호출되지 않습니다',
     testAfterSaveHint: '저장 후 연결을 테스트할 수 있습니다',
     unitSecond: '초',
     unitTimes: '회',
-    name: '서비스 이름',
-    namePlaceholder: '서비스 이름을 입력해주세요',
-    description: '설명',
-    descriptionPlaceholder: '서비스 설명을 입력해주세요',
     transportType: '전송 유형',
     serviceUrl: '서비스 URL',
     serviceUrlPlaceholder: 'https://example.com/mcp',
@@ -2600,101 +2188,60 @@ export default {
     retryDelaySec: '재시도 지연(초)',
     codeImport: {
       toggle: '코드에서 가져오기',
-      hint: '표준 mcpServers JSON 설정을 붙여넣으면 양식이 자동으로 채워집니다',
       parse: '파싱 후 채우기',
       editOverwriteHint: '가져오기는 현재 양식을 덮어씁니다(저장된 자격 증명은 영향받지 않으며, 저장을 눌러야 적용됩니다)',
       toasts: {
         filled: '양식이 채워졌습니다. 확인 후 저장해 주세요',
-        multipleServers: '여러 서비스가 감지되어 첫 번째 항목을 가져왔습니다: {name}'
+        multipleServers: '여러 서비스가 감지되어 첫 번째 항목을 가져왔습니다: {name}',
       },
       errors: {
         empty: '먼저 설정을 붙여넣어 주세요',
         invalidJson: '파싱할 수 없습니다. JSON 형식을 확인해 주세요',
         noServer: 'MCP 서비스 설정을 찾을 수 없습니다',
         missingUrl: '설정에 url이 없습니다',
-        stdioUnsupported: 'stdio(command/args) 설정은 지원되지 않습니다. url이 포함된 원격 설정을 사용해 주세요'
+        stdioUnsupported: 'stdio(command/args) 설정은 지원되지 않습니다. url이 포함된 원격 설정을 사용해 주세요',
       }
     },
     customHeaders: {
-      label: '사용자 지정 헤더(선택 사항)',
-      desc: '모든 MCP 요청에 추가되는 HTTP 헤더로, 기업 게이트웨이 인증, 추적 등에 자주 사용됩니다.',
       add: '헤더 추가',
       keyPlaceholder: '헤더 이름',
-      valuePlaceholder: '헤더 값'
+      valuePlaceholder: '헤더 값',
     },
     toasts: {
-      created: 'MCP 서비스가 생성되었습니다',
-      updated: 'MCP 서비스가 업데이트되었습니다',
       createFailed: 'MCP 서비스 생성 실패',
       updateFailed: 'MCP 서비스 업데이트 실패',
       oauthRequired: '이 서비스는 OAuth 인증이 필요하여 OAuth 2.0으로 자동 전환했습니다. 저장 후 「인증하기」를 클릭하세요.',
       authorized: '인증이 완료되었습니다',
       authorizeFailed: '인증을 시작하지 못했습니다',
-      revoked: '인증이 해제되었습니다',
-      revokeFailed: '인증 해제에 실패했습니다'
+      revokeFailed: '인증 해제에 실패했습니다',
     },
     rules: {
-      nameRequired: '서비스 이름을 입력해주세요',
       transportRequired: '전송 유형을 선택해주세요',
       urlRequired: '서비스 URL을 입력해주세요',
-      urlInvalid: '유효한 URL을 입력해주세요'
+      urlInvalid: '유효한 URL을 입력해주세요',
     }
   },
   ollamaSettings: {
-    title: 'Ollama 설정',
-    description: '로컬 Ollama 서비스를 관리하고 모델을 보고 다운로드합니다',
-    toasts: {
-      connected: '연결 성공',
-      connectFailed: '연결 실패, Ollama가 실행 중인지 확인해주세요',
-      listFailed: '모델 목록 가져오기 실패',
-      downloadFailed: '다운로드 실패, 나중에 다시 시도해주세요',
-      downloadStarted: '모델 {name} 다운로드가 시작되었습니다',
-      downloadCompleted: '모델 {name} 다운로드가 완료되었습니다',
-      progressFailed: '다운로드 진행 상황 조회 실패'
-    },
     installed: {
-      title: '다운로드된 모델',
-      desc: 'Ollama에 설치된 모델 목록',
-      empty: '다운로드된 모델 없음'
+      empty: '다운로드된 모델 없음',
     },
     download: {
-      title: '새 모델 다운로드',
       descPrefix: '모델 이름을 입력하여 다운로드, ',
       browse: 'Ollama 모델 라이브러리 탐색',
-      placeholder: '예: qwen2.5:0.5b',
       download: '다운로드',
-      downloading: '다운로드 중: {name}'
+      downloading: '다운로드 중: {name}',
     },
     address: {
-      label: '서비스 주소',
-      desc: '로컬 Ollama 서비스의 API 주소, 시스템에서 자동으로 감지됩니다. 수정이 필요하면 .env 설정 파일에서 설정해주세요',
-      placeholder: 'http://localhost:11434',
-      failed: '연결 실패, Ollama가 실행 중인지 또는 서비스 주소가 올바른지 확인해주세요'
+      failed: '연결 실패, Ollama가 실행 중인지 또는 서비스 주소가 올바른지 확인해주세요',
     },
-    status: {
-      label: 'Ollama 서비스 상태',
-      desc: '로컬 Ollama 서비스의 사용 가능 여부를 자동으로 감지합니다. 서비스가 실행되지 않거나 주소 설정이 잘못되면 "사용 불가" 상태가 표시됩니다',
-      testing: '감지 중',
-      available: '사용 가능',
-      unavailable: '사용 불가',
-      untested: '미감지',
-      retest: '다시 감지'
-    }
   },
   modelSettings: {
-    title: '모델 설정',
-    description: '다양한 유형의 AI 모델을 관리합니다. Ollama 로컬 모델과 원격 API를 지원합니다',
     copySuffix: ' 사본',
     builtinTag: '기본제공',
     confirmDelete: '모델 "{name}"을(를) 삭제하시겠습니까?',
     usage: {
-      title: '모델을 삭제할 수 없습니다',
-      description: '모델 "{name}"이(가) 다음 설정에서 사용 중입니다. 각 설정을 열어 다른 모델로 변경한 후 다시 삭제하세요.',
-      knowledgeBases: '지식 베이스 ({count})',
-      agents: '에이전트 ({count})',
       longTermMemory: '장기 메모리',
       openConfiguration: '설정 열기',
-      truncated: '전체 {total}개 중 앞 {shown}개만 표시합니다',
       bindings: {
         embedding_model: 'Embedding 모델',
         summary_model: '요약 모델',
@@ -2708,19 +2255,16 @@ export default {
         query_understand_model: '질의 이해 모델',
         follow_up_model: '후속 질문 모델',
         extract_model: '메모리 추출 모델',
-        unknown: '기타 모델 설정'
+        unknown: '기타 모델 설정',
       }
     },
     debug: {
       reasoningEffort: '사고 강도',
       reasoningEffortDesc: '모델 카탈로그가 보고한 수준으로 reasoning_effort를 보냅니다',
-      title: '모델 테스트',
-      description: '저장된 모델 설정으로 요청을 보냅니다. 편집 중인 변경 사항은 저장 후 반영됩니다.',
       groupModel: '모델 선택',
       groupInput: '테스트 입력',
       groupResult: '실행 결과',
       modelType: '모델 유형',
-      model: '모델',
       modelPlaceholder: '테스트할 모델을 선택하세요',
       noModelsForType: '이 유형의 저장된 모델이 없습니다',
       query: '입력 내용',
@@ -2735,20 +2279,14 @@ export default {
       imageFile: '이미지 파일',
       audioFile: '오디오 파일',
       chooseFile: '파일 선택',
-      parameters: '요청 매개변수',
-      systemPrompt: 'System Prompt',
       systemPromptPlaceholder: '선택 사항, 시스템 프롬프트 입력',
       run: '테스트 실행',
       copyResult: '결과 복사',
       history: '기록',
       runLabel: '{n}번째 실행',
-      success: '호출 성공',
-      failed: '호출 실패',
       rawResponse: '응답 내용',
       requestPreview: '요청 미리보기',
-      requestFailed: '모델 테스트 요청 실패',
       metrics: {
-        api: '프로토콜',
         thinkingFormat: '사고 형식',
         requestedReasoningEffort: '요청한 강도',
         dimension: '벡터 차원',
@@ -2757,194 +2295,134 @@ export default {
         reasoningChars: '추론 문자 수',
         reasoningReturned: '추론 내용 반환',
         textChars: '전사 문자 수',
-        segmentCount: '세그먼트 수'
+        segmentCount: '세그먼트 수',
       }
     },
     builtinModels: {
-      title: '기본 제공 모델',
-      description: '기본 제공 모델은 모든 워크스페이스에게 표시됩니다. 민감한 정보는 숨겨지며, 편집하거나 삭제할 수 없습니다.',
       descriptionAdmin: '기본 제공 모델은 모든 워크스페이스에게 표시됩니다. 시스템 관리자는 구성과 자격 증명을 편집할 수 있으며, 삭제는 배포 구성에서 관리됩니다.',
-      viewGuide: '기본 제공 모델 관리 가이드 보기'
-    },
-    toasts: {
-      nameRequired: '모델 이름은 비워둘 수 없습니다',
-      nameTooLong: '모델 이름은 100자를 초과할 수 없습니다',
-      displayNameTooLong: '표시 이름은 100자를 초과할 수 없습니다',
-      baseUrlRequired: 'Remote API 유형은 Base URL이 필수입니다',
-      baseUrlInvalid: 'Base URL 형식이 올바르지 않습니다. 유효한 URL을 입력해주세요',
-      dimensionInvalid: 'Embedding 모델은 유효한 벡터 차원(128-4096)을 입력해야 합니다',
-      updated: '모델이 업데이트되었습니다',
-      added: '모델이 추가되었습니다',
-      saveFailed: '모델 저장 실패',
-      deleted: '모델이 삭제되었습니다',
-      deleteFailed: '모델 삭제 실패',
-      builtinCannotEdit: '기본 제공 모델은 편집할 수 없습니다',
-      builtinCannotDelete: '기본 제공 모델은 삭제할 수 없습니다',
-      builtinCannotCopy: '기본 제공 모델은 복사할 수 없습니다',
-      copied: '모델이 복사되었습니다',
-      copyFailed: '모델 복사에 실패했습니다'
+      viewGuide: '기본 제공 모델 관리 가이드 보기',
     },
     asr: {
-      title: 'ASR 음성 모델',
-      desc: '음성 인식 및 오디오 전사를 위한 음성 인식 모델 설정 (예: OpenAI Whisper)',
-      empty: 'ASR 음성 모델 없음'
+      empty: 'ASR 음성 모델 없음',
     },
     vllm: {
-      title: 'VLLM 비전 모델',
-      desc: '시각 이해 및 멀티모달용 비전 언어 모델 설정',
-      empty: 'VLLM 비전 모델 없음'
+      empty: 'VLLM 비전 모델 없음',
     },
     rerank: {
-      title: 'ReRank 모델',
-      desc: '결과 재정렬용 모델 설정',
-      empty: 'ReRank 모델 없음'
+      empty: 'ReRank 모델 없음',
     },
     embedding: {
-      title: 'Embedding 모델',
-      desc: '텍스트 벡터화용 임베딩 모델 설정',
-      empty: 'Embedding 모델 없음'
+      empty: 'Embedding 모델 없음',
     },
     chat: {
-      title: '대화 모델',
-      desc: '대화용 대규모 언어 모델 설정',
-      empty: '대화 모델 없음'
+      empty: '대화 모델 없음',
     },
     source: {
       remote: 'Remote',
       openaiCompatible: 'OpenAI 호환',
-      custom: '사용자 지정'
-    },
-    actions: {
-      addModel: '모델 추가',
-      debugModel: '모델 테스트'
+      custom: '사용자 지정',
     },
     typeShort: {
       chat: '대화',
       embedding: 'Embedding',
       rerank: 'ReRank',
       vllm: '비전',
-      asr: '음성'
+      asr: '음성',
     }
   },
   mcpSettings: {
     addUsageInstructions: "사용 안내 추가",
     noUsageInstructions: "아직 사용 안내가 없습니다",
-    title: 'MCP 서비스 관리',
-    description: '외부 MCP (Model Context Protocol) 서비스를 관리합니다. Agent 모드에서 외부 도구와 리소스를 호출합니다',
     enabled: '활성화됨',
     disabled: '비활성화됨',
     configuredServices: '설정된 서비스',
     manageAndTest: 'MCP 서비스 연결 관리 및 테스트',
     addService: '서비스 추가',
-    empty: 'MCP 서비스 없음',
     deleteConfirmBody: 'MCP 서비스 "{name}"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
     unnamed: '이름 없음',
     builtin: '내장',
     toolCount: '{count}개 도구',
     toolsNotSynced: '도구가 아직 동기화되지 않음',
     toolsStale: '다시 동기화 필요',
-    toasts: {
-      loadFailed: 'MCP 서비스 목록 로드 실패',
-      enabled: 'MCP 서비스가 활성화되었습니다',
-      disabled: 'MCP 서비스가 비활성화되었습니다',
-      updateStateFailed: 'MCP 서비스 상태 업데이트 실패',
-      testing: '{name} 테스트 중...',
-      noResponse: '테스트 실패: 서버 응답 없음',
-      testFailed: 'MCP 서비스 테스트 실패',
-      deleted: 'MCP 서비스가 삭제되었습니다',
-      deleteFailed: 'MCP 서비스 삭제 실패'
-    },
-    actions: {
-      test: '연결 테스트'
-    }
   },
   conversationSettings: {
     maxTokens: {
-      desc: '생성 답변의 최대 토큰 수'
+      desc: '생성 답변의 최대 토큰 수',
     },
     temperature: {
-      desc: '모델 출력의 무작위성을 제어합니다. 0은 가장 확정적, 1은 가장 무작위'
+      desc: '모델 출력의 무작위성을 제어합니다. 0은 가장 확정적, 1은 가장 무작위',
     },
     systemPrompt: {
-      desc: '일반 모드 대화를 위한 시스템 수준 Prompt'
+      desc: '일반 모드 대화를 위한 시스템 수준 Prompt',
     },
     contextTemplate: {
-      desc: '일반 모드에서 검색 결과를 기반으로 답변을 생성하는 Prompt 템플릿'
+      desc: '일반 모드에서 검색 결과를 기반으로 답변을 생성하는 Prompt 템플릿',
     },
     rerankModel: {
-      desc: '검색 결과 재정렬을 위한 모델 (선택)'
+      desc: '검색 결과 재정렬을 위한 모델 (선택)',
     },
     chatModel: {
-      desc: '요약 및 개요를 위한 대규모 언어 모델'
+      desc: '요약 및 개요를 위한 대규모 언어 모델',
     },
     rewritePrompt: {
-      desc: '질문 재작성을 제어하는 시스템 프롬프트'
+      desc: '질문 재작성을 제어하는 시스템 프롬프트',
     },
     fallbackPrompt: {
-      desc: '모델 폴백을 선택했을 때 사용되는 프롬프트 템플릿'
+      desc: '모델 폴백을 선택했을 때 사용되는 프롬프트 템플릿',
     },
     fallbackResponse: {
-      desc: '폴백 전략이 고정 응답일 때 반환되는 텍스트'
+      desc: '폴백 전략이 고정 응답일 때 반환되는 텍스트',
     },
     fallbackStrategy: {
-      desc: '검색 결과가 없을 때 처리 방식'
+      desc: '검색 결과가 없을 때 처리 방식',
     },
     enableQueryExpansion: {
-      desc: '검색 결과가 부족할 때 대규모 모델을 호출해 확장 쿼리를 생성합니다 (지연 시간 및 비용 증가)'
+      desc: '검색 결과가 부족할 때 대규모 모델을 호출해 확장 쿼리를 생성합니다 (지연 시간 및 비용 증가)',
     },
     enableRewrite: {
-      desc: '다중 턴 대화에서 더 나은 검색을 위해 질문을 자동으로 재작성합니다'
+      desc: '다중 턴 대화에서 더 나은 검색을 위해 질문을 자동으로 재작성합니다',
     },
     rerankThreshold: {
-      desc: '재정렬 단계의 최소 점수 임계값'
+      desc: '재정렬 단계의 최소 점수 임계값',
     },
     rerankTopK: {
-      desc: '재정렬 후 답변 생성에 사용될 문서 수'
+      desc: '재정렬 후 답변 생성에 사용될 문서 수',
     },
     vectorThreshold: {
-      desc: '벡터 검색의 최소 유사도 임계값'
+      desc: '벡터 검색의 최소 유사도 임계값',
     },
     keywordThreshold: {
-      desc: '키워드 검색의 최소 점수 임계값'
+      desc: '키워드 검색의 최소 점수 임계값',
     },
     embeddingTopK: {
-      desc: '벡터 검색 단계에서 유지할 문서 수'
+      desc: '벡터 검색 단계에서 유지할 문서 수',
     },
     maxRounds: {
-      desc: '다중 턴 컨텍스트 및 질문 재작성에 사용되는 히스토리 턴 수'
+      desc: '다중 턴 컨텍스트 및 질문 재작성에 사용되는 히스토리 턴 수',
     },
     models: {
-      chatGroupLabel: '사고 / 대화 모델'
+      chatGroupLabel: '사고 / 대화 모델',
     }
   },
   agentSettings: {
-    systemPrompt: {
-      desc: 'Agent의 시스템 프롬프트를 설정합니다. 플레이스홀더 템플릿을 지원합니다. 플레이스홀더는 런타임에 자동으로 실제 내용으로 대체됩니다.'
-    },
     allowedTools: {
-      desc: '현재 Agent가 사용할 수 있는 도구 목록'
-    },
-    temperature: {
-      desc: '모델 출력의 무작위성을 제어합니다. 0은 가장 확정적, 1은 가장 무작위'
-    },
-    rerankModel: {
-      desc: '검색 결과 재정렬, 다양한 소스의 관련성 점수 통합'
+      desc: '현재 Agent가 사용할 수 있는 도구 목록',
     },
     thinkingModel: {
-      desc: 'Agent 추론 및 계획을 위한 LLM 모델'
+      desc: 'Agent 추론 및 계획을 위한 LLM 모델',
     },
     maxIterations: {
-      desc: 'Agent가 한 작업에서 수행할 최대 추론 단계 수입니다. 「제한 없음」을 선택하면 모델이 스스로 끝나거나 직접 중지할 때까지 계속 실행됩니다.'
+      desc: 'Agent가 한 작업에서 수행할 최대 추론 단계 수입니다. 「제한 없음」을 선택하면 모델이 스스로 끝나거나 직접 중지할 때까지 계속 실행됩니다.',
     },
     modelRecommendation: {
-      title: '모델 추천'
+      title: '모델 추천',
     }
   },
   upload: {
     uploadDocument: '문서 업로드',
     uploadFolder: '폴더 업로드',
     onlineEdit: '온라인 편집',
-    deleteRecord: '기록 삭제'
+    deleteRecord: '기록 삭제',
   },
   uploadTasks: {
     panelLabel: '업로드',
@@ -2959,16 +2437,13 @@ export default {
     eta: {
       seconds: '{n}초',
       minutes: '{n}분',
-      hours: '{n}시간'
+      hours: '{n}시간',
     },
     hintUploading: '업로드가 끝날 때까지 페이지를 닫거나 새로고침하지 마세요',
     hintParsing: '모든 파일이 업로드되었습니다. 파싱은 백그라운드에서 계속되므로 이 페이지를 떠나도 됩니다',
     legend: {
       ready: '검색 가능',
-      active: '처리 중',
-      waiting: '대기 중',
-      failed: '실패',
-      duplicate: '이미 있음'
+      duplicate: '이미 있음',
     },
     filterAll: '전체',
     filterIssues: '미완료',
@@ -2985,28 +2460,21 @@ export default {
     phaseDeleted: '삭제됨',
     cancel: '취소',
     cancelAll: '모두 취소',
-    retry: '다시 시도',
     retryFailed: '{count}개 다시 시도',
     open: '열기',
     collapse: '접기',
-    expand: '펼치기',
-    close: '닫기',
     closeConfirm: '닫으면 남은 {count}개 파일의 업로드가 취소됩니다',
     closeConfirmOk: '업로드 취소',
-    closeConfirmKeep: '계속 업로드'
+    closeConfirmKeep: '계속 업로드',
   },
   time: {
-    today: '오늘',
-    yesterday: '어제',
     last7Days: '최근 7일',
     last30Days: '최근 30일',
     lastYear: '최근 1년',
     earlier: '이전',
-    pinned: '고정됨'
+    pinned: '고정됨',
   },
   platform: {
-    subtitle: '대규모 언어 모델 기반 엔터프라이즈 지식 프레임워크',
-    description: 'RAG 검색, 에이전트 추론, Wiki 지식베이스로 문서를 진정으로 이해하고 활용합니다',
     rag: 'RAG 강화 생성',
     agent: 'ReAct 에이전트',
     wiki: 'Wiki 지식베이스',
@@ -3025,7 +2493,7 @@ export default {
       wikiTitle: 'Wiki 지식베이스',
       wikiDesc: '문서를 구조화된 상호 연결 지식으로 정제',
       smartDocRetrievalTitle: '지능형 문서 검색',
-      smartDocRetrievalDesc: 'PDF/Word/이미지 다중 형식 파싱'
+      smartDocRetrievalDesc: 'PDF/Word/이미지 다중 형식 파싱',
     }
   },
   font: {
@@ -3041,27 +2509,25 @@ export default {
     size: {
       small: '작게',
       normal: '보통',
-      large: '크게'
+      large: '크게',
     },
     mono: {
-      system: '시스템 기본',
       menlo: 'Menlo',
       monaco: 'Monaco',
       consolas: 'Consolas',
       cascadia: 'Cascadia Code',
       'dejavu-mono': 'DejaVu Sans Mono',
       'liberation-mono': 'Liberation Mono',
-      monospace: '일반 고정폭'
+      monospace: '일반 고정폭',
     },
     sans: {
-      system: '시스템 기본',
       pingfang: 'PingFang SC',
       georgia: 'Georgia (세리프)',
       yahei: 'Microsoft YaHei',
       times: 'Times New Roman (세리프)',
       'noto-cjk': 'Noto Sans CJK',
       'dejavu-serif': 'DejaVu Serif (세리프)',
-      'sans-serif': '일반 산세리프'
+      'sans-serif': '일반 산세리프',
     }
   },
   theme: {
@@ -3070,16 +2536,13 @@ export default {
     light: '라이트',
     dark: '다크',
     system: '시스템 설정',
-    selectTheme: '테마 선택'
+    selectTheme: '테마 선택',
   },
   general: {
-    title: '일반 설정',
     allSettings: '모든 설정',
     personalSettings: '개인 설정',
     helpAndDocs: '도움말 및 문서',
-    description: '언어, 외관 등 기본 옵션 설정',
-    settings: '설정',
-    close: '설정 닫기'
+    close: '설정 닫기',
   },
   language: {
     zhCN: '简体中文',
@@ -3090,7 +2553,7 @@ export default {
     selectLanguage: '언어 선택',
     language: '언어',
     languageDescription: '인터페이스 표시 언어 선택',
-    languageSaved: '언어 설정이 저장되었습니다'
+    languageSaved: '언어 설정이 저장되었습니다',
   },
   model: {
     reasoning: {
@@ -3105,166 +2568,12 @@ export default {
         max: '최대',
       },
       levelDescriptions: {
-        off: '사고를 끄고 사고 파라미터를 보내지 않습니다',
-        auto: '공급사 기본 강도, 사고량은 모델이 결정합니다',
-        minimal: '최소 사고, 가장 빠른 응답',
-        low: '가벼운 사고',
-        medium: '중간 강도 사고',
-        high: '깊은 사고, 응답이 느려집니다',
-        xhigh: '매우 높은 사고 예산(일부 모델만)',
-        max: '최대 사고 예산(일부 모델만)',
       },
     },
     modelName: '모델 이름',
     defaultTag: '기본값',
     addModelInSettings: '전역 설정에서 모델 추가하기',
-    loadFailed: '모델 목록 로드 실패',
     selectModelPlaceholder: '모델을 선택해주세요',
-    searchPlaceholder: '모델 검색...',
-    builtinTag: '내장',
-    editor: {
-      maxOutputTokensLabel: '최대 출력 토큰',
-      maxOutputTokensPlaceholder: '비워 두면 카탈로그 기본값',
-      maxOutputTokensDesc: '응답 1회의 출력 상한입니다. 비워 두면 이 모델의 카탈로그 기본값을 사용합니다.',
-      catalog: {
-        reasoning: '추론',
-        vision: '비전',
-        hint: '공급사 카탈로그에서 선택하거나 사용자 지정 모델 이름을 입력할 수 있습니다.',
-      },
-      resolved: {
-        title: '실제 호출 방식',
-        empty: '공급사와 모델 이름을 입력하면 이 모델이 어떻게 호출되는지 표시합니다',
-        failed: '해석 실패',
-        protocol: '요청 프로토콜',
-        catalog: '기능 출처',
-        catalogedYes: '내장 모델 프로필',
-        catalogedNo: '공급사 기본값(카탈로그 미수록)',
-        endpoint: '요청 엔드포인트',
-        thinkingFormat: '사고 전환 전달 방식',
-        thinkingLevels: '선택 가능한 사고 강도',
-        noThinking: '이 모델은 사고를 지원하지 않습니다',
-      },
-      advanced: {
-        toggle: '고급',
-        api: {
-          label: '프로토콜 재정의',
-          auto: '자동(공급사 / URL 기준)',
-          desc: '요청 프로토콜을 강제합니다. 일반적으로 변경할 필요가 없습니다.',
-        },
-        remoteModelName: {
-          label: '원격 모델 이름',
-          placeholder: '비워 두면 모델 이름과 동일',
-          desc: '위 모델 이름과 다를 때 실제로 공급사에 보내는 모델 ID입니다.',
-        },
-        legacyThinking: {
-          label: '사고 파라미터 형식(레거시)',
-          catalog: '카탈로그 기본값 따르기(권장)',
-          none: '사고 파라미터를 보내지 않음',
-          desc: '이 모델에는 이전 버전의 thinking_control 설정이 남아 있습니다. "카탈로그 기본값 따르기"를 선택하면 카탈로그가 결정합니다.',
-        },
-        compat: {
-          label: '프로토콜 호환 재정의(JSON)',
-          placeholder: "{'{'} \"max_tokens_field\": \"max_tokens\" {'}'}",
-          desc: '엔드포인트 동작이 카탈로그 기본값과 다를 때만 변경할 필드만 입력합니다. 비워 두면 재정의하지 않습니다.',
-          docLink: '필드 설명 보기',
-          invalid: '잘못된 JSON',
-          mustBeObject: 'JSON 객체여야 합니다',
-        },
-      },
-      addTitle: '모델 추가',
-      editTitle: '모델 편집',
-      sectionType: '모델 유형',
-      typeLabel: '모델 유형',
-      sectionSource: '모델 소스',
-      sectionProvider: '연결 설정',
-      sectionAdvanced: '고급 옵션',
-      sourceLabel: '모델 소스',
-      sourceLocal: 'Ollama',
-      sourceRemote: 'API',
-      baseUrlLabel: 'Base URL',
-      displayNameLabel: '표시 이름 (선택)',
-      displayNamePlaceholder: '예: 고객지원 QA 모델',
-      displayNameDesc: 'UI 표시용으로만 사용되며 실제 호출은 위의 모델 이름을 사용합니다.',
-      baseUrlPlaceholder: '예: https://api.openai.com/v1',
-      baseUrlPlaceholderVllm: '예: http://localhost:11434/v1',
-      baseUrlPlaceholderAsr: '예: https://api.openai.com/v1',
-      apiKeyOptional: 'API 키 (선택)',
-      apiKeyPlaceholder: 'API 키 입력',
-      customHeadersLabel: '사용자 정의 요청 헤더 (선택)',
-      customHeadersDesc: '원격 모델 API 호출 시 추가되는 HTTP 헤더입니다. 기업 게이트웨이 인증이나 추적 등에 사용할 수 있으며, Authorization / Content-Type 같은 예약 헤더는 무시됩니다.',
-      customHeadersAdd: '헤더 추가',
-      customHeadersKeyPlaceholder: '헤더 이름',
-      customHeadersValuePlaceholder: '헤더 값',
-      testing: '테스트 중...',
-      testConnection: '연결 테스트',
-      downloadLabel: '다운로드: {keyword}',
-      refreshList: '목록 새로고침',
-      dimensionLabel: '벡터 차원',
-      dimensionPlaceholder: '예: 1536',
-      checkDimension: '차원 감지',
-      dimensionDetected: '감지 성공, 벡터 차원: {value}',
-      dimensionFailed: '감지 실패, 차원을 수동으로 입력해주세요',
-      remoteDimensionDetected: '감지된 벡터 차원: {value}',
-      dimensionOverrideLabel: '사용자 지정 출력 차원',
-      dimensionOverrideDesc: '제공자 문서에서 이 모델이 dimensions 매개변수를 지원한다고 확인한 경우에만 켜세요.',
-      supportsVisionLabel: '비전/멀티모달 지원',
-      supportsVisionDesc: '모델의 이미지 등 멀티모달 입력 지원 여부',
-      contextWindowLabel: '컨텍스트 창',
-      contextWindowPlaceholder: '기본값 {value}',
-      contextWindowDesc: '모델이 한 요청에 수용할 수 있는 토큰 수입니다. 에이전트 대화 압축이 이 한도를 사용합니다. 비워 두면 기본값 200000(200K)을 사용합니다. 공급자 문서의 실제 값을 입력하세요. 더 크게 설정하면 압축이 발생하지 않고 요청이 거부될 수 있습니다.',
-      contextWindowDefaultHint: '설정되지 않음, 기본값 {value} 사용',
-      contextWindowTokens: '{count} 토큰',
-      maxConcurrencyLabel: '백그라운드 동시 실행 상한',
-      maxConcurrencyPlaceholder: '0이면 전역 기본값 사용',
-      maxConcurrencyDesc: '문서 인덱싱/보강 등 백그라운드 작업이 이 모델을 호출하는 동시 실행 수를 제한합니다(모델별로 모든 복제본이 공유). 0 또는 비워 두면 전역 기본값을 사용하며, 대화형 채팅에는 영향을 주지 않습니다.',
-      dimensionHint: '모델이 선택되었습니다. "차원 감지" 버튼을 클릭하여 벡터 차원을 자동으로 가져옵니다',
-      loadModelListFailed: '모델 목록 로드 실패',
-      listRefreshed: '목록이 새로고침되었습니다',
-      fillModelAndUrl: '먼저 모델 식별자와 Base URL을 입력해주세요',
-      remoteBaseUrlRequired: 'Remote API 유형은 Base URL이 필수입니다',
-      unsupportedModelType: '지원되지 않는 모델 유형',
-      saveAndClose: '저장 후 닫기',
-      testDraftHint: '저장하지 않고 현재 입력한 연결 설정을 테스트합니다.',
-      testDraftEditHint: '현재 연결 설정과 별도로 저장한 API 키를 사용하여 테스트합니다.',
-      testStale: '설정이 변경되었습니다. 다시 테스트해 주세요.',
-      connectionSuccess: '연결 성공',
-      connectionFailed: '연결 실패',
-      connectionConfigError: '연결 실패, 설정을 확인해주세요',
-      downloadStarted: '{name} 다운로드 시작',
-      downloadCompleted: '{name} 다운로드 완료',
-      downloadFailed: '{name} 다운로드 실패',
-      downloadStartFailed: '다운로드 시작 실패',
-      ollamaUnavailable: 'Ollama 서비스를 사용할 수 없어 로컬 모델을 선택할 수 없습니다',
-      ollamaNotSupportRerank: 'Ollama는 ReRank 모델을 지원하지 않습니다. 원격 인터페이스를 사용하여 설정해주세요',
-      goToOllamaSettings: '설정 보기',
-      providerLabel: '프로바이더',
-      providerPlaceholder: '모델 프로바이더 선택',
-      providerDocs: '{provider} 모델 문서 보기',
-      validation: {
-        extraFieldRequired: '{name}을(를) 입력하세요',
-        modelNameRequired: '모델 이름을 입력해주세요',
-        modelNameEmpty: '모델 이름은 비워둘 수 없습니다',
-        modelNameMax: '모델 이름은 100자를 초과할 수 없습니다',
-        baseUrlRequired: 'Base URL을 입력해주세요',
-        baseUrlEmpty: 'Base URL은 비워둘 수 없습니다',
-        baseUrlInvalid: 'Base URL 형식이 올바르지 않습니다. 유효한 URL을 입력해주세요'
-      },
-      modelNamePlaceholder: {
-        local: '예: llama2:latest',
-        remote: '예: gpt-4, claude-3-opus',
-        localVllm: '예: llava:latest',
-        remoteVllm: '예: gpt-4-vision-preview',
-        remoteAsr: '예: whisper-1'
-      },
-      description: {
-        chat: '대화용 대규모 언어 모델 설정',
-        embedding: '텍스트 벡터화용 임베딩 모델 설정',
-        rerank: '결과 재정렬용 모델 설정',
-        vllm: '시각 이해 및 멀티모달용 비전 언어 모델 설정',
-        asr: '음성 인식 및 오디오 전사를 위한 음성 인식 모델 설정',
-        default: '모델 정보 설정'
-      }
-    }
   },
   error: {
     networkError: '네트워크 오류, 연결을 확인해 주세요',
@@ -3281,22 +2590,18 @@ export default {
     streamFailed: '스트림 연결 실패',
     initialization: {
       checkFailed: '검사 실패',
-      testFailed: '테스트 실패'
+      testFailed: '테스트 실패',
     },
     tenant: {
-      listFailed: '워크스페이스 목록 조회 실패',
       searchFailed: '워크스페이스 검색 실패',
       getApiPrincipalConfigFailed: 'API principal config 조회 실패',
       updateApiPrincipalConfigFailed: 'API principal config 업데이트 실패',
       createApiPrincipalTestTokenFailed: 'API 테스트 토큰 생성 실패',
-      updateFailed: '워크스페이스 정보 업데이트 실패',
-      deleteFailed: 'Failed to delete workspace'
+      deleteFailed: 'Failed to delete workspace',
     },
     model: {
-      createFailed: '모델 생성 실패',
       getFailed: '모델 조회 실패',
-      updateFailed: '모델 업데이트 실패',
-      deleteFailed: '모델 삭제 실패'
+      deleteFailed: '모델 삭제 실패',
     },
     auth: {
       loginFailed: '로그인 실패',
@@ -3306,32 +2611,23 @@ export default {
       updatePreferencesFailed: '개인 설정 업데이트 실패',
       refreshTokenFailed: '토큰 갱신 실패',
       logoutFailed: '로그아웃 실패',
-      validateTokenFailed: '토큰 검증 실패'
+      validateTokenFailed: '토큰 검증 실패',
     }
   },
   mcp: {
     testResult: {
-      title: '테스트 결과: {name}',
-      connectionSuccess: '연결 성공',
-      connectionFailed: '연결 실패',
       toolsTitle: '사용 가능한 도구',
       resourcesTitle: '사용 가능한 리소스',
-      descriptionLabel: '설명',
       schemaLabel: '파라미터 구조',
       emptyDescription: '이 서비스에서 제공하는 도구 또는 리소스가 없습니다',
-      requireApproval: '수동 승인 필요',
-      requireApprovalTip: '활성화 시 에이전트가 이 도구를 호출하기 전에 승인을 기다립니다.',
       approvalSaveFailed: '승인 설정 저장 실패',
       toolEnabled: '도구 활성화',
       toolEnabledTip: '비활성화하면 에이전트가 이 도구를 보거나 호출하지 않습니다.',
-      toolEnabledSaveFailed: '도구 설정 저장 실패'
+      toolEnabledSaveFailed: '도구 설정 저장 실패',
     }
   },
   system: {
-    title: '시스템 정보',
-    sectionDescription: '시스템 버전 정보 및 사용자 계정 설정 보기',
     loadingInfo: '정보 로딩 중...',
-    retry: '재시도',
     versionLabel: '앱 버전',
     versionDescription: '애플리케이션 서비스(weknora-app)의 버전 번호',
     frontendVersionLabel: 'UI 버전',
@@ -3362,12 +2658,7 @@ export default {
     vectorStoreEngineDescription: '현재 사용 중인 벡터 저장소 엔진',
     graphDatabaseEngineLabel: '그래프 데이터베이스 엔진',
     graphDatabaseEngineDescription: '현재 사용 중인 그래프 데이터베이스 엔진',
-    unknown: '알 수 없음',
     globalSettings: {
-      title: '시스템 설정',
-      description: '플랫폼 전역 런타임 설정입니다. 저장하면 모든 워크스페이스에 즉시 적용됩니다. 시스템 관리자만 보고 수정할 수 있습니다.',
-      loading: '로딩 중...',
-      empty: '설정 가능한 시스템 항목이 없습니다',
       saving: '저장 중',
       saved: '저장됨',
       saveAnnouncement: '{label} 저장됨',
@@ -3383,9 +2674,7 @@ export default {
         description: '플랫폼 수준의 작업을 기록합니다: 시스템 설정 변경, 시스템 관리자 부여/회수, 할당량 일괄 동기화 등. 최신순으로 표시됩니다.',
         refresh: '새로고침',
         retry: '다시 시도',
-        loading: '로딩 중...',
         end: '더 이상 항목이 없습니다.',
-        empty: '플랫폼 감사 이벤트가 없습니다.',
         forbidden: '플랫폼 감사 로그를 볼 수 있는 권한이 없습니다.',
         systemActor: '시스템',
         drawer: {
@@ -3393,14 +2682,14 @@ export default {
           sectionIdentifiers: '관련 식별자',
           sectionRequest: '요청 정보',
           targetChange: '변경 내용',
-          requestMethod: '요청 메서드'
+          requestMethod: '요청 메서드',
         },
         expanded: {
           actorId: '작업자 ID',
           targetUserId: '대상 사용자 ID',
           targetType: '대상 유형',
           targetId: '대상 ID',
-          details: '원본 상세'
+          details: '원본 상세',
         },
         target: {
           bulkQuota: '일괄 동기화: 기본 저장 할당량',
@@ -3408,11 +2697,11 @@ export default {
           promoteIdempotent: '이미 시스템 관리자임 (멱등)',
           revokeNoop: '원래 시스템 관리자가 아니었음 (멱등)',
           requiredRole: '필요 역할: {role}',
-          valueNull: '(없음)'
+          valueNull: '(없음)',
         },
         outcome: {
           success: '성공',
-          denied: '거부'
+          denied: '거부',
         },
         action: {
           'system.setting_changed': '시스템 설정 변경',
@@ -3426,7 +2715,7 @@ export default {
           'system.queue_task_deleted': '실패 작업 기록 삭제',
           'system.queue_task_run_now': '큐 작업 즉시 실행',
           'system.queue_task_cancelled': '큐 작업 취소',
-          'system.queue_archived_purged': '실패 작업 모두 지우기'
+          'system.queue_archived_purged': '실패 작업 모두 지우기',
         },
         columns: {
           time: '시간',
@@ -3434,13 +2723,13 @@ export default {
           action: '이벤트',
           target: '대상',
           path: '요청',
-          outcome: '결과'
+          outcome: '결과',
         },
         actorRole: {
-          system_admin: '시스템 관리자'
+          system_admin: '시스템 관리자',
         },
         errors: {
-          generic: '감사 로그 로드 실패'
+          generic: '감사 로그 로드 실패',
         }
       },
       bulkApply: {
@@ -3448,13 +2737,9 @@ export default {
         tooltip: '저장한 값은 기본적으로 새로 생성되는 워크스페이스에만 적용됩니다. 이 버튼을 누르면 현재 값을 모든 기존 워크스페이스에도 덮어씁니다.',
         confirmBtn: '적용 확인',
         confirmBody: '모든 기존 워크스페이스의 저장 용량을 {value} GB로 덮어씁니다. 운영팀이 개별로 조정한 워크스페이스의 용량도 함께 덮어쓰여집니다. 계속하시겠습니까?',
-        success: '{count}개 워크스페이스의 저장 용량을 {gb} GB로 갱신했습니다',
-        failed: '모든 워크스페이스에 적용 실패'
+        failed: '모든 워크스페이스에 적용 실패',
       },
       passwordReset: {
-        label: '사용자 비밀번호 재설정',
-        description: '로그인할 수 없는 다른 사용자의 새 비밀번호를 설정합니다. 재설정하면 해당 사용자의 현재 로그인 세션이 모두 만료되며 새 비밀번호로 다시 로그인해야 합니다.',
-        action: '비밀번호 재설정',
         dialogTitle: '다른 사용자의 비밀번호 재설정',
         warning: '보안에 민감한 작업입니다. 사용자 이메일을 반드시 확인하세요. 여기서는 자신의 비밀번호를 재설정할 수 없습니다.',
         emailLabel: '사용자 이메일',
@@ -3463,30 +2748,13 @@ export default {
         newPasswordPlaceholder: '새 비밀번호 입력',
         confirmPasswordLabel: '새 비밀번호 확인',
         confirmPasswordPlaceholder: '새 비밀번호를 다시 입력',
-        confirmBtn: '재설정 확인',
-        success: '비밀번호가 재설정되고 기존 세션이 만료되었습니다',
-        failed: '비밀번호 재설정 실패',
       },
       createUser: {
-        label: '사용자 생성',
-        description: '새 로컬 사용자 계정을 개설합니다. 플랫폼의 기본 공간 모드가 "개인 공간 자동 생성"으로 설정된 경우, 스스로 가입한 사용자와 마찬가지로 개인 공간도 함께 만들어집니다.',
-        action: '사용자 생성',
-        dialogTitle: '새 사용자 생성',
-        warning: '보안에 민감한 작업입니다. 새 사용자가 로그인할 때 사용할 사용자 이름과 이메일을 신중히 확인하세요.',
         usernameLabel: '사용자 이름',
         usernamePlaceholder: '2~50자',
-        emailLabel: '이메일',
-        emailPlaceholder: '올바른 이메일 주소를 입력하세요',
         autoGenerateLabel: '무작위 비밀번호 자동 생성',
-        newPasswordLabel: '새 비밀번호',
-        newPasswordPlaceholder: '8~32자, 문자와 숫자 포함',
-        confirmPasswordLabel: '새 비밀번호 확인',
-        confirmPasswordPlaceholder: '새 비밀번호를 다시 입력',
-        confirmBtn: '사용자 생성',
-        success: '사용자가 생성되었습니다',
         successIdempotent: '이미 존재하는 사용자입니다. 변경 사항이 없습니다',
         missingPassword: '사용자는 생성되었지만 생성된 비밀번호가 반환되지 않았습니다. 비밀번호를 재설정해 접근을 복구하세요.',
-        failed: '사용자 생성 실패',
         validation: {
           usernameRequired: '사용자 이름을 입력하세요',
           usernameLength: '사용자 이름은 2~50자여야 합니다',
@@ -3497,7 +2765,7 @@ export default {
           passwordLetter: '비밀번호에 문자가 포함되어야 합니다',
           passwordNumber: '비밀번호에 숫자가 포함되어야 합니다',
           confirmRequired: '새 비밀번호를 다시 입력하세요',
-          passwordMismatch: '비밀번호가 일치하지 않습니다'
+          passwordMismatch: '비밀번호가 일치하지 않습니다',
         },
         generated: {
           successTitle: '사용자가 생성되었습니다',
@@ -3507,12 +2775,10 @@ export default {
           passwordLabel: '생성된 비밀번호',
           copyBtn: '계정 정보 복사',
           copySuccess: '계정 정보가 클립보드에 복사되었습니다',
-          acknowledgeBtn: '비밀번호를 저장했습니다'
+          acknowledgeBtn: '비밀번호를 저장했습니다',
         }
       },
       admins: {
-        label: '시스템 관리자',
-        description: '플랫폼 수준 권한을 가진 사용자입니다. 오른쪽에 이메일을 입력하고 엔터를 누르면 해당 사용자를 관리자로 승격하고, 태그의 ×를 누르면 권한을 회수합니다. 본인은 관리자이지만 목록에 표시되지 않으며 자신의 권한을 회수할 수 없습니다.',
         placeholder: '사용자 이메일을 입력하고 엔터를 누르세요',
         loadFailed: '시스템 관리자 정보를 불러오지 못했습니다',
         saveSuccess: '시스템 관리자가 업데이트되었습니다',
@@ -3521,27 +2787,18 @@ export default {
           revoke: {
             header: '시스템 관리자 권한 회수',
             body: '{email} 사용자의 시스템 관리자 권한을 회수하시겠습니까? 회수 후에는 시스템 수준 기능에 더 이상 접근할 수 없습니다.',
-            confirmBtn: '회수 확인'
+            confirmBtn: '회수 확인',
           },
           promote: {
-            header: '시스템 관리자로 승격',
-            body: '{email} 사용자를 시스템 관리자로 승격하시겠습니까? 이 사용자는 모든 워크스페이스 접근, 시스템 설정 변경, 관리자 명단 관리 등 플랫폼 수준의 권한을 갖게 됩니다.',
-            confirmBtn: '승격 확인'
+            confirmBtn: '승격 확인',
           }
         }
       },
       reset: {
-        label: '초기화',
-        tooltip: 'UI 재정의 값을 제거하고 환경 변수 또는 내장 기본값으로 되돌립니다',
-        confirmBtn: '초기화 확인',
-        confirmBody: '「{label}」을(를) 초기화하시겠습니까? DB에 저장된 재정의 값이 삭제되고 환경 변수 또는 내장 기본값으로 되돌아갑니다.',
-        success: '기본값으로 초기화되었습니다',
-        failed: '초기화 실패'
+        failed: '초기화 실패',
       },
       messages: {
-        loadFailed: '시스템 설정을 불러오지 못했습니다',
-        saveSuccess: '저장되었습니다',
-        saveFailed: '저장 실패'
+        saveFailed: '저장 실패',
       },
       listConfirm: {
         ssrf: {
@@ -3549,39 +2806,36 @@ export default {
             remove: {
               header: 'SSRF 화이트리스트 항목 제거',
               body: '{entry} 항목을 SSRF 화이트리스트에서 제거하시겠습니까? 제거 후에는 해당 항목이 다시 SSRF 보호 대상이 됩니다.',
-              confirmBtn: '제거 확인'
+              confirmBtn: '제거 확인',
             },
             add: {
-              header: 'SSRF 화이트리스트 항목 추가',
-              body: '{entry} 항목을 SSRF 화이트리스트에 추가하시겠습니까? 일치하는 호스트 / IP / 대역은 SSRF 보호를 우회하여 에이전트가 내부 서비스에 접근할 수 있게 됩니다. 신뢰하는 항목만 추가하세요.',
-              confirmBtn: '추가 확인'
+              confirmBtn: '추가 확인',
             }
           }
         }
       },
       confirm: {
-        confirmBtn: '저장 확인',
         cancelBtn: '취소',
         emptyValue: '(비어 있음)',
         bodyAuthRegistrationMode: '「{label}」을(를) {value}(으)로 변경하려고 합니다.\n\nself_serve로 전환하면 인터넷의 누구나 계정을 만들 수 있습니다. 의도된 동작인지 확인해 주세요.',
-        bodySandboxDockerEnabled: '켜면 워크스페이스 관리자가 로컬 Docker 데몬을 샌드박스로 지정할 수 있습니다. 로컬 docker.sock은 호스트 root와 같습니다. 데몬을 마운트했거나 TLS가 있는 원격 tcp:// 를 쓰는 프라이빗 단일 노드에서만 사용하세요.'
+        bodySandboxDockerEnabled: '켜면 워크스페이스 관리자가 로컬 Docker 데몬을 샌드박스로 지정할 수 있습니다. 로컬 docker.sock은 호스트 root와 같습니다. 데몬을 마운트했거나 TLS가 있는 원격 tcp:// 를 쓰는 프라이빗 단일 노드에서만 사용하세요.',
       },
       enumLabels: {
         auth: {
           default_tenant_mode: {
             create_personal: '개인 공간 자동 생성',
-            tenantless: '공간을 자동 생성하지 않음'
+            tenantless: '공간을 자동 생성하지 않음',
           },
           registration_mode: {
             self_serve: '셀프 가입 (누구나 가입 가능)',
             invite_register: '초대 가입 (유효한 링크 필요)',
-            invite_only: '가입 금지 (기존 계정은 초대 수락 가능)'
+            invite_only: '가입 금지 (기존 계정은 초대 수락 가능)',
           }
         }
       },
       keyDescriptions: {
         model: {
-          max_concurrency: '백그라운드 작업(문서 색인/보강)이 단일 모델에 대해 갖는 기본 동시 호출 상한이며, 모델 ID 기준으로 모든 복제본이 공유합니다. 매 호출마다 실시간으로 읽고 재시작 없이 즉시 적용됩니다. 0 또는 음수는 기본 상한을 해제합니다(각 모델은 모델 관리에서 설정한 자체 상한을 계속 준수함). 백그라운드 작업에만 영향을 주며 대화형 채팅에는 영향을 주지 않습니다.'
+          max_concurrency: '백그라운드 작업(문서 색인/보강)이 단일 모델에 대해 갖는 기본 동시 호출 상한이며, 모델 ID 기준으로 모든 복제본이 공유합니다. 매 호출마다 실시간으로 읽고 재시작 없이 즉시 적용됩니다. 0 또는 음수는 기본 상한을 해제합니다(각 모델은 모델 관리에서 설정한 자체 상한을 계속 준수함). 백그라운드 작업에만 영향을 주며 대화형 채팅에는 영향을 주지 않습니다.',
         },
         asynq: {
           core_concurrency: '문서 및 수동 파싱의 프로세스별 보장 동시성입니다. 공유 탄력 풀도 사용할 수 있습니다. 최소 1, 서비스 재시작이 필요합니다.',
@@ -3589,68 +2843,24 @@ export default {
           enrichment_concurrency: '요약, 이미지, 그래프 및 질문 생성의 프로세스별 보장 동시성입니다. 공유 탄력 풀도 사용할 수 있습니다. 최소 1, 서비스 재시작이 필요합니다.',
           maintenance_concurrency: '동기화, 일괄 작업 및 정리의 프로세스별 동시성으로 사용자 파이프라인과 격리됩니다. 최소 1, 서비스 재시작이 필요합니다.',
           shared_concurrency: '핵심 파싱과 콘텐츠 보강이 적체에 따라 공유하는 프로세스별 탄력 동시성입니다. 최소 1, 서비스 재시작이 필요합니다.',
-          wiki_concurrency: '상위 작업과 분리된 전용 Wiki 워커 풀의 프로세스별 동시성입니다. 최소값은 1이며 적용하려면 서비스를 재시작해야 합니다.'
+          wiki_concurrency: '상위 작업과 분리된 전용 Wiki 워커 풀의 프로세스별 동시성입니다. 최소값은 1이며 적용하려면 서비스를 재시작해야 합니다.',
         },
         tenant: {
           max_owned_per_user: '슈퍼유저가 아닌 사용자가 셀프 서비스로 소유할 수 있는 최대 워크스페이스 수입니다. 워크스페이스 생성 시마다 읽으며 저장 즉시 적용됩니다. 0은 내장 기본값 10을 사용하고, 음수는 제한을 완전히 해제합니다(공개 배포에는 권장하지 않음).',
           self_service_creation_enabled: '비슈퍼유저가 공간을 직접 만들 수 있는지 설정합니다. 비활성화하면 일반 사용자는 초대로만 기존 공간에 참여할 수 있으며, 크로스 워크스페이스 슈퍼유저는 계속 만들 수 있습니다.',
           default_storage_quota_gb: '신규 워크스페이스 생성 시 기본으로 할당되는 저장 용량(GB)으로, 벡터·원본·텍스트·인덱스 등을 포함합니다. 생성 시에만 읽으며, 변경은 이후 생성되는 워크스페이스에만 적용되고 기존 워크스페이스에는 소급되지 않습니다. 0 또는 음수는 내장 기본값 10GB를 사용합니다.',
           auto_create_api_key: '신규 워크스페이스에 full_access API Key를 자동 생성하고 생성 응답에 평문 token을 반환합니다. 기존 동작에 의존하는 연동에만 사용하세요. 기본값은 비활성화입니다.',
-          auto_accept_invitation: '켜면 워크스페이스 관리자가 이메일로 가입된 사용자를 초대할 때 상대가 바로 멤버가 되며, 받은편지함에서 수락할 필요가 없습니다. 끄면 「초대 발송 → 상대가 수락」 흐름을 유지합니다. 저장 즉시 적용됩니다.'
-        },
-        ssrf: {
-          whitelist: 'SSRF 보호 허용 목록입니다. example.com / *.foo.com / 10.0.0.0/8 / 2001:db8::1 형식을 입력할 수 있습니다. 저장 즉시 적용됩니다. SSRF_WHITELIST_EXTRA 환경 변수는 배포자가 관리하며 여기서 덮어쓰지 않습니다.'
+          auto_accept_invitation: '켜면 워크스페이스 관리자가 이메일로 가입된 사용자를 초대할 때 상대가 바로 멤버가 되며, 받은편지함에서 수락할 필요가 없습니다. 끄면 「초대 발송 → 상대가 수락」 흐름을 유지합니다. 저장 즉시 적용됩니다.',
         },
         sandbox: {
-          docker_enabled: 'Docker 샌드박스 백엔드를 허용할지 설정합니다. 로컬 docker.sock은 호스트 root와 같으므로 기본값은 꺼짐입니다. 시스템 관리자만 켤 수 있으며 저장 즉시 적용됩니다. 데몬 소켓을 마운트했거나 TLS가 있는 원격 tcp:// 를 쓰는 프라이빗 단일 노드에서만 켜세요.'
+          docker_enabled: 'Docker 샌드박스 백엔드를 허용할지 설정합니다. 로컬 docker.sock은 호스트 root와 같으므로 기본값은 꺼짐입니다. 시스템 관리자만 켤 수 있으며 저장 즉시 적용됩니다. 데몬 소켓을 마운트했거나 TLS가 있는 원격 tcp:// 를 쓰는 프라이빗 단일 노드에서만 켜세요.',
         },
-        auth: {
-          registration_mode: '가입 모드입니다. 공개 가입은 누구나 계정을 만들 수 있고, 초대 가입은 유효한 초대 링크가 필요합니다. 가입 금지 상태에서도 기존 계정은 초대를 수락할 수 있습니다. 저장 즉시 적용됩니다.',
-          default_tenant_mode: '공개 가입 후 공간 초기화 정책입니다. create_personal은 개인 공간을 만들고 Owner를 부여하며, tenantless는 초대 수락 또는 직접 공간 생성 전까지 계정만 만듭니다.',
-          complex_password_enabled: '복잡한 비밀번호를 사용할지 여부입니다. 활성화하면 비밀번호에 대문자, 소문자, 숫자 및 특수 문자가 포함되어야 합니다. 변경 사항은 즉시 적용되며, 새로 가입하는 사용자 또는 비밀번호를 새로 변경하거나 재설정하는 경우에만 적용됩니다. 특수 문자는 다음을 포함합니다: {specialChars}'
-        }
       },
       keyLabels: {
-        model: {
-          max_concurrency: '모델 기본 동시 처리 상한'
-        },
-        asynq: {
-          core_concurrency: '핵심 파싱 보장 동시성',
-          postprocess_concurrency: '후처리 동시성',
-          enrichment_concurrency: '콘텐츠 보강 보장 동시성',
-          maintenance_concurrency: '유지 관리 동시성',
-          shared_concurrency: '공유 탄력 동시성',
-          wiki_concurrency: 'Wiki 워커 동시성'
-        },
-        tenant: {
-          max_owned_per_user: '사용자당 최대 워크스페이스 수',
-          self_service_creation_enabled: '사용자 공간 직접 생성 허용',
-          default_storage_quota_gb: '신규 워크스페이스 기본 저장 용량 (GB)',
-          auto_create_api_key: '신규 워크스페이스 API Key 자동 생성',
-          auto_accept_invitation: '등록된 사용자 초대 시 자동 가입'
-        },
-        ssrf: {
-          whitelist: 'SSRF 보호 허용 목록'
-        },
-        sandbox: {
-          docker_enabled: 'Docker 샌드박스 사용'
-        },
-        auth: {
-          registration_mode: '가입 모드',
-          default_tenant_mode: '기본 공간 프로비저닝',
-          complex_password_enabled: '복잡한 비밀번호 사용'
-        }
       },
       runtime: {
-        title: '작업 큐 런타임',
-        description: '백그라운드 작업 큐의 실시간 부하와 각 독립 워커 풀의 프로세스별 동시성 설정입니다. 5초마다 자동 새로고침됩니다.',
-        refresh: '새로고침',
         autoRefresh: '자동 새로고침 (5초마다)',
-        loading: '불러오는 중...',
-        retry: '다시 시도',
         unavailableTitle: '작업 큐를 사용할 수 없음',
-        unavailable: '현재 배포는 Redis / asynq 큐가 없습니다(Lite 모드) — 표시할 내용이 없습니다.',
-        empty: '표시할 큐 데이터가 없습니다',
         detailsTitle: '큐 세부 정보',
         detailsDescription: '각 처리 경로의 실시간 부하와 대기 상태입니다. ‘최종 실패’는 재시도 한도를 초과하여 자동 실행이 중지된 작업입니다.',
         poolsTitle: '워커 풀',
@@ -3664,7 +2874,6 @@ export default {
         footnote: '카드는 클러스터 실행 중/실시간 용량을 표시합니다. 프로세스별 설정은 재시작 후 적용되며 공유 풀은 핵심 파싱과 보강 큐만 처리합니다.',
         updatedAt: '{value} 업데이트됨',
         models: {
-          title: '모델 동시성',
           description: '백그라운드 작업이 실제로 모델 서비스에 진입할 때의 동시성입니다. 위 섹션은 작업 스케줄링이고, 이 섹션은 별도의 모델 서비스 스로틀 단계입니다.',
           scope: '실행 중은 클러스터 전체 · 대기는 로컬',
           disabled: '백그라운드 모델 동시성 제어가 비활성화되어 있습니다. 전역 설정에서 모델 기본 동시성 상한을 구성하세요.',
@@ -3672,22 +2881,19 @@ export default {
           backgroundOnly: '백그라운드 작업만; 대화형 채팅은 제외',
           status: {
             queued: '스로틀 중',
-            full: '한도 도달'
+            full: '한도 도달',
           },
           columns: {
             model: '모델 ID',
             active: '실행 중',
             waiting: '스로틀 대기',
-            usage: '동시성'
+            usage: '동시성',
           }
         },
         tasks: {
-          title: '작업 상세 · {queue}',
-          description: '모든 작업 상태를 확인합니다. 예약 및 재시도 작업은 다음 실행 순서로, 나머지는 최신 작업부터 표시됩니다.',
           listTitle: '{state} 작업',
           openAria: '{queue}의 {state} 작업 {count}개 보기',
           unavailable: '현재 배포에서는 실패 작업 상세 정보를 볼 수 없습니다',
-          empty: '이 큐에는 {state} 작업이 없습니다',
           loadError: '실패 작업 상세 정보를 불러오지 못했습니다',
           loadMore: '더 보기',
           loadedSummary: '{count}개 로드됨 · 스크롤하거나 눌러 더 보기',
@@ -3729,28 +2935,20 @@ export default {
           actionError: {
             cancel: '작업을 취소하지 못했습니다',
             run_now: '작업을 실행하지 못했습니다',
-            delete: '실패 기록을 지우지 못했습니다'
+            delete: '실패 기록을 지우지 못했습니다',
           },
           actionSuccess: {
-            cancel: '작업을 취소했습니다',
-            run_now: '작업이 대기열로 이동했습니다',
-            delete: '실패 기록을 지웠습니다'
+            delete: '실패 기록을 지웠습니다',
           },
           guides: {
-            active: '실행 인스턴스와 시작 시간, 마감 및 고립 상태를 확인합니다. 안전한 비즈니스 취소가 가능한 작업만 취소할 수 있습니다.',
             pending: '아직 worker가 가져가지 않은 작업입니다. 취소 시 비즈니스 상태도 함께 갱신됩니다.',
             scheduled: '예약 작업을 즉시 실행하거나 지원되는 문서 작업을 안전하게 취소할 수 있습니다.',
             retry: '마지막 오류, 시도 횟수 및 다음 실행 시간을 확인하세요.',
             archived: '원인을 해결한 후 다시 실행하세요. 기록 삭제는 원래 작업을 완료하지 않습니다.',
-            completed: '보존 기간이 설정된 최근 완료 작업만 표시되며 관리 작업은 없습니다.'
+            completed: '보존 기간이 설정된 최근 완료 작업만 표시되며 관리 작업은 없습니다.',
           },
           states: {
-            active: '실행 중',
-            pending: '대기 중',
-            scheduled: '예약',
-            retry: '재시도 중',
-            archived: '최종 실패',
-            completed: '완료'
+            completed: '완료',
           },
           taskTypes: {
             documentProcess: '문서 파싱',
@@ -3771,12 +2969,11 @@ export default {
             kbClone: '지식 베이스 복제',
             kbDelete: '지식 베이스 삭제',
             wikiIngest: 'Wiki 콘텐츠 생성',
-            wikiFinalize: 'Wiki 마무리'
+            wikiFinalize: 'Wiki 마무리',
           }
         },
         failedNotice: {
-          title: '처리 대기 중인 실패 작업 {count}개',
-          description: '아래 표의 빨간색 \'최종 실패\' 숫자를 눌러 원인을 확인한 뒤, 수정 후 수동으로 재시도하세요.'
+          description: '아래 표의 빨간색 \'최종 실패\' 숫자를 눌러 원인을 확인한 뒤, 수정 후 수동으로 재시도하세요.',
         },
         status: {
           working: '처리 중',
@@ -3784,25 +2981,10 @@ export default {
           idle: '유휴',
           actionRequired: '조치 필요',
           retrying: '재시도 중',
-          paused: '일시중지됨'
-        },
-        columns: {
-          queue: '큐',
-          active: '실행 중',
-          pending: '대기',
-          scheduled: '예약',
-          retry: '재시도',
-          archived: '실패',
-          completed: '완료',
-          latency: '최장 대기',
-          status: '상태'
+          paused: '일시중지됨',
         },
         summary: {
-          title: '실행 개요',
-          active: '실행 중',
-          pending: '대기 중',
-          retry: '재시도 중',
-          archived: '최종 실패'
+          archived: '최종 실패',
         },
         pools: {
           core: '핵심 파싱',
@@ -3810,178 +2992,86 @@ export default {
           enrichment: '콘텐츠 보강',
           maintenance: '유지 관리 및 동기화',
           shared: '공유 탄력 풀',
-          wiki: 'Wiki 풀'
+          wiki: 'Wiki 풀',
         },
         poolDescriptions: {
-          core: '문서 및 수동 파싱 보장 용량',
-          postprocess: '파싱 마무리 및 보강 작업 분배',
-          enrichment: '요약, 이미지, 그래프 및 질문 생성',
-          maintenance: '데이터 소스 동기화, 일괄 작업 및 삭제 정리',
-          shared: '적체에 따라 핵심 파싱 또는 보강이 공유',
-          wiki: 'Wiki 콘텐츠 생성 및 전체 마무리'
+          wiki: 'Wiki 콘텐츠 생성 및 전체 마무리',
         },
         queueNames: {
           default: '문서 파싱',
           chat_attachment: '대화 첨부파일 파싱',
-          postprocess: '후처리 오케스트레이션',
           summary: '요약 생성',
           sync: '데이터 소스 동기화',
           low: '유지 관리 및 일괄 작업',
           multimodal: '멀티모달 처리',
           graph: '그래프 추출',
           question: '질문 생성',
-          wiki: 'Wiki 처리'
+          wiki: 'Wiki 처리',
         },
         queueDescriptions: {
-          default: '문서 파싱, 수동 재파싱',
-          chat_attachment: '세션 내 업로드 첨부파일 파싱',
-          postprocess: '파싱 마무리, 보강 분배',
-          summary: '문서 요약, 테이블 요약',
-          sync: '수동 및 예약 동기화',
-          low: 'FAQ 가져오기, 일괄 재파싱, 삭제 정리',
-          multimodal: '이미지 OCR, 시각 설명',
-          graph: '청크 단위 그래프 추출',
-          question: '청크 단위 질문 생성',
-          wiki: '콘텐츠 생성, 인덱스 마무리'
+          wiki: '콘텐츠 생성, 인덱스 마무리',
         },
-        errors: {
-          generic: '큐 상태를 불러오지 못했습니다'
-        }
       },
       runtimeTable: {
         setting: '설정 및 용도',
-        value: '현재 값'
+        value: '현재 값',
       },
       sections: {
         other: {
           tab: '기타 {count}',
-          title: '기타 설정',
-          description: '표준 제품 그룹에 포함되지 않은 현재 배포의 설정입니다.'
+          description: '표준 제품 그룹에 포함되지 않은 현재 배포의 설정입니다.',
         },
         security: {
-          tab: '네트워크 보안 {count}',
-          title: '네트워크 보안',
-          description: 'SSRF 허용 목록과 Docker 샌드박스 허용 여부(로컬 docker.sock은 호스트 root와 같음)를 관리합니다.'
+          description: 'SSRF 허용 목록과 Docker 샌드박스 허용 여부(로컬 docker.sock은 호스트 root와 같음)를 관리합니다.',
         },
         runtime: {
-          tab: '런타임 및 동시성 {count}',
-          title: '런타임 및 동시성',
-          description: '백그라운드 워커 풀과 모델 서비스의 동시 처리 용량을 설정합니다.',
-          restartHint: '워커 설정은 재시작 후 적용'
-        },
-        tenant: {
-          tab: '워크스페이스 기본값 {count}',
-          title: '워크스페이스 기본값',
-          description: '기존 워크스페이스를 변경하지 않고 신규 워크스페이스의 초기 할당량과 호환 동작을 설정합니다.'
+          restartHint: '워커 설정은 재시작 후 적용',
         },
         access: {
-          tab: '계정 및 액세스 {count}',
-          title: '계정 및 액세스',
-          description: '시스템 관리자, 공개 가입, 공간 생성 규칙을 관리합니다.'
+          description: '시스템 관리자, 공개 가입, 공간 생성 규칙을 관리합니다.',
         }
       },
       priorityHint: {
         disclosure: '설정 소스 및 우선순위',
         tier1: '이 페이지에서 저장한 항목("재정의됨" 배지가 붙은 항목)은 항상 우선 적용되며, 환경 변수는 무시됩니다.',
         tier2: '여기서 저장하지 않은 항목은 환경 변수를 따르며, 환경 변수도 없으면 내장 기본값을 사용합니다.',
-        tier3: '특정 항목을 다시 환경 변수 기반으로 되돌리려면 해당 행의 "초기화" 버튼을 누르세요.'
+        tier3: '특정 항목을 다시 환경 변수 기반으로 되돌리려면 해당 행의 "초기화" 버튼을 누르세요.',
       }
     },
     messages: {
       fetchFailed: '시스템 정보 가져오기 실패',
-      networkError: '네트워크 오류, 나중에 다시 시도해주세요'
+      networkError: '네트워크 오류, 나중에 다시 시도해주세요',
     }
   },
   tenant: {
-    title: '워크스페이스 정보',
     currentTenant: '현재 워크스페이스',
     switchTenant: '워크스페이스 전환',
-    sectionDescription: '워크스페이스의 상세 설정 정보 보기',
     statusActive: '활성',
     statusInactive: '비활성',
     statusSuspended: '일시 중지됨',
     statusUnknown: '알 수 없음',
-    loadingInfo: '정보 로딩 중...',
-    retry: '재시도',
-    unknown: '알 수 없음',
     formatError: '형식 오류',
-    searchPlaceholder: '워크스페이스 이름 검색 또는 워크스페이스 ID 입력...',
     noMatch: '일치하는 워크스페이스를 찾을 수 없습니다',
     switchSuccessTitle: '공간이 전환되었습니다',
     switchSuccessContent: '{name} 에 입장했습니다',
     loadTenantsFailed: '워크스페이스 목록 로드 실패',
-    loading: '로딩 중...',
     loadMore: '더 보기',
-    api: {
-      title: 'API 정보',
-      docLabel: 'API 문서',
-      docDescription: '전체 API 호출 문서 및 예시 보기, ',
-      openDoc: '문서 열기',
-      userIdLabel: '사용자 ID',
-      userIdDescription: '고유 사용자 식별자',
-      usernameLabel: '사용자명',
-      usernameDescription: '로그인 사용자명',
-      emailLabel: '이메일',
-      emailDescription: '등록된 이메일 주소',
-      createdAtLabel: '가입 시간',
-      createdAtDescription: '계정이 생성된 시간',
-      desktopPortLabel: '로컬 API 포트 (데스크톱)',
-      desktopPortDescription: 'Chrome 확장 프로그램 등에서 동일한 API 주소를 쓰려면 고정 포트(예: 37841)를 지정하세요. 0이면 매번 다른 포트입니다. 저장 후 앱을 다시 시작하세요.',
-      desktopPortSave: '저장',
-      desktopPortSaved: '저장되었습니다. 적용하려면 앱을 다시 시작하세요.',
-      desktopPortSaveFailed: '저장 실패',
-      desktopPortInvalid: '0~65535 사이의 포트를 입력하세요',
-      desktopBindPublicLabel: 'Allow LAN access to the API',
-      desktopBindPublicDescription: 'When enabled, the embedded server listens on 0.0.0.0 so other devices on your LAN can reach the API via the address below. This increases exposure—use host firewalls and routing rules as needed. Restart the app after changing this.',
-      desktopBindPublicSaved: 'Saved. Restart the app for it to take effect.',
-      desktopBindPublicSaveFailed: 'Save failed',
-      lanUrlLabel: 'LAN API base URL',
-      lanUrlDescription: 'Shown after "Allow LAN access" is on and the app has restarted. If the IP is wrong, replace the host with your machine IPv4 from system network settings.',
-      lanUrlCopyTitle: 'Copy LAN API URL',
-      lanUrlUnavailable: 'The API is listening on all interfaces, but no LAN IPv4 could be detected automatically. Find your IPv4 in network settings and build http://YOUR_IP:PORT/api/v1 manually.'
-    },
-    messages: {
-      fetchFailed: '워크스페이스 정보 가져오기 실패',
-      networkError: '네트워크 오류, 나중에 다시 시도해주세요'
-    },
     deleteDangerZone: {
-      title: 'Delete this workspace',
-      desc: 'Delete the whole workspace and its configuration. Members will no longer be able to access its knowledge bases, agents, or API key.',
-      button: 'Delete workspace',
-      confirmTitle: 'Delete this workspace?',
-      confirmBody: 'This will delete "{name}" and make its knowledge bases, agents, members, and API key unavailable. This action cannot be undone.',
       confirmHint: 'Type the workspace name "{name}" to confirm deletion.',
-      confirm: 'Delete workspace',
       nameMismatch: 'Workspace name does not match',
-      success: 'Workspace deleted',
-      failed: 'Failed to delete workspace'
+      failed: 'Failed to delete workspace',
     },
     leaveDangerZone: {
-      title: '이 스페이스 나가기',
-      desc: '현재 스페이스에서 멤버십을 종료합니다. 지식 베이스 및 에이전트에 접근할 수 없게 되며, 이후 초대되면 다시 참여할 수 있습니다.',
-      button: '스페이스 나가기'
-    },
-    storage: {
-      quotaLabel: '저장소 할당량',
-      quotaDescription: '워크스페이스의 총 저장 스페이스 할당량',
-      usedLabel: '사용된 저장소',
-      usedDescription: '이미 사용된 저장 스페이스',
-      usageLabel: '저장소 사용률',
-      usageDescription: '저장 스페이스의 사용 백분율'
+      button: '스페이스 나가기',
     },
     details: {
       idLabel: '워크스페이스 ID',
       idDescription: '소속 워크스페이스의 고유 식별자',
-      nameLabel: '워크스페이스 이름',
       nameDescription: '소속 워크스페이스의 이름',
-      descriptionLabel: '워크스페이스 설명',
       descriptionDescription: '워크스페이스의 상세 설명',
       businessLabel: '워크스페이스 비즈니스',
       businessDescription: '워크스페이스가 속한 비즈니스 유형',
-      statusLabel: '워크스페이스 상태',
       statusDescription: '워크스페이스의 현재 운영 상태',
-      createdAtLabel: '워크스페이스 생성 시간',
-      createdAtDescription: '워크스페이스가 생성된 시간',
       editName: '이름 수정',
       editNamePlaceholder: '새 워크스페이스 이름을 입력하세요',
       editNameConfirm: '저장',
@@ -3993,28 +3083,17 @@ export default {
       editDescriptionPlaceholder: '새 워크스페이스 설명을 입력하세요',
       editDescriptionSuccess: '워크스페이스 설명이 업데이트되었습니다',
       editDescriptionFailed: '워크스페이스 설명 업데이트 실패',
-      descriptionEmptyPlaceholder: '미입력'
+      descriptionEmptyPlaceholder: '미입력',
     },
     create: {
-      action: '새 워크스페이스 만들기',
-      dialogTitle: '새 워크스페이스 만들기',
       dialogSubtitle: '워크스페이스는 자체 지식 베이스와 멤버를 가지며, 사용자가 자동으로 소유자가 됩니다.',
-      nameLabel: '워크스페이스 이름',
-      namePlaceholder: '예: 새 프로젝트',
-      nameRequired: '워크스페이스 이름을 입력하세요',
-      descriptionLabel: '설명(선택)',
-      descriptionPlaceholder: '이 워크스페이스의 용도를 간단히 설명하세요',
-      submit: '만들기',
-      cancel: '취소',
-      success: '워크스페이스가 생성되었습니다',
-      failed: '워크스페이스 생성 실패',
-      disabled: '현재 시스템에서는 초대를 통해서만 공간에 참여할 수 있으며 직접 만들 수 없습니다.'
+      disabled: '현재 시스템에서는 초대를 통해서만 공간에 참여할 수 있으며 직접 만들 수 없습니다.',
     },
     switcher: {
       menuLabel: '워크스페이스 전환',
       currentBadge: '현재',
       homeTooltip: '기본 워크스페이스',
-      empty: '현재 하나의 워크스페이스에만 속해 있습니다'
+      empty: '현재 하나의 워크스페이스에만 속해 있습니다',
     }
   },
   chat: {
@@ -4086,7 +3165,6 @@ export default {
         noSandbox: '아직 샌드박스가 없고 현재 에이전트에 샌드박스 백엔드가 구성되지 않아 만들 위치를 정할 수 없습니다. 샌드박스가 구성된 에이전트로 전환하거나 코드 실행이 필요한 메시지를 보내세요.',
         unsupported: '현재 샌드박스 백엔드는 대화형 터미널을 지원하지 않습니다',
         disconnected: '연결이 끊어졌습니다',
-        retry: '다시 연결',
         sessionEnded: '터미널 세션이 종료되었습니다',
         idleDisconnected: '터미널이 유휴 상태로 연결이 끊어졌습니다. 샌드박스는 TTL에 따라 일시 중지됩니다. 다시 연결할 수 있습니다.',
         authRevoked: '로그인 상태가 더 이상 유효하지 않아 터미널 연결이 끊어졌습니다. 다시 로그인한 뒤 재연결하세요.',
@@ -4100,16 +3178,12 @@ export default {
     truncatedHint: '모델의 응답당 출력 한도에서 답변이 잘렸습니다. 위 내용은 잘리기 전까지 생성된 부분입니다.',
     rewind: {
       tooltip: '여기로 되돌리기',
-      confirmBody: '이 메시지 이후의 대화를 삭제합니다. 질문에서 되돌리면 해당 질문도 지워지고 입력창에 다시 채워집니다. 체크포인트가 있으면 작업 영역도 되돌립니다. 이 작업은 취소할 수 없습니다.',
       confirmButton: '되돌리기',
       cancelButton: '취소',
-      success: '되돌렸습니다',
       busy: '이번 답변이 끝난 뒤에 되돌리세요',
       noCheckpoint: '되돌릴 수 없습니다. 라이브 작업 영역은 있지만 도달 가능한 체크포인트가 없습니다',
       sandboxReplaced: '되돌릴 수 없습니다. 샌드박스가 교체되어 이전 체크포인트에 도달할 수 없습니다',
       reloadFailed: '대화는 되돌렸지만 기록을 다시 불러오지 못했습니다. 이전 메시지가 없으면 새로고침하세요',
-      failed: '되돌리기에 실패했습니다. 다시 시도하세요',
-      skipped: '대화는 되돌렸지만 작업 영역은 변경하지 않았습니다',
       skipNoSandbox: '대화는 되돌렸지만 작업 영역은 변경하지 않았습니다(샌드박스가 없음)',
       skipNoCheckpoint: '대화는 되돌렸지만 작업 영역은 변경하지 않았습니다(되돌릴 체크포인트가 없음)',
     },
@@ -4235,21 +3309,16 @@ export default {
     attachmentTooLarge: '파일 {name}이(가) {max}MB 제한을 초과합니다',
     attachmentTypeNotSupported: '지원하지 않는 파일 형식: {name}',
     attachmentUploading: '업로드 중 {progress}%',
-    attachmentParsing: '분석 중',
     attachmentReady: '준비됨',
     attachmentUploadFailed: '첨부 파일 업로드 실패',
     attachmentParseFailed: '첨부 파일 분석 실패',
-    attachmentStillProcessing: '첨부 파일 {name}을(를) 아직 분석 중입니다'
+    attachmentStillProcessing: '첨부 파일 {name}을(를) 아직 분석 중입니다',
   },
   knowledgeEditor: {
     titleCreate: '지식베이스 생성',
     titleEdit: '지식베이스 설정',
     advanced: {
-      title: '고급 설정',
-      description: '질문 생성, 멀티모달 등 고급 기능 설정',
       multimodal: {
-        label: '멀티모달 기능',
-        description: '이미지 등 멀티모달 콘텐츠 이해 기능 활성화',
         vllmLabel: 'VLLM 비전 모델',
         vllmDescription: '멀티모달 이해를 위한 비전 언어 모델 (필수)',
         vllmPlaceholder: 'VLLM 모델을 선택해주세요 (필수)',
@@ -4267,63 +3336,36 @@ export default {
         imageAttrsOcrConditionsDesc: '관찰된 속성이 아래 조건을 충족하면 해당 이미지에 OCR을 실행합니다',
         imageAttrsOcrOnUnobserved: '이미지 속성 관찰에 실패해도 OCR 실행',
         imageAttrsOcrOnUnobservedDesc: '모델이 이미지 속성을 올바르게 관찰하지 못하면 본문 텍스트 손실을 막기 위해 기본적으로 OCR을 실행합니다. 끄면 건너뜁니다. (4B 등 소형 비전 모델을 쓰거나, 사용자 지정 이미지 지시문이 시스템 프롬프트와 충돌할 때 관찰에 실패할 수 있습니다. 8B 이상은 실패 가능성이 낮아 끄지 않는 것을 권장합니다)',
-        imagePipelineKbNote: '기본값은 지식베이스 설정을 따르며 이번 작업에 맞게 조정할 수 있습니다'
+        imagePipelineKbNote: '기본값은 지식베이스 설정을 따르며 이번 작업에 맞게 조정할 수 있습니다',
       },
       tableMetadataInstructions: {
-        label: '테이블 메타데이터 지침',
-        description: 'CSV/Excel 요약에 비즈니스 배경과 필드 의미를 추가합니다',
-        placeholder: '예: 판매 주문 테이블이며 금액 단위와 내부 상태 코드를 설명…'
+        placeholder: '예: 판매 주문 테이블이며 금액 단위와 내부 상태 코드를 설명…',
       },
       questionGeneration: {
-        label: 'AI 질문 생성',
-        description: '문서 파싱 시 대규모 모델을 호출하여 각 청크에 대한 관련 질문을 생성하여 검색 재현율을 향상시킵니다. 활성화하면 문서 파싱 시간이 증가합니다.',
         countLabel: '생성 질문 수',
         countDescription: '각 문서 청크에서 생성할 질문 수 (1-10)',
     instructionsLabel: '질문 생성 지침',
         instructionsDescription: '안정적인 출력 형식을 유지하면서 대상, 상황 및 표현 방식을 지정합니다',
-        instructionsPlaceholder: '예: 시험 문제 형식을 피하고 자연스러운 고객 지원 질문을 생성…'
+        instructionsPlaceholder: '예: 시험 문제 형식을 피하고 자연스러운 고객 지원 질문을 생성…',
       },
       profile: {
-        label: '지식베이스 설명 자동 생성',
-        description: '문서 추가·삭제·요약 갱신 후 문서 프로필 집계에서 설명을 자동 생성합니다. 집계 자체는 모델을 호출하지 않으며, 집계 결과가 바뀔 때만 작은 모델 호출을 한 번 수행합니다.',
         modelLabel: '생성 모델',
         modelDescription: '비워 두면 지식베이스 요약 모델을 사용합니다.',
         modelPlaceholder: '생성 모델 선택',
         instructionsLabel: '설명 생성 요구사항',
-        instructionsDescription: '대상 독자, 유지할 용어, 문체 등을 보충합니다. 출력 형식은 고정됩니다.',
-        instructionsPlaceholder: '예: 고객지원 담당자 대상, 제품군을 쉬운 말로 설명하고 모델 번호는 유지…'
+        instructionsPlaceholder: '예: 고객지원 담당자 대상, 제품군을 쉬운 말로 설명하고 모델 번호는 유지…',
       },
       autoTag: {
-        label: '자동 태그 연결',
-        description: '문서 파싱 후 현재 지식베이스의 기존 태그 중 적합한 태그를 연결합니다. 태그를 생성하거나 삭제하지 않으며 모델 호출이 한 번 추가됩니다.',
-        modelLabel: '분류 모델',
-        modelDescription: '비워 두면 지식베이스 요약 모델을 사용합니다.',
-        modelPlaceholder: '분류 모델 선택',
         maxTagsLabel: '문서당 최대 태그 수',
         maxTagsDescription: '문서마다 기존 태그 1-10개를 자동 연결합니다.',
         skipIfTaggedLabel: '태그가 있는 문서 건너뛰기',
-        skipIfTaggedDescription: '활성화하면 업로드 시 수동으로 태그를 지정한 문서에는 자동 태그를 추가하지 않아 사용자의 분류 의도를 유지합니다.'
+        skipIfTaggedDescription: '활성화하면 업로드 시 수동으로 태그를 지정한 문서에는 자동 태그를 추가하지 않아 사용자의 분류 의도를 유지합니다.',
       }
     },
-    asr: {
-      title: '오디오 음성 인식',
-      description: 'ASR(음성-텍스트)을 설정합니다. 활성화 시 오디오 파일을 업로드해 텍스트로 전사할 수 있습니다(mp3, wav, m4a, flac, ogg 등). 동영상 업로드는 지원하지 않습니다.',
-      label: '오디오 음성 인식 사용',
-      desc: '활성화하면 오디오를 지식베이스에 업로드할 수 있으며, 음성이 텍스트로 전사되어 파싱·검색에 사용됩니다',
-      modelLabel: 'ASR 모델',
-      modelDescription: '오디오의 음성을 텍스트로 전사하는 모델 (예: OpenAI Whisper)',
-      modelPlaceholder: 'ASR 모델을 선택해주세요',
-      languageLabel: '오디오 언어 힌트',
-      languageDescription: '선택 사항입니다. 기본 언어를 지정하면 일부 ASR 모델의 인식이 향상되며, 비워 두면 자동 감지합니다.',
-      languagePlaceholder: '예: zh, en; 비워 두면 자동 감지'
-    },
     multimodal: {
-      title: '이미지 처리 설정',
-      description: '이미지 콘텐츠 이해 기능을 설정하여 이미지 등 비텍스트 콘텐츠의 파싱 및 검색을 지원합니다'
+      description: '이미지 콘텐츠 이해 기능을 설정하여 이미지 등 비텍스트 콘텐츠의 파싱 및 검색을 지원합니다',
     },
     chunking: {
-      title: '청크 설정',
-      description: '업로드된 문서가 임베딩되기 전에 분할되는 방식을 제어합니다. 대부분의 경우 기본값으로 충분합니다.',
       sizeLabel: '청크 크기',
       sizeDescription: '청크당 최대 문자 수 (100-4000). 기본값 512 ≈ 영어 100-130 토큰. FAQ는 200-400, 서술형 문서는 1000-2000.',
       characters: '문자',
@@ -4349,13 +3391,11 @@ export default {
       languagesDescription: '휴리스틱 패턴을 선택한 언어(DE/EN/ZH)로만 제한합니다. 비어 있음 = 샘플에서 자동 감지. 동질적인 코퍼스는 명시적으로 설정하여 언어 간 오탐 방지.',
       languagesPlaceholder: '자동 감지',
       debug: {
-        toggle: '청킹 결과 미리보기',
         toggleHint: '재업로드 없이 샘플 텍스트에 대해 청커 실행',
         sampleLabel: '샘플 텍스트',
         samplePlaceholder: '현재 구성으로 어떻게 청크되는지 보려면 Markdown / 일반 텍스트 스니펫을 붙여넣으세요…',
         presetLabel: '샘플 불러오기:',
         runButton: '미리보기 실행',
-        loading: '샘플에 대해 청커 실행 중…',
         errorPrefix: '미리보기 실패',
         selectedTier: '선택된 전략',
         rejected: '거부된 계층',
@@ -4363,7 +3403,7 @@ export default {
         fallbackWarning: '전략 체인이 모두 실패함 — 현재 설정으로는 콘텐츠를 지능적으로 분할할 수 없음',
         stats: {
           chunks: '청크',
-          truncated: '잘림; 총 {total}'
+          truncated: '잘림; 총 {total}',
         },
         profile: {
           lines: '줄',
@@ -4371,36 +3411,32 @@ export default {
           headings: 'Markdown 제목',
           pageBreaks: '페이지 구분',
           chapterMarkers: '챕터 마커',
-          languages: '언어'
+          languages: '언어',
         },
         samples: {
           markdown: 'Markdown 문서',
           faq: 'FAQ 목록',
           chapter: 'PDF 챕터',
-          plain: '일반 텍스트'
+          plain: '일반 텍스트',
         }
       },
       languageOptions: {
         de: '독일어',
         en: '영어',
-        zh: '중국어'
+        zh: '중국어',
       },
       strategies: {
         legacy: {
-          label: '길이 기준',
-          tooltip: '구조를 무시하고 문자 수와 구분자로만 재귀 분할합니다 — 원래 동작. 위 전략들이 콘텐츠에서 잘못 작동할 때 사용하세요.'
+          tooltip: '구조를 무시하고 문자 수와 구분자로만 재귀 분할합니다 — 원래 동작. 위 전략들이 콘텐츠에서 잘못 작동할 때 사용하세요.',
         },
         heuristic: {
-          label: '구조 인식',
-          tooltip: '페이지 구분자, 번호 매겨진 섹션, 다국어 챕터 마커(DE/EN/ZH), 대문자 제목 등 구조적 신호를 감지하여 분할합니다. Markdown 헤딩이 없는 PDF/스캔본에 적합합니다.'
+          tooltip: '페이지 구분자, 번호 매겨진 섹션, 다국어 챕터 마커(DE/EN/ZH), 대문자 제목 등 구조적 신호를 감지하여 분할합니다. Markdown 헤딩이 없는 PDF/스캔본에 적합합니다.',
         },
         heading: {
-          label: '헤딩 기준',
-          tooltip: 'Markdown 헤딩(#, ##, ###) 경계에서 분할하며 각 청크에 헤딩 경로가 부착됩니다. 잘 구조화된 Markdown 문서에 적합합니다.'
+          tooltip: 'Markdown 헤딩(#, ##, ###) 경계에서 분할하며 각 청크에 헤딩 경로가 부착됩니다. 잘 구조화된 Markdown 문서에 적합합니다.',
         },
         auto: {
-          label: '자동',
-          tooltip: '문서 프로파일러가 콘텐츠 구조에 따라 「헤딩 기준」, 「구조 인식」, 「길이 기준」 분할 중 하나를 자동 선택합니다.'
+          tooltip: '문서 프로파일러가 콘텐츠 구조에 따라 「헤딩 기준」, 「구조 인식」, 「길이 기준」 분할 중 하나를 자동 선택합니다.',
         }
       },
       separators: {
@@ -4411,34 +3447,18 @@ export default {
         questionCn: '물음표 (？)',
         semicolonCn: '중국어 세미콜론 (；)',
         semicolonEn: '영어 세미콜론 (;)',
-        space: '공백 ( )'
+        space: '공백 ( )',
       }
-    },
-    models: {
-      title: '모델 설정',
-      description: '지식베이스에 적합한 AI 모델 선택',
-      llmLabel: 'LLM 대규모 언어 모델',
-      llmDesc: '요약 및 개요를 위한 대규모 언어 모델',
-      llmPlaceholder: 'LLM 모델을 선택해주세요 (선택)',
-      embeddingLabel: 'Embedding 임베딩 모델',
-      embeddingDesc: '텍스트 벡터화를 위한 임베딩 모델',
-      embeddingPlaceholder: 'Embedding 모델을 선택해주세요',
-      embeddingLocked: '지식베이스에 이미 파일이 있어 Embedding 모델을 변경할 수 없습니다',
-      embeddingOptional: '(선택)',
-      embeddingWikiOptionalDesc: '선택 사항입니다. 설정하면 Wiki 디렉터리 분류의 유사도 매칭에 사용되어 새 페이지가 기존 폴더를 더 잘 재사용합니다. 설정하지 않으면 전체 디렉터리 트리를 기준으로 분류합니다.'
     },
     faqExport: {
       exportButton: 'CSV 내보내기',
       exportCSV: 'Export CSV',
       exportJSON: 'Export JSON',
       exportSuccess: '내보내기 성공',
-      exportFailed: '내보내기 실패'
+      exportFailed: '내보내기 실패',
     },
     faqImport: {
-      title: 'FAQ 일괄 가져오기',
       modeLabel: '가져오기 모드',
-      appendMode: '추가 가져오기',
-      replaceMode: '기존 항목 교체',
       fileLabel: '파일 선택',
       fileTip: 'JSON / CSV / Excel 지원. CSV/Excel 헤더: 태그(필수), 질문(필수), 유사 질문(선택-##로 구분), 반례 질문(선택-##로 구분), 로봇 답변(필수-##로 구분), 모든 답변 여부(선택-기본값 FALSE), 비활성화 여부(선택-기본값 FALSE), 추천 금지 여부(선택-기본값 False 추천 가능). 이전 헤더 \'분류\' 및 이전 형식(standard_question, answers, similar_questions, negative_questions)도 지원합니다.',
       clickToUpload: '파일 업로드 클릭',
@@ -4455,114 +3475,18 @@ export default {
       downloadExample: '예시 파일 다운로드',
       downloadExampleJSON: 'JSON 예시 다운로드',
       downloadExampleCSV: 'CSV 예시 다운로드',
-      downloadExampleExcel: 'Excel 예시 다운로드'
-    },
-    faq: {
-      title: 'Q&A',
-      subtitle: '구조화된 Q&A 관리, 표준 질문, 유사 질문, 반례를 지원하여 사용자 쿼리를 정확하게 매칭하고 Q&A 정확도를 향상시킵니다',
-      description: 'FAQ 지식베이스의 인덱스 전략 및 Q&A 구성 방식 설정',
-      indexModeLabel: '인덱스 방식',
-      indexModeDescription: '질문만 인덱싱하면 정확도가 향상되고, Q&A를 인덱싱하면 재현율이 향상됩니다',
-      questionIndexModeLabel: '질문 인덱스 방식',
-      questionIndexModeDescription: '병합 인덱스: 표준 질문과 유사 질문을 병합 인덱싱; 개별 인덱스: 표준 질문과 각 유사 질문을 독립적으로 인덱싱하여 더 정확하게 검색하지만 더 많은 저장 스페이스가 필요합니다',
-      entryGuide: 'FAQ 항목은 표준 질문, 유사 질문, 반례 및 여러 답변으로 구성됩니다. 지식베이스 세부 정보에서 일괄 가져오기 및 편집할 수 있습니다.',
-      tagDesc: 'FAQ 항목에 태그 선택',
-      tagPlaceholder: '태그를 선택하세요',
-      standardQuestion: '표준 질문',
-      standardQuestionDesc: '질문의 표준 표현을 설정합니다. 이것은 사용자가 가장 자주 묻는 질문 형식입니다.',
-      answers: '답변',
-      answersDesc: '완전하고 정확한 답변 내용을 제공합니다. 다양한 시나리오를 커버하기 위해 여러 답변을 추가할 수 있습니다.',
-      similarQuestions: '유사 질문',
-      similarQuestionsDesc: '표준 질문과 의미는 같지만 표현이 다른 질문을 추가하여 시스템이 사용자 쿼리를 더 잘 매칭하도록 돕습니다.',
-      negativeQuestions: '반례',
-      negativeQuestionsDesc: '이 답변과 매칭되지 않아야 하는 질문을 추가하여 잘못된 매칭을 제외합니다.',
-      editorCreate: 'FAQ 항목 추가',
-      editorEdit: 'FAQ 항목 편집',
-      answerPlaceholder: '답변 내용을 입력해주세요. 여러 줄 텍스트를 지원합니다. Ctrl+Enter 또는 버튼을 클릭하여 추가하세요',
-      similarPlaceholder: '유사 질문을 입력한 후 플러스 버튼을 클릭하여 추가',
-      negativePlaceholder: '반례를 입력한 후 플러스 버튼을 클릭하여 추가',
-      answerRequired: '최소 하나의 답변을 입력해주세요',
-      emptyTitle: 'FAQ 항목 없음',
-      emptyDesc: '위의 "FAQ 항목 추가" 버튼을 클릭하여 생성을 시작하세요',
-      searchPlaceholder: '질문과 답변 검색...',
-      searchTest: '검색 테스트',
-      createGroup: '새로 만들기',
-      searchTestTitle: 'FAQ 검색 테스트',
-      queryLabel: '쿼리 내용',
-      queryPlaceholder: '검색할 질문을 입력해주세요',
-      vectorThresholdDesc: '범위 0-1, 기본값 0.7',
-      matchCountLabel: '결과 수',
-      matchCountDesc: '범위 1-50, 기본값 10',
-      searchButton: '검색 시작',
-      searching: '검색 중...',
-      searchResults: '검색 결과',
-      noResults: '일치하는 FAQ 항목을 찾을 수 없습니다',
-      matchedQuestion: '일치된 질문',
-      matchTypeEmbedding: '벡터 매칭',
-      matchTypeKeywords: '키워드 매칭',
-      similarityThresholdLabel: '유사도 임계값',
-      statusEnabled: '활성화됨',
-      statusDisabled: '비활성화됨',
-      statusEnableSuccess: 'FAQ 항목이 활성화되었습니다',
-      statusDisableSuccess: 'FAQ 항목이 비활성화되었습니다',
-      statusUpdateFailed: '상태 업데이트 실패',
-      recommended: '추천',
-      recommendedEnabled: '추천 활성화됨',
-      recommendedDisabled: '추천 비활성화됨',
-      recommendedDisableSuccess: 'FAQ 항목 추천이 비활성화되었습니다',
-      recommendedUpdateFailed: '추천 상태 업데이트 실패',
-      batchUpdateTag: '일괄 태그 설정',
-      batchUpdateTagTip: '{count}개 선택된 항목에 태그가 설정됩니다',
-      batchEnable: '일괄 활성화',
-      batchDisable: '일괄 비활성화',
-      batchDelete: '일괄 삭제',
-      confirmBatchDelete: '선택한 FAQ 항목 {count}개를 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.',
-      confirmDelete: '이 FAQ 항목을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.',
-      batchDeleteSuccess: 'FAQ 항목 {count}개를 삭제했습니다',
-      modes: {
-        questionOnly: '표준 질문/유사 질문만',
-        questionAnswer: '표준 질문 + 답변',
-        combined: '병합 인덱스',
-        separate: '개별 인덱스'
-      }
+      downloadExampleExcel: 'Excel 예시 다운로드',
     },
     document: {
-      title: '문서',
-      subtitle: '클릭 또는 드래그하여 업로드, 다양한 형식의 문서를 자동으로 파싱하고 지능적으로 청킹하여 검색 가능한 지식베이스를 빠르게 구축합니다'
-    },
-    messages: {
-      loadModelsFailed: '모델 목록 로드 실패',
-      loadDataFailed: '지식베이스 데이터 로드 실패',
-      notFound: '지식베이스가 존재하지 않습니다',
-      nameRequired: '지식베이스 이름을 입력해주세요',
-      summaryRequired: 'Summary 모델을 선택해주세요',
-      multimodalInvalid: '멀티모달 설정 검증 실패',
-      createSuccess: '지식베이스 생성 성공',
-      createFailed: '지식베이스 생성 실패',
-      missingId: '지식베이스 ID가 없습니다',
-      buildDataFailed: '데이터 구축 실패',
-      updateSuccess: '설정 저장 성공',
-      indexModeRequired: 'FAQ 인덱스 방식을 선택해주세요',
-      storageChangeConfirm: '지식베이스에 파일이 있습니다. 스토리지 엔진을 변경하면 이전 파일에 접근할 수 없게 될 수 있습니다. 계속하시겠습니까?'
-    },
-    share: {
-      description: '스페이스 구성원이 접근하고 사용할 수 있도록 지식베이스를 스페이스에 공유합니다.',
-      hintTitle: '공유 안내',
-      addShare: '공유',
-      unshareConfirm: '"{name}" 공유를 취소하시겠습니까?',
-      tip1: '공유 후 스페이스 구성원은 설정된 권한에 따라 이 지식베이스에 액세스하게 됩니다.',
-      tip2: '편집 가능한 권한을 통해 구성원은 지식베이스 콘텐츠를 수정할 수 있으며, 읽기 전용 권한은 검색 및 Q&A만 허용합니다.'
+      subtitle: '클릭 또는 드래그하여 업로드, 다양한 형식의 문서를 자동으로 파싱하고 지능적으로 청킹하여 검색 가능한 지식베이스를 빠르게 구축합니다',
     },
     buttons: {
-      create: '지식베이스 생성',
       save: '설정 저장',
-      saveAndClose: '저장 후 닫기',
     },
     footer: {
       instantEffect: '이 페이지의 변경 사항은 즉시 적용되며 저장할 필요가 없습니다',
     },
     postCreateHint: {
-      title: '생성 완료',
       footer: '설정을 계속 조정하고 공유·데이터 소스를 구성한 뒤 "저장 후 닫기"를 클릭하세요.',
       followUpDesc: '왼쪽에서 데이터 소스를 구성하거나 "공유 관리"에서 스페이스에 게시할 수 있습니다',
     },
@@ -4639,7 +3563,6 @@ export default {
       tabGalleryTip: '문서에서 추출한 모든 이미지를 둘러봅니다',
       viewTabs: '지식베이스 보기',
       gallery: {
-        title: '갤러리',
         allImages: '모든 이미지',
         count: '{count}장',
         countFiltered: '{count}장 일치',
@@ -4660,7 +3583,6 @@ export default {
         sortOrder: '순서',
         orderAsc: '오름차순',
         orderDesc: '내림차순',
-        empty: '아직 볼 수 있는 이미지가 없습니다',
         emptyHint: '문서 속 이미지는 파싱이 끝나면 여기에 표시됩니다',
         emptyFiltered: '조건에 맞는 이미지가 없습니다',
         imageLoadError: '이미지를 불러오지 못했습니다',
@@ -4670,9 +3592,7 @@ export default {
         ocr: '이미지 속 텍스트(OCR)',
         attributes: '속성',
         source: '원본 문서',
-        details: '상세 정보',
         dimensions: '크기',
-        status: '상태',
         openSource: '원본 문서 열기',
         copy: '복사',
         zoomIn: '확대 (+)',
@@ -4706,7 +3626,6 @@ export default {
       },
       tabGraph: '그래프',
       tabGraphTip: 'Wiki 페이지 간의 링크 관계 그래프(페이지 링크 그래프)입니다. \'지식 베이스 설정 → 지식 그래프\'에서 구성하는 LLM 기반 엔티티-관계 지식 그래프와는 다른 개념입니다.',
-      searchPlaceholder: 'Wiki 페이지 검색...',
       searchNoResults: '일치하는 페이지가 없습니다',
       viewModeToggle: '디렉터리 보기 전환',
       viewTree: '트리 보기',
@@ -4740,8 +3659,6 @@ export default {
       filterSynthesis: '종합',
       filterComparison: '비교',
       legendFamiliar: '자주 쓰는 자료',
-      emptyTitle: 'Wiki 페이지가 없습니다',
-      emptyDesc: 'Wiki를 활성화하고 문서를 업로드하면 지식 페이지가 자동 생성됩니다',
       selectPageHint: '왼쪽에서 페이지를 선택하여 내용을 확인하세요',
       version: 'v{ver}',
       aliases: '별칭',
@@ -4750,7 +3667,6 @@ export default {
       graphEmpty: '그래프 로딩 중...',
       fitView: '화면에 맞춤',
       indexTitle: '인덱스',
-      loading: '로딩 중…',
       loadMoreShort: '더 보기',
       indexOverviewTag: '분류 목록',
       indexEmpty: 'Wiki 페이지가 없습니다. 먼저 문서를 업로드하세요.',
@@ -4809,15 +3725,11 @@ export default {
       issueFixSingle: '수정',
       fixStartError: '수정 도우미 시작 실패',
       issueFixPromptSingle: '페이지 [[{slug}]] 의 문제(ID: {id})를 수정해 주세요.',
-      issueFixPromptAutoStart: '페이지 [[{slug}]] 의 다음 문제들을 수정해 주세요:'
+      issueFixPromptAutoStart: '페이지 [[{slug}]] 의 다음 문제들을 수정해 주세요:',
     },
     indexing: {
-      title: '인덱싱 전략',
-      description: '문서 업로드 후 처리 파이프라인을 구성합니다. 각 인덱싱 방식을 독립적으로 켜거나 끌 수 있습니다',
       searchTitle: 'RAG 검색',
       searchDesc: '문서를 청크 분할, 벡터화, 키워드 인덱싱하여 하이브리드 검색을 지원합니다',
-      wikiTitle: 'Wiki 지식베이스',
-      wikiDesc: '상호 연결된 Wiki 지식 페이지를 자동 생성하여 구조화된 지식 체계를 구축합니다',
       graphTitle: '지식 그래프',
       graphDesc: '엔티티와 관계를 추출하여 지식 그래프를 구축하고 그래프 검색을 지원합니다',
       atLeastOne: '최소 하나의 인덱싱 전략을 활성화해야 합니다',
@@ -4826,10 +3738,9 @@ export default {
       rebuildConfirmTitle: '인덱스 재구축',
       rebuildConfirmBody: '인덱싱 전략이 변경되었습니다. 기존 {count}개 문서를 재처리하시겠습니까? 시간이 다소 걸릴 수 있습니다.',
       rebuildSuccess: '재구축 작업이 제출되었습니다. 총 {count}개 문서',
-      rebuildSkip: '데이터 소스에서 나중에 수동으로 재구축할 수 있습니다'
+      rebuildSkip: '데이터 소스에서 나중에 수동으로 재구축할 수 있습니다',
     },
     wiki: {
-      title: 'Wiki 설정',
       synthesisModelLabel: '합성 모델',
       synthesisModelPlaceholder: 'Wiki 생성에 사용할 LLM 모델을 선택하세요',
       synthesisModelTip: '설정하지 않으면 요약 모델로 대체됩니다',
@@ -4846,77 +3757,32 @@ export default {
       granularityExhaustive: '상세',
       granularityFocusedHint: '문서의 주요 주체만 추출합니다 (예: 이력서 → 인물과 프로젝트). 가장 깔끔하지만 부수 엔티티는 누락될 수 있습니다.',
       granularityStandardHint: '주요 주체 + 상세히 논의된 부수 엔티티/개념. 지나가듯 언급된 용어는 생략합니다. 권장 기본값입니다.',
-      granularityExhaustiveHint: '스쳐 지나가는 기술 스택 언급을 포함해 명명된 모든 엔티티와 개념을 추출합니다. KB를 용어집으로 사용할 때 적합합니다.'
+      granularityExhaustiveHint: '스쳐 지나가는 기술 스택 언급을 포함해 명명된 모든 엔티티와 개념을 추출합니다. KB를 용어집으로 사용할 때 적합합니다.',
     },
     basic: {
-      title: '기본 정보',
-      description: '지식베이스의 이름과 설명 정보 설정',
       kbId: '지식베이스 ID',
       kbIdDesc: 'API 연동에서 이 ID로 지식베이스를 지정할 수 있습니다',
-      typeLabel: '지식베이스 유형',
       typeDocument: '문서',
       typeFAQ: 'Q&A',
       typeDescription: 'FAQ 유형은 구조화된 Q&A 데이터에 적합합니다. 문서 유형은 파일 파싱과 청킹을 지원합니다. Wiki 유형은 LLM을 통해 상호 연결된 지식 페이지를 자동으로 구축합니다.',
-      nameLabel: '지식베이스 이름',
-      namePlaceholder: '지식베이스 이름을 입력해주세요',
-      descriptionLabel: '지식베이스 설명',
-      descriptionPlaceholder: '지식베이스 설명을 입력해주세요 (선택)',
-      profile: {
-        title: 'AI 생성 설명',
-        hint: '문서 프로필 집계에서 생성됩니다. 위의 수동 설명을 덮어쓰지 않으며, 에이전트는 두 설명을 함께 읽어 질문이 이 지식베이스에 속하는지 판단합니다.',
-        empty: '아직 생성되지 않았습니다. 문서를 업로드하고 요약이 완료된 뒤 아래 버튼으로 생성하세요.',
-        noDocuments: '이 지식베이스에 파싱이 완료된 문서가 아직 없습니다.',
-        questions: '대표 질문',
-        generate: 'AI 설명 생성',
-        regenerate: '다시 생성',
-        adopt: '설명으로 사용',
-        generated: 'AI 설명이 생성되었습니다',
-        generateFailed: 'AI 설명 생성에 실패했습니다',
-        adopted: '설명란에 복사했습니다. 저장하면 적용됩니다',
-        failed: '마지막 생성 실패: {error}',
-        generatedAt: '{time} 생성 · 문서 {count}개 기준'
-      }
-    },
-    errors: {
-      vectorStoreBindingInvalid: '선택한 벡터 스토어를 사용할 수 없습니다. 다른 스토어를 선택하거나 시스템 기본값을 사용하세요.',
-      vectorStoreUnavailable: '선택한 벡터 스토어가 현재 사용할 수 없는 상태입니다. 설정 → 벡터 스토어에서 연결 상태를 확인하세요.'
     },
     sidebar: {
-      basic: '기본 정보',
       models: '모델 설정',
       vectorStore: '벡터 스토어',
       chunking: '청크 설정',
       storage: '스토리지 엔진',
-      advanced: '고급 설정',
       faq: 'FAQ 설정',
       graph: '지식 그래프',
-      multimodal: '이미지 처리',
-      asr: '오디오',
       datasource: '데이터 소스',
       share: '공유관리',
-      activity: '활동 기록'
-    },
-    navGroups: {
-      basic: '기본',
-      processing: '인덱싱 및 파싱',
-      data: '스토리지 및 데이터',
-      integration: '게시 및 통합',
-      management: '관리 및 감사'
+      activity: '활동 기록',
     },
     activity: {
-      title: '활동 기록',
-      description: '이 지식 베이스의 주요 변경 사항과 백그라운드 작업 시작 기록입니다. 보존 기간은 감사 로그 정책을 따릅니다.',
       allOutcomes: '모든 결과',
       allActions: '모든 작업',
-      refresh: '새로고침',
-      retry: '다시 시도',
-      empty: '아직 활동 기록이 없습니다',
       emptyFiltered: '일치하는 활동 기록이 없습니다',
       clearFilters: '필터 지우기',
       loadingMore: '불러오는 중…',
-      end: '이전 기록이 없습니다',
-      loadFailed: '활동 기록을 불러오지 못했습니다',
-      systemActor: '시스템',
       actorWithAPIKey: '{actor} · API Key · {name}',
       actorAPIKey: 'API Key · {name}',
       knowledgeBase: '지식 베이스',
@@ -4925,14 +3791,11 @@ export default {
       importSummary: '성공 {success} / 실패 {failed} / 건너뜀 {skipped}',
       detailValues: {
         user: '사용자 시작',
-        manual: '수동',
         schedule: '예약',
         system: '시스템',
-        pending: '대기 중',
         completed: '완료',
         partial: '일부 완료',
         canceled: '취소됨',
-        failed: '실패',
         enqueue: '작업 제출',
         reuse_vectors: '벡터 재사용',
         reparse: '재분석',
@@ -4940,15 +3803,11 @@ export default {
         editor: '편집 가능',
         admin: '관리',
         append: '추가',
-        replace: '덮어쓰기'
+        replace: '덮어쓰기',
       },
       outcomes: {
         accepted: '접수됨',
-        success: '성공',
-        failed: '실패',
-        partial: '일부 완료',
-        canceled: '취소됨',
-        denied: '거부됨'
+        denied: '거부됨',
       },
       actions: {
         'kb.created': '지식 베이스 생성',
@@ -4984,7 +3843,7 @@ export default {
         'wiki.content_changed': 'Wiki 콘텐츠 업데이트',
         'faq.import_started': 'FAQ 가져오기 시작',
         'faq.import_completed': 'FAQ 가져오기 완료',
-        'faq.import_failed': 'FAQ 가져오기 실패'
+        'faq.import_failed': 'FAQ 가져오기 실패',
       },
       detailFields: {
         task_id: '작업 ID',
@@ -4995,12 +3854,10 @@ export default {
         sync_log_id: '동기화 로그 ID',
         mode: '모드',
         attempt: '처리 시도',
-        count: '항목 수',
         total: '전체',
         processed: '처리됨',
-        failed: '실패',
         skipped: '건너뜀',
-        failure_stage: '실패 단계'
+        failure_stage: '실패 단계',
       },
       targets: {
         knowledge_base: '지식 베이스',
@@ -5010,36 +3867,18 @@ export default {
         data_source: '데이터 소스',
         knowledge_base_share: '공유',
         knowledge_move: '지식 이동',
-        wiki: 'Wiki'
+        wiki: 'Wiki',
       },
       drawer: {
         sectionSummary: '요약',
         sectionIdentifiers: '식별자',
         sectionTask: '작업 정보',
-        targetChange: '변경 내용'
+        targetChange: '변경 내용',
       },
-      expanded: {
-        targetType: '대상 유형',
-        targetId: '대상 ID',
-        actorId: '시작자 ID',
-        apiKeyName: 'API 키 이름',
-        apiKeyId: 'API 키 ID',
-        details: '상세'
-      },
-      columns: {
-        time: '시간',
-        action: '작업',
-        target: '대상',
-        actor: '시작자',
-        outcome: '결과'
-      }
     }
   },
   embedPublish: {
-    create: '새 임베드 채널',
     channelsTitle: '임베드 채널',
-    disabled: '비활성화',
-    empty: '임베드 채널 없음',
     allowedOrigins: '허용 도메인',
     embedCode: '임베드 코드',
     widgetCode: '위젯 스크립트',
@@ -5057,10 +3896,7 @@ export default {
     copyChannelKeyTitle: '채널 키 복사',
     revealKey: '키 표시',
     hideKey: '키 숨기기',
-    createTitle: '새 임베드 채널',
-    name: '이름',
     nameDesc: '관리 목록 및 채널 식별용',
-    namePlaceholder: '예: 웹사이트 고객센터',
     nameDefaultHint: '기본값은 「에이전트명 · 웹 페이지 임베드」입니다. 직접 수정할 수 있으며, 비워 두고 저장해도 기본 이름이 사용됩니다.',
     defaultChannelName: '웹 페이지 임베드',
     defaultChannelNameWithAgent: '{agent} · 웹 페이지 임베드',
@@ -5091,15 +3927,12 @@ export default {
     createdWithToken: '임베드 채널 생성됨 — 입력란에 새 키가 표시됩니다. 지금 복사하여 보관하세요',
     created: '임베드 채널이 생성되었습니다',
     updated: '임베드 채널이 업데이트되었습니다',
-    saveFailed: '저장 실패',
     deleted: '삭제됨',
-    copied: '임베드 코드가 복사되었습니다',
     loadError: '로드 실패',
     missingChannel: '임베드 채널 또는 토큰 없음',
     invalidChannel: '잘못된 임베드 채널',
     sessionFailed: '대화 세션을 생성할 수 없습니다. 나중에 다시 시도하세요',
     channelDisabled: '임베드 채널이 비활성화되었습니다. 에이전트 편집기 → 웹 페이지 임베드에서 다시 활성화하세요',
-    loading: '로딩 중...',
     tabIframe: 'iframe',
     tabWidget: '위젯',
     tabSecure: '보안 모드',
@@ -5156,43 +3989,16 @@ export default {
     secureServerLabel: '서버 측 토큰 엔드포인트 예시(게시 토큰은 서버에만 보관)',
     tabServerNode: 'Node.js',
     tabServerGo: 'Go',
-    enabled: '채널 활성화',
-    deleteConfirm: '이 임베드 채널을 삭제하시겠습니까? 배포된 코드가 작동하지 않습니다.',
     defaultLocale: '기본 언어',
     defaultLocaleDesc: '방문자가 채팅을 열 때 사용할 UI 언어; 비우면 브라우저 또는 Widget setLocale()을 따릅니다.',
-    defaultLocaleBrowser: '브라우저 / 호스트 기본값'
+    defaultLocaleBrowser: '브라우저 / 호스트 기본값',
   },
   knowledgeList: {
-    create: '지식베이스 생성',
-    subtitle: '지식베이스를 관리하고 구성합니다. 문서형과 Q&A형 지식베이스를 지원합니다',
     sharedToOrgs: '{count} 스페이스에 공유됨',
     uninitializedBanner: '일부 지식베이스가 아직 초기화되지 않았습니다. 지식 문서를 추가하려면 먼저 설정에서 모델 정보를 구성해야 합니다',
     features: {
       knowledgeGraph: '지식 그래프 활성화됨',
-      multimodal: '멀티모달 활성화됨',
-      questionGeneration: '질문 생성 활성화됨',
-      wiki: 'Wiki'
-    },
-    detail: {
-      title: '공유 지식베이스',
-      sourceType: '소스 방법',
-      sourceTypeKbShare: '지식베이스는 이 스페이스에 직접 공유됩니다.',
-      sourceTypeAgent: '에이전트 액세스 가능(공유 에이전트를 통해 표시)',
-      sourceOrg: '소스 스페이스',
-      sourceFromAgent: '에이전트',
-      agentKbStrategy: '에이전트 지식베이스 전략',
-      agentKbStrategyAll: '모든 지식베이스',
-      agentKbStrategySelected: '지식베이스 지정',
-      agentKbStrategyNone: '지식베이스를 사용하지 않음',
-      sharedAt: '공유 시간',
-      myPermission: '내 권한',
-      goToKb: '지식베이스를 입력하세요'
-    },
-    messages: {
-      deleted: '삭제됨',
-      deleteFailed: '삭제 실패',
-      duplicateSuccess: '지식베이스 복제본이 생성되었습니다(콘텐츠 제외)',
-      duplicateFailed: '지식베이스 복제본 생성 실패'
+      wiki: 'Wiki',
     },
     sections: {
       pinned: '고정됨',
@@ -5201,55 +4007,37 @@ export default {
       tenantReadonly: '워크스페이스 · 읽기 전용',
       sharedByMe: '내가 공유한',
       sharedEditable: '공유받음 · 편집 가능',
-      sharedReadonly: '공유받음 · 읽기 전용'
+      sharedReadonly: '공유받음 · 읽기 전용',
     },
     pin: {
               pin: '상단 고정',
               unpin: '고정 해제',
       pinSuccess: '상단에 고정됨',
       unpinSuccess: '고정 해제됨',
-      failed: '작업 실패'
+      failed: '작업 실패',
     },
     menu: {
       viewDetails: '세부 사항을 확인하세요',
-      duplicate: '복제'
+      duplicate: '복제',
     },
     delete: {
-      confirmTitle: '삭제 확인',
       confirmMessage: '지식베이스 "{name}"을(를) 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다',
-      confirmButton: '삭제 확인'
+      confirmButton: '삭제 확인',
     },
-    empty: {
-      title: '지식베이스 없음',
-      description: '왼쪽 빠른 작업에서 "지식베이스 생성" 버튼을 클릭하여 첫 번째 지식베이스를 생성하세요',
-      sharedTitle: '아직 공유 지식베이스가 없습니다.',
-      sharedDescription: '공유 공간에 참여하거나 다른 사람에게 지식베이스를 공유해 달라고 요청할 수 있습니다.',
-      favoritesTitle: '즐겨찾기 없음',
-      favoritesDescription: '카드의 별표 아이콘을 눌러 즐겨찾기에 추가하세요',
-      recentsTitle: '최근 항목 없음',
-      recentsDescription: '최근에 연 지식베이스가 여기에 표시됩니다'
-    }
   },
   createChat: {
-    title: '안녕하세요, WeKnora입니다 — 당신의 지식을 손끝에',
     engine: {
-      label: '엔진',
       builtin: '내장 ReAct',
       trpc: 'tRPC Agent',
-      experimental: '실험적'
+      experimental: '실험적',
     },
     newSessionTitle: '새 세션',
     openProject: '프로젝트 선택',
     clearProject: '바인딩 해제',
     pickFailed: '선택한 경로를 열 수 없습니다',
-    messages: {
-      createFailed: '세션 생성 실패',
-      createError: '세션 생성 실패, 나중에 다시 시도해주세요'
-    }
   },
   input: {
     addModel: '모델 추가',
-    placeholder: '질문이나 작업 내용을 입력하세요…',
     agentMode: 'Agent 모드',
     normalMode: '일반 모드',
     normalModeDesc: '지식베이스 기반 RAG Q&A',
@@ -5282,97 +4070,60 @@ export default {
     modelLockedByAgent: '현재 에이전트는 모델 구성을 잠갔습니다.',
     imageUploadDisabledByAgent: '현재 에이전트에서 이미지 업로드가 활성화되지 않았습니다',
     goToAgentSettings: '에이전트 설정으로 이동',
-    messages: {
-      enterContent: '먼저 내용을 입력해주세요!',
-      replying: '응답 중입니다. 잠시 후 다시 시도해주세요!',
-      steerAttachmentPending: '첨부 파일 업로드가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.',
-      steerHasAttachments: '진행 중인 응답에는 첨부 파일을 추가할 수 없습니다. 먼저 제거하거나 응답이 끝난 뒤 보내주세요.',
-      steerFailed: '메시지 추가에 실패했습니다. 다시 시도해주세요.',
-      steerPromoteFailed: '지금 보내기에 실패했습니다. 다시 시도해주세요.',
-      steerRemoveFailed: '대기 중인 메시지를 삭제하지 못했습니다. 다시 시도해주세요.',
-      steerAlreadyInjected: '이 메시지는 이미 현재 응답에 반영되었습니다.',
-      steerFollowUpTimeout: '다음 응답이 제때 시작되지 않았습니다. 다시 보내주세요.',
-      steerNoActiveRun: '현재 진행 중인 응답이 없습니다. 메시지를 직접 보내주세요.',
-      agentSwitchedOn: 'Agent 모드로 전환되었습니다',
-      agentSwitchedOff: '일반 모드로 전환되었습니다',
-      agentSelected: '"{name}" 에이전트가 선택되었습니다.',
-      webSearchNotConfigured: '웹 검색 엔진이 구성되지 않았습니다. 먼저 설정에서 검색 엔진 선택 및 인터페이스 구성을 완료해주세요.',
-      webSearchEnabled: '웹 검색이 켜졌습니다',
-      webSearchDisabled: '웹 검색이 꺼졌습니다',
-      sessionMissing: '세션 ID가 존재하지 않습니다',
-      messageMissing: '메시지 ID를 가져올 수 없습니다. 페이지를 새로고침한 후 다시 시도해주세요',
-      stopSuccess: '생성이 중지되었습니다',
-      stopFailed: '중지 실패, 다시 시도해주세요'
-    },
     webSearch: {
       toggleOn: '웹 검색 켜기',
       toggleOff: '웹 검색 끄기',
-      notConfigured: '웹 검색 엔진이 구성되지 않았습니다'
+      notConfigured: '웹 검색 엔진이 구성되지 않았습니다',
     }
   },
   manualEditor: {
     defaultTitlePrefix: '새 문서',
     noDocumentKnowledgeBases: '사용 가능한 문서형 지식베이스가 없습니다. 먼저 문서형 지식베이스를 생성해주세요',
-    actions: {
-      cancel: '취소',
-      saveDraft: '임시 저장',
-      publish: '게시하기'
-    },
     loading: {
       content: '내용 로딩 중',
-      preparing: '편집기 준비 중'
-    },
-    status: {
-      draftTag: '현재 상태: 임시 저장',
-      publishedTag: '현재 상태: 게시됨',
-      lastUpdated: '최근 업데이트: {time}',
-      counter: '{chars}자 · {lines}줄'
+      preparing: '편집기 준비 중',
     },
     form: {
       knowledgeBasePlaceholder: '지식베이스를 선택해주세요',
       titleLabel: '지식 제목',
       knowledgeBaseLabel: '대상 지식베이스',
       titlePlaceholder: '제목을 입력해주세요',
-      contentPlaceholder: 'Markdown 구문을 지원합니다. # 제목, 목록, 코드 블록 등을 사용할 수 있습니다'
+      contentPlaceholder: 'Markdown 구문을 지원합니다. # 제목, 목록, 코드 블록 등을 사용할 수 있습니다',
     },
     success: {
       draftSaved: '임시 저장됨',
-      published: '지식이 게시되고 인덱싱이 시작되었습니다'
+      published: '지식이 게시되고 인덱싱이 시작되었습니다',
     },
     warning: {
       selectKnowledgeBase: '대상 지식베이스를 선택해주세요',
       enterTitle: '지식 제목을 입력해주세요',
-      enterContent: '지식 내용을 입력해주세요',
-      contentTooShort: '내용이 너무 짧습니다. 더 많은 정보를 추가한 후 게시하는 것을 권장합니다'
+      contentTooShort: '내용이 너무 짧습니다. 더 많은 정보를 추가한 후 게시하는 것을 권장합니다',
     },
     error: {
       fetchDetailFailed: '지식 세부 정보 가져오기 실패',
-      saveFailed: '저장 실패, 나중에 다시 시도해주세요'
+      saveFailed: '저장 실패, 나중에 다시 시도해주세요',
     },
     labels: {
-      currentKnowledgeBase: '현재 지식베이스'
+      currentKnowledgeBase: '현재 지식베이스',
     },
     section: {
-      content: '지식 내용'
+      content: '지식 내용',
     },
     title: {
       edit: 'Markdown 지식 편집',
-      create: '온라인 Markdown 지식 편집'
+      create: '온라인 Markdown 지식 편집',
     },
     preview: {
-      empty: '내용 없음'
+      empty: '내용 없음',
     },
     shortcuts: {
-      title: '단축키',
       continueList: '목록 이어쓰기',
-      indent: '들여쓰기 / Shift+Tab 내어쓰기'
+      indent: '들여쓰기 / Shift+Tab 내어쓰기',
     },
     view: {
-      edit: '편집',
       split: '분할',
-      preview: '미리보기',
       splitUnavailable: '너비가 부족합니다. 서랍을 넓히거나 전체 화면으로 전환하세요',
-      groupLabel: '편집기 보기'
+      groupLabel: '편집기 보기',
     },
     toolbar: {
       bold: '굵게',
@@ -5388,33 +4139,19 @@ export default {
       blockquote: '인용',
       codeBlock: '코드 블록',
       link: '링크 삽입',
-      image: '이미지 삽입',
       table: '표 삽입',
       horizontalRule: '구분선',
       headingGroup: '제목',
-      insertGroup: '삽입'
+      insertGroup: '삽입',
     },
     table: {
       column1: '열1',
       column2: '열2',
-      cell: '내용'
+      cell: '내용',
     },
-    placeholders: {
-      heading: '제목{level}',
-      listItem: '목록 항목',
-      taskItem: '작업 항목',
-      quote: '인용 내용',
-      code: '코드 내용',
-      linkText: '링크 텍스트',
-      imageAlt: '설명',
-      bold: '굵은 텍스트',
-      italic: '기울임 텍스트',
-      strike: '취소선',
-      inlineCode: 'code'
-    }
   },
   file: {
-    upload: '파일 업로드'
+    upload: '파일 업로드',
   },
   mentionDetail: {
     readOnlyFromAgent: '이 대화에서는 읽기 전용이며 지식베이스 목록에는 표시되지 않습니다.',
@@ -5425,45 +4162,24 @@ export default {
     mcpStale: '다시 동기화 필요',
     belongsToKb: '지식베이스: ',
     belongsToOrg: '스페이스: ',
-    noCompatibleKbForAgent: '현재 에이전트의 도구와 범위 내 지식베이스의 기능이 일치하지 않아 참조할 수 있는 지식베이스가 없습니다.'
+    noCompatibleKbForAgent: '현재 에이전트의 도구와 범위 내 지식베이스의 기능이 일치하지 않아 참조할 수 있는 지식베이스가 없습니다.',
   },
   common: {
-    add: '추가',
     me: '나',
     confirm: '확인',
-    cancel: '취소',
     unsavedChanges: {
-      title: '저장되지 않은 변경 사항',
       body: '지금 닫으면 변경 사항이 사라집니다. 닫으시겠습니까?',
       discard: '변경 사항 버리기',
       keepEditing: '계속 편집',
     },
-    fullscreen: '전체 화면',
-    exitFullscreen: '전체 화면 종료',
-    save: '저장',
-    delete: '삭제',
-    edit: '편집',
-    copy: '복사',
-    copied: '복사됨',
-    copySuccess: '복사되었습니다',
-    default: '기본값',
-    create: '생성',
-    download: '다운로드',
     refresh: '새로고침',
-    loading: '로딩 중...',
     noData: '데이터 없음',
     noMoreData: '모든 내용을 로드했습니다',
-    loadMore: '더 보기',
-    error: '오류',
-    success: '성공',
     failed: '실패',
     info: '정보',
     selectAll: '전체 선택',
     yes: '예',
     no: '아니오',
-    close: '닫기',
-    back: '뒤로',
-    next: '다음',
     finish: '완료',
     all: '전체',
     clear: '지우기',
@@ -5473,33 +4189,16 @@ export default {
     githubStarTip: 'GitHub에서 저장소로 이동합니다. 유용하다면 Star를 부탁드립니다',
     on: '켜기',
     off: '끄기',
-    confirmDelete: '삭제 확인',
-    createSuccess: '생성 성공',
-    deleteSuccess: '삭제 성공',
-    deleteFailed: '삭제 실패',
     updateSuccess: '업데이트 성공',
     saveSuccess: '저장 성공',
-    saveFailed: '저장 실패',
     operationFailed: '작업 실패',
     file: '파일',
     skill: '스킬',
-    knowledgeBase: '지식베이스',
     noResult: '결과 없음',
-    remove: '제거',
-    avatar: '아바타',
     defaultUser: '사용자',
-    copyFailed: '복사 실패',
-    retry: '재시도',
-    expand: '펼치기',
-    collapse: '접기'
+    collapse: '접기',
   },
   authStore: {
-    errors: {
-      parseUserFailed: '사용자 정보 파싱 실패',
-      parseTenantFailed: '워크스페이스 정보 파싱 실패',
-      parseKnowledgeBasesFailed: '지식베이스 목록 파싱 실패',
-      parseCurrentKnowledgeBaseFailed: '현재 지식베이스 파싱 실패'
-    }
   },
   auth: {
     login: '로그인',
@@ -5525,7 +4224,6 @@ export default {
     firstTime: 'WeKnora가 처음이신가요?',
     registerSuccess: '가입이 완료되었습니다. 로그인해주세요',
     registerFailed: '가입 실패',
-    subtitle: 'RAG Q&A, ReAct 에이전트, Wiki 지식베이스 — 대규모 언어 모델 기반 엔터프라이즈 지식 프레임워크',
     registerSubtitle: '계정을 만들고 WeKnora를 시작하세요',
     emailPlaceholder: '이메일 주소 입력',
     passwordPlaceholder: '비밀번호 입력',
@@ -5551,55 +4249,34 @@ export default {
     loginErrorRetry: '로그인 오류, 나중에 다시 시도해주세요',
     registerError: '가입 오류, 나중에 다시 시도해주세요',
     workspaceOnboarding: {
-      title: '작업 공간 선택',
-      description: '작업 공간을 만들어 시작하거나 기존 작업 공간의 초대를 수락하세요.',
-      create: '공간 만들기',
       invitations: '초대 보기',
       loadingPolicy: '사용 가능한 공간 참여 방식을 확인하고 있습니다…',
       policyLoadFailed: '공간 권한을 불러올 수 없습니다. 네트워크를 확인한 후 다시 시도하세요.',
-      retry: '다시 불러오기',
       inviteOnlyTitle: '작업 공간 초대 대기',
       inviteOnlyDescription: '개인 공간 만들기가 비활성화되어 있습니다. 관리자가 보낸 초대를 확인하고 수락하세요.',
       inviteOnlyNotice: '이 계정은 초대를 통해서만 기존 공간에 참여할 수 있습니다',
       help: '지금 작업 공간을 만들거나 나중에 돌아와 초대를 수락할 수 있습니다.',
-      inviteOnlyHelp: '초대가 없다면 등록 이메일을 공간 관리자에게 전달하고 초대를 요청하세요.'
+      inviteOnlyHelp: '초대가 없다면 등록 이메일을 공간 관리자에게 전달하고 초대를 요청하세요.',
     }
   },
   inviteRegister: {
     bannerTitle: '「{tenant}」에 초대되었습니다',
     bannerHint: '아래 정보를 입력해 가입을 완료하세요. 등록이 끝나면 자동으로 팀에 합류합니다.',
     bannerHintLogin: '로그인하면 자동으로 팀에 합류됩니다.',
-    loading: '초대 링크를 확인하는 중…',
     invalidTitle: '초대 링크가 유효하지 않거나 취소되었습니다',
     invalidBody: '초대한 분께 새 링크를 요청하거나 기존 계정으로 로그인하세요.',
-    backToLogin: '로그인으로 돌아가기',
-    title: '가입 완료',
-    subtitle: '「{tenant}」에 초대되었습니다',
-    email: '이메일',
-    emailPlaceholder: 'your{\'@\'}example.com',
     emailHint: '본인이 사용하는 이메일이면 됩니다.',
-    emailInvalid: '유효한 이메일을 입력해 주세요',
-    username: '표시 이름',
-    usernamePlaceholder: '이름을 입력하세요',
-    password: '비밀번호 설정',
-    passwordPlaceholder: '최소 6자 이상',
-    confirmPassword: '비밀번호 확인',
     submit: '가입 완료',
     submitting: '전송 중…',
-    success: '가입 완료, 워크스페이스로 이동합니다…',
     joined: '팀에 합류했습니다.',
-    failed: '가입에 실패했습니다. 잠시 후 다시 시도해 주세요',
-    usernameRequired: '이름을 입력하세요',
     passwordTooShort: '비밀번호는 최소 6자 이상이어야 합니다',
-    passwordMismatch: '두 비밀번호가 일치하지 않습니다'
+    passwordMismatch: '두 비밀번호가 일치하지 않습니다',
   },
   initialization: {
     skip: '건너뛰기',
-    next: '다음'
+    next: '다음',
   },
   graphSettings: {
-    title: '지식 그래프 설정',
-    description: '엔티티-관계 추출 기능을 구성하여 텍스트에서 자동으로 엔티티와 관계를 추출하여 지식 그래프를 구축합니다 (참고: Wiki의 \'페이지 링크 그래프\'와는 다릅니다. 후자는 Wiki 페이지 간의 참조 관계를 보여주며, 이쪽은 LLM이 추출한 엔티티-관계 그래프입니다)',
     enableLabel: '엔티티 관계 추출 활성화',
     enableDescription: '활성화하면 텍스트에서 자동으로 엔티티와 관계를 추출합니다',
     tagsLabel: '관계 유형',
@@ -5645,11 +4322,9 @@ export default {
     exampleLoaded: '예시가 로드되었습니다',
     exampleCleared: '예시가 지워졌습니다',
     disabledWarning: '지식 그래프 데이터베이스가 활성화되지 않아 엔티티 관계 추출 기능을 사용할 수 없습니다',
-    howToEnable: '지식 그래프를 활성화하는 방법?'
+    howToEnable: '지식 그래프를 활성화하는 방법?',
   },
   retrievalSettings: {
-    title: '검색 설정',
-    description: '전역 검색 파라미터를 설정합니다. 지식베이스 검색과 메시지 검색이 이 설정을 공유합니다',
     embeddingTopKLabel: '벡터 검색 Top K',
     vectorThresholdLabel: '벡터 유사도 임계값',
     keywordThresholdLabel: '키워드 매칭 임계값',
@@ -5658,56 +4333,11 @@ export default {
     rerankModelLabel: 'Rerank 모델',
     rerankModelDescription: '검색 결과 재정렬에 사용할 모델을 선택하세요',
     rerankModelRequired: 'Rerank 모델을 선택하세요. 검색 기능에 이 모델이 필요합니다.',
-    toasts: {
-      saveSuccess: '검색 설정이 저장되었습니다',
-      saveFailed: '설정 저장 실패: {message}'
-    }
   },
   memorySettings: {
-    title: '내 기억',
-    description: '어시스턴트가 대화를 넘어 기억하고 있는 내용입니다. 언제든지 확인, 수정, 삭제할 수 있으며 삭제한 기억은 다시 사용되지 않습니다.',
     workspaceDisabled: '이 워크스페이스에서는 장기 기억이 꺼져 있습니다. 관리자가 켜야 이 스위치가 적용됩니다.',
-    enableLabel: '내 장기 기억 사용',
-    enableDescription: '끄면 어시스턴트가 기억을 읽거나 추가하지 않습니다. 기존 기억은 유지되며 다시 켜면 계속 사용됩니다.',
     agentDisabledHint: '개별 에이전트도 장기 기억을 따로 끌 수 있습니다. 꺼 둔 에이전트와의 대화에서는 기억을 읽지도 추가하지도 않으며, 다른 에이전트는 영향을 받지 않습니다.',
-    usage: {
-      title: '기억이 사용되는 시점',
-      iconHint: '어떤 기억이 대화에 쓰이는지 보기',
-      intro: '「사용 중」인 기억만 대화에 들어갑니다.',
-      rows: {
-        alwaysOn: {
-          label: '매 턴 포함',
-          text: '내 정보, 선호, 「기억해 줘」라고 말한 내용'
-        },
-        situational: {
-          label: '관련될 때만',
-          text: '사실, 진행 중인 일'
-        },
-        interest: {
-          label: '자주 묻는 방향',
-          text: '장기 관심사, 매 턴 인용되지는 않음'
-        },
-        tracking: {
-          label: '먼저 관찰',
-          text: '자주 묻는 방향은 먼저 횟수를 세고, 기준에 도달해야 장기 관심사가 됩니다'
-        },
-        documents: {
-          label: '자주 쓰는 자료',
-          text: '답변에 반복해서 쓰인 문서이며, 검색 시 약간 우선됩니다'
-        },
-        pending: {
-          label: '확인 후 적용',
-          text: '확인 대기 중인 추론'
-        },
-        inactive: {
-          label: '사용 안 함',
-          text: '대체됨, 보관됨'
-        }
-      }
-    },
-    listTitle: '기억 목록',
     listCount: '총 {count}개',
-    statusActive: '사용 중',
     statusSuperseded: '대체됨',
     statusArchived: '보관됨',
     statusPending: '확인 대기',
@@ -5763,67 +4393,40 @@ export default {
     consolidateTooSoon: '방금 정리했습니다. 잠시 후 다시 시도해 주세요.',
     consolidateModelUnavailable: '모델을 사용할 수 없어 잘못 합치지 않도록 아무것도 바꾸지 않았습니다',
     consolidateFailed: '정리하지 못했습니다',
-    clear: '전체 삭제',
     clearConfirm: '모든 기억, 관찰 중인 주제, 자주 쓰는 자료가 영구 삭제되며 되돌릴 수 없습니다. 계속하시겠습니까?',
-    deleteConfirm: '이 기억을 영구 삭제할까요?',
-    add: '추가',
     addPlaceholder: '어시스턴트가 기억했으면 하는 내용을 한 문장으로 적어 주세요',
-    addTitle: '기억 추가',
     addKindLabel: '유형',
     addContentLabel: '내용',
     emptyTitle: '아직 기억이 없습니다',
     emptyDescription: '대화에서 "기억해 줘: ..."라고 말하거나 위에서 직접 추가하세요.',
     kinds: {
-      profile: '내 정보',
       preference: '선호',
       fact: '사실',
       task: '진행 중인 일',
-      interest: '장기 관심사'
+      interest: '장기 관심사',
     },
     kindHints: {
-      profile: '이후 매 대화 턴에 포함됩니다',
-      preference: '이후 매 대화 턴에 포함됩니다',
-      fact: '질문과 관련될 때만 사용됩니다',
-      task: '질문과 관련될 때만 사용됩니다',
-      interest: '자주 묻는 방향을 이해하는 데 쓰이며, 매 턴 인용되지는 않습니다'
+      interest: '자주 묻는 방향을 이해하는 데 쓰이며, 매 턴 인용되지는 않습니다',
     },
     origins: {
       explicit: '직접 요청',
       extracted: '자동 정리',
-      manual: '수동 추가'
+      manual: '수동 추가',
     },
-    toasts: {
-      enabled: '장기 기억을 켰습니다',
-      disabled: '장기 기억을 껐습니다',
-      added: '추가했습니다',
-      updated: '수정했습니다',
-      deleted: '삭제했습니다',
-      cleared: '{count}개의 기억을 삭제했습니다',
-      saveFailed: '작업 실패: {message}'
-    }
   },
   envVarSettings: {
-    title: '샌드박스 키',
     host: {
-      title: '환경 변수',
-      description: '이 컴퓨터의 스킬에 쓰는 개인 키이며, WeKnora 시스템이나 배포 설정이 아닙니다.',
       helpAria: '환경 변수 설명',
       introRuntimeBody: '스킬이 이 컴퓨터에서 실행될 때 주입됩니다. 대화 중에 바로 제공할 수도 있습니다. 저장 후에는 평문을 다시 보여 주지 않습니다.',
-      loadFailed: '환경 변수를 불러오지 못했습니다.',
       sandboxTitle: '이 컴퓨터에서 항상 포함하는 값',
       sandboxHint: '이 컴퓨터에서 실행하는 명령에만 전달됩니다. 필요할 때만 추가하세요. 대화 중에 바로 제공할 수도 있습니다.',
       nameInvalid: '이 이름은 사용할 수 없습니다. 예약된 이름(예: PATH, WEKNORA_로 시작하는 이름)은 거부됩니다.',
-      deleteConfirm: '{name}을(를) 삭제할까요? 이후 이 컴퓨터에서 실행할 때 더 이상 포함되지 않습니다.',
     },
-    description: '스킬과 샌드박스에 쓰는 개인 키이며, WeKnora 시스템이나 배포 설정이 아닙니다.',
     helpAria: '샌드박스 키 설명',
     introPersonalTitle: '나만의 값',
     introPersonalBody: '내 대화와 실행에만 주입됩니다. 다른 구성원은 볼 수 없고, 그들의 값이 내 값을 대체하지도 않습니다.',
     introRuntimeTitle: '실행할 때만 전달',
     introRuntimeBody: '스킬이 실행되거나 해당 샌드박스에서 명령을 실행할 때 주입됩니다. 대화에서 바로 제공할 수도 있습니다. 저장한 뒤에는 다시 표시되지 않습니다.',
-    loading: '불러오는 중…',
-    loadFailed: '샌드박스 키를 불러오지 못했습니다.',
-    retry: '다시 시도',
     noConfigTitle: '샌드박스가 없습니다',
     noConfigDescription: '이 워크스페이스에는 아직 샌드박스 백엔드가 없어 설정할 키가 없습니다.',
     sandboxTitle: '선택한 샌드박스에서 항상 전달되는 값',
@@ -5844,7 +4447,6 @@ export default {
     setValue: '설정',
     replaceValue: '변경',
     addRow: '추가',
-    namePlaceholder: 'VARIABLE_NAME',
     nameRule: '대문자, 숫자, 밑줄만 사용하며 문자 또는 밑줄로 시작해야 합니다.',
     nameInvalid: '이 이름은 사용할 수 없습니다. PATH처럼 샌드박스가 예약한 이름이나 WEKNORA_로 시작하는 이름은 허용되지 않습니다.',
     nameDuplicate: '같은 이름의 변수가 이미 있습니다.',
@@ -5853,24 +4455,12 @@ export default {
     valueRequired: '저장하기 전에 값을 입력하세요.',
     valueTooLong: '값 하나는 {max}바이트를 초과할 수 없습니다.',
     tooManyValues: '여기에는 최대 {max}개의 변수를 저장할 수 있습니다.',
-    save: '저장',
-    saveSuccess: '저장했습니다. 값은 보관되며 다시 표시되지 않습니다.',
-    saveFailed: '값을 저장하지 못했습니다.',
-    delete: '삭제',
-    deleteConfirm: '{name}을 삭제할까요? 이후 이 샌드박스에서 실행하는 것에는 전달되지 않습니다.',
-    deleteSuccess: '변수를 삭제했습니다.',
-    clear: '내 값 삭제',
-    clearConfirm: '{name}에 설정한 내 값을 삭제할까요? 이후에는 워크스페이스 공용 값이 있으면 다시 적용됩니다.',
     clearSuccess: '내 값을 삭제했습니다.',
-    updatedAt: '{time}에 설정함'
+    updatedAt: '{time}에 설정함',
   },
   memoryWorkspaceSettings: {
-    title: '장기 기억',
-    description: '구성원이 말한 개인 정보, 선호, 사실, 진행 중인 일을 어시스턴트가 대화를 넘어 기억하도록 합니다.',
     introTitle: '기본값은 꺼짐이며 직접 켜야 합니다',
     introDescription: '장기 기억은 구성원이 대화에서 말한 내용을 보관하므로 기본으로 켜지지 않습니다. 켜면 구성원마다 기억 공간이 분리되며 "내 기억"에서 확인, 수정, 삭제하거나 전체를 끌 수 있습니다. 사용 중인 내 정보와 선호는 이후 매 턴에 들어가고, 사실과 진행 중인 일은 질문과 관련될 때만 불러옵니다.',
-    enableLabel: '이 워크스페이스에서 장기 기억 사용',
-    enableDescription: '끄면 이 워크스페이스의 모든 대화가 기억을 읽거나 쓰지 않습니다.',
     writeModeLabel: '기억 저장 방식',
     writeModeDescription: '무엇을 기억할지 결정합니다.',
     writeModeExplicit: '명시적 요청만',
@@ -5891,78 +4481,41 @@ export default {
     conditioningDescription: '기억이 답변 프롬프트에만 붙는 것이 아니라 질의 재작성과 문서 순위에도 반영됩니다.',
     interestThresholdLabel: '장기 관심사가 되기까지의 질문 수',
     interestThresholdDescription: '같은 주제가 이만큼 반복된 뒤에야 기록됩니다. 1로 두면 스쳐 가는 질문까지 모두 기록되어 보통 너무 시끄럽습니다.',
-    instructionsLabel: '사용자 정의 정리 규칙',
     instructionsDescription: '정리 프롬프트에 덧붙는 워크스페이스 규칙으로, 제품이 알 수 없는 정책을 표현합니다. 예: "고객 이름은 절대 기록하지 않는다".',
     instructionsPlaceholder: '한 줄에 규칙 하나, 예: 고객 이름은 기록하지 않기',
     maxItemsLabel: '구성원당 기억 상한',
     maxItemsDescription: '초과하면 중요도와 사용 시점이 낮은 항목부터 보관 처리되며 "내 기억"에서 계속 확인할 수 있습니다.',
-    toasts: {
-      saveSuccess: '장기 기억 설정을 저장했습니다',
-      saveFailed: '저장 실패: {message}'
-    }
   },
   chatHistorySettings: {
-    title: '메시지 관리',
-    description: '채팅 기록 지식베이스를 구성하여 대화 메시지를 자동으로 벡터화 인덱싱하여 시맨틱 검색을 지원합니다',
-    enableLabel: '메시지 인덱싱 활성화',
-    enableDescription: '활성화하면 새 대화 메시지가 자동으로 지식베이스에 인덱싱되어 벡터 검색을 지원합니다',
-    embeddingModelLabel: 'Embedding 모델',
-    embeddingModelDescription: '메시지 벡터화에 사용할 Embedding 모델을 선택하세요',
     embeddingModelLocked: '이미 인덱싱된 메시지가 있어 Embedding 모델을 변경할 수 없습니다 (인덱스 데이터 초기화 필요)',
     statsTitle: '인덱스 통계',
     statsIndexedMessages: '인덱싱된 메시지',
     statsNotConfigured: '메시지 인덱싱 미설정',
     statsNotConfiguredDesc: '활성화하고 Embedding 모델을 선택하면 대화 메시지가 자동으로 벡터화 인덱싱됩니다',
-    toasts: {
-      saveSuccess: '메시지 관리 설정이 저장되었습니다',
-      saveFailed: '설정 저장 실패: {message}'
-    }
   },
   vectorStoreSettings: {
-    title: '벡터 데이터베이스 엔진',
-    description: '지식 베이스 검색을 위한 벡터 데이터베이스 인스턴스를 등록하고 관리합니다.',
-    basicSection: '기본',
     storesTitle: '벡터 데이터베이스',
     addStore: '데이터베이스 추가',
     editStore: '데이터베이스 수정',
-    deleteConfirm: '이 벡터 데이터베이스를 삭제하시겠습니까?',
-    emptyDesc: '구성된 벡터 데이터베이스가 없습니다. \'데이터베이스 추가\'를 클릭하여 시작하세요.',
     engineTypeLabel: '엔진 타입',
-    nameLabel: '이름',
-    namePlaceholder: '예: my-vector-store',
     connectionInfo: '연결 정보',
     advancedIndexConfig: '고급 설정',
     envTag: 'DEFAULT',
-    testConnection: '연결 테스트',
     testing: '테스트 중...',
     immutableNotice: '엔진 타입, 연결 정보, 인덱스 설정은 생성 후 변경할 수 없습니다.\n변경이 필요하면 삭제 후 다시 생성하세요.',
     insecureSkipVerifyWarning: 'TLS 인증서 검증을 끄면 중간자 공격에 노출됩니다. 자체 서명 인증서를 쓰는 개발 클러스터에서만 사용하고, 운영 환경에서는 절대 사용하지 마세요.',
-    toasts: {
-      storeCreated: '벡터 데이터베이스가 생성되었습니다',
-      storeUpdated: '벡터 데이터베이스가 수정되었습니다',
-      storeDeleted: '벡터 데이터베이스가 삭제되었습니다',
-      testSuccess: '연결 테스트 성공',
-      testFailed: '연결 테스트 실패',
-      duplicateName: '동일한 이름의 벡터 데이터베이스가 이미 존재합니다',
-      errorGeneric: '오류가 발생했습니다. 다시 시도해 주세요.'
-    },
     validation: {
-      nameRequired: '이름은 필수입니다',
       engineTypeRequired: '엔진 타입은 필수입니다',
       fieldRequired: '{field}은(는) 필수입니다',
-      indexNamePattern: '영문자로 시작해야 합니다. 영문, 숫자, 밑줄, 하이픈만 허용 (최대 128자)'
+      indexNamePattern: '영문자로 시작해야 합니다. 영문, 숫자, 밑줄, 하이픈만 허용 (최대 128자)',
     }
   },
   webSearchSettings: {
-    title: '웹 검색 설정',
-    description: '웹 검색 기능을 구성하여 질문에 답변할 때 인터넷에서 실시간 정보를 가져와 지식베이스 내용을 보완합니다',
-    basicSection: '기본',
     credentialsSection: '연결',
     optionsSection: '옵션',
     providersTitle: '검색 엔진 프로바이더 설정',
     addProvider: '프로바이더 추가',
     editProvider: '프로바이더 편집',
-    deleteConfirm: '이 프로바이더를 삭제하시겠습니까?',
     providerNameLabel: '이름',
     providerNamePlaceholder: '예: 프로덕션 Bing 검색',
     providerTypeLabel: '프로바이더 유형',
@@ -5970,8 +4523,6 @@ export default {
     providerDescPlaceholder: '선택 사항. 예: 테스트 환경용',
     engineIdLabel: '엔진 ID',
     setAsDefault: '기본으로 설정',
-    testConnection: '연결 테스트',
-    testing: '테스트 중...',
     viewDocs: '문서에서 API 키 확인',
     noProvidersDesc: '웹 검색 프로바이더를 추가하여 에이전트가 인터넷에서 실시간 정보를 가져올 수 있도록 합니다.',
     setAsDefaultDesc: '에이전트가 검색 엔진을 지정하지 않은 경우 이 프로바이더가 기본적으로 사용됩니다',
@@ -5983,13 +4534,6 @@ export default {
     baseUrlLabel: '인스턴스 URL',
     baseUrlPlaceholder: 'https://searxng.example.com',
     apiKeyPlaceholder: 'API 키를 입력하세요',
-    toasts: {
-      providerCreated: '검색 엔진 프로바이더가 생성되었습니다',
-      providerUpdated: '검색 엔진 프로바이더가 업데이트되었습니다',
-      providerDeleted: '검색 엔진 프로바이더가 삭제되었습니다',
-      testSuccess: '연결 테스트 성공',
-      testFailed: '연결 테스트 실패'
-    }
   },
   settings: {
     modelManagement: '모델 관리',
@@ -5999,422 +4543,10 @@ export default {
     vectorStoreEngine: '벡터 DB 엔진',
     parserEngine: '파싱 엔진',
     storageEngine: '스토리지 엔진',
-    sandbox: {
-      title: '샌드박스 설정',
-      description: '에이전트 스킬 스크립트의 격리 실행 환경을 구성합니다. 각 에이전트는 설정을 하나 선택합니다.',
-      pageHintTitle: '샌드박스란?',
-      pageHint: '샌드박스는 에이전트 스킬 스크립트가 실행되는 격리 환경입니다. 워크스페이스에 Docker, E2B, CubeSandbox 설정을 여러 개 둘 수 있고, 각 에이전트가 하나를 선택합니다. 스킬은 「스킬 관리」 페이지에서 선택한 설정의 이미지에 설치됩니다. 선택하지 않으면 스크립트는 실행되지 않습니다.',
-      editorDescription: 'Configure a workspace runtime. Docker, CubeSandbox, and E2B use the same management flow.',
-      stepConnection: 'Connect',
-      stepTemplate: 'Template',
-      stepRuntime: 'Runtime',
-      stepSkills: 'Skills',
-      stepSkillsLocked: 'Skills are installed into this config\'s image. Save the config first, then come back to this step.',
-      setupProgress: 'Sandbox setup progress',
-      stepDescriptions: {
-        connection: 'Configure the backend and verify the connection before loading templates.',
-        template: 'Choose a ready template returned by the connected cluster.',
-        runtime: 'Configure execution settings, environment variables, and when skill image updates apply, then save.',
-        skills: 'Install skills into this config\'s sandbox image. Once the config is saved you can come back any time.',
-      },
-      back: 'Back',
-      connectAndContinue: 'Connect and continue',
-      loading: 'Loading sandbox configuration...',
-      loadFailed: 'Failed to load sandbox configuration',
-      backend: '샌드박스',
-      backendType: '샌드박스 유형',
-      backendTypePlaceholder: '샌드박스 유형 선택',
-      scriptPolicyLabel: '샌드박스에서 스킬 스크립트 실행 허용',
-      scriptPolicyDesc: '끄면 이 워크스페이스의 에이전트는 스킬 내용만 읽을 수 있습니다. 이미 실행 중인 원격 샌드박스는 해당 세션이 종료된 후 해제됩니다.',
-      backendDescriptions: {
-        cube: 'Self-hosted MicroVM cluster for private or on-premises deployments',
-        e2b: 'Managed MicroVM service or an E2B-compatible deployment',
-        docker: '이 WeKnora 호스트의 Docker에서 세션마다 장수명 컨테이너를 유지합니다. 스크립트와 파일이 같은 컨테이너에 남습니다',
-      },
-      dockerDisabledAlert: '이 배포에서는 Docker 샌드박스가 켜져 있지 않습니다',
-      dockerDisabledHint: '로컬 docker.sock은 호스트 root와 같습니다. 단일 머신 프라이빗 설치에서는 시스템 관리자가 설정 → 시스템 설정 → 네트워크 보안에서 켤 수 있습니다.',
-      dockerDisabledCard: '이 배포에서 Docker 샌드박스가 꺼져 있어 이 구성은 컨테이너를 만들지 않습니다',
-      dockerHostRisk: '비우거나 unix:// 를 쓰면 WeKnora가 있는 머신의 Docker 데몬을 사용하며, 그 권한은 해당 머신의 root와 같습니다. 프라이빗 단일 노드에만 쓰세요. 여러 워크스페이스가 같은 호스트를 쓰는 경우에는 Cube 또는 E2B를 쓰세요. 원격 tcp:// 는 TLS 인증서 디렉터리가 필요합니다.',
-      addConfig: '샌드박스 추가',
-      viewClusterGuide: 'Cluster setup guide',
-      configName: 'Config name',
-      configNamePlaceholder: 'e.g. Production E2B',
-      configNameRequired: 'Please enter a config name',
-      configDescription: 'Description',
-      configDescriptionPlaceholder: 'Optional, helps tell several configs of the same type apart',
-      createTitle: '샌드박스 추가',
-      editTitle: '샌드박스 편집',
-      sectionBasic: 'Basic information',
-      sectionConnection: 'Cluster connection',
-      sectionRuntimeEnvironment: 'Runtime environment',
-      sectionTemplate: 'Runtime template',
-      sectionRuntime: 'Execution settings',
-      sectionNetwork: 'Network policy',
-      sectionEnvironment: 'Environment variables',
-      networkHint: 'Controls outbound networking for every sandbox using this configuration. Changes affect only newly created sandboxes; existing sandboxes keep their policy until reclaimed.',
-      egressDefault: 'Default egress',
-      egressAllowAll: 'Allow public network (default)',
-      egressDenyAll: 'Deny by default',
-      egressPrecedence: 'Evaluation order: allow, deny, then the default. Allow rules take precedence over deny rules.',
-      allowOut: 'Allowed destinations',
-      allowOutPlaceholder: 'Domain / IP / CIDR, for example *.example.com',
-      allowOutHelp: 'Supports IPv4, CIDR, domains, and single-label wildcards such as *.example.com (which do not match the root domain).',
-      denyOut: 'Denied destinations',
-      denyOutPlaceholder: 'IP / CIDR only, for example 169.254.169.254/32',
-      denyOutHelp: 'Deny rules match destination IP only, so domains are not supported.',
-      domainAllowNeedsDenyAll: 'When allowed destinations contain a domain, also choose “Deny by default” or add 0.0.0.0/0 to denied destinations; otherwise the allowlist is ineffective.',
-      cubeL7Rules: 'HTTP access rules (L7)',
-      cubeL7RulesHelp: 'Every rule requires host or sni; the network layer derives allowed targets only from those fields. Fields are AND-ed and methods are OR-ed. Applies only to HTTP 80 / HTTPS 443. Rules are first-match-wins from top to bottom.',
-      e2bHostRules: 'Host request transforms',
-      e2bHostRulesHelp: 'Inject headers by host. A rule does not authorize egress; its host must also appear in allowed destinations.',
-      ruleUntitled: 'Untitled rule',
-      expandRule: 'Expand rule',
-      collapseRule: 'Collapse rule',
-      moveRuleUp: 'Move rule up',
-      moveRuleDown: 'Move rule down',
-      ruleName: 'Rule name',
-      ruleScheme: 'Scheme',
-      ruleSni: 'SNI',
-      ruleHost: 'Host',
-      ruleMethods: 'HTTP methods',
-      rulePath: 'Path',
-      ruleAction: 'Action',
-      ruleAllow: 'Allow',
-      ruleDeny: 'Deny',
-      ruleAudit: 'Audit level',
-      ruleInject: 'Inject headers',
-      headerName: 'Header name',
-      headerValue: 'Header value',
-      addTarget: 'Add destination',
-      addRule: 'Add rule',
-      addHeader: 'Add header',
-      removeRule: 'Remove rule',
-      noConfigs: '아직 샌드박스가 없습니다. 워크스페이스 설정을 선택하지 않은 에이전트는 스킬 스크립트를 실행하지 않습니다.',
-      identityFieldHint: 'While this config owns sandboxes, these cannot be changed: backend type, API endpoint, API key, sandbox domain, proxy endpoint.',
-      connectionLockedBySkills: '이 샌드박스에는 이미 Skill이 있습니다. 연결, 자격 증명, DNS를 바꾸면 스킬 스냅샷의 환경이 달라지고, DNS는 템플릿을 재구축해야 적용됩니다. 새 샌드박스를 만드세요.',
-      connectionLockedByInFlight: 'Skill을 설치하거나 제거하는 중입니다. 끝날 때까지 연결, 자격 증명, DNS를 바꿀 수 없습니다.',
-      viewSandboxes: '실행 인스턴스',
-      inventoryTitle: '실행 인스턴스',
-      inventoryDrawerDesc: '이 설정이 아직 점유한 샌드박스와 영향을 받는 세션·에이전트입니다.',
-      inventoryFailed: 'Failed to load sandbox usage',
-      sandboxCount: 'Sandboxes',
-      sandboxCountUnknown: 'Unknown (backend unreachable)',
-      inventoryUnverifiableHint: 'The backend is unreachable, so the sandbox count is unknown — that is not the same as none.',
-      inventorySessions: '세션',
-      inventorySessionKind: '대화',
-      inventoryEmpty: '점유 중인 세션이 없습니다',
-      inventoryAgentsTitle: '연결된 에이전트',
-      inventoryUntitledSession: '제목 없는 세션',
-      sandboxesStillLive: 'This config still owns {count} running or paused sandbox(es), so identity fields cannot be changed yet.',
-      blockedHint: 'End or delete those sessions (deleting a session destroys its sandbox), or create a second config and point the agents at it.',
-      unverifiableBlocked: 'The backend cannot be reached to verify whether sandboxes remain, so the stored credentials will not be overwritten.',
-      unverifiableSaveHint: 'Restore connectivity first; if the backend is gone for good, create a second config and point the agents at it.',
-      affectedSessions: '{count} session(s) affected.',
-      affectedAgents: 'Agents using this config: {names}',
-      confirmDelete: '샌드박스 "{name}"을(를) 삭제할까요?',
-      confirmDeleteWithAgents: '샌드박스 "{name}"을(를) 삭제할까요? {agents}다음 스킬 실행에서 실패합니다.',
-      deleteFailed: 'Failed to delete',
-      deleted: 'Deleted',
-      forceDeleteTitle: 'Sandbox usage cannot be verified',
-      forceDeleteConfirm: 'The backend cannot be reached to verify whether sandboxes remain. If it is gone for good you can force-delete this config; if it is only temporarily unreachable, forcing it leaves any remaining sandboxes with nobody to reclaim them. Force delete anyway?',
-      forceDelete: 'Force delete',
-      disableScripts: 'Disable sandbox execution',
-      enableScripts: 'Enable sandbox execution',
-      disableScriptsConfirm:
-        'All agents in this workspace — will no longer run skill scripts in a sandbox. They can still read skill content. Existing remote sandboxes are not destroyed automatically; end or delete the related sessions to release them. Continue?',
-      scriptsDisabled: 'Sandbox execution disabled for this workspace',
-      scriptsEnabled: 'Sandbox execution restored for this workspace',
-      policySaveFailed: 'Failed to update sandbox execution policy',
-      legacyConfig: 'Deprecated',
-      namedBackendHint: 'Workspace configuration is the only runtime source. Agents without one cannot execute skill scripts.',
-      weknoraTemplateTitle: 'WeKnora standard template',
-      weknoraDockerImage: 'WeKnora standard image',
-      weknoraDockerImageHint: 'Each session gets its own long-lived container. Scripts, shell commands and files all share it until the session ends or the idle timeout reclaims it.',
-      weknoraTemplateOverview: 'WeKnora provides the standard runtime. Templates are discovered after connecting and the standard one is created when missing.',
-      weknoraTemplateDescription: 'Includes the Python, Node.js, CLI tools, workspace path, and non-root execution user expected by WeKnora skills.',
-      recommendedTag: 'Recommended',
-      templateNotConfigured: 'Template not configured',
-      cardTemplateConfigured: '템플릿 설정됨',
-      cardCredentialMissing: 'API 키 없음',
-      cardTimeout: '타임아웃 {sec}초',
-      cardTtl: '샌드박스 유지 {sec}초',
-      cardVolumeMounted: '볼륨 마운트됨',
-      cardEnvVars: '환경 변수 {count}개',
-      cardPrivateEndpoints: '사설망 접근 허용',
-      imageNotConfigured: 'Image not configured',
-      templateApplied: 'Applied',
-      refreshTemplates: 'Refresh templates',
-      templateSelectHelp: 'Templates are loaded from this cluster. The saved configuration stores the ID automatically.',
-      templateSelectPlaceholder: 'Connect to the cluster to load templates',
-      templateLoadHint: '클러스터 연결을 입력한 뒤 새로고침하세요. 공식 CLI 템플릿이 없으면 Hub 이미지로 자동 구축합니다. 데스크톱 템플릿은 용량이 커서 아래 행에서 따로 만들어야 합니다. DNS나 이미지를 바꾼 뒤에는 해당 카드에서 재구축하세요.',
-      templateLoadFailed: 'Failed to load templates',
-      standardTemplateProvisioning: 'The WeKnora standard template is being created. Refresh shortly to see its status.',
-      standardTemplateReplaced: '기존 표준 템플릿을 삭제했고 재구축을 시작했습니다. 준비될 때까지 기다리세요.',
-      templateNotReady: 'The selected template is not ready. Refresh and wait for the build to finish.',
-      connectionPassed: 'Connection verified. Templates below are loaded from this cluster.',
-      connectionPassedTitle: 'Cluster connected',
-      templateStepHint: '이 단계에서는 클러스터 템플릿을 나열하고, 공식 CLI 이미지가 없으면 Hub에서 구축합니다. 데스크톱(XFCE) 템플릿은 용량이 커서 「만들기」를 눌렀을 때만 구축합니다. DNS나 이미지를 바꾼 뒤에는 해당 카드에서 「재구축」을 누르세요. 템플릿이 준비된 뒤에 계속할 수 있습니다.',
-      loadingTemplates: 'Loading templates from the cluster...',
-      templateBuildingHint: '템플릿을 구축하는 중입니다. 목록이 자동으로 새로고침됩니다.',
-      templateUntaggedHint: '빌드는 끝났지만 default 태그가 붙은 빌드가 없어 샌드박스 생성 시 이 템플릿을 찾을 수 없습니다. E2B에서 템플릿을 삭제하고 새로고침하면 WeKnora가 다시 빌드합니다.',
-      templateFailedReason: '빌드 실패: {reason}',
-      noTemplates: 'No templates were returned by this cluster.',
-      weknoraStandardTemplate: 'WeKnora 표준 템플릿',
-      createStandardTemplate: '만들기',
-      createStandardTemplateHint: '현재 연결 설정(DNS 포함)으로 구축합니다. 설정을 바꾼 뒤에는 카드에서 재구축하세요.',
-      weknoraDesktopTemplate: 'WeKnora 데스크톱 템플릿',
-      createDesktopTemplate: '만들기',
-      createDesktopTemplateHint: '공식 데스크톱 이미지로 XFCE 그래픽 데스크톱을 구축합니다. CLI 템플릿보다 훨씬 크니 GUI가 필요할 때만 만드세요.',
-      replaceStandardTemplate: '재구축',
-      replaceStandardTemplateConfirm: '현재 설정(DNS 포함)으로 WeKnora 표준 템플릿을 다시 만듭니다. 새 템플릿이 준비되기 전에는 기존에 쓸 수 있는 템플릿을 삭제하지 않습니다.',
-      desktopTemplateProvisioning: 'WeKnora 데스크톱 템플릿을 만들고 있습니다. 잠시 후 새로고침해 상태를 확인하세요.',
-      desktopTemplateReplaced: '기존 데스크톱 템플릿을 삭제했고 재구축을 시작했습니다. 준비될 때까지 기다리세요. CLI 템플릿은 그대로 둡니다.',
-      desktopTemplateTag: '데스크톱',
-      replaceDesktopTemplateConfirm: '현재 설정(DNS 포함)으로 WeKnora 데스크톱 템플릿을 다시 만듭니다. 새 템플릿이 준비되기 전에는 기존에 쓸 수 있는 데스크톱 템플릿을 삭제하지 않으며, CLI 템플릿은 그대로 둡니다.',
-      templateLockedBySkills: '이 샌드박스에는 이미 Skill이 설치되어 있습니다. 스킬 환경이 현재 스냅샷에 묶여 있어 런타임 템플릿을 바꾸거나 재구축할 수 없습니다. 새 샌드박스를 만들고 새 템플릿에서 Skill을 다시 설치하세요.',
-      templateLockedByInFlight: 'Skill을 설치하거나 제거하는 중입니다. 끝날 때까지 런타임 템플릿을 바꾸거나 재구축할 수 없습니다.',
-      templateUnnamed: '이름 없는 템플릿',
-      templateFieldImage: '이미지',
-      templateFieldVersion: '버전',
-      templateFieldId: 'ID',
-      templateFieldCreated: '생성 시간',
-      templateFieldInstance: '인스턴스 유형',
-      templateFieldNetwork: '네트워크',
-      templateFieldInternet: '인터넷 접근',
-      templateInternetOn: '켜짐',
-      templateInternetOff: '꺼짐',
-      templateReadyHint: 'Template “{name}” is ready and selected.',
-      templateProvisioningHint: 'A template is still being built. The status refreshes automatically.',
-      templateStatuses: {
-        ready: 'Ready',
-        building: 'Building',
-        untagged: 'default 태그 없음',
-        failed: 'Failed',
-        unknown: 'Unknown',
-      },
-      allowPrivateEndpoints: 'Allow private cluster endpoints',
-      allowPrivateEndpointsHint: 'Use for self-hosted private control planes. Link-local and cloud metadata addresses remain blocked.',
-      howToBuildTemplate: 'Sandbox cluster setup and template guide',
-      noEnvVars: 'No additional environment variables.',
-      fieldRequired: 'Required',
-      cubeApiKeyOptional: 'Optional — leave empty for an unauthenticated self-hosted CubeSandbox',
-      cubeApiKeyWhere: '자체 호스팅 클러스터에서 인증을 켜는 방법',
-      cubeDnsServers: 'DNS 서버',
-      cubeDnsServersHelp: '선택 사항입니다. WeKnora 표준 템플릿에 기록되는 nameserver IP입니다. 비워 두면 클러스터 기본값(보통 119.29.29.29)을 사용합니다. 공용 DNS로 UDP/53이 나가지 않으면 Cube 호스트 /etc/resolv.conf에서 도달 가능한 주소를 넣고, 10/8, 172.16/12, 192.168/16은 피하세요. 이미 있는 표준 템플릿은 카드에서 「재구축」을 눌러야 변경이 적용됩니다.',
-      cubeDnsServersPlaceholder: '예: 8.8.8.8, Enter로 추가',
-      e2bApiKeyHelp: 'E2B 대시보드의 API Keys 페이지에서 생성하며 보통 e2b_ 로 시작합니다.',
-      e2bApiKeyWhere: 'E2B 대시보드에서 API 키 발급받기',
-      apiKeyPlaceholder: 'API 키를 붙여넣으세요',
-      secretConfigured: '키가 설정되어 있습니다(다시 표시되지 않음). 새 값을 입력하면 교체됩니다',
-      secretKeepHint: '설정됨 — 비워 두면 변경되지 않습니다',
-      e2bApiUrlOptional: 'Optional — the SDK default is used when empty',
-      e2bDomainOptional: 'Optional — the SDK default is used when empty',
-      e2bProxyUrlOptional: 'Data-plane gateway of a self-hosted E2B-compatible cluster. Leave empty to reach sandboxes through the sandbox domain, as E2B Cloud expects.',
-      backends: {
-        disabled: 'Disabled',
-        local: 'Local process',
-        docker: 'Docker',
-        cube: 'CubeSandbox',
-        e2b: 'E2B',
-      },
-      apiUrl: 'API endpoint',
-      proxyUrl: 'Proxy endpoint',
-      sandboxDomain: 'Sandbox domain',
-      apiKey: 'API key',
-      templateId: 'Template ID',
-      httpTimeout: 'HTTP timeout (s)',
-      httpTimeoutHelp: '백엔드 관리 API 호출을 기다리는 상한입니다. 초과하면 엔드포인트를 사용할 수 없는 것으로 간주합니다. 비워 두면 30초입니다.',
-      sandboxTtl: 'Sandbox TTL (s)',
-      sandboxTtlHelp: '샌드박스가 일시 중지되기까지의 시간',
-      dockerImage: 'Docker image',
-      dockerHost: 'Docker daemon endpoint',
-      dockerHostHelp: 'Empty follows the local docker CLI (DOCKER_HOST or the current docker context), so you do not have to type /var/run/docker.sock. For a remote daemon use tcp://host:2376, fill in the TLS certificate directory, and turn on "allow private endpoints" for RFC1918 addresses.',
-      dockerTlsCertPath: 'TLS certificate directory',
-      dockerTlsCertPathHelp: 'Directory on the WeKnora host holding ca.pem, cert.pem and key.pem. Required for a remote daemon; certificates are mounted by the deployment, never stored here.',
-      dockerIdleTtl: 'Idle reclaim (seconds)',
-      dockerIdleTtlHelp: 'The Docker daemon has no idle timeout of its own. A container that runs no command for this long is reclaimed by WeKnora and rebuilt when the session continues. Empty means 1800 seconds.',
-      dockerCpuLimit: 'CPU cores',
-      dockerCpuLimitHelp: 'CPU cores available to one sandbox; 0 uses the built-in default.',
-      dockerMemoryLimit: 'Memory limit (MB)',
-      dockerMemoryLimitHelp: 'Memory limit in MB for one sandbox; 0 uses the built-in default.',
-      dockerPidsLimit: 'Process limit',
-      dockerPidsLimitHelp: 'Maximum processes one sandbox can create; 0 uses the built-in default.',
-      dockerNetworkMode: 'Network mode',
-      dockerNetworkModeHelp: 'Defaults to bridge, which skills need to install packages. Choose none for no egress at all. Docker filters by network only; per-domain rules are not possible here.',
-      dockerNetworkBridge: 'bridge (egress allowed)',
-      dockerNetworkNone: 'none (no egress)',
-      defaultTimeout: 'Execution timeout (s)',
-      defaultTimeoutHelp: '스킬 스크립트 한 번이 실행될 수 있는 최대 시간이며, 초과하면 강제 종료됩니다. 비워 두면 60초입니다.',
-      terminalIdleDisconnect: '터미널 / 데스크톱 유휴 해제 (초)',
-      terminalIdleDisconnectHelp: '터미널 또는 데스크톱을 연 뒤 이 시간 동안 조작이 없으면 연결을 끊어 샌드박스가 TTL에 따라 일시 중지되도록 합니다. 터미널은 키보드와 PTY 출력을, 데스크톱은 마우스와 키보드를 봅니다. 비워 두면 900초이며, 최소 60초, 최대 24시간입니다.',
-      envVars: 'Environment variables',
-      envKey: 'Name',
-      envValue: 'Value',
-      envVarsHint: 'Injected into every sandbox created from this config. Values are encrypted at rest but visible to scripts inside the sandbox.\nInjected only when a sandbox is created; to inject on each run, add them on the Sandbox secrets page.',
-      addRow: 'Add variable',
-      removeRow: 'Remove',
-      save: 'Save',
-      saveAndContinue: '저장 후 계속',
-      saved: 'Saved. Applies to new sessions.',
-      saveFailed: 'Failed to save',
-      testConnection: 'Test connection',
-      deepCheck: 'Full verification',
-      recheck: '다시 검증',
-      deepCheckIntro: '전체 검증은 임시 샌드박스를 만들어 스크립트를 실행하고 외부 통신까지 확인한 뒤 삭제합니다.',
-      deepCheckConfirm: 'Full verification runs a throwaway script. Remote backends also create and destroy a real sandbox and may consume a small amount of sandbox time. Continue?',
-      checkPassed: 'All checks passed',
-      checkFailed: 'Some checks failed',
-      checkScopeConnection: '이번에는 컨트롤 플레인만 확인했습니다. 엔드포인트는 응답하고 자격 증명도 유효하지만, 스크립트가 실제로 실행되는지는 아직 확인되지 않았습니다.',
-      checkScopeFull: '엔드포인트, 자격 증명, 템플릿, 샌드박스 내 실행, 외부 통신까지 모두 실제로 검증했습니다.',
-      checkScopePolicyRestricted: '네트워크 정책으로 외부 통신이 제한되어 외부 연결은 실제로 확인하지 않았습니다. 엔드포인트, 자격 증명, 템플릿, 샌드박스 내 실행은 검증했습니다.',
-      checkPendingHint: '{names}은(는) 전체 검증으로만 확인할 수 있습니다. 임시 샌드박스를 실제로 만들어 스크립트를 한 번 실행한 뒤 삭제합니다.',
-      skipReasons: {
-        needs_deep_check: '전체 검증 필요',
-        control_plane_unreachable: '컨트롤 플레인에 연결할 수 없어 건너뜀',
-        sandbox_not_created: '샌드박스가 생성되지 않아 건너뜀',
-        sandbox_exec_failed: '샌드박스 내 실행 실패로 건너뜀',
-        egress_restricted_by_policy: '네트워크 정책에 의해 제한됨(이 구성은 기본적으로 외부 통신을 차단함)',
-      },
-      checks: {
-        client_build: 'Client construction',
-        api_url_reachable: 'Endpoint reachability',
-        credential_valid: 'Credential validity',
-        template_exists: 'Template existence',
-        sandbox_exec: 'In-sandbox execution',
-        egress_available: 'Outbound network',
-      },
-      manageSkills: '스킬 관리',
-      cardSkillsNone: '아직 설치된 스킬이 없습니다',
-      cardSkillsMore: '+{count}',
-      skillInstallerModel: 'Installer model',
-      skillInstallerModelHint: 'Used by the built-in installer agent. Choose a chat model that supports tool calls.',
-      skillInstallerModelRequired: 'Select an installer model first',
-      skillInstallerModelSaveFailed: 'Failed to save the installer model',
-      skillRollout: '새 스킬 이미지가 적용되는 방식',
-      skillRolloutHint: '스킬을 설치하거나 삭제하면 새 이미지가 만들어집니다. 이미 열린 세션을 새 이미지로 바꿀지 여기서 정합니다.',
-      skillRolloutNextTurn: '이미 열린 세션은 다음 대화 턴에서 샌드박스를 다시 만듭니다',
-      skillRolloutNewSession: '이미 열린 세션은 기존 샌드박스를 유지하고, 새 세션만 새 이미지를 사용합니다',
-      skillRolloutSaveFailed: '적용 방식 저장에 실패했습니다',
-      skillInstallGroup: '새 스킬 설치',
-      skillInstalledGroup: '설치됨',
-      skillUploadClick: 'zip 파일을 클릭해 업로드',
-      skillUploadDrag: '또는 여기로 드래그',
-      skillUploadHint: '설치하면 현재 이미지에 스킬을 쓰고 새 스냅샷을 만듭니다. 몇 분이 걸릴 수 있습니다. 현재 대화 턴은 중단되지 않으며, 이미 열린 세션은 다음 턴에서 새 이미지로 샌드박스를 다시 만들고 그때 세션 작업 공간 초안이 지워집니다.',
-      skillUploadHintNewSession: '설치하면 현재 이미지에 스킬을 쓰고 새 스냅샷을 만듭니다. 몇 분이 걸릴 수 있습니다. 이미 열린 세션은 세션이 끝날 때까지 기존 샌드박스를 유지하며, 이번에 설치한 스킬은 새로 시작한 세션에만 적용됩니다.',
-      skillSourceSection: '소스에서 설치',
-      skillSourceSectionHint: 'ClawHub, GitHub 또는 SkillHub 링크, 혹은 {\'@\'}owner/slug를 붙여넣으세요. 압축 파일은 {size} MB를 넘을 수 없습니다.',
-      skillUploadSection: '로컬 번들 업로드',
-      skillUploadSectionHint: 'SKILL.md가 포함된 zip을 아래로 끌어다 놓거나 클릭해서 선택하세요. 압축 파일은 {size} MB를 넘을 수 없습니다.',
-      skillSourcePlaceholder: 'ClawHub는 {\'@\'}owner/slug, GitHub/SkillHub는 전체 URL을 붙여넣으세요',
-      skillSourceInstall: '설치',
-      skillInstallOr: '또는',
-      skillSourceFailed: '레지스트리에서 스킬을 설치하지 못했습니다',
-      skillUploadFailed: 'Failed to upload the skill',
-      skillBundleTooLarge: '스킬 압축 파일은 {size} MB를 넘을 수 없습니다.',
-      skillBundleTooManyFiles: '스킬 디렉터리의 파일은 {count}개를 넘을 수 없습니다.',
-      skillBundleTooManyZipEntries: '압축 파일 항목은 {count}개를 넘을 수 없습니다.',
-      skillUploading: 'Uploading {percent}%',
-      skillUploadAccepted: 'Skill install started',
-      skillStatusInstalling: 'Installing',
-      skillStatusReady: 'Ready',
-      skillStatusFailed: 'Failed',
-      skillStatusRemoving: 'Removing',
-      skillStatusLabel: 'Status',
-      skillDisableHint: 'Disable = the skill is invisible to the agent, files stay in the image. Changes take effect on the session\'s next execution.',
-      skillDeleteHint: '삭제하면 이미지에서 스킬 디렉터리를 제거하고 새 스냅샷을 만듭니다. 현재 대화 턴은 중단되지 않으며, 이미 열린 세션은 다음 턴에서 새 이미지로 샌드박스를 다시 만들고 그때 세션 작업 공간 초안이 지워집니다.',
-      skillDeleteHintNewSession: '삭제하면 이미지에서 스킬 디렉터리를 제거하고 새 스냅샷을 만듭니다. 이미 열린 세션은 세션이 끝날 때까지 기존 샌드박스를 유지하며, 이 스킬은 새로 시작한 세션에서만 빠집니다.',
-      skillRemoveInProgress: '제거 중',
-      skillRemoveWaiting: '이미지에서 제거를 시작했습니다. 진행 상황을 기다리는 중…',
-      skillRemoveDone: '샌드박스에서 「{name}」을(를) 제거했습니다. 스킬은 카탈로그에 남아 있으니 나중에 다시 설치할 수 있습니다.',
-      skillRemoveStage: {
-        accepted: '제거 요청을 수락했습니다',
-        sandbox_ready: '유지보수 샌드박스를 여는 중',
-        removed: '파일을 삭제했고 새 이미지를 생성하는 중',
-        done: '제거 완료',
-        failed: '제거 실패',
-      },
-      imageInfoTitle: 'Current image',
-      imageInfoSnapshot: 'Snapshot ID',
-      imageInfoGeneration: 'Version',
-      imageInfoBuiltAt: 'Built at',
-      imageInfoBaseTemplate: 'Base template',
-      imageInfoRuntimeTemplate: '런타임 템플릿',
-      imageInfoUsingBase: '아직 설치된 스킬이 없습니다. 세션은 선택한 런타임 템플릿으로 시작됩니다.',
-      imageInfoEmpty: 'Using the base template',
-      imageInfoUnset: '설정되지 않음',
-      skillTranscript: '설치 과정 보기',
-      skillTranscriptLive: '설치 과정',
-      skillTranscriptLiveHint: '설치 중입니다. 클릭해서 과정을 보세요',
-      skillTranscriptTitle: '설치 과정',
-      skillTranscriptHide: 'Hide install run',
-      skillGuidance: {
-        placeholder: '필요한 CLI, 설치 문서, 환경 제약 등 설치 안내를 추가하세요',
-        send: '안내 보내기',
-        retry: '안내를 포함하여 재설치',
-        pending: '처리 대기',
-        injected: '반영됨',
-        unprocessed: '미처리: 재설치 시 포함하세요',
-        unavailable: '현재 단계에서는 입력할 수 없습니다. 완료 후 안내를 포함하여 재설치할 수 있습니다.',
-        failed: '안내를 보내지 못했습니다. 입력 내용은 유지됩니다. 다시 시도하세요.',
-      },
-      skillTranscriptEmpty: 'This install left no transcript.',
-      skillTranscriptWaiting: 'Install has started. Waiting for the process log…',
-      installCommandRunning: "명령 실행 중",
-      installCommandWaiting: "명령 출력을 기다리는 중입니다. 경과 시간은 계속 업데이트됩니다.",
-      skillFiles: '파일 보기',
-      skillFilesTitle: '파일',
-      skillFilesEmpty: '이 스킬에서 볼 수 있는 파일이 아직 없습니다.',
-      skillFilesLoadFailed: '스킬 파일을 불러오지 못했습니다',
-      skillFilesFileLoadFailed: '이 파일을 읽을 수 없습니다',
-      skillFilesBinary: '이 파일은 바이너리라 미리볼 수 없습니다.',
-      skillFilesTruncated: '파일이 커서 앞부분만 표시합니다.',
-      skillFilesSelectHint: '왼쪽에서 파일을 선택하면 내용을 볼 수 있습니다',
-      skillFilesPreview: '미리보기',
-      skillFilesSource: '원본',
-      skillLoadFailed: 'Failed to load skills',
-      skillToggleFailed: 'Failed to update the skill',
-      skillDeleteAccepted: 'Skill removal started',
-      skillRetry: '다시 설치',
-      skillRetryHint: '저장된 번들로 재시도합니다. 다시 업로드할 필요가 없습니다',
-      skillRetryAccepted: '재설치를 시작했습니다',
-      skillRetryFailed: '재설치를 시작하지 못했습니다',
-      skillStop: '설치 중지',
-      skillStopHint: '설치를 중단한 뒤 다시 설치하거나 제거할 수 있습니다',
-      skillStopAccepted: '중지했습니다',
-      skillStopFailed: '중지하지 못했습니다',
-      skillEmpty: '아직 설치된 스킬이 없습니다. 레지스트리 URL을 붙여넣거나 zip을 업로드하세요.',
-      skillVersion: 'Version',
-      skillVersionEmpty: 'Not specified',
-      skillError: 'Error',
-      skillEnabled: 'Skill enabled',
-      skillDisabled: 'Skill disabled',
-      skillEnv: {
-        toggle: '환경 변수',
-        toggleHide: '환경 변수 접기',
-        none: '이 스킬은 환경 변수를 선언하지 않았습니다.',
-        workspaceTitle: '워크스페이스 공용 값',
-        workspaceHint: '자기 값을 설정하지 않은 모든 구성원이 여기의 값을 사용합니다. 구성원은 설정의 「샌드박스 키」에서 자기 값을 설정할 수 있습니다.',
-        required: '필수',
-        isSet: '설정됨',
-        notSet: '설정되지 않음',
-        placeholderSet: '저장됨, 입력하면 교체됩니다',
-        placeholderUnset: '값 입력',
-        save: '저장',
-        saveSuccess: '워크스페이스 공용 값을 저장했습니다',
-        saveFailed: '워크스페이스 공용 값을 저장하지 못했습니다.',
-        clear: '삭제',
-        clearConfirm: '{name}의 워크스페이스 공용 값을 삭제할까요? 선언은 유지됩니다. 자기 값이 없는 구성원은 이후 이 값이 비어 있습니다.',
-        clearSuccess: '워크스페이스 공용 값을 삭제했습니다.',
-        valueTooLong: '값 하나는 {max}바이트를 초과할 수 없습니다.'
-      },
-    },
     skills: {
-      title: '스킬 관리',
-      description: '스킬은 워크스페이스 카탈로그에 속합니다. 먼저 등록한 뒤 하나 이상의 샌드박스에 설치할 수 있습니다. 에이전트는 현재 샌드박스에서 준비된 스킬만 사용할 수 있습니다.',
       helpTooltip: '카탈로그 스킬은 아무 샌드박스에도 설치하지 않아도 됩니다. 스크립트를 실행하려면 에이전트가 쓰는 샌드박스 이미지에 설치해야 합니다. Docker, Cube, E2B 이미지는 호환되지 않으므로 샌드박스마다 따로 설치합니다.',
       hostTarget: '이 컴퓨터',
       host: {
-        description: '스킬은 워크스페이스 카탈로그에 있습니다. 이 컴퓨터에 설치한 뒤에 에이전트에서 사용할 수 있습니다.',
         helpTooltip: '카탈로그의 스킬은 설치하지 않은 채로 둘 수 있습니다. 스크립트는 이 컴퓨터에 설치한 뒤에 실행됩니다.',
         emptyDesc: '스킬이 없습니다. 추가하면 이 컴퓨터에 설치할 수 있습니다.',
         addStepInstallDesc: '분석 결과를 확인한 뒤 설치 모델을 선택하세요. 이 컴퓨터에 설치됩니다.',
@@ -6449,7 +4581,6 @@ export default {
       addRegisteredAs: '「{name}」으로 등록됨',
       addFileSelected: '{name} 선택됨',
       addClearFile: '지우기',
-      emptyDesc: '아직 스킬이 없습니다. 추가한 뒤 하나 이상의 샌드박스에 설치하세요.',
       emptyNoSandboxHint: '샌드박스가 없습니다. 스크립트 스킬은 이미지에 설치되기 전에는 실행되지 않습니다.',
       installSkill: '스킬 추가',
       installDrawerDesc: '「{name}」 이미지에 설치합니다.',
@@ -6473,7 +4604,6 @@ export default {
       deleteCatalog: '카탈로그에서 삭제',
       deleteCatalogConfirm: '「{name}」을 카탈로그에서 삭제할까요? 모든 샌드박스에서 먼저 제거하세요.',
       deleteCatalogBlocked: '모든 샌드박스에서 이 스킬을 먼저 제거하세요.',
-      deleteSuccess: '카탈로그에서 삭제했습니다',
       registerAccepted: '카탈로그에 추가했습니다',
       installAccepted: '설치를 시작했습니다',
       installPartial: '일부 샌드박스에서 설치를 시작했습니다. {failed}곳은 시작하지 못했습니다.',
@@ -6495,200 +4625,36 @@ export default {
       servedWhileUpgradingPlain: '업그레이드 중, 이전 버전 사용 중',
       servedAfterFailure: '업그레이드 실패, {version} 사용 중',
       servedAfterFailurePlain: '업그레이드 실패, 이전 버전 사용 중',
-      loadFailed: '불러오지 못했습니다',
     },
     mcpService: 'MCP 서비스',
     versionInfo: '버전 정보',
     taskQueue: '작업 큐',
     tenantInfo: '워크스페이스 정보',
     workspaceSettings: '워크스페이스 설정',
-    system: '시스템 설정',
-    storage: {
-      title: '스토리지 엔진',
-      description: '문서 및 이미지 저장 방식을 구성합니다. 엔진 파라미터를 설정하면 지식베이스에서 사용할 엔진만 선택합니다.',
-      basicSection: '기본',
-      modeSection: '배포 모드',
-      credentialsSection: '자격 증명',
-      bucketSection: '버킷',
-      useSslDesc: 'HTTPS로 MinIO에 연결',
-      loading: '로딩 중...',
-      retry: '재시도',
-      defaultEngine: '기본 엔진',
-      defaultEngineDesc: '새 지식베이스 생성 시 기본 선택되는 스토리지 엔진',
-      engineLocal: 'Local（로컬）',
-      engineCos: 'Tencent Cloud COS',
-      engineTos: 'Volcengine TOS',
-      engineOss: 'Alibaba Cloud OSS',
-      localTitle: 'Local（로컬 스토리지）',
-      localDesc: '서버 로컬 파일시스템에 파일을 저장합니다. 단일 노드 배포에만 적합합니다.',
-      available: '사용 가능',
-      needsConfig: '구성 필요',
-      configurable: '구성 가능',
-      pathPrefix: '경로 접두사 (선택)',
-      pathPrefixPlaceholder: '예: weknora/images',
-      prefixPlaceholder: '예: weknora',
-      bucketName: 'Bucket 이름',
-      bucketPlaceholder: '버킷 이름',
-      minioDesc: 'S3 호환 자체 호스팅 오브젝트 스토리지, 내부 네트워크 및 프라이빗 클라우드 배포에 적합합니다.',
-      minioDocker: 'Docker 배포',
-      minioRemote: '원격 MinIO',
-      minioDockerDetected: 'Docker 배포 MinIO 환경변수가 감지되었습니다. 연결 정보는 환경변수로 제공되므로 수동 입력이 필요 없습니다.',
-      minioDockerNotDetected: 'MinIO 환경변수(MINIO_ENDPOINT 등)가 감지되지 않았습니다. Docker Compose 구성을 확인하세요.',
-      minioRemoteHint: '원격 MinIO 서비스에 연결합니다. 연결 정보를 수동으로 입력해야 합니다.',
-      cosTitle: 'Tencent Cloud COS',
-      cosDesc: 'Tencent Cloud 오브젝트 스토리지, 퍼블릭 클라우드 배포에 적합하며 CDN 가속을 지원합니다.',
-      cosSecretIdPlaceholder: 'Tencent Cloud API SecretId',
-      cosSecretKeyPlaceholder: 'Tencent Cloud API SecretKey',
-      cosAppIdPlaceholder: 'Tencent Cloud Account AppID',
-      tosTitle: 'Volcengine TOS',
-      tosDesc: 'Volcengine 오브젝트 스토리지(TOS), 퍼블릭 클라우드 배포에 적합합니다.',
-      tosAccessKeyPlaceholder: 'Volcengine Access Key',
-      tosSecretKeyPlaceholder: 'Volcengine Secret Key',
-      s3Title: 'AWS S3',
-      s3Desc: 'AWS S3 및 호환 오브젝트 스토리지 서비스, 퍼블릭 클라우드 배포에 적합합니다.',
-      s3AccessKeyPlaceholder: 'AWS Access Key',
-      s3SecretKeyPlaceholder: 'AWS Secret Key',
-      s3DefaultCredentialsHint: '두 키를 모두 비워 두면 AWS 기본 자격 증명 체인(IAM 역할, IRSA / 웹 자격 증명, 환경 변수 또는 공유 구성)을 사용합니다.',
-      s3EndpointPlaceholder: '선택 사항; 비워 두면 AWS 리전 기본 엔드포인트 사용',
-      ks3Title: 'Kingsoft Cloud KS3',
-      ks3Desc: 'Kingsoft Cloud 오브젝트 스토리지 서비스(KS3), 퍼블릭 클라우드 배포에 적합합니다.',
-      ks3AccessKeyPlaceholder: 'Kingsoft Cloud Access Key',
-      ks3SecretKeyPlaceholder: 'Kingsoft Cloud Secret Key',
-      ks3EndpointPlaceholder: 'e.g. ks3-cn-beijing.ksyuncs.com',
-      ks3RegionPlaceholder: 'e.g. BEIJING',
-      engineKs3: 'Kingsoft Cloud KS3',
-      obsTitle: 'Huawei Cloud OBS',
-      obsDesc: 'Huawei Cloud 오브젝트 스토리지 서비스(OBS), 퍼블릭 클라우드 배포에 적합합니다.',
-      obsAccessKeyPlaceholder: 'Huawei Cloud Access Key',
-      obsSecretKeyPlaceholder: 'Huawei Cloud Secret Key',
-      obsEndpointPlaceholder: 'e.g. obs.cn-north-4.myhuaweicloud.com',
-      obsRegionPlaceholder: 'e.g. cn-north-4',
-      engineObs: 'Huawei Cloud OBS',
-      ossTitle: 'Alibaba Cloud OSS',
-      ossDesc: 'Alibaba Cloud 오브젝트 스토리지 서비스(OSS), 퍼블릭 클라우드 배포에 적합합니다.',
-      ossAccessKeyPlaceholder: 'Alibaba Cloud Access Key',
-      ossSecretKeyPlaceholder: 'Alibaba Cloud Secret Key',
-      console: '콘솔',
-      docs: '문서',
-      testConnection: '연결 테스트',
-      loadFailed: '로드 실패',
-      saveSuccess: '저장 성공',
-      saveFailed: '저장 실패',
-      unknownError: '알 수 없는 오류',
-      requestFailed: '요청 실패'
-    },
     storageBackend: {
-      description: '파일과 이미지에 사용하는 스토리지 인스턴스를 관리합니다. 같은 유형의 인스턴스를 여러 개 구성할 수 있습니다.',
-      empty: '아직 구성된 스토리지 인스턴스가 없습니다',
-      defaultTag: '기본',
-      add: '스토리지 인스턴스 추가',
-      editTitle: '스토리지 인스턴스 편집',
-      createTitle: '스토리지 인스턴스 추가',
       editSubtitle: '이 스토리지 인스턴스의 연결 구성을 수정합니다.',
       createSubtitle: '파일과 이미지를 위한 새 스토리지 인스턴스를 추가합니다.',
-      basicSection: '기본 정보',
-      nameLabel: '이름',
-      namePlaceholder: '예: 프로덕션 COS, 아카이브 COS',
-      providerLabel: '스토리지 유형',
-      modeLabel: '배포 모드',
       modeRemote: '원격 인스턴스',
       modeEnv: '환경 변수',
       connectionSection: '연결 설정',
       optionalPlaceholder: '선택 사항',
       advancedSection: '고급 옵션',
       pathPrefixLabel: '경로 접두사',
-      useSslDesc: 'HTTPS로 MinIO 접속',
       forcePathStyleDesc: 'Path Style 사용',
       useTempBucketDesc: '임시 버킷 사용',
       tempBucketLabel: '임시 버킷',
       tempBucketPlaceholder: '선택 사항, 임시 파일용',
       tempRegionLabel: '임시 버킷 Region',
       tempRegionPlaceholder: '비워 두면 기본 Region을 사용합니다',
-      testConnection: '연결 테스트',
-      localStorage: '로컬 스토리지',
       setDefault: '기본으로 설정',
-      edit: '편집',
-      delete: '삭제',
-      testSuccess: '연결에 성공했습니다',
-      testFailed: '연결에 실패했습니다',
-      nameRequired: '이름을 입력하세요',
-      saveSuccess: '저장되었습니다',
-      saveFailed: '저장하지 못했습니다',
       defaultUpdated: '기본 스토리지가 업데이트되었습니다',
       deleteTitle: '스토리지 인스턴스 삭제',
-      deleteConfirm: '"{name}"을(를) 삭제하시겠습니까?',
-      deleted: '삭제되었습니다',
-      deleteFailed: '삭제하지 못했습니다'
-    },
-    parser: {
-      title: '파서 엔진',
-      description: '문서 파서 엔진 상태 및 구성. 이 설정은 서버 환경변수보다 우선 적용됩니다. 비워두면 환경변수 기본값을 사용합니다.',
-      supportedFileTypes: '지원 형식',
-      statusSection: '상태',
-      configSection: '구성',
-      featuresLabel: '기능',
-      loading: '로딩 중...',
-      retry: '재시도',
-      noEngineDetected: '파서 엔진이 감지되지 않았습니다. DocReader 서비스가 정상적으로 실행 중인지 확인하세요.',
-      disconnected: '연결 끊김',
-      connected: '연결됨',
-      available: '사용 가능',
-      unavailable: '사용 불가',
-      builtinDesc: 'DocReader 내장 파서 엔진 (docx/pdf/xlsx 등 복잡한 형식)',
-      currentAddr: '현재',
-      envVarHint: '수정하려면 환경변수 DOCREADER_ADDR, DOCREADER_TRANSPORT (grpc/http)를 설정하고 서비스를 재시작하세요.',
-      selfHostedEndpoint: '자체 호스팅 엔드포인트',
-      formulaRecognition: '수식 인식',
-      tableRecognition: '표 인식',
-      parseMethodLabel: 'PDF 구문 분석 방식',
-      parseMethodAuto: '자동 감지 (권장)',
-      parseMethodOCR: 'OCR 강제 사용',
-      parseMethodText: '텍스트만 추출',
-      parseMethodHint: '자동 모드는 스캔 PDF에는 OCR을 사용하고 디지털 PDF에서는 원본 텍스트를 추출합니다.',
-      sealRecognition: '인장 인식',
-      chartRecognition: '차트 인식',
-      language: '언어',
-      testConnection: '연결 테스트',
-      docs: '문서',
-      loadFailed: '파서 엔진 목록 로드 실패',
-      ensureDocreaderConnected: 'DocReader 서비스가 환경변수로 구성되고 연결되었는지 확인하세요',
-      checkDoneStatusUpdated: '현재 파라미터로 검사 완료. 위 상태가 업데이트되었습니다.',
-      checkSuccess: '연결 테스트 성공',
-      checkFailed: '검사 실패',
-      saveSuccess: '저장 성공',
-      saveFailed: '저장 실패',
-      mineruEndpointPlaceholder: '예: https://your-mineru.example.com',
-      defaultPipeline: '기본 pipeline',
-      languagePlaceholder: '예: ch, en, ja (기본 ch)',
-      mineruCloudApiKeyPlaceholder: 'MinerU 클라우드 API Key',
-      vlmLabel: 'vlm (시각 언어 모델)',
-      mineruHtmlLabel: 'MinerU-HTML (HTML 파싱)',
-      serverUrl: '서버 URL',
-      vlmServerUrlPlaceholder: '예: http://your-vllm-server:8000',
-      vlmServerUrlHint: 'Backend가 vlm-http-client 또는 hybrid-http-client인 경우 필요',
-      mineruEndpointHint: '서버 버전을 자동으로 감지합니다: MinerU 4.0 이상은 V1 API, 이전 버전은 /file_parse를 사용합니다.',
-      mineruServerApiKeyPlaceholder: '서버 실행 인자 --api-key 값 (인증 미사용 시 비워 두세요)',
-      mineruServerApiKeyHint: 'MinerU 4.0 이상에서만 사용됩니다.',
-      mineruTierLabel: '파싱 티어',
-      mineruTierDefault: '서버 기본값 (standard 우선)',
-      mineruTierFlash: 'flash (가장 빠름, 품질 최저)',
-      mineruTierBasic: 'basic (소형 모델, CPU 실행 가능)',
-      mineruTierStandard: 'standard (VLM, 고품질)',
-      mineruTierAdvanced: 'advanced (VLM, 최고 품질, 가장 느림)',
-      mineruTierHint: 'MinerU 4.0 이상에서만 적용되며, 사용 가능한 티어는 서버의 --tier 설정에 따라 다릅니다.',
-      mineruLegacySection: '레거시 옵션 (MinerU 3.x 이하)',
-      mineruLegacySectionHint: 'MinerU 4.0에서 아래 요청 파라미터가 제거되어 4.0 이상 서버에서는 무시됩니다. VLM 서버는 MinerU 쪽에서 설정하세요.',
-      paddleocrVlEndpointPlaceholder: '예: http://your-paddleocr-vl:8080',
-      paddleocrVlEndpointHint: 'PaddleOCR-VL 전체 서비스(pipeline) 주소를 입력하세요. /layout-parsing 접미사는 불필요합니다',
-      paddleocrVlCloudTokenPlaceholder: 'PaddleOCR-VL AI Studio Token'
+      deleteFailed: '삭제하지 못했습니다',
     },
     weknoraCloud: {
-      title: 'WeKnora Cloud',
-      description: 'WeKnora Cloud APPID 및 APPSECRET 자격 증명을 설정합니다. 자격 증명은 모델 서비스와 문서 파싱 엔진에 사용됩니다.',
       viewDocs: '문서 보기',
       unconfigured: '자격 증명이 설정되지 않았습니다. APPID와 APPSECRET을 입력하세요.',
       configured: '자격 증명이 설정되었으며 정상 작동 중입니다.',
-      expired: 'WeKnora Cloud 자격 증명 만료',
       expiredDefault: '서비스 재시작 후 암호화 키가 변경되어 저장된 자격 증명을 복호화할 수 없습니다. 다시 입력하세요.',
       reconfigure: '재설정',
       appIdLabel: 'APPID',
@@ -6702,8 +4668,6 @@ export default {
       usageTitle: '사용 가이드',
       usageSteps: '1. APPID / APPSECRET 저장\n2. 아래 「클라우드 모델」에서 chat, embedding, rerank, vlm 추가\n3. 문서 파싱: 지식 베이스 설정 → 파싱 엔진 → WeKnora Cloud',
       fillRequired: 'APPID와 APPSECRET을 입력하세요',
-      saveSuccess: '자격 증명 저장 완료',
-      saveFailed: '자격 증명 저장 실패',
       credentialConfigured: 'WeKnoraCloud 자격 증명이 설정되었습니다.',
       credentialExpired: '자격 증명이 만료되었습니다. 재설정하세요.',
       credentialUnconfigured: 'WeKnoraCloud 자격 증명이 설정되지 않았습니다. APPID와 APPSECRET을 먼저 설정하세요.',
@@ -6716,13 +4680,9 @@ export default {
       addModelsFailed: '모델 추가 실패',
       addModelsEmbeddingFailed: 'Embedding 연결 테스트 실패, 벡터 차원을 가져올 수 없습니다',
       addModelsDisplayName: {
-        chat: 'WeKnoraCloud 대화',
-        embedding: 'WeKnoraCloud Embedding',
-        rerank: 'WeKnoraCloud ReRank',
-        vllm: 'WeKnoraCloud 비전'
+        vllm: 'WeKnoraCloud 비전',
       },
       modelsSection: {
-        title: '클라우드 모델',
         descReady: 'WeKnora Cloud의 네 가지 표준 모델을 등록하여 대화, 검색, 재정렬, 비전에 사용합니다.',
         descPending: '위에서 자격 증명을 먼저 저장한 후 여기서 모델을 추가하세요.',
         statusAdded: '추가됨',
@@ -6732,42 +4692,21 @@ export default {
         addAllConfirm: '확인',
         confirmAddOne: '{type} 모델 "{name}"을(를) 추가하시겠습니까?',
         confirmAddAll: '누락된 클라우드 모델 {count}개를 한 번에 추가하시겠습니까?',
-        allReady: '네 가지 클라우드 모델이 모두 준비되었습니다'
+        allReady: '네 가지 클라우드 모델이 모두 준비되었습니다',
       }
     },
     roleDenied: {
-      title: '권한 없음',
-      desc: '현재 역할로는 이 설정 페이지에 접근할 수 없습니다. 이 워크스페이스의 관리자에게 필요한 역할을 요청하세요.'
+      desc: '현재 역할로는 이 설정 페이지에 접근할 수 없습니다. 이 워크스페이스의 관리자에게 필요한 역할을 요청하세요.',
     },
     capabilityUnavailable: '현재 배포에서는 이 기능을 지원하지 않습니다. 사용 가능한 페이지로 돌아갔습니다.',
-    navGroups: {
-      account: '계정',
-      workspace: '공간',
-      modelsRuntime: '모델',
-      dataExtensions: '데이터 및 확장',
-      systemAdministration: '시스템 관리',
-      platform: '플랫폼'
-    }
   },
   agent: {
     taskLabel: '작업:',
-    think: '사고',
-    copy: '복사',
     addToKnowledgeBase: '지식베이스에 추가',
     artifactDrawer: {
       buttonTitle: '이 응답에서 생성된 파일 보기',
-      title: '생성된 파일',
-      empty: '이번 회차에서 다운로드 가능한 파일이 없습니다.',
-      preview: '미리보기',
       previewBack: '목록으로',
       collecting: '생성된 파일을 저장하는 중…',
-      delete: '삭제',
-      deleteTitle: '이 파일을 삭제할까요?',
-      deleteConfirm: '「{name}」과(와) 저장된 내용이 영구적으로 삭제되며 복구할 수 없습니다.',
-      deleted: '파일을 삭제했습니다',
-      deleteFailed: '삭제에 실패했습니다. 다시 시도해 주세요.',
-      download: '다운로드',
-      downloadFailed: '다운로드에 실패했습니다. 다시 시도해 주세요.',
       inlinePreviewHint: '클릭하여 미리보기',
       inlineMissing: '파일을 사용할 수 없습니다',
       inlineDeleted: '삭제된 파일',
@@ -6783,23 +4722,16 @@ export default {
     contextCompacted: '컨텍스트 압축',
     contextCompactedSummary: '{before} → {after} 토큰',
     contextCompactedDegraded: '요약을 사용할 수 없어 원본 기록을 유지했습니다',
-    title: '에이전트',
-    subtitle: '에이전트 구성 및 관리, 대화 동작 및 기능 맞춤화',
     createAgent: '에이전트 만들기',
-    builtin: '내장',
-    disabled: '비활성화됨',
     disable: '비활성화',
     enable: '활성화',
-    noDescription: '아직 설명이 없습니다',
     selectAgent: '에이전트 선택',
     noAgents: '아직 에이전트가 없습니다.',
     manageAgents: '관리',
     builtinAgents: '내장된 인텔리전스',
     customAgents: '맞춤형 에이전트',
     selector: {
-      title: '에이전트 선택',
       current: '현재 선택',
-      goToSettings: '설정',
       sharedLabel: '공유',
       notReadyHint: '아직 구성 필요: {items}',
       notReadyStatus: '구성 필요',
@@ -6812,236 +4744,31 @@ export default {
       capabilityDisabled: '꺼짐',
       capabilitySupported: '지원',
       capabilityUnsupported: '미지원',
-      capabilityUnconfigured: '미구성'
-    },
-    editor: {
-      reasoningEffortUnsupported: '선택한 모델은 사고를 지원하지 않습니다. "끄기" 외의 옵션은 무시됩니다.',
-      reasoningEffortAlwaysOn: '선택한 모델은 항상 사고하며 끌 수 없습니다. 강도만 조정할 수 있습니다.',
-      createTitle: '에이전트 만들기',
-      editTitle: '에이전트 편집',
-      buttons: {
-        create: '에이전트 만들기',
-        saveAndClose: '저장 후 닫기',
-      },
-      postCreateHint: {
-        title: '생성 완료',
-        footer: '설정을 계속 조정하고 공유·배포 채널을 구성한 뒤 "저장 후 닫기"를 클릭하세요.',
-        integrationDesc: '통합 센터에서 IM, 웹 임베드 등 배포 채널을 설정하세요',
-      },
-      basicInfo: '기본정보',
-      basicInfoDesc: '에이전트 이름, 설명 및 실행 모드 구성',
-      promptsConfig: '프롬프트',
-      promptsConfigDesc: '시스템/컨텍스트/의도/재작성/폴백 프롬프트 구성',
-      modelConfig: '모델 구성',
-      modelConfigDesc: '대화 모델, ReRank 등 보조 모델 및 생성 매개변수 구성',
-      toolsConfig: '도구 구성',
-      toolsConfigDesc: '에이전트가 사용할 수 있는 도구 구성',
-      knowledgeConfig: '지식베이스',
-      knowledgeConfigDesc: '에이전트가 액세스할 수 있는 지식베이스 범위 및 FAQ 전략 구성',
-      webSearchConfig: '웹 검색',
-      webSearchConfigDesc: '에이전트의 네트워크 검색 기능 구성',
-      agentId: '에이전트 ID',
-      agentIdDesc: 'API 연동에서 이 ID로 에이전트를 지정할 수 있습니다',
-      name: '이름',
-      namePlaceholder: '에이전트 이름을 입력해주세요.',
-      nameRequired: '에이전트 이름을 입력해주세요.',
-      systemPromptRequired: '시스템 프롬프트를 입력하세요.',
-      modelRequired: '모델을 선택하세요.',
-      queryMissingInRewrite: '재작성 사용자 프롬프트에는 {\'{{\'}query{\'}}\'} 플레이스홀더가 포함되어야 합니다.',
-      queryMissingInFallback: '폴백 프롬프트에는 {\'{{\'}query{\'}}\'} 플레이스홀더가 포함되어야 합니다.',
-      description: '설명',
-      descriptionPlaceholder: '에이전트 설명을 입력하세요.',
-      normalDesc: '신속하게 응답하고 질문에 직접 답변하세요.',
-      agentDesc: '복잡한 문제에 대한 다단계 사고와 심층 분석',
-      model: '모델',
-      modelPlaceholder: '모델을 선택하세요.',
-      systemPrompt: '시스템 프롬프트',
-      systemPromptPlaceholder: '에이전트의 동작과 역할을 정의하는 사용자 지정 시스템 프롬프트(웹 검색 동작을 동적으로 제어하려면 {\'{{\'}web_search_status{\'}}\'} 플레이스홀더 사용)',
-      contextTemplateRequired: '컨텍스트 템플릿을 입력하십시오.',
-      temperature: '온도',
-      thinking: '사고 모델',
-      citationEnabled: '출처 인용 표시',
-      citationEnabledDesc: '최종 답변에 지식베이스와 웹 출처를 표시합니다. 꺼도 검색과 근거 활용은 계속 작동합니다.',
-      mode: '작동 모드',
-      webSearch: '웹 검색',
-      webSearchProvider: '검색 엔진',
-      webSearchProviderPlaceholder: '기본 검색 엔진 사용',
-      webSearchMaxResults: '최대 검색 결과 수',
-      webFetchEnabled: '페이지 콘텐츠 자동 가져오기',
-      webFetchTopN: '가져올 페이지 수',
-      knowledgeBases: '관련 지식베이스',
-      allKnowledgeBases: '모든 지식베이스',
-      selectedKnowledgeBases: '지식베이스 지정',
-      noKnowledgeBase: '지식베이스를 사용하지 않음',
-      selectKnowledgeBases: '지식베이스 선택',
-      selectKnowledgeBasesDesc: '연결할 지식베이스 선택(협업 지식베이스 포함)',
-      myKnowledgeBases: '내 지식베이스',
-      sharedKnowledgeBases: '협업 지식베이스',
-      retrieveKBOnlyWhenMentioned: '언급된 경우에만 검색',
-      retrieveKBOnlyWhenMentionedDesc: '꺼짐: 구성된 지식베이스를 자동으로 검색합니다. 켜짐: 사용자 {\'@\'}이 언급한 경우에만 검색합니다.',
-      rerankModel: '리랭크 모델',
-      rerankModelDesc: '지식베이스 검색 결과를 재정렬하여 답변 정확도를 높입니다',
-      rerankModelPlaceholder: 'ReRank 모델을 선택하세요.',
-      rerankModelOptionalHint: '현재 범위에 RAG 유형의 지식베이스가 없으므로 선택 사항입니다. 이후 RAG 지식베이스가 추가되면 워크스페이스 기본 ReRank 모델로 자동 폴백되지만, 명시적으로 설정하는 것을 권장합니다.',
-      maxIterations: '최대 반복 횟수',
-      maxIterationsLimit: '제한',
-      maxIterationsUnlimited: '제한 없음',
-      allowedTools: '허용된 도구',
-      multiTurn: '여러 라운드의 대화',
-      historyTurns: '라운드 수를 유지하세요',
-      retainRetrievalHistory: '검색 결과 유지',
-      memoryEnabled: '장기 기억',
-      retrievalStrategy: '검색 전략',
-      embeddingTopK: '벡터 회수 횟수',
-      keywordThreshold: '키워드 기준점',
-      vectorThreshold: '벡터 임계값',
-      rerankTopK: '재배치 횟수',
-      rerankThreshold: '재배치 임계값',
-      conversationSettings: '여러 라운드의 대화',
-      contextTemplate: '컨텍스트 템플릿',
-      contextTemplatePlaceholder: '사용자 정의 컨텍스트 템플릿..',
-      enableQueryExpansion: '쿼리 확장',
-      enableRewrite: '질문 재작성',
-      queryUnderstandModel: '질문 이해 모델',
-      queryUnderstandModelPlaceholder: '비워 두면 기본 대화 모델을 사용합니다',
-      rewritePromptSystem: '시스템 프롬프트 다시 작성',
-      rewritePromptSystemPlaceholder: '시스템 기본 프롬프트를 사용하려면 비워 두세요.',
-      rewritePromptUser: '사용자 프롬프트 다시 작성',
-      rewritePromptUserPlaceholder: '시스템 기본 프롬프트를 사용하려면 비워 두세요.',
-      maxCompletionTokens: '생성된 토큰의 최대 수',
-      maxCompletionTokensDefault: '기본값',
-      maxCompletionTokensCustom: '사용자 지정',
-      fallbackStrategy: '폴백 전략',
-      fallbackResponse: '고정 응답 내용',
-      fallbackResponsePlaceholder: '죄송합니다. 이 질문에는 답변해 드릴 수 없습니다.',
-      fallbackPrompt: '폴백 프롬프트',
-      fallbackPromptPlaceholder: '시스템 기본 프롬프트를 사용하려면 비워 두세요.',
-      skillsConfig: '스킬',
-      skillsConfigDesc: '먼저 실행 샌드박스를 선택한 뒤 아래 목록에서 스킬을 고르세요. 해당 샌드박스에 없는 스킬은 「설치」가 보이며, 설치한 뒤에만 선택할 수 있습니다.',
-      hostSkillsConfigDesc: '이 컴퓨터에 설치된 스킬을 고르세요. 설치되지 않은 스킬은 「설치」가 보이며, 설치한 뒤에만 선택할 수 있습니다.',
-      hostSkillsSelectionDesc: '워크스페이스 카탈로그의 스킬이 표시됩니다. 이 컴퓨터에 설치된 것은 바로 쓸 수 있고, 나머지는 먼저 설치해야 합니다.',
-      hostSelectSkillsDesc: '이 에이전트에서 쓸 스킬을 선택하세요. 이 컴퓨터에 없는 스킬은 선택할 수 없으며, 먼저 「설치」를 누르세요.',
-      hostSkillsAllListHint: '「전체」에는 이 컴퓨터에 이미 설치된 스킬만 포함됩니다. 설치되지 않은 스킬은 설치한 뒤에야 포함됩니다.',
-      hostInstallToThisComputer: '이 컴퓨터에 설치',
-      hostUpgradeOnThisComputer: '이 컴퓨터의 스킬을 카탈로그 버전으로 업그레이드',
-      hostSkillDisabled: '이 컴퓨터에서 비활성화됨',
-      skillsSelection: '스킬 목록',
-      skillsSelectionDesc: '워크스페이스 카탈로그의 스킬이 모두 표시됩니다. 이 샌드박스에 설치된 것은 바로 쓸 수 있고, 나머지는 먼저 「설치」해야 합니다.',
-      skillsAll: '전체',
-      skillsSelected: '지정',
-      skillsNone: '비활성화',
-      selectSkills: '스킬 선택',
-      selectSkillsDesc: '이 에이전트에서 쓸 스킬을 선택하세요. 설치되지 않은 스킬은 선택할 수 없으며, 오른쪽 「설치」를 먼저 누르세요.',
-      skillsAllListHint: '「전체」에는 이 샌드박스에 이미 설치된 스킬만 포함됩니다. 설치되지 않은 스킬은 「설치」한 뒤에야 포함됩니다.',
-      skillsGroupAvailable: '사용 가능',
-      skillsGroupUnavailable: '사용 불가',
-      noSkillsAvailable: '워크스페이스 카탈로그에 스킬이 없습니다.',
-      skillsNeedSandbox: '먼저 실행 샌드박스를 선택하세요.',
-      goSandboxSettings: '샌드박스 관리',
-      goSkillSettings: '스킬 관리',
-      installToThisSandbox: '이 샌드박스에 설치',
-      upgradeOnThisSandbox: '이 샌드박스의 스킬을 카탈로그 버전으로 업그레이드',
-      installShort: '설치',
-      viewInstallProgress: '진행 상황',
-      skillNotInstalled: '미설치',
-      skillNotReady: '아직 준비되지 않음',
-      skillDisabledOnSandbox: '이 샌드박스에서 비활성화됨',
-      sandboxBackend: '실행 샌드박스',
-      sandboxBackendDefault: '사용 안 함',
-      sandboxBackendHint: '선택하지 않으면 스킬 스크립트가 실행되지 않습니다.',
-      sandboxBackendMissing: '설정이 삭제됨',
-      sandboxNoConfigs: '이 워크스페이스에 샌드박스가 없어 스킬 스크립트가 실행되지 않습니다.',
-      skillsInfoTitle: '스킬과 샌드박스는 어떻게 연동되나요?',
-      skillsInfoContent: '스킬은 사전 설치된 전문 지식 모듈이며, 스크립트는 선택한 샌드박스에서 격리 실행됩니다. 목록은 해당 샌드박스에 설치된 스킬에서 가져옵니다. 세션 샌드박스가 한 번 만들어지면 첨부 파일, 산출물, 회수는 그 설정에 고정되며, 여기서 바꾸면 이후에 새로 만들어지는 세션에만 영향을 줍니다.'
-    },
-    messages: {
-      created: '에이전트가 성공적으로 생성되었습니다.',
-      updated: '에이전트가 업데이트되었습니다.',
-      deleted: '에이전트가 삭제되었습니다.',
-      deleteFailed: '삭제 실패',
-      saveFailed: '저장 실패',
-      copied: '에이전트가 복사되었습니다.',
-      copyFailed: '복사 실패',
-      disabled: '비활성화됨',
-      enabled: '활성화됨'
-    },
-    delete: {
-      confirmTitle: '에이전트 삭제',
-      confirmMessage: '"{name}" 에이전트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
-      confirmButton: '삭제 확인'
+      capabilityUnconfigured: '미구성',
     },
     shareScope: {
-      title: '공유 범위 설명',
-      desc: '스페이스 구성원은 읽기 전용 모드로 에이전트를 사용하며 현재 구성된 기능과 리소스를 따릅니다. 에이전트에 대한 수정 사항은 공유 공간에 동기화됩니다. 스페이스 구성원이 지식베이스 콘텐츠를 편집할 수 있도록 허용하려면 지식베이스를 스페이스에 공유하세요.',
       skillSecretsWarning: '이 에이전트는 스킬을 사용합니다. 스페이스 구성원이 사용하면 스킬이 이 워크스페이스의 샌드박스에서 관리자가 설정한 환경 변수(API 키 등)와 함께 실행되며, 구성원은 에이전트가 그 값을 출력하게 할 수 있습니다. 이를 허용할 수 있는 경우에만 공유하세요.',
-      knowledgeBase: '지식베이스',
       chatModel: '대화 모델',
-      rerankModel: '모델을 재배열하다',
-      webSearch: '웹 검색',
       mcp: 'MCP 서비스',
       kbAll: '모든 지식베이스',
       kbSelected: '{count} 지식베이스 지정',
       kbNone: '사용되지 않음',
       modelConfigured: '구성된',
       modelNotSet: '구성되지 않음',
-      enabled: '켜다',
-      disabled: '비활성화',
       mcpAll: '모든 서비스',
       mcpSelected: '{count} 서비스 지정',
-      mcpNone: '사용되지 않음'
-    },
-    detail: {
-      title: '에이전트 세부정보',
-      useInChat: '대화에 사용'
-    },
-    empty: {
-      title: '아직 맞춤 에이전트가 없습니다.',
-      description: '첫 번째 에이전트를 생성하려면 오른쪽 상단에 있는 버튼을 클릭하세요.',
-      sharedTitle: '아직 공유 에이전트가 없습니다.',
-      sharedDescription: '스페이스에 참여하거나 다른 사람에게 에이전트를 공유하도록 요청할 수 있습니다.',
-      favoritesTitle: '즐겨찾기 없음',
-      favoritesDescription: '카드의 별표 아이콘을 눌러 즐겨찾기에 추가하세요',
-      recentsTitle: '최근 항목 없음',
-      recentsDescription: '최근에 사용한 에이전트가 여기에 표시됩니다'
-    },
-    sections: {
-      builtin: '내장',
-      mine: '내가 만듦',
-      tenantOthers: '워크스페이스 · 다른 멤버',
-      tenantReadonly: '워크스페이스 · 읽기 전용',
-      sharedByMe: '내가 공유한',
-      sharedEditable: '공유받음 · 편집 가능',
-      sharedReadonly: '공유받음 · 읽기 전용'
-    },
-    tabs: {
-      sharedToMe: '나와 공유됨'
-    },
-    features: {
-      webSearch: '웹 검색 지원',
-      knowledgeBase: '관련 지식베이스',
-      mcp: 'MCP 서비스 지원',
-      multiTurn: '여러 라운드의 대화'
+      mcpNone: '사용되지 않음',
     },
     mode: {
-      normal: '빠른 Q&A',
-      agent: '에이전트 추론'
+      agent: '에이전트 추론',
     },
     type: {
-      normal: '빠른 Q&A',
-      agent: '에이전트 추론'
+      agent: '에이전트 추론',
     },
-    capabilities: {
-      kbCount: '{count} 지식베이스 지정',
-      kbAll: '전체 지식베이스에 액세스',
-      mcpEnabled: 'MCP 서비스 활성화',
-      multiTurn: '여러 라운드의 대화'
-    }
   },
   knowledgeStages: {
-    title: '처리 파이프라인',
     root: '지식 처리',
     attempt: '{n}번째 시도',
-    retry: '다시 파싱',
     notRun: '실행 안 됨',
     stageFailed: '{stage} 단계 실패',
     copyError: '오류 정보 복사',
@@ -7049,13 +4776,9 @@ export default {
       duration: '소요 시간',
       attempt: '시도',
       tasks: '백그라운드 작업',
-      tasksValue: '실행 중 {running} · 실패 {failed} · 완료 {completed}'
+      tasksValue: '실행 중 {running} · 실패 {failed} · 완료 {completed}',
     },
-    refresh: '지금 새로고침',
-    copy: '복사',
     copyDetails: '세부정보 복사',
-    copied: '클립보드에 복사됨',
-    close: '닫기',
     live: 'LIVE',
     liveTooltip: '파싱 진행 중 — 2초마다 자동 새로고침',
     autoRefreshOn: '자동 새로고침 중',
@@ -7065,9 +4788,7 @@ export default {
     collapseBranch: '하위 항목 접기',
     rowSelectHint: '클릭하여 세부 정보 보기, 왼쪽 화살표로 하위 항목 펼치기/접기',
     resizeDrawer: '패널 너비 조절',
-    justNow: '방금',
     secondsAgo: '{n}초 전',
-    minutesAgo: '{n}분 전',
     noActivity: '파싱 활동 없음',
     totalDuration: '총 소요시간: {d}',
     errorCode: {
@@ -7079,74 +4800,30 @@ export default {
       DOCREADER_PARSE_FAILED_SUGGESTION: "파일 형식을 확인하고 관리자에게 이번 DocReader 로그 확인을 요청하세요.",
       TASK_STALLED: '진행이 없어 자동 중단됨',
       TASK_STALLED_SUGGESTION: '임계 시간을 넘도록 진행이 없고 대기열에도 해당 작업이 없어 실패로 표시되었습니다. 「다시 시도」를 누르세요. 반복되면 이 단계가 의존하는 서비스(문서 파싱, 모델, 벡터 저장소)를 확인하세요.',
-      UNKNOWN_SUGGESTION: '자세한 내용은 애플리케이션 로그를 확인하세요.'
-    },
-    status: {
-      pending: '대기 중',
-      running: '진행 중',
-      finalizing: '최적화 중',
-      done: '완료',
-      failed: '실패',
-      skipped: '건너뜀',
-      cancelled: '취소됨'
+      UNKNOWN_SUGGESTION: '자세한 내용은 애플리케이션 로그를 확인하세요.',
     },
     stage: {
       docreader: '문서 파싱',
-      chunking: '청킹',
-      embedding: '벡터화',
-      multimodal: '멀티모달 인식',
-      postprocess: '후처리'
-    },
-    detail: {
-      started: '시작',
-      finished: '종료',
-      duration: '소요시간',
-      offset: '시작 오프셋',
-      timing: '타이밍',
-      identity: '식별 정보',
-      stageBreakdown: '단계 분석',
-      stageOrder: '단계 순서',
-      childCount: '하위 span 수',
-      kind: '유형',
-      status: '상태',
-      name: '이름',
-      input: '입력',
-      output: '출력',
-      metadata: '메타데이터',
-      traceMetadata: 'Trace 메타데이터',
-      metadataHint: 'Langfuse trace ID 등 관측용 보조 필드입니다. 단계별 입출력은 입력/출력 탭에서 확인하세요.',
-      metadataEmpty: '이 span에는 메타데이터가 없습니다. 단계 입출력은 입력/출력 탭을, Langfuse trace 필드는 개요 탭을 확인하세요.',
-      error: '오류',
-      empty: '데이터 없음',
-      inProgress: '진행 중',
-      elapsed: '경과',
-      placeholderHint: '이 단계에는 상세한 span 기록이 없으며, 추정된 상태만 표시됩니다.',
-      showJson: 'JSON 펼치기',
-      hideJson: 'JSON 접기',
-      includingChildren: '하위 작업 포함'
+      postprocess: '후처리',
     },
     tab: {
       overview: '개요',
-      raw: '원본 JSON'
+      raw: '원본 JSON',
     },
     stall: {
-      title: '{minutes}분 동안 진행이 없어 멈췄을 수 있습니다',
-      hint: '계속 기다리거나 파싱을 중지한 뒤 지식을 재구축할 수 있습니다. 계속 진행이 없으면 자동으로 실패 처리됩니다.',
       hintAtStage: '「{stage}」 단계에서 멈춰 있습니다. 계속 기다리거나 파싱을 중지한 뒤 지식을 재구축할 수 있습니다. 계속 진행이 없으면 자동으로 실패 처리됩니다.',
       queuedTitle: '{minutes}분 동안 진행이 없습니다. 아직 대기열에서 기다리는 중입니다',
-      queuedHint: '이 문서의 작업이 아직 대기열에 있습니다. 보통 작업 적체 때문이며 자동으로 이어지므로 대개 조치가 필요 없습니다.'
+      queuedHint: '이 문서의 작업이 아직 대기열에 있습니다. 보통 작업 적체 때문이며 자동으로 이어지므로 대개 조치가 필요 없습니다.',
     },
     head: {
       lastProgress: '최근 진행',
       stagesDone: '주요 단계',
       stagesProgress: '현재 단계',
-      attempt: '시도',
-      updated: '갱신'
+      updated: '갱신',
     },
     processConfig: {
-      title: '이번 파싱 설정',
       kbDefault: '지식 베이스 기본 설정 사용',
-      graph: '지식 그래프'
+      graph: '지식 그래프',
     }
   },
   uploadConfirm: {
@@ -7155,7 +4832,6 @@ export default {
     generateSummary: "문서 요약 생성",
     generateSummaryHint: "기본적으로 활성화됩니다. 비활성화하면 요약 생성을 건너뛰며 파싱, 인덱싱 및 기타 단계는 설정대로 진행됩니다.",
 
-    title: '문서 업로드 확인',
     parseConfig: '파싱 설정',
     configNav: '파싱 설정 탐색',
     navParserDefault: '기본',
@@ -7171,11 +4847,7 @@ export default {
     notSet: '미설정',
     summaryNoTags: '미설정',
     summaryTagsCount: '태그 {count}개',
-    confirm: '업로드 및 파싱 확인',
-    cancel: '취소',
     tabTags: '문서 태그',
-    tagsDescription: '이 배치로 가져오는 모든 문서에 적용할 태그를 여러 개 선택할 수 있습니다',
-    tagsPlaceholder: '태그 선택(복수 선택 가능)',
     tagsEmpty: '현재 지식 베이스에 태그가 없습니다. 업로드 후 태그 관리에서 만들 수 있습니다.',
     tagsLoadFailed: '태그를 불러오지 못했습니다. 나중에 문서 목록에서 설정할 수 있습니다.',
     noItems: '파일 또는 URL을 하나 이상 추가하세요',
@@ -7205,8 +4877,7 @@ export default {
     reparseHint: '이전 파싱 설정을 사용하며 여기서 조정할 수 있습니다',
     manualCharCount: '{count}자',
     pdfForceScanned: {
-      label: '스캔 PDF로 파싱',
-      description: '웹 인쇄, 스캔본, 이미지 위주 PDF에 적합합니다. 모든 페이지를 이미지로 렌더링한 뒤 OCR/VLM으로 처리합니다. 처리 시간과 모델 호출 비용이 늘어날 수 있습니다.'
+      description: '웹 인쇄, 스캔본, 이미지 위주 PDF에 적합합니다. 모든 페이지를 이미지로 렌더링한 뒤 OCR/VLM으로 처리합니다. 처리 시간과 모델 호출 비용이 늘어날 수 있습니다.',
     }
   },
   knowledgeBase: {
@@ -7215,13 +4886,8 @@ export default {
     filters: '필터',
     clearFilters: '필터 지우기',
 
-    title: '지식베이스',
     fileContent: '파일 내용',
-    name: '이름',
-    description: '설명',
-    settings: '설정',
     sort: {
-      title: '정렬',
       updatedTime: '업데이트 시간',
       updatedTimeDescription: '파일이 마지막으로 변경된 시간을 기준으로 정렬합니다.',
       createdTime: '업로드/생성 시간',
@@ -7241,15 +4907,11 @@ export default {
       totalDocuments: '전체 문서 {count}개',
       countHint: '현재 폴더 문서 {direct}개, 하위 폴더 포함 {total}개',
       filteredCount: '일치하는 문서 {count}개',
-      title: '폴더',
       rootRow: '루트',
       rootRowTip: '지식 베이스 루트 디렉터리, 하위 폴더에 없는 문서가 여기에 있습니다',
       folderCardCount: '문서 {count}개',
       searchingSubtree: '(하위 폴더 포함)',
       emptyFolder: '이 폴더에는 아직 문서가 없습니다',
-      emptySearch: '일치하는 문서가 없습니다',
-      collapse: '폴더 접기',
-      expand: '폴더 펼치기',
       collapseFolder: '이 폴더 접기',
       expandFolder: '이 폴더 펼치기',
       rename: '이름 변경',
@@ -7259,7 +4921,6 @@ export default {
       renameInvalid: '폴더를 자기 하위로 이동할 수 없습니다',
     },
     moveToFolder: {
-      action: '폴더로 이동',
       newFolder: '새 하위 폴더',
       newFolderPlaceholder: '새 폴더 이름',
       newFolderHint: 'Enter로 만들고 이동',
@@ -7268,9 +4929,6 @@ export default {
       newFolderAddUnder: '「{folder}」 아래에 하위 디렉터리 만들기',
       newFolderHintRoot: '루트 아래에 생성됩니다',
       newFolderHintUnder: '「{folder}」 아래에 생성됩니다',
-      success: '문서 {count}개를 이동했습니다',
-      failed: '문서를 이동할 수 없습니다',
-      duplicate: '이미 존재하는 폴더입니다',
     },
     tagFilterTitle: '태그로 필터',
     tagFilterPlaceholder: '태그',
@@ -7320,8 +4978,6 @@ export default {
     typeManual: '수동 생성',
     typeFile: '파일',
     channelLabel: '출처 채널',
-    channelWeb: '웹',
-    channelApi: 'API',
     channelBrowserExtension: '브라우저 확장',
     channelWechat: 'WeChat',
     channelWecom: 'WeCom',
@@ -7330,7 +4986,6 @@ export default {
     channelLarkDrive: "Lark 드라이브",
     channelDingtalk: 'DingTalk',
     channelSlack: 'Slack',
-    channelIm: 'IM 채널',
     channelNotion: 'Notion',
     channelConfluence: 'Confluence',
     channelYuque: 'Yuque',
@@ -7345,8 +5000,6 @@ export default {
     documentContent: '문서 내용',
     importTime: '가져온 시간',
     createTime: '생성 시간',
-    createdAt: '생성일시',
-    updatedAt: '수정일시',
     clickToViewFull: '전체 텍스트와 세그먼트를 보려면 카드를 클릭하세요.',
     characters: '자',
     segment: '조각',
@@ -7372,7 +5025,6 @@ export default {
     metadataKeyDuplicate: '중복된 메타데이터 필드: {key}',
     metadataNumberRequired: '메타데이터 필드 {key}에는 유효한 숫자가 필요합니다',
     regenerateSummary: '요약 다시 생성',
-    generateSummary: '요약 생성',
     noDocumentSummary: '문서 요약 없음',
     summaryRefreshed: '요약이 업데이트되었습니다',
     summaryRefreshQueued: '요약 새로고침이 대기열에 추가되었으며 완료되면 자동으로 업데이트됩니다',
@@ -7408,7 +5060,6 @@ export default {
     goToStorageSettings: '설정으로 이동',
     getInfoFailed: '지식베이스 정보를 가져오는 데 실패하여 파일을 업로드할 수 없습니다',
     missingId: '지식베이스 ID가 없습니다',
-    deleteFailed: '삭제 실패, 나중에 다시 시도하세요!',
     uploadTime: '업로드 시간',
     newSession: '새 세션',
     editDocument: '문서 편집',
@@ -7423,7 +5074,6 @@ export default {
     cancelParseFailed: '중지에 실패했습니다. 나중에 다시 시도해주세요',
     draft: '초안',
     draftTip: '임시 저장된 내용, 검색에 포함되지 않음',
-    untitledDocument: '제목 없는 문서',
     deleteDocument: '문서 삭제',
     moveDocument: '이동...',
     moveToKnowledgeBase: '지식베이스로 이동',
@@ -7441,10 +5091,8 @@ export default {
     parsingFailed: '파싱 실패',
     parsingInProgress: '파싱 중...',
     generatingSummary: '요약 생성 중...',
-    documentSummary: '요약',
     detailSectionMeta: '기본 정보',
     confirmDeleteDocument: '"{fileName}" 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다',
-    confirmDelete: '삭제 확인',
     viewModeGrid: '카드 보기',
     viewModeList: '목록 보기',
     viewModeToggle: '보기 전환',
@@ -7455,7 +5103,6 @@ export default {
     columnStatus: '상태',
     columnUpdatedAt: '업데이트',
     columnActions: '작업',
-    selectAll: '전체 선택',
     selectedCount: '{count}개 선택됨',
     clearSelection: '선택 해제',
     batchDelete: '선택 삭제',
@@ -7495,12 +5142,10 @@ export default {
     statusFailed: '실패',
     statusCancelled: '취소됨',
     statusDraft: '초안',
-    noDescription: '설명 없음',
     emptyKnowledgeDragDrop: '지식이 비어 있음, 드래그 앤 드롭으로 업로드',
     pdfDocFormat: 'pdf, doc 형식 파일, 최대 10MB',
     textMarkdownFormat: 'text, markdown 형식 파일, 최대 200KB',
     dragFileNotText: '텍스트나 링크가 아닌 파일을 드래그하세요',
-    searchPlaceholder: '지식베이스 검색...',
     docSearchPlaceholder: '문서 이름 검색...',
     fileTypeFilter: '파일 유형',
     allFileTypes: '모든 유형',
@@ -7523,35 +5168,23 @@ export default {
     sourceManual: '수동 생성',
     updatedTimeFrom: '시작',
     updatedTimeTo: '종료',
-    noMatch: '일치하는 지식베이스를 찾을 수 없음',
     noKnowledge: '사용 가능한 지식베이스 없음',
     loadingFailed: '지식베이스 로드 실패',
     operationNotSupportedForType: '현재 지식베이스 유형에서는 이 작업을 지원하지 않습니다',
     allFilesSkippedNoEngine: '선택한 모든 파일이 사용 가능한 파싱 엔진이 없어 건너뛰었습니다',
     filesSkippedNoEngine: '{count}개 파일이 사용 가능한 파싱 엔진이 없어 건너뛰었습니다',
-    deleteSuccess: '지식이 성공적으로 삭제되었습니다!',
     chunkLoadFailed: '청크 로드 실패',
     infoCard: {
-      tooltip: '지식베이스 정보 보기',
-      title: '지식베이스 정보',
-      basic: '기본',
       access: '접근',
       binding: '스토리지 바인딩',
-      capabilities: '기능',
       stats: '통계',
       type: '유형',
-      createdAt: '생성일',
       source: '출처',
-      sharedTo: '공유 범위',
-      enabled: '활성화됨',
-      vectorStore: '벡터 스토어',
       fileStorage: '파일 스토리지',
       documentCount: '문서 수',
       faqCount: 'FAQ 수',
-      supportedFileTypes: '허용 형식',
-      chunking: '분할',
       parentShort: '부모',
-      childShort: '자식'
+      childShort: '자식',
     },
     accessInfo: {
       myRole: '내 정체성',
@@ -7561,277 +5194,83 @@ export default {
       permissionEditor: '편집 가능한 문서 및 태그',
       permissionViewer: '보기 및 검색만 가능',
       fromOrg: '공유 공간에서',
-      sharedAt: '공유일시',
-      lastUpdated: '마지막 업데이트'
+      lastUpdated: '마지막 업데이트',
     }
   },
   resourceOrigin: {
     mine: '내 생성',
     mineTooltip: '현재 사용자가 생성',
-    tenant: '워크스페이스',
     tenantTooltip: '워크스페이스의 다른 멤버가 생성',
     tenantTooltipWithCreator: '{creator}님이 생성',
     space: '스페이스',
     spaceTooltip: '공유 공간 「{space}」에서 가져옴',
     spaceTooltipWithTenant: '공유 공간 「{space}」 · 출처 {tenant}',
     shared: '외부 공유',
-    sharedTooltip: '공유 공간를 통해 외부 워크스페이스에서 접근'
+    sharedTooltip: '공유 공간를 통해 외부 워크스페이스에서 접근',
   },
   listSpaceSidebar: {
-    all: '모두',
     workspace: '워크스페이스',
     spaces: '나와 공유됨',
     favorites: '즐겨찾기',
-    recents: '최근'
+    recents: '최근',
   },
   batchManage: {
-    selectAll: '전체 선택',
-    cancel: '취소',
-    delete: '대화 삭제',
-    deleteConfirmTitle: '대화 삭제',
-    deleteConfirmBody: '선택한 {count}개의 대화를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.',
     deleteAllConfirmBody: '모든 대화를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
-    deleteSuccess: '삭제 성공',
-    deleteFailed: '삭제 실패, 나중에 다시 시도해 주세요'
+    deleteFailed: '삭제 실패, 나중에 다시 시도해 주세요',
   },
   contextualGuide: {
     stepOf: '{current} / {total}',
-    skip: '건너뛰기',
     prev: '이전',
-    next: '다음',
     done: '확인',
     interactHint: '강조된 영역을 클릭하여 계속하세요',
-    chat: {
-      steps: {
-        done: {
-          title: '이제 탐색해 보세요',
-          desc: '업로드한 문서와 관련된 질문을 해 보고, 인용이 포함된 답변을 확인해 보세요.'
-        },
-        send: {
-          title: '보내기로 대화 시작',
-          desc: '전송하면 새 세션이 만들어지고, AI가 지식 베이스를 바탕으로 인용과 함께 답변합니다.'
-        },
-        input: {
-          title: '질문 입력',
-          desc: '알고 싶은 내용을 입력하거나, 위의 추천 질문을 눌러 빠르게 시작하세요.'
-        },
-        kb: {
-          title: '지식 범위 선택',
-          desc: '{\'@\'}를 눌러 지식 베이스나 파일을 선택하세요. 선택한 범위만 사용해 답변합니다. 선택하지 않으면 현재 에이전트 설정이 적용됩니다.'
-        }
-      }
-    },
     kbDetail: {
-      steps: {
-        done: {
-          title: '분석 후 사용 가능',
-          desc: '문서가 색인되면 대화에서 {\'@\'}로 이 지식 베이스를 지정해 출처가 포함된 답변을 받을 수 있습니다.'
-        },
-        upload: {
-          title: '문서 추가',
-          desc: '여기에서 파일·폴더 업로드, URL 가져오기, 온라인 편집 콘텐츠 생성을 할 수 있습니다.'
-        },
-        intro: {
-          title: '지식 베이스가 비어 있습니다',
-          desc: '첫 자료를 추가해야 검색과 대화에 사용할 수 있습니다. 지원 형식은 드래그 앤 드롭으로도 업로드할 수 있습니다.'
-        }
-      }
     },
     agentCreate: {
-      steps: {
-        submit: {
-          title: '에이전트 저장',
-          desc: '강조된 확인 버튼을 눌러 완료하세요. 이후 채팅에서 이 에이전트를 선택할 수 있습니다.'
-        },
-        navTools: {
-          title: '도구 및 MCP(선택)',
-          desc: '스마트 추론 모드에서 내장 도구와 MCP로 검색·코드 등을 사용할 수 있습니다.'
-        },
-        multimodal: {
-          title: '첨부 업로드 켜기',
-          desc: '이미지·오디오 업로드와 첨부 파싱 규칙을 설정하세요. 이미지 업로드 시 아래에서 VLM을 선택해야 합니다.'
-        },
-        navMultimodal: {
-          title: '첨부 업로드(선택)',
-          desc: '채팅에서 이미지, 문서, 오디오 등 첨부를 허용합니다. 이미지 이해에는 시스템 설정의 VLM이 필요합니다.'
-        },
-        navWebsearch: {
-          title: '웹 검색(선택)',
-          desc: '최신 정보를 위해 외부 검색을 호출할 수 있게 합니다.'
-        },
-        knowledge: {
-          title: '지식 범위',
-          desc: '「전체」는 범용, 「선택」은 특정 도메인, 「없음」은 모델만 또는 웹 검색에 의존합니다.'
-        },
-        navKnowledge: {
-          title: '지식 베이스 연결',
-          desc: '에이전트가 검색할 지식 범위를 설정합니다. 기본값은 전체 지식 베이스입니다.'
-        },
-        model: {
-          title: '모델 선택',
-          desc: '구성된 대화 모델 중 선택하거나, 먼저 시스템 설정에서 추가하세요.'
-        },
-        navModel: {
-          title: '대화 모델 연결',
-          desc: '모든 에이전트에 KnowledgeQA 모델이 추론 엔진으로 필요합니다.'
-        },
-        name: {
-          title: '이름과 설명',
-          desc: '알아보기 쉬운 이름을 입력하세요. 스마트 추론 모드는 기본값이 채워질 수 있습니다.'
-        },
-        agentType: {
-          title: '에이전트 유형 선택',
-          desc: '프리셋은 시스템 프롬프트, 권장 도구, 지식 범위(Wiki 빌드, 데이터 분석 등)를 자동으로 채웁니다. 시나리오에 맞게 바꾸면 이름·설명도 함께 갱신됩니다.'
-        },
-        mode: {
-          title: '실행 모드 선택',
-          desc: '「빠른 답변」은 단순 Q&A용, 「스마트 추론」은 도구와 다단계 사고로 복잡한 작업에 적합합니다.'
-        }
-      }
     },
     agentList: {
-      steps: {
-        create: {
-          title: '에이전트 만들기',
-          desc: '에이전트는 모델·지식 베이스·도구·프롬프트를 묶은 재사용 가능한 어시스턴트입니다. 강조된 「에이전트 생성」을 클릭하세요.'
-        }
-      }
     },
     kbCreate: {
-      steps: {
-        submit: {
-          title: '지식 베이스 생성',
-          desc: '「확인」을 클릭하면 지식 베이스를 생성하지 않고 안내를 마칠 수 있습니다. 준비되면 이름을 입력하고 유형과 모델을 확인한 뒤 「생성」을 클릭하세요.'
-        },
-        faq: {
-          title: 'FAQ 색인',
-          desc: 'Q&A 쌍의 색인 방식을 선택합니다. 생성 후 이 페이지에서 FAQ 항목을 추가할 수 있습니다.'
-        },
-        multimodalVllm: {
-          title: 'VLM 모델 선택',
-          desc: '멀티모달에는 VLM이 필요합니다. 목록이 비어 있으면 시스템 설정에서 추가하세요.'
-        },
-        multimodalToggle: {
-          title: '멀티모달 파싱 켜기',
-          desc: '켜면 이미지가 포함된 업로드를 VLM으로 처리해 검색 품질을 높입니다.'
-        },
-        navMultimodal: {
-          title: '멀티모달/이미지(선택)',
-          desc: '차트·스캔·이미지가 많은 문서를 시각 이해가 필요할 때 활성화하세요.'
-        },
-        storage: {
-          title: '스토리지(선택)',
-          desc: '원본 파일 저장 위치(로컬 또는 객체 스토리지)입니다. 워크스페이스 기본값을 따르면 됩니다.'
-        },
-        chunking: {
-          title: '청킹(선택)',
-          desc: '문서를 검색 단위로 나누는 방식입니다. RAG에 맞춘 기본값을 그대로 쓰면 됩니다.'
-        },
-        parser: {
-          title: '파서 엔진(선택)',
-          desc: 'PDF·Office 파일 파싱 방식을 제어합니다. 기본값으로 대부분 충분하며 OCR이 필요할 때 조정하세요.'
-        },
-        embedding: {
-          title: 'Embedding 모델',
-          desc: '텍스트를 벡터로 바꿔 의미 검색을 지원합니다. 위의 벡터/키워드 색인과 함께 사용합니다.'
-        },
-        llm: {
-          title: '대화/요약 모델',
-          desc: '요약·답변 생성에 사용됩니다. 목록이 비어 있으면 드롭다운에서 설정으로 이동해 모델을 추가하세요.'
-        },
-        navModels: {
-          title: '모델 구성(필수)',
-          desc: '모든 지식 베이스에 대화 모델이 필요하며, 검색을 쓰려면 Embedding 모델도 필요합니다. 왼쪽 「모델 구성」을 여세요.'
-        },
-        indexing: {
-          title: '색인 기능',
-          desc: '벡터·키워드 검색이 기본으로 켜져 있습니다. Wiki·지식 그래프도 선택할 수 있습니다. 검색 방식은 하나 이상 유지하세요.'
-        },
-        name: {
-          title: '이름 입력',
-          desc: '「제품 매뉴얼」「고객 FAQ」처럼 알아보기 쉬운 이름을 입력하세요. 설명은 선택 사항입니다.'
-        },
-        type: {
-          title: '유형 선택',
-          desc: '문서 라이브러리는 PDF·Word 등 파일용, FAQ 라이브러리는 질문·답변 쌍용입니다. 생성 후 유형은 변경할 수 없습니다.'
-        }
-      }
     },
     tenantModels: {
       needChatModelFirst: '에이전트를 만들기 전에 대화 모델(KnowledgeQA)을 추가하세요.',
       stepsAgent: {
         done: {
-          title: '이후 에이전트 생성',
-          desc: '저장 후 설정을 닫고 「에이전트 생성」을 클릭하세요. 마법사가 모드·지식 베이스·첨부 업로드 옵션을 안내합니다.'
+          desc: '저장 후 설정을 닫고 「에이전트 생성」을 클릭하세요. 마법사가 모드·지식 베이스·첨부 업로드 옵션을 안내합니다.',
         },
         addModel: {
-          title: '대화 모델 추가',
-          desc: '「모델 추가」를 눌러 KnowledgeQA 유형을 구성하세요.'
+          desc: '「모델 추가」를 눌러 KnowledgeQA 유형을 구성하세요.',
         },
         intro: {
-          title: '먼저 대화 모델을 구성하세요',
-          desc: '에이전트 생성에는 KnowledgeQA 모델이 최소 하나 필요합니다. 시스템 설정에서 추가하세요(Embedding은 지식 베이스에만 필요).'
+          desc: '에이전트 생성에는 KnowledgeQA 모델이 최소 하나 필요합니다. 시스템 설정에서 추가하세요(Embedding은 지식 베이스에만 필요).',
         }
       },
-      steps: {
-        done: {
-          title: '추가 후 계속',
-          desc: '모델을 저장하고 설정을 닫은 뒤 「새 지식 베이스」를 클릭하세요. 마법사가 유형·색인·모델 연결을 안내합니다.'
-        },
-        addModel: {
-          title: '모델 추가',
-          desc: '「모델 추가」를 눌러 KnowledgeQA(대화)와 Embedding 유형을 구성하세요. Lite 사용자는 Ollama로 로컬 모델을 받을 수 있습니다.'
-        },
-        intro: {
-          title: '먼저 모델을 구성하세요',
-          desc: '문서 지식 베이스에는 대화 모델(요약·Q&A)과 Embedding 모델(벡터 검색)이 각각 하나 이상 필요합니다. 시스템 설정에서 추가하세요.'
-        }
-      }
     },
     kbList: {
-      steps: {
-        create: {
-          title: '첫 지식 베이스 만들기',
-          desc: '지식 베이스에 문서와 FAQ를 보관합니다. 아래에 강조된 「새 지식 베이스」 버튼을 누르면 양식 작성을 안내합니다.'
-        }
-      }
     }
   },
   newUserGuide: {
-    stepOf: '{current} / {total}',
-    skip: '건너뛰기',
-    prev: '이전',
-    next: '다음',
-    done: '완료',
     reopen: '사용 가이드',
     steps: {
       done: {
-        title: '준비 완료',
-        desc: '핵심 기능을 모두 익혔습니다. 이제 나만의 지식 어시스턴트를 만들어 보세요! 메뉴 상단 닉네임 옆 도움말 버튼에서 언제든 가이드를 다시 볼 수 있습니다.'
+        desc: '핵심 기능을 모두 익혔습니다. 이제 나만의 지식 어시스턴트를 만들어 보세요! 메뉴 상단 닉네임 옆 도움말 버튼에서 언제든 가이드를 다시 볼 수 있습니다.',
       },
       models: {
-        title: '모델 구성하기',
-        desc: '핵심 단계입니다. 모델 관리에서 대화·임베딩 등 모델을 추가해야 지식 베이스와 대화 기능이 정상 작동합니다. \'모델 추가\'를 클릭해 시작하세요.'
+        desc: '핵심 단계입니다. 모델 관리에서 대화·임베딩 등 모델을 추가해야 지식 베이스와 대화 기능이 정상 작동합니다. \'모델 추가\'를 클릭해 시작하세요.',
       },
       settings: {
-        title: '계정 및 설정 입구',
-        desc: '여기를 열면 계정, 멤버, 시스템 설정을 관리할 수 있습니다. 이 가이드는 메뉴 상단 닉네임 옆 도움말 버튼에서 다시 열 수 있습니다.'
+        desc: '여기를 열면 계정, 멤버, 시스템 설정을 관리할 수 있습니다. 이 가이드는 메뉴 상단 닉네임 옆 도움말 버튼에서 다시 열 수 있습니다.',
       },
       agents: {
-        title: '전용 에이전트 구축',
-        desc: '지식 베이스, 프롬프트, 도구를 결합해 재사용 가능한 에이전트로 전문성을 축적하세요.'
+        desc: '지식 베이스, 프롬프트, 도구를 결합해 재사용 가능한 에이전트로 전문성을 축적하세요.',
       },
       chat: {
-        title: 'AI 대화 시작하기',
-        desc: '지식 베이스 내용을 기반으로 질문하고 출처가 포함된 정확한 답변을 받아보세요. 여기를 클릭해 새 대화를 시작하세요.'
+        desc: '지식 베이스 내용을 기반으로 질문하고 출처가 포함된 정확한 답변을 받아보세요. 여기를 클릭해 새 대화를 시작하세요.',
       },
       knowledge: {
-        title: '지식 베이스 만들기',
-        desc: '모든 것의 시작점입니다. 문서, 웹페이지, FAQ를 업로드하면 WeKnora가 자동으로 분석하고 색인합니다. 여기를 클릭해 지식 베이스로 이동하세요.'
+        desc: '모든 것의 시작점입니다. 문서, 웹페이지, FAQ를 업로드하면 WeKnora가 자동으로 분석하고 색인합니다. 여기를 클릭해 지식 베이스로 이동하세요.',
       },
       welcome: {
-        title: 'WeKnora에 오신 것을 환영합니다',
-        desc: '몇 단계만으로 지식 베이스, 대화, 에이전트의 핵심 사용법을 안내합니다. \'다음\'을 눌러 시작하세요.'
+        desc: '몇 단계만으로 지식 베이스, 대화, 에이전트의 핵심 사용법을 안내합니다. \'다음\'을 눌러 시작하세요.',
       }
     }
   },
@@ -7839,7 +5278,6 @@ export default {
     moreActions: '대화 추가 작업',
     toggleSandboxPanel: '샌드박스 터미널',
     copySessionId: '세션 ID 복사',
-    copyLink: '대화 링크 복사',
     copyMarkdown: 'Markdown으로 복사',
     openNewWindow: '새 창에서 열기',
     deleteSession: '대화 삭제',
@@ -7848,79 +5286,47 @@ export default {
     temporaryWorkspace: '임시 작업 영역',
     sessionIdCopied: '세션 ID가 복사되었습니다',
     linkCopied: '대화 링크가 복사되었습니다',
-    copyFailed: '복사하지 못했습니다. 브라우저 클립보드 권한을 확인하세요.',
     markdownCopied: '전체 대화가 Markdown으로 복사되었습니다',
     markdownCopyFailed: 'Markdown 복사에 실패했습니다. 다시 시도하세요.',
     clearConfirmTitle: '대화 메시지 지우기',
     clearConfirmBody: '현재 대화의 모든 메시지를 지울까요? 대화는 유지되지만 복구할 수 없습니다.',
-    deleteConfirmTitle: '대화 삭제',
-    deleteConfirmBody: '현재 대화를 삭제할까요? 삭제 후에는 복구할 수 없습니다.',
-    deleteSuccess: '대화가 삭제되었습니다',
     markdown: {
       sessionId: '세션 ID',
       exportedAt: '내보낸 시간',
       user: '사용자',
       assistant: '어시스턴트',
       attachments: '첨부 파일',
-      references: '참조'
+      references: '참조',
     }
   },
   artifactLibrary: {
-    title: '산출물',
-    subtitle: '모든 대화에서 에이전트가 생성한 파일을 한곳에 모아 보여줍니다',
     typeFilter: '유형별 필터',
-    searchPlaceholder: '파일 이름 검색',
     categories: {
-      all: '전체',
-      document: '문서',
       spreadsheet: '스프레드시트',
       presentation: '프레젠테이션',
-      image: '이미지',
       web: '웹 페이지',
-      data: '데이터'
+      data: '데이터',
     },
     groups: {
-      today: '오늘',
-      yesterday: '어제',
       last7Days: '최근 7일',
       last30Days: '최근 30일',
-      earlier: '이전'
+      earlier: '이전',
     },
     total: '파일 {count}개',
     versions: '버전 {count}개',
-    preview: '미리보기',
-    delete: '삭제',
     deleteTitle: '이 파일을 삭제할까요?',
-    deleteConfirm: '「{name}」과(와) 저장된 내용이 영구적으로 삭제되며 복구할 수 없습니다.',
     deleteConfirmVersions: '「{name}」의 {count}개 버전과 저장된 내용이 모두 영구적으로 삭제되며 복구할 수 없습니다.',
-    deleted: '파일을 삭제했습니다',
-    deleteFailed: '삭제에 실패했습니다. 다시 시도해 주세요.',
-    download: '다운로드',
     downloadFailed: '다운로드에 실패했습니다. 잠시 후 다시 시도해 주세요',
     openSession: '대화 열기',
-    untitledSession: '제목 없는 대화',
-    loadMore: '더 불러오기',
-    loadFailed: '산출물을 불러오지 못했습니다',
-    retry: '다시 시도',
-    clearFilters: '필터 지우기',
-    empty: {
-      title: '아직 산출물이 없습니다',
-      description: '대화에서 에이전트에게 보고서, 표, 슬라이드를 만들게 하면 파일이 여기에 표시됩니다'
-    },
     noMatches: {
-      title: '일치하는 파일이 없습니다',
-      description: '다른 키워드나 파일 유형으로 시도해 보세요'
+      description: '다른 키워드나 파일 유형으로 시도해 보세요',
     }
   },
   menu: {
     sessionInProgress: '대화 진행 중',
-    knowledgeBase: '지식베이스',
     agents: '에이전트',
     artifacts: '산출물',
     organizations: '공유 공간',
-    newChat: '새 대화',
-    settings: '시스템 설정',
-    logout: '로그아웃',
     clearMessages: '메시지 지우기',
     clearMessagesSuccess: '메시지가 지워졌습니다',
     clearMessagesFailed: '메시지 지우기 실패, 나중에 다시 시도해 주세요',
@@ -7928,18 +5334,15 @@ export default {
     renameSessionSuccess: '제목이 업데이트되었습니다',
     renameSessionFailed: '제목 수정 실패, 나중에 다시 시도해 주세요',
     batchManage: '일괄 관리',
-    newSession: '새 세션',
-    pin: '고정',
     unpin: '고정 해제',
     pinFailed: '고정 실패, 나중에 다시 시도해 주세요',
     unpinFailed: '고정 해제 실패, 나중에 다시 시도해 주세요',
-    search: '검색',
     collapseSidebar: '사이드바 접기',
     expandSidebar: '사이드바 펼치기',
     logoutSuccess: '로그아웃되었습니다',
     myChats: '내 대화',
     apiChats: 'API 세션',
-    noSessions: '대화가 없습니다'
+    noSessions: '대화가 없습니다',
   },
   // 관찰 속성의 표시 문구. 속성 이름으로 색인하며 여기서는 번역만 담당합니다.
   // 속성 이름의 점은 밑줄로 이스케이프합니다(contain.text → contain_text) —— vue-i18n 은
@@ -7947,21 +5350,12 @@ export default {
   // 번역이 없는 속성은 백엔드 등록표의 설명으로 대체됩니다.
   imageAttr: {
     contain_text: {
-      label: '이미지 내 텍스트 양',
-      description: '이미지 자체가 담고 있는 본문 텍스트의 양입니다. 텍스트를 읽기 위해 별도 OCR을 돌릴 가치가 있는지 판단합니다.',
       values: {
-        none: { label: '텍스트 없음', description: '텍스트가 전혀 없습니다' },
         sparse: { label: '약간의 글자', description: '약간의 글자만 —— 로고, 도로 표지판, 단일 라벨' },
         block: { label: '문단 단위 본문', description: '문단 단위 본문 —— 스크린샷, 표, 문서 페이지' }
       }
     },
     contain_data_visual: {
-      label: '데이터 시각화',
-      description: '이미지가 차트, 그래프, 도표, 인포그래픽으로 데이터를 전달하는지 여부입니다. 글자가 적어 보여도 OCR 대상으로 유지합니다.',
-      values: {
-        'true': { label: '예', description: '예 —— 차트, 그래프, 도표' },
-        'false': { label: '아니오', description: '아니오 —— 사진, 삽화, 아이콘, 장식' }
-      }
     }
   }
 }

@@ -14,6 +14,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// likeEscapeChar is the SQL ESCAPE character paired with escapeLikeKeyword.
+const likeEscapeChar = `\`
+
+// escapeLikeKeyword escapes SQL LIKE wildcards (%, _) in a keyword
+// so they are treated as literal characters.
+func escapeLikeKeyword(keyword string) string {
+	keyword = strings.ReplaceAll(keyword, `\`, `\\`)
+	keyword = strings.ReplaceAll(keyword, "%", `\%`)
+	keyword = strings.ReplaceAll(keyword, "_", `\_`)
+	return keyword
+}
+
 var ErrChunkRevisionConflict = errors.New("chunk revision conflict")
 
 // ErrChunkNotFound is returned when a chunk lookup finds no row. A typed

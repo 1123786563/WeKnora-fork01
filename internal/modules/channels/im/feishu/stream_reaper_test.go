@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Tencent/WeKnora/internal/im"
+	"github.com/Tencent/WeKnora/internal/modules/channels/im"
 )
 
 func registerTestStream(t *testing.T, id string, state *feishuStreamState) {

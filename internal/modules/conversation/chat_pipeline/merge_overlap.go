@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/sourceloc"
 	"github.com/Tencent/WeKnora/internal/types"
 )

@@ -95,7 +95,7 @@ func pluginGuardRouter(svc *pluginGuardService) *gin.Engine {
 		c.Set(types.TenantIDContextKey.String(), uint64(7))
 		c.Next()
 	})
-	h := NewMCPServiceHandler(svc, nil, nil, nil)
+	h := NewMCPServiceHandler(svc, nil, nil, nil, nil)
 	creds := NewMCPCredentialsHandler(svc)
 	r.POST("/mcp-services", h.CreateMCPService)
 	r.PUT("/mcp-services/:id", h.UpdateMCPService)

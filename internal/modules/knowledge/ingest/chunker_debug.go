@@ -15,7 +15,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
 	"github.com/gin-gonic/gin"
 )
 

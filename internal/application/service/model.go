@@ -13,7 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/providers"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm"

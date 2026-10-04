@@ -111,13 +111,7 @@ fi
 `
 }
 
-func shellSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, `'`, `'"'"'`) + "'"
-}
 
-func gitResetFailure(sha, stderr string) error {
-	return fmt.Errorf("workspace reset: git reset to %s failed: %s", sha, stderr)
-}
 
 func execWorkspaceReset(
 	ctx context.Context, runner SandboxShellRunner, sessionID, script, expectedSandboxID string,

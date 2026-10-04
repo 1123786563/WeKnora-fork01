@@ -37,7 +37,7 @@ func (s *fakePersonaAgentService) GetAgentByID(_ context.Context, id string) (*t
 	return nil, service.ErrAgentNotFound
 }
 
-func (s *fakePersonaAgentService) UpdateAgent(_ context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
+func (s *fakePersonaAgentService) UpdateAgent(_ context.Context, agent *types.CustomAgent, _ *string) (*types.CustomAgent, error) {
 	s.updated = append(s.updated, agent)
 	return agent, nil
 }

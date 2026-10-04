@@ -451,7 +451,7 @@ func (s *Service) UpdateFAQEntry(ctx context.Context,
 		// 删除该条目的全部旧索引（含已移除的相似问），再整体重建。
 		// 同一 SourceID 重建索引并非所有引擎都会覆盖（ES v8、Qdrant 每次写入
 		// 生成新文档 ID），不先删会留下过期内容。
-		err := s.indexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, true)
+		err := s.IndexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, true)
 		if err != nil {
 			return nil, err
 		}
@@ -611,7 +611,7 @@ func (s *Service) AddSimilarQuestions(ctx context.Context,
 }
 		// Combined mode, re-index the whole entry. Delete first: not every
 		// engine overwrites an existing SourceID on re-index.
-		err := s.indexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, true)
+		err := s.IndexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, true)
 		if err != nil {
 			return nil, err
 		}

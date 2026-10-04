@@ -8,6 +8,9 @@ import "strings"
 // （docs/plans/passb/10-identity.md §3.3 先例）。本文件实现与
 // internal/application/repository/knowledge.go:24-28 逐字对齐；tag.go 调用点零改动。
 
+// likeEscapeChar is the SQL ESCAPE character paired with escapeLikeKeyword.
+const likeEscapeChar = `\`
+
 // escapeLikeKeyword escapes SQL LIKE wildcards (%, _) in a keyword
 // so they are treated as literal characters.
 func escapeLikeKeyword(keyword string) string {

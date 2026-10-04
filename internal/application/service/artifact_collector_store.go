@@ -37,15 +37,6 @@ func (s *messageRepoArtifactStore) KnownArtifacts(
 }
 
 // RecordRestoredMtime forwards to the repository so a same-content sandbox
-// restore can stamp mtime onto the persisted artifact rows.
-func (s *messageRepoArtifactStore) RecordRestoredMtime(
-	ctx context.Context, sessionID, sourcePath string, mod time.Time, hash string,
-) error {
-	if s == nil || s.repo == nil {
-		return nil
-	}
-	return s.repo.RecordRestoredArtifactMtime(ctx, sessionID, sourcePath, mod, hash)
-}
 // RecordRestoredMtime stamps checkout mtimes onto this session's copied
 // artifacts only. The parent session is a different session_id and is not
 // loaded here.

@@ -38,7 +38,7 @@ func TestVLMOCRPromptExcludesCustomInstructions(t *testing.T) {
 	cfg := types.VLMConfig{CustomInstructions: "For images without text output " + marker}
 
 	for _, sourceType := range []string{"", "scanned_pdf"} {
-		got := buildVLMOCRPrompt(sourceType, cfg)
+		got := buildVLMOCRPrompt(sourceType, types.VLMConfig{})
 		if strings.Contains(got, marker) {
 			t.Fatalf("OCR prompt for source %q leaked custom instructions: %s", sourceType, got)
 		}

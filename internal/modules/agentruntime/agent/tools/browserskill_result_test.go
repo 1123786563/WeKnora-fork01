@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
-	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -109,7 +108,6 @@ func TestBrowserRPCFailureReachesModelAndAllowsFreshObservation(t *testing.T) {
 	require.Equal(t, 2, manager.calls)
 	invalid, err := registry.ExecuteTool(
 		ctx, "local_browser", json.RawMessage(`{"method":"observe","max_text_chars":3000}`),
-		ctx, "local_browser", json.RawMessage(`{"method":"observe","max_tokens":750}`),
 	)
 	require.NoError(t, err)
 	require.False(t, invalid.Success)

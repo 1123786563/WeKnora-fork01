@@ -23,6 +23,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// ErrModelNotFound mirrors service.ErrModelNotFound (import cycle forbids the
+// direct import); errors.Is callers compare by message-level semantics only.
+var ErrModelNotFound = errors.New("model not found")
+
+// isFinalAsynqAttempt reports whether this run is the task's last retry.
+func isFinalAsynqAttempt(ctx context.Context) bool {
+	retried, ok := asynq.GetRetryCount(ctx)
+	if ok {
+		maxRetry, maxRetryOK := asynq.GetMaxRetry(ctx)
+		if maxRetryOK {
+			return retried >= maxRetry
+		}
+	}
+	retried, maxRetry, ok := types.TaskRetryMetadataFromContext(ctx)
+	return ok && retried >= maxRetry
+}
+
 // followUpTriggerCount estimates useful new work from claimable documents and
 // running slots. reserveFollowUpTasks additionally bounds all outstanding
 // follow-ups (scheduled, queued, running and retrying) across batch completions.

@@ -10,8 +10,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/agent/tools"
-	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -155,7 +153,6 @@ func TestArtifactCollectorUsesOneConnectionForAllFiles(t *testing.T) {
 func TestPinnedCheckpointSkipsWorkspacePreparation(t *testing.T) {
 	ctx, mgr, client := newOperationRequestManager(t)
 	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil)
-	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil, nil)
 	checkpoint := NewWorkspaceCheckpointer(pinned).Checkpoint(ctx, "s1", "sb1", "m1")
 	require.NotNil(t, checkpoint)
 	require.Equal(t, "sb1", checkpoint.SandboxID)
@@ -178,7 +175,7 @@ func TestPinnedCheckpointSkipsWorkspacePreparation(t *testing.T) {
 
 func TestPinnedRewindResetSkipsWorkspacePreparation(t *testing.T) {
 	ctx, mgr, client := newOperationRequestManager(t)
-	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil, nil)
+	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil)
 	sha := strings.Repeat("a", 40)
 	require.NoError(t, resetWorkspaceToCommit(ctx, pinned, "s1", sha, "sb1"))
 	require.Equal(t, []string{"connect", "exec"}, client.ops,
@@ -191,7 +188,7 @@ func TestPinnedRewindResetSkipsWorkspacePreparation(t *testing.T) {
 
 func TestPinnedEmptyResetSkipsWorkspacePreparation(t *testing.T) {
 	ctx, mgr, client := newOperationRequestManager(t)
-	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil, nil)
+	pinned := NewPinnedSessionSandbox(stubPinReader{configID: "cfg1"}, &stubTenantSandboxResolver{mgr: mgr}, nil)
 	require.NoError(t, resetWorkspaceToEmpty(ctx, pinned, "s1", "sb1"))
 	require.Equal(t, []string{"connect", "exec"}, client.ops,
 		"SkipWorkspacePrep must omit the extra prepareSessionDirs exec")

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/reranking"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -219,4 +217,14 @@ func logRerankInputScoreSample(ctx context.Context, results []*types.SearchResul
 			"truncated": len(results) - limit,
 		})
 	}
+}
+
+func rerankFallbackMinScore(searchTargets types.SearchTargets) float64 {
+	if searchTargets.HasRecallThresholdOverride() {
+		// The user explicitly constrained this turn to a tag/document scope.
+		// Preserve its best candidate instead of letting a global rerank
+		// threshold erase the entire authoritative scope.
+		return 0
+	}
+	return 0.15
 }

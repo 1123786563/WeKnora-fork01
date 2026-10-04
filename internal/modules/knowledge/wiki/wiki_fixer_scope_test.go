@@ -86,7 +86,7 @@ func TestResolveBuiltinWikiFixerTenantScope_PinsConfigToTheSharedKB(t *testing.T
 	kbLookup := &wikiFixerKBLookupStub{kb: &types.KnowledgeBase{ID: "kb-shared", TenantID: 20}}
 	kbShare := &wikiFixerKBShareStub{permission: types.OrgRoleEditor, isShared: true}
 
-	gotAgent, _ := resolveBuiltinWikiFixerTenantScope(
+	gotAgent, _ := ResolveBuiltinWikiFixerTenantScope(
 		context.Background(), agent, 10, types.TenantRoleContributor, []string{"kb-shared"}, kbLookup, kbShare,
 	)
 

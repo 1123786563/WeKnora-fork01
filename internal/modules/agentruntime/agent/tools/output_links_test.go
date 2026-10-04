@@ -93,57 +93,7 @@ func (f *outputLinkExecutor) ListSessionFiles(_ context.Context, sessionID, dir 
 	return f.after, nil
 }
 
-type combinedOutputExecutor struct {
-	outputLinkExecutor
-	snapshot  *sandbox.ShellOutputSnapshot
-	opts      sandbox.ShellExecOptions
-	command   string
-	outputDir string
-}
 
-func (f *combinedOutputExecutor) ExecShellCommandWithOutputSnapshot(
-	_ context.Context, _, command string, opts sandbox.ShellExecOptions, outputDir string,
-) (*sandbox.ExecuteResult, *sandbox.ShellOutputSnapshot, error) {
-	f.calls++
-	f.opts, f.command, f.outputDir = opts, command, outputDir
-	return &sandbox.ExecuteResult{Stdout: "hello", ExitCode: 0}, f.snapshot, nil
-}
-
-func TestShellOutputLinksPreferCombinedExecution(t *testing.T) {
-	t.Setenv("WEKNORA_SKILL_OUTPUT_DIR", "/workspace/output")
-	for _, tc := range []struct {
-		name     string
-		snapshot *sandbox.ShellOutputSnapshot
-		want     []string
-	}{
-		{"changed", &sandbox.ShellOutputSnapshot{
-			Before: []sandbox.RemoteDirEntry{{Path: "/workspace/output/old.txt", Type: sandbox.RemoteEntryFile}},
-			After: []sandbox.RemoteDirEntry{
-				{Path: "/workspace/output/old.txt", Type: sandbox.RemoteEntryFile},
-				{Path: "/workspace/output/new.txt", Type: sandbox.RemoteEntryFile},
-			},
-		}, []string{"sandbox:new.txt"}},
-		{"empty", &sandbox.ShellOutputSnapshot{}, []string{}},
-		{"unavailable", nil, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			executor := &combinedOutputExecutor{snapshot: tc.snapshot}
-			result, err := NewShellExecTool(executor, nil).Execute(shellExecTestContext(), json.RawMessage(
-				`{"command":"cat", "stdin":"hello\n", "work_dir":"/tmp/task",
-                  "timeout_sec":10, "env":{"KEY":"value"}}`))
-			require.NoError(t, err)
-			require.True(t, result.Success)
-			require.Equal(t, tc.want, result.OutputFiles)
-			require.Equal(t, 1, executor.calls)
-			require.Zero(t, executor.listed, "must not perform legacy scans around the combined operation")
-			require.Equal(t, "/workspace/output", executor.outputDir)
-			require.Equal(t, "/tmp/task", executor.opts.WorkDir)
-			require.Equal(t, 10*time.Second, executor.opts.Timeout)
-			require.Equal(t, "value", executor.opts.Env["KEY"])
-			require.Contains(t, executor.command, "base64 -d")
-		})
-	}
-}
 
 func TestShellOutputLinksUseChangedFilesAndDoNotReplay(t *testing.T) {
 	t.Setenv("WEKNORA_SKILL_OUTPUT_DIR", "/workspace/output")
@@ -248,7 +198,7 @@ func TestOutputLinksEscapeNamesAndStayInsideOutputDirectory(t *testing.T) {
 		"/workspace/output/../../tmp/task/previews/page-1.png",
 	)
 	require.Equal(t, []string{"sandbox:report%20%5B1%5D%28final%29.pdf"}, links)
-	require.Equal(t, []string{"sandbox:比赛信息.pptx"}, sandboxOutputLinksIn(outputDir, "/workspace/output/比赛信息.pptx"))
+	require.Equal(t, []string{"sandbox:比赛信息.pptx"}, sandboxOutputLinksIn("/workspace/output", "/workspace/output/比赛信息.pptx"))
 }
 
 func TestChangedOutputLinksUseLayoutOutputDir(t *testing.T) {

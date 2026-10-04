@@ -206,12 +206,7 @@ func (r *sessionRepository) GetPagedByTenantID(
 func (r *sessionRepository) QueryPaged(
 	ctx context.Context, q *types.SessionListQuery,
 ) ([]*types.SessionListItem, int64, error) {
-	// Dialect-aware bits so the same query works on Postgres and SQLite (Lite build).
 	isPostgres := r.db.Dialector.Name() == "postgres"
-	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?) ESCAPE ?"
-	if isPostgres {
-		titleLikeExpr = "s.title ILIKE ? ESCAPE ?"
-	}
 	// SQLite (the driver used by Lite) does not support NULLS LAST; its default
 	// nulls ordering puts NULLs first for DESC, which is actually what we want
 	// for pinned_at (rows with pinned_at=NULL are never pinned, so they get
@@ -219,27 +214,6 @@ func (r *sessionRepository) QueryPaged(
 	orderClause := "s.is_pinned DESC, s.pinned_at DESC NULLS LAST, s.updated_at DESC"
 	if !isPostgres {
 		orderClause = "s.is_pinned DESC, s.pinned_at DESC, s.updated_at DESC"
-	}
-
-	// Base filter shared by count and list queries.
-	applyBase := func(db *gorm.DB) *gorm.DB {
-		db = db.Where("s.tenant_id = ? AND s.deleted_at IS NULL", q.TenantID)
-		if q.UserID != "" {
-			db = db.Where("(s.user_id = ? OR s.user_id IS NULL OR s.user_id = '')", q.UserID)
-		}
-		// Skill image maintenance runs in a real session so its transcript can
-		// be read back, but it is not a conversation. Excluding it here rather
-		// than in applySource is deliberate: a source branch only covers its
-		// own bucket, and this row must be absent from all of them, including
-		// the unfiltered listing.
-		db = db.Where(
-			"(s.description IS NULL OR s.description NOT LIKE ?)",
-			types.SkillMaintenanceSessionMarker+"%",
-		)
-		if kw := strings.TrimSpace(q.Keyword); kw != "" {
-			db = db.Where(titleLikeExpr, "%"+escapeLikeKeyword(kw)+"%", likeEscapeChar)
-		}
-		return db
 	}
 
 	// LEFT JOIN IM mappings to surface origin fields and support source/agent filters.
@@ -479,8 +453,6 @@ func (r *sessionRepository) CreateForked(
 		if len(messages) == 0 {
 			return nil
 		}
-		return tx.Session(&gorm.Session{SkipHooks: true}).
-			CreateInBatches(messages, 100).Error
 		if err := tx.Session(&gorm.Session{SkipHooks: true}).
 			CreateInBatches(messages, 100).Error; err != nil {
 			return err
