@@ -485,3 +485,29 @@ The user explicitly asks to maximize parallelism. Use independent worktrees and 
 - AC④ 稳定身份：rfd_ ID 即渠道退款键，重试复用原键（driveRefund）+ provider_refund_id UNIQUE。
 
 **门禁**：commercial 7 包全绿（repository 0.70s / service 5.6s / commercialplatform 72.8s / payment 15.9s 等）；`go build ./...` 仅预存链接警告；新测试 6 支（budget_lag_test.go 3 + settlement_lag_test.go 3）。
+
+## #94+#96+#99 批量轮（2026-10-05，worktree /tmp/wk-l94 @ fix/lago-94-99，基 d858df19a）
+
+### #94 [Lago 22] 降级/年付月发/到期回 Base Plan — closure-ready（evidence-only，2 残差）
+- AC① 降级周期边界恰一次（不追回已发 Credits）：ChangePlan SCHEDULED 分支存独立列、绝不截断已付区间（order.go:885-915，B17）+ Tick 先 applyDueScheduledChange 再投影（service lifecycle.go:69-114）+ 仓储 stored-JSON 恰一次守卫。TestChangePlanSchedulesDowngradeAtPeriodEnd / TestLifecycleTickAppliesDueScheduledChange。
+- AC② 年付月发恰一次：DueMonths 逐月推进、早续费不预授（domain lifecycle.go:44-57）+ MonthlyGrantKey UTC 月锚 + ClaimBenefitJob 唯一 claim（service lifecycle.go:123-158）+ 商业链激活月首发钱包（purchase_fulfillment.go:265-305，D4）。TestLifecycleTickAnnualGrantsMonthByMonthAcrossTicks / :65 多 worker claim once / :163 不预授 / :253 外部 issuer 重放恰一次。
+- AC③ 到期回 Base 不清数据：ProjectionAt→BaseTier+over-limit 理由（domain lifecycle.go:91-99）+ recordExpiry 只写投影不删数据/top-up（service lifecycle.go:96-100）+ 懒链 ensure_subscription 幂等回 base plan code（benefits.go:267-279）；paid/Base 双订阅身份独立（ExternalPurchaseSubscriptionID vs ExternalSubscriptionID）。TestLifecycleTickExpiredKeepsTopUpsAndDowngradesProjection / TestLifecycleExpiryProjectsBaseTierWithOverLimitReason。
+- AC④ 超限只阻新增：budget.go 降级只暂停新步骤、reconciliation 不阻（:39/:63/:89）+ ApplyQuotas occupancy 先 limits 后（benefits.go:779）。budget/access/quota 套件绿。
+- **残差 R-94a**：Lago 侧显式切换命令缺——ensure_subscription 对已存在订阅不同 plan code 返回 plan conflict（commercialplatform/lago.go:724-727），到期回 Base 依赖 Lago 订阅自然终结+双身份懒链，无 terminate/switch 命令；真 Lago e2e 留 env-gated（沿 #86 先例）。
+- **残差 R-94b**：商业链付费期第 2..N 月月发时钟缺位——EnsureMonthlyCredits 硬编码 BasePlanSeed（benefits.go:411）；plan-aware 改造会与 purchase 首发钱包双发，需钱包身份域决策（超本轮）。
+
+### #96 [Lago 24] 套餐退款 Credit Note+权益撤回 — closure-ready（本轮落地 Credit Note 命令面，3 残差）
+- AC① 已发生/未结算用量进资格计算：**缺口维持**——P03 occupancy-refundable 默认拒绝（refund.go:129-138），ApproveRefund fail closed（repository refund.go:202-248）。TestRefundEligibilityDefaultNotReady / TestRefundApproveWithoutP03KeepsReviewing。
+- AC② Credit Note 修正不改写历史：**本轮新增** credit_note_command.go——CommandKindIssueCreditNote（ADR-0014 additive 先例，锚定 finalized invoice，append-only）+ 幂等键 per refund + 派生身份/闭集 reason/CNY 校验 + fake 记账（重放恰一 note、分歧重放 ErrPlatformInvalidResponse 拒绝）。credit_note_command_test.go + commercialplatform/credit_note_test.go（3 测试）。
+- AC③ 双确认才完成：TransitionRefundOnChannel 渠道成功→revocation_pending 绝不 completed（refund.go:76-100）+ TransitionRefundOnRevocation confirmed 才 completed（:101-105）；Credit Note 命令补齐 Lago 修正链一环。TestRefundChannelTransitionStateMachine / TestRefundRevocationCompletion / TestRefundSuccessRevokeFailureRetriesRevocationOnly。
+- AC④ 并发不超锁：ApproveRefund 单事务 per-lot 锁核算。TestRefundApproveConcurrentUsageRaceNoDoubleSpend。
+- **残差 R-96a**：P03 资格计算仍默认拒绝（需 budget 权威口径，与 #95 共区）；**R-96b**：LagoAdapter 未接 issue_credit_note HTTP 面（fake+payload 已就位）；**R-96c**：生产 NewRefundService(db,nil,nil,nil)（handler/commercial.go:91）。
+
+### #99 [Lago 27] worker 崩溃/Lago 故障不丢用量/不提前释放 — closure-ready（实施交付：dispatch worker 装配，2 残差）
+- AC① 交接点崩溃不漏不重：Finalize 单事务（fact+record+outbox+reservation 转换；errSettlementReplay 整体回滚幂等，settlement.go:140-160）+ Dispatch 同 SettlementKey 重放。TestSettlementAcceptedThenCrashReplaysIdempotent / :426 丢确认 watermark 恰一次 / :492 不回退。
+- AC② 堆积等待/告警非假成功：#90 denyPricingLaggedTask 5/15min 门 + SuspendTask durable 暂停 + ScanLagAlerts/last_error。settlement_lag_test.go 3 测试。
+- AC③ 不可用 fail closed：unreachable→事件保持 pending 同键重放（dispatchEvent）；Finish 费率不可用拒绝不 zero-charge（execution.go unavailableRates）；benefits 链 pending 姿态；KeepProtection 仅 confirmed 放行。TestSettlementDispatchedNotConfirmedKeepsProtection。
+- AC④ 原身份前向收敛：**本轮新增** SettlementService.StartBackground/Stop（30s drain 循环，service settlement.go 末段，FulfillmentService 先例）+ container 装配 newSettlementDispatchService/startCommercialSettlementDispatch（drain-only 实例，rates 故意 unavailable——只搬已定价记录）。**修复真缺口：OutboxKindUsageSettlement 原不在任何 worker drain 集合**。settlement_worker_test.go（无人工 Dispatch 收敛断言 + Stop 幂等）。
+- **残差 R-99a**：真实进程 kill/系统化故障注入矩阵留活体栈轮（沿 T01/T14 先例）；**R-99b**：CheckNewConsumption 未直连 Lago readiness（fail closed 由 lag 门间接达成，5min 窗口内放行=「堆积等待」语义，票面一致）。
+
+**门禁**：commercial 8 包全绿 -count=1（commercialplatform 73.2s / payment 19.2s / service 10.1s 等）；`go build ./internal/container/`+`go vet` 干净；新测试 6 支（credit_note_command_test.go 2 + credit_note_test.go 3 + settlement_worker_test.go 2，其中 1 支纯幂等烟测）。
