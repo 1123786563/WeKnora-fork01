@@ -797,3 +797,42 @@ func TestSyncLotsConcurrentSqlite(t *testing.T) {
 		t.Fatalf("lot holds %d must equal reservations %d × 500", heldSum, reserved)
 	}
 }
+
+// TestBudgetReserveDispatchedReplayNeverCreatesSecondHold: the retry window
+// after MarkReservationDispatched must answer a conflict, never a second
+// hold — the account, task and lot faces all stay at exactly one upper.
+func TestBudgetReserveDispatchedReplayNeverCreatesSecondHold(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 100, 100)
+	ctx := context.Background()
+	req := budgetRequest("r1", "call-1", 60)
+	if _, err := s.Reserve(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkReservationDispatched(ctx, 7, "call-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reserve(ctx, req); !errors.Is(err, ErrReservationKeyConflict) {
+		t.Fatalf("got %v want ErrReservationKeyConflict", err)
+	}
+	if acct := budgetAccountRow(t, db); acct.HeldMicro != 60 {
+		t.Fatalf("account held=%d want 60", acct.HeldMicro)
+	}
+	if task := budgetTaskRow(t, db, "r1"); task.HeldMicro != 60 {
+		t.Fatalf("task held=%d want 60", task.HeldMicro)
+	}
+	var lot BudgetLotRow
+	if err := db.Where("tenant_id = 7").First(&lot).Error; err != nil {
+		t.Fatal(err)
+	}
+	if lot.HeldMicro != 60 {
+		t.Fatalf("lot held=%d want 60", lot.HeldMicro)
+	}
+	var reservations int64
+	if err := db.Model(&ReservationRow{}).Count(&reservations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reservations != 1 {
+		t.Fatalf("reservations=%d want 1", reservations)
+	}
+}

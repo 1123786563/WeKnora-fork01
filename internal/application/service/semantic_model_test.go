@@ -518,3 +518,29 @@ func semanticTestBudget(reserve func(context.Context, semanticCapability) (domai
 	}
 	return b
 }
+
+// #87 AC3: a rates resolver that answers a version other than the one the
+// capability pinned must fail closed at the reserve boundary — before any
+// hold, dispatch marker, credential resolution, or model call. The store is
+// deliberately real: with the version guard removed the reserve would run
+// against the budget tables and surface a different error, so this test
+// bites on that mutation.
+func TestSemanticModelStalePriceVersionFailsClosedAtReserve(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repocommercial.BudgetAccountRow{}, &repocommercial.TaskBudgetRow{}, &repocommercial.ReservationRow{}, &repocommercial.BudgetLotRow{}, &repocommercial.BudgetLotAllocationRow{}))
+	rates := func(string) (domain.PriceVersionRates, error) {
+		return domain.PriceVersionRates{Version: "stale"}, nil
+	}
+	budget := NewSemanticModelBudgetAdapter(repocommercial.NewBudgetStore(db), nil, rates)
+	capability := semanticGatewayCapability()
+	capability.Funding = domain.FundingPlatform
+	models := &semanticGatewayModels{}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+	_, err = NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+	require.ErrorIs(t, err, ErrSemanticModelRatesUnavailable)
+	require.Zero(t, models.chatCalls)
+	require.Zero(t, models.providerCalls)
+	require.Equal(t, 1, invocations.failBeforeDispatch)
+	require.Zero(t, invocations.markDispatched)
+}
