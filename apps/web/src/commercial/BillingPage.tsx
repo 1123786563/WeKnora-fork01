@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow, OrderView, PurchaseView } from '@weknora/contracts';
+import type { CommercialAccountView, CommercialSummary, CommercialUsageRow, OrderView, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button } from 'tdesign-react';
@@ -16,10 +16,11 @@ export type CommercialUsageState =
   | { status: 'success'; rows: CommercialUsageRow[] }
   | { status: 'error'; message: string };
 
-// #86：余额分解状态——credits 为 null 表示 benefits 尚未就绪（pending），
-// 卡片隐藏而非报错。
+// #86/#100：账务信封状态——state=linked|pending（pending 即 spec L169 的
+// 「等待账务同步」稳定产品状态），credits 为 null 表示 benefits 尚未就绪，
+// 卡片隐藏而非报错，状态行照常渲染。
 export type CommercialAccountState =
-  | { status: 'success'; credits: CommercialAccountCredits | null }
+  | { status: 'success'; view: CommercialAccountView }
   | { status: 'error'; message: string };
 
 export async function loadCommercialSummary(
@@ -51,11 +52,24 @@ export async function loadCommercialAccount(
   signal?: AbortSignal,
 ): Promise<CommercialAccountState> {
   try {
-    return { status: 'success', credits: await client.account(signal) };
+    return { status: 'success', view: await client.account(signal) };
   } catch (error) {
     if (signal?.aborted) throw error;
     return { status: 'error', message: error instanceof Error ? error.message : 'Unable to load credits breakdown' };
   }
+}
+
+/** #100 AC①：账务状态闭合中文文案——「等待账务同步」是 spec L169 十状态中
+ * 原先无 UI 映射的最后一个（pending 原本只是卡片隐藏）。 */
+export function accountStateLabel(view: Pick<CommercialAccountView, 'state'>): string {
+  return view.state === 'pending' ? '等待账务同步' : '账务已连接';
+}
+
+/** #100 AC③：权限差异化提示——无账单管理权的调用者（服务端写门已 403）
+ * 在账单页看到闭合提示；管理者返回 null（购买入口维持原样）。 */
+export function billingManageNotice(canManageBilling: boolean): string | null {
+  if (canManageBilling) return null;
+  return '当前角色无账单管理权限：购买、变更与退款由空间所有者或获授权成员操作。';
 }
 
 /** micro → 显示两位小数（纯展示换算，不在契约层做）。 */
@@ -159,6 +173,7 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
           </>
         ) : null}
         {state.status === 'success' ? (
+          <>
           <ul className="wk-list" data-testid="billing-summary-list">
             <li>
               <strong>套餐</strong>
@@ -185,19 +200,25 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
             </li>
             <li><strong>到期</strong><span>{state.summary.subscription?.paid_until || '无固定到期（未订阅）'}</span></li>
           </ul>
+          {/* #100 AC③：权限差异化——无账单管理权的调用者看到闭合提示（服务端
+              写门已 403，这里只是 UI 面）；管理者不渲染。 */}
+          {billingManageNotice(state.summary.can_manage_billing) !== null ? (
+            <p className="wk-muted" data-testid="billing-manage-notice">{billingManageNotice(state.summary.can_manage_billing)}</p>
+          ) : null}
+          </>
         ) : null}
       </Card>
-      {accountState.status === 'success' && accountState.credits ? (
+      {accountState.status === 'success' && accountState.view.credits ? (
         <Card>
           <h2>余额</h2>
           {/* #86：余额分解——总余额/预占/退款锁定/可用 + 批次表。 */}
           <ul className="wk-list" data-testid="billing-credits-breakdown">
-            <li><strong>总余额</strong><span>{microToDisplay(accountState.credits.balance_micro)}</span></li>
-            <li><strong>预占（进行中任务）</strong><span>{microToDisplay(accountState.credits.held_micro)}</span></li>
-            <li><strong>退款锁定</strong><span>{microToDisplay(accountState.credits.refund_locked_micro)}</span></li>
-            <li><strong>可用</strong><span>{microToDisplay(accountState.credits.available_micro)}</span></li>
+            <li><strong>总余额</strong><span>{microToDisplay(accountState.view.credits.balance_micro)}</span></li>
+            <li><strong>预占（进行中任务）</strong><span>{microToDisplay(accountState.view.credits.held_micro)}</span></li>
+            <li><strong>退款锁定</strong><span>{microToDisplay(accountState.view.credits.refund_locked_micro)}</span></li>
+            <li><strong>可用</strong><span>{microToDisplay(accountState.view.credits.available_micro)}</span></li>
           </ul>
-          {accountState.credits.batches.length > 0 ? (
+          {accountState.view.credits.batches.length > 0 ? (
             <table className={USAGE_TABLE} data-testid="billing-credits-batches">
               <thead>
                 <tr className="border-b border-[#e7e7ea]">
@@ -208,7 +229,7 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {accountState.credits.batches.map((batch, index) => (
+                {accountState.view.credits.batches.map((batch, index) => (
                   <tr key={`${batch.source}-${batch.period}-${index}`}
                     data-testid={batchExpiringWithin(batch.expires_at) ? 'batch-expiring' : undefined}>
                     <td className={USAGE_TABLE_CELL}>{batchSourceLabel(batch.source)}</td>
@@ -223,7 +244,23 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
               </tbody>
             </table>
           ) : null}
-          <p className="wk-muted">对账时间：{accountState.credits.projected_at}</p>
+          <p className="wk-muted">对账时间：{accountState.view.credits.projected_at}</p>
+        </Card>
+      ) : accountState.status === 'success' && accountState.view.state === 'pending' ? (
+        <Card>
+          {/* #100 AC①：等待账务同步的 UI 映射——十状态的最后一个此前无渲染面。 */}
+          <ul className="wk-list" data-testid="billing-account-state">
+            <li>
+              <strong>账务状态</strong>
+              <span>
+                {accountStateLabel(accountState.view)}
+                {accountState.view.reason !== ''
+                  ? <span className="wk-muted"> · {accountState.view.reason}</span>
+                  : null}
+              </span>
+            </li>
+          </ul>
+          <p className="wk-muted">账单数据暂不可用；数据恢复后此处自动展示余额分解。</p>
         </Card>
       ) : accountState.status === 'error' && accountState.message !== 'Loading…' ? (
         <Card>

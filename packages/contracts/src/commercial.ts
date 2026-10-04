@@ -209,6 +209,33 @@ export function parseCommercialAccountCredits(value:unknown):CommercialAccountCr
  return out;
 }
 
+// #100 [Lago 28]: the FULL account envelope — the closed billing-account
+// state (linked|pending) rides alongside the credits breakdown so the
+// "waiting for billing synchronization" stable product state (spec L169)
+// is renderable instead of silently hidden. pending means benefits absent:
+// credits degrades to null, never a fabricated plan.
+export interface CommercialAccountView {
+ state:'linked'|'pending'; reason:string; credits:CommercialAccountCredits|null;
+}
+export function parseCommercialAccountView(value:unknown):CommercialAccountView {
+ if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid account');
+ const v=value as Record<string,unknown>;
+ if(v.state!=='linked'&&v.state!=='pending') throw new Error('invalid account (state)');
+ const out:CommercialAccountView = {
+  state: v.state,
+  // reason is the backend's closed diagnostic token (unconfigured|
+  // unreachable|invalid_response|…); absent degrades to ''.
+  reason: typeof v.reason==='string' ? v.reason : '',
+  credits: null,
+ };
+ if(v.benefits===undefined||v.benefits===null) return out;
+ if(typeof v.benefits!=='object'||Array.isArray(v.benefits)) throw new Error('invalid account (benefits)');
+ const credits=(v.benefits as Record<string,unknown>).credits;
+ if(credits===undefined||credits===null) return out;
+ out.credits=parseCommercialAccountCredits(credits);
+ return out;
+}
+
 // C05 refund lifecycle vocabulary (internal/commercial/refund.go). The wire
 // contract accepts exactly these states; 'refund_unknown' and 'rejected' exist
 // only as web-layer display fallbacks (refundMessage), never as server

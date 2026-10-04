@@ -11,10 +11,10 @@ import test from 'node:test';
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => void }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
-import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
-const { loadCommercialSummary, loadCommercialUsage, loadCommercialAccount, planDisplayName } = await import('./BillingPage.tsx');
+import type { CommercialAccountCredits, CommercialAccountView, CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
+const { loadCommercialSummary, loadCommercialUsage, loadCommercialAccount, planDisplayName, accountStateLabel, billingManageNotice } = await import('./BillingPage.tsx');
 const { batchExpiringWithin } = await import('./BillingPage.tsx');
-const { parseCommercialAccountCredits } = await import('@weknora/contracts');
+const { parseCommercialAccountCredits, parseCommercialAccountView } = await import('@weknora/contracts');
 
 function client(summaryOrError: () => Promise<CommercialSummary>, usageOrError: () => Promise<CommercialUsageRow[]>) {
   return {
@@ -71,29 +71,84 @@ const breakdown: CommercialAccountCredits = {
   ],
 };
 
-test('loadCommercialAccount maps breakdown and pending degradation', async () => {
-  const ok = { commercial: { account: async () => breakdown } };
+// ---- #100 [Lago 28]: the account envelope (state + credits) and the
+// two remaining Billing Center surfaces — waiting-for-sync state row and
+// the can_manage_billing role notice ----
+
+const linkedView: CommercialAccountView = {
+  state: 'linked',
+  reason: '',
+  credits: breakdown,
+};
+const pendingView: CommercialAccountView = { state: 'pending', reason: 'unreachable', credits: null };
+
+test('loadCommercialAccount maps the account envelope (linked + pending + error)', async () => {
+  const ok = { commercial: { account: async () => linkedView } };
   const st = await loadCommercialAccount(ok.commercial);
   assert.equal(st.status, 'success');
-  if (st.status === 'success' && st.credits) {
-    assert.equal(st.credits.available_micro, '800000');
-    assert.equal(st.credits.held_micro, '200000');
-    assert.equal(st.credits.batches[0]?.source, 'monthly');
+  if (st.status === 'success' && st.view.credits) {
+    assert.equal(st.view.state, 'linked');
+    assert.equal(st.view.credits.available_micro, '800000');
+    assert.equal(st.view.credits.held_micro, '200000');
+    assert.equal(st.view.credits.batches[0]?.source, 'monthly');
   } else {
-    assert.fail('breakdown must map');
+    assert.fail('linked envelope must map');
   }
 
   // A pending chain (benefits absent) answers null credits — the card
-  // hides, never errors.
-  const pending = { commercial: { account: async () => null } };
+  // hides, never errors, and the state row still renders.
+  const pending = { commercial: { account: async () => pendingView } };
   const pd = await loadCommercialAccount(pending.commercial);
   assert.equal(pd.status, 'success');
-  if (pd.status === 'success') assert.equal(pd.credits, null);
+  if (pd.status === 'success') {
+    assert.equal(pd.view.state, 'pending');
+    assert.equal(pd.view.credits, null);
+  }
 
   const failing = { commercial: { account: async () => { throw new Error('NETWORK'); } } };
   const fe = await loadCommercialAccount(failing.commercial);
   assert.equal(fe.status, 'error');
   if (fe.status === 'error') assert.equal(fe.message, 'NETWORK');
+});
+
+test('parseCommercialAccountView parses linked/pending and rejects open state vocabulary', () => {
+  const wire = {
+    state: 'linked',
+    benefits: { credits: { balance_micro: '1000000', held_micro: '200000', refund_locked_micro: '0', available_micro: '800000', batches: [] } },
+  };
+  const parsed = parseCommercialAccountView(wire);
+  assert.equal(parsed.state, 'linked');
+  assert.equal(parsed.reason, '');
+  assert.equal(parsed.credits?.available_micro, '800000');
+
+  // The pending degrade: no benefits key → credits null, reason degrades
+  // to '' when absent, never a throw.
+  const pendingWire = { state: 'pending', reason: 'unreachable' };
+  const pending = parseCommercialAccountView(pendingWire);
+  assert.equal(pending.state, 'pending');
+  assert.equal(pending.reason, 'unreachable');
+  assert.equal(pending.credits, null);
+
+  // The closed state set is enforced — a raw provider state rejects.
+  assert.throws(() => parseCommercialAccountView({ state: 'active' }));
+  assert.throws(() => parseCommercialAccountView(null));
+});
+
+// AC①: waiting for billing synchronization gains its UI mapping — the
+// 10th stable product state (spec L169) becomes visible instead of the
+// card silently hiding.
+test('accountStateLabel maps the closed account states to stable Chinese copy', () => {
+  assert.equal(accountStateLabel(pendingView), '等待账务同步');
+  assert.equal(accountStateLabel(linkedView), '账务已连接');
+});
+
+// AC③: the role-differentiated operations surface — a caller without
+// billing-management authority gets the closed notice, a manager gets
+// none (the purchase entries stay as they are).
+test('billingManageNotice differentiates non-managing callers only', () => {
+  assert.equal(billingManageNotice(true), null);
+  const notice = billingManageNotice(false);
+  assert.ok(notice !== null && notice.includes('无账单管理权限'));
 });
 
 test('parseCommercialAccountCredits rejects malformed digit strings', () => {
