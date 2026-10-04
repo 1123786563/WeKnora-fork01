@@ -745,6 +745,86 @@ func TestRefreshRebalancesMixedFamilies(t *testing.T) {
 	}
 }
 
+// TestTopUpBatchSurvivesMonthRollover (#86 AC1+AC4): the top-up family
+// keeps its own breakdown line across a monthly rollover — full balance,
+// no period, its own unchanged twelve-month expiry — while the expired
+// month surfaces zero (monthly never rolls over) and the new month mints
+// its own line. The view stays reconcilable with the authority read-back
+// at every step.
+func TestTopUpBatchSurvivesMonthRollover(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	ctx := context.Background()
+	tenant := uint64(510)
+	ext := domain.ExternalCustomerID(tenant)
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
+	svc.SetNow(func() time.Time { return clock })
+
+	topUpExpiry := clock.AddDate(0, 6, 0)
+	// granted a year back: visible under both the service clock and the
+	// fake's own wall clock (settle-visibility is evaluated in real time).
+	fake.SeedTopUpWallet(ext+"-topup-keep", ext, 5_000,
+		topUpExpiry, clock.AddDate(-1, 0, 0), domain.TopUpWalletPriority)
+
+	findTopUp := func(t *testing.T, status BenefitsStatus) BatchView {
+		t.Helper()
+		for _, b := range status.Credits.Batches {
+			if b.Source == domain.BatchSourceTopUp {
+				return b
+			}
+		}
+		t.Fatal("the top-up batch must surface its own breakdown line")
+		return BatchView{}
+	}
+
+	status1, err := svc.EnsureBenefits(ctx, tenant, "Rollover Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	topUp1 := findTopUp(t, status1)
+	if topUp1.Period != "" {
+		t.Fatalf("top-up line must carry no period, got %q", topUp1.Period)
+	}
+	if topUp1.BalanceMicro != 5_000*10_000 {
+		t.Fatalf("top-up balance = %d, want %d", topUp1.BalanceMicro, 5_000*10_000)
+	}
+	if !topUp1.ExpiresAt.Equal(topUpExpiry) {
+		t.Fatalf("top-up expiry = %v, want the granted %v", topUp1.ExpiresAt, topUpExpiry)
+	}
+
+	// Rollover: the old month's wallet leaves the snapshot (post-lazy-
+	// termination), the clock enters the next month.
+	clock = clock.AddDate(0, 1, 0)
+	svc.SetNow(func() time.Time { return clock })
+	fake.TerminateWallet(domain.MonthlyWalletName(tenant, period))
+	status2, err := svc.EnsureBenefits(ctx, tenant, "Rollover Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	topUp2 := findTopUp(t, status2)
+	if topUp2.BalanceMicro != 5_000*10_000 || !topUp2.ExpiresAt.Equal(topUpExpiry) {
+		t.Fatalf("top-up must survive the rollover unchanged, got balance=%d expiry=%v",
+			topUp2.BalanceMicro, topUp2.ExpiresAt)
+	}
+	var oldMonthZero, newMonth bool
+	for _, b := range status2.Credits.Batches {
+		if b.Source == domain.BatchSourceMonthly && b.Period == period && b.BalanceMicro == 0 {
+			oldMonthZero = true
+		}
+		if b.Source == domain.BatchSourceMonthly && b.Period == domain.MonthlyPeriod(clock) && b.BalanceMicro > 0 {
+			newMonth = true
+		}
+	}
+	if !oldMonthZero {
+		t.Fatalf("the expired %s month must surface zero (no rollover), got %+v", period, status2.Credits.Batches)
+	}
+	if !newMonth {
+		t.Fatalf("the new month %s must mint its own line, got %+v", domain.MonthlyPeriod(clock), status2.Credits.Batches)
+	}
+}
+
 // TestExpiredBatchSurfacesZero: the fake wallet is still "active" (lazy
 // termination window simulated) yet the view reports zero — the registry
 // overlay wins over the raw authority balance.

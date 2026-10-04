@@ -519,6 +519,45 @@ func TestReserveSameExpiryPicksEarliestIssuedLot(t *testing.T) {
 	}
 }
 
+// TestReserveDrainsEarliestExpiryFirst (#86 AC2): expires_at is the
+// PRIMARY allocation key — a lot expiring sooner is drained first even
+// when it was issued LAST (issued_at is only the tie-break; an inverted
+// key order passes the same-expiry test above but dies here).
+func TestReserveDrainsEarliestExpiryFirst(t *testing.T) {
+	store, db := testBudgetStore(t)
+	seedBudget(t, db, 1_000_000, 1_000_000)
+	now := time.Now().UTC()
+	sooner := now.Add(30 * time.Minute) // earliest expiry, LATEST issue
+	later := now.Add(2 * time.Hour)     // latest expiry, earliest issue
+	for _, row := range []any{
+		&BudgetLotRow{TenantID: 7, LotID: "sooner", RemainingMicro: 1_000_000,
+			ExpiresAt: &sooner, IssuedAt: now.Add(1 * time.Hour)},
+		&BudgetLotRow{TenantID: 7, LotID: "later", RemainingMicro: 1_000_000,
+			ExpiresAt: &later, IssuedAt: now.Add(-3 * time.Hour)},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.Reserve(context.Background(), budgetRequest("r1", "k1", 500_000)); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	read := func(lotID string) BudgetLotRow {
+		var row BudgetLotRow
+		if err := db.Where("tenant_id = ? AND lot_id = ?", 7, lotID).First(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	// sooner (+30m) precedes the seeded lot1 (+1h) precedes later (+2h):
+	// 500_000 fits one lot, so it must land ENTIRELY on "sooner".
+	s, l, seeded := read("sooner"), read("later"), read("lot1")
+	if s.HeldMicro != 500_000 || l.HeldMicro != 0 || seeded.HeldMicro != 0 {
+		t.Fatalf("earliest-expiry lot must be drained first: sooner=%d later=%d lot1=%d",
+			s.HeldMicro, l.HeldMicro, seeded.HeldMicro)
+	}
+}
+
 // ---- #86 Task 3: SyncLots — the authority-batch → local-lot projection ----
 
 // syncLotRow reads one lot row (nil-safe assertions helper).
