@@ -49,6 +49,14 @@ func (g *deletionGuardStub) RetentionPolicyVersion() string {
 	return g.policyVersion
 }
 
+func (g *deletionGuardStub) CloseCommercialWorkspace(ctx context.Context, tenantID uint64) error {
+	g.calls = append(g.calls, "close_commercial")
+	if g.failingStep == "close_commercial" {
+		return assert.AnError
+	}
+	return nil
+}
+
 func newDeletionTestService(t *testing.T, guard service.TenantDeletionGuard) (interfaces.TenantService, interfaces.TenantRepository, uint64) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
@@ -91,10 +99,28 @@ func TestTenantDeleteAllowedAfterCommercialWorkSettles(t *testing.T) {
 	require.NoError(t, svc.DeleteTenant(context.Background(), id))
 
 	assert.Equal(t,
-		[]string{"disable_scheduling", "revoke_connections", "check_pending", "retention_policy"},
+		[]string{"disable_scheduling", "revoke_connections", "check_pending", "retention_policy", "close_commercial"},
 		guard.calls)
 	_, getErr := repo.GetTenantByID(context.Background(), id)
 	assert.Error(t, getErr, "tenant should be gone after allowed deletion")
+}
+
+// A closure failure aborts deletion after the readiness check: the
+// workspace row survives until the authority-side disposal is confirmed
+// (#102 fail-closed posture).
+func TestTenantDeleteAbortsWhenCommercialClosureFails(t *testing.T) {
+	guard := &deletionGuardStub{failingStep: "close_commercial", policyVersion: "ret-2026-09"}
+	svc, repo, id := newDeletionTestService(t, guard)
+
+	err := svc.DeleteTenant(context.Background(), id)
+
+	require.Error(t, err)
+	assert.Equal(t,
+		[]string{"disable_scheduling", "revoke_connections", "check_pending", "retention_policy", "close_commercial"},
+		guard.calls)
+	stillThere, getErr := repo.GetTenantByID(context.Background(), id)
+	require.NoError(t, getErr)
+	assert.NotNil(t, stillThere, "tenant must survive an unconfirmed commercial closure")
 }
 
 // A failing guard step aborts deletion before any tenant resource is removed.

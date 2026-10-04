@@ -1039,6 +1039,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.BillingAccountService) {
 		h.SetBillingAccountService(s)
 	}))
+	// #102 / Lago 30: the commercial deletion guard behind workspace
+	// deletion — tombstone-first scheduling stop, connection grant
+	// revocation, pending-work refusal, and the authority-side closure
+	// (terminate + de-identify, financial history retained). Registered in
+	// the same commercial block (the ordering-trap rule above applies).
+	must(container.Provide(service.NewCommercialDeletionGuard))
+	must(container.Decorate(func(s interfaces.TenantService, g *service.CommercialDeletionGuard) interfaces.TenantService {
+		s.(interface{ SetDeletionGuard(service.TenantDeletionGuard) }).SetDeletionGuard(g)
+		return s
+	}))
 	// T07 (#79): the plan-version lifecycle service (draft → six-axis
 	// validate → idempotent publish through the seam above). Registered in
 	// the SAME block, away from the pre-craft-Invoke provider block around

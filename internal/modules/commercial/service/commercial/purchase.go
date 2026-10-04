@@ -77,6 +77,7 @@ type PurchaseService struct {
 	accounts *BillingAccountService
 	plans    *PlanVersionService
 	orders   *OrderService
+	closures *repocommercial.WorkspaceClosureStore
 	platform domain.CommercialPlatform
 }
 
@@ -91,7 +92,8 @@ func NewPurchaseService(db *gorm.DB, accounts *BillingAccountService, plans *Pla
 	if accounts == nil || plans == nil || orders == nil {
 		return nil, errors.New("purchase_collaborators_missing")
 	}
-	return &PurchaseService{db: db, accounts: accounts, plans: plans, orders: orders, platform: platform}, nil
+	return &PurchaseService{db: db, accounts: accounts, plans: plans, orders: orders,
+		closures: repocommercial.NewWorkspaceClosureStore(db), platform: platform}, nil
 }
 
 // Purchase runs the gated purchase algorithm. Caller-visible errors are the
@@ -103,6 +105,12 @@ func NewPurchaseService(db *gorm.DB, accounts *BillingAccountService, plans *Pla
 func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID, providerName, actor, displayName string) (PurchaseView, error) {
 	if tenantID == 0 || quoteID == "" {
 		return PurchaseView{}, repocommercial.ErrInvalidQuoteRow
+	}
+	// #102 / Lago 30, AC1: a closed workspace accepts no new purchase.
+	if s.closures != nil {
+		if _, err := s.closures.Get(ctx, tenantID); err == nil {
+			return PurchaseView{}, domain.ErrWorkspaceClosed
+		}
 	}
 	if s.platform == nil {
 		// R1-V04: a blocked seam is a failure for the POST surface (503 +

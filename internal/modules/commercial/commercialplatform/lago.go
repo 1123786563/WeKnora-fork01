@@ -180,6 +180,8 @@ func (a *LagoAdapter) SubmitCommand(ctx context.Context, cmd commercial.Command)
 		return a.settlePurchasePayment(ctx, cmd)
 	case commercial.CommandKindRebalanceCreditsOrder:
 		return a.rebalanceCreditsOrder(ctx, cmd)
+	case commercial.CommandKindCloseWorkspace:
+		return a.closeWorkspace(ctx, cmd)
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
@@ -784,10 +786,21 @@ func (a *LagoAdapter) readSubscriptionByIdentity(ctx context.Context, externalSu
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return lagoSubscription{}, false, fmt.Errorf("%w: subscription read malformed", commercial.ErrPlatformInvalidResponse)
 	}
-	for _, raw := range parsed.Subscriptions {
+	for _, sub := range parseSubscriptionIndex(parsed.Subscriptions) {
+		if sub.ExternalID == externalSubscriptionID {
+			return sub, true, nil
+		}
+	}
+	return lagoSubscription{}, false, nil
+}
+
+// parseSubscriptionIndex decodes the subscription index entries, tolerating
+// the nested {"subscription": {...}} envelope and skipping unparseable rows.
+func parseSubscriptionIndex(raws []json.RawMessage) []lagoSubscription {
+	out := make([]lagoSubscription, 0, len(raws))
+	for _, raw := range raws {
 		var sub lagoSubscription
 		if err := json.Unmarshal(raw, &sub); err != nil || sub.ExternalID == "" {
-			// Tolerate the nested {"subscription": {...}} envelope.
 			var nested struct {
 				Subscription lagoSubscription `json:"subscription"`
 			}
@@ -797,11 +810,128 @@ func (a *LagoAdapter) readSubscriptionByIdentity(ctx context.Context, externalSu
 				continue
 			}
 		}
-		if sub.ExternalID == externalSubscriptionID {
-			return sub, true, nil
+		out = append(out, sub)
+	}
+	return out
+}
+
+// closeWorkspace runs the #102 (Lago 30) disposal on the authority:
+// terminate this customer's not-yet-terminated subscriptions and ANCHORED
+// active wallets, then rewrite the customer's display name to the
+// deterministic de-identified form. Already-terminated objects are skipped
+// (a replay converges to zero writes on them); invoices, payments, refunds
+// and credit notes are financial history and are never touched.
+func (a *LagoAdapter) closeWorkspace(ctx context.Context, cmd commercial.Command) (commercial.CommandReceipt, error) {
+	if err := a.configured(); err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	payload, ok := cmd.Payload.(commercial.CloseWorkspacePayload)
+	if !ok {
+		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+	}
+	if err := payload.Validate(); err != nil {
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout)
+	defer cancel()
+
+	subs, err := a.listCustomerSubscriptions(ctx, payload.ExternalCustomerID)
+	if err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	for _, sub := range subs {
+		if sub.Status == "terminated" {
+			continue
+		}
+		status, _, err := a.do(ctx, http.MethodDelete, "/api/v1/subscriptions/"+url.PathEscape(sub.ExternalID), nil)
+		if err != nil {
+			return commercial.CommandReceipt{}, err
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: subscription termination unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: subscription termination rejected", commercial.ErrPlatformInvalidResponse)
 		}
 	}
-	return lagoSubscription{}, false, nil
+
+	wallets, err := a.listCustomerWallets(ctx, payload.ExternalCustomerID)
+	if err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	for _, w := range wallets {
+		if w.Status != "active" || w.meta()[commercial.WalletMetaTenant] != payload.ExternalCustomerID {
+			continue
+		}
+		status, _, err := a.do(ctx, http.MethodDelete, "/api/v1/wallets/"+url.PathEscape(w.LagoID), nil)
+		if err != nil {
+			return commercial.CommandReceipt{}, err
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet termination unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet termination rejected", commercial.ErrPlatformInvalidResponse)
+		}
+	}
+
+	// De-identify the customer display data: the advisory name is the only
+	// workspace-owned display field the ensure ever wrote (#78 payload).
+	// v1.53 has NO customer update route (routes.rb: only create/index/
+	// show/destroy) — but create-on-external_id is UPSERT at runtime (the
+	// t06 raw-probe verdict), so the de-identification rides a POST of the
+	// same deterministic identity with the redacted name.
+	status, _, err := a.do(ctx, http.MethodPost, "/api/v1/customers",
+		map[string]any{"customer": map[string]string{
+			"external_id": payload.ExternalCustomerID,
+			"name":        payload.DisplayName,
+		}})
+	if err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	switch {
+	case status >= 200 && status < 300:
+	case status >= 500:
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: customer de-identification unavailable", commercial.ErrPlatformUnreachable)
+	default:
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: customer de-identification rejected", commercial.ErrPlatformInvalidResponse)
+	}
+	return commercial.CommandReceipt{
+		Key:        cmd.Key,
+		ExternalID: payload.ExternalCustomerID,
+		RecordedAt: time.Now().UTC(),
+	}, nil
+}
+
+// listCustomerSubscriptions reads the customer's subscriptions across the
+// explicit status set (the index defaults to active only — the T02 lab
+// fact readSubscriptionByIdentity already encodes).
+func (a *LagoAdapter) listCustomerSubscriptions(ctx context.Context, externalCustomerID string) ([]lagoSubscription, error) {
+	query := url.Values{}
+	query.Set("external_customer_id", externalCustomerID)
+	for _, s := range subscriptionIndexStatuses {
+		query.Add("status[]", s)
+	}
+	status, body, err := a.do(ctx, http.MethodGet, "/api/v1/subscriptions?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case status >= 200 && status < 300:
+	case status == http.StatusTooManyRequests || status >= 500:
+		return nil, fmt.Errorf("%w: subscription list unavailable", commercial.ErrPlatformUnreachable)
+	default:
+		return nil, fmt.Errorf("%w: subscription list rejected", commercial.ErrPlatformInvalidResponse)
+	}
+	var parsed struct {
+		Subscriptions []json.RawMessage `json:"subscriptions"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("%w: subscription list malformed", commercial.ErrPlatformInvalidResponse)
+	}
+	return parseSubscriptionIndex(parsed.Subscriptions), nil
 }
 
 // createSubscription posts ONE standard subscription create. The body never
@@ -1133,8 +1263,11 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 		return commercial.Snapshot{}, err
 	}
 	if found {
-		if sub.Status == "active" {
+		switch sub.Status {
+		case "active":
 			b.SubscriptionState = commercial.SubscriptionStateActive
+		case "terminated":
+			b.SubscriptionState = commercial.SubscriptionStateTerminated
 		}
 		b.PlanCode = sub.PlanCode
 	}

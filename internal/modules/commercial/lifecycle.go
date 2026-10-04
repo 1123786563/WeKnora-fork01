@@ -19,6 +19,11 @@ var BaseTier = PlanVersion{Key: "base", Version: 1}
 // the paid term expired while usage exceeds base-tier limits.
 const DowngradeReasonOverLimit = "expired_over_base_limit"
 
+// DowngradeReasonWorkspaceClosed marks a projection downgraded to BaseTier
+// because the workspace was closed (#102): the paid term is capped at the
+// closure instant, so no later month is ever due.
+const DowngradeReasonWorkspaceClosed = "workspace_closed"
+
 // MaxDueMonths bounds the DueMonths walk so a corrupt anchor/paid_until pair
 // can never loop a tick forever.
 const MaxDueMonths = 1200

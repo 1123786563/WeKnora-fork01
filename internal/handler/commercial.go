@@ -480,6 +480,10 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
 	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; please re-quote"})
+	case errors.Is(err, commercial.ErrWorkspaceClosed):
+		// (#102 / Lago 30) The workspace is closed: no new commercial work,
+		// ever — a definitive conflict, never a retryable one.
+		c.JSON(http.StatusConflict, gin.H{"error": commercial.ErrWorkspaceClosed.Error()})
 	case errors.Is(err, commercialsvc.ErrPurchasePlanConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "purchase_plan_conflict"})
 	case errors.Is(err, commercialsvc.ErrPurchaseNotAwaiting):

@@ -378,10 +378,13 @@ const SnapshotKindBenefits SnapshotKind = "benefits"
 // SubscriptionState is the closed authority-truth enum for the benefits
 // snapshot: the subscription is active or it is not yet (absent, incomplete,
 // unconfirmed all map to pending). This is NOT the API envelope — the
-// Billing API projects its own closed tokens.
+// Billing API projects its own closed tokens. SubscriptionStateTerminated
+// is the #102 additive terminal state: the workspace was closed and the
+// authority subscription terminated under the retention policy.
 const (
-	SubscriptionStateActive  = "active"
-	SubscriptionStatePending = "pending"
+	SubscriptionStateActive     = "active"
+	SubscriptionStatePending    = "pending"
+	SubscriptionStateTerminated = "terminated"
 )
 
 // CreditBatchSnapshot is one wallet batch inside a benefits snapshot: the

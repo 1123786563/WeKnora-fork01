@@ -259,3 +259,13 @@ func (s *SubscriptionStore) RecordDowngrade(ctx context.Context, id, projectionJ
 		"UPDATE commercial_subscriptions SET projection_plan_json = ?, downgrade_reason = ? WHERE id = ? AND downgrade_reason = ''",
 		projectionJSON, reason, id).Error
 }
+
+// RecordWorkspaceClosure caps the tenant's paid term at the closure instant
+// (#102 / Lago 30): DueMonths never grants a month past closure, and the
+// projection records the closure reason. Nothing is deleted — the
+// subscription row stays as financial history.
+func (s *SubscriptionStore) RecordWorkspaceClosure(ctx context.Context, tenantID uint64, at time.Time) error {
+	return s.db.WithContext(ctx).Exec(`UPDATE commercial_subscriptions
+		SET paid_until = MIN(paid_until, ?), downgrade_reason = ? WHERE tenant_id = ? AND downgrade_reason = ''`,
+		at, domain.DowngradeReasonWorkspaceClosed, tenantID).Error
+}

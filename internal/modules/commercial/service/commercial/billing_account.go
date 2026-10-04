@@ -40,6 +40,7 @@ type BillingAccountStatus struct {
 // and never creates a second customer).
 type BillingAccountService struct {
 	store    *repocommercial.BillingAccountStore
+	closures *repocommercial.WorkspaceClosureStore
 	platform domain.CommercialPlatform
 }
 
@@ -52,6 +53,7 @@ func NewBillingAccountService(db *gorm.DB, platform domain.CommercialPlatform) (
 	}
 	return &BillingAccountService{
 		store:    repocommercial.NewBillingAccountStore(db),
+		closures: repocommercial.NewWorkspaceClosureStore(db),
 		platform: platform,
 	}, nil
 }
@@ -72,6 +74,13 @@ func (s *BillingAccountService) EnsureBillingAccount(ctx context.Context, tenant
 	}
 	if tenantID == 0 {
 		return BillingAccountStatus{}, errors.New("billing account ensure requires an authenticated tenant scope")
+	}
+	// #102 / Lago 30, AC4: a closed identity is never re-ensured — Customer
+	// identity is never reused. The tombstone exists in either state.
+	if s.closures != nil {
+		if _, err := s.closures.Get(ctx, tenantID); err == nil {
+			return BillingAccountStatus{}, domain.ErrWorkspaceClosed
+		}
 	}
 	if s.platform == nil {
 		// Fail closed honestly: no seam wired means no authority answer.

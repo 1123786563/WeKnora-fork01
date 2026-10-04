@@ -67,6 +67,15 @@ func (s *SpaceConnectionGrantStore) RevokeSpaceConnection(ctx context.Context, t
 		Delete(&SpaceConnectionGrantRow{}).Error
 }
 
+// RevokeTenantGrants removes every grant of the tenant (#102 workspace
+// closure): no connection stays usable while the workspace is being
+// deleted. Idempotent — a tenant with no grants is a clean success.
+func (s *SpaceConnectionGrantStore) RevokeTenantGrants(ctx context.Context, tenantID uint64) error {
+	return s.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Delete(&SpaceConnectionGrantRow{}).Error
+}
+
 // ListSpaceConnectionGrants returns the connection's grants, tenant-scoped.
 func (s *SpaceConnectionGrantStore) ListSpaceConnectionGrants(ctx context.Context, tenantID uint64, connectionID string) ([]SpaceConnectionGrantRow, error) {
 	var rows []SpaceConnectionGrantRow

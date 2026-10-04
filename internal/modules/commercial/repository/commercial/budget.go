@@ -161,6 +161,11 @@ type BudgetStore struct {
 	// traffic — the guard stands down instead of breaking every Reserve.
 	lagTableOnce sync.Once
 	lagTableOK   bool
+	// #102 / Lago 30: the closure guard reads the closure tombstone table
+	// (created by the closure store's portable DDL). Where that table is
+	// absent the guard stands down, the same posture as the lag guard.
+	closureTableOnce sync.Once
+	closureTableOK   bool
 }
 
 func NewBudgetStore(db *gorm.DB) *BudgetStore { return &BudgetStore{db: db} }

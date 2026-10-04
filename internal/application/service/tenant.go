@@ -40,6 +40,12 @@ type TenantDeletionGuard interface {
 	// RetentionPolicyVersion returns the configured retention policy
 	// version, "" when none is configured.
 	RetentionPolicyVersion() string
+	// CloseCommercialWorkspace runs the commercial closure once nothing is
+	// pending (#102 / Lago 30): terminate the authority-side charging
+	// objects, de-identify the customer display data, and cap the local
+	// paid term — financial history stays. Deletion must not proceed while
+	// it fails.
+	CloseCommercialWorkspace(ctx context.Context, tenantID uint64) error
 }
 
 // TenantServiceOption customizes tenant service construction.
@@ -51,6 +57,10 @@ type TenantServiceOption func(*tenantService)
 func WithDeletionGuard(g TenantDeletionGuard) TenantServiceOption {
 	return func(s *tenantService) { s.deletionGuard = g }
 }
+
+// SetDeletionGuard wires the guard post-construction (the container
+// Decorate pattern — same shape as the semantic-scope invalidator setters).
+func (s *tenantService) SetDeletionGuard(g TenantDeletionGuard) { s.deletionGuard = g }
 
 // tenantService implements the TenantService interface
 type tenantService struct {
@@ -241,6 +251,20 @@ func (s *tenantService) DeleteTenant(ctx context.Context, id uint64) error {
 			"tenant_id": id,
 		})
 		return err
+	}
+
+	// #102 / Lago 30: with nothing pending, run the commercial closure —
+	// stop charging on the authority, de-identify the customer, keep the
+	// financial history. The workspace row stays put while the closure
+	// cannot be confirmed (fail closed: the authority would keep invoicing
+	// a deleted workspace).
+	if s.deletionGuard != nil {
+		if err := s.deletionGuard.CloseCommercialWorkspace(ctx, id); err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"tenant_id": id,
+			})
+			return fmt.Errorf("close commercial workspace for tenant %d: %w", id, err)
+		}
 	}
 
 	if err := s.invalidateSemanticTenant(ctx, id); err != nil {

@@ -127,6 +127,11 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 		if err := s.denyPricingLaggedTask(tx, req.TenantID, ownerRun, now); err != nil {
 			return err
 		}
+		// #102 / Lago 30: a closed workspace accepts no new charge action;
+		// already-dispatched work still settles.
+		if err := s.denyClosedWorkspace(tx, req.TenantID); err != nil {
+			return err
+		}
 		res = tx.Exec(`UPDATE commercial_task_budgets
 			SET held_micro = held_micro + ?, version = version + 1
 			WHERE tenant_id = ? AND run_id = ? AND version = ?

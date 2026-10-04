@@ -32,10 +32,13 @@ type FakeCustomer struct {
 // fakeSubscription is one stored authority-side subscription (T08): the
 // deterministic identity, the customer it belongs to and the plan code
 // attached — upserted by identity, never a second entry per tenant.
+// Terminated is the #102 closure disposal: a terminated subscription stays
+// (financial history) but never reports active again.
 type fakeSubscription struct {
 	ExternalID       string
 	ExternalCustomer string
 	PlanCode         string
+	Terminated       bool
 }
 
 // fakeWallet is one stored authority-side wallet (T08): the deterministic
@@ -456,7 +459,11 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 			CheckedAt:         f.nowUTC(),
 		}
 		if sub, held := f.subs[extSub]; held {
-			b.SubscriptionState = commercial.SubscriptionStateActive
+			if sub.Terminated {
+				b.SubscriptionState = commercial.SubscriptionStateTerminated
+			} else {
+				b.SubscriptionState = commercial.SubscriptionStateActive
+			}
 			b.PlanCode = sub.PlanCode
 		}
 		if f.baseFeatures != nil {
@@ -903,6 +910,63 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		f.creditNotes = append(f.creditNotes, fakeCreditNote{
 			Key: cmd.Key, Payload: payload, Receipt: receipt,
 		})
+		return receipt, nil
+
+	case commercial.CommandKindCloseWorkspace:
+		payload, ok := cmd.Payload.(commercial.CloseWorkspacePayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.failSubmits != nil {
+			// Unreachable authority: nothing applies, the caller observes
+			// the injected failure, and a replay after the outage converges.
+			return commercial.CommandReceipt{}, f.failSubmits
+		}
+		if receipt, ok := f.receipts[cmd.Key]; ok {
+			return receipt, nil // closure already disposed; a replay is a no-op
+		}
+		// Dispose the customer's objects: every subscription (standard and
+		// purchase) is terminated, every wallet terminated, and the display
+		// name rewritten to the de-identified form. Financial history rows
+		// (credit notes, invoices) are never touched.
+		for id, sub := range f.subs {
+			if sub.ExternalCustomer == payload.ExternalCustomerID {
+				sub.Terminated = true
+				f.subs[id] = sub
+			}
+		}
+		for id, p := range f.purchaseSubs {
+			if p.ExternalCustomer == payload.ExternalCustomerID && p.Status != "canceled" {
+				p.Status = "canceled"
+				f.purchaseSubs[id] = p
+			}
+		}
+		for i, w := range f.wallets {
+			if w.Customer == payload.ExternalCustomerID {
+				w.Terminated = true
+				f.wallets[i] = w
+			}
+		}
+		if f.customers != nil {
+			if c, held := f.customers[payload.ExternalCustomerID]; held {
+				c.Name = payload.DisplayName
+				f.customers[payload.ExternalCustomerID] = c
+			}
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.ExternalCustomerID,
+			RecordedAt: f.nowUTC(),
+		}
+		if f.receipts == nil {
+			f.receipts = map[string]commercial.CommandReceipt{}
+		}
+		f.receipts[cmd.Key] = receipt
 		return receipt, nil
 
 	default:
