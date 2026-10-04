@@ -734,10 +734,13 @@ func TestPurchaseGrantPeriodTakesActivationMonth(t *testing.T) {
 	seedPaidPurchase(t, store, db, tenant, "ord-66", "weknora-pro", "pub-pro-6", 9900)
 	primeFakePurchaseWithFees(t, fake, tenant, "pub-pro-6", 9900)
 	events := fulfillEvents(t, db)
-	// Order placed at Aug 31 23:35 UTC; activation observed Sep 1 00:05 —
-	// the first-period grant must ride SEPTEMBER (the activation month),
-	// never August (whose period end is already past and would refuse).
-	purchaser.now = func() time.Time { return time.Date(2026, 9, 1, 0, 5, 0, 0, time.UTC) }
+	// Order placed at the previous month's tail 23:35 UTC; activation
+	// observed on the 1st 00:05 — the first-period grant must ride the
+	// ACTIVATION month (the current month), never the previous one (whose
+	// period end is already real-past and would refuse the validator).
+	y, m, _ := time.Now().UTC().Date()
+	activation := time.Date(y, m, 1, 0, 5, 0, 0, time.UTC)
+	purchaser.now = func() time.Time { return activation }
 	if err := purchaser.Fulfill(context.Background(), events[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -745,11 +748,12 @@ func TestPurchaseGrantPeriodTakesActivationMonth(t *testing.T) {
 	if len(wallets) != 1 {
 		t.Fatalf("one grant expected, got %d", len(wallets))
 	}
-	want := domain.PurchaseWalletName(tenant, "2026-09")
+	period := domain.MonthlyPeriod(activation)
+	want := domain.PurchaseWalletName(tenant, period)
 	if wallets[0].Name != want {
 		t.Fatalf("grant wallet must take the ACTIVATION month identity %q, got %q", want, wallets[0].Name)
 	}
-	end, _ := domain.PeriodEnd("2026-09")
+	end, _ := domain.PeriodEnd(period)
 	if !wallets[0].ExpiresAt.Equal(end) {
 		t.Fatalf("grant expiry must be the activation period end %s, got %s", end, wallets[0].ExpiresAt)
 	}

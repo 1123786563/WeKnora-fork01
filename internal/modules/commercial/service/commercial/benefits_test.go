@@ -106,8 +106,18 @@ func (b *FakeBroker) insertMember(t *testing.T, tenantID uint64, userID string) 
 
 const benefitsTenant = uint64(501)
 
+// septemberClock anchors the mid-month instant of the CURRENT month: the
+// domain grant validator compares expires_at against real time.Now, so a
+// fixed past calendar month rots the suite once its period end passes.
 func septemberClock() func() time.Time {
-	return func() time.Time { return time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC) }
+	y, m, _ := time.Now().UTC().Date()
+	return func() time.Time { return time.Date(y, m, 15, 10, 0, 0, 0, time.UTC) }
+}
+
+// septemberPeriod derives the current month's "YYYY-MM" from the same
+// dynamic anchor.
+func septemberPeriod() string {
+	return domain.MonthlyPeriod(septemberClock()())
 }
 
 // TestEnsureBenefitsHappyChain: fresh tenant → the whole lazy chain lands —
@@ -140,7 +150,7 @@ func TestEnsureBenefitsHappyChain(t *testing.T) {
 	if status.Credits == nil || status.Credits.BalanceMicro != BasePlanSeedIncludedCreditsMicro {
 		t.Fatalf("credits = %+v", status.Credits)
 	}
-	if len(status.Credits.Batches) != 1 || status.Credits.Batches[0].Period != "2026-09" ||
+	if len(status.Credits.Batches) != 1 || status.Credits.Batches[0].Period != septemberPeriod() ||
 		status.Credits.Batches[0].BalanceMicro != BasePlanSeedIncludedCreditsMicro {
 		t.Fatalf("batches = %+v", status.Credits.Batches)
 	}
@@ -188,7 +198,7 @@ func TestEnsureBenefitsPurchaseBatchJoinsCreditsView(t *testing.T) {
 	}
 	// The fulfiller's purchase grant for the activation month: own key
 	// family, own deterministic wallet name (the PurchaseFulfiller path).
-	period := "2026-09"
+	period := septemberPeriod()
 	purchaseMicro := int64(9_900_000)
 	end, err := domain.PeriodEnd(period)
 	if err != nil {
@@ -241,7 +251,7 @@ func TestRefreshProjectionUnionsSnapshotOnlyPurchasePeriod(t *testing.T) {
 	svc, _, _ := newBenefitsService(t, fake)
 	svc.SetNow(septemberClock())
 	tenant := uint64(503)
-	period := "2026-09"
+	period := septemberPeriod()
 	purchaseMicro := int64(9_900_000)
 	end, err := domain.PeriodEnd(period)
 	if err != nil {
@@ -315,7 +325,7 @@ func TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition(t *testing.T) {
 		t.Fatalf("EnsureBenefits (base-only): %v", err)
 	}
 	if status.Plan == nil || status.Plan.Features["advanced_models"] {
-		t.Fatalf("base-only tenant must keep advanced_models FALSE, got %+v", status.Plan.Features)
+		t.Fatalf("base-only tenant must keep advanced_models FALSE, got %+v", status.Plan)
 	}
 	if !status.Plan.Features["api_access"] {
 		t.Fatalf("base features must answer, got %+v", status.Plan.Features)
@@ -451,14 +461,16 @@ func TestMonthlyGrantNewPeriod(t *testing.T) {
 	fake := commercialplatform.NewFakeAdapter()
 	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
 	svc, broker, _ := newBenefitsService(t, fake)
-	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
 	svc.SetNow(func() time.Time { return clock })
 
 	if _, err := svc.EnsureBenefits(context.Background(), benefitsTenant, "Period Space", "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	// Cross into October: the September batch (end 2026-10-01) is expired.
-	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	// Cross into the next month: the month's batch (end = next month's 1st)
+	// is expired.
+	clock = clock.AddDate(0, 1, 0)
 	status, err := svc.EnsureBenefits(context.Background(), benefitsTenant, "Period Space", "user-1")
 	if err != nil {
 		t.Fatal(err)
@@ -473,11 +485,11 @@ func TestMonthlyGrantNewPeriod(t *testing.T) {
 	for _, b := range status.Credits.Batches {
 		byPeriod[b.Period] = b.BalanceMicro
 	}
-	if byPeriod["2026-09"] != 0 {
-		t.Fatalf("the expired September batch must surface zero, got %d", byPeriod["2026-09"])
+	if byPeriod[period] != 0 {
+		t.Fatalf("the expired %s batch must surface zero, got %d", period, byPeriod[period])
 	}
-	if byPeriod["2026-10"] != BasePlanSeedIncludedCreditsMicro {
-		t.Fatalf("the October batch must carry one month, got %d", byPeriod["2026-10"])
+	if byPeriod[domain.MonthlyPeriod(clock)] != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("the next-month batch must carry one month, got %d", byPeriod[domain.MonthlyPeriod(clock)])
 	}
 	if n := broker.batchCount(benefitsTenant); n != 2 {
 		t.Fatalf("registry must keep both periods, got %d", n)
@@ -516,9 +528,10 @@ func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
 	}
 	// A top-up batch beside the monthly one.
 	ext := domain.ExternalCustomerID(tenant)
+	clock := septemberClock()()
 	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
-		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+		clock.AddDate(0, 6, 0),
+		time.Now().UTC().AddDate(0, 0, -1), domain.TopUpWalletPriority)
 	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +547,7 @@ func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
 	for _, l := range lots {
 		byID[l.LotID] = l.RemainingMicro
 	}
-	monthly := domain.MonthlyWalletName(tenant, "2026-09")
+	monthly := domain.MonthlyWalletName(tenant, septemberPeriod())
 	if got, ok := byID[monthly]; !ok || got != BasePlanSeedIncludedCreditsMicro {
 		t.Fatalf("monthly lot row missing/wrong: %+v", byID)
 	}
@@ -586,26 +599,27 @@ func TestBreakdownCrossMonthBatchesCarryGrantedAt(t *testing.T) {
 	svc, _, _ := newBenefitsService(t, fake)
 	ctx := context.Background()
 	tenant := uint64(509)
-	// September: the registry row for 2026-09 is minted (grant completed).
-	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	// The current month: the registry row is minted (grant completed).
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
 	svc.SetNow(func() time.Time { return clock })
 	if _, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	// The registry's grant instant for the September row.
-	row, err := svc.store.GetBatch(ctx, tenant, "2026-09")
+	// The registry's grant instant for the month's row.
+	row, err := svc.store.GetBatch(ctx, tenant, period)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if row.CreatedAt.IsZero() {
 		t.Fatal("test setup: the registry row must carry a grant instant")
 	}
-	// October: the September wallet is TERMINATED on the authority (absent
+	// Next month: the month's wallet is TERMINATED on the authority (absent
 	// from the snapshot — the post-lazy-termination steady state), yet the
-	// registry row lingers. The September view line must still carry a
+	// registry row lingers. The expired month's view line must still carry a
 	// NON-ZERO GrantedAt (the registry's grant instant).
-	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
-	fake.TerminateWallet(domain.MonthlyWalletName(tenant, "2026-09"))
+	clock = clock.AddDate(0, 1, 0)
+	fake.TerminateWallet(domain.MonthlyWalletName(tenant, period))
 	status, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1")
 	if err != nil {
 		t.Fatal(err)
@@ -613,24 +627,24 @@ func TestBreakdownCrossMonthBatchesCarryGrantedAt(t *testing.T) {
 	if status.Credits == nil {
 		t.Fatal("credits view must answer")
 	}
-	sawSeptember := false
+	sawExpiredMonth := false
 	for _, b := range status.Credits.Batches {
-		if b.Period != "2026-09" {
+		if b.Period != period {
 			continue
 		}
-		sawSeptember = true
+		sawExpiredMonth = true
 		if b.GrantedAt.IsZero() {
 			t.Fatal("CR-86-1: the expired month's lingering batch must carry the registry grant instant, got the zero time")
 		}
 		if !b.GrantedAt.Equal(row.CreatedAt) {
-			t.Fatalf("September GrantedAt = %v, want the registry row's CreatedAt %v (the snapshot no longer contributes one)", b.GrantedAt, row.CreatedAt)
+			t.Fatalf("%s GrantedAt = %v, want the registry row's CreatedAt %v (the snapshot no longer contributes one)", period, b.GrantedAt, row.CreatedAt)
 		}
 		if b.BalanceMicro != 0 {
-			t.Fatalf("the expired September batch must surface zero (no rollover), got %d", b.BalanceMicro)
+			t.Fatalf("the expired %s batch must surface zero (no rollover), got %d", period, b.BalanceMicro)
 		}
 	}
-	if !sawSeptember {
-		t.Fatal("the September registry batch must stay in the view (expired/zero, not dropped)")
+	if !sawExpiredMonth {
+		t.Fatalf("the %s registry batch must stay in the view (expired/zero, not dropped)", period)
 	}
 }
 
@@ -645,38 +659,40 @@ func TestMonthlyGrantEncodesYieldPriority(t *testing.T) {
 	fake := commercialplatform.NewFakeAdapter()
 	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
 	svc, _, _ := newBenefitsService(t, fake)
-	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
 	svc.SetNow(func() time.Time { return clock })
 	tenant := uint64(505)
 	ext := domain.ExternalCustomerID(tenant)
 
-	// An aging top-up: expires mid-month, strictly before 2026-09-30's end.
+	// An aging top-up: expires mid-month, strictly before the period end.
 	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
-		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), clock, domain.TopUpWalletPriority)
+		clock.AddDate(0, 0, 10),
+		time.Now().UTC().AddDate(0, 0, -1), domain.TopUpWalletPriority)
 
 	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
 		t.Fatal(err)
 	}
-	p, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-09"))
+	p, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, period))
 	if !ok {
-		t.Fatal("the September monthly wallet must exist")
+		t.Fatal("the current-month monthly wallet must exist")
 	}
 	if p != domain.TopUpWalletPriority+1 {
-		t.Fatalf("September monthly priority = %d, want %d (yielding to the aging top-up)", p, domain.TopUpWalletPriority+1)
+		t.Fatalf("monthly priority = %d, want %d (yielding to the aging top-up)", p, domain.TopUpWalletPriority+1)
 	}
 
-	// October: the aging batch is gone (expired) — no top-up expires before
-	// the new period end, so the new monthly wallet keeps class 1.
-	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	// Next month: the aging batch is gone (expired) — no top-up expires
+	// before the new period end, so the new monthly wallet keeps class 1.
+	clock = clock.AddDate(0, 1, 0)
 	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
 		t.Fatal(err)
 	}
-	p2, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-10"))
+	p2, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, domain.MonthlyPeriod(clock)))
 	if !ok {
-		t.Fatal("the October monthly wallet must exist")
+		t.Fatal("the next-month monthly wallet must exist")
 	}
 	if p2 != domain.MonthlyWalletPriority {
-		t.Fatalf("October monthly priority = %d, want %d (no aging top-up)", p2, domain.MonthlyWalletPriority)
+		t.Fatalf("next-month monthly priority = %d, want %d (no aging top-up)", p2, domain.MonthlyWalletPriority)
 	}
 }
 
@@ -689,23 +705,24 @@ func TestRefreshRebalancesMixedFamilies(t *testing.T) {
 	fake := commercialplatform.NewFakeAdapter()
 	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
 	svc, _, _ := newBenefitsService(t, fake)
-	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
 	svc.SetNow(func() time.Time { return clock })
 	tenant := uint64(506)
 	ext := domain.ExternalCustomerID(tenant)
 
-	// A: aging top-up (expires 2026-09-25, before the period end).
+	// A: aging top-up (expires before the period end).
 	fake.SeedTopUpWallet(ext+"-topup-a", ext, 5_000,
-		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 9, 15, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+		clock.AddDate(0, 0, 10),
+		clock.AddDate(-1, 0, 0), domain.TopUpWalletPriority)
 	// The first ensure mints the monthly wallet at the YIELDING initial (3).
 	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Mixed Space", "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	// B: fresh top-up (expires 2027-03, after the period end).
+	// B: fresh top-up (expires well after the period end).
 	fake.SeedTopUpWallet(ext+"-topup-b", ext, 5_000,
-		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+		clock.AddDate(0, 6, 0),
+		time.Now().UTC().AddDate(0, 0, -1), domain.TopUpWalletPriority)
 
 	// The refresh chain now sees all three families and submits the
 	// rebalance — the fake's priorities must converge to the expiry order.
@@ -714,7 +731,7 @@ func TestRefreshRebalancesMixedFamilies(t *testing.T) {
 	}
 	want := map[string]int{
 		ext + "-topup-a": 1,
-		domain.MonthlyWalletName(tenant, "2026-09"): 2,
+		domain.MonthlyWalletName(tenant, period): 2,
 		ext + "-topup-b": 3,
 	}
 	for name, rank := range want {
@@ -735,14 +752,15 @@ func TestExpiredBatchSurfacesZero(t *testing.T) {
 	fake := commercialplatform.NewFakeAdapter()
 	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
 	svc, _, _ := newBenefitsService(t, fake)
-	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	clock := septemberClock()()
+	period := domain.MonthlyPeriod(clock)
 	svc.SetNow(func() time.Time { return clock })
 	if _, err := svc.EnsureBenefits(context.Background(), benefitsTenant, "Lazy Space", "user-1"); err != nil {
 		t.Fatal(err)
 	}
 	// The authority STILL reports the wallet active with a full balance
 	// (termination is lazy) — advance past the period end.
-	clock = time.Date(2026, 10, 1, 0, 30, 0, 0, time.UTC)
+	clock = clock.AddDate(0, 1, 0)
 	raw, err := fake.ReadSnapshot(context.Background(), domain.SnapshotQuery{
 		Kind: domain.SnapshotKindBenefits, TenantID: benefitsTenant,
 	})
@@ -756,12 +774,12 @@ func TestExpiredBatchSurfacesZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// October's fresh grant is present; September must NOT be spendable.
+	// The next month's fresh grant is present; the old month must NOT be spendable.
 	if status.Credits == nil {
 		t.Fatal("credits view missing")
 	}
 	for _, b := range status.Credits.Batches {
-		if b.Period == "2026-09" && b.BalanceMicro != 0 {
+		if b.Period == period && b.BalanceMicro != 0 {
 			t.Fatalf("expired batch leaked spendable credits: %+v", b)
 		}
 	}
