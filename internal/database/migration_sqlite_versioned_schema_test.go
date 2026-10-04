@@ -215,7 +215,7 @@ func TestSQLiteAgentEvaluationMigrationDownUp(t *testing.T) {
 	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
-	require.NoError(t, m.Migrate(uint(sqliteMigrationHead(t, repoRoot)-1)))
+	require.NoError(t, m.Migrate(uint(sqliteMigrationVersionBefore(t, repoRoot, "agent_release_evaluations"))))
 	require.False(t, sqliteTableExists(t, sqlDB, "agent_release_evaluations"))
 	require.NoError(t, m.Up())
 	require.True(t, sqliteTableExists(t, sqlDB, "agent_release_evaluations"))
@@ -258,6 +258,35 @@ func sqliteMigrationHead(t *testing.T, repoRoot string) int {
 	t.Helper()
 	versions := sqliteMigrationVersions(t, repoRoot)
 	return versions[len(versions)-1]
+}
+
+// sqliteMigrationVersionBefore returns the fixture version immediately
+// preceding the named migration — the down-migration target that rolls back
+// exactly that migration. Head-relative targets rot as new migrations land
+// on top; name-anchoring does not.
+func sqliteMigrationVersionBefore(t *testing.T, repoRoot, migrationName string) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(repoRoot, "migrations", "sqlite"))
+	require.NoError(t, err)
+	target := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") || !strings.Contains(entry.Name(), migrationName) {
+			continue
+		}
+		version, err := strconv.Atoi(strings.SplitN(entry.Name(), "_", 2)[0])
+		require.NoError(t, err)
+		target = version
+		break
+	}
+	require.Positivef(t, target, "SQLite fixture must contain migration %q", migrationName)
+	prev := 0
+	for _, version := range sqliteMigrationVersions(t, repoRoot) {
+		if version < target {
+			prev = version
+		}
+	}
+	require.Positivef(t, prev, "SQLite fixture must contain a migration before %q", migrationName)
+	return prev
 }
 
 // sqliteMigrationStepsAfter counts the applied SQLite migration files after a

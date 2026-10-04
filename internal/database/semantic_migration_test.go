@@ -35,9 +35,9 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
-	// 回滚到 semantic_model_invocations(107) 之下：从动态终态倒退到 106
-	// 需要回退 (latest-106) 步（终态为 109 的年代恰好等于 3 步）。
-	require.NoError(t, m.Steps(-(latest - 106)))
+	// 回滚到 semantic_model_invocations(107) 之下：迁移版本号稀疏（117/118
+	// 等缺号），回退步数必须按 fixture 实际文件数计，不可用数值差。
+	require.NoError(t, m.Steps(-sqliteMigrationStepsAfter(t, root, 106)))
 	for _, table := range semanticInvocationTables {
 		require.False(t, sqliteTableExists(t, db, table), "down migration must remove %s", table)
 	}
