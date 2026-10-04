@@ -1,1 +1,13 @@
-{"name":"@weknora/career-core","version":"0.0.0","private":true,"type":"module","exports":{"./contracts":"./src/contracts.ts","./desk":"./src/desk.ts"}}
+{
+  "name": "@weknora/career-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./contracts": "./src/contracts.ts",
+    "./desk": "./src/desk.ts"
+  },
+  "dependencies": {
+    "@weknora/api-client": "workspace:*"
+  }
+}

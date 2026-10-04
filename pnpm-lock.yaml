@@ -332,7 +332,11 @@ importers:
         specifier: workspace:*
         version: link:../domain
 
-  packages/career-core: {}
+  packages/career-core:
+    dependencies:
+      '@weknora/api-client':
+        specifier: workspace:*
+        version: link:../api-client
 
   packages/contracts: {}
 
