@@ -391,6 +391,10 @@ type localCraftRuntime struct {
 	// session-wide publication route on artifacts.
 	runViewArtifacts *service.CraftArtifactService
 	emit             func(context.Context, craft.Task, string, json.RawMessage) error
+	// webBuildDispatch is the F08 (#107) production trigger installed by
+	// wireCraftWebBuildDispatcher; nil keeps web builds undispatched and the
+	// promotion fence fail-closed.
+	webBuildDispatch func(context.Context, craft.Task)
 	workDir          string
 	outputDir        string
 	runtimeDigest    string
@@ -466,6 +470,15 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 	}
 	if result.Status != "succeeded" {
 		return result, nil
+	}
+	// F08 (#107): a successful web-kind delegation dispatches the fixed
+	// offline web build BEFORE candidate staging, so the collector's sealed
+	// manifest and the promotion fence read this dispatch's receipt.
+	// Best-effort by design: a dispatch that never earned a receipt leaves
+	// the promotion fence refusing fail-closed — same posture as a missing
+	// build.
+	if e.webBuildDispatch != nil && e.sessionKind(ctx, task) == craft.KindWeb {
+		e.webBuildDispatch(ctx, task)
 	}
 	// R4 Task3: the successful delegation's output is staged as a private,
 	// immutable Run-bound candidate — never a published Version and never the

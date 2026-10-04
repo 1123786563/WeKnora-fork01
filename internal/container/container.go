@@ -1274,6 +1274,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// run before router construction and fail application setup closed when
 	// a required port is missing.
 	must(container.Invoke(wireCraftKnowledgeRuntime))
+	// F08 (#107): the production web-build dispatch trigger on the local
+	// craft runtime — a successful web-kind delegation dispatches the fixed
+	// offline build and records its terminal receipt before candidate
+	// staging reads it (owner sign-off 2026-10-05, option A sentinel).
+	must(container.Invoke(wireCraftWebBuildDispatcher))
 	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 	must(container.Invoke(wireTaskDeletionGuard))
@@ -3145,6 +3150,7 @@ type CraftRunViewProductionAssembly struct {
 	Provider           *CraftRunViewContainerProvider
 	RuntimeCoordinator *CraftRunViewRuntimeCoordinator
 	Store              craft.RunViewStore
+	Engine             CraftRunViewContainerEngine
 	ResolveMaterial    func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
 	Close              func() error
 	Unavailable        string
@@ -3231,7 +3237,7 @@ func assembleCraftRunViewProductionWithAPI(
 		return nil, err
 	}
 	assembly := &CraftRunViewProductionAssembly{
-		Provider: provider, RuntimeCoordinator: coordinator, Store: store,
+		Provider: provider, RuntimeCoordinator: coordinator, Store: store, Engine: engine,
 	}
 	assembly.ResolveMaterial = func(ctx context.Context, task craft.Task) (CraftRunViewMaterialHandle, error) {
 		if err := ctx.Err(); err != nil {

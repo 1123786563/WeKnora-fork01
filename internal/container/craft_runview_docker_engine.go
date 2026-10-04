@@ -74,6 +74,24 @@ func (e *CraftRunViewDockerEngine) Close() error {
 	return e.close()
 }
 
+// The Exec surface below lets the engine serve as the normal-exec provider
+// for server-owned command faces (F08 web build dispatch): the moby client
+// this engine already owns is the only Docker dial the RunView deployment
+// has, so dispatch and the coordinator's live observations can never
+// disagree about which daemon they talked to. Plain pass-throughs — the
+// exec client owns its own RPC timeouts.
+func (e *CraftRunViewDockerEngine) ExecCreate(ctx context.Context, containerID string, opts client.ExecCreateOptions) (client.ExecCreateResult, error) {
+	return e.api.ExecCreate(ctx, containerID, opts)
+}
+
+func (e *CraftRunViewDockerEngine) ExecAttach(ctx context.Context, execID string, opts client.ExecAttachOptions) (client.ExecAttachResult, error) {
+	return e.api.ExecAttach(ctx, execID, opts)
+}
+
+func (e *CraftRunViewDockerEngine) ExecInspect(ctx context.Context, execID string, opts client.ExecInspectOptions) (client.ExecInspectResult, error) {
+	return e.api.ExecInspect(ctx, execID, opts)
+}
+
 func (e *CraftRunViewDockerEngine) rpcContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if e == nil || e.timeout <= 0 {
 		return context.WithCancel(ctx)

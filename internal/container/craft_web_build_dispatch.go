@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"gorm.io/gorm"
 )
 
 // craftWebBuildActivityKey is the fixed activity identity of the offline web
@@ -339,5 +342,116 @@ func (a craftWebBuildPromotionReceipts) VerifyPromotionBuild(ctx context.Context
 	if receipt.CandidateManifestSHA256 != manifestDigest {
 		return fmt.Errorf("%w: run %s build receipt seals manifest %s, not the candidate's %s", craft.ErrConflict, runID, receipt.CandidateManifestSHA256, manifestDigest)
 	}
+	return nil
+}
+
+// newCraftWebBuildProductionDispatcher assembles the F08 production dispatch
+// lane: the budget-backed send coordinator, the durable output projection
+// and the T03-gated normal face over the RunView Docker engine's Exec
+// surface — the same engine the coordinator's live observations come from.
+// The returned trigger admits the Run's budget grant (idempotent per Run)
+// and dispatches; both failures are logged, not fatal: a dispatch that never
+// earned a receipt leaves the promotion fence refusing fail-closed.
+func newCraftWebBuildProductionDispatcher(
+	db *gorm.DB,
+	assembly *CraftRunViewProductionAssembly,
+	policy *service.CraftDelegateExecutionPolicy,
+	gate *CraftWebBuildCommandGate,
+	pin CraftWebToolchainPin,
+) (func(context.Context, craft.Task), error) {
+	if db == nil {
+		return nil, fmt.Errorf("%w: web build dispatch wiring requires the database", craft.ErrInvalidInput)
+	}
+	engine, ok := assembly.Engine.(sandbox.DockerNormalExecEngine)
+	if !ok || engine == nil {
+		return nil, fmt.Errorf("%w: the RunView engine exposes no Exec surface", craft.ErrInvalidInput)
+	}
+	normalExec, err := sandbox.NewDockerNormalExecClient(engine, sandbox.DockerNormalExecConfig{})
+	if err != nil {
+		return nil, err
+	}
+	budget, err := service.NewCraftBudgetService(db, nil, defaultCraftBudgetPolicy())
+	if err != nil {
+		return nil, err
+	}
+	coordinator, err := service.NewCraftDockerSendCoordinator(budget, repository.NewCraftDockerSendClaimRepository(db))
+	if err != nil {
+		return nil, err
+	}
+	output, err := service.NewCraftDockerOutputService(repository.NewCraftDockerOutputRepository(db, craftWebBuildOutputLimit))
+	if err != nil {
+		return nil, err
+	}
+	normal, err := service.NewCraftDockerNormalExecService(coordinator,
+		repository.NewCraftDockerNormalInputRepository(db), normalExec, output)
+	if err != nil {
+		return nil, err
+	}
+	normal.WithExecutionPolicy(policy)
+	dispatcher, err := NewCraftWebBuildDispatcher(assembly.RuntimeCoordinator, gate, normal, repository.NewCraftWebBuildReceiptRepository(db), pin)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context, task craft.Task) {
+		grant, err := budget.Admit(ctx, task.Scope, task.Fence.RunID)
+		if err != nil {
+			logger.Warnf(ctx, "[CraftWebBuild] dispatch for run %s could not admit its budget grant: %v", task.Fence.RunID, err)
+			return
+		}
+		if _, err := dispatcher.Dispatch(ctx, task, grant.ID); err != nil {
+			logger.Warnf(ctx, "[CraftWebBuild] dispatch for run %s did not complete: %v", task.Fence.RunID, err)
+		}
+	}, nil
+}
+
+// wireCraftWebBuildDispatcher installs the F08 production dispatch trigger on
+// the local craft runtime (owner sign-off 2026-10-05, option A sentinel
+// binding). Without the local runtime dial, the pinned web toolchain or the
+// complete RunView production assembly the wiring logs once and stays off —
+// the promotion fence then keeps refusing fail-closed, exactly the recorded
+// pre-wiring posture.
+func wireCraftWebBuildDispatcher(
+	executor craft.Executor,
+	assembly *CraftRunViewProductionAssembly,
+	db *gorm.DB,
+	store craft.Store,
+	audit interfaces.AuditLogService,
+) error {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok {
+		logger.Infof(context.Background(), "[CraftWebBuild] dispatch wiring skipped: the local craft runtime dial is not assembled")
+		return nil
+	}
+	gate := RegisteredCraftWebBuildCommandGate()
+	if gate == nil {
+		logger.Infof(context.Background(), "[CraftWebBuild] dispatch wiring skipped: no pinned web toolchain (%s)", craftWebToolchainDirEnv)
+		return nil
+	}
+	if assembly == nil || assembly.Unavailable != "" || assembly.RuntimeCoordinator == nil {
+		reason := "RunView production assembly is unavailable"
+		if assembly != nil && assembly.Unavailable != "" {
+			reason = assembly.Unavailable
+		}
+		logger.Infof(context.Background(), "[CraftWebBuild] dispatch wiring skipped: %s (web builds stay undispatched)", reason)
+		return nil
+	}
+	webToolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv))
+	pin, err := LoadCraftWebToolchainPin(webToolchainDir)
+	if err != nil {
+		return fmt.Errorf("craft web build dispatch wiring: toolchain pin %s: %w", webToolchainDir, err)
+	}
+	pin.RuntimeDigest = craftRuntimeDigestFromEnv()
+	delegate := service.NewCraftDelegateService(store, nil).WithAuditLog(audit)
+	policy, err := service.NewCraftDelegateExecutionPolicy(delegate, db, craftDockerWorkspaceRoot)
+	if err != nil {
+		return fmt.Errorf("craft web build dispatch wiring: %w", err)
+	}
+	policy.WithAuditLog(audit)
+	dispatch, err := newCraftWebBuildProductionDispatcher(db, assembly, policy, gate, pin)
+	if err != nil {
+		return fmt.Errorf("craft web build dispatch wiring: %w", err)
+	}
+	runtime.webBuildDispatch = dispatch
+	logger.Infof(context.Background(), "[CraftWebBuild] production dispatch wired: successful web-kind delegations dispatch the fixed offline build")
 	return nil
 }

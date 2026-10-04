@@ -345,3 +345,32 @@ func TestCraftF08WebBuildPromotionReceiptFence(t *testing.T) {
 	err = fence.SealCandidateManifest(ctx, fixture.task.Scope, fixture.task.WorkspaceID, fixture.task.Fence.RunID, strings.Repeat("cc", 32))
 	require.ErrorIs(t, err, repository.ErrCraftWebBuildReceiptConflict)
 }
+
+type f08SucceedingExecutor struct{ calls int }
+
+func (e *f08SucceedingExecutor) Execute(context.Context, craft.Task) (craft.Result, error) {
+	e.calls++
+	return craft.Result{Status: "succeeded"}, nil
+}
+func (*f08SucceedingExecutor) Observe(context.Context, craft.Task) (craft.Observation, error) {
+	return craft.Observation{}, nil
+}
+func (*f08SucceedingExecutor) Abort(context.Context, craft.Task) error { return nil }
+
+// TestCraftWebBuildDispatchTriggerFiresOnlyAfterSuccessfulWebDelegation
+// pins the F08 production trigger point: the installed dispatch fires once
+// after a successful web-kind delegation, and never for a failed one.
+func TestCraftWebBuildDispatchTriggerFiresOnlyAfterSuccessfulWebDelegation(t *testing.T) {
+	f := newR4SeedExecuteFixture(t, nil, 3, nil, false)
+	var fired int
+	f.runtime.webBuildDispatch = func(context.Context, craft.Task) { fired++ }
+
+	// The fixture's inner executor fails the delegation: no dispatch.
+	require.NoError(t, f.execute())
+	require.Zero(t, fired, "a failed delegation never dispatches the web build")
+
+	// A successful delegation dispatches exactly once.
+	f.runtime.inner = &f08SucceedingExecutor{}
+	require.NoError(t, f.execute())
+	require.Equal(t, 1, fired, "the fixed web build dispatch fires after the successful delegation")
+}
