@@ -366,6 +366,63 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
       return raw;
     },
     /**
+     * GET /sessions/:id/craft/versions/:version_id/share — the T11 (#128)
+     * owner-consent surface. The resolved value is the RAW share wire
+     * payload (version_id, restricted, evidence_digest, status, decision);
+     * the views layer (projectShareView) holds the fail-closed projection.
+     */
+    async shareView(sessionId: string, versionId: string, signal?: AbortSignal): Promise<unknown> {
+      // Bare flat body like the export-consent seams: no success/data envelope.
+      const raw = await request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/share',
+        signal,
+      });
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft share body' });
+      }
+      return raw;
+    },
+    /**
+     * POST .../share/decision — owner-only on the server; the decision
+     * binds to the EXACT evidence digest it was made against (a replay
+     * against changed evidence answers 409). Resolves the raw share view.
+     */
+    async decideShare(
+      sessionId: string,
+      versionId: string,
+      decision: 'approved' | 'rejected',
+      evidenceDigest: string,
+      signal?: AbortSignal,
+    ): Promise<unknown> {
+      const raw = await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/share/decision',
+        body: { decision, evidence_digest: evidenceDigest },
+        signal,
+      });
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft share body' });
+      }
+      return raw;
+    },
+    /**
+     * POST .../share/revocation — owner-only on the server; a revoked
+     * decision never revives within its TTL. Resolves the raw share view.
+     */
+    async revokeShare(sessionId: string, versionId: string, signal?: AbortSignal): Promise<unknown> {
+      const raw = await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/share/revocation',
+        body: {},
+        signal,
+      });
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft share body' });
+      }
+      return raw;
+    },
+    /**
      * GET /sessions/:id/craft/runs/:run_id/budget/pause — the T20 (#139)
      * durable budget-pause view. Extension actors (Task owner / tenant
      * billing admin) read the frozen {run_id, reason, limit, used} wire plus

@@ -16,6 +16,10 @@
     "./chat/web-search": "./src/chat/web-search.ts",
     "./craft/access": "./src/craft/access.tsx",
     "./craft/document": "./src/craft/document.tsx",
+    "./craft/export": {
+      "types": "./src/craft/export.tsx",
+      "default": "./src/craft/export.tsx"
+    },
     "./craft/files": "./src/craft/files.tsx",
     "./craft/home": "./src/craft/home.tsx",
     "./craft/input-expand": "./src/craft/input-expand.tsx",
@@ -24,6 +28,10 @@
     "./craft/presentation": "./src/craft/presentation.ts",
     "./craft/preview": "./src/craft/preview.tsx",
     "./craft/slides": "./src/craft/slides.tsx",
+    "./craft/share": {
+      "types": "./src/craft/share.tsx",
+      "default": "./src/craft/share.tsx"
+    },
     "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
     "./craft/templates": "./src/craft/templates.tsx",
     "./craft/usage": "./src/craft/usage.tsx",

@@ -233,6 +233,26 @@ test('export consent seams resolve the bare flat wire bodies', async () => {
   assert.equal((decided as Record<string, unknown>)['state'], 'consented', 'the decision body resolves after the server persisted it');
 });
 
+// T20 (#139) assembly: the T11 share seams follow the same bare-flat-body
+// contract as the export-consent seams.
+test('share consent seams resolve the bare flat wire bodies', async () => {
+  const shareBody = { version_id: 'v1', restricted: true, evidence_digest: 'e'.repeat(64), status: 'private', decision: null };
+  const decided = { ...shareBody, status: 'consented', decision: { version_id: 'v1', evidence_digest: 'e'.repeat(64), owner_id: 'owner', decision: 'approved' } };
+  const { request, seen } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/versions/v1/share': shareBody,
+    'POST /api/v1/sessions/s1/craft/versions/v1/share/decision': decided,
+    'POST /api/v1/sessions/s1/craft/versions/v1/share/revocation': shareBody,
+  });
+  const api = createCraftApi(request);
+  const view = await api.shareView('s1', 'v1');
+  assert.deepEqual(view, shareBody, 'the bare flat share body resolves as-is');
+  const afterDecision = await api.decideShare('s1', 'v1', 'approved', 'e'.repeat(64));
+  assert.equal((afterDecision as Record<string, unknown>)['status'], 'consented');
+  assert.deepEqual(seen[1]?.body, { decision: 'approved', evidence_digest: 'e'.repeat(64) }, 'the decision posts the exact evidence digest');
+  const afterRevoke = await api.revokeShare('s1', 'v1');
+  assert.equal((afterRevoke as Record<string, unknown>)['status'], 'private');
+});
+
 test('budgetPause retains valid pause values when its optional extension action is malformed', async () => {
   const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
   const { request } = fakeRequest({

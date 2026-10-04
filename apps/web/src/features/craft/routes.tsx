@@ -37,6 +37,8 @@ import { CraftInputExpandPanel } from '@weknora/views/craft/input-expand';
 import { CRAFT_USAGE_STRINGS_ZH, CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
+import { CraftSharePanel, projectShareView, type CraftShareView } from '@weknora/views/craft/share';
+import { CraftExportConsentPanel, projectExportConsentView, type CraftExportConsentView } from '@weknora/views/craft/export';
 
 type CraftRoute =
   | { name: 'home' }
@@ -130,6 +132,98 @@ export interface CraftRoutesProps {
   scopeController: ScopeController;
   session: LegacyPlatformSession;
   apiBaseUrl: string;
+}
+
+// T20 central assembly (#128/#133): the consent panels ride the aside slot,
+// bound to the workbench's SELECTED version — the exact immutable version
+// the owner decides on. Both load through the api-client seams and
+// re-project the raw body fail-closed; the server stays the sole consent
+// authority (the panels only render, they never infer authority).
+type CraftRoutesApi = ReturnType<typeof createCraftApi>;
+type CraftShareConsentState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; view: CraftShareView };
+
+function CraftShareConsentSection(props: {
+  locale: CraftLocale;
+  role: 'owner' | 'collaborator' | 'viewer';
+  sessionId: string;
+  versionId: string;
+  api: CraftRoutesApi;
+  scope: ScopeController;
+}) {
+  const [state, setState] = useState<CraftShareConsentState>({ status: 'loading' });
+  const load = useCallback(async () => {
+    setState({ status: 'loading' });
+    try {
+      const view = projectShareView(await props.api.shareView(props.sessionId, props.versionId, props.scope.current().signal));
+      setState(view === null ? { status: 'error' } : { status: 'ready', view });
+    } catch {
+      setState({ status: 'error' });
+    }
+  }, [props.api, props.sessionId, props.versionId, props.scope]);
+  useEffect(() => { void load(); }, [load]);
+  if (state.status === 'loading') return null;
+  if (state.status === 'error') {
+    return <p role="alert">Share consent unavailable. Restricted-source sharing stays closed until it loads.</p>;
+  }
+  // An unrestricted version carries no share decision to make or show.
+  if (!state.view.restricted) return null;
+  const apply = (raw: unknown) => {
+    const next = projectShareView(raw);
+    setState(next === null ? { status: 'error' } : { status: 'ready', view: next });
+  };
+  return <CraftSharePanel
+    locale={props.locale}
+    role={props.role}
+    view={state.view}
+    onDecide={(decision) => props.api.decideShare(props.sessionId, props.versionId, decision, state.view.evidenceDigest, props.scope.current().signal).then(apply)}
+    onRevoke={() => props.api.revokeShare(props.sessionId, props.versionId, props.scope.current().signal).then(apply)}
+  />;
+}
+
+type CraftExportConsentState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; view: CraftExportConsentView };
+
+function CraftExportConsentSection(props: {
+  locale: CraftLocale;
+  role: 'owner' | 'collaborator' | 'viewer';
+  sessionId: string;
+  versionId: string;
+  api: CraftRoutesApi;
+  scope: ScopeController;
+}) {
+  const [state, setState] = useState<CraftExportConsentState>({ status: 'loading' });
+  const load = useCallback(async () => {
+    setState({ status: 'loading' });
+    try {
+      const view = projectExportConsentView(await props.api.exportConsent(props.sessionId, props.versionId, props.scope.current().signal));
+      setState(view === null ? { status: 'error' } : { status: 'ready', view });
+    } catch {
+      setState({ status: 'error' });
+    }
+  }, [props.api, props.sessionId, props.versionId, props.scope]);
+  useEffect(() => { void load(); }, [load]);
+  if (state.status === 'loading') return null;
+  if (state.status === 'error') {
+    return <p role="alert">Export consent unavailable. Restricted derived files stay withheld until it loads.</p>;
+  }
+  // A "none" state means no derived file rides restricted origins — there
+  // is no export decision to make or show for this version.
+  if (state.view.state === 'none') return null;
+  const apply = (raw: unknown) => {
+    const next = projectExportConsentView(raw);
+    setState(next === null ? { status: 'error' } : { status: 'ready', view: next });
+  };
+  return <CraftExportConsentPanel
+    locale={props.locale}
+    role={props.role}
+    view={state.view}
+    onDecide={(decision) => props.api.decideExportConsent(props.sessionId, props.versionId, decision, state.view.manifestDigest, props.scope.current().signal).then(apply)}
+  />;
 }
 
 export function CraftRoutes(props: CraftRoutesProps) {
@@ -919,6 +1013,46 @@ export function CraftRoutes(props: CraftRoutesProps) {
             void controller.load(sessionId).catch(() => {});
             return raw;
           })}
+        />;
+      },
+    },
+    {
+      // T20/T11 (#128): the restricted-source share consent panel. Like the
+      // edit-request panel, the role is the SERVER-derived current member
+      // row (never a client guess) and an unconfirmed role hides the panel
+      // instead of asserting read-only about a possibly-writing member.
+      name: 'share-consent',
+      slot: 'aside',
+      render: (context) => {
+        if (sessionId === null || currentMember === undefined) return null;
+        if (context.selectedVersionId === null) return null;
+        return <CraftShareConsentSection
+          key={sessionId + ':' + context.selectedVersionId + '-share'}
+          locale={locale}
+          role={currentMember.role}
+          sessionId={sessionId}
+          versionId={context.selectedVersionId}
+          api={craftApi}
+          scope={scopeController}
+        />;
+      },
+    },
+    {
+      // T20/T13 (#133): the restricted-derived export consent panel, bound
+      // to the same selected version the download buttons act on.
+      name: 'export-consent',
+      slot: 'aside',
+      render: (context) => {
+        if (sessionId === null || currentMember === undefined) return null;
+        if (context.selectedVersionId === null) return null;
+        return <CraftExportConsentSection
+          key={sessionId + ':' + context.selectedVersionId + '-export'}
+          locale={locale}
+          role={currentMember.role}
+          sessionId={sessionId}
+          versionId={context.selectedVersionId}
+          api={craftApi}
+          scope={scopeController}
         />;
       },
     },
