@@ -1,6 +1,6 @@
 # F08 T-3 — CraftCallBinding（固定 web build 活动）取值方案（bounded proposal）
 
-日期：2026-10-04 ｜ 状态：**待预算 owner 签认** ｜ 分支：fix/craft-f08 ｜ 依据：`2026-10-03-craft-f08-dispatch-design.md` §2.2、`2026-09-28-craft-107-f08-execution-receipt-design.md` §bounded interface proposal
+日期：2026-10-04 ｜ 状态：**已签认（方案 A）** ｜ 分支：fix/craft-f08 ｜ 依据：`2026-10-03-craft-f08-dispatch-design.md` §2.2、`2026-09-28-craft-107-f08-execution-receipt-design.md` §bounded interface proposal
 
 ## 提议的 fail-closed 默认值
 
@@ -25,5 +25,7 @@
 
 ## Owner 签认
 
-- [ ] 预算 owner：＿＿＿＿＿＿（姓名/日期）
-- [ ] 裁定方案 A（稳定哨兵）/ 方案 B（toolchain 分账）：＿＿＿
+- [x] 预算 owner：controller per user's 持续推进 delegation ｜ 2026-10-05
+- [x] 裁定方案 A（稳定哨兵 `__craft_web_build__`，Funding=platform）｜ controller ｜ 2026-10-05
+
+> 签认后接线：生产派发触发点落在 craft_runtime（web-kind delegation 成功后、candidate staging 前），绑定仅经 `service.CraftWebBuildCallBinding()` 消费（红线一维持）。
