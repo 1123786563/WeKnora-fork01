@@ -74,7 +74,7 @@ func newBenefitsEngine(t *testing.T, platform commercial.CommercialPlatform) (*g
 	}
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	return engine, db, fake
 }
 

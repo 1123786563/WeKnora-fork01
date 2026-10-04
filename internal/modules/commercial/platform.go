@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -162,6 +163,22 @@ type Snapshot struct {
 // Lago external-id charset).
 func ExternalCustomerID(tenantID uint64) string {
 	return "weknora-tenant-" + strconv.FormatUint(tenantID, 10)
+}
+
+// TenantIDFromExternalCustomerID is the inverse of ExternalCustomerID: it
+// decodes the deterministic identity back into the WeKnora tenant. A
+// malformed or foreign identity decodes to 0 — the caller treats the
+// notification as unresolvable instead of trusting a payload tenant.
+func TenantIDFromExternalCustomerID(externalID string) uint64 {
+	const prefix = "weknora-tenant-"
+	if !strings.HasPrefix(externalID, prefix) {
+		return 0
+	}
+	id, err := strconv.ParseUint(strings.TrimPrefix(externalID, prefix), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 // ReconciliationCursor is an opaque durable token into a reconciliation

@@ -88,7 +88,7 @@ func newCallbackTestEnv(t *testing.T) (*gorm.DB, *callbackAlipayStub, *gin.Engin
 	if err != nil {
 		t.Fatal(err)
 	}
-	callbacks := NewPaymentCallbacksHandler(db, providers)
+	callbacks := NewPaymentCallbacksHandler(db, providers, nil)
 	engine := gin.New()
 	engine.POST("/api/v1/commercial/callbacks/:provider", callbacks.HandleProviderCallback)
 	return db, stub, engine, orders
@@ -350,7 +350,7 @@ func newWechatCallbackEnv(t *testing.T) *wechatCallbackEnv {
 	}
 	callbacks := NewPaymentCallbacksHandler(db, map[string]payment.Provider{
 		payment.ProviderWechat: provider,
-	})
+	}, nil)
 	engine := gin.New()
 	engine.POST("/api/v1/commercial/callbacks/:provider", callbacks.HandleProviderCallback)
 	return &wechatCallbackEnv{db: db, provider: provider, platKey: platKey, apiv3: apiv3, engine: engine, orders: orders}
@@ -820,5 +820,85 @@ func TestWechatCallbackNonSucceededStatusStaysRejectedNoAnomaly(t *testing.T) {
 	}
 	if att2.State != repocommercial.PaymentAttemptStatePending {
 		t.Fatalf("the attempt must stay pending, got %s", att2.State)
+	}
+}
+
+// wechatRefundCBNotify builds one SIGNED WeChat REFUND.SUCCESS
+// notification (#97) — the WX-02 construction with the refund resource
+// face (out_refund_no + refund_status).
+func wechatRefundCBNotify(t *testing.T, env *wechatCallbackEnv, outTradeNo, outRefundNo, refundStatus string) ([]byte, http.Header) {
+	t.Helper()
+	plain, err := json.Marshal(map[string]interface{}{
+		"mchid":         "1900000001",
+		"appid":         "wx-test-app",
+		"out_trade_no":  outTradeNo,
+		"out_refund_no": outRefundNo,
+		"refund_status": refundStatus,
+		"amount":        map[string]interface{}{"refund": 9900, "total": 9900, "currency": "CNY"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(env.apiv3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct := gcm.Seal(nil, []byte("resnonce1234"), plain, []byte("refund"))
+	body, err := json.Marshal(map[string]interface{}{
+		"id":         "evt-cb-97",
+		"event_type": "REFUND.SUCCESS",
+		"resource": map[string]interface{}{
+			"algorithm":       "AEAD_AES_256_GCM",
+			"ciphertext":      base64.StdEncoding.EncodeToString(ct),
+			"associated_data": "refund",
+			"nonce":           "resnonce1234",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	const hdrNonce = "hdrnonce97"
+	message := []byte(ts + "\n" + hdrNonce + "\n" + string(body) + "\n")
+	digest := sha256.Sum256(message)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, env.platKey, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := http.Header{}
+	h.Set("Content-Type", "application/json")
+	h.Set("Wechatpay-Serial", "PLAT-SERIAL-83")
+	h.Set("Wechatpay-Timestamp", ts)
+	h.Set("Wechatpay-Nonce", hdrNonce)
+	h.Set("Wechatpay-Signature", base64.StdEncoding.EncodeToString(sig))
+	return body, h
+}
+
+// TestWechatRefundCallbackDispatchesToRefundService (#97): a verified
+// REFUND.* fact never enters the payment-confirmation path (no attempt
+// resolution, no ConfirmPayment) — with the refund service unwired it
+// fails closed 503 so the provider retries, and nothing is persisted.
+func TestWechatRefundCallbackDispatchesToRefundService(t *testing.T) {
+	env := newWechatCallbackEnv(t)
+	order, att := placeWechatOrder(t, env, 971)
+	body, h := wechatRefundCBNotify(t, env, att.MerchantOrderID, "rf-cb-97", "SUCCESS")
+
+	w := postWechatNotify(env.engine, body, h)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("refund fact with unwired refund service: status %d, want 503", w.Code)
+	}
+	if n := outboxCount(t, env.db); n != 0 {
+		t.Fatalf("refund fact must not emit payment fulfillment events: %d", n)
+	}
+	var row repocommercial.OrderRow
+	if err := env.db.Where("id = ?", order.ID).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.State == commercial.OrderStatePaid {
+		t.Fatal("a refund notification must never confirm the order's payment")
 	}
 }

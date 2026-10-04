@@ -64,7 +64,7 @@ func newAccountEngine(t *testing.T, name string, platform commercial.CommercialP
 	}
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	return engine, db, fake
 }
 

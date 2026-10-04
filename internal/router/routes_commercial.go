@@ -16,7 +16,7 @@ import (
 // commercial.CanManageBilling gate observable (unauthorized Admin 403,
 // authorised caller 501). Tenant scope is ALWAYS derived from the
 // authenticated context — no tenant path parameter exists by design.
-func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.CommercialHandler, callbacksHandlers ...*handler.PaymentCallbacksHandler) {
+func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.CommercialHandler, webhookHandler *handler.CommercialWebhookHandler, callbacksHandlers ...*handler.PaymentCallbacksHandler) {
 	if commercialHandler == nil {
 		return
 	}
@@ -151,10 +151,17 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		}
 	}
 	if callbacks == nil {
-		callbacks = handler.NewPaymentCallbacksHandler(nil, nil)
+		callbacks = handler.NewPaymentCallbacksHandler(nil, nil, nil)
 	}
 	callbacksGroup := r.Group("/commercial/callbacks")
 	{
 		callbacksGroup.POST("/:provider", callbacks.HandleProviderCallback)
+	}
+	// (#98 / Lago 26) The billing-authority webhook face is anonymously
+	// reachable: authenticity is the HMAC signature over the raw body. The
+	// notification only triggers an authoritative object re-read — never a
+	// command, never a trusted identity.
+	if webhookHandler != nil {
+		r.Group("/commercial/webhooks").POST("/:provider", webhookHandler.HandleWebhook)
 	}
 }

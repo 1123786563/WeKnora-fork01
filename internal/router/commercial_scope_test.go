@@ -57,7 +57,7 @@ func newCommercialScopeEngine(t *testing.T, auth gin.HandlerFunc) (*gin.Engine, 
 		engine.Use(auth)
 	}
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	return engine, h, db
 }
 
@@ -157,7 +157,7 @@ func serveWith(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, method, path str
 	engine := gin.New()
 	engine.Use(auth)
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, httptest.NewRequest(method, path, nil))
 	return w, w.Body.String()
@@ -420,7 +420,7 @@ func serveJSONWithProviders(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, met
 	engine := gin.New()
 	engine.Use(auth)
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -781,7 +781,7 @@ func serveScoped(t *testing.T, scope, auth gin.HandlerFunc, path string) (*httpt
 	engine := gin.New()
 	engine.Use(scope, auth)
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 	return w, w.Body.String()

@@ -87,7 +87,7 @@ func (e *planAdminEnv) engine(auth gin.HandlerFunc) *gin.Engine {
 	engine := gin.New()
 	engine.Use(auth)
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	return engine
 }
 

@@ -57,6 +57,11 @@ type PaymentFact struct {
 	Amount      CNYFen
 	Currency    string
 	State       string
+	// RefundID is non-empty only for a verified REFUND.* notification (#97):
+	// it carries the refund's own stable out_refund_no while AttemptID
+	// keeps the ORIGINAL payment out_trade_no. A refund notification is a
+	// re-read trigger only — it must never reach ConfirmPayment.
+	RefundID string
 }
 
 // ValidatePayment rejects any fact that would change what the order charged:

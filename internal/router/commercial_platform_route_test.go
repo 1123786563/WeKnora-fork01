@@ -59,7 +59,7 @@ func serveReadiness(t *testing.T, auth gin.HandlerFunc, p commercial.CommercialP
 		engine.Use(auth)
 	}
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/commercial/platform/readiness", nil)
 	req.Header.Set("X-WeKnora-Test-Session", "session-user") // anonymous callers override below
 	w := httptest.NewRecorder()
@@ -244,7 +244,7 @@ func TestCommercialPlatformReadinessAuthGates(t *testing.T) {
 		engine := gin.New()
 		engine.Use(sessionGate)
 		v1 := engine.Group("/api/v1")
-		RegisterCommercialRoutes(v1, h)
+		RegisterCommercialRoutes(v1, h, nil)
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
 		if w.Code != http.StatusUnauthorized {

@@ -143,6 +143,29 @@ func mapChannelState(state payment.AttemptState) domain.RefundChannelState {
 	}
 }
 
+// ReconcileRefundNotification reacts to one VERIFIED refund notification
+// (#97): the notification is a re-read trigger only — the authoritative
+// outcome comes from QueryRefund on the ORIGINAL refund key, terminal
+// refunds are no-ops, and no channel payout is ever repeated. This is the
+// wechat parity of alipay's synchronous fund_change confirmation.
+func (s *RefundService) ReconcileRefundNotification(ctx context.Context, refundID string) error {
+	rf, err := s.refunds.GetRefund(ctx, refundID)
+	if err != nil {
+		return err
+	}
+	if rf.State != domain.RefundStatePending && rf.State != domain.RefundStateReviewing {
+		return nil
+	}
+	if s.provider == nil {
+		return fmt.Errorf("%w: re-query of %s impossible", ErrRefundChannelUnconfigured, refundID)
+	}
+	qr, err := s.provider.QueryRefund(ctx, refundID)
+	if err != nil {
+		return err
+	}
+	return s.applyChannelResult(ctx, rf.ID, qr.ProviderID, mapChannelState(qr.State))
+}
+
 func (s *RefundService) succeededAttempt(ctx context.Context, orderID string) (repocommercial.PaymentAttemptRow, error) {
 	var att repocommercial.PaymentAttemptRow
 	err := s.db.WithContext(ctx).

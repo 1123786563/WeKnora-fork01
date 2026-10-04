@@ -8,6 +8,7 @@ import (
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
 	repository "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -21,13 +22,14 @@ type PaymentCallbacksHandler struct {
 	db        *gorm.DB
 	orders    *repository.OrderStore
 	providers map[string]payment.Provider
+	refunds   *commercialsvc.RefundService
 }
 
 // NewPaymentCallbacksHandler wires the C01 order store with the configured
 // providers. A nil db or nil map is legal and fails closed: every
 // notification is rejected and nothing is persisted.
-func NewPaymentCallbacksHandler(db *gorm.DB, providers map[string]payment.Provider) *PaymentCallbacksHandler {
-	return &PaymentCallbacksHandler{db: db, orders: repository.NewOrderStore(db), providers: providers}
+func NewPaymentCallbacksHandler(db *gorm.DB, providers map[string]payment.Provider, refunds *commercialsvc.RefundService) *PaymentCallbacksHandler {
+	return &PaymentCallbacksHandler{db: db, orders: repository.NewOrderStore(db), providers: providers, refunds: refunds}
 }
 
 // registeredAttempt is the server-side projection used to rebuild the
@@ -99,6 +101,23 @@ func (h *PaymentCallbacksHandler) HandleProviderCallback(c *gin.Context) {
 		// Verification failure must be answered with a non-2xx FAIL so the
 		// provider keeps retrying; nothing is persisted.
 		callbackFail(c, http.StatusUnauthorized, "signature verification failed")
+		return
+	}
+	if fact.RefundID != "" {
+		// (#97) A REFUND.* notification verified through the same WX-02
+		// chain: it is a re-read trigger, never a payment confirmation —
+		// it must not touch ConfirmPayment or the attempt registry. The
+		// service re-queries the ORIGINAL refund key and applies the
+		// authoritative outcome; a redelivery is idempotent.
+		if h.refunds == nil {
+			callbackFail(c, http.StatusServiceUnavailable, "refund notifications unconfigured")
+			return
+		}
+		if err := h.refunds.ReconcileRefundNotification(c.Request.Context(), fact.RefundID); err != nil {
+			callbackFail(c, http.StatusInternalServerError, "refund notification reconciliation failed")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})
 		return
 	}
 	attempt, err := h.resolveByMerchantOrderID(fact.Provider, fact.Merchant, fact.AttemptID)

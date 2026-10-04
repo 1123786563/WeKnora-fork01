@@ -222,6 +222,34 @@ type wechatAmountJSON struct {
 	Currency string `json:"currency"`
 }
 
+// wechatRefundAmountJSON is the REFUND.* resource amount face: the payout
+// lives in from_user/from (payer side); total is the original order face.
+type wechatRefundAmountJSON struct {
+	Refund     int64  `json:"refund"`
+	FromUser   int64  `json:"from_user"`
+	From       int64  `json:"from"`
+	Total      int64  `json:"total"`
+	Currency   string `json:"currency"`
+}
+
+type wechatRefundNotificationResource struct {
+	MchID        string                  `json:"mchid"`
+	AppID        string                  `json:"appid"`
+	OutTradeNo   string                  `json:"out_trade_no"`
+	OutRefundNo  string                  `json:"out_refund_no"`
+	RefundStatus string                  `json:"refund_status"`
+	Amount       wechatRefundAmountJSON  `json:"amount"`
+}
+
+// refundCurrency defaults the resource currency the same way the payment
+// face does (WeChat omits CNY).
+func refundCurrency(c string) string {
+	if c == "" {
+		return "CNY"
+	}
+	return c
+}
+
 type wechatPaymentResult struct {
 	MchID         string           `json:"mchid"`
 	AppID         string           `json:"appid"`
@@ -276,12 +304,37 @@ func (p *WechatProvider) Verify(ctx context.Context, header http.Header, body []
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return fact, fmt.Errorf("%w: %v", ErrMalformedCallback, err)
 	}
-	if !strings.HasPrefix(envelope.EventType, "TRANSACTION.") {
+	isRefund := strings.HasPrefix(envelope.EventType, "REFUND.")
+	if !isRefund && !strings.HasPrefix(envelope.EventType, "TRANSACTION.") {
 		return fact, fmt.Errorf("%w: unsupported event_type %q", ErrMalformedCallback, envelope.EventType)
 	}
 	plain, err := p.decryptResource(envelope.Resource)
 	if err != nil {
 		return fact, err
+	}
+	if isRefund {
+		// REFUND.* notifications (#97 / WX-06) ride the same signed and
+		// encrypted envelope; the decrypted resource reports the refund
+		// under its own out_refund_no. The fact stays a re-read trigger:
+		// fulfillment replays from the authoritative query, never from the
+		// notification body alone.
+		var result wechatRefundNotificationResource
+		if err := json.Unmarshal(plain, &result); err != nil {
+			return fact, fmt.Errorf("%w: %v", ErrMalformedCallback, err)
+		}
+		if result.MchID != p.cfg.MchID || result.AppID != p.cfg.AppID {
+			return fact, fmt.Errorf("%w: mchid=%q appid=%q", ErrMerchantMismatch, result.MchID, result.AppID)
+		}
+		return commercial.PaymentFact{
+			Provider:    ProviderWechat,
+			Merchant:    result.MchID,
+			AttemptID:   result.OutTradeNo,
+			Transaction: result.OutRefundNo,
+			Amount:      commercial.CNYFen(result.Amount.FromUser),
+			Currency:    refundCurrency(result.Amount.Currency),
+			State:       mapWechatRefundState(result.RefundStatus).String(),
+			RefundID:    result.OutRefundNo,
+		}, nil
 	}
 	var result wechatPaymentResult
 	if err := json.Unmarshal(plain, &result); err != nil {

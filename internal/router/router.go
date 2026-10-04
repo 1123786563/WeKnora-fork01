@@ -140,6 +140,9 @@ type RouterParams struct {
 	// endpoint; nil falls back to a fail-closed handler (503, nothing
 	// persisted) inside RegisterCommercialRoutes.
 	PaymentCallbacksHandler *handler.PaymentCallbacksHandler
+	// CommercialWebhookHandler (#98 / Lago 26): the billing-authority
+	// webhook consumer (signature → dedupe → authoritative re-read).
+	CommercialWebhookHandler *handler.CommercialWebhookHandler
 	// The app-connector surface is served by four single-lifecycle
 	// handlers (installation / connection / sync / action), each with its
 	// own stores and write gate.
@@ -459,7 +462,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
-		RegisterCommercialRoutes(v1, params.CommercialHandler, params.PaymentCallbacksHandler)
+		RegisterCommercialRoutes(v1, params.CommercialHandler, params.CommercialWebhookHandler, params.PaymentCallbacksHandler)
 		RegisterAppConnectorRoutes(v1,
 			params.AppInstallationHandler,
 			params.AppConnectionHandler,

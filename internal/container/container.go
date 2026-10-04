@@ -1108,6 +1108,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// drains already-priced records; pricing belongs to the execution gate.
 	must(container.Provide(newSettlementDispatchService))
 	must(container.Invoke(startCommercialSettlementDispatch))
+	// #98 (Lago 26): the webhook consumer + periodic reconciliation loop.
+	// The inbox/audit/cursor faces are wired for every deployment; the
+	// Lago HMAC secret is env-gated (LAGO_WEBHOOK_SECRET) and the
+	// authority's Reconcile family stays fail-closed until its real-stack
+	// enablement, so both faces degrade honestly (503 / quiet no-op).
+	must(container.Provide(newCommercialWebhookService))
+	must(container.Provide(commercialsvc.NewReconciliationService))
+	must(container.Invoke(startCommercialReconciliation))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
 	// execution gate above arms budget reservation. The provider-specific
@@ -1219,7 +1227,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// router injects this handler into RegisterCommercialRoutes so a
 	// configured channel's notifications verify, confirm their order and
 	// drive fulfillment instead of answering 503 with nothing persisted.
-	must(container.Provide(handler.NewPaymentCallbacksHandler))
+	// (#97) The callback face also dispatches verified REFUND.*
+	// notifications into the refund service as re-read triggers; until the
+	// production refund channel wiring lands (#96 residual) the service is
+	// the same blocked-env face CommercialHandler builds: it persists and
+	// reconciles nothing, and answers honestly instead of fabricating.
+	must(container.Provide(func(db *gorm.DB, providers map[string]payment.Provider) *handler.PaymentCallbacksHandler {
+		refunds, _ := commercialsvc.NewRefundService(db, nil, nil, nil)
+		return handler.NewPaymentCallbacksHandler(db, providers, refunds)
+	}))
 	// O01 rollout recovery: categorized recovery queue plus audited
 	// replay of pause-safe operations, gated by the commercial rollout
 	// config switches (safe-on defaults). Registered only — the
@@ -2813,6 +2829,32 @@ func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner i
 func newSettlementDispatchService(db *gorm.DB, gateway domain.CommercialGateway) (*commercialsvc.SettlementService, error) {
 	return commercialsvc.NewSettlementService(db, nil, gateway, func(string) (domain.PriceVersionRates, error) {
 		return domain.PriceVersionRates{}, repocommercial.ErrUsageRatesUnavailable
+	})
+}
+
+// newCommercialWebhookService builds the #98 webhook consumer: the only
+// provider secret wired today is the Lago HMAC secret (env-gated); the
+// re-read registry starts empty — every notification still lands in the
+// inbox and audit trail, and per-projection re-readers attach as the
+// projection owners adopt the convergence face.
+func newCommercialWebhookService(db *gorm.DB) *commercialsvc.WebhookService {
+	secret := os.Getenv("LAGO_WEBHOOK_SECRET")
+	if secret == "" {
+		return commercialsvc.NewWebhookService(db, nil, nil)
+	}
+	return commercialsvc.NewWebhookService(db, map[string][]byte{"lago": []byte(secret)}, nil)
+}
+
+// startCommercialReconciliation registers the periodic convergence loop
+// (#98): one immediate pass, then one per minute. With the authority's
+// Reconcile still fail-closed the pass is a quiet no-op; the wiring lands
+// so the adapter enablement (#94 R-94a track) starts converging without a
+// deploy change.
+func startCommercialReconciliation(svc *commercialsvc.ReconciliationService, cleaner interfaces.ResourceCleaner) {
+	svc.StartBackground(context.Background())
+	cleaner.RegisterWithName("CommercialReconciliation", func() error {
+		svc.Stop()
+		return nil
 	})
 }
 

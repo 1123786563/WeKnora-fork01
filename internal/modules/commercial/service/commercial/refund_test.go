@@ -373,3 +373,49 @@ func TestRefundFailedConfirmedReleasesLocks(t *testing.T) {
 		t.Fatalf("locks not released on confirmed failure: %d", locked)
 	}
 }
+
+// TestRefundNotificationRequeriesOriginalKeyAndIsIdempotent (#97 AC3):
+// a verified REFUND.* notification is only a re-read trigger — the service
+// re-queries the ORIGINAL refund key, applies the authoritative outcome,
+// and a redelivery against a terminal refund is a no-op that never pays
+// out a second time.
+func TestRefundNotificationRequeriesOriginalKeyAndIsIdempotent(t *testing.T) {
+	provider := &stubRefundProvider{refundState: payment.StateUnknown, queryState: payment.StateSucceeded}
+	svc, db, sp := setupRefund(t, &stubGateway{}, provider, readyEligibility{})
+	ctx := context.Background()
+	id := newRefundRequest(t, svc, 10_00, 10_000_000)
+	if err := svc.Approve(ctx, id, "rev_n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ProcessPayouts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if row := refundRow(t, db, id); row.State != domain.RefundStateReviewing {
+		t.Fatalf("state %q after indeterminate outcome, want reviewing", row.State)
+	}
+
+	// The REFUND.SUCCESS notification arrives: converge via one query on
+	// the original key.
+	if err := svc.ReconcileRefundNotification(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	n, q, queryKeys := sp.counts()
+	if n != 1 {
+		t.Fatalf("notification path re-issued the channel refund: %d calls", n)
+	}
+	if q != 1 || len(queryKeys) != 1 || queryKeys[0] != id {
+		t.Fatalf("notification re-read used %v, want the ORIGINAL refund key %q", queryKeys, id)
+	}
+	if row := refundRow(t, db, id); row.State != domain.RefundStateCompleted {
+		t.Fatalf("state %q after notified payout+revocation, want completed", row.State)
+	}
+
+	// Redelivery of the same notification: terminal refund, complete no-op.
+	if err := svc.ReconcileRefundNotification(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	n, q, _ = sp.counts()
+	if n != 1 || q != 1 {
+		t.Fatalf("duplicate notification moved money or re-read again: refunds=%d queries=%d", n, q)
+	}
+}

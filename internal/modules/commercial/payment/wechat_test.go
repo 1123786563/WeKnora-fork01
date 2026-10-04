@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -396,4 +397,193 @@ func TestChannelTransportKeepsEnvironmentProxy(t *testing.T) {
 	assertProxy("wechat", wechat.client)
 	alipay, _, _ := alipayNotifyFixture(t)
 	assertProxy("alipay", alipay.client)
+}
+
+// --- #97 (Lago 25): wechat refund parity with the alipay commercial
+// semantics — stable out_refund_no key, status mapping onto the shared
+// unknown-stays-locked vocabulary, and the REFUND.* notification face. ---
+
+// newRefundStubProvider wires a provider against a stub gateway that
+// captures the request line and body (the TestWechatQueryRequires… stub
+// pattern) with the SSRF exemption a loopback stub needs.
+func newRefundStubProvider(t *testing.T, respond func(w http.ResponseWriter, r *http.Request)) (*WechatProvider, *capturedRequest) {
+	t.Helper()
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	captured := &capturedRequest{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		captured.method = r.Method
+		captured.path = r.URL.Path
+		captured.body = body
+		respond(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "merchant.pem")
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001", MchSerial: "serial", MchKeyPath: keyPath, APIBaseURL: srv.URL}, nil, nil), captured
+}
+
+type capturedRequest struct {
+	method, path string
+	body         []byte
+}
+
+// TestWechatRefundUsesStableRefundKey (#97 AC1/AC3): the refund is filed
+// under the refund's OWN out_refund_no against the original out_trade_no,
+// and the reconciliation query addresses the ORIGINAL refund key — retries
+// and re-queries therefore never re-key, which is the duplicate-payout
+// guard on the request side (alipay out_request_no parity).
+func TestWechatRefundUsesStableRefundKey(t *testing.T) {
+	p, captured := newRefundStubProvider(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"out_refund_no":"rf-1","status":"PROCESSING"}`))
+	})
+	res, err := p.Refund(context.Background(), RefundRequest{RefundID: "rf-1", ProviderID: "order-1", AmountFen: 100})
+	if err != nil || res.State != StatePending || res.ProviderID != "rf-1" {
+		t.Fatalf("refund result: %+v err=%v", res, err)
+	}
+	var sent struct {
+		OutRefundNo string `json:"out_refund_no"`
+		OutTradeNo  string `json:"out_trade_no"`
+		Amount      struct {
+			Refund   int64  `json:"refund"`
+			Total    int64  `json:"total"`
+			Currency string `json:"currency"`
+		} `json:"amount"`
+	}
+	if err := json.Unmarshal(captured.body, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if captured.method != http.MethodPost || captured.path != "/v3/refund/domestic/refunds" {
+		t.Fatalf("refund request line: %s %s", captured.method, captured.path)
+	}
+	if sent.OutRefundNo != "rf-1" || sent.OutTradeNo != "order-1" ||
+		sent.Amount.Refund != 100 || sent.Amount.Total != 100 || sent.Amount.Currency != "CNY" {
+		t.Fatalf("refund request body: %+v", sent)
+	}
+	qres, err := p.QueryRefund(context.Background(), "rf-1")
+	if err != nil || qres.ProviderID != "rf-1" || qres.State != StatePending {
+		t.Fatalf("refund query result: %+v err=%v", qres, err)
+	}
+	if captured.method != http.MethodGet || captured.path != "/v3/refund/domestic/refunds/rf-1" {
+		t.Fatalf("refund query must address the ORIGINAL refund key: %s %s", captured.method, captured.path)
+	}
+}
+
+// TestWechatRefundMapsStatus (#97 AC1): wechat refund statuses map onto the
+// same commercial vocabulary alipay uses; anything unproven (ABNORMAL,
+// unknown transport outcome) must land in the state mapChannelState folds
+// into RefundChannelUnknown —受理≠成功, unknown stays locked.
+func TestWechatRefundMapsStatus(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   AttemptState
+	}{
+		{"SUCCESS", StateSucceeded},
+		{"PROCESSING", StatePending},
+		{"ACCEPT", StatePending},
+		{"ABNORMAL", AttemptState("abnormal")},
+		{"CLOSED", StateClosed},
+		{"", ""},
+	} {
+		if got := mapWechatRefundState(tc.status); got != tc.want {
+			t.Fatalf("mapWechatRefundState(%q) = %q, want %q", tc.status, got, tc.want)
+		}
+	}
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	key, kerr := rsa.GenerateKey(rand.Reader, 2048)
+	if kerr != nil {
+		t.Fatal(kerr)
+	}
+	keyPath := filepath.Join(t.TempDir(), "merchant.pem")
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001", MchSerial: "serial", MchKeyPath: keyPath, APIBaseURL: srv.URL, Timeout: 50 * time.Millisecond}, nil, nil)
+	res, err := p.QueryRefund(context.Background(), "rf-1")
+	if err == nil {
+		t.Fatal("transport failure must surface an error")
+	}
+	if res.State != StateUnknown {
+		t.Fatalf("timeout outcome must stay unknown (locked), got %q", res.State)
+	}
+}
+
+// buildRefundNotification encrypts a REFUND.* resource exactly per WX-02.
+func buildRefundNotification(t *testing.T, apiv3 []byte, mchid, appid, outTradeNo, outRefundNo, refundStatus string) []byte {
+	t.Helper()
+	ciphertext := buildPaymentResource(t, apiv3, map[string]interface{}{
+		"mchid":         mchid,
+		"appid":         appid,
+		"out_trade_no":  outTradeNo,
+		"out_refund_no": outRefundNo,
+		"refund_status": refundStatus,
+		"amount":        map[string]interface{}{"refund": 100, "total": 100, "currency": "CNY"},
+	}, "resnonce1234", "refund")
+	body, err := json.Marshal(map[string]interface{}{
+		"id":         "evt-r1",
+		"event_type": "REFUND.SUCCESS",
+		"resource": map[string]interface{}{
+			"algorithm":       "AEAD_AES_256_GCM",
+			"ciphertext":      ciphertext,
+			"associated_data": "refund",
+			"nonce":           "resnonce1234",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// TestWechatVerifyAcceptsRefundNotification (#97 AC3): a correctly signed
+// REFUND.* notification verifies through the SAME WX-02 chain and reports
+// the refund fact keyed by out_refund_no — the notification is only a
+// re-read trigger, never a second payout instruction.
+func TestWechatVerifyAcceptsRefundNotification(t *testing.T) {
+	p, key, apiv3 := newCallbackFixture(t)
+	body := buildRefundNotification(t, apiv3, "1900000001", "wx-test-app", "out-1", "rf-1", "SUCCESS")
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	h := callbackHeaders("PLAT-SERIAL-1", ts, "hdrnonce", signCallback(t, key, ts, "hdrnonce", body))
+	fact, err := p.Verify(context.Background(), h, body)
+	if err != nil {
+		t.Fatalf("refund notification rejected: %v", err)
+	}
+	if fact.RefundID != "rf-1" || fact.State != StateSucceeded.String() || fact.AttemptID != "out-1" {
+		t.Fatalf("refund fact: %+v", fact)
+	}
+}
+
+// TestWechatVerifyRejectsUnknownEventFamily (#97): neither payment nor
+// refund — still malformed, so the provider keeps retrying.
+func TestWechatVerifyRejectsUnknownEventFamily(t *testing.T) {
+	p, key, apiv3 := newCallbackFixture(t)
+	ciphertext := buildPaymentResource(t, apiv3, map[string]interface{}{"x": 1}, "resnonce1234", "other")
+	body, err := json.Marshal(map[string]interface{}{
+		"id":         "evt-o1",
+		"event_type": "COUPON.SENT",
+		"resource": map[string]interface{}{"algorithm": "AEAD_AES_256_GCM", "ciphertext": ciphertext, "associated_data": "other", "nonce": "resnonce1234"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	h := callbackHeaders("PLAT-SERIAL-1", ts, "hdrnonce", signCallback(t, key, ts, "hdrnonce", body))
+	if _, err := p.Verify(context.Background(), h, body); !errors.Is(err, ErrMalformedCallback) {
+		t.Fatalf("unknown event family must stay malformed, got %v", err)
+	}
 }

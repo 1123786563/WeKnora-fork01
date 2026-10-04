@@ -32,7 +32,7 @@ func TestProviderCallbackRouteIsAnonymouslyReachable(t *testing.T) {
 	// every non-whitelisted path 401s.
 	engine.Use(middleware.Auth(nil, nil, nil, nil, nil))
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, handler.NewCommercialHandler(nil))
+	RegisterCommercialRoutes(v1, handler.NewCommercialHandler(nil), nil)
 
 	for _, provider := range []string{"alipay", "wechat"} {
 		t.Run(provider, func(t *testing.T) {

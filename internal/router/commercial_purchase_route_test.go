@@ -99,7 +99,7 @@ func newPurchaseEngine(t *testing.T) (*gin.Engine, *gorm.DB, *commercialplatform
 	h.SetPurchaseService(purchases)
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
-	RegisterCommercialRoutes(v1, h)
+	RegisterCommercialRoutes(v1, h, nil)
 	return engine, db, fake, provider, plans, orders
 }
 
