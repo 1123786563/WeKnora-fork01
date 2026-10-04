@@ -69,7 +69,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/yunzhijia"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	commercialplatform "github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
-	ommeter "github.com/Tencent/WeKnora/internal/modules/commercial/openmeter"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
@@ -260,7 +259,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// providers must precede the craft Invoke below: dig resolves lazily at
 	// Invoke time, so any provider registered after Invoke(registerCraftHTTPHandlers)
 	// leaves newAgentRuntime's *RemoteUsageService missing and panics boot.
-	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	// #105 [Lago 33]: the OpenMeter official_v3 gateway and its env selection
+	// are REMOVED; the rail is the fail-closed ParkedGateway until the Lago
+	// usage-event channel lands (R-101c). No runtime path can reach OpenMeter.
+	must(container.Provide(commercialsvc.NewParkedGateway, dig.As(new(domain.CommercialGateway))))
 	// U05 execution gate: the billable outbound boundary (Begin reserves and
 	// persists dispatched intent before dispatch, Finish settles trusted
 	// usage). Registered only — no Invoke: arming an engine turn with it is
@@ -1016,14 +1018,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// behind the frozen commercial.CommercialPlatform interface (readiness
 	// snapshot first; command/reconcile families stay frozen and fail
 	// closed). Registered NEXT TO the commercial handler on purpose — away
-	// from the pre-craft-Invoke provider block around the OpenMeter gateway
-	// (see the ordering comment there): nothing inside the craft runtime
-	// resolves this interface, so a later registration cannot strand the
-	// craft Invoke. Adapter selection is env-driven
-	// (WEKNORA_COMMERCIAL_PLATFORM_*): unset stays legal as blocked-env and
-	// the readiness read fails closed; an unknown provider fails startup
-	// instead of silently falling back. The legacy OpenMeter gateway above
-	// keeps its own registration untouched (removal is #105).
+	// from the pre-craft-Invoke provider block around the (since removed)
+	// OpenMeter gateway: nothing inside the craft runtime resolves this
+	// interface, so a later registration cannot strand the craft Invoke.
+	// Adapter selection is env-driven (WEKNORA_COMMERCIAL_PLATFORM_*):
+	// unset stays legal as blocked-env and the readiness read fails closed;
+	// an unknown provider fails startup instead of silently falling back.
+	// #105: Lago is the only platform adapter; OpenMeter is gone.
 	must(container.Provide(commercialplatform.NewPlatformFromEnv, dig.As(new(domain.CommercialPlatform))))
 	must(container.Invoke(func(h *handler.CommercialHandler, p domain.CommercialPlatform) {
 		h.SetCommercialPlatform(p)
@@ -1052,7 +1053,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// T07 (#79): the plan-version lifecycle service (draft → six-axis
 	// validate → idempotent publish through the seam above). Registered in
 	// the SAME block, away from the pre-craft-Invoke provider block around
-	// the OpenMeter gateway (the ordering trap documented there). A nil
+	// the gateway provider (the ordering trap documented there). A nil
 	// platform from empty env stays legal: drafts and validation work,
 	// publish fails closed unconfigured (blocked-env).
 	must(container.Provide(commercialsvc.NewPlanVersionService))
@@ -1105,7 +1106,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// newAgentRuntime.)
 	// (#85 G-B) Top-up fulfillment rides the commercial platform wallet
 	// rail — dig injects the platform provider registered beside the
-	// commercial handler into NewFulfillmentService; the OpenMeter gateway
+	// commercial handler into NewFulfillmentService; the gateway provider
 	// keeps only the subscription/upgrade/refund lines (#105 owns its
 	// removal).
 	must(container.Provide(commercialsvc.NewPurchaseFulfiller))

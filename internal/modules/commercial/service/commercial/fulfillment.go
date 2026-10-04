@@ -169,9 +169,9 @@ type FulfillmentService struct {
 // recovery passes will classify its calls as unknown and leave orders paid
 // until the connector is configured. The platform (#85 G-B) owns the
 // TOP-UP fulfillment rail (the wallet command path); a nil platform keeps
-// the legacy OpenMeter top-up leg — test-only reach, the container always
-// wires the real platform, and #85's replacement of the gateway rail ends
-// at #105's gateway removal.
+// the test-only direct-gateway top-up leg. Since #105 the wired gateway is
+// the fail-closed ParkedGateway (OpenMeter removed), so subscription lines
+// hold in attention until the Lago usage rail lands.
 func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, platform domain.CommercialPlatform, purchaser *PurchaseFulfiller) (*FulfillmentService, error) {
 	if db == nil {
 		return nil, ErrFulfillmentDatabaseMissing
@@ -869,8 +869,8 @@ func (s *FulfillmentService) processRecord(ctx context.Context, rec FulfillmentR
 		return nil // another worker owns this record right now
 	}
 	// (#85 G-B) Top-up lines ride the commercial platform wallet rail —
-	// never the legacy OpenMeter gateway. Subscription/upgrade lines keep
-	// the gateway below (#105 owns its removal).
+	// never the gateway. Subscription/upgrade lines keep the gateway below
+	// (parked fail-closed since #105, OpenMeter removed).
 	if rec.Kind == domain.BenefitKindTopUp && s.platform != nil {
 		return s.processTopUpRecord(ctx, rec, now)
 	}

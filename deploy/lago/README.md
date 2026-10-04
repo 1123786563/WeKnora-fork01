@@ -3,9 +3,9 @@
 This directory runs a pinned, isolated Lago Community `v1.53.0` stack for
 WeKnora billing integration work (Ticket #73, Lago T01). It is the local
 stand-in for the commercial billing authority described in
-`docs/specs/2026-09-20-lago-billing-migration-design.md` and is fully
-independent of the OpenMeter deployment (own Compose project, own volumes,
-own ports; no shared database, Redis, or data).
+`docs/specs/2026-09-20-lago-billing-migration-design.md`. The former
+OpenMeter deployment (`deploy/openmeter/`) was REMOVED by #105 [Lago 33];
+nothing under deploy/ can reach OpenMeter anymore.
 
 Everything here is operator tooling. WeKnora's product-facing billing seam
 arrives with the Commercial Platform tickets; this environment only proves
@@ -40,6 +40,14 @@ LAGO_API_KEY=<operator key> \
                               # 4. real Customer create/delete probe against the pinned API
 ./deploy/lago/lago.sh down    # 5. stop the stack; named data volumes are PRESERVED
 ./deploy/lago/lago.sh config  #    anytime: resolved Compose config with secrets redacted
+```
+
+Backup / restore lifecycle (#104 [Lago 32]):
+
+```bash
+./deploy/lago/lago.sh backup            # pg_dump -Fc + storage tar + redis RDB -> deploy/lago/backups/<utcstamp>
+./deploy/lago/lago.sh restore <dir>     # DESTROYS the stack data volumes and reinstates a backup
+python3 deploy/lago/restore_drill.py    # full seven-class restore drill (evidence: deploy/lago/evidence/t32-*)
 ```
 
 `up` runs `docker compose up -d --wait`, so it returns only after every

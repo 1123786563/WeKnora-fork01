@@ -22,7 +22,7 @@ const (
 
 // Environment references read by ConfigFromEnv. This family is DISTINCT
 // from the legacy WEKNORA_COMMERCIAL_GATEWAY_* variables: both seams
-// coexist until the OpenMeter removal ticket.
+// coexist — since #105 the only family is Lago (OpenMeter removed).
 const (
 	EnvProvider = "WEKNORA_COMMERCIAL_PLATFORM_PROVIDER"
 	EnvBaseURL  = "WEKNORA_COMMERCIAL_PLATFORM_URL"

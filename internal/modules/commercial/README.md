@@ -15,7 +15,7 @@
 | `internal/application/service/commercial` | `internal/modules/commercial/service/commercial` |
 | `internal/commercial` | `internal/modules/commercial` |
 | `internal/infrastructure/commercialplatform` | `internal/modules/commercial/commercialplatform` |
-| `internal/infrastructure/openmeter` | `internal/modules/commercial/openmeter` |
+| `internal/infrastructure/openmeter` | `internal/modules/commercial/openmeter`（#105 已删除：CommercialGateway 轨道由 fail-closed `ParkedGateway` 接管，见 service/commercial/gateway_parked.go） |
 | `internal/payment` | `internal/modules/commercial/payment` |
 | `internal/usage` | `internal/modules/commercial/usage` |
 
