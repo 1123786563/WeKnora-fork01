@@ -1101,6 +1101,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(commercialsvc.NewPurchaseFulfiller))
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
+	// #99 (Lago 27): the usage-settlement dispatch loop — the outbox events
+	// Finalize enqueues converge to the gateway without a manual Dispatch or
+	// an operator replay (crashes and Lago outages replay the same
+	// idempotency key). Rates stay unavailable on this instance: it only
+	// drains already-priced records; pricing belongs to the execution gate.
+	must(container.Provide(newSettlementDispatchService))
+	must(container.Invoke(startCommercialSettlementDispatch))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
 	// execution gate above arms budget reservation. The provider-specific
@@ -2795,6 +2802,26 @@ func registerAgentRunResourceProtection(repo *service.GormAgentRunResourceReposi
 func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner interfaces.ResourceCleaner) {
 	svc.StartBackground(context.Background())
 	cleaner.RegisterWithName("CommercialFulfillment", func() error {
+		svc.Stop()
+		return nil
+	})
+}
+
+// newSettlementDispatchService builds the drain-only settlement instance:
+// its rate resolver is deliberately the unavailable one — Dispatch moves
+// already-priced records to the gateway, it never prices a fact.
+func newSettlementDispatchService(db *gorm.DB, gateway domain.CommercialGateway) (*commercialsvc.SettlementService, error) {
+	return commercialsvc.NewSettlementService(db, nil, gateway, func(string) (domain.PriceVersionRates, error) {
+		return domain.PriceVersionRates{}, repocommercial.ErrUsageRatesUnavailable
+	})
+}
+
+// startCommercialSettlementDispatch registers the usage-settlement drain
+// loop (#99 / Lago 27) beside the fulfillment worker, with the same
+// graceful-stop discipline.
+func startCommercialSettlementDispatch(svc *commercialsvc.SettlementService, cleaner interfaces.ResourceCleaner) {
+	svc.StartBackground(context.Background())
+	cleaner.RegisterWithName("CommercialSettlementDispatch", func() error {
 		svc.Stop()
 		return nil
 	})

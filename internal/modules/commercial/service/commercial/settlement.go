@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/logger"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -96,6 +98,13 @@ type SettlementService struct {
 	gateway domain.CommercialGateway
 	rates   repocommercial.RateResolver
 	now     func() time.Time
+	// dispatchInterval is the background drain period (#99 / Lago 27:
+	// settlement outbox events must converge after crashes and Lago outages
+	// without a manual Dispatch or an operator replay). stopMu/stop follow
+	// the FulfillmentService StartBackground precedent.
+	dispatchInterval time.Duration
+	stopMu           sync.Mutex
+	stop             chan struct{}
 }
 
 // NewSettlementService validates its wiring and migrates the settlement
@@ -119,12 +128,13 @@ func NewSettlementService(db *gorm.DB, budget *repocommercial.BudgetStore, gatew
 		return nil, err
 	}
 	return &SettlementService{
-		db:      db,
-		budget:  budget,
-		outbox:  repocommercial.NewOutboxStore(db),
-		gateway: gateway,
-		rates:   rates,
-		now:     func() time.Time { return time.Now().UTC() },
+		db:               db,
+		budget:           budget,
+		outbox:           repocommercial.NewOutboxStore(db),
+		gateway:          gateway,
+		rates:            rates,
+		now:              func() time.Time { return time.Now().UTC() },
+		dispatchInterval: 30 * time.Second,
 	}, nil
 }
 
@@ -525,4 +535,50 @@ func (s *SettlementService) ScanLagAlerts(ctx context.Context) ([]SettlementLagA
 		})
 	}
 	return alerts, nil
+}
+
+// StartBackground registers the settlement dispatch loop (#99 / Lago 27):
+// one immediate pass, then one per dispatchInterval. Each pass is Dispatch
+// itself — idempotent by settlement key, indeterminate outcomes stay
+// pending, failures surface as the #90 lag-alert face — so a crashed or
+// Lago-blocked pass never loses usage and convergence needs no operator.
+// Safe to call more than once.
+func (s *SettlementService) StartBackground(ctx context.Context) {
+	s.stopMu.Lock()
+	defer s.stopMu.Unlock()
+	if s.stop != nil {
+		return
+	}
+	stop := make(chan struct{})
+	s.stop = stop
+	go func() {
+		run := func() {
+			if err := s.Dispatch(ctx); err != nil {
+				logger.Warnf(ctx, "[CommercialSettlement] dispatch pass failed: %v", err)
+			}
+		}
+		run()
+		ticker := time.NewTicker(s.dispatchInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				run()
+			case <-stop:
+				return
+			}
+		}
+	}()
+}
+
+// Stop terminates the dispatch loop (registered with the container's
+// resource cleaner so shutdown does not orphan the goroutine). No-op when
+// never started; a second Stop is safe.
+func (s *SettlementService) Stop() {
+	s.stopMu.Lock()
+	defer s.stopMu.Unlock()
+	if s.stop != nil {
+		close(s.stop)
+		s.stop = nil
+	}
 }

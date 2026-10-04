@@ -125,6 +125,9 @@ type FakeAdapter struct {
 	// per external customer (external customer id → provider customer id).
 	purchaseSubs     map[string]fakePurchase
 	providerBindings map[string]string
+	// #96 state: the credit-note ledger — append-only, keyed by the seam
+	// command identity (one note per refund).
+	creditNotes []fakeCreditNote
 	// now is the injectable clock (expiry/settle determinism); nil = real
 	// time. baseFeatures primes the benefits feature map. walletSettleLag
 	// models the a1 after-commit settlement lag (default 0 — the fake's
@@ -141,6 +144,14 @@ type FakeAdapter struct {
 type fakeCommand struct {
 	payload commercial.PublishPlanVersionPayload
 	receipt commercial.CommandReceipt
+}
+
+// fakeCreditNote is one recorded credit-note correction (#96): the exact
+// payload it was issued under and the receipt answered for it.
+type fakeCreditNote struct {
+	Key     string
+	Payload commercial.IssueCreditNotePayload
+	Receipt commercial.CommandReceipt
 }
 
 // NewFakeAdapter builds the fake with no readiness primed: reading readiness
@@ -864,9 +875,48 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			RecordedAt: f.nowUTC(),
 		}, nil
 
+	case commercial.CommandKindIssueCreditNote:
+		payload, ok := cmd.Payload.(commercial.IssueCreditNotePayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, n := range f.creditNotes {
+			if n.Key == cmd.Key {
+				if n.Payload != payload {
+					// Same refund identity, different correction: a
+					// definitive conflict, never a second note.
+					return commercial.CommandReceipt{}, fmt.Errorf("%w: credit note replay conflict", commercial.ErrPlatformInvalidResponse)
+				}
+				return n.Receipt, nil
+			}
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: "lago_cn_" + payload.RefundID,
+			RecordedAt: f.nowUTC(),
+		}
+		f.creditNotes = append(f.creditNotes, fakeCreditNote{
+			Key: cmd.Key, Payload: payload, Receipt: receipt,
+		})
+		return receipt, nil
+
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
+}
+
+// CreditNoteCount answers how many credit notes the fake authority holds —
+// append-only: a replay never adds one, a refused divergent replay never
+// adds one.
+func (f *FakeAdapter) CreditNoteCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.creditNotes)
 }
 
 // Reconcile stays frozen and disabled: fail closed.
