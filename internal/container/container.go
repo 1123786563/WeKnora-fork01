@@ -1046,9 +1046,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (terminate + de-identify, financial history retained). Registered in
 	// the same commercial block (the ordering-trap rule above applies).
 	must(container.Provide(service.NewCommercialDeletionGuard))
-	must(container.Decorate(func(s interfaces.TenantService, g *service.CommercialDeletionGuard) interfaces.TenantService {
-		s.(interface{ SetDeletionGuard(service.TenantDeletionGuard) }).SetDeletionGuard(g)
-		return s
+	// dig allows one decorator per type and TenantService already carries the
+	// semantic-scope decorator; the guard is a pass-through in-place setter, so
+	// an Invoke here is behaviorally identical to the original Decorate.
+	must(container.Invoke(func(s interfaces.TenantService, g *service.CommercialDeletionGuard) {
+		s.(interface {
+			SetDeletionGuard(service.TenantDeletionGuard)
+		}).SetDeletionGuard(g)
 	}))
 	// T07 (#79): the plan-version lifecycle service (draft → six-axis
 	// validate → idempotent publish through the seam above). Registered in
@@ -1125,7 +1129,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// authority's Reconcile family stays fail-closed until its real-stack
 	// enablement, so both faces degrade honestly (503 / quiet no-op).
 	must(container.Provide(newCommercialWebhookService))
-	must(container.Provide(commercialsvc.NewReconciliationService))
+	must(container.Provide(newCommercialReconciliationService))
 	must(container.Invoke(startCommercialReconciliation))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
@@ -2854,6 +2858,13 @@ func newCommercialWebhookService(db *gorm.DB) *commercialsvc.WebhookService {
 		return commercialsvc.NewWebhookService(db, nil, nil)
 	}
 	return commercialsvc.NewWebhookService(db, map[string][]byte{"lago": []byte(secret)}, nil)
+}
+
+// newCommercialReconciliationService passes the empty re-reader registry —
+// same posture as the webhook consumer: per-projection re-readers attach as
+// the projection owners adopt the convergence face.
+func newCommercialReconciliationService(db *gorm.DB, platform domain.CommercialPlatform) *commercialsvc.ReconciliationService {
+	return commercialsvc.NewReconciliationService(db, platform, nil)
 }
 
 // startCommercialReconciliation registers the periodic convergence loop

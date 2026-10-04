@@ -1,0 +1,2 @@
+-- SQLite cannot DROP COLUMN portably across the supported range; the
+-- suspended_reason column is left in place on down.
