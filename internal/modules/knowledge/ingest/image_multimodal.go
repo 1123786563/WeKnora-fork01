@@ -395,8 +395,14 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 			c.ChunkType, c.ID, payload.ImageURL, len(c.Content))
 	}
 
-	// Index chunks so they can be retrieved
-	s.indexChunks(ctx, payload, newChunks)
+	// Index chunks so they can be retrieved. An index failure must fail the
+	// task (asynq retries), matching the strict persistence posture of
+	// CreateChunks above — swallowing it would leave the processing trace
+	// claiming indexed=true for chunks no retriever can find (#3834).
+	if err := s.indexChunks(ctx, payload, newChunks); err != nil {
+		handleErr = fmt.Errorf("index multimodal chunks: %w", err)
+		return handleErr
+	}
 	imgOut["indexed"] = true
 
 	// Enqueue question generation for the caption/OCR content if KB has it enabled.
@@ -473,12 +479,20 @@ func IsFinalAsynqAttempt(ctx context.Context) bool {
 }
 
 // indexChunks indexes the newly created multimodal chunks into the retrieval engine
-// so they can participate in semantic search.
-func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.ImageMultimodalPayload, chunks []*types.Chunk) {
+// so they can participate in semantic search. Every failure stage is returned so
+// the caller can fail the task — a swallowed error here strands chunks that are
+// persisted in the DB but invisible to retrieval (#3834).
+func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.ImageMultimodalPayload, chunks []*types.Chunk) error {
 	kb, err := s.kbService.GetKnowledgeBaseByIDOnly(ctx, payload.KnowledgeBaseID)
-	if err != nil || kb == nil {
+	if err != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Failed to get KB for indexing: %v", err)
-		return
+		return fmt.Errorf("get knowledge base %s for indexing (%d chunks): %w",
+			payload.KnowledgeBaseID, len(chunks), err)
+	}
+	if kb == nil {
+		logger.Warnf(ctx, "[ImageMultimodal] Failed to get KB for indexing: kb %s is nil", payload.KnowledgeBaseID)
+		return fmt.Errorf("knowledge base %s not found for indexing (%d chunks)",
+			payload.KnowledgeBaseID, len(chunks))
 	}
 
 	// Skip vector/keyword indexing when the KB has no embedding-based pipeline enabled
@@ -500,19 +514,21 @@ func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.
 				logger.Warnf(ctx, "[ImageMultimodal] Failed to update chunk %s status to indexed: %v", chunk.ID, uerr)
 			}
 		}
-		return
+		return nil
 	}
 
 	embeddingModel, err := s.modelService.GetEmbeddingModel(ctx, kb.EmbeddingModelID)
 	if err != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Failed to get embedding model for indexing: %v", err)
-		return
+		return fmt.Errorf("get embedding model %s for indexing (%d chunks): %w",
+			kb.EmbeddingModelID, len(chunks), err)
 	}
 
 	tenantInfo, err := s.tenantRepo.GetTenantByID(ctx, payload.TenantID)
 	if err != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Failed to get tenant for indexing: %v", err)
-		return
+		return fmt.Errorf("get tenant %d for indexing (%d chunks): %w",
+			payload.TenantID, len(chunks), err)
 	}
 	// The factory's unbound path reads TenantInfo from ctx; make sure it's there.
 	ctx = context.WithValue(ctx, types.TenantInfoContextKey, tenantInfo)
@@ -523,7 +539,7 @@ func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.
 		ctx, s.retrieveEngine, s.ownership, payload.TenantID, kb.VectorStoreID)
 	if err != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Failed to init retrieve engine: %v", err)
-		return
+		return fmt.Errorf("init retrieve engine for indexing (%d chunks): %w", len(chunks), err)
 	}
 
 	indexInfoList := make([]*types.IndexInfo, 0, len(chunks))
@@ -540,7 +556,7 @@ func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.
 
 	if err := engine.BatchIndex(ctx, embeddingModel, indexInfoList); err != nil {
 		logger.Errorf(ctx, "[ImageMultimodal] Failed to index multimodal chunks: %v", err)
-		return
+		return fmt.Errorf("batch index (%d chunks): %w", len(chunks), err)
 	}
 
 	// Mark chunks as indexed.
@@ -559,6 +575,7 @@ func (s *ImageMultimodalService) indexChunks(ctx context.Context, payload types.
 	}
 
 	logger.Infof(ctx, "[ImageMultimodal] Indexed %d multimodal chunks for image %s", len(chunks), payload.ImageURL)
+	return nil
 }
 
 // resolveVLM creates a vlm.VLM instance for the given knowledge base,
