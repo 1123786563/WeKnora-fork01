@@ -37,7 +37,7 @@ const (
 )
 
 var allFields = []string{
-	fieldID, fieldContent, fieldSourceID, fieldSourceType, fieldChunkID,
+	fieldID, fieldContent, fieldLanguage, fieldSourceID, fieldSourceType, fieldChunkID,
 	fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding,
 }
 // NewMilvusRetrieveEngineRepository creates and initializes a new Milvus repository.
@@ -943,27 +943,49 @@ func (m *milvusRepository) CopyIndices(ctx context.Context,
 		return err
 	}
 
-	batchSize := 64
+	// Walk the mapping itself instead of paging the source collection with
+	// offset windows. Query result order is not part of the Milvus API
+	// contract, and copying perturbs it — target rows are written to the same
+	// collection, which changes segment merge order — so an offset window can
+	// skip or re-read rows and the "short page means done" exit silently drops
+	// the remaining vectors. Batched chunk_id predicates keep the read bounded
+	// without depending on result order. A batch of chunk ids is not limited to
+	// one row per id: QA chunks share a chunk_id across their main and question
+	// rows, so no row limit is applied either.
+	sourceChunkIDs := slices.Sorted(maps.Keys(sourceToTargetChunkIDMap))
+
+	const chunkBatchSize = 64
 	totalCopied := 0
-	var offset *int
-	for {
-		sourceEmbeddings, count, err := m.searchByFilter(ctx, collectionName, &universalFilterCondition{
-			Field:    fieldKnowledgeBaseID,
-			Operator: operatorEqual,
-			Value:    sourceKnowledgeBaseID,
-		}, &batchSize, offset)
+	for batchStart := 0; batchStart < len(sourceChunkIDs); batchStart += chunkBatchSize {
+		batchEnd := min(batchStart+chunkBatchSize, len(sourceChunkIDs))
+		batch := sourceChunkIDs[batchStart:batchEnd]
+
+		sourceEmbeddings, _, err := m.searchByFilter(ctx, collectionName, &universalFilterCondition{
+			Operator: operatorAnd,
+			Value: []*universalFilterCondition{
+				{
+					Field:    fieldKnowledgeBaseID,
+					Operator: operatorEqual,
+					Value:    sourceKnowledgeBaseID,
+				},
+				{
+					Field:    fieldChunkID,
+					Operator: operatorIn,
+					Value:    batch,
+				},
+			},
+		}, nil, nil)
 		if err != nil {
 			log.Errorf("[Milvus] Failed to query source points: %v", err)
 			return err
 		}
-		if len(sourceEmbeddings) == 0 {
-			break
-		}
+		foundChunkIDs := make(map[string]bool, len(sourceEmbeddings))
 		targetEmbeddings := make([]*MilvusVectorEmbedding, 0, len(sourceEmbeddings))
 		for _, sourceEmbedding := range sourceEmbeddings {
 			sourceChunkID := sourceEmbedding.ChunkID
 			sourceKnowledgeID := sourceEmbedding.KnowledgeID
 			originalSourceID := sourceEmbedding.SourceID
+			foundChunkIDs[sourceChunkID] = true
 
 			targetChunkID, ok := sourceToTargetChunkIDMap[sourceChunkID]
 			if !ok {
@@ -999,6 +1021,13 @@ func (m *milvusRepository) CopyIndices(ctx context.Context,
 			}
 			targetEmbeddings = append(targetEmbeddings, targetEmbedding)
 		}
+		// Source chunks whose rows never appear (already deleted, or lagging
+		// visibility) are skipped; the copy keeps going with the rest.
+		for _, chunkID := range batch {
+			if !foundChunkIDs[chunkID] {
+				log.Warnf("[Milvus] No source rows found for chunk %s, skipping", chunkID)
+			}
+		}
 		if len(targetEmbeddings) > 0 {
 			opts := createUpsert(collectionName, targetEmbeddings, collectionMode == collectionAnalyzerMulti)
 			_, err := m.client.Upsert(ctx, opts)
@@ -1010,14 +1039,6 @@ func (m *milvusRepository) CopyIndices(ctx context.Context,
 			log.Infof("[Milvus] Successfully copied batch, batch size: %d, total copied: %d",
 				len(targetEmbeddings), totalCopied)
 		}
-
-		if count < batchSize {
-			break
-		}
-		if offset == nil {
-			offset = new(int)
-		}
-		*offset += count
 	}
 
 	log.Infof("[Milvus] Index copy completed, total copied: %d", totalCopied)
