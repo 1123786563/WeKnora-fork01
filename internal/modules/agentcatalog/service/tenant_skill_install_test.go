@@ -1403,6 +1403,97 @@ func TestSortedScriptPathsIsDeterministic(t *testing.T) {
 		"only files the runtime can execute are scripts")
 }
 
+// .venv and node_modules are the dependency trees the installer builds, not
+// scripts the model can call, so no verification pass may name them. A skill
+// shipping its own venv used to glue thousands of vendored files into one
+// sh -c argument and die on MAX_ARG_STRLEN ("argument list too long", #3941).
+func TestSortedScriptPathsSkipsVendoredDependencyTrees(t *testing.T) {
+	bundle := &SkillBundle{Files: map[string][]byte{
+		"SKILL.md":           []byte("x"),
+		"run.py":             []byte("x"),
+		"scripts/analyze.py": []byte("x"),
+		"tools/setup.sh":     []byte("x"),
+		".venv/lib/python3.11/site-packages/pandas/core/frame.py": []byte("x"),
+		".venv/bin/activate": []byte("x"),
+		`.venv\lib\python3.11\site-packages\scipy\_lib\x.py`: []byte("x"),
+		"node_modules/foo/index.js":                          []byte("x"),
+		`node_modules\bar\dist\main.mjs`:                     []byte("x"),
+	}}
+
+	require.Equal(t, []string{"run.py", "scripts/analyze.py"},
+		sortedScriptPaths(bundle, ".py"))
+	require.Equal(t, []string{"tools/setup.sh"},
+		sortedScriptPaths(bundle, ".sh"))
+	require.Equal(t, []string{"run.py", "scripts/analyze.py", "tools/setup.sh"},
+		sortedScriptPaths(bundle, allScriptExtensions...),
+		"vendored trees drop out entirely, ordinary scripts stay")
+}
+
+// A bundle whose scripts are all vendored enumerates the same empty list a
+// bundle with no matching files does: every pass then skips (len == 0), which
+// is exactly what the pre-filter behavior was for an empty list.
+func TestSortedScriptPathsAllVendoredMatchesEmptyEnumeration(t *testing.T) {
+	vendoredOnly := &SkillBundle{Files: map[string][]byte{
+		"SKILL.md":                     []byte("x"),
+		".venv/lib/site-packages/x.py": []byte("x"),
+		"node_modules/foo/index.js":    []byte("x"),
+	}}
+	noScripts := &SkillBundle{Files: map[string][]byte{
+		"SKILL.md":      []byte("x"),
+		"data/info.txt": []byte("x"),
+	}}
+
+	require.Empty(t, sortedScriptPaths(vendoredOnly, allScriptExtensions...))
+	require.Empty(t, sortedScriptPaths(noScripts, allScriptExtensions...),
+		"the vendored-only bundle must behave exactly like a bundle with no scripts")
+}
+
+// The tree check costs one command that stays under the kernel's
+// MAX_ARG_STRLEN (128 KiB) no matter how heavy the vendored dependency trees
+// are: the pandas/scipy class of bundle measured on #3941 was 4862 files and
+// ~260 KiB of paths, which used to be one fatal sh -c argument.
+func TestSkillTreeVerifyCommandStaysSmallWithVendoredTrees(t *testing.T) {
+	files := map[string][]byte{"SKILL.md": []byte("x"), "run.py": []byte("x")}
+	for i := 0; i < 4862; i++ {
+		files[fmt.Sprintf(".venv/lib/python3.11/site-packages/pandas/_lib/mod_%04d.py", i)] = []byte("x")
+	}
+	bundle := &SkillBundle{Name: "heavy", Files: files}
+
+	command := skillTreeVerifyCommand(installSkillDir,
+		sortedScriptPaths(bundle, allScriptExtensions...))
+
+	require.Less(t, len(command), 128*1024,
+		"the whole command must stay under MAX_ARG_STRLEN (128 KiB), got %d bytes", len(command))
+	require.NotContains(t, command, ".venv",
+		"vendored files must not be named by the verification command")
+	require.Contains(t, command, sandbox.ShellQuote("run.py"),
+		"the skill's own script is still verified")
+
+	// The same enumeration feeds every pass, so the parse commands stay small
+	// too; the vendored files never reach any of them.
+	for _, suffixes := range [][]string{{".py"}, {".js", ".mjs", ".cjs"}, {".sh"}} {
+		require.Less(t, len(strings.Join(sortedScriptPaths(bundle, suffixes...), " ")), 128*1024)
+	}
+}
+
+// End to end through the tree pass: a bundle with vendored trees verifies its
+// own scripts only, in one command that names no vendored path.
+func TestVerifySkillTreeSkipsVendoredDependencyTrees(t *testing.T) {
+	fx := newInstallFixture(t)
+	files := map[string][]byte{"SKILL.md": []byte(validSkillMD), "run.py": []byte("pass\n")}
+	for i := 0; i < 500; i++ {
+		files[fmt.Sprintf(".venv/lib/site-packages/pandas/mod_%03d.py", i)] = []byte("x")
+		files[fmt.Sprintf("node_modules/dep/lib/f_%03d.js", i)] = []byte("x")
+	}
+
+	require.NoError(t, fx.svc.verifySkillTree(context.Background(),
+		fx.sandboxMgr, "sess-1", installSkillDir, &SkillBundle{Name: "heavy", Files: files}))
+
+	require.Len(t, fx.commands, 1)
+	require.Equal(t, skillTreeVerifyCommand(installSkillDir, []string{"run.py"}), fx.commands[0],
+		"the 1000 vendored files must not appear in the command")
+}
+
 type stubWorkspaceSandboxPolicy struct {
 	disabled bool
 }
