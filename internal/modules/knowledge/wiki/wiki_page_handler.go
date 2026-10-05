@@ -408,6 +408,48 @@ func (h *WikiPageHandler) recordManualWikiActivity(
 		page.KnowledgeBaseID, map[string]int{action: 1})
 }
 
+// WikiPageDetailResponse is the body of GET / PUT /wiki/pages/{slug}: the
+// page itself plus a slug→title map resolving every slug listed in its
+// in_links / out_links. The reader footer renders backlink entries by
+// display title; without this map the client can only show the raw
+// (pinyin kebab-case) slug for linked pages it has not loaded yet.
+type WikiPageDetailResponse struct {
+	types.WikiPage
+	// LinkTitles maps each linked slug to the target page's title. Slugs
+	// without a matching page (or with an empty title) are absent from the
+	// map so the client falls back to the slug itself.
+	LinkTitles map[string]string `json:"link_titles,omitempty"`
+}
+
+// wikiPageDetailResponse assembles the page-detail payload, resolving the
+// titles of all in_links / out_links targets in one batched query. A lookup
+// failure degrades to an empty map (labels fall back to slugs) — a title
+// resolution must never fail the page read itself.
+func (h *WikiPageHandler) wikiPageDetailResponse(
+	ctx context.Context, kbID string, page *types.WikiPage,
+) WikiPageDetailResponse {
+	resp := WikiPageDetailResponse{WikiPage: *page}
+	slugs := make([]string, 0, len(page.InLinks)+len(page.OutLinks))
+	slugs = append(slugs, page.InLinks...)
+	slugs = append(slugs, page.OutLinks...)
+	if len(slugs) == 0 {
+		return resp
+	}
+	lites, err := h.wikiService.ListBySlugs(ctx, kbID, slugs)
+	if err != nil {
+		logger.Warnf(ctx, "wiki: resolve link titles for %s: %v", page.Slug, err)
+		return resp
+	}
+	titles := make(map[string]string, len(lites))
+	for slug, lite := range lites {
+		if lite != nil && lite.Title != "" {
+			titles[slug] = lite.Title
+		}
+	}
+	resp.LinkTitles = titles
+	return resp
+}
+
 // GetPage godoc
 // @Summary      Get a wiki page by slug
 // @Description  Retrieve a wiki page by its slug
@@ -415,7 +457,7 @@ func (h *WikiPageHandler) recordManualWikiActivity(
 // @Produce      json
 // @Param        kb_id  path  string  true  "Knowledge base ID"
 // @Param        slug   path  string  true  "Page slug"
-// @Success      200  {object}  types.WikiPage
+// @Success      200  {object}  WikiPageDetailResponse
 // @Failure      404  {object}  errors.AppError
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/pages/{slug} [get]
@@ -442,7 +484,7 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, page)
+	c.JSON(http.StatusOK, h.wikiPageDetailResponse(c.Request.Context(), kbID, page))
 }
 
 // UpdatePage godoc
@@ -458,7 +500,7 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 // @Param        kb_id  path  string                       true  "Knowledge base ID"
 // @Param        slug   path  string                       true  "Page slug"
 // @Param        page   body  types.WikiPageUpdateRequest  true  "Fields to update"
-// @Success      200  {object}  types.WikiPage
+// @Success      200  {object}  WikiPageDetailResponse
 // @Failure      400  {object}  errors.AppError
 // @Failure      404  {object}  errors.AppError
 // @Failure      409  {object}  errors.AppError
@@ -549,7 +591,10 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 	if updated.Version != existing.Version {
 		h.recordManualWikiActivity(ctx, updated, "manual_edit")
 	}
-	c.JSON(http.StatusOK, updated)
+	// The editor swaps selectedPage to this response directly, so it needs
+	// the same link_titles enrichment as GetPage or backlink labels would
+	// regress to slugs right after a save until the next full reload.
+	c.JSON(http.StatusOK, h.wikiPageDetailResponse(ctx, kbID, updated))
 }
 
 // ListRevisions godoc
