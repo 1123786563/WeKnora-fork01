@@ -28,6 +28,22 @@ func sessionUserIDFromContext(ctx context.Context) string {
 	return types.SessionOwnerIDFromContext(ctx)
 }
 
+// sessionManagementScope returns the sessions.user_id scope for the session
+// management mutations (update / delete / batch delete). Admin+ callers get
+// the tenant-wide "" scope — the same convention ListSessions uses for its
+// channel and audit listings (query.UserID = "") — so tenant channel
+// sessions whose user_id is a principal storage id ("embed_session:<tenant>:
+// <channel>:<session>", API-key owner keys, IM identities) can be managed
+// from the admin console even though no human user id ever matches those
+// rows. Everyone else stays strictly scoped to their own principal; the
+// tenant filter itself always applies in the repository.
+func sessionManagementScope(ctx context.Context) string {
+	if types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		return ""
+	}
+	return sessionUserIDFromContext(ctx)
+}
+
 // runtimeMayBypassAdminConsoleRead reports whether a non-admin caller on the
 // owner-scoped read path may open a channel-managed session. Admin console reads
 // use the GetByID fallback in loadSessionForRead and never call this helper.
@@ -679,8 +695,10 @@ func (s *sessionService) UpdateSession(ctx context.Context, session *types.Sessi
 		return stderrors.New("session id is required")
 	}
 
-	// Update session in repository
-	userID := sessionUserIDFromContext(ctx)
+	// Update session in repository. The management scope widens to the whole
+	// tenant for Admin+ callers (channel sessions), everyone else stays owner-
+	// scoped.
+	userID := sessionManagementScope(ctx)
 	existing, err := s.sessionRepo.Get(ctx, session.TenantID, userID, session.ID)
 	if err != nil {
 		return err
@@ -740,7 +758,10 @@ func (s *sessionService) DeleteSession(ctx context.Context, id string) error {
 
 	// Get tenant ID from context
 	tenantID := types.MustTenantIDFromContext(ctx)
-	userID := sessionUserIDFromContext(ctx)
+	// The management scope lets Admin+ delete tenant channel sessions (embed /
+	// API / IM) whose user_id is a principal storage id; non-admin callers
+	// remain strictly scoped to their own sessions.
+	userID := sessionManagementScope(ctx)
 
 	session, err := s.sessionRepo.Get(ctx, tenantID, userID, id)
 	if err != nil {
@@ -810,7 +831,10 @@ func (s *sessionService) BatchDeleteSessions(ctx context.Context, ids []string) 
 
 	// Get tenant ID from context
 	tenantID := types.MustTenantIDFromContext(ctx)
-	userID := sessionUserIDFromContext(ctx)
+	// Same management scope as DeleteSession: Admin+ may batch delete tenant
+	// channel sessions; non-admin callers only ever see their own rows, so
+	// foreign/embed ids in the list are skipped silently.
+	userID := sessionManagementScope(ctx)
 
 	visible := make([]*types.Session, 0, len(ids))
 	visibleIDs := make([]string, 0, len(ids))
