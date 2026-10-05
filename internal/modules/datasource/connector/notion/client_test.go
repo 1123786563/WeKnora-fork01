@@ -3,8 +3,10 @@ package notion
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -360,5 +362,167 @@ func TestDownloadFile_RejectsLoopbackURL(t *testing.T) {
 	_, err = client.DownloadFile(context.Background(), "http://127.0.0.1/secret")
 	if err == nil {
 		t.Fatal("expected loopback attachment URL to be rejected")
+	}
+}
+
+// encodePage writes a minimal paginated list response with one page result.
+func encodePage(w http.ResponseWriter, id string, hasMore bool, nextCursor string) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"results": []interface{}{
+			map[string]interface{}{"id": id, "object": "page"},
+		},
+		"has_more":    hasMore,
+		"next_cursor": nextCursor,
+	})
+}
+
+func encodeBlockChildren(w http.ResponseWriter, id string, hasMore bool, nextCursor string) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"results": []interface{}{
+			map[string]interface{}{"id": id, "type": "paragraph", "has_children": false},
+		},
+		"has_more":    hasMore,
+		"next_cursor": nextCursor,
+	})
+}
+
+// paginatePages must stop when has_more=true keeps returning the same cursor
+// (cursor loop) instead of spinning until the context deadline.
+func TestPaginatePages_RepeatedCursorStops(t *testing.T) {
+	requests := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		encodePage(w, fmt.Sprintf("page-%d", requests), true, "stuck-cursor")
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	client := mustTestClient(t, "test-token", ts.URL)
+	pages, err := client.paginatePages(context.Background(), http.MethodPost, "/v1/search")
+	if err == nil {
+		t.Fatal("expected error for repeated cursor")
+	}
+	if !strings.Contains(err.Error(), "pagination made no progress at cursor") {
+		t.Errorf("error = %v, want no-progress cursor error", err)
+	}
+	if requests > 3 {
+		t.Errorf("requests = %d, want bounded request count", requests)
+	}
+	if len(pages) != 0 {
+		t.Errorf("pages = %d, want 0 on error", len(pages))
+	}
+}
+
+// paginatePages must stop when has_more=true keeps returning empty results:
+// without a guard the 3 req/s local limiter spins an empty loop for hours.
+func TestPaginatePages_EmptyPagesStallStops(t *testing.T) {
+	requests := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		// Distinct cursors each page so only the empty-streak guard can fire.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"object":      "list",
+			"results":     []interface{}{},
+			"has_more":    true,
+			"next_cursor": fmt.Sprintf("cursor-%d", requests),
+		})
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	client := mustTestClient(t, "test-token", ts.URL)
+	_, err := client.paginatePages(context.Background(), http.MethodPost, "/v1/search")
+	if err == nil {
+		t.Fatal("expected error for endless empty pages")
+	}
+	if !strings.Contains(err.Error(), "consecutive pages returned no results") {
+		t.Errorf("error = %v, want empty-streak error", err)
+	}
+	if requests != maxEmptyResultPages+1 {
+		t.Errorf("requests = %d, want %d (threshold + first empty page)", requests, maxEmptyResultPages+1)
+	}
+}
+
+// paginatePages must preserve normal cursor progression. An interspersed
+// empty page must not trip the empty-streak guard (only consecutive counts).
+func TestPaginatePages_NormalProgression(t *testing.T) {
+	request := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/search", func(w http.ResponseWriter, r *http.Request) {
+		request++
+		switch request {
+		case 1:
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"object": "list",
+				"results": []interface{}{
+					map[string]interface{}{"id": "page-1", "object": "page"},
+					map[string]interface{}{"id": "page-2", "object": "page"},
+				},
+				"has_more":    true,
+				"next_cursor": "cursor-1",
+			})
+		case 2:
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"object":      "list",
+				"results":     []interface{}{},
+				"has_more":    true,
+				"next_cursor": "cursor-2",
+			})
+		default:
+			encodePage(w, "page-3", false, "")
+		}
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	client := mustTestClient(t, "test-token", ts.URL)
+	pages, err := client.paginatePages(context.Background(), http.MethodPost, "/v1/search")
+	if err != nil {
+		t.Fatalf("paginatePages() error = %v, want nil", err)
+	}
+	if len(pages) != 3 {
+		t.Fatalf("expected 3 pages, got %d", len(pages))
+	}
+	gotIDs := []string{pages[0].ID, pages[1].ID, pages[2].ID}
+	wantIDs := []string{"page-1", "page-2", "page-3"}
+	for i := range wantIDs {
+		if gotIDs[i] != wantIDs[i] {
+			t.Errorf("pages[%d].ID = %q, want %q", i, gotIDs[i], wantIDs[i])
+		}
+	}
+	if request != 3 {
+		t.Errorf("requests = %d, want 3", request)
+	}
+}
+
+// GetBlockChildrenFlat must stop when has_more=true keeps returning the same
+// cursor instead of spinning until the context deadline.
+func TestGetBlockChildrenFlat_RepeatedCursorStops(t *testing.T) {
+	requests := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/blocks/blk-stuck/children", func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		encodeBlockChildren(w, fmt.Sprintf("blk-%d", requests), true, "stuck-cursor")
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	client := mustTestClient(t, "test-token", ts.URL)
+	blocks, err := client.GetBlockChildrenFlat(context.Background(), "blk-stuck")
+	if err == nil {
+		t.Fatal("expected error for repeated cursor")
+	}
+	if !strings.Contains(err.Error(), "pagination made no progress at cursor") {
+		t.Errorf("error = %v, want no-progress cursor error", err)
+	}
+	if requests > 3 {
+		t.Errorf("requests = %d, want bounded request count", requests)
+	}
+	if len(blocks) != 0 {
+		t.Errorf("blocks = %d, want 0 on error", len(blocks))
 	}
 }
