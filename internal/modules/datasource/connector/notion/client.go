@@ -308,7 +308,11 @@ func (c *notionClient) getBlockChildrenRecursive(ctx context.Context, blockID st
 
 		allBlocks = append(allBlocks, blocks...)
 
-		if len(allBlocks) >= maxBlocksPerPage || !resp.HasMore || resp.NextCursor == "" {
+		if blocksTruncated(len(allBlocks), resp) {
+			logger.Warnf(ctx, "[Notion] page %s exceeded %d blocks; truncating", blockID, maxBlocksPerPage)
+			break
+		}
+		if !resp.HasMore || resp.NextCursor == "" {
 			break
 		}
 		startCursor = resp.NextCursor
@@ -336,6 +340,14 @@ func (c *notionClient) getBlockChildrenRecursive(ctx context.Context, blockID st
 	}
 
 	return allBlocks, nil
+}
+
+// blocksTruncated reports whether block pagination must stop at maxBlocksPerPage
+// while the API still has results to return, i.e. content (including any
+// child_page/child_database blocks beyond the cap) is being dropped. Reaching
+// exactly maxBlocksPerPage on the final page is a complete fetch, not a truncation.
+func blocksTruncated(total int, resp paginatedResponse) bool {
+	return total >= maxBlocksPerPage && resp.HasMore && resp.NextCursor != ""
 }
 
 // QueryDatabaseAll retrieves all records from a database via POST /v1/data_sources/{id}/query.
