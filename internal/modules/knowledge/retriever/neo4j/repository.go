@@ -195,7 +195,8 @@ func (n *Neo4jRepository) SearchNode(
 		}
 
 		graphData := &types.GraphData{}
-		nodeSeen := make(map[string]bool)
+		nodeByName := make(map[string]*types.GraphNode)
+		relSeen := make(map[string]bool)
 		for result.Next(ctx) {
 			record := result.Record()
 			node, _ := record.Get("n")
@@ -205,25 +206,50 @@ func (n *Neo4jRepository) SearchNode(
 			nodeData := node.(neo4j.Node)
 			targetNodeData := targetNode.(neo4j.Node)
 
-			// Convert node to types.Node
+			// Convert node to types.Node. Different rows can carry different
+			// physical instances of the same name (one per source document), so
+			// instances are merged instead of dropped: every instance's chunks
+			// and attributes are evidence for the shared name.
 			for _, n := range []neo4j.Node{nodeData, targetNodeData} {
 				nameStr := n.Props["name"].(string)
-				if _, ok := nodeSeen[nameStr]; !ok {
-					nodeSeen[nameStr] = true
-					graphData.Node = append(graphData.Node, &types.GraphNode{
+				entry, ok := nodeByName[nameStr]
+				if !ok {
+					entry = &types.GraphNode{
 						Name:       nameStr,
 						Chunks:     listI2listS(n.Props["chunks"].([]interface{})),
 						Attributes: listI2listS(n.Props["attributes"].([]interface{})),
-					})
+					}
+					nodeByName[nameStr] = entry
+					graphData.Node = append(graphData.Node, entry)
+					continue
 				}
+				entry.Chunks = mergeUniqueStrings(entry.Chunks, listI2listS(n.Props["chunks"].([]interface{})))
+				entry.Attributes = mergeUniqueStrings(entry.Attributes, listI2listS(n.Props["attributes"].([]interface{})))
 			}
 
-			// Convert relationship to types.Relation
+			// Convert relationship to types.Relation. The Cypher match
+			// (n)-[r]-(m) is undirected, so a row's n can be the relationship's
+			// end node: read the stored direction from the element ids instead
+			// of the row's column order.
 			relData := rel.(neo4j.Relationship)
+			start, end := nodeData, targetNodeData
+			if relData.StartElementId == targetNodeData.ElementId {
+				start, end = targetNodeData, nodeData
+			}
+			// When both endpoints are seeds, the same physical relationship
+			// arrives once per seed (as two opposite rows). Decode each
+			// physical relationship once — a genuinely inverse relationship is
+			// a distinct element with its own element id and survives.
+			if relSeen[relData.ElementId] {
+				continue
+			}
+			relSeen[relData.ElementId] = true
 			graphData.Relation = append(graphData.Relation, &types.GraphRelation{
-				Node1: nodeData.Props["name"].(string),
-				Node2: targetNodeData.Props["name"].(string),
-				Type:  relData.Type,
+				Node1:       start.Props["name"].(string),
+				Node2:       end.Props["name"].(string),
+				Type:        relData.Type,
+				Node1Chunks: listI2listS(start.Props["chunks"].([]interface{})),
+				Node2Chunks: listI2listS(end.Props["chunks"].([]interface{})),
 			})
 		}
 		// Make truncation visible. A silent cap reads as "the graph has no more
@@ -299,4 +325,24 @@ func listI2listS(list []any) []string {
 		result[i] = fmt.Sprintf("%v", v)
 	}
 	return result
+}
+
+// mergeUniqueStrings appends the values of add that are not already in
+// existing, preserving first-seen order. Used to merge same-name node
+// instances, whose per-document chunk/attribute lists are all evidence for
+// the one shared name.
+func mergeUniqueStrings(existing, add []string) []string {
+	for _, v := range add {
+		duplicate := false
+		for _, got := range existing {
+			if got == v {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			existing = append(existing, v)
+		}
+	}
+	return existing
 }
