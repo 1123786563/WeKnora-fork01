@@ -39,6 +39,18 @@ const bootstrapEnvVar = "WEKNORA_BOOTSTRAP_SYSTEM_ADMIN_EMAIL"
 func runStartupBootstrap(c *dig.Container) {
 	ctx := context.Background()
 
+	// Auto-provision the embed/presign HMAC signing key when nothing is
+	// configured (issue #3898: fresh docker-compose deploys were broken
+	// out of the box). Uses the repository directly (not the registry-
+	// gated service) so the key is never exposed to the settings CRUD.
+	// Best-effort like everything here: on failure the request-time 503
+	// in embed_channel.go stays the loud signal.
+	if err := c.Invoke(func(repo interfaces.SystemSettingRepository) {
+		ensureEmbedSigningKey(ctx, repo)
+	}); err != nil {
+		logger.Warnf(ctx, "[bootstrap] failed to resolve SystemSettingRepository: %v", err)
+	}
+
 	// Legacy hash repair for migration 000065 placeholder rows. Invoked each
 	// startup but short-circuits with a cheap EXISTS once every row is
 	// backfilled (no api_key decryption on the steady-state path).

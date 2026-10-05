@@ -68,3 +68,44 @@ func TestValidateRegistrationModes(t *testing.T) {
 		t.Fatal("unknown registration mode accepted")
 	}
 }
+
+type listMaskingRepo struct {
+	interfaces.SystemSettingRepository
+	rows []*types.SystemSetting
+}
+
+func (r *listMaskingRepo) List(context.Context) ([]*types.SystemSetting, error) {
+	return r.rows, nil
+}
+
+// TestListMasksUnregisteredSecretRows guards the leak path for the
+// bootstrap-provisioned signing key (cmd/server/embed_signing_key.go):
+// out-of-band rows stay visible for diagnostics, but values of rows flagged
+// IsSecret must never render via the management API.
+func TestListMasksUnregisteredSecretRows(t *testing.T) {
+	repo := &listMaskingRepo{rows: []*types.SystemSetting{
+		{Key: "security.embed_signing_key", Value: types.JSON(`"deadbeef-secret"`), ValueType: "string", IsSecret: true},
+		{Key: "ops.diagnostics_row", Value: types.JSON(`"visible"`), ValueType: "string"},
+	}}
+	svc := &systemSettingService{repo: repo, cache: make(map[string]*types.SystemSetting)}
+
+	out, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]*types.SystemSetting{}
+	for _, row := range out {
+		byKey[row.Key] = row
+	}
+	secret, ok := byKey["security.embed_signing_key"]
+	if !ok {
+		t.Fatal("secret row must stay listed (masked, not hidden)")
+	}
+	if string(secret.Value) != `"***"` {
+		t.Fatalf("secret value must be masked, got %s", string(secret.Value))
+	}
+	plain, ok := byKey["ops.diagnostics_row"]
+	if !ok || string(plain.Value) != `"visible"` {
+		t.Fatalf("non-secret out-of-band row must stay visible, got %#v", plain)
+	}
+}

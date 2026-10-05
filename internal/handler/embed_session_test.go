@@ -308,6 +308,41 @@ func TestCreateEmbedSessionSuccess(t *testing.T) {
 	}
 }
 
+// TestCreateEmbedSessionSigningKeyUnconfigured pins the safety net for the
+// case bootstrap auto-provisioning could not cover (DB unavailable at boot,
+// row corrupt): the endpoint must stay 503 with actionable guidance instead
+// of silently proceeding — the signature is the real authorization secret.
+func TestCreateEmbedSessionSigningKeyUnconfigured(t *testing.T) {
+	t.Setenv("SYSTEM_SIGNING_KEY", "")
+	t.Setenv("SYSTEM_AES_KEY", "")
+	gin.SetMode(gin.TestMode)
+	ch := testEmbedChannel()
+	stub := &stubSessionServiceForEmbed{sessions: map[string]*types.Session{}}
+	h := &EmbedChannelHandler{sessionService: stub}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/sessions", nil)
+	c.Set(types.TenantIDContextKey.String(), ch.TenantID)
+	ctx := context.WithValue(c.Request.Context(), types.EmbedChannelContextKey, ch)
+	c.Request = c.Request.WithContext(ctx)
+
+	h.CreateEmbedSession(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "SYSTEM_SIGNING_KEY") {
+		t.Fatalf("error must name the env var to set, body = %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "auto-provision") {
+		t.Fatalf("error must point at the auto-provision path, body = %s", w.Body.String())
+	}
+	if stub.created != nil {
+		t.Fatal("no session may be created without a signing key")
+	}
+}
+
 func TestGetEmbedChunkForbidden(t *testing.T) {
 	t.Setenv("SYSTEM_SIGNING_KEY", "")
 	t.Setenv("SYSTEM_AES_KEY", "test-embed-signing-key-32-bytes!!!")

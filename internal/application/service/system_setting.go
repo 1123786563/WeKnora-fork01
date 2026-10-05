@@ -32,6 +32,11 @@ import (
 // instance don't cross-talk.
 const pubsubChannelBase = "weknora:system_settings:changed"
 
+// maskedSecretJSON is the placeholder rendered for out-of-band rows flagged
+// IsSecret (see List). A valid JSON string so ValueType=="string" rows keep
+// decoding on the client side.
+var maskedSecretJSON = types.JSON(`"***"`)
+
 // pubsubChannel resolves the effective channel name (with optional
 // namespace suffix). Called both at publish time and inside the
 // subscriber loop — keep it pure.
@@ -792,14 +797,22 @@ func (s *systemSettingService) List(ctx context.Context) ([]*types.SystemSetting
 	}
 
 	// Preserve out-of-band rows so operators can still see unexpected
-	// data instead of having it disappear from the UI.
+	// data instead of having it disappear from the UI — but rows flagged
+	// IsSecret are masked: the only writer of those today is the bootstrap
+	// signing-key provisioner (cmd/server/embed_signing_key.go), whose
+	// value must never render via the management API. Unregistered keys
+	// are rejected by Get/Update/Reset, so List is the sole leak path.
 	extraKeys := make([]string, 0, len(byKey))
 	for key := range byKey {
 		extraKeys = append(extraKeys, key)
 	}
 	sort.Strings(extraKeys)
 	for _, key := range extraKeys {
-		out = append(out, byKey[key])
+		row := byKey[key]
+		if row.IsSecret {
+			row.Value = maskedSecretJSON
+		}
+		out = append(out, row)
 	}
 	return out, nil
 }
