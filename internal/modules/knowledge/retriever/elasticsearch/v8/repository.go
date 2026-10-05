@@ -14,6 +14,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/operationtype"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/scriptlanguage"
 	"github.com/google/uuid"
 )
@@ -206,14 +207,66 @@ func (e *elasticsearchRepository) BatchSave(ctx context.Context,
 	}
 
 	// Execute the bulk request
-	_, err := indexRequest.Do(ctx)
+	res, err := indexRequest.Do(ctx)
 	if err != nil {
 		log.Errorf("[Elasticsearch] Failed to execute bulk operation: %v", err)
 		return fmt.Errorf("failed to do bulk: %w", err)
 	}
 
+	// HTTP 200 only means ES accepted the bulk request; per-document
+	// rejections are reported via errors=true plus items[].<op>.error.
+	// Rejected documents never enter the index and are not retried, so they
+	// must fail the call instead of producing a "vectorization done" illusion.
+	if res.Errors {
+		failed, first := collectBulkItemErrors(res.Items)
+		if failed == 0 {
+			log.Errorf("[Elasticsearch] Bulk operation reported errors=true but no per-item error details")
+			return fmt.Errorf("bulk operation failed: errors=true but no per-item error details were returned")
+		}
+		log.Errorf("[Elasticsearch] Bulk operation rejected %d/%d documents, first error: %s",
+			failed, len(embeddingList), first)
+		return fmt.Errorf("bulk save partially failed: %d/%d documents rejected by Elasticsearch, first error: %s",
+			failed, len(embeddingList), first)
+	}
+
 	log.Infof("[Elasticsearch] Successfully batch saved %d indices", len(embeddingList))
 	return nil
+}
+
+// collectBulkItemErrors scans the per-operation results of a bulk response for
+// rejected documents and returns how many operations failed plus a description
+// of the first failure. ES only populates items[].<op>.error for failed
+// operations, so a non-nil Error marks a rejected document.
+func collectBulkItemErrors(items []map[operationtype.OperationType]types.ResponseItem) (failed int, first string) {
+	for _, item := range items {
+		for op, result := range item {
+			if result.Error == nil {
+				continue
+			}
+			failed++
+			if first == "" {
+				id := ""
+				if result.Id_ != nil {
+					id = *result.Id_
+				}
+				first = fmt.Sprintf("op=%s id=%s status=%d %s",
+					op.Name, id, result.Status, errorCauseReason(result.Error))
+			}
+		}
+	}
+	return failed, first
+}
+
+// errorCauseReason renders an ErrorCause as "type: reason", tolerating a
+// missing reason (e.g. when the server returned a bare string error).
+func errorCauseReason(cause *types.ErrorCause) string {
+	if cause == nil {
+		return "error=<no detail>"
+	}
+	if cause.Reason != nil && *cause.Reason != "" {
+		return fmt.Sprintf("error=%s: %s", cause.Type, *cause.Reason)
+	}
+	return fmt.Sprintf("error=%s", cause.Type)
 }
 
 // DeleteByChunkIDList removes documents from the index based on chunk IDs
