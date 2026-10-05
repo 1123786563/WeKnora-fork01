@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -517,5 +518,151 @@ func TestDeleteTreatsStaleCacheMissingCollectionAsNoOp(t *testing.T) {
 				t.Fatal("missing collection must drop the initialized cache so the following write can recreate it")
 			}
 		})
+	}
+}
+
+// keywordScrollPoint builds a scroll hit carrying the payload fields
+// KeywordsRetrieve maps into results.
+func keywordScrollPoint(chunkID, content string) *qdrant.RetrievedPoint {
+	return &qdrant.RetrievedPoint{
+		Id: qdrant.NewID(uuid.New().String()),
+		Payload: qdrant.NewValueMap(map[string]any{
+			fieldContent: content,
+			fieldChunkID: chunkID,
+		}),
+	}
+}
+
+// newKeywordsTestRepository answers ListCollections with `collections` and
+// routes every Scroll through `scroll`, so keyword fan-out semantics can be
+// pinned without a live Qdrant server.
+func newKeywordsTestRepository(t *testing.T, collections []string,
+	scroll func(*qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error),
+) *qdrantRepository {
+	t.Helper()
+	client := newInterceptedQdrantClient(t, func(
+		_ context.Context, method string, req, reply any, _ *grpc.ClientConn,
+		_ grpc.UnaryInvoker, _ ...grpc.CallOption,
+	) error {
+		switch request := req.(type) {
+		case *qdrant.ListCollectionsRequest:
+			response := reply.(*qdrant.ListCollectionsResponse)
+			for _, name := range collections {
+				response.Collections = append(response.Collections, &qdrant.CollectionDescription{Name: name})
+			}
+			return nil
+		case *qdrant.ScrollPoints:
+			points, err := scroll(request)
+			if err != nil {
+				return err
+			}
+			reply.(*qdrant.ScrollResponse).Result = points
+			return nil
+		default:
+			return fmt.Errorf("unexpected RPC %s", method)
+		}
+	})
+	return &qdrantRepository{client: client, collectionBaseName: "vectors"}
+}
+
+// When every attempted collection fails to answer the keyword query, the
+// retrieval must return an error instead of empty results that read as "the
+// library has no such content" (#3835).
+func TestKeywordsRetrieveAllCollectionsFailed(t *testing.T) {
+	var scrolled []string
+	repo := newKeywordsTestRepository(t, []string{"vectors_768", "vectors_1536", "unrelated_768"},
+		func(request *qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error) {
+			scrolled = append(scrolled, request.CollectionName)
+			return nil, fmt.Errorf("qdrant unavailable in %s", request.CollectionName)
+		})
+
+	results, err := repo.KeywordsRetrieve(context.Background(), types.RetrieveParams{
+		Query: "hello world",
+		TopK:  10,
+	})
+
+	if err == nil {
+		t.Fatal("expected an error when every collection query fails")
+	}
+	if results != nil {
+		t.Fatalf("expected nil results on total failure, got %+v", results)
+	}
+	for _, want := range []string{"all 2 qdrant collections", "vectors_768", "qdrant unavailable"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q must mention %q (backend, collection count, first failed collection, cause)", err, want)
+		}
+	}
+	if len(scrolled) != 2 || scrolled[0] != "vectors_768" || scrolled[1] != "vectors_1536" {
+		t.Fatalf("expected both matching collections to be searched, got %v", scrolled)
+	}
+}
+
+// One collection failing must not negate matches found in the healthy ones.
+func TestKeywordsRetrievePartialFailureKeepsResults(t *testing.T) {
+	repo := newKeywordsTestRepository(t, []string{"vectors_768", "vectors_1536"},
+		func(request *qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error) {
+			if request.CollectionName == "vectors_768" {
+				return nil, errors.New("scroll timeout")
+			}
+			return []*qdrant.RetrievedPoint{keywordScrollPoint("chunk-1", "hello world")}, nil
+		})
+
+	results, err := repo.KeywordsRetrieve(context.Background(), types.RetrieveParams{
+		Query: "hello world",
+		TopK:  10,
+	})
+
+	if err != nil {
+		t.Fatalf("partial failure with results must not error, got %v", err)
+	}
+	if len(results) != 1 || results[0].RetrieverType != types.KeywordsRetrieverType ||
+		results[0].RetrieverEngineType != types.QdrantRetrieverEngineType {
+		t.Fatalf("unexpected retrieve result envelope: %+v", results)
+	}
+	if len(results[0].Results) != 1 || results[0].Results[0].ChunkID != "chunk-1" {
+		t.Fatalf("expected the hit from the healthy collection, got %+v", results[0].Results)
+	}
+}
+
+func TestKeywordsRetrieveAllCollectionsSucceed(t *testing.T) {
+	repo := newKeywordsTestRepository(t, []string{"vectors_768", "vectors_1536"},
+		func(request *qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error) {
+			return []*qdrant.RetrievedPoint{
+				keywordScrollPoint("chunk-"+request.CollectionName, "hello world"),
+			}, nil
+		})
+
+	results, err := repo.KeywordsRetrieve(context.Background(), types.RetrieveParams{
+		Query: "hello world",
+		TopK:  10,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || len(results[0].Results) != 2 {
+		t.Fatalf("expected one hit per collection, got %+v", results)
+	}
+}
+
+// A store that never created a dimension collection has nothing to search:
+// that is a legitimate "no matches", not a failure.
+func TestKeywordsRetrieveNoMatchingCollectionsIsEmpty(t *testing.T) {
+	repo := newKeywordsTestRepository(t, []string{"unrelated_768"},
+		func(*qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error) {
+			t.Error("no matching collections must not be searched")
+			return nil, nil
+		})
+
+	results, err := repo.KeywordsRetrieve(context.Background(), types.RetrieveParams{
+		Query: "hello world",
+		TopK:  10,
+	})
+
+	if err != nil {
+		t.Fatalf("no matching collections must not be an error, got %v", err)
+	}
+	if len(results) != 1 || len(results[0].Results) != 0 {
+		t.Fatalf("expected an empty result envelope, got %+v", results)
 	}
 }
