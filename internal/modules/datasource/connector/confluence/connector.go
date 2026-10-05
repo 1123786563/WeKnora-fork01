@@ -6,21 +6,44 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
+	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	htmltomd "github.com/JohannesKaufmann/html-to-markdown/v2"
-	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/strikethrough"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
 var (
 	_ datasource.StreamingConnector     = (*Connector)(nil)
 	_ datasource.FullStreamingConnector = (*Connector)(nil)
+)
+
+// markdownConverter is the shared HTML→Markdown converter for page bodies. It
+// keeps the baseline of the package-level htmltomd.ConvertString helper (base +
+// commonmark) and additionally enables the table and strikethrough plugins the
+// baseline lacks: without them Confluence tables were flattened to run-on text
+// and <del>/<s>/<strike> lost their meaning. A Converter is safe for concurrent
+// use, so it is built once and reused for every page.
+var markdownConverter = converter.NewConverter(
+	converter.WithPlugins(
+		base.NewBasePlugin(),
+		commonmark.NewCommonmarkPlugin(),
+		table.NewTablePlugin(),
+		strikethrough.NewStrikethroughPlugin(),
+	),
 )
 
 // Connector implements datasource.StreamingConnector for Confluence.
@@ -600,7 +623,14 @@ func markdownItem(
 	// docparser image pipeline can persist them and rewrite to resource:// URLs.
 	// Best-effort: a failed image keeps its original src and never fails the page.
 	html = newAssetResolver(client).Resolve(ctx, html)
-	markdown, err := htmltomd.ConvertString(html)
+	// Images the resolver could not inline keep their original relative src, and
+	// Confluence emits child-page links relative to the base URL; both would be
+	// dead references outside the Confluence origin, so resolve them absolutely.
+	html = client.absolutizeRefs(html)
+	// Confluence renders draw.io and mermaid macros as inline <svg>, which the
+	// converter silently drops; keep a visible placeholder instead.
+	html = replaceInlineSVGs(html)
+	markdown, err := markdownConverter.ConvertString(html)
 	if err != nil {
 		return types.FetchedItem{}, err
 	}
@@ -637,4 +667,155 @@ func markdownItem(
 		SourceResourceID: resourceID,
 		Metadata:         metadata,
 	}, nil
+}
+
+// aTagRe matches a full <a ...> start tag, tolerating '>' inside quoted
+// attribute values, mirroring imgTagRe in asset_resolver.go.
+var aTagRe = regexp.MustCompile(`(?i)<a\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
+
+// hrefAttrRe captures the href attribute value of a start tag, supporting
+// double-quoted, single-quoted, or bare values. Group 1 is the " href=" prefix,
+// group 2 the value, matching srcAttrRe in asset_resolver.go.
+var hrefAttrRe = regexp.MustCompile(`(?i)(\shref\s*=\s*)("[^"]*"|'[^']*'|[^\s"'>]+)`)
+
+// absolutizeRefs resolves relative href (<a>) and src (<img>) values in a page
+// body against the configured Confluence base URL, reusing the client's
+// context-path aware endpoint resolution. Only rewritable relative references
+// change; everything else is left byte-for-byte untouched so absolute links,
+// in-page anchors, data URIs, and mailto targets survive conversion as-is.
+func (c *client) absolutizeRefs(content string) string {
+	content = aTagRe.ReplaceAllStringFunc(content, func(tag string) string {
+		return rewriteTagAttr(tag, hrefAttrRe, c.absoluteRef)
+	})
+	content = imgTagRe.ReplaceAllStringFunc(content, func(tag string) string {
+		return rewriteTagAttr(tag, srcAttrRe, c.absoluteRef)
+	})
+	return content
+}
+
+// rewriteTagAttr rewrites the attribute captured by attrRe inside a single
+// start tag through resolve, preserving the rest of the tag byte-for-byte. A
+// missing attribute or a value resolve returns unchanged leaves the tag as-is.
+func rewriteTagAttr(tag string, attrRe *regexp.Regexp, resolve func(string) string) string {
+	loc := attrRe.FindStringSubmatchIndex(tag)
+	if loc == nil {
+		return tag
+	}
+	raw := tag[loc[4]:loc[5]]
+	if len(raw) >= 2 {
+		if q := raw[0]; (q == '"' || q == '\'') && raw[len(raw)-1] == q {
+			raw = raw[1 : len(raw)-1]
+		}
+	}
+	value := strings.TrimSpace(html.UnescapeString(raw))
+	if value == "" {
+		return tag
+	}
+	resolved := resolve(value)
+	if resolved == value {
+		return tag
+	}
+	return tag[:loc[4]] + `"` + html.EscapeString(resolved) + `"` + tag[loc[5]:]
+}
+
+// absoluteRef resolves a relative http(s) reference against the configured
+// Confluence base URL. Absolute URLs, protocol-relative references, in-page
+// anchors, and non-http schemes are returned unchanged, as are references that
+// fail resolution (for example they would leave the configured context path);
+// a reference that cannot be absolutized keeps pointing where it pointed
+// instead of failing the page.
+func (c *client) absoluteRef(ref string) string {
+	if strings.HasPrefix(ref, "#") {
+		return ref
+	}
+	u, err := url.Parse(ref)
+	if err != nil {
+		return ref
+	}
+	if u.Scheme != "" || u.Host != "" {
+		return ref
+	}
+	resolved, err := c.resolveEndpoint(ref)
+	if err != nil {
+		return ref
+	}
+	// resolveEndpoint joins scheme, host, context path, and query, but drops
+	// the fragment of a relative reference; re-attach it in original form.
+	if frag := u.EscapedFragment(); frag != "" {
+		resolved += "#" + frag
+	}
+	return resolved
+}
+
+// inlineSVGRe matches an inline <svg>...</svg> block. Confluence renders
+// draw.io and mermaid macros this way, and the Markdown converter drops them
+// silently, which used to lose the diagram without a trace.
+var inlineSVGRe = regexp.MustCompile(`(?is)<svg\b.*?</svg>`)
+
+var (
+	// svgLabelAttrRe captures aria-label from an inline <svg> block.
+	svgLabelAttrRe = regexp.MustCompile(`(?i)\saria-label\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	// svgNameAttrRe captures data-name from the start tag wrapping an <svg>.
+	svgNameAttrRe = regexp.MustCompile(`(?i)\sdata-name\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+)
+
+// svgParentLookback bounds how far before an <svg> start the immediately
+// preceding tag is searched for a wrapping container's data-name.
+const svgParentLookback = 256
+
+// replaceInlineSVGs replaces every inline <svg> block with a textual
+// "[diagram: name]" placeholder instead of silently losing the diagram. The
+// label comes from the svg's aria-label, else the wrapping start tag's
+// data-name, else the 1-based position of the diagram within the page.
+func replaceInlineSVGs(content string) string {
+	matches := inlineSVGRe.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		return content
+	}
+	var b strings.Builder
+	b.Grow(len(content))
+	last := 0
+	for i, loc := range matches {
+		b.WriteString(content[last:loc[0]])
+		b.WriteString("[diagram: " + html.EscapeString(svgDiagramName(content, loc, i+1)) + "]")
+		last = loc[1]
+	}
+	b.WriteString(content[last:])
+	return b.String()
+}
+
+// svgDiagramName picks the placeholder label for the <svg> at loc: aria-label
+// on the svg itself, else data-name on the immediately preceding start tag
+// (Confluence diagram macros wrap the svg in a labeled container), else the
+// diagram's 1-based index in the page.
+func svgDiagramName(content string, loc []int, index int) string {
+	if name := attrValue(svgLabelAttrRe.FindStringSubmatch(content[loc[0]:loc[1]])); name != "" {
+		return name
+	}
+	windowStart := loc[0] - svgParentLookback
+	if windowStart < 0 {
+		windowStart = 0
+	}
+	window := content[windowStart:loc[0]]
+	if tagStart := strings.LastIndexByte(window, '<'); tagStart >= 0 {
+		if name := attrValue(svgNameAttrRe.FindStringSubmatch(window[tagStart:])); name != "" {
+			return name
+		}
+	}
+	return strconv.Itoa(index)
+}
+
+// attrValue returns the trimmed, HTML-unescaped first capture of an attribute
+// regexp match, stripping optional surrounding quotes; "" when there is none.
+func attrValue(m []string) string {
+	if len(m) < 2 {
+		return ""
+	}
+	value := m[1]
+	if len(value) >= 2 {
+		if q := value[0]; (q == '"' || q == '\'') && value[len(value)-1] == q {
+			value = value[1 : len(value)-1]
+		}
+	}
+	return strings.TrimSpace(html.UnescapeString(value))
 }
