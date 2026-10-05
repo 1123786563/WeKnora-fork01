@@ -920,15 +920,20 @@ func (s *wikiPageService) RebuildLinks(ctx context.Context, kbID string) error {
 		}
 	}
 
-	// Save all pages (link rebuild is metadata-only, no version bump)
+	// Save all pages (link rebuild is metadata-only, no version bump).
+	// A failed write would silently leave backlinks, the graph view and
+	// orphan stats serving stale data, so per-page failures are aggregated
+	// (slug-tagged) and returned — the caller surfaces them instead of the
+	// handler reporting a fake success (issue #3872).
+	var saveErrs []error
 	for _, p := range pages {
 		p.UpdatedAt = time.Now()
 		if err := s.repo.UpdateMeta(ctx, p); err != nil {
 			logger.Warnf(ctx, "wiki: failed to update links for page %s: %v", p.Slug, err)
+			saveErrs = append(saveErrs, fmt.Errorf("update links for page %s: %w", p.Slug, err))
 		}
 	}
-
-	return nil
+	return errors.Join(saveErrs...)
 }
 
 // ListAllPages retrieves all non-archived wiki pages without pagination.

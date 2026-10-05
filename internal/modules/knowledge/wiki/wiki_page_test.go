@@ -2,12 +2,14 @@ package wiki
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -709,4 +711,125 @@ func TestMovePageIntoTypeLabelNamedFolderKeepsHierarchy(t *testing.T) {
 	require.Equal(t, types.StringArray{"概念"}, listed.Pages[0].CategoryPath)
 	require.Equal(t, 1, listed.Pages[0].Depth)
 	require.Equal(t, "concept/概念/将计就计", listed.Pages[0].WikiPath)
+}
+
+// failingUpdateMetaRepo wraps the real sqlite repository and fails
+// UpdateMeta for the slugs in failSlugs, delegating everything else — the
+// minimal seam for driving RebuildLinks write failures (issue #3872).
+type failingUpdateMetaRepo struct {
+	interfaces.WikiPageRepository
+	failSlugs map[string]error
+}
+
+func (r *failingUpdateMetaRepo) UpdateMeta(ctx context.Context, page *types.WikiPage) error {
+	if err, ok := r.failSlugs[page.Slug]; ok {
+		return err
+	}
+	return r.WikiPageRepository.UpdateMeta(ctx, page)
+}
+
+// seedRebuildFixture creates a three-page wiki whose content links
+// hub -> {entity/acme, concept/rag} and entity/acme -> hub.
+func seedRebuildFixture(t *testing.T, repo interfaces.WikiPageRepository, kbID string) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+	seed := func(slug, content string) {
+		require.NoError(t, repo.Create(ctx, &types.WikiPage{
+			ID: uuid.New().String(), TenantID: 1, KnowledgeBaseID: kbID,
+			Slug: slug, Title: slug, PageType: types.WikiPageTypeEntity,
+			Status: types.WikiPageStatusPublished, Version: 1, Content: content,
+			CreatedAt: now, UpdatedAt: now,
+		}))
+	}
+	seed("hub", "See [[entity/acme]] and [[concept/rag]].")
+	seed("entity/acme", "Back to [[hub]].")
+	seed("concept/rag", "No links here.")
+}
+
+// TestRebuildLinksReturnsErrorWhenPageWriteFails pins the issue #3872 fix:
+// a per-page UpdateMeta failure must surface as a RebuildLinks error
+// carrying the page slug (so the handler's 500 branch actually fires)
+// instead of being logged away behind a fake 200.
+func TestRebuildLinksReturnsErrorWhenPageWriteFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
+
+	const kbID = "kb-rebuild-fail"
+	repo := NewWikiPageRepository(db)
+	seedRebuildFixture(t, repo, kbID)
+
+	failing := &failingUpdateMetaRepo{
+		WikiPageRepository: repo,
+		failSlugs:          map[string]error{"concept/rag": errors.New("simulated write failure")},
+	}
+	svc := NewWikiPageService(failing, nil, nil, nil, nil, Seams{}, nil)
+
+	err = svc.RebuildLinks(context.Background(), kbID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "concept/rag", "error must identify the failing page slug")
+	require.Contains(t, err.Error(), "simulated write failure")
+
+	// The loop must keep going past the failed page: writes for the other
+	// pages still land (aggregation, not first-error abort).
+	hub, getErr := repo.GetBySlug(context.Background(), kbID, "hub")
+	require.NoError(t, getErr)
+	require.Equal(t, types.StringArray{"entity/acme", "concept/rag"}, hub.OutLinks)
+	require.Equal(t, types.StringArray{"entity/acme"}, hub.InLinks)
+}
+
+// TestRebuildLinksAggregatesMultiplePageWriteFailures ensures every failing
+// slug is reported, not just the first one.
+func TestRebuildLinksAggregatesMultiplePageWriteFailures(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
+
+	const kbID = "kb-rebuild-multi-fail"
+	repo := NewWikiPageRepository(db)
+	seedRebuildFixture(t, repo, kbID)
+
+	failing := &failingUpdateMetaRepo{
+		WikiPageRepository: repo,
+		failSlugs: map[string]error{
+			"entity/acme": errors.New("acme write boom"),
+			"concept/rag": errors.New("rag write boom"),
+		},
+	}
+	svc := NewWikiPageService(failing, nil, nil, nil, nil, Seams{}, nil)
+
+	err = svc.RebuildLinks(context.Background(), kbID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "entity/acme")
+	require.Contains(t, err.Error(), "concept/rag")
+}
+
+// TestRebuildLinksSucceedsPinsExistingBehavior nails down the success path:
+// nil error, bidirectional links rebuilt and persisted, no version bump.
+func TestRebuildLinksSucceedsPinsExistingBehavior(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
+
+	const kbID = "kb-rebuild-ok"
+	repo := NewWikiPageRepository(db)
+	seedRebuildFixture(t, repo, kbID)
+	svc := NewWikiPageService(repo, nil, nil, nil, nil, Seams{}, nil)
+
+	require.NoError(t, svc.RebuildLinks(context.Background(), kbID))
+
+	ctx := context.Background()
+	hub, err := repo.GetBySlug(ctx, kbID, "hub")
+	require.NoError(t, err)
+	require.Equal(t, types.StringArray{"entity/acme", "concept/rag"}, hub.OutLinks)
+	require.Equal(t, types.StringArray{"entity/acme"}, hub.InLinks)
+
+	acme, err := repo.GetBySlug(ctx, kbID, "entity/acme")
+	require.NoError(t, err)
+	require.Equal(t, types.StringArray{"hub"}, acme.OutLinks)
+	require.Equal(t, types.StringArray{"hub"}, acme.InLinks)
+
+	require.Equal(t, 1, hub.Version, "link rebuild is metadata-only: version must not bump")
+	require.Equal(t, 1, acme.Version)
 }
