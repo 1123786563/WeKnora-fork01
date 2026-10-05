@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -517,5 +518,200 @@ func TestDeleteTreatsStaleCacheMissingCollectionAsNoOp(t *testing.T) {
 				t.Fatal("missing collection must drop the initialized cache so the following write can recreate it")
 			}
 		})
+	}
+}
+
+// scrollFake is a stand-in Qdrant that answers CopyIndices' RPCs. Scroll
+// pagination follows the real server's contract: the response's
+// next_page_offset is the cursor to resume from while matching points remain
+// and is nil on the last page. Upserted points are recorded so tests can
+// assert exactly what reached the target collection.
+type scrollFake struct {
+	repo     *qdrantRepository
+	points   []*qdrant.RetrievedPoint // ordered by point ID, like the server's scan
+	limits   []int                    // optional per-scroll page limits
+	stuck    bool                     // always answer with the first page and its cursor
+	scrolls  int
+	upserted []*qdrant.PointStruct
+}
+
+func newScrollFake(t *testing.T, points []*qdrant.RetrievedPoint) *scrollFake {
+	t.Helper()
+	harness := &scrollFake{points: points}
+	client := newInterceptedQdrantClient(t, func(
+		_ context.Context, method string, req, reply any, _ *grpc.ClientConn,
+		_ grpc.UnaryInvoker, _ ...grpc.CallOption,
+	) error {
+		switch request := req.(type) {
+		case *qdrant.CollectionExistsRequest:
+			reply.(*qdrant.CollectionExistsResponse).Result = &qdrant.CollectionExists{Exists: true}
+			return nil
+		case *qdrant.ScrollPoints:
+			response := reply.(*qdrant.ScrollResponse)
+			response.Result, response.NextPageOffset = harness.scroll(request)
+			return nil
+		case *qdrant.UpsertPoints:
+			harness.upserted = append(harness.upserted, request.Points...)
+			return nil
+		default:
+			return fmt.Errorf("unexpected RPC %s", method)
+		}
+	})
+	harness.repo = &qdrantRepository{client: client, collectionBaseName: "vectors"}
+	return harness
+}
+
+// scroll answers one Scroll request: the points after the request cursor, at
+// most limit of them, plus the cursor to continue from while matches remain.
+func (f *scrollFake) scroll(request *qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, *qdrant.PointId) {
+	f.scrolls++
+
+	limit := int(request.GetLimit())
+	if f.stuck {
+		page := f.points[:limit]
+		return page, page[len(page)-1].Id
+	}
+	if f.scrolls <= len(f.limits) {
+		limit = f.limits[f.scrolls-1]
+	}
+
+	start := 0
+	if cursor := request.GetOffset().GetNum(); cursor != 0 {
+		start = sort.Search(len(f.points), func(i int) bool {
+			return f.points[i].Id.GetNum() > cursor
+		})
+	}
+
+	end := start + limit
+	if end > len(f.points) {
+		end = len(f.points)
+	}
+	page := f.points[start:end]
+	if end >= len(f.points) {
+		return page, nil
+	}
+	return page, page[len(page)-1].Id
+}
+
+// newScrollSourcePoints builds a source collection of numbered points whose
+// payloads CopyIndices can map (chunk IDs unique, SourceID == ChunkID).
+func newScrollSourcePoints(count int) []*qdrant.RetrievedPoint {
+	points := make([]*qdrant.RetrievedPoint, 0, count)
+	for i := 1; i <= count; i++ {
+		chunkID := fmt.Sprintf("chunk-%03d", i)
+		points = append(points, &qdrant.RetrievedPoint{
+			Id: qdrant.NewIDNum(uint64(i)),
+			Payload: newQdrantValueMap(map[string]any{
+				fieldContent:         "content " + chunkID,
+				fieldSourceID:        chunkID,
+				fieldSourceType:      int64(0),
+				fieldChunkID:         chunkID,
+				fieldKnowledgeID:     "knowledge-1",
+				fieldKnowledgeBaseID: "kb-source",
+				fieldTagID:           "",
+				fieldIsEnabled:       true,
+			}),
+			Vectors: &qdrant.VectorsOutput{
+				VectorsOptions: &qdrant.VectorsOutput_Vector{
+					Vector: &qdrant.VectorOutput{
+						Vector: &qdrant.VectorOutput_Dense{
+							Dense: &qdrant.DenseVector{Data: []float32{0.1, 0.2, 0.3}},
+						},
+					},
+				},
+			},
+		})
+	}
+	return points
+}
+
+// newCopyIndicesMaps builds one-to-one knowledge and chunk mappings.
+func newCopyIndicesMaps(count int) (map[string]string, map[string]string) {
+	sourceToTargetKBID := map[string]string{"knowledge-1": "knowledge-2"}
+	sourceToTargetChunkID := make(map[string]string, count)
+	for i := 1; i <= count; i++ {
+		sourceToTargetChunkID[fmt.Sprintf("chunk-%03d", i)] = fmt.Sprintf("target-chunk-%03d", i)
+	}
+	return sourceToTargetKBID, sourceToTargetChunkID
+}
+
+func runCopyIndices(t *testing.T, repo *qdrantRepository, count int) error {
+	t.Helper()
+	sourceToTargetKBID, sourceToTargetChunkID := newCopyIndicesMaps(count)
+	return repo.CopyIndices(context.Background(),
+		"kb-source", sourceToTargetKBID, sourceToTargetChunkID, "kb-target",
+		3, types.KnowledgeBaseTypeDocument)
+}
+
+// #3870: the scan must follow the server's next_page_offset cursor and stop
+// on its nil, so 150 points paged at 64 upsert exactly 150 unique points with
+// no page-boundary duplicates.
+func TestCopyIndicesFollowsServerPageOffsets(t *testing.T) {
+	const sourceCount = 150
+	harness := newScrollFake(t, newScrollSourcePoints(sourceCount))
+
+	if err := runCopyIndices(t, harness.repo, sourceCount); err != nil {
+		t.Fatal(err)
+	}
+
+	if harness.scrolls != 3 {
+		t.Fatalf("got %d scroll requests, want 3 (64+64+22 pages)", harness.scrolls)
+	}
+	if len(harness.upserted) != sourceCount {
+		t.Fatalf("got %d upserted points, want exactly %d", len(harness.upserted), sourceCount)
+	}
+
+	seenChunks := make(map[string]bool, sourceCount)
+	for _, point := range harness.upserted {
+		chunkID := point.Payload[fieldChunkID].GetStringValue()
+		if !strings.HasPrefix(chunkID, "target-chunk-") {
+			t.Fatalf("chunk %q was not mapped to its target ID", chunkID)
+		}
+		if seenChunks[chunkID] {
+			t.Fatalf("chunk %q was upserted more than once", chunkID)
+		}
+		seenChunks[chunkID] = true
+		if got := point.Payload[fieldSourceID].GetStringValue(); got != chunkID {
+			t.Fatalf("source ID %q does not follow the mapped chunk ID %q", got, chunkID)
+		}
+		if got := point.Payload[fieldKnowledgeBaseID].GetStringValue(); got != "kb-target" {
+			t.Fatalf("chunk %q landed in knowledge base %q, want kb-target", chunkID, got)
+		}
+	}
+	if len(seenChunks) != sourceCount {
+		t.Fatalf("got %d unique target chunks, want %d", len(seenChunks), sourceCount)
+	}
+}
+
+// #3870: a server that keeps answering with the same page and the same
+// next_page_offset must fail with a no-progress error instead of copying the
+// page forever.
+func TestCopyIndicesStuckPageOffsetFailsLoudly(t *testing.T) {
+	const sourceCount = 150
+	harness := newScrollFake(t, newScrollSourcePoints(sourceCount))
+	harness.stuck = true
+
+	err := runCopyIndices(t, harness.repo, sourceCount)
+	if err == nil || !strings.Contains(err.Error(), "no progress") {
+		t.Fatalf("expected a no-progress error, got %v", err)
+	}
+	if harness.scrolls > 3 {
+		t.Fatalf("pagination did not stop promptly: %d scroll requests", harness.scrolls)
+	}
+}
+
+// #3870: a page shorter than the batch size is not the end of the scan; only
+// the server's nil cursor is. The removed count-based termination silently
+// truncated such copies.
+func TestCopyIndicesContinuesPastShortPage(t *testing.T) {
+	const sourceCount = 150
+	harness := newScrollFake(t, newScrollSourcePoints(sourceCount))
+	harness.limits = []int{64, 40} // short second page, more points remain
+
+	if err := runCopyIndices(t, harness.repo, sourceCount); err != nil {
+		t.Fatal(err)
+	}
+	if len(harness.upserted) != sourceCount {
+		t.Fatalf("got %d upserted points, want all %d after a short page", len(harness.upserted), sourceCount)
 	}
 }

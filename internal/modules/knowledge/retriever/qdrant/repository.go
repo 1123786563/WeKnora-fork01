@@ -840,7 +840,28 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 	return buildRetrieveResult(allResults, types.KeywordsRetrieverType), nil
 }
 
-// CopyIndices copies index data from source knowledge base to target knowledge base
+// maxCopyIndicesPages bounds CopyIndices' scroll pagination so a server that
+// never advances its cursor fails loudly instead of copying forever.
+const maxCopyIndicesPages = 10000
+
+// pointIDKey renders a scroll cursor as a comparable string so pagination can
+// detect a server handing back an offset it has already returned.
+func pointIDKey(id *qdrant.PointId) string {
+	switch option := id.GetPointIdOptions().(type) {
+	case *qdrant.PointId_Num:
+		return fmt.Sprintf("num:%d", option.Num)
+	case *qdrant.PointId_Uuid:
+		return "uuid:" + option.Uuid
+	default:
+		return "<unset>"
+	}
+}
+
+// CopyIndices copies index data from source knowledge base to target knowledge base.
+// The source scan is paginated with the server-issued next_page_offset cursor
+// and stops only when Qdrant stops returning one: resuming from the last point
+// ID of a page or stopping on a short page duplicates page boundaries or
+// truncates the copy (#3870).
 func (q *qdrantRepository) CopyIndices(ctx context.Context,
 	sourceKnowledgeBaseID string,
 	sourceToTargetKBIDMap map[string]string,
@@ -870,9 +891,18 @@ func (q *qdrantRepository) CopyIndices(ctx context.Context,
 	batchSize := uint32(64)
 	var offset *qdrant.PointId = nil
 	totalCopied := 0
+	seenOffsets := make(map[string]bool)
 
-	for {
-		scrollResult, err := q.client.Scroll(ctx, &qdrant.ScrollPoints{
+	for page := 0; ; page++ {
+		if page >= maxCopyIndicesPages {
+			err := fmt.Errorf(
+				"no progress copying indices from knowledge base %s to %s: scroll pagination exceeded %d pages",
+				sourceKnowledgeBaseID, targetKnowledgeBaseID, maxCopyIndicesPages)
+			log.Errorf("[Qdrant] %v", err)
+			return err
+		}
+
+		scrollResult, nextPageOffset, err := q.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
 			CollectionName: collectionName,
 			Filter: &qdrant.Filter{
 				Must: []*qdrant.Condition{
@@ -890,10 +920,6 @@ func (q *qdrantRepository) CopyIndices(ctx context.Context,
 		}
 
 		pointsCount := len(scrollResult)
-		if pointsCount == 0 {
-			break
-		}
-
 		log.Infof("[Qdrant] Found %d source points in batch", pointsCount)
 
 		targetPoints := make([]*qdrant.PointStruct, 0, pointsCount)
@@ -983,13 +1009,22 @@ func (q *qdrantRepository) CopyIndices(ctx context.Context,
 				len(targetPoints), totalCopied)
 		}
 
-		if pointsCount > 0 {
-			offset = scrollResult[pointsCount-1].Id
-		}
-
-		if pointsCount < int(batchSize) {
+		// The nil cursor is the sole end-of-scan signal. A cursor the server
+		// already handed back means the same page would be copied forever.
+		if nextPageOffset == nil {
 			break
 		}
+
+		cursor := pointIDKey(nextPageOffset)
+		if seenOffsets[cursor] {
+			err := fmt.Errorf(
+				"no progress copying indices from knowledge base %s to %s: scroll returned repeated page offset %s",
+				sourceKnowledgeBaseID, targetKnowledgeBaseID, cursor)
+			log.Errorf("[Qdrant] %v", err)
+			return err
+		}
+		seenOffsets[cursor] = true
+		offset = nextPageOffset
 	}
 
 	log.Infof("[Qdrant] Index copy completed, total copied: %d", totalCopied)
