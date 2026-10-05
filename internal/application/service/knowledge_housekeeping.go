@@ -290,6 +290,102 @@ func (h *HousekeepingService) runSweep(ctx context.Context) {
 			}
 		}
 	}
+
+	// Sweep D: spans still pending/running on rows that already reached a
+	// terminal parse_status (issue #3854). Sweep A only ever considers
+	// pending/processing/finalizing rows, so a worker that dies AFTER the
+	// row flipped to completed/failed/cancelled — but before its span tree
+	// was finalized — leaves the document timeline spinning "进行中"
+	// forever (field data showed orphans 11–27 days old). The knowledge row
+	// is the authority: whatever terminal state it carries is what the
+	// leftover spans become.
+	h.closeOrphanedSpansOnTerminalRows(ctx)
+}
+
+// spanOrphanGrace is how long an open span may outlive a terminal knowledge
+// row before Sweep D closes it. The grace exists for the reparse race:
+// Reparse calls OpenAttempt BEFORE resetting parse_status, so the brand-new
+// attempt-N+1 root briefly sits on a row that still reads failed/completed.
+// A freshly written span always has updated_at=now and must survive; only
+// spans that stopped moving entirely are orphans. Any value comfortably
+// above the reparse window works — genuinely orphaned spans are hours to
+// days old.
+const spanOrphanGrace = 10 * time.Minute
+
+// orphanSpanBatchLimit bounds how many knowledge rows Sweep D recovers per
+// pass so one sweep tick stays cheap. Historical orphans (the 11–27 day
+// residue this sweep was built for) are drained over successive ticks; the
+// 5-minute cron turns the cap into a throughput, not a ceiling.
+const orphanSpanBatchLimit = 500
+
+// closeOrphanedSpansOnTerminalRows flips every pending/running span of a
+// terminally-parsed knowledge row to the matching terminal span status and
+// backfills finished_at, so the processing timeline stops reporting
+// "进行中" for a run that is already over. Status alignment follows the
+// row: failed→failed, cancelled→cancelled, completed→done (the span
+// vocabulary's word for "finished successfully"). Non-terminal rows are
+// untouched — an in-flight parse keeps its live spans (Sweep A's domain).
+func (h *HousekeepingService) closeOrphanedSpansOnTerminalRows(ctx context.Context) {
+	cutoff := time.Now().Add(-spanOrphanGrace)
+	var rows []types.Knowledge
+	if err := h.db.WithContext(ctx).
+		Where("parse_status IN ?", []string{
+			types.ParseStatusCompleted, types.ParseStatusFailed, types.ParseStatusCancelled,
+		}).
+		Where("id IN (?)", h.db.Model(&types.KnowledgeProcessingSpan{}).
+			Select("DISTINCT knowledge_id").
+			Where("status IN ? AND updated_at < ?",
+				[]string{types.SpanStatusPending, types.SpanStatusRunning}, cutoff)).
+		Limit(orphanSpanBatchLimit).
+		Find(&rows).Error; err != nil {
+		logger.Warnf(ctx, "[Housekeeping] orphan span candidate query failed: %v", err)
+		return
+	}
+	if len(rows) == 0 {
+		return
+	}
+	now := time.Now()
+	var closed int64
+	for _, k := range rows {
+		// finished_at is backfilled but duration_ms is deliberately left
+		// alone, matching CancelAllOpenSpans: the row keeps its original
+		// start and gains a terminal status + reason, which is all the
+		// timeline needs to drop the running-bar styling.
+		res := h.db.WithContext(ctx).Model(&types.KnowledgeProcessingSpan{}).
+			Where("knowledge_id = ? AND status IN ?", k.ID,
+				[]string{types.SpanStatusPending, types.SpanStatusRunning}).
+			Updates(map[string]interface{}{
+				"status":        spanStatusForParseStatus(k.ParseStatus),
+				"error_code":    "KNOWLEDGE_TERMINAL",
+				"error_message": fmt.Sprintf("knowledge row already %s; span left open by an unfinished run, closed by housekeeping", k.ParseStatus),
+				"finished_at":   now,
+				"updated_at":    now,
+			})
+		if res.Error != nil {
+			logger.Warnf(ctx, "[Housekeeping] orphan span close failed for %s: %v", k.ID, res.Error)
+			continue
+		}
+		closed += res.RowsAffected
+	}
+	if closed > 0 {
+		logger.Infof(ctx,
+			"[Housekeeping] closed %d orphaned span(s) on %d terminal knowledge row(s)",
+			closed, len(rows))
+	}
+}
+
+// spanStatusForParseStatus maps a terminal parse_status to the matching
+// terminal span status. failed and cancelled carry over verbatim; completed
+// maps to the span vocabulary's "done".
+func spanStatusForParseStatus(parseStatus string) string {
+	switch parseStatus {
+	case types.ParseStatusFailed:
+		return types.SpanStatusFailed
+	case types.ParseStatusCancelled:
+		return types.SpanStatusCancelled
+	default:
+		return types.SpanStatusDone
+	}
 }
 
 // wikiHoldLimit bounds how long a durable Wiki ingest op keeps its row out of
