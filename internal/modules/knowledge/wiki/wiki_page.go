@@ -120,6 +120,163 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	return page, nil
 }
 
+// --- Content-drop guard at the write exit (#3792) --------------------------
+//
+// UpdatePage is the single write exit every machine writer funnels through
+// (the agent wiki_write_page / wiki_replace_text full rewrites, the ingest
+// batch, lint auto-fixes, index regeneration). A model asked to re-emit a
+// long page routinely truncates it — a hundred-row certificate ledger comes
+// back with thirty rows, finish_reason=stop, no error anywhere — and without
+// a guard at this exit the shortened body silently replaces the page (#3617
+// guarded the ingest caller only; the same failure mode exists on every other
+// path). The guard compares table-row identities (the first non-empty cell of
+// each row, #3617's criterion) between the stored and the incoming content:
+// rows that merely moved, got bolded, or had their date/amount columns edited
+// keep their identity and pass through; genuinely missing identities block
+// the write so the page keeps its current version. Human edits (user) and
+// rollbacks to a shorter revision (revert) are intentional shrinks and are
+// exempt; other intentional shrinks (pipeline retract rounds, index
+// regeneration after document deletions) are marked by their callers via
+// withWikiShrinkAllowed.
+
+// ErrWikiRowDropRejected is returned by UpdatePage when a machine-authored
+// rewrite would drop table rows that exist in the current page. The stored
+// page is left untouched; callers may retry with the missing rows included.
+var ErrWikiRowDropRejected = errors.New("wiki page update rejected: rewrite would drop existing table rows")
+
+type wikiShrinkAllowedCtxKey struct{}
+
+// withWikiShrinkAllowed marks ctx as performing an intentional content shrink
+// (a pipeline retract round after source deletion, an index regeneration), so
+// the write is exempt from the row-drop guard. Marker and readers are both
+// wiki-package internal: every caller that legitimately shortens a page lives
+// in this package.
+func withWikiShrinkAllowed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, wikiShrinkAllowedCtxKey{}, true)
+}
+
+func wikiShrinkAllowed(ctx context.Context) bool {
+	v, _ := ctx.Value(wikiShrinkAllowedCtxKey{}).(bool)
+	return v
+}
+
+// wikiTableSeparatorCell matches a GFM alignment-only cell (":---", "---",
+// "---:", ":-:").
+var wikiTableSeparatorCell = regexp.MustCompile(`^:?-{2,}:?$`)
+
+// normalizeWikiCellIdentity strips emphasis / code wrapping so a row that
+// only got bolded (or inline-coded) keeps its identity: **证书A** ≡ *证书A* ≡
+// `证书A` ≡ 证书A.
+func normalizeWikiCellIdentity(cell string) string {
+	c := strings.TrimSpace(cell)
+	for {
+		var unwrapped bool
+		for _, wrap := range [][2]string{{"**", "**"}, {"__", "__"}, {"*", "*"}, {"`", "`"}} {
+			if len(c) < len(wrap[0])+len(wrap[1])+1 {
+				continue
+			}
+			if !strings.HasPrefix(c, wrap[0]) || !strings.HasSuffix(c, wrap[1]) {
+				continue
+			}
+			inner := strings.TrimSpace(c[len(wrap[0]) : len(c)-len(wrap[1])])
+			if inner == "" {
+				continue
+			}
+			c = inner
+			unwrapped = true
+			break
+		}
+		if !unwrapped {
+			return c
+		}
+	}
+}
+
+// wikiTableRowIdentity extracts the identity of one Markdown table row: its
+// first non-empty cell, normalized. ok=false for lines that are not table
+// rows (no leading pipe) or carry no usable identity (separator rows, rows
+// whose every cell is empty).
+func wikiTableRowIdentity(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "|") {
+		return "", false
+	}
+	trimmed = strings.TrimSuffix(trimmed, "|")
+	for _, cell := range strings.Split(trimmed, "|") {
+		id := normalizeWikiCellIdentity(cell)
+		if id == "" {
+			continue
+		}
+		if wikiTableSeparatorCell.MatchString(id) {
+			// First non-empty cell is an alignment marker: this is the
+			// separator row, which has no identity of its own.
+			return "", false
+		}
+		return id, true
+	}
+	return "", false
+}
+
+// wikiTableRowIdentities returns the ordered identity list of every table row
+// in the content.
+func wikiTableRowIdentities(content string) []string {
+	var ids []string
+	for _, line := range strings.Split(content, "\n") {
+		if id, ok := wikiTableRowIdentity(line); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// droppedWikiTableRows returns the identities of table rows present in
+// oldContent but missing from newContent. Empty when the rewrite preserves
+// every existing row — reordering, reformatting, or editing non-identity
+// columns (dates, amounts) is preservation, because identity is only the
+// first non-empty cell.
+func droppedWikiTableRows(oldContent, newContent string) []string {
+	oldIDs := wikiTableRowIdentities(oldContent)
+	if len(oldIDs) == 0 {
+		return nil
+	}
+	newIDs := make(map[string]bool)
+	for _, id := range wikiTableRowIdentities(newContent) {
+		newIDs[id] = true
+	}
+	var dropped []string
+	for _, id := range oldIDs {
+		if !newIDs[id] {
+			dropped = append(dropped, id)
+		}
+	}
+	return dropped
+}
+
+// guardRowDrop blocks machine-authored rewrites that would drop table rows
+// present in the stored content. Exempt: user edits (a human deleting rows is
+// intentional), reverts (rolling back to a shorter revision is intentional),
+// and writes whose caller marked an intentional shrink.
+func (s *wikiPageService) guardRowDrop(ctx context.Context, slug, oldContent, newContent string) error {
+	switch types.WikiEditSourceFromContext(ctx) {
+	case types.WikiEditSourceUser, types.WikiEditSourceRevert:
+		return nil
+	}
+	if wikiShrinkAllowed(ctx) {
+		return nil
+	}
+	dropped := droppedWikiTableRows(oldContent, newContent)
+	if len(dropped) == 0 {
+		return nil
+	}
+	source := types.WikiEditSourceFromContext(ctx)
+	oldRows, newRows := len(wikiTableRowIdentities(oldContent)), len(wikiTableRowIdentities(newContent))
+	logger.Warnf(ctx,
+		"wiki page %s: blocked %s rewrite dropping %d table row(s) (rows %d->%d, content %d->%d bytes, e.g. %q); kept current version",
+		slug, source, len(dropped), oldRows, newRows, len(oldContent), len(newContent), PreviewText(dropped[0], 40))
+	return fmt.Errorf("%w: slug=%s rows=%d->%d dropped=%d content_len=%d->%d",
+		ErrWikiRowDropRejected, slug, oldRows, newRows, len(dropped), len(oldContent), len(newContent))
+}
+
 // UpdatePage updates an existing wiki page.
 //
 // Version bump policy: the `version` column is intended to track the user-
@@ -136,6 +293,12 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 		return nil, fmt.Errorf("get existing page: %w", err)
 	}
 	stripWikiPageInlineChunkCitations(page)
+
+	// #3792: content-drop guard at the single write exit. Must run after the
+	// citation strip so the comparison sees exactly what would be stored.
+	if err := s.guardRowDrop(ctx, page.Slug, existing.Content, page.Content); err != nil {
+		return nil, err
+	}
 
 	oldOutLinks := existing.OutLinks
 

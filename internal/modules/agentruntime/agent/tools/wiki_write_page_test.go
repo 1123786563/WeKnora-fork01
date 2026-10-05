@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -187,5 +189,106 @@ func TestWikiWritePageRoutesNewPageFromAuthorizedSourceRefs(t *testing.T) {
 	}
 	if service.createdKB != "kb-2" {
 		t.Fatalf("new page routed to %q, want source-owned kb-2", service.createdKB)
+	}
+}
+
+// rowDropGuardProbe records the context UpdatePage was called under and can
+// simulate the wiki service's row-drop guard (#3792) rejecting the write.
+// The real guard lives in the wiki package, which this package cannot import
+// (wiki -> agent -> tools would cycle), so the probe replays its sentinel
+// message verbatim.
+type rowDropGuardProbe struct {
+	interfaces.WikiPageService
+	stored    *types.WikiPage
+	updateCtx context.Context
+	updateErr error
+	called    bool
+}
+
+func (p *rowDropGuardProbe) GetPageBySlug(_ context.Context, _, _ string) (*types.WikiPage, error) {
+	// The real service returns a fresh copy from the DB on every read; hand
+	// out a copy too, so the tool's in-place mutation of the fetched page
+	// cannot reach the "stored" state on a rejected write.
+	cp := *p.stored
+	return &cp, nil
+}
+
+func (p *rowDropGuardProbe) RepairContentLinks(_ context.Context, _, _, content string) (string, bool, error) {
+	return content, false, nil
+}
+
+func (p *rowDropGuardProbe) UpdatePage(ctx context.Context, page *types.WikiPage) (*types.WikiPage, error) {
+	p.called = true
+	p.updateCtx = ctx
+	if p.updateErr != nil {
+		return nil, p.updateErr
+	}
+	p.stored = page
+	return page, nil
+}
+
+func (p *rowDropGuardProbe) CreatePage(_ context.Context, page *types.WikiPage) (*types.WikiPage, error) {
+	p.stored = page
+	return page, nil
+}
+
+func (p *rowDropGuardProbe) InjectCrossLinks(context.Context, string, []string) {}
+func (p *rowDropGuardProbe) RebuildIndexPage(context.Context, string) error     { return nil }
+
+// TestWikiWritePageTagsAgentEditSourceOnUpdate proves the tool hands
+// UpdatePage a context attributed to WikiEditSourceAgent — the identity the
+// exit-level row-drop guard keys on.
+func TestWikiWritePageTagsAgentEditSourceOnUpdate(t *testing.T) {
+	probe := &rowDropGuardProbe{stored: &types.WikiPage{
+		KnowledgeBaseID: "kb-1", Slug: "entity/cert-ledger", Title: "台账",
+		Content: "| 证书 |\n| --- |\n| A |\n| B |\n", Version: 1,
+	}}
+	tool := NewWikiWritePageTool(probe, []string{"kb-1"}, nil, NewWikiRouteResolver())
+
+	result, err := tool.Execute(context.Background(), json.RawMessage(
+		`{"slug":"entity/cert-ledger","title":"台账","summary":"s","content":"| 证书 |\n| --- |\n| A |\n| B |\n","page_type":"entity"}`,
+	))
+	if err != nil || result == nil || !result.Success {
+		t.Fatalf("write failed: result=%+v err=%v", result, err)
+	}
+	if !probe.called {
+		t.Fatal("UpdatePage was not called")
+	}
+	if got := types.WikiEditSourceFromContext(probe.updateCtx); got != types.WikiEditSourceAgent {
+		t.Fatalf("UpdatePage edit source = %q, want %q", got, types.WikiEditSourceAgent)
+	}
+}
+
+// TestWikiWritePageSurfacesRowDropRejection proves a guard rejection reaches
+// the model as a failed tool result and the stored page keeps its previous
+// content — the agent learns the rewrite lost rows instead of a silent
+// truncation (#3792).
+func TestWikiWritePageSurfacesRowDropRejection(t *testing.T) {
+	full := "| 证书 |\n| --- |\n| A |\n| B |\n| C |\n| D |\n"
+	probe := &rowDropGuardProbe{
+		stored: &types.WikiPage{
+			KnowledgeBaseID: "kb-1", Slug: "entity/cert-ledger", Title: "台账",
+			Content: full, Version: 1,
+		},
+		// Verbatim shape of the wiki service's ErrWikiRowDropRejected wrap.
+		updateErr: errors.New("wiki page update rejected: rewrite would drop existing table rows: slug=entity/cert-ledger rows=6->3 dropped=3 content_len=90->40"),
+	}
+	tool := NewWikiWritePageTool(probe, []string{"kb-1"}, nil, NewWikiRouteResolver())
+
+	result, err := tool.Execute(context.Background(), json.RawMessage(
+		`{"slug":"entity/cert-ledger","title":"台账","summary":"s","content":"| 证书 |\n| --- |\n| A |\n","page_type":"entity"}`,
+	))
+	if err != nil {
+		t.Fatalf("tool returned transport error: %v", err)
+	}
+	if result == nil || result.Success {
+		t.Fatalf("rejection must surface as failed tool result, got %+v", result)
+	}
+	if !strings.Contains(result.Error, "drop existing table rows") ||
+		!strings.Contains(result.Error, "rows=6->3") {
+		t.Fatalf("rejection detail lost: %q", result.Error)
+	}
+	if probe.stored.Content != full {
+		t.Fatalf("stored page must keep previous content on rejection, got %q", probe.stored.Content)
 	}
 }
