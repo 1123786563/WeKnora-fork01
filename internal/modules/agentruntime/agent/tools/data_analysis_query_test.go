@@ -213,3 +213,83 @@ func TestDataAnalysisExecuteEndToEndUsesDatasetTable(t *testing.T) {
 		t.Fatalf("rejection must name the dataset table: %s", result.Error)
 	}
 }
+
+// TestDataAnalysisExecuteReconcileSkipsLiterals is the end-to-end guard for
+// issue #3811: column reconciliation must correct double-quoted identifiers to
+// the schema's spelling but leave string literals verbatim. Before the fix the
+// WHERE literal '"orderstatus"' was rewritten to '"Order Status"', so the
+// query silently matched the wrong row while still reporting success.
+func TestDataAnalysisExecuteReconcileSkipsLiterals(t *testing.T) {
+	db := newPlainDuckDB(t)
+	knowledge := &types.Knowledge{ID: "3f1c2a8e-0000-4000-8000-000000000381", FileType: "csv", FilePath: "statuses.csv"}
+	tool := NewDataAnalysisTool(
+		nil,
+		&mapKnowledgeService{docs: map[string]*types.Knowledge{knowledge.ID: knowledge}},
+		nil,
+		&csvFileService{files: map[string]string{
+			// The doubled quotes are CSV escaping: the note values literally
+			// contain the quoted identifier texts.
+			"statuses.csv": "\"Order Status\",note\npaid,\"\"\"orderstatus\"\"\"\nunpaid,\"\"\"Order Status\"\"\"\n",
+		}},
+		db,
+		"test-3811",
+	)
+	ctx := context.Background()
+	t.Cleanup(func() { tool.Cleanup(ctx) })
+
+	args, _ := json.Marshal(DataAnalysisInput{
+		KnowledgeID: knowledge.ID,
+		SQL:         `SELECT "orderstatus" AS status FROM dataset WHERE note = '"orderstatus"'`,
+	})
+	result, err := tool.Execute(ctx, args)
+	if err != nil || result == nil || !result.Success {
+		t.Fatalf("execute failed: result=%+v err=%v", result, err)
+	}
+	rows, ok := result.Data["rows"].([]map[string]string)
+	if !ok || len(rows) != 1 || rows[0]["status"] != "paid" {
+		t.Fatalf("the WHERE literal must compare verbatim and match the paid row, got rows=%v", result.Data["rows"])
+	}
+	// The identifier was reconciled to the schema spelling while the literal
+	// kept its original text.
+	query, _ := result.Data["query"].(string)
+	if !strings.Contains(query, `"Order Status"`) || !strings.Contains(query, `'"orderstatus"'`) {
+		t.Fatalf("expected identifier reconciled but literal untouched, got query: %s", query)
+	}
+}
+
+// TestDataAnalysisExecuteReconcileSkipsDollarQuotedLiterals extends the #3811
+// guard to dollar-quoted literals: the projected value must come back exactly
+// as written, not in the schema's column spelling.
+func TestDataAnalysisExecuteReconcileSkipsDollarQuotedLiterals(t *testing.T) {
+	db := newPlainDuckDB(t)
+	knowledge := &types.Knowledge{ID: "3f1c2a8e-0000-4000-8000-000000000382", FileType: "csv", FilePath: "statuses2.csv"}
+	tool := NewDataAnalysisTool(
+		nil,
+		&mapKnowledgeService{docs: map[string]*types.Knowledge{knowledge.ID: knowledge}},
+		nil,
+		&csvFileService{files: map[string]string{
+			"statuses2.csv": "Order Status,note\npaid,x\nunpaid,y\n",
+		}},
+		db,
+		"test-3811-dollar",
+	)
+	ctx := context.Background()
+	t.Cleanup(func() { tool.Cleanup(ctx) })
+
+	args, _ := json.Marshal(DataAnalysisInput{
+		KnowledgeID: knowledge.ID,
+		SQL:         `SELECT $$"orderstatus"$$ AS v FROM dataset WHERE "orderstatus" = 'paid'`,
+	})
+	result, err := tool.Execute(ctx, args)
+	if err != nil || result == nil || !result.Success {
+		t.Fatalf("execute failed: result=%+v err=%v", result, err)
+	}
+	rows, ok := result.Data["rows"].([]map[string]string)
+	if !ok || len(rows) != 1 || rows[0]["v"] != `"orderstatus"` {
+		t.Fatalf("the dollar-quoted literal must survive verbatim, got rows=%v", result.Data["rows"])
+	}
+	query, _ := result.Data["query"].(string)
+	if !strings.Contains(query, `$$"orderstatus"$$`) || !strings.Contains(query, `"Order Status" = 'paid'`) {
+		t.Fatalf("expected dollar literal verbatim and identifier reconciled, got query: %s", query)
+	}
+}
