@@ -1291,6 +1291,9 @@ func (s *sessionService) consumeFallbackStream(
 	var finalContent string
 	streamCompleted := false
 	decoder := modelContext.StreamDecoder()
+	// Last-wins within one stream, matching chat_completion_stream and the
+	// agent path's stream consumer (cumulative repeats overwrite, not add).
+	var streamUsage *types.TokenUsage
 
 	for response := range responseChan {
 		// Emit event for each answer chunk
@@ -1304,16 +1307,23 @@ func (s *sessionService) consumeFallbackStream(
 				response.Content = chatpipeline.EmptyTruncatedAnswerFallback
 			}
 			finalContent += response.Content
+			if response.Usage != nil {
+				streamUsage = response.Usage
+			}
+			answerData := event.AgentFinalAnswerData{
+				Content:    response.Content,
+				Done:       response.Done,
+				IsFallback: true,
+				Truncated:  truncated,
+			}
+			if response.Done && streamUsage != nil {
+				answerData.Usage = streamUsage
+			}
 			if err := eventBus.Emit(ctx, types.Event{
 				ID:        fallbackID,
 				Type:      types.EventType(event.EventAgentFinalAnswer),
 				SessionID: chatManage.SessionID,
-				Data: event.AgentFinalAnswerData{
-					Content:    response.Content,
-					Done:       response.Done,
-					IsFallback: true,
-					Truncated:  truncated,
-				},
+				Data:      answerData,
 			}); err != nil {
 				logger.Errorf(ctx, "Failed to emit fallback answer chunk event: %v", err)
 			}
