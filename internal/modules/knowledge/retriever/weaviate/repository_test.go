@@ -3,6 +3,7 @@ package weaviate
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -161,4 +162,108 @@ func TestEnsureCollectionDoesNotRecheckOtherFailures(t *testing.T) {
 
 	require.Error(t, repo.ensureCollection(context.Background(), 1024))
 	assert.Equal(t, 1, server.probes)
+}
+
+// A misbehaving server can ignore the after cursor and replay the same page
+// forever. The copy must detect the stuck cursor instead of hanging until the
+// context times out, and the replayed page must not be written a second time.
+func TestCopyIndicesStopsReplayingAStuckCursor(t *testing.T) {
+	const objectsPerPage = 64
+	page := make([]any, 0, objectsPerPage)
+	sourceToTargetChunkIDMap := make(map[string]string, objectsPerPage)
+	for i := range objectsPerPage {
+		chunkID := fmt.Sprintf("chunk-%03d", i)
+		page = append(page, map[string]any{
+			fieldContent:         "payload",
+			fieldSourceID:        chunkID,
+			fieldSourceType:      float64(1),
+			fieldChunkID:         chunkID,
+			fieldKnowledgeID:     "doc-1",
+			fieldKnowledgeBaseID: "source",
+			fieldTagID:           "",
+			"_additional": map[string]any{
+				"id":     fmt.Sprintf("00000000-0000-0000-0000-%012d", i),
+				"vector": []any{0.1, 0.2, 0.3},
+			},
+		})
+		sourceToTargetChunkIDMap[chunkID] = fmt.Sprintf("target-%03d", i)
+	}
+
+	var mu sync.Mutex
+	queries, afterSeen := 0, false
+	var batches atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/graphql":
+			mu.Lock()
+			queries++
+			mu.Unlock()
+			var body struct {
+				Query string `json:"query"`
+			}
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if strings.Contains(body.Query, "after") {
+				mu.Lock()
+				afterSeen = true
+				mu.Unlock()
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{"Get": map[string]any{"Copy_3": page}},
+			})
+		case "/v1/batch/objects":
+			batches.Add(1)
+			_, _ = w.Write([]byte(`[]`))
+		case "/v1/meta":
+			_, _ = w.Write([]byte(`{"version":"1.30.0"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := sdk.NewClient(sdk.Config{Scheme: "http", Host: strings.TrimPrefix(server.URL, "http://")})
+	require.NoError(t, err)
+	repo := &weaviateRepository{client: client, collectionBaseName: "Copy"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.ErrorContains(t,
+		repo.CopyIndices(ctx, "source", map[string]string{"doc-1": "doc-2"}, sourceToTargetChunkIDMap, "target", 3, ""),
+		"no progress")
+	assert.Equal(t, int32(1), batches.Load(), "the replayed page must not be written a second time")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 2, queries, "the stuck page should be fetched once more and then rejected")
+	assert.True(t, afterSeen, "the follow-up query should carry the after cursor")
+}
+
+// Weaviate answers a failed GraphQL query with HTTP 200, an errors array and no
+// data; the SDK reports no Go error for that. The copy must surface it as an
+// error instead of panicking on the nil Get data.
+func TestCopyIndicesFailsOnGraphQLErrorsWithoutPanic(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/graphql":
+			_, _ = w.Write([]byte(`{"errors":[{"message":"boom"}]}`))
+		case "/v1/meta":
+			_, _ = w.Write([]byte(`{"version":"1.30.0"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := sdk.NewClient(sdk.Config{Scheme: "http", Host: strings.TrimPrefix(server.URL, "http://")})
+	require.NoError(t, err)
+	repo := &weaviateRepository{client: client, collectionBaseName: "Copy"}
+
+	require.ErrorContains(t,
+		repo.CopyIndices(context.Background(), "source",
+			map[string]string{"doc-1": "doc-2"}, map[string]string{"chunk-000": "target-000"}, "target", 3, ""),
+		"copy indices query failed")
 }

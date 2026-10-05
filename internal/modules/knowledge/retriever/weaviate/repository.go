@@ -697,6 +697,11 @@ func (w *weaviateRepository) KeywordsRetrieve(ctx context.Context,
 	return buildRetrieveResult(allResults, types.KeywordsRetrieverType), nil
 }
 
+// maxCopyIndicesPages bounds the after-cursor copy loop. Each page fetches 64
+// objects, so the cap admits up to 640k rows per copy; erroring at the cap is
+// better than replaying pages until the surrounding task times out.
+const maxCopyIndicesPages = 10000
+
 // CopyIndices copies index data from source knowledge base to target knowledge base
 func (w *weaviateRepository) CopyIndices(ctx context.Context,
 	sourceKnowledgeBaseID string,
@@ -718,9 +723,16 @@ func (w *weaviateRepository) CopyIndices(ctx context.Context,
 	batchSize := 64
 	var lastID string
 	totalCopied := 0
+	pages := 0
+	seen := make(map[string]bool)
 	fields := getVectorFields()
 
 	for {
+		pages++
+		if pages > maxCopyIndicesPages {
+			log.Warnf("[Weaviate] Copy indices exceeded %d pages, aborting", maxCopyIndicesPages)
+			return fmt.Errorf("weaviate: copy indices exceeded %d pages", maxCopyIndicesPages)
+		}
 		result, err := w.client.GraphQL().Get().
 			WithClassName(collectionName).
 			WithWhere(filters.Where().
@@ -735,9 +747,32 @@ func (w *weaviateRepository) CopyIndices(ctx context.Context,
 			log.Errorf("[Weaviate] Failed to query source points: %v", err)
 			return err
 		}
+		// A GraphQL failure answers HTTP 200 with errors and no data, which the
+		// SDK does not turn into a Go error, so check both before unwrapping.
+		if result == nil || len(result.Errors) > 0 {
+			errs := "no response"
+			if result != nil {
+				msgs := make([]string, 0, len(result.Errors))
+				for _, e := range result.Errors {
+					if e != nil {
+						msgs = append(msgs, e.Message)
+					}
+				}
+				errs = strings.Join(msgs, "; ")
+			}
+			log.Errorf("[Weaviate] Copy indices query failed: %s", errs)
+			return fmt.Errorf("weaviate: copy indices query failed: %s", errs)
+		}
 
-		objects, ok := result.Data["Get"].(map[string]interface{})[collectionName].([]interface{})
-		if !ok || len(objects) == 0 {
+		get, ok := result.Data["Get"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("weaviate: copy indices invalid response")
+		}
+		objects, ok := get[collectionName].([]interface{})
+		if !ok {
+			return fmt.Errorf("weaviate: copy indices invalid response")
+		}
+		if len(objects) == 0 {
 			break
 		}
 		log.Infof("[Weaviate] Found %d source points in batch", len(objects))
@@ -756,7 +791,12 @@ func (w *weaviateRepository) CopyIndices(ctx context.Context,
 				continue
 			}
 
-			lastID = additional["id"].(string)
+			id, ok := additional["id"].(string)
+			if !ok || id == "" {
+				log.Errorf("[Weaviate] Copy indices found a source point without a valid ID")
+				return fmt.Errorf("weaviate: copy indices invalid source point ID")
+			}
+			lastID = id
 
 			sourceChunkID, ok := data[fieldChunkID].(string)
 			if !ok {
@@ -821,6 +861,12 @@ func (w *weaviateRepository) CopyIndices(ctx context.Context,
 			targetObjects = append(targetObjects, newObj)
 			currentBatchCount++
 		}
+		// A server that ignores the after cursor replays the same page, whose
+		// last ID then never changes; fail before writing that page again.
+		if seen[lastID] {
+			return fmt.Errorf("weaviate: copy indices made no progress at cursor %q", lastID)
+		}
+		seen[lastID] = true
 		if len(targetObjects) > 0 {
 			resp, err := batcher.WithObjects(targetObjects...).Do(ctx)
 			if err != nil {
