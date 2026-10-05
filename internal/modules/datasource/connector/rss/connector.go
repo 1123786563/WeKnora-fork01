@@ -174,10 +174,11 @@ func (c *Connector) FetchIncremental(
 
 // walk is the shared implementation for FetchAll / FetchIncremental.
 //
-// When incremental is true, items whose feed signal and content fingerprint are
-// both unchanged are omitted from the result (ingest skipped) without fetching
-// article pages. The returned cursor always reflects the best-known item state
-// so a later sync can detect changes.
+// When incremental is true, items whose feed signal and resolved-item
+// fingerprint (title, article link and Markdown body) are both unchanged are
+// omitted from the result (ingest skipped) without fetching article pages. The
+// returned cursor always reflects the best-known item state so a later sync can
+// detect changes.
 func (c *Connector) walk(
 	ctx context.Context,
 	config *types.DataSourceConfig,
@@ -373,7 +374,10 @@ type resolvedFeedItem struct {
 
 // resolveItem assembles a FetchedItem for a single feed entry, resolving the
 // best available content (full-text article > feed content) and converting it
-// to Markdown.
+// to Markdown. The returned fingerprint covers the title, article link and
+// Markdown body, so an edit that leaves the body untouched (title-only or
+// link-only) still yields one update instead of being dropped by the
+// content-equality dedup in walk.
 func (c *Connector) resolveItem(
 	ctx context.Context,
 	cli *client,
@@ -414,7 +418,7 @@ func (c *Connector) resolveItem(
 	}
 
 	return resolvedFeedItem{
-		fingerprint:   contentFingerprint(content),
+		fingerprint:   itemFingerprint(title, item.Link, content),
 		articleFailed: articleFailed,
 		item: types.FetchedItem{
 			ExternalID:       itemExternalID(feedURL, itemID),

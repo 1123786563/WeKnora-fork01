@@ -13,7 +13,8 @@
 //     Markdown. Feed-provided content (content:encoded / description) is used
 //     as a fallback.
 //   - Incremental: feed-level signals skip full-text article fetches when a feed
-//     entry is unchanged; content fingerprints detect feed-body changes. Article-
+//     entry is unchanged; item fingerprints (document title, article link and
+//     Markdown body) detect feed-body, title-only and link-only edits. Article-
 //     only edits without feed updates may be missed until the feed entry changes.
 //     Deletions are NOT synced — feeds routinely drop old items.
 //
@@ -144,7 +145,8 @@ func (c *Config) parseHeaders() map[string]string {
 // rssCursor stores incremental sync state.
 //
 // FeedItems maps feedURL → itemID → fingerprint, where fingerprint is a
-// "h:<sha256-prefix>" hash of the final Markdown body that would be ingested.
+// "h:<sha256-prefix>" hash of the resolved item — document title, article
+// link and final Markdown body — so title-only or link-only edits rotate it.
 // FeedSignals maps feedURL → itemID → feed-only signal used to skip full-text
 // article fetches when the feed entry itself has not changed.
 type rssCursor struct {
@@ -157,6 +159,22 @@ type rssCursor struct {
 func contentFingerprint(markdown string) string {
 	sum := sha256.Sum256([]byte(markdown))
 	return "h:" + hex.EncodeToString(sum[:])[:16]
+}
+
+// itemFingerprint hashes a resolved feed item — document title, article link
+// and final Markdown body — for incremental change detection. Ingestion
+// persists the title and link outside the Markdown body, so a title-only or
+// link-only edit must rotate this fingerprint to surface exactly one update;
+// hashing only the body drops such edits while the newly stored feed signal
+// keeps every later unchanged sync skipping the entry, leaving stale values.
+func itemFingerprint(title, link, markdown string) string {
+	var b strings.Builder
+	b.WriteString(title)
+	b.WriteByte(0)
+	b.WriteString(link)
+	b.WriteByte(0)
+	b.WriteString(markdown)
+	return contentFingerprint(b.String())
 }
 
 // feedSignalFingerprint hashes feed-visible fields so incremental sync can skip
