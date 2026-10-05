@@ -3,6 +3,7 @@ import markedKatex from 'marked-katex-extension'
 import type { Tokens } from 'marked'
 
 import type { CachedMermaidSvgHtml } from './mermaidStreaming.ts'
+import { applyMarkdownOptions } from './markdownOptions.ts'
 import { normalizeSandboxArtifactRefs } from './sandboxArtifactRefs.ts'
 import {
   collapseStandaloneCitationParagraphs,
@@ -48,7 +49,9 @@ export type RenderChatMarkdownOptions = {
 
 export function configureMarkedForChatMarkdown(): void {
   if (markedConfigured) return
-  marked.use({ breaks: true, gfm: true })
+  // Shared chat/wiki marked config (#3962): single `~` stays literal for CJK
+  // range notation; only `~~text~~` renders <del>.
+  applyMarkdownOptions(marked)
   marked.use(markedKatex({ throwOnError: false, nonStandard: true }))
   markedConfigured = true
 }
