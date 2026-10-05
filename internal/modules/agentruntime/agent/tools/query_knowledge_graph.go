@@ -67,15 +67,16 @@ const (
 	graphQueryMaxRelations = 30
 )
 
-// graphSearchTerms turns the query into entity-name terms. The graph store
-// matches node names by case-sensitive substring, so the whole query only
-// matches when it is itself an entity name; its words catch the entities a
-// question mentions ("Docker 和 Kubernetes 的关系" → Docker, Kubernetes).
+// graphSearchTerms turns the query into entity-name terms and reports the
+// terms dropped by the term cap. The graph store matches node names by
+// case-sensitive substring, so the whole query only matches when it is itself
+// an entity name; its words catch the entities a question mentions
+// ("Docker 和 Kubernetes 的关系" → Docker, Kubernetes).
 // Words keep their case: lowercased terms never matched "Docker".
-func graphSearchTerms(query string) []string {
+func graphSearchTerms(query string) (terms []string, dropped []string) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil
+		return nil, nil
 	}
 	seen := map[string]bool{query: true}
 	var tokens []string
@@ -93,14 +94,15 @@ func graphSearchTerms(query string) []string {
 		}
 		return tokens[i] < tokens[j]
 	})
-	terms := []string{query}
+	terms = []string{query}
 	for _, token := range tokens {
 		if len(terms) >= graphQueryMaxTerms {
-			break
+			dropped = append(dropped, token)
+			continue
 		}
 		terms = append(terms, token)
 	}
-	return terms
+	return terms, dropped
 }
 
 // WithKnowledgeScope enables document/tag-level result filtering for Agent
@@ -175,6 +177,7 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 	type graphQueryResult struct {
 		kbID         string
 		kb           *types.KnowledgeBase
+		graph        *types.GraphData      // the matched graph, kept for post-merge relation evidence validation
 		graphResults []*types.SearchResult // chunks the matched entities come from
 		textResults  []*types.SearchResult
 		relations    []*types.GraphRelation
@@ -185,7 +188,7 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	kbResults := make(map[string]*graphQueryResult)
-	terms := graphSearchTerms(query)
+	terms, droppedTerms := graphSearchTerms(query)
 
 	searchParams := types.SearchParams{
 		QueryText:             query,
@@ -254,7 +257,7 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 					relations = relationsBackedBy(graph, graphResults)
 				}
 			}
-			res.graphResults, res.textResults, res.relations = graphResults, textResults, relations
+			res.graph, res.graphResults, res.textResults, res.relations = graph, graphResults, textResults, relations
 			if len(errs) > 0 && len(graphResults) == 0 && len(textResults) == 0 {
 				res.err = errors.New(strings.Join(errs, "; "))
 			} else {
@@ -274,6 +277,9 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 	var graphHits, textHits []*types.SearchResult
 	var relations []*types.GraphRelation
 	seenRelations := make(map[string]bool)
+	totalRelations := 0 // every verified unique relation, including the truncated ones
+	evidenceTotal := 0  // chunk candidates before the display budget, summed over KBs
+	evidenceShown := 0  // chunk IDs the display budget collected, summed over KBs
 
 	for _, kbID := range input.KnowledgeBaseIDs {
 		result := kbResults[kbID]
@@ -289,6 +295,35 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 			graphConfigs[kbID] = summarizeGraphConfig(result.kb.ExtractConfig)
 		}
 
+		// Relation evidence validation runs for every scope — a whole-KB
+		// query must not return relations whose supporting chunks have been
+		// deleted — and before the dedup/truncate pass, so the relation
+		// counts below refer to verified relations only. Without a chunk
+		// store to verify against, an unverified relation never reaches the
+		// model.
+		kbRelations := result.relations
+		if len(kbRelations) > 0 {
+			if t.chunkRepo == nil {
+				errs = append(errs, fmt.Sprintf(
+					"KB %s: %d graph relations omitted: no chunk store to verify their evidence", kbID, len(kbRelations)))
+				kbRelations = nil
+			} else {
+				verified, err := t.validateRelationEvidence(ctx, kbID, result.graph, kbRelations)
+				if err != nil {
+					errs = append(errs, fmt.Sprintf("KB %s: graph relations omitted: %v", kbID, err))
+					kbRelations = nil
+				} else {
+					kbRelations = verified
+				}
+			}
+		}
+		if t.chunkRepo != nil && result.graph != nil {
+			if candidates := graphChunkCandidates(result.graph); candidates > graphQueryMaxChunks {
+				evidenceTotal += candidates
+				evidenceShown += graphQueryMaxChunks
+			}
+		}
+
 		kbCounts[kbID] = len(result.graphResults) + len(result.textResults)
 		for _, r := range result.graphResults {
 			if !seenChunks[r.ID] {
@@ -302,10 +337,19 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 				textHits = append(textHits, r)
 			}
 		}
-		for _, rel := range result.relations {
+		for _, rel := range kbRelations {
+			if rel == nil {
+				continue
+			}
 			key := rel.Node1 + "\x00" + rel.Type + "\x00" + rel.Node2
-			if !seenRelations[key] && len(relations) < graphQueryMaxRelations {
-				seenRelations[key] = true
+			if seenRelations[key] {
+				continue
+			}
+			// Count every unique relation even past the cap: silently
+			// dropping them made the cap read as the complete graph.
+			seenRelations[key] = true
+			totalRelations++
+			if len(relations) < graphQueryMaxRelations {
 				relations = append(relations, rel)
 			}
 		}
@@ -329,19 +373,21 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 		if len(errs) > 0 {
 			output += " Some knowledge bases could not be queried: " + strings.Join(errs, "; ") + "."
 		}
+		data := map[string]interface{}{
+			"knowledge_base_ids": input.KnowledgeBaseIDs,
+			"query":              query,
+			"results":            []interface{}{},
+			"relations":          relationData,
+			"graph_configs":      graphConfigsToData(graphConfigs),
+			"graph_config":       aggregateGraphConfig(graphConfigs),
+			"errors":             errs,
+			"display_type":       "graph_query_results",
+		}
+		applyGraphBudgetNotes(data, len(relations), totalRelations, evidenceShown, evidenceTotal, droppedTerms)
 		return &types.ToolResult{
 			Success: true,
 			Output:  output,
-			Data: map[string]interface{}{
-				"knowledge_base_ids": input.KnowledgeBaseIDs,
-				"query":              query,
-				"results":            []interface{}{},
-				"relations":          relationData,
-				"graph_configs":      graphConfigsToData(graphConfigs),
-				"graph_config":       aggregateGraphConfig(graphConfigs),
-				"errors":             errs,
-				"display_type":       "graph_query_results",
-			},
+			Data:    data,
 		}, nil
 	}
 
@@ -349,8 +395,13 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 	output := "=== Knowledge Graph Query ===\n\n"
 	output += fmt.Sprintf("📊 Query: %s\n", query)
 	output += fmt.Sprintf("🎯 Target Knowledge Bases: %v\n", input.KnowledgeBaseIDs)
-	output += fmt.Sprintf("✓ Found %d relations and %d relevant chunks (deduplicated)\n\n",
-		len(relations), len(allResults))
+	if totalRelations > len(relations) {
+		output += fmt.Sprintf("✓ Found %d of %d relations and %d relevant chunks (deduplicated)\n\n",
+			len(relations), totalRelations, len(allResults))
+	} else {
+		output += fmt.Sprintf("✓ Found %d relations and %d relevant chunks (deduplicated)\n\n",
+			len(relations), len(allResults))
+	}
 
 	if len(errs) > 0 {
 		output += "=== ⚠️ Partial Failures ===\n"
@@ -366,6 +417,14 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 			output += fmt.Sprintf("  - %s --[%s]--> %s\n", rel.Node1, rel.Type, rel.Node2)
 		}
 		output += "\n"
+	}
+	if totalRelations > len(relations) {
+		output += fmt.Sprintf("⚠️ Showing %d of %d relations (limit %d). Narrow the query to a single entity to see the remaining relations.\n\n",
+			len(relations), totalRelations, graphQueryMaxRelations)
+	}
+	if evidenceTotal > evidenceShown {
+		output += fmt.Sprintf("⚠️ Showing %d of %d evidence chunks (limit %d per knowledge base).\n\n",
+			evidenceShown, evidenceTotal, graphQueryMaxChunks)
 	}
 
 	// Display graph configuration status
@@ -444,24 +503,46 @@ func (t *QueryKnowledgeGraphTool) Execute(ctx context.Context, args json.RawMess
 	// Build structured graph data for frontend visualization
 	graphData := buildGraphVisualizationData(allResults, relations)
 
+	data := map[string]interface{}{
+		"knowledge_base_ids": input.KnowledgeBaseIDs,
+		"query":              query,
+		"results":            formattedResults,
+		"relations":          relationData,
+		"count":              len(allResults),
+		"kb_counts":          kbCounts,
+		"graph_configs":      graphConfigsToData(graphConfigs),
+		"graph_config":       aggregateGraphConfig(graphConfigs),
+		"graph_data":         graphData,
+		"has_graph_config":   hasGraphConfig,
+		"errors":             errs,
+		"display_type":       "graph_query_results",
+	}
+	applyGraphBudgetNotes(data, len(relations), totalRelations, evidenceShown, evidenceTotal, droppedTerms)
 	return &types.ToolResult{
 		Success: true,
 		Output:  output,
-		Data: map[string]interface{}{
-			"knowledge_base_ids": input.KnowledgeBaseIDs,
-			"query":              query,
-			"results":            formattedResults,
-			"relations":          relationData,
-			"count":              len(allResults),
-			"kb_counts":          kbCounts,
-			"graph_configs":      graphConfigsToData(graphConfigs),
-			"graph_config":       aggregateGraphConfig(graphConfigs),
-			"graph_data":         graphData,
-			"has_graph_config":   hasGraphConfig,
-			"errors":             errs,
-			"display_type":       "graph_query_results",
-		},
+		Data:    data,
 	}, nil
+}
+
+// applyGraphBudgetNotes adds the display-budget counters to a graph query's
+// Data: how many relations and evidence chunks a cap left out, and which
+// search terms never reached the graph store. The keys are absent when no
+// budget applied — silence means the result is complete.
+func applyGraphBudgetNotes(
+	data map[string]interface{}, relationsShown, relationsTotal, evidenceShown, evidenceTotal int, droppedTerms []string,
+) {
+	if relationsTotal > relationsShown {
+		data["relations_total"] = relationsTotal
+		data["relations_omitted"] = relationsTotal - relationsShown
+	}
+	if evidenceTotal > evidenceShown {
+		data["evidence_total"] = evidenceTotal
+		data["evidence_omitted"] = evidenceTotal - evidenceShown
+	}
+	if len(droppedTerms) > 0 {
+		data["dropped_terms"] = droppedTerms
+	}
 }
 
 // queryGraph looks the query's entity terms up in kbID's graph and returns
@@ -572,9 +653,13 @@ func searchTargetsCoverWholeKB(targets types.SearchTargets, kbID string) bool {
 	return false
 }
 
-// relationsBackedBy keeps the graph's relations whose two entities were both
-// extracted from one of the evidence chunks. Entities whose chunks are not
-// among them cannot be shown to be in scope, so their relations are dropped.
+// relationsBackedBy keeps the graph's relations whose two endpoints were both
+// extracted from one of the evidence chunks. A relation's own endpoint chunks
+// are the real evidence — entities of the same name in other documents are
+// different node instances — so the name-aggregated chunks are only the
+// fallback for endpoints that carry none. Endpoints whose chunks are not
+// among the evidence cannot be shown to be in scope, so their relations are
+// dropped.
 func relationsBackedBy(graph *types.GraphData, evidence []*types.SearchResult) []*types.GraphRelation {
 	if graph == nil || len(evidence) == 0 {
 		return nil
@@ -583,22 +668,142 @@ func relationsBackedBy(graph *types.GraphData, evidence []*types.SearchResult) [
 	for _, r := range evidence {
 		allowedChunks[r.ID] = true
 	}
-	allowedNodes := make(map[string]bool)
-	for _, node := range graph.Node {
-		for _, id := range node.Chunks {
-			if allowedChunks[id] {
-				allowedNodes[node.Name] = true
-				break
-			}
-		}
-	}
+	nodeChunks := relationNodeChunks(graph)
 	var relations []*types.GraphRelation
 	for _, rel := range graph.Relation {
-		if allowedNodes[rel.Node1] && allowedNodes[rel.Node2] {
+		if rel == nil {
+			continue
+		}
+		if endpointEvidenceIntersects(rel.Node1Chunks, nodeChunks[rel.Node1], allowedChunks) &&
+			endpointEvidenceIntersects(rel.Node2Chunks, nodeChunks[rel.Node2], allowedChunks) {
 			relations = append(relations, rel)
 		}
 	}
 	return relations
+}
+
+// relationNodeChunks aggregates each node name's chunk IDs: the fallback
+// endpoint evidence for relations whose endpoints carry none.
+func relationNodeChunks(graph *types.GraphData) map[string][]string {
+	nodeChunks := make(map[string][]string)
+	if graph == nil {
+		return nodeChunks
+	}
+	for _, node := range graph.Node {
+		if node == nil {
+			continue
+		}
+		nodeChunks[node.Name] = append(nodeChunks[node.Name], node.Chunks...)
+	}
+	return nodeChunks
+}
+
+// endpointEvidenceIntersects reports whether a relation endpoint has evidence
+// among the allowed chunks. The relation's own endpoint chunks name the exact
+// node instances it connects, so they take precedence; the name-aggregated
+// chunks stand in only when the endpoint carries none.
+func endpointEvidenceIntersects(endpointChunks, nameChunks []string, allowed map[string]bool) bool {
+	chunks := endpointChunks
+	if len(chunks) == 0 {
+		chunks = nameChunks
+	}
+	for _, id := range chunks {
+		if allowed[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// graphChunkCandidates counts the distinct chunk IDs the graph's nodes
+// reference — the evidence pool before the per-KB display budget applies.
+func graphChunkCandidates(graph *types.GraphData) int {
+	if graph == nil {
+		return 0
+	}
+	seen := make(map[string]bool)
+	for _, node := range graph.Node {
+		for _, id := range node.Chunks {
+			if id != "" {
+				seen[id] = true
+			}
+		}
+	}
+	return len(seen)
+}
+
+// validateRelationEvidence keeps only relations whose two endpoints are each
+// backed by a chunk that is alive: its row exists, belongs to this knowledge
+// base, is enabled, and its document still exists. It runs for every scope —
+// including whole-KB queries, which used to skip the check entirely — and its
+// budget is independent of the display budget: every candidate chunk ID,
+// however many, is verified in one batch.
+func (t *QueryKnowledgeGraphTool) validateRelationEvidence(
+	ctx context.Context, kbID string, graph *types.GraphData, relations []*types.GraphRelation,
+) ([]*types.GraphRelation, error) {
+	nodeChunks := relationNodeChunks(graph)
+	candidates := make(map[string]bool)
+	addAll := func(ids []string) {
+		for _, id := range ids {
+			if id != "" {
+				candidates[id] = true
+			}
+		}
+	}
+	for _, ids := range nodeChunks {
+		addAll(ids)
+	}
+	for _, rel := range relations {
+		addAll(rel.Node1Chunks)
+		addAll(rel.Node2Chunks)
+	}
+	if len(candidates) == 0 {
+		// No chunk backs any endpoint, so no relation can be verified.
+		return nil, nil
+	}
+	ids := make([]string, 0, len(candidates))
+	for id := range candidates {
+		ids = append(ids, id)
+	}
+	chunks, err := t.chunkRepo.ListChunksByIDOnly(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify relation evidence: %w", err)
+	}
+	aliveDocs := make(map[string]string, len(chunks)) // chunk ID → its document
+	knowledgeIDs := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		if c == nil || c.KnowledgeBaseID != kbID || !c.IsEnabled {
+			continue
+		}
+		if _, seen := aliveDocs[c.ID]; !seen {
+			knowledgeIDs = append(knowledgeIDs, c.KnowledgeID)
+		}
+		aliveDocs[c.ID] = c.KnowledgeID
+	}
+	titles, err := t.knowledgeTitles(ctx, knowledgeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify relation evidence: %w", err)
+	}
+	alive := make(map[string]bool, len(aliveDocs))
+	for chunkID, knowledgeID := range aliveDocs {
+		// titles holds only documents that still exist (nil when there is no
+		// way to check); a chunk can outlive its soft-deleted document.
+		if _, exists := titles[knowledgeID]; titles != nil && !exists {
+			continue
+		}
+		alive[chunkID] = true
+	}
+	var verified []*types.GraphRelation
+	for _, rel := range relations {
+		if rel == nil {
+			continue
+		}
+		if endpointEvidenceIntersects(rel.Node1Chunks, nodeChunks[rel.Node1], alive) &&
+			endpointEvidenceIntersects(rel.Node2Chunks, nodeChunks[rel.Node2], alive) {
+			verified = append(verified, rel)
+		}
+	}
+	return verified, nil
 }
 
 func summarizeGraphConfig(config *types.ExtractConfig) graphConfigSummary {

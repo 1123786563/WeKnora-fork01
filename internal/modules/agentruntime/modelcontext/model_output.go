@@ -310,11 +310,16 @@ func matchAddsToContent(match, content string) bool {
 
 // annotateGraphResult adds the graph relations and any per-knowledge-base
 // failures to a graph query's chunk view. Both lived only in Output, which
-// the model never sees once there are chunk rows to render.
+// the model never sees once there are chunk rows to render. The truncation
+// keys (set by the tool only when the relation cap applied) become a marker
+// so the model does not read the capped list as the complete graph.
 func annotateGraphResult(output string, data map[string]interface{}) string {
 	relations := mapsValue(data["relations"])
 	failures := stringSliceValue(data["errors"])
-	if (len(relations) == 0 && len(failures) == 0) || !strings.HasSuffix(output, "</retrieval>") {
+	relationsTotal := intValue(data, "relations_total")
+	relationsOmitted := intValue(data, "relations_omitted")
+	truncated := relationsTotal > 0 && relationsOmitted > 0
+	if (len(relations) == 0 && len(failures) == 0 && !truncated) || !strings.HasSuffix(output, "</retrieval>") {
 		return output
 	}
 	var b strings.Builder
@@ -322,6 +327,10 @@ func annotateGraphResult(output string, data map[string]interface{}) string {
 		fmt.Fprintf(&b, "  <relation source=\"%s\" type=\"%s\" target=\"%s\" />\n",
 			escapeAttr(stringValue(rel, "source")), escapeAttr(stringValue(rel, "type")),
 			escapeAttr(stringValue(rel, "target")))
+	}
+	if truncated {
+		fmt.Fprintf(&b, "  <graph_truncated relations_shown=\"%d\" relations_total=\"%d\" />\n",
+			len(relations), relationsTotal)
 	}
 	for _, failure := range failures {
 		fmt.Fprintf(&b, "  <error>%s</error>\n", escapeText(failure))
