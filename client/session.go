@@ -432,7 +432,10 @@ func (c *Client) ContinueStream(
 
 		// Process lines with event: prefix
 		if strings.HasPrefix(line, "event:") {
-			eventType = line[6:] // Remove "event:" prefix
+			// Remove "event:" prefix and the one optional leading space the
+			// SSE spec allows after the colon (`event: message`), matching
+			// appendSSEDataLine's handling of `data:` lines.
+			eventType = strings.TrimPrefix(line[6:], " ")
 		}
 
 		// Process lines with data: prefix
