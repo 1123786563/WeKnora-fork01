@@ -359,29 +359,50 @@ func TestKnowledgeBaseProfileHandle(t *testing.T) {
 
 func TestParseDocumentSummaryOutput(t *testing.T) {
 	t.Run("structured JSON", func(t *testing.T) {
-		out := parseDocumentSummaryOutput("```json\n" +
-			`{"summary":"Two sentences.","gist":"A gist","topics":["a","b"],` +
-			`"doc_type":"policy","typical_question":"Why?"}` +
-			"\n```")
+		out, err := parseDocumentSummaryOutput("```json\n"+
+			`{"summary":"Two sentences.","gist":"A gist","topics":["a","b"],`+
+			`"doc_type":"policy","typical_question":"Why?"}`+
+			"\n```", true)
+		require.NoError(t, err)
 		assert.Equal(t, "Two sentences.", out.Summary)
 		require.NotNil(t, out.Profile)
 		assert.Equal(t, "A gist", out.Profile.Gist)
 		assert.Equal(t, []string{"a", "b"}, out.Profile.Topics)
 		assert.Equal(t, "policy", out.Profile.DocType)
 	})
-	t.Run("plain text keeps working", func(t *testing.T) {
-		out := parseDocumentSummaryOutput("  This document explains leave policy.  ")
+	t.Run("plain text keeps working for custom templates", func(t *testing.T) {
+		out, err := parseDocumentSummaryOutput("  This document explains leave policy.  ", false)
+		require.NoError(t, err)
 		assert.Equal(t, "This document explains leave policy.", out.Summary)
 		assert.Nil(t, out.Profile)
 	})
+	t.Run("default template rejects plain text", func(t *testing.T) {
+		_, err := parseDocumentSummaryOutput("This document explains\nleave policy.", true)
+		assert.ErrorIs(t, err, errInvalidSummaryOutput)
+	})
+	t.Run("default template rejects a truncated half JSON reply", func(t *testing.T) {
+		_, err := parseDocumentSummaryOutput(`{"summary": "Quarterly sales rose across all regions and the bo`, true)
+		assert.ErrorIs(t, err, errInvalidSummaryOutput)
+	})
+	t.Run("default template rejects JSON without usable text", func(t *testing.T) {
+		_, err := parseDocumentSummaryOutput(`{"topics":["a"],"doc_type":"report"}`, true)
+		assert.ErrorIs(t, err, errInvalidSummaryOutput)
+	})
+	t.Run("custom template keeps the raw content for JSON without text", func(t *testing.T) {
+		out, err := parseDocumentSummaryOutput(`{"topics":["a"]}`, false)
+		require.NoError(t, err)
+		assert.Equal(t, `{"topics":["a"]}`, out.Summary)
+	})
 	t.Run("empty content sentinel", func(t *testing.T) {
-		out := parseDocumentSummaryOutput(`{"summary": "No textual content was extractable from this document.",` +
-			` "gist": "", "topics": [], "doc_type": "", "typical_question": ""}`)
+		out, err := parseDocumentSummaryOutput(`{"summary": "No textual content was extractable from this document.",`+
+			` "gist": "", "topics": [], "doc_type": "", "typical_question": ""}`, true)
+		require.NoError(t, err)
 		assert.Equal(t, "No textual content was extractable from this document.", out.Summary)
 		assert.Nil(t, out.Profile)
 	})
 	t.Run("gist fills a missing summary", func(t *testing.T) {
-		out := parseDocumentSummaryOutput(`{"gist":"Only a gist","topics":["x"]}`)
+		out, err := parseDocumentSummaryOutput(`{"gist":"Only a gist","topics":["x"]}`, true)
+		require.NoError(t, err)
 		assert.Equal(t, "Only a gist", out.Summary)
 		require.NotNil(t, out.Profile)
 	})

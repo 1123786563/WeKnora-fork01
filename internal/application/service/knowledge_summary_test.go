@@ -3,10 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // TestCheckSufficientSummaryContent verifies the gate that prevents getSummary
@@ -109,21 +113,26 @@ func TestCheckSufficientSummaryContent_ThresholdOverride(t *testing.T) {
 
 func TestValidateSummaryOutput(t *testing.T) {
 	tests := []struct {
-		name      string
-		response  *types.ChatResponse
-		want      string
-		wantError bool
+		name     string
+		response *types.ChatResponse
+		want     string
+		wantErr  error
 	}{
-		{name: "nil response rejected", response: nil, wantError: true},
-		{name: "empty response rejected", response: &types.ChatResponse{}, wantError: true},
+		{name: "nil response rejected", response: nil, wantErr: errEmptySummaryOutput},
+		{name: "empty response rejected", response: &types.ChatResponse{}, wantErr: errEmptySummaryOutput},
 		{
-			name:      "whitespace response rejected",
-			response:  &types.ChatResponse{Content: " \n\t "},
-			wantError: true,
+			name:     "whitespace response rejected",
+			response: &types.ChatResponse{Content: " \n\t "},
+			wantErr:  errEmptySummaryOutput,
+		},
+		{
+			name:     "budget-truncated reply rejected despite content",
+			response: &types.ChatResponse{Content: `{"summary": "Half a profile that was cut at the to`, FinishReason: "length"},
+			wantErr:  errSummaryOutputTruncated,
 		},
 		{
 			name:     "valid response is trimmed",
-			response: &types.ChatResponse{Content: "  useful summary \n"},
+			response: &types.ChatResponse{Content: "  useful summary \n", FinishReason: "stop"},
 			want:     "useful summary",
 		},
 	}
@@ -131,9 +140,9 @@ func TestValidateSummaryOutput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := validateSummaryOutput(tt.response)
-			if tt.wantError {
-				if !errors.Is(err, errEmptySummaryOutput) {
-					t.Fatalf("expected errEmptySummaryOutput, got %v", err)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("expected %v, got %v", tt.wantErr, err)
 				}
 				return
 			}
@@ -237,5 +246,242 @@ func TestSummaryRetryStateSupportsLiteExecutorContext(t *testing.T) {
 	}
 	if !isFinalAsynqAttempt(finalCtx) {
 		t.Fatal("attempt 3 of maxRetry 3 should be final")
+	}
+}
+
+// stubSummaryChat stands in for the summary LLM with a canned response.
+type stubSummaryChat struct {
+	response *types.ChatResponse
+}
+
+func (m *stubSummaryChat) Chat(
+	context.Context, []chat.Message, *chat.ChatOptions,
+) (*types.ChatResponse, error) {
+	return m.response, nil
+}
+
+func (m *stubSummaryChat) ChatStream(
+	context.Context, []chat.Message, *chat.ChatOptions,
+) (<-chan types.StreamResponse, error) {
+	return nil, nil
+}
+
+func (m *stubSummaryChat) GetModelName() string { return "stub-summary" }
+func (m *stubSummaryChat) GetModelID() string   { return "stub-summary" }
+
+// defaultSummaryTestConfig mirrors the stock deployment: config.yaml points
+// generate_summary_prompt_id at "default_summary", the default-marked entry
+// of prompt_templates/generate_summary.yaml whose contract is strict JSON.
+func defaultSummaryTestConfig() *config.Config {
+	return &config.Config{
+		Conversation: &config.ConversationConfig{
+			GenerateSummaryPromptID: "default_summary",
+			GenerateSummaryPrompt:   "Return strict JSON only.",
+		},
+		PromptTemplates: &config.PromptTemplatesConfig{
+			GenerateSummary: []config.PromptTemplate{
+				{ID: "default_summary", Name: "Document Profile", Default: true},
+			},
+		},
+	}
+}
+
+func TestSummaryPromptRequiresJSON(t *testing.T) {
+	customCfg := defaultSummaryTestConfig()
+	customCfg.PromptTemplates.GenerateSummary = []config.PromptTemplate{
+		{ID: "default_summary", Default: true},
+		{ID: "my_plain_text_template"},
+	}
+	customCfg.Conversation.GenerateSummaryPromptID = "my_plain_text_template"
+
+	unresolvedCfg := defaultSummaryTestConfig()
+	unresolvedCfg.Conversation.GenerateSummaryPromptID = "deleted_template"
+
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{name: "nil config keeps the plain-text fallback", cfg: nil, want: false},
+		{
+			name: "missing template config keeps the plain-text fallback",
+			cfg:  &config.Config{Conversation: &config.ConversationConfig{}},
+			want: false,
+		},
+		{name: "unresolvable id keeps the plain-text fallback", cfg: unresolvedCfg, want: false},
+		{name: "default-marked template requires JSON", cfg: defaultSummaryTestConfig(), want: true},
+		{name: "custom template keeps the plain-text fallback", cfg: customCfg, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := summaryPromptRequiresJSON(tt.cfg); got != tt.want {
+				t.Fatalf("summaryPromptRequiresJSON() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetSummaryDefaultTemplateContract(t *testing.T) {
+	chunks := []*types.Chunk{{
+		ID: "c-1", ChunkIndex: 0,
+		Content: "This document covers the quarterly sales report and its main conclusions for the board.",
+	}}
+	plainTextReply := "The report covers\nquarterly sales results for the board."
+
+	t.Run("bare plain text is rejected under the default template", func(t *testing.T) {
+		svc := &knowledgeService{config: defaultSummaryTestConfig(), chunkRepo: summaryImageInfoChunkRepo{}}
+		_, err := svc.getSummary(context.Background(), &stubSummaryChat{
+			response: &types.ChatResponse{Content: plainTextReply, FinishReason: "stop"},
+		}, &types.Knowledge{ID: "k-1"}, chunks)
+		if !errors.Is(err, errInvalidSummaryOutput) {
+			t.Fatalf("expected errInvalidSummaryOutput, got %v", err)
+		}
+	})
+
+	t.Run("MaxTokens-truncated half JSON is rejected", func(t *testing.T) {
+		svc := &knowledgeService{config: defaultSummaryTestConfig(), chunkRepo: summaryImageInfoChunkRepo{}}
+		_, err := svc.getSummary(context.Background(), &stubSummaryChat{
+			response: &types.ChatResponse{
+				Content:      `{"summary": "Quarterly sales rose across all regions and the board appro`,
+				FinishReason: "stop",
+			},
+		}, &types.Knowledge{ID: "k-1"}, chunks)
+		if !errors.Is(err, errInvalidSummaryOutput) {
+			t.Fatalf("expected errInvalidSummaryOutput, got %v", err)
+		}
+	})
+
+	t.Run("budget-truncated reply is rejected before parsing", func(t *testing.T) {
+		svc := &knowledgeService{config: defaultSummaryTestConfig(), chunkRepo: summaryImageInfoChunkRepo{}}
+		_, err := svc.getSummary(context.Background(), &stubSummaryChat{
+			response: &types.ChatResponse{
+				Content:      `{"summary": "Looks complete but the tail never arrived"`,
+				FinishReason: "length",
+			},
+		}, &types.Knowledge{ID: "k-1"}, chunks)
+		if !errors.Is(err, errSummaryOutputTruncated) {
+			t.Fatalf("expected errSummaryOutputTruncated, got %v", err)
+		}
+	})
+
+	t.Run("custom template keeps the plain-text fallback", func(t *testing.T) {
+		customCfg := defaultSummaryTestConfig()
+		customCfg.PromptTemplates.GenerateSummary = []config.PromptTemplate{
+			{ID: "default_summary", Default: true},
+			{ID: "my_plain_text_template"},
+		}
+		customCfg.Conversation.GenerateSummaryPromptID = "my_plain_text_template"
+
+		svc := &knowledgeService{config: customCfg, chunkRepo: summaryImageInfoChunkRepo{}}
+		result, err := svc.getSummary(context.Background(), &stubSummaryChat{
+			response: &types.ChatResponse{Content: plainTextReply, FinishReason: "stop"},
+		}, &types.Knowledge{ID: "k-1"}, chunks)
+		if err != nil {
+			t.Fatalf("custom template must keep the plain-text fallback, got %v", err)
+		}
+		if result.Summary != "The report covers\nquarterly sales results for the board." {
+			t.Fatalf("summary = %q, want the trimmed plain-text reply", result.Summary)
+		}
+		if result.Profile != nil {
+			t.Fatalf("plain-text fallback must not produce a profile, got %+v", result.Profile)
+		}
+	})
+
+	t.Run("valid JSON keeps its behavior under the default template", func(t *testing.T) {
+		svc := &knowledgeService{config: defaultSummaryTestConfig(), chunkRepo: summaryImageInfoChunkRepo{}}
+		result, err := svc.getSummary(context.Background(), &stubSummaryChat{
+			response: &types.ChatResponse{
+				Content: `{"summary":"Two sentences.","gist":"A gist","topics":["a"],` +
+					`"doc_type":"report","typical_question":"Why?"}`,
+				FinishReason: "stop",
+			},
+		}, &types.Knowledge{ID: "k-1"}, chunks)
+		if err != nil {
+			t.Fatalf("valid JSON must keep working, got %v", err)
+		}
+		if result.Summary != "Two sentences." {
+			t.Fatalf("summary = %q, want %q", result.Summary, "Two sentences.")
+		}
+		if result.Profile == nil || result.Profile.Gist != "A gist" {
+			t.Fatalf("profile = %+v, want gist %q", result.Profile, "A gist")
+		}
+	})
+}
+
+// summaryTestChunkRepo serves the chunk reads both the summary call (image
+// info lookup) and the post-failure freshness check (GetChunkByID) perform.
+type summaryTestChunkRepo struct {
+	interfaces.ChunkRepository
+	chunks []*types.Chunk
+}
+
+func (r *summaryTestChunkRepo) ListChunksByParentIDs(
+	context.Context, uint64, []string,
+) ([]*types.Chunk, error) {
+	return nil, nil
+}
+
+func (r *summaryTestChunkRepo) GetChunkByID(_ context.Context, _ uint64, id string) (*types.Chunk, error) {
+	for _, chunk := range r.chunks {
+		if chunk.ID == id {
+			return chunk, nil
+		}
+	}
+	return nil, fmt.Errorf("chunk %s not found", id)
+}
+
+type summaryTextChunkService struct {
+	interfaces.ChunkService
+	chunks []*types.Chunk
+}
+
+func (s *summaryTextChunkService) ListChunksByKnowledgeID(
+	context.Context, string,
+) ([]*types.Chunk, error) {
+	return s.chunks, nil
+}
+
+// TestProcessSummaryGenerationBadJSONRetriesWithoutPersistingRawReply pins
+// the issue #3776 flow end to end: under the default template a truncated
+// JSON reply must surface as a retryable error — the raw reply must never be
+// persisted as the description, and the summary must never be Completed.
+func TestProcessSummaryGenerationBadJSONRetriesWithoutPersistingRawReply(t *testing.T) {
+	badReply := `{"summary": "Quarterly sales rose across all regions and the board appro`
+	textChunks := []*types.Chunk{{
+		ID: "c-1", ChunkType: types.ChunkTypeText, ChunkIndex: 0,
+		Content: "This document covers the quarterly sales report and its main conclusions for the board.",
+	}}
+	repo := &summaryColumnsRepo{t: t, knowledge: summaryKnowledge()}
+	svc := &knowledgeService{
+		config:       defaultSummaryTestConfig(),
+		repo:         repo,
+		kbService:    &reparseFailureKBService{kb: summaryKB()},
+		chunkService: &summaryTextChunkService{chunks: textChunks},
+		chunkRepo:    &summaryTestChunkRepo{chunks: textChunks},
+		modelService: &stubModelService{chatModel: &stubSummaryChat{
+			response: &types.ChatResponse{Content: badReply, FinishReason: "stop"},
+		}},
+	}
+	// Retry metadata makes summaryTaskWillRetry true, so the failure must be
+	// recorded as pending for the next Asynq attempt instead of terminal.
+	ctx := types.WithTaskRetryMetadata(context.Background(), 0, 3)
+
+	err := svc.ProcessSummaryGeneration(ctx, summaryGenerationTask(t))
+
+	if !errors.Is(err, errInvalidSummaryOutput) {
+		t.Fatalf("expected errInvalidSummaryOutput, got %v", err)
+	}
+	for _, write := range repo.writes {
+		if write["description"] == badReply {
+			t.Fatal("the raw truncated JSON reply must not be persisted as the description")
+		}
+		if write["summary_status"] == types.SummaryStatusCompleted {
+			t.Fatal("an invalid summary reply must never mark the summary Completed")
+		}
+	}
+	last := repo.writes[len(repo.writes)-1]
+	if last["summary_status"] != types.SummaryStatusPending {
+		t.Fatalf("retryable failure status = %v, want %q",
+			last["summary_status"], types.SummaryStatusPending)
 	}
 }
