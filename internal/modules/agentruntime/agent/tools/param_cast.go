@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -9,6 +11,11 @@ import (
 // CastParams performs schema-driven type casting on tool arguments.
 // LLMs sometimes return incorrect types (e.g., "true" instead of true, "123" instead of 123).
 // This function attempts safe conversions based on the JSON Schema definition of the tool's parameters.
+//
+// Only parameters that actually undergo a conversion are rewritten; every other
+// parameter keeps its original JSON bytes, so untouched numbers (large integer
+// IDs, high-precision decimals, values nested in arrays/objects) are never
+// rounded as a side effect. When nothing is cast the input is returned as-is.
 //
 // If the schema is nil or cannot be parsed, the original args are returned unchanged.
 func CastParams(args json.RawMessage, schema json.RawMessage) json.RawMessage {
@@ -26,14 +33,14 @@ func CastParams(args json.RawMessage, schema json.RawMessage) json.RawMessage {
 		return args
 	}
 
-	var argsMap map[string]interface{}
-	if err := json.Unmarshal(args, &argsMap); err != nil {
+	entries, ok := splitObjectEntries(args)
+	if !ok {
 		return args
 	}
 
 	changed := false
-	for key, val := range argsMap {
-		propDef, exists := properties[key]
+	for i, entry := range entries {
+		propDef, exists := properties[entry.key]
 		if !exists {
 			continue
 		}
@@ -46,22 +53,102 @@ func CastParams(args json.RawMessage, schema json.RawMessage) json.RawMessage {
 			continue
 		}
 
-		newVal, didCast := castValue(val, targetType)
-		if didCast {
-			argsMap[key] = newVal
-			changed = true
+		// Decode only the parameter under consideration so every other
+		// parameter keeps its original bytes.
+		var val interface{}
+		if err := json.Unmarshal(entry.raw, &val); err != nil {
+			continue
 		}
+
+		newVal, didCast := castValue(val, targetType)
+		if !didCast {
+			continue
+		}
+		encoded, err := json.Marshal(newVal)
+		if err != nil {
+			return args
+		}
+		entries[i].raw = encoded
+		changed = true
 	}
 
 	if !changed {
 		return args
 	}
 
-	result, err := json.Marshal(argsMap)
-	if err != nil {
-		return args
+	// Reassemble in the original key order to avoid spurious diffs.
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, entry := range entries {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		keyJSON, err := json.Marshal(entry.key)
+		if err != nil {
+			return args
+		}
+		buf.Write(keyJSON)
+		buf.WriteByte(':')
+		buf.Write(entry.raw)
 	}
-	return result
+	buf.WriteByte('}')
+	return buf.Bytes()
+}
+
+// objectEntry is a single top-level key/value pair of the args object,
+// retaining the value's original JSON bytes.
+type objectEntry struct {
+	key string
+	raw json.RawMessage
+}
+
+// splitObjectEntries decodes the top-level object of args while preserving the
+// original key order and the untouched JSON bytes of each value. Duplicate keys
+// keep the last value (matching map unmarshal semantics) at the first
+// occurrence's position. It reports false when args is not a single valid JSON
+// object, in which case callers return the input unchanged.
+func splitObjectEntries(args json.RawMessage) ([]objectEntry, bool) {
+	dec := json.NewDecoder(bytes.NewReader(args))
+
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, false
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, false
+	}
+
+	entries := make([]objectEntry, 0, 8)
+	index := make(map[string]int, 8)
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, false
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return nil, false
+		}
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, false
+		}
+		if i, dup := index[key]; dup {
+			entries[i].raw = raw
+			continue
+		}
+		index[key] = len(entries)
+		entries = append(entries, objectEntry{key: key, raw: raw})
+	}
+
+	// Consume the closing '}' and require that no trailing content follows.
+	if _, err := dec.Token(); err != nil {
+		return nil, false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, false
+	}
+	return entries, true
 }
 
 // castValue attempts to convert val to the expected targetType.
