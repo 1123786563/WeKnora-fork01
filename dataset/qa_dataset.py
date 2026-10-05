@@ -145,7 +145,7 @@ class QAAnsweringSystem:
 
         return "\n\n".join(context_parts)
 
-    def answer_question(self, qid: str, model: str = "gpt-4o-2024-05-13") -> str:
+    def answer_question(self, qid: str, model: str = "gpt-4o") -> str:
         """
         Use OpenAI API to answer question based on qid context
 
