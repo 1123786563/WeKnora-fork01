@@ -21,12 +21,18 @@ import (
 
 const (
 	weKnoraCloudReaderBaseURL = "https://weknora.weixin.qq.com/api/v1/doc"
+	// weKnoraCloudDefaultPollTimeout bounds how long the task is polled;
+	// WEKNORA_WEKNORACLOUD_TIMEOUT overrides it. Keep it below
+	// WEKNORA_DOCREADER_CALL_TIMEOUT (default 30m) or the caller kills the
+	// request before this timeout can fire.
+	weKnoraCloudDefaultPollTimeout = 20 * time.Minute
 )
 
 // WeKnoraCloudSignedDocumentReader implements the docreader HTTP protocol with WeKnoraCloud signing.
 type WeKnoraCloudSignedDocumentReader struct {
 	appID               string
 	apiKey              string
+	baseURL             string
 	client              *http.Client
 	initialPollInterval time.Duration
 	maxPollInterval     time.Duration
@@ -45,9 +51,10 @@ func NewWeKnoraCloudSignedDocumentReader(appID, apiKey string) (*WeKnoraCloudSig
 	return &WeKnoraCloudSignedDocumentReader{
 		appID:               appID,
 		apiKey:              apiKey,
+		baseURL:             weKnoraCloudReaderBaseURL,
 		initialPollInterval: 500 * time.Millisecond,
 		maxPollInterval:     10 * time.Second,
-		pollTimeout:         20 * time.Minute,
+		pollTimeout:         requestTimeoutFromEnv("WEKNORA_WEKNORACLOUD_TIMEOUT", weKnoraCloudDefaultPollTimeout),
 		client:              secutils.NewSSRFSafeHTTPClient(clientCfg),
 	}, nil
 }
@@ -89,7 +96,7 @@ func (p *WeKnoraCloudSignedDocumentReader) Read(ctx context.Context, req *types.
 		logger.Errorf(context.Background(), "[WeKnoraCloud] marshal read request: %v", err)
 		return nil, fmt.Errorf("http marshal read request: %w", err)
 	}
-	httpReq, err := p.newSignedRequest(ctx, http.MethodPost, weKnoraCloudReaderBaseURL+"/reader", jsonBody)
+	httpReq, err := p.newSignedRequest(ctx, http.MethodPost, p.baseURL+"/reader", jsonBody)
 	if err != nil {
 		logger.Errorf(context.Background(), "[WeKnoraCloud] signed read request: %v", err)
 		return nil, err
@@ -143,7 +150,7 @@ func (p *WeKnoraCloudSignedDocumentReader) pollTaskResult(ctx context.Context, t
 		pollCtx, cancel = context.WithTimeout(ctx, p.pollTimeout)
 		defer cancel()
 	}
-	statusURL := weKnoraCloudReaderBaseURL + "/" + taskID
+	statusURL := p.baseURL + "/" + taskID
 	currentInterval := p.initialPollInterval
 	for {
 		httpReq, err := p.newSignedRequest(pollCtx, http.MethodGet, statusURL, nil)
