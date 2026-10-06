@@ -290,14 +290,32 @@ func formatToolGuidanceForMode(names []string, skillInstallMode bool, layout san
 			"In older instructions, translate read_skill(skill_name, file_path) to " +
 			"read_file(path=skill://<name>/<file_path or SKILL.md>) and read_sandbox_file to read_file.\n")
 	}
-	if has("shell_exec") || has("write_sandbox_file") {
-		b.WriteString("Session workspace: /workspace. Preserve uploaded originals in /workspace/input. " +
-			skills.ArtifactOutputDir() + " is the only directory collected for download, " +
-			"so it takes finished deliverables only; " +
-			"keep drafts and intermediate files in another directory under /workspace. " +
-			"Commands start from their specified working directory on every call. " +
-			"Files and installed packages persist within the session.\n")
-		b.WriteString(sandboxArtifactReferenceGuidance())
+	if !skillInstallMode && (has("shell_exec") || has("write_sandbox_file")) {
+		if layout.IsHost() {
+			// A host root is a directory the user picked. PromptSafePath
+			// refuses names carrying newlines or markup rather than
+			// sanitizing them, so a forged instruction cannot reach the
+			// model and a real path is never shown altered. Without a
+			// usable root the workspace line is omitted entirely, which is
+			// the same fail-closed shape as a failed layout lookup.
+			if root := sandbox.PromptSafePath(layout.Root); root != "" {
+				b.WriteString("Session workspace: ")
+				b.WriteString(root)
+				b.WriteString(". Edit files in place under that folder. Commands start from ")
+				b.WriteString(root)
+				b.WriteString(" on every call unless work_dir names a subdirectory. " +
+					"Files persist on the user's machine.\n")
+			}
+		} else {
+			b.WriteString("Session workspace: /workspace. Preserve uploaded originals in /workspace/input. ")
+			b.WriteString(skills.ArtifactOutputDir())
+			b.WriteString(" is the only directory collected for download, " +
+				"so it takes finished deliverables only; " +
+				"keep drafts and intermediate files in another directory under /workspace. " +
+				"Commands start from their specified working directory on every call. " +
+				"Files and installed packages persist within the session.\n")
+			b.WriteString(sandboxArtifactReferenceGuidance())
+		}
 	}
 	if !skillInstallMode && has("shell_exec") && has("read_file") {
 		b.WriteString("For listed skills, run bundled scripts and your own scripts with " +
@@ -390,7 +408,7 @@ type BuildSystemPromptOptions struct {
 	ShellExecEnabled bool
 	SkillInstallMode bool
 	Language         string         // User language name for {{language}} placeholder (e.g. "Chinese (Simplified)")
-	Config           *config.Config // Config for reading prompt templates; nil falls back to hardcoded defaults
+	Config           *config.Config // Config for reading prompt templates; nil leaves the default base empty
 	// PersonaSegment is a fully rendered persona block (e.g. the MBTI persona)
 	// prepended verbatim in front of the resolved template output — default
 	// scaffolding OR a custom template — so persona changes tone without ever
@@ -515,6 +533,34 @@ func BuildSystemPromptSections(
 	if language != "" {
 		sections[2].Content += "\nUse " + language +
 			" by default; follow the user's explicit language and output-format requests."
+	}
+	var names []string
+	if options != nil {
+		names = options.SelectedTools
+	}
+	skillInstallMode := options != nil && options.SkillInstallMode
+	var layout sandbox.WorkspaceLayout
+	if options != nil {
+		layout = options.WorkspaceLayout
+	}
+	sources := formatGroundingGuidance(names)
+	if skillInstallMode {
+		sources = "Installation verification: inspect the supplied skill and dependency " +
+			"declarations, then verify the installed runtime with focused checks. Install the " +
+			"requested skill; do not execute its end-user workflow or research an unrelated subject " +
+			"as part of installation."
+	}
+	sections = append(sections, SystemPromptSection{"sources", sources},
+		SystemPromptSection{"tools", formatToolGuidanceForMode(names, skillInstallMode, layout)},
+		SystemPromptSection{"output", types.SourcedAnswerOutputPrompt})
+	if options != nil {
+		if !skillInstallMode && slices.Contains(names, "read_file") && len(options.SkillsMetadata) > 0 {
+			sections = append(sections, SystemPromptSection{
+				"skills", formatSkillsMetadata(options.SkillsMetadata, options.ShellExecEnabled),
+			})
+		}
+		sections = append(sections, SystemPromptSection{"memory", options.MemoryPrompt},
+			SystemPromptSection{"protocol", options.ProtocolPrompt})
 	}
 	return sections
 }

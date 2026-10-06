@@ -30,14 +30,15 @@ func personaPromptTestConfig(t *testing.T) *config.Config {
 
 const (
 	// personaPureMarker opens the default pure template.
-	personaPureMarker = "Complete the user's request using the capabilities available in this turn"
+	personaPureMarker = "Help the user understand information and complete requested work using the capabilities available in this turn"
 	// personaRAGMarker opens the default RAG template.
-	personaRAGMarker = "Answer questions about the user's knowledge bases using verified evidence"
-	// personaCitationMarker pins the citation-ID rules only the default RAG
-	// scaffolding carries.
-	personaCitationMarker = "FAQ references use their cN chunk ID with faq_id/faq_ids"
-	// personaLanguageMarker pins the response-language instruction.
-	personaLanguageMarker = "User Language:"
+	personaRAGMarker = "specializing in questions and work involving the user's knowledge bases"
+	// personaCitationMarker pins the evidence-verification rules only the
+	// default RAG scaffolding carries.
+	personaCitationMarker = "verify the underlying source passage rather than relying on document metadata"
+	// personaLanguageMarker pins the response-language directive appended
+	// after the runtime contract.
+	personaLanguageMarker = "by default; follow the user's explicit language"
 )
 
 func testPersonaSegment() string {
@@ -168,7 +169,7 @@ func TestPersonaSegmentPrependsToResolvedTemplate(t *testing.T) {
 			"",
 		)
 		require.Contains(t, prompt, "Tone marker {{language}} {{knowledge_bases}}")
-		require.Contains(t, prompt, "User Language: English")
+		require.Contains(t, prompt, "Use English by default")
 	})
 }
 

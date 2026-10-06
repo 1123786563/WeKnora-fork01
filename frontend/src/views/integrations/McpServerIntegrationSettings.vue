@@ -262,6 +262,7 @@ import { useApiBaseUrlDisplay } from '@/composables/useApiBaseUrlDisplay'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
 import type { CustomAgent } from '@/api/agent'
 import { useChatResourcesStore } from '@/stores/chatResources'
+import { useOrganizationStore } from '@/stores/organization'
 import {
   createMcpEndpoint,
   deleteMcpEndpoint,
@@ -279,11 +280,15 @@ import {
   buildMcpEndpointUrl,
   buildStdioBridgeSnippet,
   groupTools,
+  isSharedKbEditable,
+  mergeKnowledgeBaseOptions,
+  type MergedKbOption,
 } from './mcpServerIntegration'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
 const chatResources = useChatResourcesStore()
+const orgStore = useOrganizationStore()
 const { apiBaseUrlDisplay } = useApiBaseUrlDisplay()
 
 const isAdmin = computed(() => authStore.hasRole('admin'))
@@ -293,8 +298,27 @@ const endpoints = ref<McpEndpoint[]>([])
 const catalog = ref<McpEndpointToolCatalog>({ groups: [], tools: [], default_tools: [] })
 
 const kbLoading = ref(false)
-const knowledgeBases = ref<{ id: string; name: string }[]>([])
-const kbOptions = computed(() => knowledgeBases.value.map((kb) => ({ label: kb.name || kb.id, value: kb.id })))
+const knowledgeBases = ref<MergedKbOption[]>([])
+type KbSelectOption = { label: string; value: string }
+type KbSelectOptionGroup = { group: string; children: KbSelectOption[] }
+// Own-space KBs stay flat exactly as before; shared KBs are appended as
+// t-select option groups reusing the KB list page's section labels
+// (「共享给我 · 可编辑 / 仅查看」) so the source and grant stay visible.
+const kbOptions = computed<(KbSelectOption | KbSelectOptionGroup)[]>(() => {
+  const options: (KbSelectOption | KbSelectOptionGroup)[] = knowledgeBases.value
+    .filter((kb) => !kb.shared)
+    .map((kb) => ({ label: kb.name || kb.id, value: kb.id }))
+  const shared = knowledgeBases.value.filter((kb) => kb.shared)
+  const editable = shared.filter((kb) => isSharedKbEditable(kb.permission))
+  const readonly = shared.filter((kb) => !isSharedKbEditable(kb.permission))
+  if (editable.length > 0) {
+    options.push({ group: t('knowledgeList.sections.sharedEditable'), children: editable.map(toKbOption) })
+  }
+  if (readonly.length > 0) {
+    options.push({ group: t('knowledgeList.sections.sharedReadonly'), children: readonly.map(toKbOption) })
+  }
+  return options
+})
 const kbNameById = computed(() => Object.fromEntries(knowledgeBases.value.map((kb) => [kb.id, kb.name || kb.id])))
 
 const agentsLoading = ref(false)
@@ -395,19 +419,27 @@ async function load() {
   }
 }
 
+function toKbOption(kb: MergedKbOption): KbSelectOption {
+  return { label: kb.name || kb.id, value: kb.id }
+}
+
 async function loadOptions() {
   kbLoading.value = true
   agentsLoading.value = true
   try {
-    // 刷新失败时给空列表，而不是把上一次的共享快照当成本次结果展示。
-    const [kbResult, agentResult] = await Promise.allSettled([
+    // 刷新失败时给空列表，而不是把上一次的快照当成本次结果展示。
+    // GET /knowledge-bases 只返回本空间库，共享库来自 /shared-knowledge-bases；
+    // 两路并行取后合并去重（本空间库优先），与知识库列表页的来源一致（#3828）。
+    const [kbResult, sharedResult, agentResult] = await Promise.allSettled([
       chatResources.ensureKnowledgeBases(),
+      orgStore.fetchSharedKnowledgeBases(),
       chatResources.ensureAgents(),
     ])
     const kbRows = kbResult.status === 'fulfilled'
       ? (chatResources.rawKnowledgeBases as Array<{ id: string | number; name?: string }>)
       : []
-    knowledgeBases.value = kbRows.map((kb) => ({ id: String(kb.id), name: kb.name || String(kb.id) }))
+    const sharedRows = sharedResult.status === 'fulfilled' ? orgStore.sharedKnowledgeBases : []
+    knowledgeBases.value = mergeKnowledgeBaseOptions(kbRows, sharedRows)
     agents.value = agentResult.status === 'fulfilled' ? (chatResources.agents as CustomAgent[]) : []
   } finally {
     kbLoading.value = false
