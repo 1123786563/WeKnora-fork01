@@ -104,11 +104,14 @@ const (
 
 // NeedsKBRetrieval returns true when the intent requires knowledge base search.
 // The zero value (empty string) is treated as needing retrieval for safety.
+// IntentSummarize is excluded: it summarizes the conversation itself, so
+// retrieval would leak unrelated chunks into the summary and waste
+// embedding/retrieve/rerank calls; KB-grounded requests classify as kb_search.
 // Note: IntentWebSearch is NOT included — use ChatManage.NeedsRetrieval()
 // which also considers the WebSearchEnabled flag.
 func (i QueryIntent) NeedsKBRetrieval() bool {
 	switch i {
-	case IntentKBSearch, IntentClarification, IntentSummarize, "":
+	case IntentKBSearch, IntentClarification, "":
 		return true
 	default:
 		return false

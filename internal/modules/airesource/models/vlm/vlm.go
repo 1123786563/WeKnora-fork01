@@ -88,6 +88,10 @@ func NewVLM(config *Config, ollamaService *ollama.OllamaService) (VLM, error) {
 	if err != nil {
 		return v, err
 	}
+	// Innermost: bake EXIF orientation into the pixels so every backend sees
+	// upright images (issue #3911); covers all callers from the single
+	// assembly point.
+	v = wrapVLMOrientation(v)
 	if logger.LLMDebugEnabled() {
 		v = &debugVLM{inner: v}
 	}
