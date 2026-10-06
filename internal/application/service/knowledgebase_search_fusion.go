@@ -92,6 +92,11 @@ func sortByScoreDesc(a, b *types.IndexWithScore) int {
 // deduplicateByScore deduplicates retrieval results by chunk ID, keeping the highest score
 // for each chunk. Returns the results sorted by score descending.
 // Used when only a single retriever (e.g. vector-only for FAQ) is active.
+//
+// The output is assembled in input order and sorted with a stable sort:
+// Go randomizes map iteration, so emitting straight from the chunk map made
+// equal-score chunks trade places between calls and left the downstream
+// MatchCount cut free to drop a different tied chunk each time.
 func deduplicateByScore(results []*types.IndexWithScore) []*types.IndexWithScore {
 	chunkInfoMap := make(map[string]*types.IndexWithScore, len(results))
 	for _, r := range results {
@@ -100,10 +105,20 @@ func deduplicateByScore(results []*types.IndexWithScore) []*types.IndexWithScore
 		}
 	}
 	deduped := make([]*types.IndexWithScore, 0, len(chunkInfoMap))
-	for _, info := range chunkInfoMap {
-		deduped = append(deduped, info)
+	emitted := make(map[string]struct{}, len(chunkInfoMap))
+	for _, r := range results {
+		if _, done := emitted[r.ChunkID]; done {
+			continue
+		}
+		// Emit each chunk at the position of the entry that survived the
+		// dedup map (its best-scoring occurrence). Pointer identity tells
+		// the winning row from ties that lost to an earlier equal score.
+		if chunkInfoMap[r.ChunkID] == r {
+			emitted[r.ChunkID] = struct{}{}
+			deduped = append(deduped, r)
+		}
 	}
-	slices.SortFunc(deduped, sortByScoreDesc)
+	slices.SortStableFunc(deduped, sortByScoreDesc)
 	return deduped
 }
 
@@ -158,11 +173,12 @@ func rescaleUnboundedScores(results []*types.IndexWithScore) {
 // with nothing to work with.
 //
 // A chunk's rank for a retriever is its best position in any one list of
-// that retriever, each list ordered by its own score. Positions in the
-// concatenation of several lists are arbitrary: the second list's best hit
-// would otherwise rank behind every hit of the first.
+// that retriever, each list ordered by its own score (see bestRanks).
+// Positions in the concatenation of several lists are arbitrary: the second
+// list's best hit would otherwise rank behind every hit of the first.
 // k, vectorWeight and keywordWeight are sourced from retrievalCfg (with defaults).
-// The merged results are sorted by RRF score descending.
+// The merged results are sorted by RRF score descending; equal RRF scores keep
+// the deterministic first-seen assembly order below.
 func fuseWithRRF(
 	ctx context.Context, vectorLists, keywordLists [][]*types.IndexWithScore, retrievalCfg *types.RetrievalConfig,
 ) []*types.IndexWithScore {
@@ -173,22 +189,33 @@ func fuseWithRRF(
 	vectorRanks := bestRanks(vectorLists)
 	keywordRanks := bestRanks(keywordLists)
 
-	// Collect all unique chunks — prefer vector result's metadata for each chunk
+	// Collect all unique chunks — prefer vector result's metadata for each
+	// chunk — assembling them in first-seen order over the flattened lists.
+	// The final sort below only orders by RRF score, so equal scores would
+	// otherwise fall back to Go's randomized map iteration order and the
+	// downstream MatchCount cut could drop a different tied chunk per call.
 	chunkInfoMap := make(map[string]*types.IndexWithScore)
+	firstSeen := make([]*types.IndexWithScore, 0, len(flattenLists(vectorLists)))
 	for _, r := range flattenLists(vectorLists) {
-		if existing, exists := chunkInfoMap[r.ChunkID]; !exists || r.Score > existing.Score {
+		if existing, exists := chunkInfoMap[r.ChunkID]; !exists {
+			chunkInfoMap[r.ChunkID] = r
+			firstSeen = append(firstSeen, r)
+		} else if r.Score > existing.Score {
 			chunkInfoMap[r.ChunkID] = r
 		}
 	}
 	for _, r := range flattenLists(keywordLists) {
 		if _, exists := chunkInfoMap[r.ChunkID]; !exists {
 			chunkInfoMap[r.ChunkID] = r
+			firstSeen = append(firstSeen, r)
 		}
 	}
 
 	// Compute weighted RRF scores and assign to each chunk
-	result := make([]*types.IndexWithScore, 0, len(chunkInfoMap))
-	for chunkID, info := range chunkInfoMap {
+	result := make([]*types.IndexWithScore, 0, len(firstSeen))
+	for _, first := range firstSeen {
+		info := chunkInfoMap[first.ChunkID]
+		chunkID := info.ChunkID
 		rrfScore := 0.0
 		if rank, ok := vectorRanks[chunkID]; ok {
 			rrfScore += vectorWeight / float64(rrfK+rank)
@@ -199,7 +226,7 @@ func fuseWithRRF(
 		info.Score = rrfScore / maxRRF
 		result = append(result, info)
 	}
-	slices.SortFunc(result, sortByScoreDesc)
+	slices.SortStableFunc(result, sortByScoreDesc)
 
 	// Log top results for debugging
 	for i, chunk := range result {
@@ -217,12 +244,28 @@ func fuseWithRRF(
 
 // bestRanks returns each chunk's best 1-based rank across lists, ranking every
 // list on its own by score (a chunk repeated in a list keeps its best score).
+//
+// Each list is stably sorted by its own retriever's score (cosine for vector
+// lists, BM25 for keyword lists) before ranks are read off, so a chunk's rank
+// is its score position — never its position in the slice, whose order comes
+// from goroutine completion in the fan-out. The stable sort keeps equal-score
+// chunks in their supplied order, so the same input always yields the same
+// ranks for ties as well.
 func bestRanks(lists [][]*types.IndexWithScore) map[string]int {
 	ranks := make(map[string]int)
 	for _, list := range lists {
-		for i, r := range deduplicateByScore(list) {
-			if current, ok := ranks[r.ChunkID]; !ok || i+1 < current {
-				ranks[r.ChunkID] = i + 1
+		sorted := slices.Clone(list)
+		slices.SortStableFunc(sorted, sortByScoreDesc)
+		seen := make(map[string]struct{}, len(sorted))
+		rank := 0
+		for _, r := range sorted {
+			if _, dup := seen[r.ChunkID]; dup {
+				continue
+			}
+			seen[r.ChunkID] = struct{}{}
+			rank++
+			if current, ok := ranks[r.ChunkID]; !ok || rank < current {
+				ranks[r.ChunkID] = rank
 			}
 		}
 	}
