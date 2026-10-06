@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+	"github.com/Tencent/WeKnora/internal/ipclass"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
