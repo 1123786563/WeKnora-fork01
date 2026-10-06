@@ -98,3 +98,69 @@ func TestCastParams_StringToStringArray(t *testing.T) {
 		t.Fatalf("expected [OpenClaw], got %v", patterns)
 	}
 }
+
+func TestCastParams_UntouchedSiblingNumberExact(t *testing.T) {
+	// Issue #3934: casting "enabled" must not round the undeclared 64-bit id.
+	schema := json.RawMessage(`{"type":"object","properties":{"enabled":{"type":"boolean"}}}`)
+	args := json.RawMessage(`{"enabled":"true","id":9007199254740993}`)
+	result := CastParams(args, schema)
+
+	if got, want := string(result), `{"enabled":true,"id":9007199254740993}`; got != want {
+		t.Errorf("expected %s, got %s", want, got)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed["enabled"] != true {
+		t.Errorf("expected enabled=true, got %v (%T)", parsed["enabled"], parsed["enabled"])
+	}
+}
+
+func TestCastParams_NestedHighPrecisionValuesPreserved(t *testing.T) {
+	// Numbers nested next to a cast target (arrays, objects, undeclared
+	// params) must keep their original bytes.
+	schema := json.RawMessage(`{"type":"object","properties":{"score":{"type":"number"},"items":{"type":"array"}}}`)
+	args := json.RawMessage(`{"score":"3.14","items":[{"id":9223372036854775807}],"precise":0.1234567890123456789012345}`)
+	result := CastParams(args, schema)
+
+	if got, want := string(result),
+		`{"score":3.14,"items":[{"id":9223372036854775807}],"precise":0.1234567890123456789012345}`; got != want {
+		t.Errorf("expected %s, got %s", want, got)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed["score"] != 3.14 {
+		t.Errorf("expected score=3.14, got %v", parsed["score"])
+	}
+}
+
+func TestCastParams_NoOpReturnsIdenticalBytes(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`)
+	// Whitespace and extra undeclared params must survive byte-for-byte.
+	args := json.RawMessage(`{ "name" : "hello" , "extra" : 9007199254740993 , "nested" : {"a":[1,2,3]} }`)
+	result := CastParams(args, schema)
+
+	if string(result) != string(args) {
+		t.Errorf("expected identical bytes, got %s", result)
+	}
+}
+
+func TestCastParams_InvalidArgsUnchanged(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object","properties":{"enabled":{"type":"boolean"}}}`)
+	for name, args := range map[string]string{
+		"truncated":      `{"enabled":`,
+		"trailing value": `{"enabled":true} {"other":1}`,
+		"not an object":  `[1,2,3]`,
+		"null args":      `null`,
+	} {
+		result := CastParams(json.RawMessage(args), schema)
+		if string(result) != args {
+			t.Errorf("%s: expected unchanged %s, got %s", name, args, result)
+		}
+	}
+}
