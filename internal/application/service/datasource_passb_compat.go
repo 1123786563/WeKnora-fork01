@@ -9,7 +9,7 @@ package service
 // 删除点：ib2（含 K4 补迁窗导出后的直连改写，见 Brief (b)）。
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/modules/datasource/service"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

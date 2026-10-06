@@ -11,8 +11,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/Tencent/WeKnora/internal/datasource"
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/moauth"
 	apprepo "github.com/Tencent/WeKnora/internal/modules/datasource/repository"
 	"github.com/Tencent/WeKnora/internal/types"
