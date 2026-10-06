@@ -11,11 +11,11 @@ import (
 	appconfig "github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -84,8 +84,8 @@ type AgentEngine struct {
 	// calls through the commercial ExecutionGate (Begin before dispatch,
 	// Finish after trusted usage). nil keeps existing non-commercial
 	// behavior exactly; see commercial_adapter.go.
-	commercialGate *CommercialGateBinding
-	workspaceLayout   sandbox.WorkspaceLayout
+	commercialGate  *CommercialGateBinding
+	workspaceLayout sandbox.WorkspaceLayout
 }
 
 // maxSteerOverruns caps loop-end injects past MaxIterations. One extra round

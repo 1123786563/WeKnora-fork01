@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
+	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
@@ -92,8 +92,6 @@ func (f *outputLinkExecutor) ListSessionFiles(_ context.Context, sessionID, dir 
 	}
 	return f.after, nil
 }
-
-
 
 func TestShellOutputLinksUseChangedFilesAndDoNotReplay(t *testing.T) {
 	t.Setenv("WEKNORA_SKILL_OUTPUT_DIR", "/workspace/output")

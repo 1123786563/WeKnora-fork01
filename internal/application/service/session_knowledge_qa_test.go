@@ -9,7 +9,7 @@ import (
 	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 
 	"github.com/Tencent/WeKnora/internal/event"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
+	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
