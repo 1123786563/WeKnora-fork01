@@ -251,6 +251,22 @@ func (t *spanTracker) OpenAttempt(ctx context.Context, knowledgeID, langfuseTrac
 	if err != nil {
 		return nil, 0, err
 	}
+	// Attempt N+1 makes attempt N history: close whatever the previous run
+	// left open (worker died before FinalizeAttempt, row flipped failed
+	// without finalize). Without this the trace keeps multiple live roots
+	// and a past run looks "re-activated" by the reparse. cancelled + a
+	// superseded code carries the same terminal semantics as AbortAttempt
+	// and the BeginSubSpan supersede path.
+	if n, cerr := t.repo.CancelOpenSpansBeforeAttempt(ctx, knowledgeID, attempt,
+		"TASK_SUPERSEDED", "superseded by a newer parse attempt"); cerr != nil {
+		logger.Warnf(ctx,
+			"[SpanTracker] OpenAttempt close earlier open spans failed kid=%s before attempt=%d: %v",
+			knowledgeID, attempt, cerr)
+	} else if n > 0 {
+		logger.Infof(ctx,
+			"[SpanTracker] OpenAttempt closed %d open span(s) from earlier attempt(s) of kid=%s",
+			n, knowledgeID)
+	}
 	now := time.Now()
 	rootID := newSpanID()
 	meta := types.JSONMap{}

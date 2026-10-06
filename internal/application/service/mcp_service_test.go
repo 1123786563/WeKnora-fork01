@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -486,4 +490,127 @@ func TestMCPServiceTestRejectsPluginManagedRow(t *testing.T) {
 	_, err := svc.TestMCPService(context.Background(), 1, id)
 	require.ErrorIs(t, err, ErrPluginManagedService,
 		"a live connectivity test against the plugin endpoint would enumerate unaccepted tools/resources in its Admin+ result payload")
+}
+
+// ---- TestMCPService: tools/list failure must not report success (#3880) ----
+
+// newFakeMCPUpstream starts an HTTP-Streamable MCP endpoint speaking raw
+// JSON-RPC over single-shot application/json responses. It reproduces the
+// upstream repro from #3880: initialize answers a healthy handshake while
+// tools/list answers a -32603 JSON-RPC error. An empty toolsListError serves
+// a one-tool directory instead (success path).
+func newFakeMCPUpstream(t *testing.T, toolsListError string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if len(req.ID) == 0 {
+			// Notifications (notifications/initialized) carry no response body.
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		reply := func(payload map[string]any) {
+			payload["jsonrpc"] = "2.0"
+			payload["id"] = req.ID
+			_ = json.NewEncoder(w).Encode(payload)
+		}
+		switch req.Method {
+		case "initialize":
+			reply(map[string]any{
+				"result": map[string]any{
+					"protocolVersion": "2025-06-18",
+					"capabilities":    map[string]any{},
+					"serverInfo":      map[string]any{"name": "fake-echo", "version": "9.9.9"},
+				},
+			})
+		case "tools/list":
+			if toolsListError != "" {
+				reply(map[string]any{
+					"error": map[string]any{"code": -32603, "message": toolsListError},
+				})
+				return
+			}
+			reply(map[string]any{
+				"result": map[string]any{
+					"tools": []any{map[string]any{
+						"name":        "echo",
+						"description": "Echo a message",
+						"inputSchema": map[string]any{"type": "object"},
+					}},
+				},
+			})
+		case "resources/list":
+			reply(map[string]any{
+				"result": map[string]any{"resources": []any{}},
+			})
+		default:
+			reply(map[string]any{
+				"error": map[string]any{"code": -32601, "message": "method not found: " + req.Method},
+			})
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func seedHTTPStreamableService(t *testing.T, repo *fakeMCPRepo, url string) string {
+	t.Helper()
+	s := &types.MCPService{
+		ID:            "svc-http",
+		TenantID:      1,
+		Name:          "http-streamable",
+		Enabled:       true,
+		URL:           &url,
+		TransportType: types.MCPTransportHTTPStreamable,
+	}
+	require.NoError(t, repo.Create(context.Background(), s))
+	return s.ID
+}
+
+// A server whose initialize succeeds but whose tools/list answers -32603 used
+// to be reported as {"success": true, "tools": []} — presenting a broken
+// upstream as a healthy service and misleading troubleshooting. The test must
+// answer success=false and keep the original error in the message.
+func TestMCPServiceTest_ToolsListFailureIsNotSuccess(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+
+	upstream := newFakeMCPUpstream(t, "upstream tool registry exploded")
+	svc, repo := newTestService()
+	id := seedHTTPStreamableService(t, repo, upstream.URL)
+
+	result, err := svc.TestMCPService(context.Background(), 1, id)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.Success,
+		"a failed tools/list must never be reported as a successful connection")
+	assert.Contains(t, result.Message, "failed to list tools")
+	assert.Contains(t, result.Message, "upstream tool registry exploded",
+		"the original upstream error must stay in the message for troubleshooting")
+	assert.False(t, result.OAuthRequired)
+}
+
+func TestMCPServiceTest_SuccessIncludesTools(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+
+	upstream := newFakeMCPUpstream(t, "")
+	svc, repo := newTestService()
+	id := seedHTTPStreamableService(t, repo, upstream.URL)
+
+	result, err := svc.TestMCPService(context.Background(), 1, id)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.Success)
+	assert.Contains(t, result.Message, "Connected successfully")
+	assert.Contains(t, result.Message, "fake-echo")
+	require.Len(t, result.Tools, 1)
+	assert.Equal(t, "echo", result.Tools[0].Name)
 }
