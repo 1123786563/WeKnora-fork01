@@ -227,7 +227,7 @@ modules:
         - "migrations/versioned/000079_knowledge_folder_path"
         - "migrations/versioned/000080_knowledge_base_auto_tag_config"
         - "migrations/versioned/000177_knowledge_datasource_id_index"
-        - "migrations/versioned/000184_semantic_control"
+        - "migrations/versioned/000285_semantic_control"
         - "migrations/versioned/000185_semantic_model_policy"
         - "migrations/versioned/000186_semantic_model_invocations"
 

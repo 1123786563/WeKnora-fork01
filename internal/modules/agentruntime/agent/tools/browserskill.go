@@ -8,24 +8,24 @@ import (
 	"sync/atomic"
 	"time"
 
-	browserskill "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
+	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
 type browserTaskManager interface {
-	GetStatus(context.Context, Scope, string) (Status, error)
-	Account(context.Context, Scope) (AccountStatus, error)
-	Control(context.Context, Scope, string, string) error
-	Call(context.Context, Scope, string, string, map[string]any) (json.RawMessage, error)
-	FinishTurn(context.Context, Scope, string, bool) error
+	GetStatus(context.Context, browserskill.Scope, string) (browserskill.Status, error)
+	Account(context.Context, browserskill.Scope) (browserskill.AccountStatus, error)
+	Control(context.Context, browserskill.Scope, string, string) error
+	Call(context.Context, browserskill.Scope, string, string, map[string]any) (json.RawMessage, error)
+	FinishTurn(context.Context, browserskill.Scope, string, bool) error
 }
 
 // BrowserSkillTool binds native browser commands to one member and conversation.
 type BrowserSkillTool struct {
 	BaseTool
 	manager    browserTaskManager
-	scope      Scope
+	scope      browserskill.Scope
 	session    string
 	prepare    sync.Once
 	prepareErr error
@@ -35,10 +35,17 @@ type BrowserSkillTool struct {
 	blocked    atomic.Pointer[string]
 }
 
+// BrowserSkillScope names the caller's browser. A shared agent runs in its
+// owner's workspace, but the browser stays paired to the member who asked.
+func BrowserSkillScope(ctx context.Context) browserskill.Scope {
+	caller := types.CallerFromContext(ctx)
+	return browserskill.Scope{Tenant: caller.TenantID, User: caller.UserID}
+}
+
 // NewBrowserSkillTool creates a session-bound adapter to upstream RPC.
 func NewBrowserSkillTool(
-	manager *Manager,
-	scope Scope,
+	manager *browserskill.Manager,
+	scope browserskill.Scope,
 	session string,
 	searchInstructions ...string,
 ) *BrowserSkillTool {
@@ -56,9 +63,7 @@ func NewBrowserSkillTool(
 
 // Execute validates tool arguments and dispatches through the authorized task.
 func (t *BrowserSkillTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-	tenant, _ := types.TenantIDFromContext(ctx)
-	user, _ := types.UserIDFromContext(ctx)
-	if tenant != t.scope.Tenant || user != t.scope.User {
+	if BrowserSkillScope(ctx) != t.scope {
 		return nil, errors.New("local browser owner mismatch")
 	}
 	if reason := t.blocked.Load(); reason != nil {
@@ -73,11 +78,10 @@ func (t *BrowserSkillTool) Execute(ctx context.Context, args json.RawMessage) (*
 		return nil, err
 	}
 	method := input["method"].(string)
-	delete(input, "method")
 	if keep, supplied := input["keep_open"].(bool); supplied {
 		t.keepOpen.Store(keep)
 	}
-	delete(input, "keep_open")
+	params := browserCallParams(method, input)
 	if method == "request_help" {
 		t.keepOpen.Store(true)
 	}
@@ -117,7 +121,7 @@ func (t *BrowserSkillTool) Execute(ctx context.Context, args json.RawMessage) (*
 		return &types.ToolResult{Success: false, Error: t.prepareErr.Error()}, nil
 	}
 	t.used.Store(true)
-	result, err := t.manager.Call(ctx, t.scope, t.session, method, input)
+	result, err := t.manager.Call(ctx, t.scope, t.session, method, params)
 	if err != nil {
 		t.failed.Store(true)
 		return browserToolFailure(method, err), nil
@@ -137,11 +141,4 @@ func (t *BrowserSkillTool) Cleanup(ctx context.Context) {
 		t.keepOpen.Load() || t.failed.Load() || ctx.Err() != nil); err != nil {
 		logger.Warnf(cleanupCtx, "Failed to clean up local browser task: %v", err)
 	}
-}
-
-// BrowserSkillScope names the caller's browser. A shared agent runs in its
-// owner's workspace, but the browser stays paired to the member who asked.
-func BrowserSkillScope(ctx context.Context) browserskill.Scope {
-	caller := types.CallerFromContext(ctx)
-	return browserskill.Scope{Tenant: caller.TenantID, User: caller.UserID}
 }

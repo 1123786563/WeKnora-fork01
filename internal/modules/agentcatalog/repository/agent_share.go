@@ -112,11 +112,18 @@ func (r *agentShareRepository) ListByAgent(ctx context.Context, agentID string) 
 	return shares, nil
 }
 
+// agentShareSourceMemberJoin keeps a share effective only while its source
+// tenant is still a member of the organization; see kbShareSourceMemberJoin.
+const agentShareSourceMemberJoin = "JOIN organization_tenant_members src_member " +
+	"ON src_member.organization_id = agent_shares.organization_id " +
+	"AND src_member.tenant_id = agent_shares.source_tenant_id"
+
 // ListByOrganization lists all share records for an organization (excluding deleted agents)
 func (r *agentShareRepository) ListByOrganization(ctx context.Context, orgID string) ([]*types.AgentShare, error) {
 	var shares []*types.AgentShare
 	err := r.db.WithContext(ctx).
 		Joins("JOIN custom_agents ON custom_agents.id = agent_shares.agent_id AND custom_agents.tenant_id = agent_shares.source_tenant_id AND custom_agents.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Preload("Agent").
 		Preload("Organization").
 		Where("agent_shares.organization_id = ? AND agent_shares.deleted_at IS NULL", orgID).
@@ -136,6 +143,7 @@ func (r *agentShareRepository) ListByOrganizations(ctx context.Context, orgIDs [
 	var shares []*types.AgentShare
 	err := r.db.WithContext(ctx).
 		Joins("JOIN custom_agents ON custom_agents.id = agent_shares.agent_id AND custom_agents.tenant_id = agent_shares.source_tenant_id AND custom_agents.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Preload("Agent").
 		Preload("Organization").
 		Where("agent_shares.organization_id IN ? AND agent_shares.deleted_at IS NULL", orgIDs).
@@ -159,6 +167,7 @@ func (r *agentShareRepository) CountByOrganizations(ctx context.Context, orgIDs 
 	var rows []row
 	err := r.db.WithContext(ctx).Model(&types.AgentShare{}).
 		Joins("JOIN custom_agents ON custom_agents.id = agent_shares.agent_id AND custom_agents.tenant_id = agent_shares.source_tenant_id AND custom_agents.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Select("agent_shares.organization_id as organization_id, COUNT(*) as count").
 		Where("agent_shares.organization_id IN ? AND agent_shares.deleted_at IS NULL", orgIDs).
 		Group("agent_shares.organization_id").
@@ -183,6 +192,7 @@ func (r *agentShareRepository) ListSharedAgentsForTenant(ctx context.Context, te
 	var shares []*types.AgentShare
 	err := r.db.WithContext(ctx).
 		Joins("JOIN custom_agents ON custom_agents.id = agent_shares.agent_id AND custom_agents.tenant_id = agent_shares.source_tenant_id AND custom_agents.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Preload("Agent").
 		Preload("Organization").
 		Joins("JOIN organization_tenant_members otm ON otm.organization_id = agent_shares.organization_id").
@@ -204,6 +214,9 @@ func (r *agentShareRepository) GetShareByAgentIDForTenant(ctx context.Context, t
 	var share types.AgentShare
 	tx := r.db.WithContext(ctx).
 		Joins("JOIN organization_tenant_members otm ON otm.organization_id = agent_shares.organization_id").
+		Joins("JOIN organizations ON organizations.id = agent_shares.organization_id "+
+			"AND organizations.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Where("agent_shares.agent_id = ?", agentID).
 		Where("otm.tenant_id = ?", tenantID).
 		Where("agent_shares.source_tenant_id != ?", excludeTenantID).
@@ -234,6 +247,7 @@ func (r *agentShareRepository) GetShareByAgentIDAndSourceForTenant(
 		Joins("JOIN organization_tenant_members otm ON otm.organization_id = agent_shares.organization_id").
 		Joins("JOIN organizations ON organizations.id = agent_shares.organization_id AND organizations.deleted_at IS NULL").
 		Joins("JOIN custom_agents ON custom_agents.id = agent_shares.agent_id AND custom_agents.tenant_id = agent_shares.source_tenant_id AND custom_agents.deleted_at IS NULL").
+		Joins(agentShareSourceMemberJoin).
 		Where("agent_shares.agent_id = ?", agentID).
 		Where("agent_shares.source_tenant_id = ?", sourceTenantID).
 		Where("otm.tenant_id = ?", tenantID).

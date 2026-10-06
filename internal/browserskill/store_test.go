@@ -25,7 +25,9 @@ func testStore(t *testing.T) *Store {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	migration, err := os.ReadFile("../../migrations/sqlite/000014_browser_authorization.up.sql")
+	// Real DDL lives at fork's 000076; the upstream re-introduction was
+	// no-op'd (content-identical) and renumbered to 000202 in the merge.
+	migration, err := os.ReadFile("../../migrations/sqlite/000076_browser_authorization.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
 	return &Store{db: db}

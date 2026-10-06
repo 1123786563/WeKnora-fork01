@@ -159,7 +159,7 @@ def main():
     old, new = 'paradedb/paradedb:v0.22.2-pg17', 'paradedb/paradedb:v0.22.6-pg17'
     paths = sorted((ROOT/'migrations/versioned').glob('*.up.sql'))
     baseline = [p for p in paths if int(p.name.split('_')[0]) < 99]
-    upgrade = ROOT/'migrations/versioned/000099_pg_search_0226.up.sql'
+    upgrade = ROOT/'migrations/versioned/000279_pg_search_0226.up.sql'
     # Only resources created by this invocation are ever removed.
     docker('volume', 'create', volume)
     try:

@@ -1,11 +1,7 @@
--- Mirrors versioned migration 000150_session_fork:
--- session lineage plus the per-turn sandbox checkpoint used as a fork point.
-
-ALTER TABLE sessions ADD COLUMN parent_session_id TEXT;
-ALTER TABLE sessions ADD COLUMN forked_from_message_id TEXT;
-ALTER TABLE sessions ADD COLUMN fork_bootstrap TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id
-    ON sessions (parent_session_id);
-
-ALTER TABLE messages ADD COLUMN sandbox_checkpoint TEXT;
+-- No-op since the upstream merge: upstream's 000018_session_fork already adds
+-- the same five statements on fresh chains (both files mirror the versioned
+-- session_fork migration). Deployed fork databases already applied this
+-- version with its original content, so emptying it only affects fresh
+-- chains, which get the schema from 000018. Keeping the version occupied
+-- preserves schema_migrations history. SQLite lacks ADD COLUMN IF NOT
+-- EXISTS, so a no-op is the only duplicate-safe form here.

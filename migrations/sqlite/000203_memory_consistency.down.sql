@@ -1,0 +1,2 @@
+-- No-op counterpart: the schema belongs to 000074 on every chain, and its own
+-- down migration removes it.

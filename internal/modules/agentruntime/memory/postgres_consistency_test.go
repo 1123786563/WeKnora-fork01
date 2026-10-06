@@ -38,7 +38,9 @@ func TestMemoryConsistencyPostgres(t *testing.T) {
 	defer func() { require.NoError(t, sqlDB.Close()) }()
 
 	testMemoryConsistencyMigration(t, db, "postgres")
-	execMemoryMigration(t, db, "../../../../migrations/versioned/000094_memory_consistency.up.sql")
+	// 000153_memory_consistency is already applied by the helper above; the
+	// upstream 000274 re-introduction was a content-identical twin removed in
+	// the fork/upstream merge, so there is no second migration to replay.
 	repo := NewMemoryRepository(db)
 	ctx := context.Background()
 	scope := interfaces.MemoryScope{TenantID: 7, SubjectID: "alice"}

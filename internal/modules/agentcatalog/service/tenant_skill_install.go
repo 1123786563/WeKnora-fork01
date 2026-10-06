@@ -57,14 +57,29 @@ const (
 // InstallSkill validates an uploaded archive, records it, and kicks off the
 // install in the background. It returns the skill ID so the caller can answer
 // 202 and let the UI subscribe to progress.
+// skillArchiveOrigin says what an install's archive is to the workspace.
+//
+// Only an upload or a source pull is a new definition of the skill. A retry
+// replays the archive its row already names, and a catalog install copies the
+// definition's own bytes. Letting either write the definition back is how
+// retrying a sandbox that was still on v1 moved the workspace from v2 back to
+// v1 and deleted v2's archive.
+type skillArchiveOrigin int
+
+const (
+	skillArchiveUploaded skillArchiveOrigin = iota
+	skillArchiveStored
+)
+
 func (s *TenantSkillService) InstallSkill(
 	ctx context.Context, tenantID uint64, configID string, archive []byte,
 ) (string, error) {
-	return s.installSkillArchive(ctx, tenantID, configID, archive)
+	return s.installSkillArchive(ctx, tenantID, configID, archive, skillArchiveUploaded)
 }
 
 func (s *TenantSkillService) installSkillArchive(
-	ctx context.Context, tenantID uint64, configID string, archive []byte, instructions ...string,
+	ctx context.Context, tenantID uint64, configID string, archive []byte,
+	origin skillArchiveOrigin, instructions ...string,
 ) (string, error) {
 	cfgEntity, err := s.configs.GetByID(ctx, tenantID, configID)
 	if err != nil {
@@ -78,11 +93,12 @@ func (s *TenantSkillService) installSkillArchive(
 	if err != nil {
 		return "", err
 	}
-	return s.installParsedSkill(ctx, tenantID, configID, bundle, archive, instructions...)
+	return s.installParsedSkill(ctx, tenantID, configID, bundle, archive, origin, instructions...)
 }
 
 func (s *TenantSkillService) installParsedSkill(
-	ctx context.Context, tenantID uint64, configID string, bundle *SkillBundle, archive []byte, instructions ...string,
+	ctx context.Context, tenantID uint64, configID string, bundle *SkillBundle, archive []byte,
+	origin skillArchiveOrigin, instructions ...string,
 ) (string, error) {
 	if bundle == nil {
 		return "", fmt.Errorf("skill bundle is required")
@@ -105,8 +121,18 @@ func (s *TenantSkillService) installParsedSkill(
 			"skill is busy; send guidance to the active install or wait for it to finish",
 		)
 	}
+	keepPin := false
+	if origin == skillArchiveStored {
+		keepPin, err = s.storedArchiveKeepsItsPin(ctx, tenantID, existing, bundle)
+		if err != nil {
+			return "", err
+		}
+	}
 	if guidance == "" && s.canSkipInstall(ctx, existing, bundle) {
-		catalog, catalogErr := s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, true)
+		if keepPin {
+			return existing.ID, nil
+		}
+		catalog, catalogErr := s.catalogForArchive(ctx, tenantID, bundle, archive, origin)
 		if catalogErr != nil {
 			return "", fmt.Errorf("store bundle for skill %s: %w", existing.ID, catalogErr)
 		}
@@ -155,26 +181,11 @@ func (s *TenantSkillService) installParsedSkill(
 	// The zip lives on the catalog, not on this sandbox: uninstalling from
 	// the last config must not take the definition's files with it. The
 	// install row only stores CatalogID; readers follow that to the zip.
-	catalog, err := s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, true)
-	if err != nil {
-		failCtx, cancelFail := s.cleanupContext(ctx)
-		defer cancelFail()
-		storeErr := fmt.Errorf("store bundle: %w", err)
-		logger.Errorf(ctx, "[skill] store bundle failed tenant=%d config=%s skill=%s name=%s: %v",
-			tenantID, configID, skillID, bundle.Name, err)
-		s.failSkill(failCtx, tenantID, configID, skillID, bundle, storeErr)
-		return "", fmt.Errorf("store bundle for skill %s: %w", skillID, err)
-	}
-	if err := s.pointInstallAtCatalog(ctx, &types.TenantSkillEntity{
-		ID: skillID, TenantID: tenantID, SandboxConfigID: configID,
-	}, catalog); err != nil {
-		failCtx, cancelFail := s.cleanupContext(ctx)
-		defer cancelFail()
-		storeErr := fmt.Errorf("store bundle: %w", err)
-		logger.Errorf(ctx, "[skill] store bundle failed tenant=%d config=%s skill=%s name=%s: %v",
-			tenantID, configID, skillID, bundle.Name, err)
-		s.failSkill(failCtx, tenantID, configID, skillID, bundle, storeErr)
-		return "", fmt.Errorf("store bundle for skill %s: %w", skillID, err)
+	// A pinned retry is the exception: its row already names its own archive.
+	if !keepPin {
+		if err := s.bindInstallToCatalog(ctx, tenantID, configID, skillID, bundle, archive, origin); err != nil {
+			return "", err
+		}
 	}
 
 	s.publishProgress(ctx, tenantID, configID, skillID, SkillProgress{
@@ -249,7 +260,86 @@ func (s *TenantSkillService) ReinstallSkill(
 			"the archive of this skill is no longer stored; install it again from the original bundle",
 		)
 	}
-	return s.installSkillArchive(ctx, tenantID, configID, archive, instructions...)
+	return s.installSkillArchive(ctx, tenantID, configID, archive, skillArchiveStored, instructions...)
+}
+
+// catalogForArchive returns the definition an install of these bytes follows.
+// An upload or a source pull becomes the definition. Stored bytes reuse the
+// definition that already holds them, untouched: storedArchiveKeepsItsPin has
+// refused any other version by now, so what is left to write is only a
+// repair.
+func (s *TenantSkillService) catalogForArchive(
+	ctx context.Context, tenantID uint64, bundle *SkillBundle, archive []byte, origin skillArchiveOrigin,
+) (*types.TenantSkillCatalogEntity, error) {
+	if origin == skillArchiveStored {
+		catalog, err := s.skills.GetCatalogByName(ctx, tenantID, bundle.Name)
+		if err != nil {
+			return nil, err
+		}
+		if catalog != nil && catalog.BundleSHA256 == bundle.SHA256 &&
+			s.catalogBundleStillHeld(ctx, tenantID, catalog) {
+			return catalog, nil
+		}
+	}
+	return s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, true)
+}
+
+// bindInstallToCatalog records the archive on the definition and points the
+// install at it. A failure marks the row failed, because the row has already
+// been handed to this run.
+func (s *TenantSkillService) bindInstallToCatalog(
+	ctx context.Context, tenantID uint64, configID, skillID string, bundle *SkillBundle, archive []byte,
+	origin skillArchiveOrigin,
+) error {
+	catalog, err := s.catalogForArchive(ctx, tenantID, bundle, archive, origin)
+	if err == nil {
+		err = s.pointInstallAtCatalog(ctx, &types.TenantSkillEntity{
+			ID: skillID, TenantID: tenantID, SandboxConfigID: configID,
+		}, catalog)
+	}
+	if err == nil {
+		return nil
+	}
+	failCtx, cancelFail := s.cleanupContext(ctx)
+	defer cancelFail()
+	logger.Errorf(ctx, "[skill] store bundle failed tenant=%d config=%s skill=%s name=%s: %v",
+		tenantID, configID, skillID, bundle.Name, err)
+	s.failSkill(failCtx, tenantID, configID, skillID, bundle, fmt.Errorf("store bundle: %w", err))
+	return fmt.Errorf("store bundle for skill %s: %w", skillID, err)
+}
+
+// storedArchiveKeepsItsPin decides whether an install of bytes the workspace
+// already holds has to leave the definition alone.
+//
+// It answers true when the definition has moved on and the install's own row
+// still pins these bytes: a retry of a sandbox that is still on v1. Writing v1
+// to the definition there is a rollback, so the row keeps its pin and the
+// definition stays on v2. Bytes that neither the definition nor the row holds
+// are a catalog that moved between reading its archive and installing it,
+// which is refused rather than written back.
+func (s *TenantSkillService) storedArchiveKeepsItsPin(
+	ctx context.Context, tenantID uint64, existing *types.TenantSkillEntity, bundle *SkillBundle,
+) (bool, error) {
+	catalog, err := s.skills.GetCatalogByName(ctx, tenantID, bundle.Name)
+	if err != nil {
+		return false, err
+	}
+	// No definition yet is a row older than the catalog, and the same digest is
+	// the definition's own bytes: storing either is a creation or a repair.
+	if catalog == nil || catalog.BundleSHA256 == bundle.SHA256 {
+		return false, nil
+	}
+	if existing != nil && strings.TrimSpace(existing.BundleRef) != "" &&
+		existing.BundleSHA256 == bundle.SHA256 {
+		return true, nil
+	}
+	// A definition that never recorded its digest cannot be told apart from
+	// these bytes, and they are the only ones anyone can name.
+	if strings.TrimSpace(catalog.BundleSHA256) == "" {
+		return false, nil
+	}
+	return false, apperrors.NewConflictError(
+		"this skill was updated in the catalog while the install was starting; try again")
 }
 
 func (s *TenantSkillService) runInstall(
@@ -1082,7 +1172,10 @@ func cleanImageScratchCommand() string {
 	inputRoot := sandbox.ShellQuote(sandbox.SessionInputRoot)
 	outputRoot := sandbox.ShellQuote(sandbox.SessionOutputRoot)
 	var b strings.Builder
-	b.WriteString("rm -rf /workspace/* /tmp/* /workspace/.[!.]* || true")
+	// /run/desktop is wiped with the scratch trees: the desktop's websockify
+	// secret lives there, and a leftover secret would be reused by every
+	// sandbox booted from the snapshot (upstream keeps it in the rm list).
+	b.WriteString("rm -rf /workspace/* /tmp/* /workspace/.[!.]* /run/desktop || true")
 	fmt.Fprintf(&b, "; mkdir -p %s %s && chmod 775 %s %s; status=$?",
 		inputRoot, outputRoot,
 		inputRoot, outputRoot,

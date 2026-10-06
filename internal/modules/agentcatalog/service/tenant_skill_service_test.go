@@ -22,7 +22,11 @@ func TestSkillImageLockKeyIncludesTheTenant(t *testing.T) {
 }
 
 func TestTenantSkillServiceWithConfigLockLocalRespectsCanceledContext(t *testing.T) {
-	svc := NewTenantSkillService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, HostAdapters{})
+	// The merge at 6237dfc54 collapsed both parents' constructor lines into a
+	// bare HostAdapters{}, which the constructor's fail-fast validation panics
+	// on. testHostAdapters() (host_capability_test.go) is the stub the other
+	// tests use; withConfigLock itself touches no adapter.
+	svc := NewTenantSkillService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
 	entered := make(chan struct{})
 	releaseHolder := make(chan struct{})
 	holderDone := make(chan error, 1)

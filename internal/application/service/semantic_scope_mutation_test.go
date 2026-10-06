@@ -75,7 +75,9 @@ func TestSemanticScopeOrganizationMutation(t *testing.T) {
 		t.Run(op, func(t *testing.T) {
 			f := newSemanticScopeFixture(t)
 			require.NoError(t, f.DB.Exec("UPDATE organizations SET owner_tenant_id=10 WHERE id='scope-org'").Error)
-			require.NoError(t, f.DB.Exec("INSERT INTO organization_tenant_members(id,organization_id,tenant_id,role) VALUES('admin','scope-org',10,'admin')").Error)
+			// Tenant 10's org membership (admin) is provided by the fixture's
+			// AddSharedKB: the share source must be a member for the share to
+			// be effective at all.
 			s := NewOrganizationService(repository.NewOrganizationRepository(f.DB), nil, repository.NewKBShareRepository(f.DB), repository.NewAgentShareRepository(f.DB)).(*organizationService)
 			s.SetSemanticScopeInvalidator(f.Control)
 			var err error
@@ -283,7 +285,6 @@ func TestSemanticScopeKBSharePreInvalidation(t *testing.T) {
 	for _, op := range []string{"create", "duplicate", "update", "remove", "noop"} {
 		t.Run(op, func(t *testing.T) {
 			f := newSemanticScopeFixture(t)
-			require.NoError(t, f.DB.Exec("INSERT INTO organization_tenant_members(id,organization_id,tenant_id,role) VALUES('source','scope-org',10,'admin')").Error)
 			s := NewKBShareService(repository.NewKBShareRepository(f.DB), repository.NewOrganizationRepository(f.DB), repository.NewKnowledgeBaseRepository(f.DB), repository.NewKnowledgeRepository(f.DB), nil, nil).(*kbShareService)
 			s.SetSemanticScopeInvalidator(f.Control)
 			ctx := context.Background()
@@ -299,7 +300,10 @@ func TestSemanticScopeKBSharePreInvalidation(t *testing.T) {
 				require.NoError(t, err)
 			case "update":
 				requireEpochBeforeSQL(t, f, "kb_shares", "UPDATE", "shared-kb", 1)
-				require.NoError(t, s.UpdateSharePermission(ctx, "shared-kb", types.OrgRoleViewer, "owner", 10))
+				// The sharer acts from the source tenant; the governance rule
+				// (canManageShare) reads the caller's tenant role from ctx.
+				ownerCtx := context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleContributor)
+				require.NoError(t, s.UpdateSharePermission(ownerCtx, "shared-kb", types.OrgRoleViewer, "owner", 10))
 			case "remove":
 				requireEpochBeforeSQL(t, f, "kb_shares", "UPDATE", "shared-kb", 1)
 				require.NoError(t, s.RemoveShare(ctx, "shared-kb", "owner", 10))

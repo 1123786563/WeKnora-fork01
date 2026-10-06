@@ -120,16 +120,21 @@ func (e *researchE2E) do(t *testing.T, method, path, body, userID string, tenant
 // the artifact list projects a version identity derived from its digest.
 func (e *researchE2E) seedArtifactMessage(t *testing.T, messageID, digest, fileName string) {
 	t.Helper()
+	artifacts := types.MessageArtifacts{{
+		URL: "local://tenant/1/" + fileName, FileName: fileName, FileType: ".md",
+		FileSize: 512, ContentHash: digest, CreatedAt: time.Now().UTC(),
+	}}
 	// SkipHooks: types.Message BeforeCreate unconditionally regenerates the ID,
 	// which would break the (message_id, index) material addressing under test.
 	require.NoError(t, e.db.Session(&gorm.Session{SkipHooks: true}).Create(&types.Message{
 		ID: messageID, SessionID: "s1", Role: "assistant",
 		Content: "revision output", IsCompleted: true,
-		Artifacts: types.MessageArtifacts{{
-			URL: "local://tenant/1/" + fileName, FileName: fileName, FileType: ".md",
-			FileSize: 512, ContentHash: digest, CreatedAt: time.Now().UTC(),
-		}},
 	}).Error)
+	// Artifacts persist into message_artifacts (migration 000023 made that table
+	// the only source of truth); mirror what messageRepository.Create writes so
+	// the seeded material is visible to the artifact list.
+	rows := types.NewMessageArtifactRecords("s1", messageID, artifacts)
+	require.NoError(t, e.db.Create(&rows).Error)
 }
 
 const researchDigestV1 = "1111111111111111111111111111111111111111111111111111111111111111"

@@ -539,10 +539,15 @@ func (s *kbShareService) CheckTenantKBPermission(ctx context.Context, kbID strin
 	isShared := false
 
 	for _, share := range shares {
-		// Org deletion may leave shares behind when best-effort cleanup fails.
-		// Such rows must not continue granting access through old memberships.
-		if _, err := s.orgRepo.GetByID(ctx, share.OrganizationID); err != nil {
-			if errors.Is(err, repository.ErrOrganizationNotFound) {
+		// A share lapses with its organization and with its source tenant's
+		// membership (see kbShareSourceMemberJoin). A missing membership row
+		// lapses the share; any other lookup failure must propagate so the
+		// semantic scope path fails closed instead of reading "lapsed".
+		if share.Organization == nil {
+			continue
+		}
+		if _, err := s.orgRepo.GetTenantMember(ctx, share.OrganizationID, share.SourceTenantID); err != nil {
+			if errors.Is(err, repository.ErrOrgMemberNotFound) {
 				continue
 			}
 			return "", false, err

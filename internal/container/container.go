@@ -36,8 +36,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -55,6 +53,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/limiter"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
@@ -120,6 +119,7 @@ import (
 	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
+	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/stream"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -725,35 +725,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	) *service.HostSessionResolver {
 		return service.NewHostSessionResolver(pinner, host.Manager, host.Desktop)
 	}))
-	must(container.Provide(func(
-		mgr sandbox.Manager,
-		resolver sandbox.TenantSandboxResolver,
-		pinner *service.SessionSandboxPinner,
-		host *service.HostSessionResolver,
-	) *service.PinnedSessionSandbox {
-		return service.NewPinnedSessionSandbox(pinner, resolver, mgr)
-	}))
-	must(container.Provide(func(
-		mgr sandbox.Manager,
-		pinned *service.PinnedSessionSandbox,
-	) *service.WorkspaceCheckpointer {
-		if runner, ok := mgr.(service.SandboxShellRunner); ok {
-			return service.NewWorkspaceCheckpointer(runner)
-		}
-		return service.NewWorkspaceCheckpointer(pinned)
-	}))
-	must(container.Provide(func(
-		mgr sandbox.Manager,
-		pinned *service.PinnedSessionSandbox,
-	) session.SandboxIDLookup {
-		if lookup, ok := mgr.(session.SandboxIDLookup); ok {
-			return lookup
-		}
-		if pinned == nil {
-			return nil
-		}
-		return pinned
-	}))
+	// PinnedSessionSandbox / WorkspaceCheckpointer / SandboxIDLookup /
+	// SessionForkService are provided once via the named constructors in
+	// session_fork_wiring.go (registered with the other session-fork wiring
+	// below); inline duplicates here collided with them at wire time.
 	must(container.Provide(func(
 		mgr sandbox.Manager,
 		pinned *service.PinnedSessionSandbox,
@@ -766,7 +741,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		}
 		return pinned
 	}))
-	must(container.Provide(service.NewSessionForkServiceFromRepos))
 	must(container.Provide(func(
 		mgr sandbox.Manager,
 		pinned *service.PinnedSessionSandbox,
@@ -1262,6 +1236,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// authority's Reconcile family stays fail-closed until its real-stack
 	// enablement, so both faces degrade honestly (503 / quiet no-op).
 	must(container.Provide(newCommercialWebhookService))
+	// The HTTP face for #98 webhooks: NewRouter takes *CommercialWebhookHandler;
+	// the registration was missing, which left the router graph unbuildable.
+	must(container.Provide(handler.NewCommercialWebhookHandler))
 	must(container.Provide(newCommercialReconciliationService))
 	must(container.Invoke(startCommercialReconciliation))
 	// A03 action approval pipeline: the persisted action store and the

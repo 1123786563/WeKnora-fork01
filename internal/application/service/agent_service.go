@@ -240,6 +240,7 @@ func (s *agentService) CreateAgentEngine(
 	if capabilities.Skills != nil {
 		engine.SetSkillsManager(capabilities.Skills)
 	}
+	engine.SetWorkspaceLayout(s.lookupSessionWorkspaceLayout(ctx, sessionID, config))
 
 	return engine, nil
 }

@@ -445,9 +445,6 @@ func (r *sessionRepository) CreateForked(
 		// Create for the '' / partial-unique-index rationale.
 		if err := tx.Session(&gorm.Session{SkipHooks: true}).
 			Omit("share_token").Create(session).Error; err != nil {
-}
-		// the hook skipped.
-		if err := tx.Session(&gorm.Session{SkipHooks: true}).Create(session).Error; err != nil {
 			return err
 		}
 		if len(messages) == 0 {

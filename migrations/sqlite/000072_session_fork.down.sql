@@ -1,7 +1,4 @@
-DROP INDEX IF EXISTS idx_sessions_parent_session_id;
-
-ALTER TABLE sessions DROP COLUMN fork_bootstrap;
-ALTER TABLE sessions DROP COLUMN forked_from_message_id;
-ALTER TABLE sessions DROP COLUMN parent_session_id;
-
-ALTER TABLE messages DROP COLUMN sandbox_checkpoint;
+-- No-op counterpart: on fresh chains the columns come from 000018, whose own
+-- down migration removes them. Rolling back this version on a deployed fork
+-- database would have dropped columns still referenced by fork features, so
+-- the original down was already effectively unusable there.
