@@ -96,3 +96,76 @@ export function groupTools<T extends ToolCatalogEntry>(groups: string[], tools: 
 export function summarizeScope(ids: string[] | null | undefined, names: Record<string, string>): string[] {
   return (ids || []).map((id) => names[id] || id)
 }
+
+/** Structural subset of a shared-KB row from GET /shared-knowledge-bases. */
+export interface SharedKbShareLike {
+  knowledge_base?: { id: string | number; name?: string } | null
+  permission?: string
+}
+
+/** Scope-dropdown entry: own-space KBs first, shared ones flagged with their grant. */
+export interface MergedKbOption {
+  id: string
+  name: string
+  shared: boolean
+  permission?: string
+}
+
+// Higher rank = more privileged. Unknown permissions rank lowest so they never
+// shadow a real grant when collapsing duplicate shares — same rule as the KB
+// list page's kbListMerge.
+const KB_PERMISSION_RANK: Record<string, number> = { admin: 3, editor: 2, viewer: 1 }
+
+function kbPermissionRank(perm: string | undefined): number {
+  return (perm && KB_PERMISSION_RANK[perm]) || 0
+}
+
+/** Whether a shared grant allows writes. Mirrors EDITABLE_PERMS in kbListMerge. */
+export function isSharedKbEditable(perm: string | undefined): boolean {
+  return perm === 'admin' || perm === 'editor'
+}
+
+/**
+ * Merge the current space's knowledge bases with the organization-shared ones
+ * for the endpoint scope dropdown (#3828): GET /knowledge-bases only returns
+ * own-space KBs, shared ones arrive via /shared-knowledge-bases.
+ *
+ * Own KBs keep API order; shared KBs are appended, de-duplicated by id (own
+ * wins; the most-privileged grant survives when one KB is shared through
+ * several orgs), editable grants before view-only — mirroring the KB list
+ * page's "共享给我 · 可编辑 / 仅查看" sections.
+ */
+export function mergeKnowledgeBaseOptions(
+  owned: Array<{ id: string | number; name?: string } | null | undefined> | null | undefined,
+  shared: Array<SharedKbShareLike | null | undefined> | null | undefined,
+): MergedKbOption[] {
+  const merged: MergedKbOption[] = []
+  const ownedIds = new Set<string>()
+  for (const kb of owned ?? []) {
+    if (!kb) continue
+    const id = String(kb.id)
+    if (!id || ownedIds.has(id)) continue
+    ownedIds.add(id)
+    merged.push({ id, name: kb.name || id, shared: false })
+  }
+
+  const bestShare = new Map<string, SharedKbShareLike>()
+  for (const share of shared ?? []) {
+    if (!share?.knowledge_base) continue
+    const kb = share.knowledge_base
+    const id = String(kb.id)
+    if (!id || ownedIds.has(id)) continue
+    const existing = bestShare.get(id)
+    if (!existing || kbPermissionRank(share.permission) > kbPermissionRank(existing.permission)) {
+      bestShare.set(id, share)
+    }
+  }
+  const sharedOptions: MergedKbOption[] = [...bestShare.values()].map((share) => {
+    const kb = share.knowledge_base!
+    return { id: String(kb.id), name: kb.name || String(kb.id), shared: true, permission: share.permission }
+  })
+  // Array#sort is stable, so entries inside the editable / view-only tiers
+  // keep the shared list's order.
+  sharedOptions.sort((a, b) => Number(isSharedKbEditable(b.permission)) - Number(isSharedKbEditable(a.permission)))
+  return [...merged, ...sharedOptions]
+}

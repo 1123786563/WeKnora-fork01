@@ -56,6 +56,15 @@ func normalizeIdentifierForMatch(s string) string {
 	return normalized
 }
 
+// reconcileSQLColumnsWithSchema rewrites double-quoted identifiers in sqlText
+// so that identifiers differing from a schema column only by case or spacing
+// use the schema's exact column name. The rewrite is literal-aware: a small
+// scanner tracks single-quoted literals and dollar-quoted literals, and only
+// double-quoted identifiers OUTSIDE those literals are treated as column
+// references. Text inside a literal is data, so it is always copied through
+// verbatim — rewriting it would silently change query results (e.g.
+// WHERE note = '"orderstatus"' must keep matching rows whose note literally
+// contains that quoted text, see #3811).
 func reconcileSQLColumnsWithSchema(sqlText string, schema *TableSchema) (string, []string) {
 	if schema == nil || len(schema.Columns) == 0 {
 		return sqlText, nil
@@ -72,19 +81,138 @@ func reconcileSQLColumnsWithSchema(sqlText string, schema *TableSchema) (string,
 		}
 	}
 
-	quotedIdentifierPattern := regexp.MustCompile(`"([^"]+)"`)
+	var rewritten strings.Builder
+	rewritten.Grow(len(sqlText))
 	fixes := make([]string, 0)
-	rewritten := quotedIdentifierPattern.ReplaceAllStringFunc(sqlText, func(token string) string {
-		name := strings.Trim(token, "\"")
-		canonical, ok := normalizedToCanonical[normalizeIdentifierForMatch(name)]
-		if !ok || canonical == name {
-			return token
+	for i := 0; i < len(sqlText); {
+		switch sqlText[i] {
+		case '\'':
+			// Single-quoted literal: copy verbatim, never reconcile inside.
+			closeIdx := findSingleQuoteClose(sqlText, i)
+			rewritten.WriteString(sqlText[i:min(closeIdx+1, len(sqlText))])
+			i = min(closeIdx+1, len(sqlText))
+		case '$':
+			// Dollar-quoted literal ($$...$$ or $tag$...$tag$): copy verbatim.
+			if delimiter, ok := dollarQuoteDelimiterAt(sqlText, i); ok {
+				closeIdx := findDollarQuoteClose(sqlText, i, delimiter)
+				end := min(closeIdx+len(delimiter), len(sqlText))
+				rewritten.WriteString(sqlText[i:end])
+				i = end
+			} else {
+				// A lone '$' (or a $1-style parameter) is ordinary text.
+				rewritten.WriteByte(sqlText[i])
+				i++
+			}
+		case '"':
+			// Double-quoted identifier outside every literal: the only thing
+			// eligible for column-name reconciliation.
+			closeIdx := findQuotedIdentifierClose(sqlText, i)
+			// "" doubling is an escaped quote inside the identifier.
+			name := strings.ReplaceAll(sqlText[i+1:closeIdx], `""`, `"`)
+			canonical, ok := normalizedToCanonical[normalizeIdentifierForMatch(name)]
+			if !ok || canonical == name {
+				rewritten.WriteString(sqlText[i:min(closeIdx+1, len(sqlText))])
+			} else {
+				fixes = append(fixes, fmt.Sprintf("%q -> %q", name, canonical))
+				rewritten.WriteString(`"` + strings.ReplaceAll(canonical, `"`, `""`) + `"`)
+			}
+			i = min(closeIdx+1, len(sqlText))
+		default:
+			rewritten.WriteByte(sqlText[i])
+			i++
 		}
-		fixes = append(fixes, fmt.Sprintf("%q -> %q", name, canonical))
-		return fmt.Sprintf(`"%s"`, canonical)
-	})
+	}
 
-	return rewritten, fixes
+	return rewritten.String(), fixes
+}
+
+// findSingleQuoteClose returns the index of the quote closing the single-quoted
+// literal that starts at sqlText[start], which must hold a `'`, or
+// len(sqlText) when the literal is unterminated. Inside the literal a doubled
+// quote (the doubled-apostrophe escape) keeps the literal open, and a
+// backslash-escaped character (as in the backslash-apostrophe form) does not
+// close it either. Honoring the backslash form is conservative: DuckDB does
+// not treat a backslash as an escape by default, but engines/modes that do
+// would otherwise have literal contents mistaken for identifiers, whereas the
+// reverse mistake only skips a (cosmetic, case-insensitive) identifier fix.
+func findSingleQuoteClose(sqlText string, start int) int {
+	i := start + 1
+	for i < len(sqlText) {
+		switch sqlText[i] {
+		case '\\':
+			i += 2 // skip the escaped character
+		case '\'':
+			if i+1 < len(sqlText) && sqlText[i+1] == '\'' {
+				i += 2 // '' is an escaped quote, the literal continues
+			} else {
+				return i
+			}
+		default:
+			i++
+		}
+	}
+	return len(sqlText)
+}
+
+// findQuotedIdentifierClose returns the index of the quote closing the
+// double-quoted identifier that starts at sqlText[start] (sqlText[start] must
+// be '"'), or len(sqlText) when it is unterminated. A doubled "" inside the
+// identifier is an escaped quote and does not close it.
+func findQuotedIdentifierClose(sqlText string, start int) int {
+	for i := start + 1; i < len(sqlText); i++ {
+		if sqlText[i] != '"' {
+			continue
+		}
+		if i+1 < len(sqlText) && sqlText[i+1] == '"' {
+			i++ // "" is an escaped quote inside the identifier
+			continue
+		}
+		return i
+	}
+	return len(sqlText)
+}
+
+// dollarQuoteDelimiterAt reports whether sqlText[pos] ('$', which the caller
+// has already verified) begins a dollar-quote delimiter and returns the whole
+// delimiter: "$$" for the anonymous form or "$tag$" for the named form. The
+// tag follows identifier rules and must not start with a digit, so $1-style
+// positional parameters are never mistaken for delimiters.
+func dollarQuoteDelimiterAt(sqlText string, pos int) (string, bool) {
+	end := pos + 1
+	for end < len(sqlText) && isDollarQuoteTagChar(sqlText[end]) {
+		end++
+	}
+	if end >= len(sqlText) || sqlText[end] != '$' {
+		return "", false
+	}
+	if end == pos+1 {
+		return sqlText[pos : pos+2], true // "$$"
+	}
+	if sqlText[pos+1] >= '0' && sqlText[pos+1] <= '9' {
+		return "", false // $1-style parameter, not a dollar quote
+	}
+	return sqlText[pos : end+1], true // "$tag$"
+}
+
+// isDollarQuoteTagChar reports whether c may appear in a dollar-quote tag.
+func isDollarQuoteTagChar(c byte) bool {
+	return c == '_' ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9')
+}
+
+// findDollarQuoteClose returns the index where the closing delimiter of the
+// dollar-quoted literal that starts at sqlText[start] begins, or len(sqlText)
+// when the literal is unterminated. Content between the delimiters can contain
+// anything — quotes and differently-tagged dollar quotes included — so the
+// simple search for the exact delimiter handles nesting naturally.
+func findDollarQuoteClose(sqlText string, start int, delimiter string) int {
+	contentStart := start + len(delimiter)
+	if rel := strings.Index(sqlText[contentStart:], delimiter); rel >= 0 {
+		return contentStart + rel
+	}
+	return len(sqlText)
 }
 
 func buildMissingColumnSuggestion(sqlErr error, schema *TableSchema) string {
