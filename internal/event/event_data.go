@@ -203,6 +203,11 @@ type AgentFinalAnswerData struct {
 	// complete. Carried on both the content event and the Done marker,
 	// because a live-streamed answer only learns of the cap at the close.
 	Truncated bool `json:"truncated,omitempty"`
+	// Usage is the answer stream's model-reported token usage, carried on the
+	// Done marker so QA completion consumers can forward it to the complete
+	// event the way smart reasoning reports turn usage. Nil (or a non-*TokenUsage
+	// value) when the provider reported none.
+	Usage interface{} `json:"usage,omitempty"` // *types.TokenUsage
 }
 
 // ContextCompactedData reports that older conversation was replaced by a

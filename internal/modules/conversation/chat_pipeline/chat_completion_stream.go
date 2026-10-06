@@ -131,6 +131,10 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		thinkingOpen := false
 		answerCompleted := false
 		answerProduced := false
+		// Last-wins within one stream, matching how the agent path's stream
+		// consumer folds chunk usage into the round response (providers that
+		// repeat usage send cumulative values, never additive deltas).
+		var streamUsage *types.TokenUsage
 
 		closeThinking := func() {
 			if !thinkingOpen {
@@ -263,16 +267,23 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 						response.Content = EmptyTruncatedAnswerFallback
 						answerProduced = true
 					}
+					if response.Usage != nil {
+						streamUsage = response.Usage
+					}
 					closeThinking()
+					answerData := event.AgentFinalAnswerData{
+						Content:   response.Content,
+						Done:      response.Done,
+						Truncated: truncated,
+					}
+					if response.Done && streamUsage != nil {
+						answerData.Usage = streamUsage
+					}
 					eventBus.Emit(ctx, types.Event{
 						ID:        answerID,
 						Type:      types.EventType(event.EventAgentFinalAnswer),
 						SessionID: chatManage.SessionID,
-						Data: event.AgentFinalAnswerData{
-							Content:   response.Content,
-							Done:      response.Done,
-							Truncated: truncated,
-						},
+						Data:      answerData,
 					})
 				}
 			}

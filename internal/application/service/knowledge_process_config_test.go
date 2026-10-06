@@ -626,3 +626,119 @@ func TestResolveProcessConfig_SummaryEnabled(t *testing.T) {
 		})
 	}
 }
+
+// dialogStyleOverrides mirrors what an upload confirm dialog POSTs: every
+// section, prefilled from the KB's own config. Only deviations the user typed
+// differ from the KB-derived snapshot.
+func dialogStyleOverrides(kb *types.KnowledgeBase, deviations *types.KnowledgeProcessOverrides) *types.KnowledgeProcessOverrides {
+	full := &types.KnowledgeProcessOverrides{
+		SummaryEnabled: processConfigBoolPtr(true),
+		ChunkingConfig: &kb.ChunkingConfig,
+		EnableMultimodel: processConfigBoolPtr(
+			kb.VLMConfig.IsEnabled()),
+		VLMConfig:                &kb.VLMConfig,
+		ASRConfig:                &kb.ASRConfig,
+		QuestionGenerationConfig: kb.QuestionGenerationConfig,
+	}
+	if deviations != nil {
+		if deviations.ChunkingConfig != nil {
+			full.ChunkingConfig = deviations.ChunkingConfig
+		}
+		if deviations.QuestionGenerationConfig != nil {
+			full.QuestionGenerationConfig = deviations.QuestionGenerationConfig
+		}
+		if deviations.SummaryEnabled != nil {
+			full.SummaryEnabled = deviations.SummaryEnabled
+		}
+	}
+	return full
+}
+
+// The regression behind #3851: the confirm dialog posts its whole form state,
+// and a verbatim persist turned that into a per-document copy of the KB's
+// upload-time settings. Only the deviations may be recorded, so a later KB
+// change still reaches the document on reparse.
+func TestApplyKnowledgeProcessOverrides_StoresOnlyDeviations(t *testing.T) {
+	t.Parallel()
+
+	kb := &types.KnowledgeBase{
+		ChunkingConfig: types.ChunkingConfig{ChunkSize: 512, ChunkOverlap: 50},
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{
+			Enabled: true, QuestionCount: 3,
+		},
+	}
+	knowledge := &types.Knowledge{}
+
+	// Untouched dialog state: nothing deviates, nothing is stored.
+	_, err := ApplyKnowledgeProcessOverrides(context.Background(), kb, knowledge,
+		dialogStyleOverrides(kb, nil), nil, nil)
+	require.NoError(t, err)
+	stored, err := knowledge.ProcessOverrides()
+	require.NoError(t, err)
+	require.Nil(t, stored,
+		"a confirm dialog state that matches the KB must not be stored as overrides")
+
+	// The KB is reconfigured after upload (question generation disabled).
+	kb.QuestionGenerationConfig = &types.QuestionGenerationConfig{Enabled: false}
+	eff := ResolveProcessConfig(kb, stored)
+	require.False(t, eff.QuestionGenerationConfig.Enabled,
+		"with no stored deviation the reparse must follow the latest KB config")
+}
+
+// A field the user actually changed at upload survives as an override even
+// when every other prefilled field is dropped.
+func TestExplicitProcessOverrides_KeepsUserDeviations(t *testing.T) {
+	t.Parallel()
+
+	kb := &types.KnowledgeBase{
+		ChunkingConfig: types.ChunkingConfig{ChunkSize: 512, ChunkOverlap: 50},
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{
+			Enabled: true, QuestionCount: 3,
+		},
+	}
+	request := dialogStyleOverrides(kb, &types.KnowledgeProcessOverrides{
+		ChunkingConfig: &types.ChunkingConfig{ChunkSize: 2048, ChunkOverlap: 50},
+	})
+
+	explicit := explicitProcessOverrides(kb, request)
+	require.NotNil(t, explicit)
+	require.NotNil(t, explicit.ChunkingConfig)
+	require.Equal(t, 2048, explicit.ChunkingConfig.ChunkSize)
+	require.Nil(t, explicit.QuestionGenerationConfig,
+		"the untouched question section must keep following the KB")
+	require.Nil(t, explicit.SummaryEnabled)
+
+	// Resolution is unchanged by the narrowing — the effective config of the
+	// full request and of the explicit subset must agree.
+	require.Equal(t, ResolveProcessConfig(kb, request), ResolveProcessConfig(kb, explicit))
+}
+
+// Reparse merges the request onto the stored overrides field by field: fields
+// the request supplies replace the stored choice, omitted fields keep the
+// upload-time explicit override.
+func TestMergeProcessOverrides_OmittedFieldsKeepStoredChoices(t *testing.T) {
+	t.Parallel()
+
+	stored := &types.KnowledgeProcessOverrides{
+		ChunkingConfig: &types.ChunkingConfig{ChunkSize: 2048},
+		SummaryEnabled: processConfigBoolPtr(false),
+	}
+	request := &types.KnowledgeProcessOverrides{
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{Enabled: true, QuestionCount: 5},
+	}
+
+	merged := mergeProcessOverrides(stored, request)
+	require.Equal(t, 2048, merged.ChunkingConfig.ChunkSize, "omitted field keeps the stored override")
+	require.False(t, *merged.SummaryEnabled)
+	require.True(t, merged.QuestionGenerationConfig.Enabled)
+	require.Equal(t, 5, merged.QuestionGenerationConfig.QuestionCount)
+
+	replaced := mergeProcessOverrides(stored, &types.KnowledgeProcessOverrides{
+		ChunkingConfig: &types.ChunkingConfig{ChunkSize: 4096},
+	})
+	require.Equal(t, 4096, replaced.ChunkingConfig.ChunkSize, "a supplied field replaces the stored choice")
+
+	require.Nil(t, mergeProcessOverrides(nil, nil))
+	require.Same(t, stored, mergeProcessOverrides(stored, nil))
+	require.Same(t, request, mergeProcessOverrides(nil, request))
+}
