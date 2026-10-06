@@ -12,6 +12,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/common"
+	"github.com/Tencent/WeKnora/internal/config"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
@@ -876,11 +877,21 @@ type documentProfileOutput struct {
 // legacy plain-text summary (custom templates, older models). Plain text is
 // stored as the summary with no profile, so nothing that worked before
 // regresses; only the knowledge-base aggregation loses that document's topics.
-func parseDocumentSummaryOutput(content string) *documentSummaryResult {
+//
+// Under the default template (requireJSON, see summaryPromptRequiresJSON) the
+// reply IS the strict JSON contract of generate_summary.yaml: a reply that is
+// not parseable JSON — typically a MaxTokens cut slicing the object in half —
+// or JSON with no usable text is rejected with errInvalidSummaryOutput so the
+// caller's retryable-failure path runs instead of the raw reply being
+// persisted as knowledge.Description, marked Completed and indexed.
+func parseDocumentSummaryOutput(content string, requireJSON bool) (*documentSummaryResult, error) {
 	content = strings.TrimSpace(content)
 	var out documentProfileOutput
 	if err := common.ParseLLMJsonResponse(content, &out); err != nil {
-		return &documentSummaryResult{Summary: content}
+		if requireJSON {
+			return nil, fmt.Errorf("%w: %v", errInvalidSummaryOutput, err)
+		}
+		return &documentSummaryResult{Summary: content}, nil
 	}
 	summary := strings.TrimSpace(out.Summary)
 	profile := (&types.KnowledgeProfile{
@@ -893,11 +904,36 @@ func parseDocumentSummaryOutput(content string) *documentSummaryResult {
 		summary = profile.Gist
 	}
 	if summary == "" {
+		if requireJSON {
+			// JSON without usable text is as unusable as no JSON at all.
+			return nil, errInvalidSummaryOutput
+		}
 		// JSON without usable text: fall back to the raw content so the
 		// caller's empty-output handling still applies.
-		return &documentSummaryResult{Summary: content}
+		return &documentSummaryResult{Summary: content}, nil
 	}
-	return &documentSummaryResult{Summary: summary, Profile: profile}
+	return &documentSummaryResult{Summary: summary, Profile: profile}, nil
+}
+
+// summaryPromptRequiresJSON reports whether the document-summary prompt was
+// resolved from the built-in default template, whose contract is strict JSON.
+// The prompt text only ever comes from conversation.generate_summary_prompt_id
+// (backfillConversationDefaults resolves that ID against
+// prompt_templates/generate_summary.yaml and has no other fallback), so the
+// call runs on the default template exactly when the ID selects the entry
+// marked default: true (id "default_summary" in stock configs). Custom
+// templates, unresolvable IDs and missing template configs keep the legacy
+// plain-text fallback.
+func summaryPromptRequiresJSON(cfg *config.Config) bool {
+	if cfg == nil || cfg.PromptTemplates == nil || cfg.Conversation == nil {
+		return false
+	}
+	for i := range cfg.PromptTemplates.GenerateSummary {
+		if t := &cfg.PromptTemplates.GenerateSummary[i]; t.ID == cfg.Conversation.GenerateSummaryPromptID {
+			return t.Default
+		}
+	}
+	return false
 }
 
 // buildSummaryChunkContent is the text embedded for the document-level
@@ -929,16 +965,34 @@ const imageDominatedTextThreshold = 200
 var (
 	errInsufficientSummaryContent = errors.New("insufficient text content for summary generation")
 	errEmptySummaryOutput         = errors.New("summary model returned empty output")
+	// errInvalidSummaryOutput signals that the reply violated the default
+	// summary template's strict-JSON contract: unparseable JSON (a MaxTokens
+	// cut can slice the object mid-string) or JSON with no usable text.
+	// Persisting such a reply as knowledge.Description would mark the summary
+	// Completed and index the raw reply, so it is routed to the retryable
+	// failure path instead.
+	errInvalidSummaryOutput = errors.New("summary model output violates the default summary template contract")
+	// errSummaryOutputTruncated signals finish_reason=length: the reply was
+	// cut at the completion token budget, so its tail — possibly the JSON
+	// closing brace or the last plain-text sentences — never arrived. The
+	// output cannot be trusted even when what did arrive looks complete.
+	errSummaryOutputTruncated = errors.New("summary model output truncated by the completion token budget (finish_reason=length)")
 )
 
 const summaryFallbackMaxRunes = 500
 
-// validateSummaryOutput rejects successful model responses that contain no
-// user-visible text. Treating whitespace-only output as an error lets Asynq
-// retry the summary task instead of persisting description="" as completed.
+// validateSummaryOutput rejects successful model responses that cannot serve
+// as a summary: whitespace-only output (persisting description="" as completed
+// would hide the failure) and budget-truncated replies (finish_reason=length —
+// the tail never arrived, so a half JSON object or a mid-sentence cut cannot
+// be told apart from valid text at this point). Treating both as errors lets
+// Asynq retry the summary task instead of persisting them as completed.
 func validateSummaryOutput(response *types.ChatResponse) (string, error) {
 	if response == nil {
 		return "", errEmptySummaryOutput
+	}
+	if response.FinishReason == "length" {
+		return "", errSummaryOutputTruncated
 	}
 	content := strings.TrimSpace(response.Content)
 	if content == "" {
@@ -1186,7 +1240,14 @@ func (s *knowledgeService) getSummary(ctx context.Context,
 		logger.GetLogger(ctx).WithField("error", err).Warnf("GetSummary returned no usable content")
 		return nil, err
 	}
-	result := parseDocumentSummaryOutput(content)
+	result, err := parseDocumentSummaryOutput(content, summaryPromptRequiresJSON(s.config))
+	if err != nil {
+		// Invalid output under the default template's JSON contract (or a
+		// budget-truncated reply caught above): hand the error back so the
+		// task retries instead of persisting the raw reply as the summary.
+		logger.GetLogger(ctx).WithField("error", err).Warnf("GetSummary returned unusable output")
+		return nil, err
+	}
 	logger.GetLogger(ctx).WithField("summary", result.Summary).
 		WithField("has_profile", result.Profile != nil).Infof("GetSummary success")
 	return result, nil

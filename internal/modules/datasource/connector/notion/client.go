@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -367,6 +368,12 @@ func (c *notionClient) QueryDatabaseAll(ctx context.Context, id string) ([]notio
 	if err == nil {
 		return records, nil
 	}
+	// The query reached a real data source but was truncated by the vendor —
+	// surface the truncation instead of misreading it as a wrong-ID-kind 404
+	// and resolving the database container for another partial query.
+	if errors.Is(err, ErrQueryTruncated) {
+		return nil, err
+	}
 
 	// If 404, id might be a database container ID — resolve to data_source_id
 	info, dbErr := c.GetDatabaseInfo(ctx, id)
@@ -458,6 +465,17 @@ const maxPaginationHops = 10000
 // the context deadline.
 const maxEmptyResultPages = 10
 
+// ErrQueryTruncated reports that Notion marked a paginated response as
+// incomplete (request_status.type == "incomplete", e.g. because a database
+// query exceeded the vendor's result row limit). The rows received so far are
+// an arbitrary subset of the source: consuming them as a full read silently
+// drops data and — on incremental sync — poisons the deletion baseline, since
+// every row the vendor dropped would look deleted at source. Callers must fail
+// the sync round instead of acknowledging the partial read; users need to
+// narrow the data source or add filters so queries fit the vendor limit (#3836).
+var ErrQueryTruncated = errors.New(
+	"notion results truncated at the vendor query limit; narrow the data source or add filters")
+
 // paginatePages fetches all pages from a paginated Notion API endpoint.
 func (c *notionClient) paginatePages(ctx context.Context, method, path string) ([]notionPage, error) {
 	var allPages []notionPage
@@ -491,6 +509,18 @@ func (c *notionClient) paginatePages(ctx context.Context, method, path string) (
 		var resp paginatedResponse
 		if err := json.Unmarshal(respBody, &resp); err != nil {
 			return nil, fmt.Errorf("unmarshal paginated response: %w", err)
+		}
+
+		// Vendor-side truncation: Notion sets has_more=false at its result
+		// limit, making truncation look exactly like a complete read, so every
+		// page is checked right after deserialization (the signal can precede
+		// the last page). Never return a partial result set as a success.
+		if resp.truncated() {
+			reason := resp.RequestStatus.IncompleteReason
+			if reason == "" {
+				reason = "unknown"
+			}
+			return nil, fmt.Errorf("%w (incomplete_reason: %s, endpoint: %s)", ErrQueryTruncated, reason, path)
 		}
 
 		var pages []notionPage

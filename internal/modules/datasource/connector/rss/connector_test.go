@@ -40,6 +40,10 @@ type fakeFeed struct {
 	server             *httptest.Server
 	feedTitle          string
 	itemContent        string // optional <description>/content for items
+	item1Title         string // optional override of item 1's <title>
+	item1Path          string // optional override of item 1's <link> path (under server root)
+	item1Desc          string // optional override of item 1's <description>
+	item1Article       string // optional override of item 1's article page body (path /article/a1 only)
 	articleAuthHeaders []string
 	articleFetches     atomic.Int32
 	failFeed           atomic.Bool
@@ -57,10 +61,14 @@ func newFakeFeed(t *testing.T) *fakeFeed {
 				f.articleAuthHeaders = append(f.articleAuthHeaders, vals[0])
 			}
 		}
+		body := longArticleBody
+		if r.URL.Path == "/article/a1" && f.item1Article != "" {
+			body = f.item1Article
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>%s</title></head>`+
 			`<body><nav>menu</nav><article><h1>Heading</h1>%s</article><footer>foot</footer></body></html>`,
-			"Full "+r.URL.Path, longArticleBody)
+			"Full "+r.URL.Path, body)
 	})
 
 	mux.HandleFunc("/feed.xml", func(w http.ResponseWriter, r *http.Request) {
@@ -75,14 +83,26 @@ func newFakeFeed(t *testing.T) *fakeFeed {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		base := "http://" + r.Host
 		desc := "summary fallback"
+		title1 := f.item1Title
+		if title1 == "" {
+			title1 = "Article One"
+		}
+		path1 := f.item1Path
+		if path1 == "" {
+			path1 = "/article/a1"
+		}
+		desc1 := f.item1Desc
+		if desc1 == "" {
+			desc1 = desc
+		}
 		fmt.Fprintf(w, `<?xml version="1.0"?>
 <rss version="2.0"><channel>
 <title>%s</title>
 <link>%s</link>
 <description>A test feed</description>
 <item>
-  <title>Article One</title>
-  <link>%s/article/a1</link>
+  <title>%s</title>
+  <link>%s%s</link>
   <guid>guid-1</guid>
   <pubDate>Mon, 02 Jan 2006 15:04:05 GMT</pubDate>
   <description>%s</description>
@@ -94,7 +114,7 @@ func newFakeFeed(t *testing.T) *fakeFeed {
   <pubDate>Tue, 03 Jan 2006 15:04:05 GMT</pubDate>
   <description>%s</description>
 </item>
-</channel></rss>`, f.feedTitle, base, base, desc, base, desc)
+</channel></rss>`, f.feedTitle, base, title1, base, path1, desc1, base, desc)
 	})
 
 	f.server = httptest.NewServer(mux)
@@ -190,6 +210,22 @@ func TestFeedSignalFingerprint(t *testing.T) {
 	sig3 := feedSignalFingerprint(item, "changed")
 	if sig1 == sig3 {
 		t.Fatal("expected different signal when feed content changes")
+	}
+}
+
+func TestItemFingerprint(t *testing.T) {
+	base := itemFingerprint("Title", "https://example.com/a", "body")
+	if base == "" || base != itemFingerprint("Title", "https://example.com/a", "body") {
+		t.Fatalf("item fingerprint unstable: %q", base)
+	}
+	if base == itemFingerprint("New Title", "https://example.com/a", "body") {
+		t.Fatal("expected different fingerprint on title-only change")
+	}
+	if base == itemFingerprint("Title", "https://example.com/b", "body") {
+		t.Fatal("expected different fingerprint on link-only change")
+	}
+	if base == itemFingerprint("Title", "https://example.com/a", "changed") {
+		t.Fatal("expected different fingerprint on body change")
 	}
 }
 
@@ -347,6 +383,168 @@ func TestConnector_FetchIncremental_SkipsUnchanged(t *testing.T) {
 	}
 	if len(items2) != 0 {
 		t.Fatalf("expected 0 items on unchanged second sync, got %d", len(items2))
+	}
+}
+
+// syncIncremental runs one incremental sync round against feedURL.
+func syncIncremental(t *testing.T, feedURL string, cursor *types.SyncCursor) ([]types.FetchedItem, *types.SyncCursor) {
+	t.Helper()
+	cfg := makeConfig(feedURL, "")
+	cfg.ResourceIDs = []string{feedURL}
+	items, next, err := NewConnector().FetchIncremental(context.Background(), cfg, cursor)
+	if err != nil {
+		t.Fatalf("FetchIncremental error: %v", err)
+	}
+	if next == nil {
+		t.Fatal("expected non-nil cursor")
+	}
+	return items, next
+}
+
+// findByGUID picks the fetched item carrying the given feed GUID.
+func findByGUID(items []types.FetchedItem, guid string) types.FetchedItem {
+	for _, it := range items {
+		if it.Metadata["guid"] == guid {
+			return it
+		}
+	}
+	return types.FetchedItem{}
+}
+
+// TestConnector_FetchIncremental_TitleOnlyChangeYieldsUpdate guards #3823: an
+// entry whose <title> changed but whose body did not must surface exactly one
+// update carrying the new title, with the Markdown body byte-identical so the
+// downstream file hash and chunking stay untouched. The next unchanged sync
+// must go back to zero updates (the new feed signal settles).
+func TestConnector_FetchIncremental_TitleOnlyChangeYieldsUpdate(t *testing.T) {
+	f := newFakeFeed(t)
+
+	items, cursor := syncIncremental(t, f.feedURL(), nil)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items on first sync, got %d", len(items))
+	}
+	before := findByGUID(items, "guid-1")
+	if before.Title != "Article One" {
+		t.Fatalf("fixture title = %q, want Article One", before.Title)
+	}
+
+	f.item1Title = "Article One (retitled)"
+	items2, cursor2 := syncIncremental(t, f.feedURL(), cursor)
+	if len(items2) != 1 {
+		t.Fatalf("title-only change must yield exactly 1 update, got %d", len(items2))
+	}
+	got := items2[0]
+	if got.ExternalID != before.ExternalID {
+		t.Fatalf("update ExternalID = %q, want %q", got.ExternalID, before.ExternalID)
+	}
+	if got.Title != "Article One (retitled)" {
+		t.Fatalf("update Title = %q, want the renamed title", got.Title)
+	}
+	if got.URL != before.URL || got.Metadata["link"] != before.Metadata["link"] {
+		t.Fatalf("title-only change must not move the link: URL=%q metadata.link=%q",
+			got.URL, got.Metadata["link"])
+	}
+	if string(got.Content) != string(before.Content) {
+		t.Fatal("title-only change must keep the Markdown body byte-identical")
+	}
+
+	items3, _ := syncIncremental(t, f.feedURL(), cursor2)
+	if len(items3) != 0 {
+		t.Fatalf("unchanged sync after title change must yield 0 updates, got %d", len(items3))
+	}
+}
+
+// TestConnector_FetchIncremental_LinkOnlyChangeYieldsUpdate guards #3823: an
+// entry whose <link> moved while GUID, title and body stayed the same must
+// surface exactly one update carrying the new URL and metadata.link.
+func TestConnector_FetchIncremental_LinkOnlyChangeYieldsUpdate(t *testing.T) {
+	f := newFakeFeed(t)
+
+	items, cursor := syncIncremental(t, f.feedURL(), nil)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items on first sync, got %d", len(items))
+	}
+	before := findByGUID(items, "guid-1")
+
+	f.item1Path = "/article/a1-moved"
+	wantURL := f.server.URL + "/article/a1-moved"
+	items2, cursor2 := syncIncremental(t, f.feedURL(), cursor)
+	if len(items2) != 1 {
+		t.Fatalf("link-only change must yield exactly 1 update, got %d", len(items2))
+	}
+	got := items2[0]
+	if got.ExternalID != before.ExternalID {
+		t.Fatalf("update ExternalID = %q, want %q (GUID must stay stable)",
+			got.ExternalID, before.ExternalID)
+	}
+	if got.URL != wantURL {
+		t.Fatalf("update URL = %q, want %q", got.URL, wantURL)
+	}
+	if got.Metadata["link"] != wantURL {
+		t.Fatalf("update metadata.link = %q, want %q", got.Metadata["link"], wantURL)
+	}
+	if got.Title != before.Title {
+		t.Fatalf("link-only change must keep the title, got %q", got.Title)
+	}
+	// The moved page serves the same article, so the body must stay identical.
+	if string(got.Content) != string(before.Content) {
+		t.Fatal("link-only change must keep the Markdown body byte-identical")
+	}
+
+	items3, _ := syncIncremental(t, f.feedURL(), cursor2)
+	if len(items3) != 0 {
+		t.Fatalf("unchanged sync after link change must yield 0 updates, got %d", len(items3))
+	}
+}
+
+// TestConnector_FetchIncremental_BodyChangeStillYieldsUpdate keeps the classic
+// behavior: a feed-visible body edit (summary + article page both revised)
+// still yields exactly one update with the new Markdown.
+func TestConnector_FetchIncremental_BodyChangeStillYieldsUpdate(t *testing.T) {
+	f := newFakeFeed(t)
+
+	items, cursor := syncIncremental(t, f.feedURL(), nil)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items on first sync, got %d", len(items))
+	}
+	before := findByGUID(items, "guid-1")
+
+	f.item1Desc = "revised summary fallback"
+	f.item1Article = strings.Replace(longArticleBody, "first paragraph", "revised paragraph", 1)
+	items2, cursor2 := syncIncremental(t, f.feedURL(), cursor)
+	if len(items2) != 1 {
+		t.Fatalf("body change must yield exactly 1 update, got %d", len(items2))
+	}
+	if string(items2[0].Content) == string(before.Content) {
+		t.Fatal("expected the updated article body to be ingested")
+	}
+	if !strings.Contains(string(items2[0].Content), "revised paragraph") {
+		t.Fatalf("update body missing the revised text, got: %q", string(items2[0].Content))
+	}
+
+	items3, _ := syncIncremental(t, f.feedURL(), cursor2)
+	if len(items3) != 0 {
+		t.Fatalf("unchanged sync after body change must yield 0 updates, got %d", len(items3))
+	}
+}
+
+// TestConnector_FetchIncremental_SummaryOnlyChangeStillSkips keeps dedup tight:
+// a feed entry whose summary text changed while title, link and the ingested
+// body stayed the same must NOT be re-emitted (nothing persisted moved).
+func TestConnector_FetchIncremental_SummaryOnlyChangeStillSkips(t *testing.T) {
+	f := newFakeFeed(t)
+
+	_, cursor := syncIncremental(t, f.feedURL(), nil)
+
+	f.item1Desc = "retouched summary that never reaches the document"
+	items2, cursor2 := syncIncremental(t, f.feedURL(), cursor)
+	if len(items2) != 0 {
+		t.Fatalf("summary-only change must yield 0 updates, got %d", len(items2))
+	}
+
+	items3, _ := syncIncremental(t, f.feedURL(), cursor2)
+	if len(items3) != 0 {
+		t.Fatalf("unchanged sync must yield 0 updates, got %d", len(items3))
 	}
 }
 

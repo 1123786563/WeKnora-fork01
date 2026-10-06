@@ -259,7 +259,17 @@ func (c *Connector) FetchIncremental(ctx context.Context, config *types.DataSour
 		if pg.isDatabase() {
 			// Incremental database sync: query records, diff against cursor,
 			// only fetch blocks for records whose edit time actually changed.
-			items, recordEditTimes := c.fetchDatabaseIncremental(ctx, client, pg.ID, prevCursor.PageEditTimes, fetchVisited)
+			items, recordEditTimes, err := c.fetchDatabaseIncremental(
+				ctx, client, pg.ID, prevCursor.PageEditTimes, fetchVisited)
+			if err != nil {
+				// #3836: the query was truncated at the vendor limit, so this
+				// round's record set cannot serve as a deletion baseline — every
+				// row the vendor dropped would be reported deleted at source
+				// below and purged from the knowledge base. Fail the whole round
+				// (nil cursor keeps the previous one) so nothing is deleted and
+				// the round is retried once the source is narrowed or filtered.
+				return nil, nil, fmt.Errorf("database %s: %w", pg.ID, err)
+			}
 			changedItems = append(changedItems, items...)
 			// Merge record-level edit times into the cursor
 			for rid, rt := range recordEditTimes {
@@ -508,7 +518,15 @@ func (c *Connector) fetchDatabase(ctx context.Context, client *notionClient, id 
 	visited[id] = true
 
 	records, dbTitle, queryID, err := c.queryDatabaseRecords(ctx, client, id)
-	if err != nil || len(records) == 0 {
+	if err != nil {
+		// No deletion baseline exists on a full sync, but a truncated query
+		// would still sync a partial table silently — keep the failure visible.
+		if errors.Is(err, ErrQueryTruncated) {
+			logger.Warnf(ctx, "[Notion] database %s query truncated; synced content is incomplete: %v", id, err)
+		}
+		return nil
+	}
+	if len(records) == 0 {
 		return nil
 	}
 	if queryID != "" && queryID != id {
@@ -530,20 +548,31 @@ func (c *Connector) fetchDatabase(ctx context.Context, client *notionClient, id 
 }
 
 // fetchDatabaseIncremental syncs only changed records by comparing edit times against cursor.
-// Returns fetched items and a map of record_id → edit_time for cursor update.
-func (c *Connector) fetchDatabaseIncremental(ctx context.Context, client *notionClient, id string, prevEditTimes map[string]time.Time, visited map[string]bool) ([]types.FetchedItem, map[string]time.Time) {
+// Returns fetched items, a map of record_id → edit_time for cursor update, and an error.
+// The only error propagated is ErrQueryTruncated (#3836): a truncated record
+// set is an arbitrary subset of the source, and reporting "these are all the
+// records" would make every row the vendor dropped look deleted at source.
+// Other query failures keep the existing "no data this round" behavior
+// (queryDatabaseRecords already logged them).
+func (c *Connector) fetchDatabaseIncremental(
+	ctx context.Context, client *notionClient, id string,
+	prevEditTimes map[string]time.Time, visited map[string]bool,
+) ([]types.FetchedItem, map[string]time.Time, error) {
 	if visited[id] {
-		return nil, nil
+		return nil, nil, nil
 	}
 	visited[id] = true
 
 	records, dbTitle, queryID, err := c.queryDatabaseRecords(ctx, client, id)
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, ErrQueryTruncated) {
+			return nil, nil, err
+		}
+		return nil, nil, nil
 	}
 	if queryID != "" && queryID != id {
 		if visited[queryID] {
-			return nil, nil
+			return nil, nil, nil
 		}
 		visited[queryID] = true
 	}
@@ -571,11 +600,11 @@ func (c *Connector) fetchDatabaseIncremental(ctx context.Context, client *notion
 	if changedCount > 0 || len(prevEditTimes) == 0 {
 		item := c.buildDatabaseItem(ctx, client, id, dbTitle, records)
 		if item != nil {
-			return []types.FetchedItem{*item}, recordEditTimes
+			return []types.FetchedItem{*item}, recordEditTimes, nil
 		}
 	}
 
-	return nil, recordEditTimes
+	return nil, recordEditTimes, nil
 }
 
 // queryDatabaseRecords resolves the database ID and queries all records.
