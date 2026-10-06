@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -407,6 +408,121 @@ func TestConnector_FetchIncremental_ReturnsOnlyChanged(t *testing.T) {
 	}
 	if string(items[0].Content) != "b2 updated" {
 		t.Errorf("expected refreshed body, got %q", string(items[0].Content))
+	}
+}
+
+// handle503 registers a handler that always answers 503 and counts attempts,
+// proving the client exhausted its 5xx retry budget before the walk saw the error.
+func (f *fakeYuque) handle503(path string) *int32 {
+	var attempts int32
+	f.mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message":"upstream overloaded"}`))
+	})
+	return &attempts
+}
+
+// TestConnector_FetchIncremental_DetailFailure_AbortsRound pins #3690: a doc
+// whose detail fetch fails after retry exhaustion must fail the whole round so
+// the cursor never confirms the failed doc's new version. Recovery round
+// re-fetches the failed doc even though its source timestamp is unchanged.
+func TestConnector_FetchIncremental_DetailFailure_AbortsRound(t *testing.T) {
+	// Round 1: both docs at t0, all details OK → cursor established at t0.
+	f1 := newFakeYuque()
+	f1.handleJSON("/api/v2/repos/21/docs", 200, v2DocListResponse{Data: []v2Doc{
+		{ID: 1, Type: "Doc", Status: "1", Title: "A", Slug: "a", ContentUpdatedAt: "2026-04-20T10:00:00Z"},
+		{ID: 2, Type: "Doc", Status: "1", Title: "B", Slug: "b", ContentUpdatedAt: "2026-04-20T10:00:00Z"},
+	}})
+	f1.handleJSON("/api/v2/repos/docs/1", 200, v2DocDetailResponse{Data: v2DocDetail{ID: 1, Title: "A", Body: "a v1", Format: "markdown", Status: "1", ContentUpdatedAt: "2026-04-20T10:00:00Z"}})
+	f1.handleJSON("/api/v2/repos/docs/2", 200, v2DocDetailResponse{Data: v2DocDetail{ID: 2, Title: "B", Body: "b v1", Format: "markdown", Status: "1", ContentUpdatedAt: "2026-04-20T10:00:00Z"}})
+
+	_, cursor1, err := NewConnector().FetchIncremental(context.Background(), makeDSConfig(f1, []string{"21"}), nil)
+	if err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	f1.Close()
+
+	// Round 2: both docs updated to t1. Doc 1's detail succeeds, doc 2's
+	// detail 503s through the full retry budget → mixed success/failure.
+	f2 := newFakeYuque()
+	f2.handleJSON("/api/v2/repos/21/docs", 200, v2DocListResponse{Data: []v2Doc{
+		{ID: 1, Type: "Doc", Status: "1", Title: "A", Slug: "a", ContentUpdatedAt: "2026-04-20T12:00:00Z"},
+		{ID: 2, Type: "Doc", Status: "1", Title: "B", Slug: "b", ContentUpdatedAt: "2026-04-20T12:00:00Z"},
+	}})
+	f2.handleJSON("/api/v2/repos/docs/1", 200, v2DocDetailResponse{Data: v2DocDetail{ID: 1, Title: "A", Body: "a v2", Format: "markdown", Status: "1", ContentUpdatedAt: "2026-04-20T12:00:00Z"}})
+	f2Attempts := f2.handle503("/api/v2/repos/docs/2")
+
+	items, cursor2, err := NewConnector().FetchIncremental(context.Background(), makeDSConfig(f2, []string{"21"}), cursor1)
+	if err == nil {
+		t.Fatal("incremental sync with an exhausted-retry detail failure must return an error")
+	}
+	if !strings.Contains(err.Error(), "status=503") {
+		t.Errorf("error should surface the underlying 503, got: %v", err)
+	}
+	if cursor2 != nil {
+		t.Fatalf("cursor must not be returned on a failed round (service would persist it), got %+v", cursor2)
+	}
+	if len(items) != 0 {
+		t.Errorf("whole-round-error semantics: items should be discarded on error, got %d", len(items))
+	}
+	if got := atomic.LoadInt32(f2Attempts); got < 2 {
+		t.Errorf("detail endpoint attempts = %d, want >= 2 (initial + 5xx retry)", got)
+	}
+	f2.Close()
+
+	// Round 3 (recovery): source timestamps unchanged (still t1), both details
+	// healthy again. Replaying cursor1 — the service kept it because round 2
+	// returned no cursor — must re-fetch BOTH docs, including the failed one.
+	f3 := newFakeYuque()
+	f3.handleJSON("/api/v2/repos/21/docs", 200, v2DocListResponse{Data: []v2Doc{
+		{ID: 1, Type: "Doc", Status: "1", Title: "A", Slug: "a", ContentUpdatedAt: "2026-04-20T12:00:00Z"},
+		{ID: 2, Type: "Doc", Status: "1", Title: "B", Slug: "b", ContentUpdatedAt: "2026-04-20T12:00:00Z"},
+	}})
+	f3.handleJSON("/api/v2/repos/docs/1", 200, v2DocDetailResponse{Data: v2DocDetail{ID: 1, Title: "A", Body: "a v2", Format: "markdown", Status: "1", ContentUpdatedAt: "2026-04-20T12:00:00Z"}})
+	f3.handleJSON("/api/v2/repos/docs/2", 200, v2DocDetailResponse{Data: v2DocDetail{ID: 2, Title: "B", Body: "b v2 recovered", Format: "markdown", Status: "1", ContentUpdatedAt: "2026-04-20T12:00:00Z"}})
+
+	items, cursor3, err := NewConnector().FetchIncremental(context.Background(), makeDSConfig(f3, []string{"21"}), cursor1)
+	if err != nil {
+		t.Fatalf("recovery sync: %v", err)
+	}
+	if cursor3 == nil {
+		t.Fatal("recovery sync must return a cursor")
+	}
+	bodies := map[string]string{}
+	for _, it := range items {
+		bodies[it.ExternalID] = string(it.Content)
+	}
+	if bodies["2"] != "b v2 recovered" {
+		t.Errorf("previously failed doc 2 must be re-fetched with new content, got %q (items=%+v)", bodies["2"], items)
+	}
+	if bodies["1"] != "a v2" {
+		t.Errorf("doc 1 content = %q, want %q", bodies["1"], "a v2")
+	}
+}
+
+// TestConnector_FetchIncremental_AllDetailFailures_Error: listing succeeds but
+// every detail fetch exhausts its retries — the round must error, not silently
+// return an empty success (which would confirm all new versions into the cursor).
+func TestConnector_FetchIncremental_AllDetailFailures_Error(t *testing.T) {
+	f := newFakeYuque()
+	defer f.Close()
+	f.handleJSON("/api/v2/repos/22/docs", 200, v2DocListResponse{Data: []v2Doc{
+		{ID: 1, Type: "Doc", Status: "1", Title: "A", ContentUpdatedAt: "2026-04-20T10:00:00Z"},
+		{ID: 2, Type: "Doc", Status: "1", Title: "B", ContentUpdatedAt: "2026-04-20T10:00:00Z"},
+	}})
+	f.handle503("/api/v2/repos/docs/1")
+	f.handle503("/api/v2/repos/docs/2")
+
+	items, cursor, err := NewConnector().FetchIncremental(context.Background(), makeDSConfig(f, []string{"22"}), nil)
+	if err == nil {
+		t.Fatal("all detail fetches failing must return an error, not a silent success")
+	}
+	if cursor != nil {
+		t.Fatalf("cursor must not be returned, got %+v", cursor)
+	}
+	if len(items) != 0 {
+		t.Errorf("items should be empty on error, got %d", len(items))
 	}
 }
 

@@ -271,7 +271,22 @@ func (c *Connector) walk(
 
 			detail, err := cli.GetDocDetail(ctx, d.ID)
 			if err != nil {
-				// Record failure but continue (placeholder item with error metadata).
+				// Incremental sync must fail the whole round once the client's
+				// retry budget is exhausted. The doc's new content_updated_at is
+				// already recorded in the pending cursor, so returning success
+				// here would confirm a version whose content was never fetched —
+				// and with the timestamp unchanged at the source, every later
+				// incremental run would skip the doc, leaving the new content
+				// missing or stale (#3690). The service layer keeps the previous
+				// cursor unless this call returns one, so the retried round
+				// re-fetches the failed doc. Returning partial items alongside
+				// the error is not an option either: the service discards items
+				// on fetch error but persists any returned cursor.
+				if incremental {
+					return nil, nil, fmt.Errorf("get detail for book %d doc %d: %w", bookID, d.ID, err)
+				}
+				// Full sync has no cursor to corrupt: record failure but
+				// continue (placeholder item with error metadata).
 				// Keep doc_id/book_id/slug for observability pipelines that join on these.
 				out = append(out, types.FetchedItem{
 					ExternalID:       docIDStr,

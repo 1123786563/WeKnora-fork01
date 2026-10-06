@@ -149,7 +149,11 @@ func (c *Connector) FetchAll(ctx context.Context, config *types.DataSourceConfig
 	for _, resourceID := range resourceIDs {
 		page, err := client.GetPage(ctx, resourceID)
 		if err == nil {
-			allItems = append(allItems, c.fetchPage(ctx, client, page, visited)...)
+			items, err := c.fetchPage(ctx, client, page, visited)
+			if err != nil {
+				return nil, err
+			}
+			allItems = append(allItems, items...)
 			continue
 		}
 		// Not a page — treat as database/data_source.
@@ -262,7 +266,15 @@ func (c *Connector) FetchIncremental(ctx context.Context, config *types.DataSour
 				newEditTimes[rid] = rt
 			}
 		} else {
-			changedItems = append(changedItems, c.fetchPage(ctx, client, pg, fetchVisited)...)
+			// A failed block fetch must fail the whole round: the new cursor is
+			// built from discovery-time edit times, so acknowledging it would
+			// confirm content that was never read (it would never be retried
+			// unless the source is edited again).
+			items, err := c.fetchPage(ctx, client, pg, fetchVisited)
+			if err != nil {
+				return nil, nil, err
+			}
+			changedItems = append(changedItems, items...)
 		}
 	}
 
@@ -326,7 +338,10 @@ func (c *Connector) FetchByExternalID(
 		return nil, fmt.Errorf("get notion page %s: %w", pageID, err)
 	}
 
-	items := c.fetchPage(ctx, client, page, map[string]bool{})
+	items, err := c.fetchPage(ctx, client, page, map[string]bool{})
+	if err != nil {
+		return nil, fmt.Errorf("fetch notion page %s: %w", pageID, err)
+	}
 	for i := range items {
 		if items[i].ExternalID == externalID {
 			return &items[i], nil
@@ -356,17 +371,20 @@ func buildCursor(editTimes map[string]time.Time) *types.SyncCursor {
 
 // fetchPage fetches a single page's content and attachments.
 // If page is nil, it will be fetched from the API.
-func (c *Connector) fetchPage(ctx context.Context, client *notionClient, page *notionPage, visited map[string]bool) []types.FetchedItem {
+// It returns an error when the page's blocks — or any child page reached via
+// child_page traversal — cannot be read, so the sync round fails and retries
+// instead of acknowledging unread content in the sync cursor.
+func (c *Connector) fetchPage(ctx context.Context, client *notionClient, page *notionPage, visited map[string]bool) ([]types.FetchedItem, error) {
 	if page == nil {
-		return nil
+		return nil, nil
 	}
 	if visited[page.ID] {
-		return nil
+		return nil, nil
 	}
 	visited[page.ID] = true
 
 	if page.InTrash {
-		return nil
+		return nil, nil
 	}
 
 	// Database records store content in properties, not blocks — delegate to
@@ -382,15 +400,14 @@ func (c *Connector) fetchPage(ctx context.Context, client *notionClient, page *n
 		}
 		propNames := extractPropertySchema(*page)
 		if item := c.buildRecordItem(ctx, client, *page, propNames, dbTitle); item != nil {
-			return []types.FetchedItem{*item}
+			return []types.FetchedItem{*item}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	blocks, err := client.GetBlockChildrenAll(ctx, page.ID)
 	if err != nil {
-		logger.Warnf(ctx, "[Notion] failed to get blocks for page %s: %v", page.ID, err)
-		return nil
+		return nil, fmt.Errorf("get blocks for page %s: %w", page.ID, err)
 	}
 
 	resolveFileUploads(ctx, client, blocks)
@@ -461,16 +478,25 @@ func (c *Connector) fetchPage(ctx context.Context, client *notionClient, page *n
 		case "child_page":
 			childPage, err := client.GetPage(ctx, block.ID)
 			if err != nil {
-				logger.Warnf(ctx, "[Notion] failed to get child page %s: %v", block.ID, err)
-				continue
+				// A child page that vanished at source is a legitimate state
+				// change, not a read failure — skip it as before.
+				if errors.Is(err, datasource.ErrResourceNotFound) {
+					logger.Warnf(ctx, "[Notion] failed to get child page %s: %v", block.ID, err)
+					continue
+				}
+				return nil, fmt.Errorf("get child page %s: %w", block.ID, err)
 			}
-			items = append(items, c.fetchPage(ctx, client, childPage, visited)...)
+			childItems, err := c.fetchPage(ctx, client, childPage, visited)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, childItems...)
 		case "child_database":
 			items = append(items, c.fetchDatabase(ctx, client, block.ID, visited)...)
 		}
 	}
 
-	return items
+	return items, nil
 }
 
 // fetchDatabase syncs each database record as an individual knowledge item (full sync).
