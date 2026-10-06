@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

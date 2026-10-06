@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+	"github.com/Tencent/WeKnora/internal/searchutil"
 )
 
 // Fuzzy slug resolution: rescue LLM-generated `[[slug|display]]` links
