@@ -89,9 +89,6 @@ func (t *ReadFileTool) updateDescription() {
 			"as offset and line_offset to continue without a shell.")
 	}
 	if t.workspace != nil {
-		scopes = append(scopes, "Sandbox files: absolute paths inside the current session's sandbox, including /tmp; "+
-			"relative paths resolve from /workspace. "+
-			"This does not read host files or publish files as user-visible artifacts.")
 		layout := t.boundLayout()
 		if layout.IsHost() {
 			scopes = append(scopes, "Sandbox files: absolute or relative paths in "+layoutRootOrGeneric(layout)+". "+

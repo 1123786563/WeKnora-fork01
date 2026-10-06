@@ -223,7 +223,9 @@ func (s *TenantSkillService) InstallCatalogToConfigs(
 	}
 	var firstErr error
 	for _, configID := range ids {
-		skillID, installErr := s.InstallSkill(ctx, tenantID, configID, archive)
+		// Stored bytes: a catalog install copies the definition's own archive
+		// and must never write it back as a new definition.
+		skillID, installErr := s.installSkillArchive(ctx, tenantID, configID, archive, skillArchiveStored)
 		if installErr != nil {
 			logger.Warnf(ctx, "[skill] install catalog %s onto config %s failed: %v",
 				catalogID, configID, installErr)

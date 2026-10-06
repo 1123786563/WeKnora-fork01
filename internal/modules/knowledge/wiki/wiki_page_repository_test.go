@@ -88,6 +88,25 @@ func setupWikiPagesTestDB(t *testing.T) *gorm.DB {
 );`).Error)
 	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_page_revisions_page_version
     ON wiki_page_revisions (page_id, version);`).Error)
+	// Mirrors 000037_wiki_and_indexing.up.sql §2 (wiki_page_issues) — the
+	// upstream test setup's wikiPageIssuesTestDDL, inlined in the same
+	// literal-only form as the tables above. The migrate-time DDL block was
+	// dropped when this file moved into the module, leaving every issue-table
+	// test red on "no such table".
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS wiki_page_issues (
+    id                      VARCHAR(36) PRIMARY KEY,
+    tenant_id               INTEGER NOT NULL,
+    knowledge_base_id      VARCHAR(36) NOT NULL,
+    slug                    VARCHAR(255) NOT NULL,
+    issue_type              VARCHAR(50) NOT NULL,
+    description             TEXT NOT NULL,
+    suspected_knowledge_ids TEXT,
+    status                  VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reported_by             VARCHAR(100) NOT NULL,
+    created_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at              DATETIME
+);`).Error)
 	return db
 }
 

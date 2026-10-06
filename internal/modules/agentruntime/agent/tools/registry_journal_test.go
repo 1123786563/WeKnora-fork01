@@ -47,6 +47,21 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	versions, err := os.ReadFile("../../../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(versions)).Error)
+	// store.Claim admission now serialises against RunView effect intents
+	// (rejectSessionRunViewEffectSlotTransfer joins agent_runs with
+	// craft_run_view_effect_intents), so the journal schema needs the craft
+	// chain too: 000164 creates craft_run_views, 000172 the intent table,
+	// 000177 rebuilds it with the request_digest column.
+	for _, m := range []string{
+		"000163_craft_charge_start_journal.up.sql",
+		"000164_craft_run_views.up.sql",
+		"000172_craft_run_view_effect_intent.up.sql",
+		"000177_craft_run_view_effect_request_digest.up.sql",
+	} {
+		body, err := os.ReadFile("../../../../../migrations/sqlite/" + m)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec(string(body)).Error)
+	}
 	require.NoError(t, db.Exec(`UPDATE sessions SET engine_type='trpc', active_agent_run_id='r1';`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_runs
 		(tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,snapshot,deadline)

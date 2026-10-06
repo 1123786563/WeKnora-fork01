@@ -115,7 +115,8 @@ func (s *TenantSkillService) InstallSkillFromSource(
 	if err != nil {
 		return "", err
 	}
-	return s.installParsedSkill(ctx, tenantID, configID, bundle, archive)
+	// A source pull is a new definition of the skill, same as an upload.
+	return s.installParsedSkill(ctx, tenantID, configID, bundle, archive, skillArchiveUploaded)
 }
 
 func skillSourceHTTPClient(override *http.Client) *http.Client {
