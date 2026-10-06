@@ -687,3 +687,118 @@ func (f *countingTaskInspector) QueuedKnowledgeIDs(context.Context) (map[string]
 	}
 	return out, nil
 }
+
+// --- Sweep D: orphaned open spans on terminal rows (issue #3854) ——
+
+// readOrphanSpans reads every span row of a knowledge as its terminal
+// state plus the backfilled finished_at (as the raw storage string — empty
+// means "never closed").
+func readOrphanSpans(t *testing.T, db *gorm.DB, kid string) map[string]orphanSpanState {
+	t.Helper()
+	var rows []orphanSpanState
+	require.NoError(t, db.Raw(
+		`SELECT span_id, status, COALESCE(error_code, '') AS error_code, COALESCE(finished_at, '') AS finished_at
+		 FROM knowledge_processing_spans WHERE knowledge_id = ?`, kid,
+	).Scan(&rows).Error)
+	out := make(map[string]orphanSpanState, len(rows))
+	for _, r := range rows {
+		out[r.SpanID] = r
+	}
+	return out
+}
+
+type orphanSpanState struct {
+	SpanID     string
+	Status     string
+	ErrorCode  string
+	FinishedAt string
+}
+
+func mustParseStatus(t *testing.T, db *gorm.DB, id string) string {
+	t.Helper()
+	status, _ := readKnowledgeStatus(t, db, id)
+	require.NotEmpty(t, status)
+	return status
+}
+
+// A knowledge row that already reached a terminal parse_status must not
+// keep pending/running spans: the sweep closes them with the status that
+// matches the row (completed→done, failed→failed, cancelled→cancelled)
+// and backfills finished_at. This is the 11–27 day "timeline stuck at
+// 进行中" residue Sweep A can never see because it only scans
+// pending/processing/finalizing rows.
+func TestHousekeeping_ClosesOrphanedSpansOnTerminalRows(t *testing.T) {
+	db := setupHousekeepingDB(t)
+	svc := newHousekeepingSvcForTest(db)
+	stale := time.Now().Add(-3 * time.Hour) // past spanOrphanGrace
+
+	// One row per terminal status, each with a running stage span; the
+	// completed one also carries a pending span — both must close.
+	insertKnowledge(t, db, "kid-term-completed", types.ParseStatusCompleted, stale)
+	insertSpan(t, db, "kid-term-completed", 1, "run-1", types.SpanStatusRunning, stale)
+	insertSpan(t, db, "kid-term-completed", 1, "pend-1", types.SpanStatusPending, stale)
+
+	insertKnowledge(t, db, "kid-term-failed", types.ParseStatusFailed, stale)
+	insertSpan(t, db, "kid-term-failed", 1, "run-2", types.SpanStatusRunning, stale)
+
+	insertKnowledge(t, db, "kid-term-cancelled", types.ParseStatusCancelled, stale)
+	insertSpan(t, db, "kid-term-cancelled", 1, "run-3", types.SpanStatusRunning, stale)
+
+	// Control: an already-terminal span on a terminal row is left alone.
+	insertKnowledge(t, db, "kid-term-done-quiet", types.ParseStatusFailed, stale)
+	insertSpan(t, db, "kid-term-done-quiet", 1, "closed-1", types.SpanStatusDone, stale)
+
+	svc.runSweep(context.Background())
+
+	cases := []struct {
+		kid        string
+		spanID     string
+		wantStatus string
+	}{
+		{"kid-term-completed", "run-1", types.SpanStatusDone},
+		{"kid-term-completed", "pend-1", types.SpanStatusDone},
+		{"kid-term-failed", "run-2", types.SpanStatusFailed},
+		{"kid-term-cancelled", "run-3", types.SpanStatusCancelled},
+	}
+	for _, tc := range cases {
+		got, ok := readOrphanSpans(t, db, tc.kid)[tc.spanID]
+		require.True(t, ok, "%s/%s missing", tc.kid, tc.spanID)
+		assert.Equal(t, tc.wantStatus, got.Status,
+			"%s span %s must align with the row's terminal state", tc.kid, tc.spanID)
+		assert.Equal(t, "KNOWLEDGE_TERMINAL", got.ErrorCode)
+		assert.NotEmpty(t, got.FinishedAt, "closed span must carry finished_at")
+	}
+
+	// The terminal rows themselves are untouched — the sweep only writes
+	// spans, never the knowledge row.
+	assert.Equal(t, types.ParseStatusCompleted, mustParseStatus(t, db, "kid-term-completed"))
+	assert.Equal(t, types.ParseStatusFailed, mustParseStatus(t, db, "kid-term-failed"))
+	assert.Equal(t, types.ParseStatusCancelled, mustParseStatus(t, db, "kid-term-cancelled"))
+
+	// Already-terminal spans are not rewritten.
+	quiet := readOrphanSpans(t, db, "kid-term-done-quiet")["closed-1"]
+	assert.Equal(t, types.SpanStatusDone, quiet.Status)
+	assert.Empty(t, quiet.ErrorCode, "terminal span keeps its original error_code")
+}
+
+// A non-terminal row keeps its live spans: Sweep A must not collect a row
+// whose heartbeat is fresh, and Sweep D must not close spans whose row has
+// not reached a terminal parse_status. Otherwise an actively-processing
+// document would lose its timeline mid-run.
+func TestHousekeeping_LeavesOpenSpansOnNonTerminalRows(t *testing.T) {
+	db := setupHousekeepingDB(t)
+	svc := newHousekeepingSvcForTest(db)
+	fresh := time.Now().Add(-30 * time.Second) // inside every cutoff
+
+	insertKnowledge(t, db, "kid-live", types.ParseStatusProcessing, fresh)
+	insertSpan(t, db, "kid-live", 1, "run-live", types.SpanStatusRunning, fresh)
+
+	svc.runSweep(context.Background())
+
+	assert.Equal(t, types.ParseStatusProcessing, mustParseStatus(t, db, "kid-live"),
+		"actively processing row must not be failed")
+	run, ok := readOrphanSpans(t, db, "kid-live")["run-live"]
+	require.True(t, ok)
+	assert.Equal(t, types.SpanStatusRunning, run.Status, "live span must stay running")
+	assert.Empty(t, run.FinishedAt, "live span must not get finished_at")
+}

@@ -44,6 +44,12 @@ type KnowledgeSpanRepository interface {
 	// after asynq retry or server restart so the trace tree does not
 	// accumulate duplicate postprocess.summary / question rows.
 	CancelOpenSpansByName(ctx context.Context, knowledgeID string, attempt int, name, errorCode, reason string) (int64, error)
+	// CancelOpenSpansBeforeAttempt flips every pending/running span of
+	// knowledgeID whose attempt is LOWER than beforeAttempt to "cancelled".
+	// Used by OpenAttempt so a reparse retires whatever the previous
+	// attempt left open (worker died before FinalizeAttempt, row failed
+	// without finalize) instead of keeping two live roots in the trace.
+	CancelOpenSpansBeforeAttempt(ctx context.Context, knowledgeID string, beforeAttempt int, errorCode, reason string) (int64, error)
 	// LastActivity returns each knowledge's most recent span write, across
 	// attempts. Knowledge without spans is absent from the map.
 	LastActivity(ctx context.Context, knowledgeIDs []string) (map[string]time.Time, error)
@@ -259,6 +265,39 @@ func (r *knowledgeSpanRepository) CancelOpenSpansByName(
 	res := r.db.WithContext(ctx).Model(&types.KnowledgeProcessingSpan{}).
 		Where("knowledge_id = ? AND attempt = ? AND name = ? AND status IN ?",
 			knowledgeID, attempt, name,
+			[]string{types.SpanStatusPending, types.SpanStatusRunning}).
+		Updates(map[string]any{
+			"status":        types.SpanStatusCancelled,
+			"error_code":    errorCode,
+			"error_message": reason,
+			"finished_at":   now,
+			"updated_at":    now,
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// CancelOpenSpansBeforeAttempt is the "retire history" counterpart to
+// CancelAllOpenSpans: instead of one attempt's whole tree it flips every
+// still-open span across ALL earlier attempts of the knowledge. Like its
+// siblings it backfills finished_at but deliberately leaves duration_ms
+// untouched — the span keeps its original start and gains a terminal
+// status + reason, which is all the trace viewer needs.
+func (r *knowledgeSpanRepository) CancelOpenSpansBeforeAttempt(
+	ctx context.Context, knowledgeID string, beforeAttempt int, errorCode, reason string,
+) (int64, error) {
+	if knowledgeID == "" || beforeAttempt <= 1 {
+		// No earlier attempts can exist below attempt 1 — nothing to do.
+		return 0, nil
+	}
+	errorCode = common.CleanInvalidUTF8(errorCode)
+	reason = common.CleanInvalidUTF8(reason)
+	now := time.Now()
+	res := r.db.WithContext(ctx).Model(&types.KnowledgeProcessingSpan{}).
+		Where("knowledge_id = ? AND attempt < ? AND status IN ?",
+			knowledgeID, beforeAttempt,
 			[]string{types.SpanStatusPending, types.SpanStatusRunning}).
 		Updates(map[string]any{
 			"status":        types.SpanStatusCancelled,

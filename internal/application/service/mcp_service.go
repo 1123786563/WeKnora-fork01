@@ -456,11 +456,15 @@ func (s *mcpServiceService) TestMCPService(
 		return mcpTestFailure(err, "Initialization failed"), nil
 	}
 
-	// List tools
+	// List tools. A failed tools/list must NOT be reported as success
+	// (#3880): a healthy initialize only proves transport + handshake, so
+	// swallowing the list error and answering with an empty tool list made
+	// a broken upstream look like a good service and misled troubleshooting.
+	// Fail the test while keeping the underlying error in the message.
 	tools, err := client.ListTools(testCtx)
 	if err != nil {
 		logger.GetLogger(ctx).Warnf("Failed to list tools: %v", err)
-		tools = []*types.MCPTool{}
+		return mcpTestFailure(err, "Connected but failed to list tools"), nil
 	}
 
 	// List resources

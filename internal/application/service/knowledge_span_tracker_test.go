@@ -505,3 +505,68 @@ func TestSummaryQuestionPayload_AttemptRoundTrip(t *testing.T) {
 	require.NoError(t, json.Unmarshal(qBytes, &qOut))
 	assert.Equal(t, 5, qOut.Attempt)
 }
+
+// TestSpanTracker_OpenAttempt_ClosesPreviousAttemptOpenSpans is the
+// regression test for the second half of issue #3854: a reparse whose
+// previous attempt died without finalize (worker crash, row failed before
+// FinalizeAttempt) used to leave attempt N's root and stages running while
+// attempt N+1 opened its own root — the trace then showed two live runs
+// and the history looked "re-activated". Opening attempt 2 must retire
+// attempt 1's open spans as cancelled (superseded), keeping attempt 2
+// untouched.
+func TestSpanTracker_OpenAttempt_ClosesPreviousAttemptOpenSpans(t *testing.T) {
+	tracker, db := setupSpanTrackerTest(t)
+	ctx := context.Background()
+
+	root1, n1, err := tracker.OpenAttempt(ctx, "kid", "")
+	require.NoError(t, err)
+	require.Equal(t, 1, n1)
+	require.NotNil(t, root1)
+	// Leave attempt 1 deliberately unfinished: an open stage and an open
+	// subspan under it, no EndSpan/FinalizeAttempt — the exact residue a
+	// dead worker leaves behind.
+	stage := tracker.BeginStage(ctx, "kid", n1, types.StageDocReader, nil)
+	require.NotNil(t, stage)
+	sub := tracker.BeginSubSpan(ctx, stage, "docreader.call", types.SpanKindSubSpan, nil)
+	require.NotNil(t, sub)
+
+	root2, n2, err := tracker.OpenAttempt(ctx, "kid", "")
+	require.NoError(t, err)
+	require.Equal(t, 2, n2, "second OpenAttempt must allocate attempt 2")
+	require.NotNil(t, root2)
+	assert.NotEqual(t, root1.SpanID, root2.SpanID)
+
+	type row struct {
+		Attempt    int
+		SpanID     string
+		Status     string
+		ErrorCode  string
+		FinishedAt string
+	}
+	var rows []row
+	require.NoError(t, db.Table("knowledge_processing_spans").
+		Select("attempt, span_id, status, COALESCE(error_code, '') AS error_code, COALESCE(finished_at, '') AS finished_at").
+		Where("knowledge_id = ?", "kid").
+		Scan(&rows).Error)
+
+	bySpan := make(map[string]row, len(rows))
+	for _, r := range rows {
+		bySpan[r.SpanID] = r
+	}
+	// Attempt 1's open spans — root, stage, subspan — are all retired.
+	for _, spanID := range []string{root1.SpanID, stage.SpanID, sub.SpanID} {
+		r := bySpan[spanID]
+		assert.Equal(t, 1, r.Attempt)
+		assert.Equal(t, types.SpanStatusCancelled, r.Status,
+			"attempt 1 open span %s must be closed as cancelled", spanID)
+		assert.Equal(t, "TASK_SUPERSEDED", r.ErrorCode)
+		assert.NotEmpty(t, r.FinishedAt, "retired span %s must carry finished_at", spanID)
+	}
+	// Attempt 2 opens normally: its root runs, untouched by the retire.
+	fresh := bySpan[root2.SpanID]
+	assert.Equal(t, 2, fresh.Attempt)
+	assert.Equal(t, types.SpanStatusRunning, fresh.Status)
+	assert.Empty(t, fresh.FinishedAt)
+	// Nothing else was invented or lost.
+	assert.Len(t, bySpan, 4, "exactly the 4 seeded spans exist")
+}
