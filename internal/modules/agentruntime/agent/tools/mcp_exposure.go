@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -118,7 +120,16 @@ func (r *ToolRegistry) prepareMCPToolsWithMode(ctx context.Context, grace time.D
 	c.preloadOnce.Do(func() {
 		c.preloadDone = make(chan struct{})
 		go func() {
+			// close(preloadDone) stays outermost so even a panic in this
+			// goroutine releases the waiters below: a broken MCP client must
+			// not strand engine preparation. recover is per goroutine, so the
+			// registry's executeRecovered cannot cover anything spawned here.
 			defer close(c.preloadDone)
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Errorf(ctx, "[MCP] Catalog preload panicked: %v\n%s", r, debug.Stack())
+				}
+			}()
 			loadCtx, cancel := context.WithTimeout(
 				context.WithValue(ctx, execCtxKey{}, (*ToolExecContext)(nil)),
 				mcpCatalogLoadTimeout,
@@ -137,7 +148,26 @@ func (r *ToolRegistry) prepareMCPToolsWithMode(ctx context.Context, grace time.D
 				workers.Add(1)
 				go func() {
 					defer workers.Done()
+					// A panic in one loader (mcp-go client stack) fails only
+					// that service instead of the whole process. current tracks
+					// the in-flight server so the deferred recover can pin the
+					// outage on it, mirroring snapshot's error path; an entry
+					// left in "loading" would never be retried.
+					current := ""
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Errorf(loadCtx, "[MCP] Catalog preload worker panicked for server %q: %v\n%s",
+								current, r, debug.Stack())
+							if entry := c.servers[current]; entry != nil {
+								entry.mu.Lock()
+								service := entry.service
+								entry.mu.Unlock()
+								entry.store(service, nil, "error")
+							}
+						}
+					}()
 					for id := range jobs {
+						current = id
 						_, _, _ = c.snapshot(loadCtx, id, false)
 					}
 				}()

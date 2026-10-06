@@ -424,14 +424,47 @@ func forEachScript(skillDir string, scripts []string, check string) string {
 // is what makes a bundle file a script the model can name.
 var allScriptExtensions = []string{".py", ".js", ".mjs", ".cjs", ".sh"}
 
+// skillVendoredPathPrefixes names the top-level directories under which the
+// installer builds the skill's dependency trees: pip's .venv and npm's
+// node_modules. Both separators are listed because bundle paths are cleaned
+// with path.Clean, which does not rewrite the backslashes a Windows zip tool
+// may have used.
+var skillVendoredPathPrefixes = []string{".venv/", `.venv\`, "node_modules/", `node_modules\`}
+
+// skillVendoredPath reports whether a bundle path lives inside one of the
+// installed dependency trees rather than the uploaded skill sources. Bundle
+// paths are skill-root-relative; the leading-separator trim keeps the answer
+// right for an absolute spelling too.
+func skillVendoredPath(rel string) bool {
+	rel = strings.TrimLeft(rel, `/\`)
+	for _, prefix := range skillVendoredPathPrefixes {
+		if strings.HasPrefix(rel, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // sortedScriptPaths returns the bundle's files with any of the given suffixes,
 // in a stable order so the emitted command is deterministic.
+//
+// Files under .venv/ or node_modules/ are filtered out here, once, for every
+// pass that shares this list: they are installed dependency trees, not scripts
+// the model can call, and their health is the dependency passes' question (the
+// venv interpreter, the node_modules directory, the manifests). Filtering here
+// also keeps the emitted command under the kernel's per-argument limit: a
+// vendored pandas/scipy tree is thousands of files, and gluing them into one
+// sh -c argument exceeded MAX_ARG_STRLEN (128 KiB) and failed the install with
+// exit 255 "argument list too long" (#3941).
 func sortedScriptPaths(bundle *SkillBundle, suffixes ...string) []string {
 	if bundle == nil {
 		return nil
 	}
 	var matches []string
 	for rel := range bundle.Files {
+		if skillVendoredPath(rel) {
+			continue
+		}
 		for _, suffix := range suffixes {
 			if strings.HasSuffix(rel, suffix) {
 				matches = append(matches, rel)

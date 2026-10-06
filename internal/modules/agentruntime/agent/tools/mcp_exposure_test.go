@@ -360,3 +360,81 @@ func TestMCPHistoryRestoresAdvertisedFunctions(t *testing.T) {
 		}
 	})
 }
+
+// TestMCPPrepareToolsSurvivesPanickingLoader pins #3837: the catalog preload
+// spawns detached goroutines that no caller can recover (recover is per
+// goroutine), so a panicking loader used to kill the whole process during
+// engine preparation. It must instead fail only that service, keep the
+// preloadDone contract, and let preparation return while a healthy sibling
+// still loads.
+func TestMCPPrepareToolsSurvivesPanickingLoader(t *testing.T) {
+	ctx := catalogTestContext()
+	boom := &types.MCPService{ID: "boom", Name: "Boom", Enabled: true}
+	good := &types.MCPService{ID: "good", Name: "Good", Enabled: true}
+	c := newMCPCatalog(
+		ctx,
+		[]*types.MCPService{boom, good},
+		&catalogPolicy{disabled: make(map[string]bool)},
+		func(_ context.Context, service *types.MCPService, _ bool) ([]*MCPTool, error) {
+			if service.ID == "boom" {
+				var empty []int
+				_ = empty[len(empty)] // runtime panic a broken mcp-go client would raise
+			}
+			return []*MCPTool{catalogTestTool(service, "lookup", "find records", nil)}, nil
+		},
+		nil,
+	)
+	r := NewToolRegistry()
+	installMCPCatalog(r, c)
+	start := time.Now()
+	r.PrepareMCPTools(ctx) // must return instead of crashing the test binary
+	require.Less(t, time.Since(start), 10*time.Second, "engine preparation must not be stranded by one broken service")
+	select {
+	case <-c.preloadDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("preload never finished after the worker panic")
+	}
+	entry := c.servers["boom"]
+	entry.mu.Lock()
+	status, tools := entry.status, entry.tools
+	entry.mu.Unlock()
+	require.Equal(t, "error", status, "the panicking service must be marked as failed like snapshot's error path")
+	require.Empty(t, tools)
+	entry = c.servers["good"]
+	entry.mu.Lock()
+	status = entry.status
+	entry.mu.Unlock()
+	require.Equal(t, "ready", status, "a sibling service must still load")
+}
+
+// TestMCPPrepareToolsNormalLoaderUnchanged keeps the non-panicking path
+// honest: servers still load to "ready" and publish their tools exactly as
+// before the recovery guards were added.
+func TestMCPPrepareToolsNormalLoaderUnchanged(t *testing.T) {
+	ctx := catalogTestContext()
+	orders := &types.MCPService{ID: "orders", Name: "Orders", Enabled: true}
+	gate := &catalogPolicy{disabled: make(map[string]bool)}
+	c := newMCPCatalog(
+		ctx,
+		[]*types.MCPService{orders},
+		gate,
+		func(_ context.Context, service *types.MCPService, _ bool) ([]*MCPTool, error) {
+			return []*MCPTool{catalogTestTool(service, "get", "get order", gate)}, nil
+		},
+		nil,
+	)
+	r := NewToolRegistry()
+	installMCPCatalog(r, c)
+	r.PrepareMCPToolsDirect(ctx)
+	select {
+	case <-c.preloadDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("preload never finished")
+	}
+	entry := c.servers["orders"]
+	entry.mu.Lock()
+	status := entry.status
+	entry.mu.Unlock()
+	require.Equal(t, "ready", status)
+	require.Len(t, MCPToolNamesByServiceID(r)[orders.ID], 1)
+}
