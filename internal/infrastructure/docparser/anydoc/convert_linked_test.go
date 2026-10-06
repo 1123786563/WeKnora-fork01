@@ -16,7 +16,7 @@ import (
 // These tests exercise the linked Rust converter, so they only build with the
 // `anydoc` tag. Run them with:
 //
-//	scripts/build-anydoc-lib.sh && go test -tags anydoc ./internal/modules/knowledge/docparser/...
+//	scripts/build-anydoc-lib.sh && go test -tags anydoc ./internal/infrastructure/docparser/...
 
 // SupportedFileTypes is a static list, so that the engine can advertise its
 // file types in builds that link no converter. This is the check that it still

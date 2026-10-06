@@ -60,7 +60,7 @@ var frozenSharedTypes = []string{
 // 零 import internal/types，与 types.Chunk 无引用关系，属合法同名异义。
 // 新增豁免条目 = 计划冻结表修订，必须走计划评审（计划 §8 K0.2）。
 var shadowExemptions = map[string]map[string]bool{
-	"internal/modules/knowledge/chunker/splitter.go": {"Chunk": true},
+	"internal/infrastructure/chunker/splitter.go": {"Chunk": true},
 }
 
 // kbfreezePaths 返回 (repoRoot, knowledgeRoot)：由本测试文件源码位置推导，

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	htmltomd "github.com/JohannesKaufmann/html-to-markdown/v2"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
+	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 )
 
 var (

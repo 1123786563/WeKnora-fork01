@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
+	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 )
 
 // Regression guard for the central "normalize inline HTML tables before

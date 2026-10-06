@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
+	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
+	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/gin-gonic/gin"
 )

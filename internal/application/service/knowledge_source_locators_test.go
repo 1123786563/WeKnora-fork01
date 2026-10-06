@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/models/asr"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
