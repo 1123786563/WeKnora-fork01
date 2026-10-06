@@ -344,6 +344,14 @@ type bitableFieldsResponse struct {
 // page_size here is rejected, so fields must be fetched 100 at a time and paged.
 const maxBitableFieldPageSize = 100
 
+// maxBitableFieldPages bounds how many pages the list-fields loop may walk.
+// A buggy or hostile server can keep answering has_more=true with an
+// ever-fresh page_token, which the repeated-token guard below cannot catch;
+// without this cap the loop would spin until the task deadline. Exceeding it
+// is an error, not a silent truncation — a half-read header would misrender
+// every record row, so failing loudly beats lying about the table's columns.
+const maxBitableFieldPages = 10000
+
 // bitableRecord is one entry of bitableRecordsData.Items.
 type bitableRecord struct {
 	Fields map[string]any `json:"fields"`
@@ -376,6 +384,7 @@ func (c *Client) readBitableRecords(ctx context.Context, embedToken string) ([][
 	baseFPath := fmt.Sprintf("/open-apis/bitable/v1/apps/%s/tables/%s/fields?page_size=%d",
 		url.PathEscape(appToken), url.PathEscape(tableID), maxBitableFieldPageSize)
 	fieldPageToken := ""
+	seenFieldTokens := make(map[string]struct{}, 8)
 	for {
 		fpath := baseFPath
 		if fieldPageToken != "" {
@@ -396,13 +405,28 @@ func (c *Client) readBitableRecords(ctx context.Context, embedToken string) ([][
 			cols = append(cols, bitableColumn{name: f.FieldName, fieldType: f.Type, dateFormatter: formatter})
 		}
 		if len(fieldsResp.Data.Items) == 0 {
-			// Defensive: an empty page with has_more=true would loop forever (this
-			// loop has no size cap of its own). Nothing more to read, so stop.
+			// Defensive: a malformed page (empty items but has_more=true and a
+			// non-empty page_token) has nothing more to collect, so stop instead
+			// of paging on — the no-progress guards below would also catch the
+			// repeat, but breaking here is immediate.
 			break
 		}
 		if !fieldsResp.Data.HasMore || fieldsResp.Data.PageToken == "" {
 			break
 		}
+		// A page_token we have already used means the server keeps handing back
+		// a page we fetched (constant token, or an A→B→A cycle): every further
+		// iteration would re-append the same fields to cols while the header
+		// grows without bound. Bail with an error instead of spinning until the
+		// task deadline.
+		if _, dup := seenFieldTokens[fieldsResp.Data.PageToken]; dup {
+			return nil, false, fmt.Errorf("read bitable fields: pagination made no progress at token %q",
+				fieldsResp.Data.PageToken)
+		}
+		if len(seenFieldTokens) >= maxBitableFieldPages {
+			return nil, false, fmt.Errorf("read bitable fields: pagination exceeded %d pages", maxBitableFieldPages)
+		}
+		seenFieldTokens[fieldsResp.Data.PageToken] = struct{}{}
 		fieldPageToken = fieldsResp.Data.PageToken
 	}
 

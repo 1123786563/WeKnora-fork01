@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -496,7 +497,148 @@ func TestReadBitableRecords_EmptyFieldsPageTerminates(t *testing.T) {
 	}
 }
 
-// TestListDocumentBlocks_EmptyPageTerminates guards the blocks pagination loop.
+// TestReadBitableRecords_RepeatedFieldPageTokenErrors guards the fields loop
+// against a server that keeps answering has_more=true with a page_token it
+// already returned (#3838). Without a repeated-token guard the same page is
+// re-appended to the header on every iteration and the loop only stops at the
+// task deadline after tens of thousands of requests. The guard must instead
+// fail fast with a no-progress error, after at most one wasted retry of the
+// repeated page, and build no header from the duplicated fields.
+func TestReadBitableRecords_RepeatedFieldPageTokenErrors(t *testing.T) {
+	fieldCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal":
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "tenant_access_token": "t", "expire": 7200})
+		case strings.HasSuffix(r.URL.Path, "/fields"):
+			fieldCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+				"items":      []map[string]any{{"field_name": "f1"}, {"field_name": "f2"}},
+				"has_more":   true,
+				"page_token": "constant-token",
+			}})
+		case strings.HasSuffix(r.URL.Path, "/records/search"):
+			t.Error("records must not be read when the fields loop errors")
+		}
+	}))
+	defer srv.Close()
+
+	// The short deadline is only a safety net: the guard trips after 2 requests,
+	// far sooner than a context-deadline failure could surface.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := &Client{baseURL: srv.URL, appID: "a", appSecret: "s", httpClient: srv.Client()}
+	rows, _, err := c.readBitableRecords(ctx, "bascabc_tblxyz")
+	if err == nil {
+		t.Fatalf("constant page_token must error, got rows=%v", rows)
+	}
+	if !strings.Contains(err.Error(), "made no progress") || !strings.Contains(err.Error(), "constant-token") {
+		t.Errorf("err = %v, want a no-progress error naming the repeated token", err)
+	}
+	if strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("err must be the no-progress guard, not a deadline: %v", err)
+	}
+	if fieldCalls > 2 {
+		t.Errorf("fields endpoint called %d times, want ≤ 2 (repeat detected on second sighting)", fieldCalls)
+	}
+	if rows != nil {
+		t.Errorf("rows = %v, want nil (no header built from duplicated fields)", rows)
+	}
+}
+
+// TestReadBitableRecords_FieldPageTokenCycleErrors covers the A→B→A token
+// cycle: each page's token differs from the previous one, so a naive
+// "token changed" check would miss it — only the set of all used tokens does.
+func TestReadBitableRecords_FieldPageTokenCycleErrors(t *testing.T) {
+	fieldCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal":
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "tenant_access_token": "t", "expire": 7200})
+		case strings.HasSuffix(r.URL.Path, "/fields"):
+			fieldCalls++
+			// "" → A → B → A (cycle back).
+			next := map[string]string{"": "A", "A": "B", "B": "A"}[r.URL.Query().Get("page_token")]
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+				"items":      []map[string]any{{"field_name": "f" + strconv.Itoa(fieldCalls)}},
+				"has_more":   true,
+				"page_token": next,
+			}})
+		case strings.HasSuffix(r.URL.Path, "/records/search"):
+			t.Error("records must not be read when the fields loop errors")
+		}
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := &Client{baseURL: srv.URL, appID: "a", appSecret: "s", httpClient: srv.Client()}
+	_, _, err := c.readBitableRecords(ctx, "bascabc_tblxyz")
+	if err == nil || !strings.Contains(err.Error(), "made no progress") {
+		t.Fatalf("A→B→A page_token cycle must yield a no-progress error, got %v", err)
+	}
+	if fieldCalls != 3 { // "", "A", "B" fetched; the second "A" is rejected unseen
+		t.Errorf("fields endpoint called %d times, want 3", fieldCalls)
+	}
+}
+
+// TestReadBitableRecords_FieldPaginationNormalFlow proves the repeated-token
+// guards do not disturb healthy pagination: distinct tokens advance the loop
+// and the final header carries every column of every page, in page order.
+func TestReadBitableRecords_FieldPaginationNormalFlow(t *testing.T) {
+	var gotTokens []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal":
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "tenant_access_token": "t", "expire": 7200})
+		case strings.HasSuffix(r.URL.Path, "/fields"):
+			gotTokens = append(gotTokens, r.URL.Query().Get("page_token"))
+			switch r.URL.Query().Get("page_token") {
+			case "": // page 1: two fields, more to come
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+					"items":      []map[string]any{{"field_name": "f1"}, {"field_name": "f2"}},
+					"has_more":   true,
+					"page_token": "token1",
+				}})
+			case "token1": // page 2: one field, more to come
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+					"items":      []map[string]any{{"field_name": "f3"}},
+					"has_more":   true,
+					"page_token": "token2",
+				}})
+			default: // page 3 (token2): last field, end of pagination
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+					"items":    []map[string]any{{"field_name": "f4"}},
+					"has_more": false,
+				}})
+			}
+		case strings.HasSuffix(r.URL.Path, "/records/search"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+				"has_more": false, "items": []map[string]any{},
+			}})
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{baseURL: srv.URL, appID: "a", appSecret: "s", httpClient: srv.Client()}
+	rows, truncated, err := c.readBitableRecords(context.Background(), "bascabc_tblxyz")
+	if err != nil {
+		t.Fatalf("healthy fields pagination must succeed, got err: %v", err)
+	}
+	if truncated {
+		t.Error("did not expect truncation")
+	}
+	if len(rows) != 1 { // header only, records empty
+		t.Fatalf("rows = %d, want 1 (header only)", len(rows))
+	}
+	wantHeader := []string{"f1", "f2", "f3", "f4"}
+	if !reflect.DeepEqual(rows[0], wantHeader) {
+		t.Errorf("header = %v, want %v (no column lost or duplicated)", rows[0], wantHeader)
+	}
+	if len(gotTokens) != 3 || gotTokens[1] != "token1" || gotTokens[2] != "token2" {
+		t.Errorf("page tokens = %v, want ['', 'token1', 'token2']", gotTokens)
+	}
+}
 func TestListDocumentBlocks_EmptyPageTerminates(t *testing.T) {
 	blockCalls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

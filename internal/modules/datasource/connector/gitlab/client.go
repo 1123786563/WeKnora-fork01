@@ -31,6 +31,11 @@ const (
 	// only place a limit can be enforced. 512 MiB matches the Feishu connector,
 	// the other connector that pulls arbitrary binary files.
 	maxRawFileBytes int64 = 512 << 20
+	// maxPaginationHops bounds how many pages the project and tree listings
+	// follow. An empty X-Next-Page is the only completion signal those loops
+	// get, so a server or proxy that keeps echoing a non-empty header has to be
+	// cut off with an error instead of being refetched until the context dies.
+	maxPaginationHops = 10000
 )
 
 // base64FileBytes is the JSON cap for the file-detail fallback, whose body
@@ -211,6 +216,9 @@ func (c *client) projects(ctx context.Context) ([]project, error) {
 		"membership": {"true"}, "per_page": {"100"}, "page": {"1"},
 		"order_by": {"path_with_namespace"}, "sort": {"asc"},
 	}
+	// seen records the pages already requested, seeded with the first page
+	// above. A repeated X-Next-Page must fail loudly instead of looping.
+	seen := map[string]struct{}{"1": {}}
 	var all []project
 	for {
 		var page []project
@@ -222,6 +230,13 @@ func (c *client) projects(ctx context.Context) ([]project, error) {
 		if nextPage == "" {
 			return all, nil
 		}
+		if _, dup := seen[nextPage]; dup {
+			return nil, fmt.Errorf("gitlab pagination made no progress at page %q", nextPage)
+		}
+		if len(seen) >= maxPaginationHops {
+			return nil, fmt.Errorf("gitlab pagination exceeded %d pages", maxPaginationHops)
+		}
+		seen[nextPage] = struct{}{}
 		q.Set("page", nextPage)
 	}
 }
@@ -250,6 +265,9 @@ func (c *client) tree(ctx context.Context, id, ref, dir string) ([]treeEntry, er
 		q.Set("path", dir)
 	}
 	endpoint := "/projects/" + projectPath(id) + "/repository/tree"
+	// seen records the pages already requested, seeded with the first page in
+	// q above. A repeated X-Next-Page must fail loudly instead of looping.
+	seen := map[string]struct{}{"1": {}}
 	var all []treeEntry
 	for {
 		var page []treeEntry
@@ -261,6 +279,13 @@ func (c *client) tree(ctx context.Context, id, ref, dir string) ([]treeEntry, er
 		if nextPage == "" {
 			return all, nil
 		}
+		if _, dup := seen[nextPage]; dup {
+			return nil, fmt.Errorf("gitlab pagination made no progress at page %q", nextPage)
+		}
+		if len(seen) >= maxPaginationHops {
+			return nil, fmt.Errorf("gitlab pagination exceeded %d pages", maxPaginationHops)
+		}
+		seen[nextPage] = struct{}{}
 		q.Set("page", nextPage)
 	}
 }

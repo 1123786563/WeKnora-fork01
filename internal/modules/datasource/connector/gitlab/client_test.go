@@ -355,6 +355,43 @@ func TestTreeFollowsGitLabPagination(t *testing.T) {
 	}
 }
 
+// TestTreeRejectsRepeatedNextPage pins that a server which always echoes the
+// same non-empty X-Next-Page fails tree() after one repeated hop instead of
+// refetching the same page until the context expires.
+func TestTreeRejectsRepeatedNextPage(t *testing.T) {
+	allowLocalGitLabServer(t)
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/projects/1/repository/tree" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Next-Page", "2")
+		_, _ = w.Write([]byte(`[{"name":"loop.md","type":"blob","path":"loop.md"}]`))
+	}))
+	defer server.Close()
+
+	c, err := newClient(server.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := c.tree(context.Background(), "1", "main", "")
+	if err == nil {
+		t.Fatal("tree() accepted a repeating X-Next-Page")
+	}
+	if !strings.Contains(err.Error(), "no progress") {
+		t.Fatalf("error = %v, want a no-progress pagination error", err)
+	}
+	if entries != nil {
+		t.Fatalf("entries = %#v, want no partial result alongside the error", entries)
+	}
+	if requests > 2 {
+		t.Fatalf("requests = %d, want at most 2 before detecting the loop", requests)
+	}
+}
+
 func TestProjectPathEncodesNamespaceWithoutDoubleEscaping(t *testing.T) {
 	for _, tc := range []struct {
 		in, want string

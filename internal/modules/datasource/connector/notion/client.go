@@ -237,6 +237,7 @@ func (c *notionClient) GetDataSourceInfo(ctx context.Context, dsID string) (*not
 func (c *notionClient) GetBlockChildrenFlat(ctx context.Context, blockID string) ([]notionBlock, error) {
 	var allBlocks []notionBlock
 	var startCursor string
+	seen := make(map[string]struct{}, 8)
 
 	for {
 		path := fmt.Sprintf("/v1/blocks/%s/children", blockID)
@@ -264,6 +265,13 @@ func (c *notionClient) GetBlockChildrenFlat(ctx context.Context, blockID string)
 		if !resp.HasMore || resp.NextCursor == "" {
 			break
 		}
+		if _, dup := seen[resp.NextCursor]; dup {
+			return nil, fmt.Errorf("get block children for %s: pagination made no progress at cursor %q", blockID, resp.NextCursor)
+		}
+		if len(seen) >= maxPaginationHops {
+			return nil, fmt.Errorf("get block children for %s: pagination exceeded %d pages", blockID, maxPaginationHops)
+		}
+		seen[resp.NextCursor] = struct{}{}
 		startCursor = resp.NextCursor
 	}
 
@@ -429,10 +437,21 @@ func (c *notionClient) DownloadFile(ctx context.Context, fileURL string) ([]byte
 
 // --- Shared pagination helper ---
 
+// maxPaginationHops caps the number of pages fetched per paginated call,
+// guarding against runaway pagination (mirrors the Confluence connector).
+const maxPaginationHops = 10000
+
+// maxEmptyResultPages caps consecutive pages that return no results. Without
+// it, has_more=true with empty results spins at the local rate limit until
+// the context deadline.
+const maxEmptyResultPages = 10
+
 // paginatePages fetches all pages from a paginated Notion API endpoint.
 func (c *notionClient) paginatePages(ctx context.Context, method, path string) ([]notionPage, error) {
 	var allPages []notionPage
 	var startCursor string
+	seen := make(map[string]struct{}, 8)
+	emptyStreak := 0
 
 	for {
 		body := map[string]interface{}{
@@ -475,6 +494,21 @@ func (c *notionClient) paginatePages(ctx context.Context, method, path string) (
 
 		if !resp.HasMore || resp.NextCursor == "" {
 			break
+		}
+		if _, dup := seen[resp.NextCursor]; dup {
+			return nil, fmt.Errorf("paginate %s: pagination made no progress at cursor %q", path, resp.NextCursor)
+		}
+		if len(seen) >= maxPaginationHops {
+			return nil, fmt.Errorf("paginate %s: pagination exceeded %d pages", path, maxPaginationHops)
+		}
+		seen[resp.NextCursor] = struct{}{}
+		if len(pages) == 0 {
+			emptyStreak++
+			if emptyStreak > maxEmptyResultPages {
+				return nil, fmt.Errorf("paginate %s: %d consecutive pages returned no results", path, emptyStreak)
+			}
+		} else {
+			emptyStreak = 0
 		}
 		startCursor = resp.NextCursor
 	}
