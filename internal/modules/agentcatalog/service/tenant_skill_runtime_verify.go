@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 const skillInstallRuntimeInstructions = `

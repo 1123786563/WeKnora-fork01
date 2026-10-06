@@ -1,10 +1,10 @@
 package service
 
 import (
-	"time"
 	"context"
+	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // Shared fakes for the fork/snapshot/checkpointer/rewind tests (moved out of

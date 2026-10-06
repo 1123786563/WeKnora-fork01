@@ -8,7 +8,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/stretchr/testify/require"
 )
 

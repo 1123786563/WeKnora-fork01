@@ -69,9 +69,9 @@ func TestDesktopTTLRefresherFromRequiresTimeoutCapability(t *testing.T) {
 
 func startDesktopScript(t *testing.T) string {
 	t.Helper()
-	// internal/modules/execution/sandbox → repo root is four levels up; the
-	// package moved out of internal/sandbox and the script stayed put.
-	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docker", "scripts", "start-desktop.sh"))
+	// internal/sandbox → repo root is two levels up; the script lives under
+	// docker/scripts regardless of where the package sits.
+	body, err := os.ReadFile(filepath.Join("..", "..", "docker", "scripts", "start-desktop.sh"))
 	require.NoError(t, err)
 	return string(body)
 }

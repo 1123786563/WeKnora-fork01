@@ -10,7 +10,7 @@ import (
 
 	repository "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // CraftDockerOutputlessRequest names the exceptional output-discard behavior

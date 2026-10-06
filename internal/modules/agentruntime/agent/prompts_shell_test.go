@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,4 +78,3 @@ func TestArtifactGuidanceUsesConfiguredOutputDirectory(t *testing.T) {
 	require.Contains(t, guidance, "/workspace/deliverables is the only directory collected for download")
 	require.NotContains(t, guidance, "/workspace/output is the only directory collected")
 }
-

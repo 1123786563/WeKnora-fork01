@@ -22,7 +22,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -310,7 +310,7 @@ func TestCraftF08JourneyStopCancelLeavesNoReceipt(t *testing.T) {
 // collector's seal still binds the manifest, but OutputComplete stays
 // truthfully false — completeness never heals through the seal.
 func TestCraftF08JourneyTruncatedTransportNeverSealsComplete(t *testing.T) {
-		partial := &f08PartialTransportProvider{}
+	partial := &f08PartialTransportProvider{}
 	fixture := newF08WebBuildDispatchFixtureWithEngine(t, partial, &partial.f08WebBuildNormalProvider)
 	ctx := context.Background()
 	receipt, err := fixture.dispatcher.Dispatch(ctx, fixture.task, fixture.grantID)
@@ -340,7 +340,7 @@ func f08JourneyDirectCandidate(t *testing.T, fixture *f08WebBuildDispatchFixture
 	require.NoError(t, err)
 	evidence := craft.ArtifactEvidence{ClaimedSuccess: true, BuildRan: true, BuildExitCode: 0}
 	candidate := craft.Candidate{
-		ID: craft.CandidateID(fixture.task.WorkspaceID, fixture.task.Fence.RunID, digest),
+		ID:    craft.CandidateID(fixture.task.WorkspaceID, fixture.task.Fence.RunID, digest),
 		Scope: fixture.task.Scope, WorkspaceID: fixture.task.WorkspaceID, RunID: fixture.task.Fence.RunID,
 		Generation: "generation-1", Kind: craft.KindWeb, ManifestDigest: digest,
 		Files: files, Evidence: evidence, Checks: craft.BuildChecks(craft.KindWeb, files, evidence),

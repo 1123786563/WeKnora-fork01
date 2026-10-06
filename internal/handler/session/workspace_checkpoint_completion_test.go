@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/event"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

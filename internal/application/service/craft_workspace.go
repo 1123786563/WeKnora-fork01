@@ -8,7 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // CraftRunActivity answers from the business database whether the session

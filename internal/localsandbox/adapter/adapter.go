@@ -10,7 +10,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/localsandbox"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // Adapter presents the local sandbox through the session-scoped capability

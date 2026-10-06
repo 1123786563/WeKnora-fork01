@@ -13,7 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/localsandbox/adapter"
 	"github.com/Tencent/WeKnora/internal/localsandbox/skilltree"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // Host adapters must not version the user's workspace. This compile-time check

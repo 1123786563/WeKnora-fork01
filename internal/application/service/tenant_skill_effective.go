@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

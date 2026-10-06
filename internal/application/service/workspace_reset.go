@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // workspaceResetTimeout bounds the git rollback. clean -fdx may delete a large
@@ -110,8 +110,6 @@ func gitWorkspaceAdoptLegacyRepo() string {
 fi
 `
 }
-
-
 
 func execWorkspaceReset(
 	ctx context.Context, runner SandboxShellRunner, sessionID, script, expectedSandboxID string,

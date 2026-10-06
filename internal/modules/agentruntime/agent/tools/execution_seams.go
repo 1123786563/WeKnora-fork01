@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // ---- 类型别名（sandbox）----

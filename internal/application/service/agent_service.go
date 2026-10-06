@@ -23,7 +23,7 @@ import (
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"

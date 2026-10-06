@@ -25,8 +25,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

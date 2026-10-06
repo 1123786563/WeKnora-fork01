@@ -9,8 +9,9 @@ import (
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/types/interfaces")
+	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+)
 
 // ServedInfoOf forwards the agentcatalog helper for the host handler.
 var ServedInfoOf = acatsvc.ServedInfoOf

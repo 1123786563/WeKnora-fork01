@@ -10,7 +10,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/localsandbox"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 // InstallRunner is the slice of localsandbox.Service an install needs.

@@ -13,7 +13,7 @@ import (
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/codedelivery"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
 )

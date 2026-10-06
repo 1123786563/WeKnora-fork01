@@ -17,7 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 )

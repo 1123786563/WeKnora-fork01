@@ -14,7 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/common/redislock"
 	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 

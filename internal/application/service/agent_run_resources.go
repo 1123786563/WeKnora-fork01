@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"gorm.io/gorm"
 )
 

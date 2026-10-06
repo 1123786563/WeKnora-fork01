@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

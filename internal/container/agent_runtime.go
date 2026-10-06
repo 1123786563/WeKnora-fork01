@@ -13,8 +13,8 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"gorm.io/gorm"
 )
 

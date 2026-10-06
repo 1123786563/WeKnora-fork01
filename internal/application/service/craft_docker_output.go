@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 
 const craftDockerOutputSealTimeout = 2 * time.Second

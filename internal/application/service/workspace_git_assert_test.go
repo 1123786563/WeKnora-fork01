@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/stretchr/testify/require"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // assertWorkspaceGitLayout pins the fork/checkpoint git plumbing shape
