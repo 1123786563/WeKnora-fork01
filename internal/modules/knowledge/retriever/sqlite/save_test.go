@@ -207,3 +207,93 @@ func TestBatchSaveKeepsOldRowWhenInsertFails(t *testing.T) {
 	hits := vectorSearch(t, repository, []float32{1, 0})
 	require.Len(t, hits, 1, "the old vector must survive the failed replace")
 }
+
+// A vec0 insert that fails must fail BatchSave instead of silently committing
+// the lite_embeddings row without its vector: such a chunk never surfaces in
+// vector retrieval while the knowledge shows as fully indexed (#3833).
+func TestBatchSaveReturnsVecInsertError(t *testing.T) {
+	repository := newSQLiteRetrieverTestRepository(t)
+	info := sqliteTestIndex("faq", "kb", "knowledge", "", true)
+	info.Content = "old answer"
+	saveSQLiteTestVector(t, repository, info, []float32{1, 0})
+	require.NoError(t, repository.db.Exec("DROP TABLE "+vecTableName(2)).Error)
+
+	edited := *info
+	edited.Content = "new answer"
+	err := repository.BatchSave(context.Background(), []*types.IndexInfo{&edited}, map[string]any{
+		"embedding": map[string][]float32{edited.SourceID: {0, 1}},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), vecTableName(2), "the error must name the failing table")
+	// The replace rolled back: the source keeps its old row instead of being
+	// left with no row at all.
+	var rows []sqliteEmbedding
+	require.NoError(t, repository.db.Find(&rows).Error)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "old answer", rows[0].Content)
+}
+
+// Same contract for the FTS row: a failed keywords-index insert must roll the
+// save back rather than leave the row unfindable by keyword search (#3833).
+func TestBatchSaveReturnsFTSInsertError(t *testing.T) {
+	repository := newSQLiteRetrieverTestRepository(t)
+	if !repository.db.Migrator().HasTable("lite_embeddings_fts") {
+		t.Skip("FTS5 unavailable (build without sqlite_fts5); skipping FTS checks")
+	}
+	info := sqliteTestIndex("faq", "kb", "knowledge", "", true)
+	info.Content = "old answer"
+	saveSQLiteTestVector(t, repository, info, []float32{1, 0})
+	require.NoError(t, repository.db.Exec("DROP TABLE lite_embeddings_fts").Error)
+
+	edited := *info
+	edited.Content = "new answer"
+	err := repository.BatchSave(context.Background(), []*types.IndexInfo{&edited}, map[string]any{
+		"embedding": map[string][]float32{edited.SourceID: {0, 1}},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lite_embeddings_fts", "the error must name the failing table")
+	var rows []sqliteEmbedding
+	require.NoError(t, repository.db.Find(&rows).Error)
+	require.Len(t, rows, 1, "the transaction must roll back to the old row")
+	assert.Equal(t, "old answer", rows[0].Content)
+}
+
+// CopyIndices must fail when the vector row cannot be copied over: returning
+// nil would present the copy as complete while vector retrieval on the target
+// chunk finds nothing (#3833).
+func TestCopyIndicesReturnsVecCopyError(t *testing.T) {
+	repository := newSQLiteRetrieverTestRepository(t)
+	chunk := sqliteTestIndex("src-chunk", "kb-src", "knowledge-src", "", true)
+	chunk.SourceID = "src-chunk"
+	saveSQLiteTestVector(t, repository, chunk, []float32{1, 0})
+	require.NoError(t, repository.db.Exec("DROP TABLE "+vecTableName(2)).Error)
+
+	err := repository.CopyIndices(context.Background(), "kb-src",
+		map[string]string{"knowledge-src": "knowledge-dst"},
+		map[string]string{"src-chunk": "dst-chunk"},
+		"kb-dst", 2, string(types.KnowledgeTypeManual))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), vecTableName(2), "the error must name the failing table")
+}
+
+func TestCopyIndicesReturnsFTSCopyError(t *testing.T) {
+	repository := newSQLiteRetrieverTestRepository(t)
+	if !repository.db.Migrator().HasTable("lite_embeddings_fts") {
+		t.Skip("FTS5 unavailable (build without sqlite_fts5); skipping FTS checks")
+	}
+	chunk := sqliteTestIndex("src-chunk", "kb-src", "knowledge-src", "", true)
+	chunk.SourceID = "src-chunk"
+	saveSQLiteTestVector(t, repository, chunk, []float32{1, 0})
+	require.NoError(t, repository.db.Exec("DROP TABLE lite_embeddings_fts").Error)
+
+	err := repository.CopyIndices(context.Background(), "kb-src",
+		map[string]string{"knowledge-src": "knowledge-dst"},
+		map[string]string{"src-chunk": "dst-chunk"},
+		"kb-dst", 2, string(types.KnowledgeTypeManual))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lite_embeddings_fts", "the error must name the failing table")
+}

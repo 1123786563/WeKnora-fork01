@@ -40,6 +40,7 @@ var allFields = []string{
 	fieldID, fieldContent, fieldLanguage, fieldSourceID, fieldSourceType, fieldChunkID,
 	fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding,
 }
+
 // NewMilvusRetrieveEngineRepository creates and initializes a new Milvus repository.
 // indexCfg is optional — pass nil to use env var / default values (env path).
 func NewMilvusRetrieveEngineRepository(client *client.Client, indexCfg *types.IndexConfig) interfaces.RetrieveEngineRepository {
@@ -827,20 +828,37 @@ func (m *milvusRepository) KeywordsRetrieve(ctx context.Context,
 
 	var allResults []*types.IndexWithScore
 
+	// Count per-collection failures (keeping the first one) so a total outage
+	// can be told apart from "no content matched": swallowing every failure and
+	// returning empty results would make callers answer "no relevant content"
+	// for a store that never answered the query (#3835).
+	searched := 0
+	failed := 0
+	var firstFailure error
+	recordFailure := func(collectionName string, err error) {
+		failed++
+		if firstFailure == nil {
+			firstFailure = fmt.Errorf("%s: %w", collectionName, err)
+		}
+	}
+
 	// Search in all matching collections
 	for _, collectionName := range collections {
 		if !matchesDimensionCollection(collectionName, m.collectionBaseName) {
 			continue
 		}
+		searched++
 		collectionMode, modeErr := m.collectionAnalyzerMode(ctx, collectionName)
 		if modeErr != nil {
 			log.Errorf("[Milvus] Failed to inspect collection %s analyzer mode: %v", collectionName, modeErr)
+			recordFailure(collectionName, modeErr)
 			continue
 		}
 
 		expr, paramsMap, err := m.getBaseFilterForQuery(params)
 		if err != nil {
 			log.Errorf("[Milvus] Failed to build base filter: %v", err)
+			recordFailure(collectionName, err)
 			continue
 		}
 		searchOpt := client.NewSearchOption(collectionName, params.TopK, []entity.Vector{entity.Text(params.Query)})
@@ -864,19 +882,34 @@ func (m *milvusRepository) KeywordsRetrieve(ctx context.Context,
 		resultSet, err := m.client.Search(ctx, searchOpt)
 		if err != nil {
 			log.Errorf("[Milvus] Keywords search failed: %v", err)
+			recordFailure(collectionName, err)
 			continue
 		}
 		sets, scores, err := convertResultSet(resultSet)
 		if err != nil {
 			log.Errorf("[Milvus] Failed to convert result set: %v", err)
+			recordFailure(collectionName, err)
 			continue
 		}
 		results, scoreErr := buildMilvusIndexResults(sets, scores, types.MatchTypeKeywords)
 		if scoreErr != nil {
 			log.Errorf("[Milvus] Failed to attach keyword scores: %v", scoreErr)
+			recordFailure(collectionName, scoreErr)
 			continue
 		}
 		allResults = append(allResults, results...)
+	}
+
+	// Every attempted collection failing means the retrieval never ran; return
+	// the failure so callers take the real error path instead of reading empty
+	// results as "the library has no such content" (#3835). This mirrors
+	// VectorRetrieve, which fails loudly when its single collection errors.
+	if failed > 0 && failed == searched {
+		log.Errorf("[Milvus] Keywords search failed in all %d collections", searched)
+		return nil, fmt.Errorf("keywords search failed in all %d milvus collections, first failure: %w", searched, firstFailure)
+	}
+	if failed > 0 {
+		log.Warnf("[Milvus] Keywords search failed in %d of %d collections, returning results from the healthy ones", failed, searched)
 	}
 
 	// Searches across multiple collections return one score-sorted page per

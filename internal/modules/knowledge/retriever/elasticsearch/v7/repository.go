@@ -387,39 +387,56 @@ func (e *elasticsearchRepository) processBulkResponse(ctx context.Context,
 		return nil
 	}
 
-	// Check for errors in individual operations
+	// Check for errors in individual operations. HTTP 200 with errors=true
+	// means ES rejected some documents individually: they never enter the
+	// index and are not retried, so this must fail the call instead of only
+	// logging a warning (which produced a fake "vectorization complete").
 	if hasErrors, ok := bulkResponse["errors"].(bool); ok && hasErrors {
-		errorCount := e.countBulkErrors(ctx, bulkResponse, totalDocuments)
+		errorCount, firstError := e.countBulkErrors(ctx, bulkResponse)
 		if errorCount > 0 {
-			log.Warnf("[ElasticsearchV7] %d/%d documents failed to index", errorCount, totalDocuments)
+			log.Errorf("[ElasticsearchV7] %d/%d documents failed to index, first error: %s",
+				errorCount, totalDocuments, firstError)
+			return fmt.Errorf("bulk save partially failed: %d/%d documents rejected by Elasticsearch, first error: %s",
+				errorCount, totalDocuments, firstError)
 		}
+		log.Warn("[ElasticsearchV7] Bulk response reported errors=true but no failed items were found")
 	}
 
 	return nil
 }
 
-// countBulkErrors counts the number of errors in a bulk response
+// countBulkErrors counts failed operations in a bulk response and returns the
+// count together with a description of the first failure. Only failed
+// operations carry an "error" object under items[].<op>.
 func (e *elasticsearchRepository) countBulkErrors(ctx context.Context,
-	bulkResponse map[string]interface{}, totalDocuments int,
-) int {
+	bulkResponse map[string]interface{},
+) (int, string) {
 	log := logger.GetLogger(ctx)
-	log.Warn("[ElasticsearchV7] Bulk operation completed with some errors")
 
 	errorCount := 0
+	firstError := ""
 	if items, ok := bulkResponse["items"].([]interface{}); ok {
 		for _, item := range items {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				if indexResp, ok := itemMap["index"].(map[string]interface{}); ok {
-					if indexResp["error"] != nil {
-						errorCount++
-						log.Errorf("[ElasticsearchV7] Item error: %v", indexResp["error"])
-					}
+			itemMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			for op, result := range itemMap {
+				operationResult, ok := result.(map[string]interface{})
+				if !ok || operationResult["error"] == nil {
+					continue
+				}
+				errorCount++
+				detail := fmt.Sprintf("op=%s id=%v error=%v", op, operationResult["_id"], operationResult["error"])
+				log.Errorf("[ElasticsearchV7] Item error: %s", detail)
+				if firstError == "" {
+					firstError = detail
 				}
 			}
 		}
 	}
 
-	return errorCount
+	return errorCount, firstError
 }
 
 // DeleteByChunkIDList Delete indices by chunk ID list
