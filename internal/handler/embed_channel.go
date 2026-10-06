@@ -393,7 +393,10 @@ func (h *EmbedChannelHandler) GetEmbedSuggestedQuestions(c *gin.Context) {
 func (h *EmbedChannelHandler) CreateEmbedSession(c *gin.Context) {
 	if len(secutils.SystemHMACKey()) == 0 {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "embed session signing key is not configured: set SYSTEM_SIGNING_KEY on the server",
+			"error": "embed session signing key is not configured: set SYSTEM_SIGNING_KEY on the server " +
+				"(docker compose: add SYSTEM_SIGNING_KEY=$(openssl rand -hex 32) to the app service env) — " +
+				"unconfigured deployments normally auto-provision a key at startup, so if this persists check " +
+				"the server startup logs for the provisioning failure",
 		})
 		return
 	}

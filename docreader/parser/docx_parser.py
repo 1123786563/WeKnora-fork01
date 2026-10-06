@@ -85,6 +85,45 @@ def table_to_gfm_markdown(table: Any) -> str:
     return "\n".join(lines)
 
 
+PAGE_HEADER_MARKER = "[Page Header]"
+PAGE_FOOTER_MARKER = "[Page Footer]"
+
+
+def _header_footer_block_text(block: Any) -> str:
+    """Collapse a header/footer block's paragraph texts onto one line."""
+    text = " ".join(paragraph.text.strip() for paragraph in block.paragraphs)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def extract_header_footer_lines(content: bytes) -> List[str]:
+    """Return ``[Page Header]``/``[Page Footer]`` marker lines for a DOCX.
+
+    Neither markitdown nor the python-docx body walk reads the
+    header/footer parts, so section headers and footers were dropped
+    entirely (#3849). Walk every section's default header/footer blocks:
+    empty blocks are skipped, and text repeated across sections (including
+    blocks linked to the previous section) is emitted only once.
+    """
+    lines: List[str] = []
+    seen = set()
+    doc = Document(BytesIO(content))
+    for section in doc.sections:
+        for marker, block in (
+            (PAGE_HEADER_MARKER, section.header),
+            (PAGE_FOOTER_MARKER, section.footer),
+        ):
+            try:
+                text = _header_footer_block_text(block)
+            except Exception as e:
+                logger.warning("Failed to read DOCX %s block: %s", marker, e)
+                continue
+            if not text or (marker, text) in seen:
+                continue
+            seen.add((marker, text))
+            lines.append(f"{marker} {text}")
+    return lines
+
+
 class ImageData:
     """Represents a processed image of document content"""
 
