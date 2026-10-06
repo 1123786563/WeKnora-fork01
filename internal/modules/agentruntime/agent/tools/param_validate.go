@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ValidationError describes a specific parameter validation failure.
@@ -132,14 +133,16 @@ func validateProperty(name string, val any, prop map[string]any) []ValidationErr
 	// String length bounds
 	if targetType == "string" {
 		if s, ok := val.(string); ok {
-			if minLen, ok := getFloat(prop, "minLength"); ok && float64(len(s)) < minLen {
+			// Length counts Unicode code points (runes), not UTF-8 bytes, per
+			// JSON Schema semantics ("你好" has length 2, not 6).
+			if minLen, ok := getFloat(prop, "minLength"); ok && float64(utf8.RuneCountInString(s)) < minLen {
 				errs = append(errs, ValidationError{
 					Param: name,
 					Message: fmt.Sprintf("parameter '%s' must have at least %d characters",
 						name, int(minLen)),
 				})
 			}
-			if maxLen, ok := getFloat(prop, "maxLength"); ok && float64(len(s)) > maxLen {
+			if maxLen, ok := getFloat(prop, "maxLength"); ok && float64(utf8.RuneCountInString(s)) > maxLen {
 				errs = append(errs, ValidationError{
 					Param: name,
 					Message: fmt.Sprintf("parameter '%s' must have at most %d characters",
@@ -178,14 +181,63 @@ func checkType(val any, targetType string) bool {
 	}
 }
 
-// isInEnum checks if val matches any value in the enum list.
+// isInEnum checks if val matches any value in the enum list using JSON
+// structural equality (JSON Schema instance equality): values must share the
+// same JSON type and structure. Formatting coincidences must not match
+// (e.g. 1 vs "1", true vs "true", ["a","b"] vs [["a b"]]). Numbers compare
+// numerically (1 == 1.0), object key order is irrelevant, arrays are ordered.
 func isInEnum(val any, enumList []any) bool {
 	for _, e := range enumList {
-		if fmt.Sprintf("%v", val) == fmt.Sprintf("%v", e) {
+		if jsonValuesEqual(val, e) {
 			return true
 		}
 	}
 	return false
+}
+
+// jsonValuesEqual recursively compares two values decoded from JSON.
+// Both sides are produced by encoding/json (numbers arrive as float64 and
+// compare numerically); mismatched JSON types never match. Unknown types
+// fall through to inequality so non-JSON values cannot match by accident.
+func jsonValuesEqual(a, b any) bool {
+	switch av := a.(type) {
+	case nil:
+		return b == nil
+	case bool:
+		bv, ok := b.(bool)
+		return ok && av == bv
+	case string:
+		bv, ok := b.(string)
+		return ok && av == bv
+	case float64:
+		bv, ok := b.(float64)
+		return ok && av == bv
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !jsonValuesEqual(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, v := range av {
+			bvVal, exists := bv[k]
+			if !exists || !jsonValuesEqual(v, bvVal) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // formatEnum formats enum values for error messages.
