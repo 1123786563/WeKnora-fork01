@@ -190,3 +190,29 @@ func TestQueryKnowledgeGraph_ReportsConfiguredEntityAndRelationTypes(t *testing.
 	assert.ElementsMatch(t, []string{"合同", "审批流程", "法务部门"}, graphConfig["nodes"])
 	assert.ElementsMatch(t, []string{"属于", "审批", "管理"}, graphConfig["relations"])
 }
+
+// The entity-term cap drops the surplus silently; the dropped terms are now
+// reported in Data so the caller can tell an unheard word from an absent
+// entity. No cap hit, no keys: silence means every word was searched.
+func TestQueryKnowledgeGraph_ReportsDroppedSearchTerms(t *testing.T) {
+	tool := NewQueryKnowledgeGraphTool(&stubKnowledgeBaseService{
+		kb: &types.KnowledgeBase{ID: "kb-1", ExtractConfig: &types.ExtractConfig{
+			Enabled: true, Nodes: []*types.GraphNode{{Name: "技术"}},
+		}},
+	})
+
+	args, err := json.Marshal(QueryKnowledgeGraphInput{
+		KnowledgeBaseIDs: []string{"kb-1"},
+		Query:            "aa2 bb3 cc4 dd5 ee6 ff7 gg8 hh9 ii10 jj11",
+	})
+	require.NoError(t, err)
+	result, err := tool.Execute(context.Background(), args)
+	require.NoError(t, err)
+
+	dropped, ok := result.Data["dropped_terms"].([]string)
+	require.True(t, ok, "dropped_terms is a []string")
+	assert.Len(t, dropped, 3)
+	assert.Contains(t, dropped, "hh9", "tokens past the 8-term cap are listed")
+	assert.NotContains(t, result.Data, "relations_total")
+	assert.NotContains(t, result.Data, "evidence_omitted")
+}
