@@ -200,6 +200,18 @@ func (r *durableRunMessageRepo) GetRecentMessagesBySession(context.Context, stri
 	return r.rows, nil
 }
 
+// LoadAgentHistory pages history backwards and opens with a checkpoint
+// lookup; both land here so the nil embedded interface is never reached.
+func (r *durableRunMessageRepo) GetLatestContextCheckpoint(context.Context, string) (*types.Message, error) {
+	return nil, nil
+}
+
+func (r *durableRunMessageRepo) ListMessagesBySessionBeforeCursor(
+	context.Context, string, time.Time, string, int,
+) ([]*types.Message, error) {
+	return r.rows, nil
+}
+
 func newDurableRunSessionService(t *testing.T, _ *gorm.DB) *sessionService {
 	t.Helper()
 	manager := mcp.NewMCPManager(nil)
