@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/agent"
+	"github.com/Tencent/WeKnora/internal/agent/compaction"
+	agenttoken "github.com/Tencent/WeKnora/internal/agent/token"
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
-	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/publish"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"

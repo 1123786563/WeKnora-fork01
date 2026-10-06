@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/codedelivery"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
 	"github.com/gin-gonic/gin"

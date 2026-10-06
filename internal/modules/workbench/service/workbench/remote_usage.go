@@ -9,7 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/execution"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"

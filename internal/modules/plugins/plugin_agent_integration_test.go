@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/plugins/plugintest"
 	"github.com/Tencent/WeKnora/internal/types"

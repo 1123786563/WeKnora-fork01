@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"

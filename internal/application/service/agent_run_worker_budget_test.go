@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"

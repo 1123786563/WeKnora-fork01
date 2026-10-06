@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	"github.com/Tencent/WeKnora/internal/agent/opencode"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
 )

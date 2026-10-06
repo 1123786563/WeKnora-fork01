@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"

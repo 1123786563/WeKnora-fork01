@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/agent/runtime"
 )
 
 // Sentinel errors returned by Craft ports. Callers classify with errors.Is;

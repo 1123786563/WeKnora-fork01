@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	"github.com/Tencent/WeKnora/internal/agent/opencode"
 )
 
 const (

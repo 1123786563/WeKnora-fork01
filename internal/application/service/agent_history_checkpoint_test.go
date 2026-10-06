@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	agenttoken "github.com/Tencent/WeKnora/internal/agent/token"
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/models/chat"
-	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"

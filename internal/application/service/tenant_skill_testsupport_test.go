@@ -6,9 +6,9 @@ import (
 	"sort"
 	"sync"
 
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

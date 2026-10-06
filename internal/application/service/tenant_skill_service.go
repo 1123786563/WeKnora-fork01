@@ -5,10 +5,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/Tencent/WeKnora/internal/agent/skills"
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

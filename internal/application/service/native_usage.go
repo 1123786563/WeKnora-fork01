@@ -4,8 +4,8 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 )
 
 // NativeUsageDelta aliases the repository-level usage delta record.

@@ -13,15 +13,14 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	appservice "github.com/Tencent/WeKnora/internal/application/service"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
-
 
 // retirementPinnedResolver freezes the pre-race pins so the retirement race
 // is adjudicated inside the Admit transaction, not by the resolver.
@@ -270,7 +269,6 @@ func TestAdmissionTransientAgentGateErrorKeepsPendingForRetry(t *testing.T) {
 	require.Equal(t, "rejected", stored.State)
 	require.EqualValues(t, 1, budget.releases.Load())
 }
-
 
 // newAgentUseAdmissionCoordinator mirrors the container wiring (security
 // gate + server-owned published-version pins) so variant agents resolve

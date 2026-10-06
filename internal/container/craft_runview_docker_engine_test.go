@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	"github.com/Tencent/WeKnora/internal/agent/opencode"
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	dockcontainer "github.com/moby/moby/api/types/container"

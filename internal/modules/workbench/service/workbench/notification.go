@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // NotificationProjector translates durable run events into device-scoped
