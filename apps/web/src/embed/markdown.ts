@@ -28,12 +28,19 @@ import { Marked, type Tokens } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import DOMPurify from 'dompurify';
 import { domPurifyAllowedUriRegexp, escapeHTML } from '../wiki/markdown.ts';
+import { applyMarkdownOptions } from '../shared/markdownOptions.ts';
 import { resolveCitationChunkId } from './chat-data.ts';
 
 // Vue chatMarkdownRenderer.configureMarkedForChatMarkdown:
 //   marked.use({ breaks: true, gfm: true })
 //   marked.use(markedKatex({ throwOnError: false, nonStandard: true }))
 const embedMarked = new Marked(markedKatex({ throwOnError: false, nonStandard: true }));
+
+// #3962 (shared bug fix, Vue↔React parity): single `~` stays literal for CJK
+// range notation (2020~2035、50~60°、50,000~100,000 m³/d、8:00~12:00); only
+// `~~text~~` renders <del>. Same shared options as the wiki face and the Vue
+// frontend (frontend/src/utils/markdownOptions.ts).
+applyMarkdownOptions(embedMarked);
 
 // Vue EmbedBotMessage: createMermaidCodeRenderer('mermaid-embed-botmsg') —
 // ```mermaid blocks are stamped as diagram nodes (id prefix + data-mermaid

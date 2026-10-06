@@ -334,3 +334,15 @@ test('the Wiki page wires the preview, footer, and markdown index like the Vue b
   assert.match(source, /assembleWikiIndexMarkdown/);
   assert.match(source, /wiki-index-body/);
 });
+
+// #3962 (shared bug fix, Vue↔React parity) — CJK technical writing uses `~`
+// as a range separator; marked's default single-tilde GFM del swallowed the
+// span between two ranges into <del>. The wiki reader must keep every single
+// `~` literal exactly like the Vue WikiBrowser face.
+test('#3962 CJK range tildes stay literal in the wiki reader', () => {
+  const html = renderWikiMarkdown('水温 50~60°，运行时段 8:00~12:00，规划期 2020~2035 年', { resolveSlugName: identity });
+  assert.match(html, /50~60°/);
+  assert.match(html, /8:00~12:00/);
+  assert.match(html, /2020~2035/);
+  assert.doesNotMatch(html, /<del/);
+});

@@ -37,6 +37,22 @@ func knowledgeSSEEvent(t *testing.T, w io.Writer, resp StreamResponse, eventType
 	fmt.Fprintf(w, "data:%s\n\n", b)
 }
 
+// continueSSEEvent serializes resp as one SSE frame whose `event:` line is
+// eventLine verbatim (e.g. "event: message"), so tests can exercise both the
+// compact no-space format Gin emits and the single-space format the SSE spec
+// allows.
+func continueSSEEvent(t *testing.T, w io.Writer, resp StreamResponse, eventLine string) {
+	t.Helper()
+	b, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal continue event: %v", err)
+	}
+	if eventLine != "" {
+		fmt.Fprintf(w, "%s\n", eventLine)
+	}
+	fmt.Fprintf(w, "data:%s\n\n", b)
+}
+
 func TestProcessAgentSSEStream_MultilineDataFrame(t *testing.T) {
 	frame := "data: {\"response_type\":\"answer\",\n" +
 		"data: \"content\":\"hello\",\"done\":false}\n\n"
@@ -269,6 +285,107 @@ func TestContinueStream_LargeReferenceLineParses(t *testing.T) {
 	}
 	if contentLen != 256*1024 {
 		t.Errorf("content bytes=%d, want %d", contentLen, 256*1024)
+	}
+}
+
+// TestContinueStream_SpacedEventFieldDeliversFrame is the regression test for
+// the event-field trim: the SSE spec allows one optional space after the field
+// colon (`event: message`), and a reader that keeps it fails the
+// eventType == "message" dispatch, silently dropping every frame.
+func TestContinueStream_SpacedEventFieldDeliversFrame(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		continueSSEEvent(t, w, StreamResponse{
+			ResponseType: ResponseTypeAnswer,
+			Content:      "hello",
+		}, "event: message")
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	var got *StreamResponse
+	err := c.ContinueStream(context.Background(), "sess", "msg", func(e *StreamResponse) error {
+		got = e
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("spaced event field failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("callback was not invoked")
+	}
+	if got.ResponseType != ResponseTypeAnswer || got.Content != "hello" {
+		t.Fatalf("response = %#v, want answer content hello", got)
+	}
+}
+
+// TestContinueStream_TerminalErrorWithSpacedEventField verifies that a
+// response_type=error, done=true frame behind a spaced `event: message` line
+// reaches the callback and terminates the call as SSEStreamError instead of
+// being swallowed until EOF returns nil.
+func TestContinueStream_TerminalErrorWithSpacedEventField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		continueSSEEvent(t, w, StreamResponse{
+			ResponseType: ResponseTypeError,
+			Content:      "boom",
+			Done:         true,
+		}, "event: message")
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	var got int
+	err := c.ContinueStream(context.Background(), "sess", "msg", func(*StreamResponse) error {
+		got++
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "SSE stream error: boom") {
+		t.Fatalf("err = %v, want terminal SSE error", err)
+	}
+	if got != 1 {
+		t.Errorf("callbacks=%d, want 1 (error event delivered before return)", got)
+	}
+}
+
+// TestContinueStream_EventFieldStripsAtMostOneSpace locks the trim to exactly
+// one leading ASCII space: tabs, additional leading spaces, trailing spaces,
+// and other event names stay verbatim and keep the frame outside the
+// "message" dispatch.
+func TestContinueStream_EventFieldStripsAtMostOneSpace(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventLine string
+	}{
+		{"tab_separator", "event:\tmessage"},
+		{"two_leading_spaces", "event:  message"},
+		{"trailing_space", "event:message "},
+		{"other_event_name", "event:ping"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				continueSSEEvent(t, w, StreamResponse{
+					ResponseType: ResponseTypeAnswer,
+					Content:      "hello",
+				}, tc.eventLine)
+			}))
+			defer srv.Close()
+
+			c := NewClient(srv.URL)
+			var got int
+			err := c.ContinueStream(context.Background(), "sess", "msg", func(*StreamResponse) error {
+				got++
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != 0 {
+				t.Errorf("callbacks=%d, want 0 (event line %q is not a bare \"message\")", got, tc.eventLine)
+			}
+		})
 	}
 }
 
