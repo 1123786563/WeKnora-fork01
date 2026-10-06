@@ -36,8 +36,11 @@ func TestCubeSessionConnectReusesProbeHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, "restored-token", InboundTokenOf(handle))
-	require.EqualValues(t, 1, mock.connectCount.Load())
-	require.EqualValues(t, 1, mock.infoCount.Load())
+	// Reuse is per call: each combined connect/probe is exactly one connect
+	// round-trip plus one info probe. A second call adds one of each — two
+	// connects would mean the Get-then-Connect fallback path came back.
+	require.EqualValues(t, 2, mock.connectCount.Load())
+	require.EqualValues(t, 2, mock.infoCount.Load())
 
 	_, err = client.ConnectSession(ctx, RemoteConnectRequest{SandboxID: "gone"})
 	require.True(t, CanReplaceRemoteBinding(err))
@@ -63,8 +66,9 @@ func TestE2BSessionConnectReusesProbeHandleAndResumes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, "restored-token", InboundTokenOf(handle))
-	require.EqualValues(t, 1, mock.connectCount.Load())
-	require.EqualValues(t, 1, mock.infoCount.Load())
+	// Per call: one connect round-trip plus one info probe (see the Cube test).
+	require.EqualValues(t, 2, mock.connectCount.Load())
+	require.EqualValues(t, 2, mock.infoCount.Load())
 	require.Equal(t, "running", mock.sandboxes[created.ID()]["state"])
 
 	_, err = client.ConnectSession(ctx, RemoteConnectRequest{SandboxID: "gone"})

@@ -1,0 +1,3 @@
+-- No-op counterpart: the tables belong to 000076 on every chain, and its own
+-- down migration removes them. Dropping here would strip tables that 000076
+-- still owns.

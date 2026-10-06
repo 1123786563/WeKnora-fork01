@@ -62,7 +62,10 @@ func TestMemoryConsistencyRealMessagePaging(t *testing.T) {
 	tenantID := uint64(1)
 	ctx := context.WithValue(t.Context(), types.TenantIDContextKey, tenantID)
 	ctx = types.WithPrincipal(ctx, types.Principal{Type: types.PrincipalWebUser, ID: "alice"})
-	require.NoError(t, db.AutoMigrate(&types.Message{}))
+	// repository 的 message loader 均经 attachArtifacts 读 message_artifacts
+	// （见 message_artifact.go 头注），同包其余 message 用例 DDL 均带
+	// MessageArtifactRecord，此处补齐同款。
+	require.NoError(t, db.AutoMigrate(&types.Message{}, &types.MessageArtifactRecord{}))
 	at := time.Now().UTC().Truncate(time.Second)
 	for i := 0; i < 85; i++ {
 		require.NoError(t, db.Exec("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)", fmt.Sprintf("m%03d", i), "s", "user", "hello", at).Error)

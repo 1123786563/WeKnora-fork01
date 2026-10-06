@@ -97,7 +97,7 @@ func TestHTMLEmbeddedTableWiring_CallSitesPresent(t *testing.T) {
 		t.Fatalf("temporary_document.go: %s must run before chunker.Split", call)
 	}
 
-	previewSrc, err := os.ReadFile("../../handler/chunker_debug.go")
+	previewSrc, err := os.ReadFile("../../modules/knowledge/ingest/chunker_debug.go")
 	if err != nil {
 		t.Fatalf("read chunker_debug.go: %v", err)
 	}

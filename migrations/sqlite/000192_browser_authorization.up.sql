@@ -1,0 +1,7 @@
+-- No-op since the upstream merge: fork's 000076_browser_authorization is
+-- content-identical (browser_devices/browser_pairings/browser_task_
+-- interruptions) and runs earlier on fresh chains. Deployed fork databases
+-- applied 000076, not this version, so emptying it only affects fresh chains.
+-- SQLite lacks CREATE TABLE guards here and the fork file is bare DDL, so a
+-- no-op is the duplicate-safe form; the version stays occupied to preserve
+-- schema_migrations history.

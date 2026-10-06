@@ -580,7 +580,7 @@ func (r *messageRepository) UpdateMessageKnowledgeID(
 
 // GetSessionArtifactRefs returns the same flattened artifact list as
 // GetSessionArtifacts, but keeps the owning message id and the artifact's
-// position inside that message's array. Signed download grants address a blob
+// position inside that message's list. Signed download grants address a blob
 // by (message, index); this projection is the only way to resolve a
 // session-wide position into that pair without loading full message rows.
 // Ordering matches GetSessionArtifacts exactly so the two lists align 1:1.
@@ -590,30 +590,29 @@ func (r *messageRepository) GetSessionArtifactRefs(
 	if sessionID == "" {
 		return nil, nil
 	}
-	var rows []struct {
-		ID        string                 `gorm:"column:id"`
-		Artifacts types.MessageArtifacts `gorm:"column:artifacts"`
-	}
+	// Artifacts live in message_artifacts (migration 000023 declared it the
+	// only source of truth and cleared the legacy messages.artifacts column).
+	// Mirror GetSessionArtifacts' query exactly — same live-message join, same
+	// tombstone inclusion, same ordering — so the ref list and the flattened
+	// list stay aligned 1:1 and (message, position) keeps addressing the same
+	// blob the download grants were signed against.
+	var rows []types.MessageArtifactRecord
 	if err := r.db.WithContext(ctx).
-		Model(&types.Message{}).
-		Select("id", "artifacts").
-		Where("session_id = ? AND deleted_at IS NULL", sessionID).
-		Order("created_at ASC").
+		Table("message_artifacts AS ma").
+		Select("ma.*").
+		Joins("JOIN messages m ON m.id = ma.message_id AND m.deleted_at IS NULL").
+		Where("ma.session_id = ?", sessionID).
+		Order("m.created_at ASC, m.id ASC, ma.position ASC").
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
-		return []types.SessionArtifactRef{}, nil
-	}
 	refs := make([]types.SessionArtifactRef, 0, len(rows))
 	for _, row := range rows {
-		for i := range row.Artifacts {
-			refs = append(refs, types.SessionArtifactRef{
-				MessageID: row.ID,
-				Index:     i,
-				Artifact:  row.Artifacts[i],
-			})
-		}
+		refs = append(refs, types.SessionArtifactRef{
+			MessageID: row.MessageID,
+			Index:     row.Position,
+			Artifact:  row.Artifact(),
+		})
 	}
 	return refs, nil
 }

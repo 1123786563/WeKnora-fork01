@@ -1,0 +1,6 @@
+-- No-op since the upstream merge: fork's 000074_memory_consistency is
+-- content-identical (memory_extraction_sessions plus the extraction_state/
+-- replaces_id columns) and runs earlier on fresh chains. Deployed fork
+-- databases applied 000074, not this version, so emptying it only affects
+-- fresh chains; the version stays occupied to preserve schema_migrations
+-- history.

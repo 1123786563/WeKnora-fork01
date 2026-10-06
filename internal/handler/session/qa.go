@@ -2161,7 +2161,14 @@ func (h *Handler) completeAssistantMessage(
 		h.completeMsgMu.Lock()
 		assistantMessage.UpdatedAt = time.Now()
 		assistantMessage.IsCompleted = true
-		_ = h.messageService.UpdateMessage(ctx, assistantMessage)
+		// Upstream (bccb4b151 qa.go:1949) propagates the persist error so a
+		// failed write never announces a successful completion (see
+		// completeStreamAssistantMessage); the merge had silently dropped it.
+		if err := h.messageService.UpdateMessage(ctx, assistantMessage); err != nil {
+			h.completeMsgMu.Unlock()
+			logger.Errorf(ctx, "Failed to persist assistant message %s: %v", assistantMessage.ID, err)
+			return err
+		}
 		h.completeMsgMu.Unlock()
 	}
 

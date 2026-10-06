@@ -6,13 +6,11 @@
 //
 // Design notes:
 //   - Session-scoped: the sandbox is resolved from ToolExecContext.SessionID.
-//   - Path guardrail: writes stay inside the session sandbox and never under
-//     /workspace/input (staged attachments are the user's, not ours).
-//     /workspace/output is what gets collected for download, so the
-//     description reserves it for finished deliverables and sends scratch
-//     work elsewhere under /workspace. Only the /workspace/input half is
-//     enforced here; the rest is guidance, because "finished" is a judgement
-//     the tool cannot make.
+//   - Path guardrail: writes stay under the session layout's WriteRoots and
+//     never under InputDir (staged attachments are the user's, not ours).
+//     Remote sessions collect OutputDir for download; host sessions with an
+//     empty OutputDir edit in place. Only the InputDir half is enforced here;
+//     "finished deliverable" is guidance the tool cannot judge.
 //   - Content stays out of ToolResult.Data/Output: the model already has the
 //     bytes it just sent. The result is path + size so the next call can
 //     shell_exec the file.
@@ -25,8 +23,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
@@ -83,13 +81,13 @@ const writeSandboxMissingFieldHint = "\nIf the previous call was truncated, retr
 	"put `path` first (e.g. /workspace/output/script.py), then `content`. Split large files."
 
 // SandboxFileSink is the file-store slice write_sandbox_file needs.
-// Production uses *SessionBoundManager via SessionFileStore.
+// Production uses *sandbox.SessionBoundManager via SessionFileStore.
 //
 // It is not write-only: append mode has to see the file that is already there.
 // The remote backends expose no atomic append, so this reads and rewrites the
 // whole file, which is what edit_sandbox_file already does.
 type SandboxFileSink interface {
-	StatSessionFile(ctx context.Context, sessionID, filePath string) (*RemoteStatEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, filePath string) (*sandbox.RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, filePath string) ([]byte, error)
 	WriteSessionWorkspaceFile(ctx context.Context, sessionID, filePath string, content []byte) error
 }
@@ -250,8 +248,8 @@ func (t *WriteSandboxFileTool) Execute(ctx context.Context, args json.RawMessage
 		}, nil
 	}
 
-	clean := ResolveWorkspacePath(trimmed)
-	rootDir, ok := matchingWritableRoot(clean)
+	clean := resolveIn(layout, trimmed)
+	rootDir, ok := writableRootIn(layout, clean)
 	if !ok {
 		return &types.ToolResult{
 			Success: false,
@@ -411,7 +409,7 @@ func (t *WriteSandboxFileTool) readForAppend(
 			"cannot append to %s: it does not exist yet (%v). Write the first chunk with mode=%q, then append the rest",
 			filePath, err, writeModeOverwrite)
 	}
-	if stat.Type != RemoteEntryFile {
+	if stat.Type != sandbox.RemoteEntryFile {
 		return nil, fmt.Sprintf("cannot append to %s: it is not a regular file", filePath)
 	}
 	existing, err := t.sink.ReadSessionFile(ctx, sessionID, filePath)
@@ -424,34 +422,4 @@ func (t *WriteSandboxFileTool) readForAppend(
 // Cleanup releases any resources.
 func (t *WriteSandboxFileTool) Cleanup(ctx context.Context) error {
 	return nil
-}
-
-// workspaceWriteScopeError explains a refused write/edit path. This is a
-// tool-scope convention (attachments stay out of these tools), not a privilege
-// check — shell_exec can already write
-// the same session sandbox.
-func workspaceWriteScopeError(requested string) string {
-	return fmt.Sprintf(
-		"path %q is outside that scope: write a file inside the session sandbox, "+
-			"not a directory root or a path under read-only %s",
-		requested, SessionInputRoot,
-	)
-}
-
-// matchingWritableRoot labels sandbox writes while excluding directory roots
-// and the read-only attachment tree.
-func matchingWritableRoot(clean string) (string, bool) {
-	if !path.IsAbs(clean) || clean == "/" ||
-		clean == SessionWorkspaceRoot ||
-		clean == SessionOutputRoot ||
-		isUnderRoot(clean, SessionInputRoot) {
-		return "", false
-	}
-	if isUnderRoot(clean, SessionOutputRoot) {
-		return SessionOutputRoot, true
-	}
-	if isUnderRoot(clean, SessionWorkspaceRoot) {
-		return SessionWorkspaceRoot, true
-	}
-	return "/", true
 }

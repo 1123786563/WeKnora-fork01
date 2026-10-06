@@ -27,6 +27,21 @@ type PinnedSessionSandbox struct {
 	fallback sandbox.Manager
 }
 
+// VersionsWorkspace reports whether this session's backend keeps a git history
+// of the sandbox workspace. Host sessions return false: the workspace is a
+// real directory, often shared across sessions, and must not be auto-committed
+// or reset. Sessions without a host backend return true so fork keeps the
+// remote degrade chain rather than pretending the session is on host.
+func (a *PinnedSessionSandbox) VersionsWorkspace(ctx context.Context, sessionID string) bool {
+	if a == nil {
+		return true
+	}
+	if mgr := a.manager(ctx, sessionID); mgr != nil && mgr.GetType() == sandbox.SandboxTypeHost {
+		return false
+	}
+	return true
+}
+
 // NewPinnedSessionSandbox wires request-time sandbox access. Any dependency
 // may be nil; BoundSandboxID then reports ok=false and ExecShellCommand
 // fails, which WorkspaceCheckpointer treats as "no checkpoint".
@@ -163,6 +178,8 @@ func (a *PinnedSessionSandbox) DeleteForkSnapshot(
 var _ SandboxShellRunner = (*PinnedSessionSandbox)(nil)
 
 var _ SessionForkSandboxPort = (*PinnedSessionSandbox)(nil)
+
+var _ WorkspaceVersioning = (*PinnedSessionSandbox)(nil)
 
 var _ SessionForkSandboxPort = (*sandbox.SessionBoundManager)(nil)
 

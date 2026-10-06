@@ -88,6 +88,9 @@ func seedKnowledgeEvidenceRows(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Create(&types.Chunk{ID: "chunk-own", TenantID: 2, KnowledgeBaseID: "kb-own", KnowledgeID: "doc-own", Content: "同租户手册命中段", ContentRevision: 3, StartAt: 10, EndAt: 40}).Error)
 	require.NoError(t, db.Create(&types.Chunk{ID: "chunk-shared", TenantID: 3, KnowledgeBaseID: "kb-shared", KnowledgeID: "doc-shared", Content: "跨租户共享指南命中段", ContentRevision: 5, StartAt: 0, EndAt: 30}).Error)
 	require.NoError(t, db.Create(&types.Organization{ID: "org-1", Name: "org", OwnerID: "user-3", OwnerTenantID: 3}).Error)
+	// 共享创建约束（ShareKnowledgeBase）要求源租户是 org 成员，这里补上，
+	// 否则该共享按「源租户已退出」的失效规则被忽略。
+	require.NoError(t, db.Create(&types.OrganizationTenantMember{ID: "member-3", OrganizationID: "org-1", TenantID: 3, Role: types.OrgRoleAdmin}).Error)
 	require.NoError(t, db.Create(&types.OrganizationTenantMember{ID: "member-2", OrganizationID: "org-1", TenantID: 2, Role: types.OrgRoleViewer}).Error)
 	require.NoError(t, db.Create(&types.KnowledgeBaseShare{ID: "share-1", KnowledgeBaseID: "kb-shared", OrganizationID: "org-1", SharedByUserID: "user-3", SourceTenantID: 3, Permission: types.OrgRoleViewer}).Error)
 }

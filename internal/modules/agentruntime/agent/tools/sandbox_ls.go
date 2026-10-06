@@ -29,23 +29,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 // SandboxFileSource is the narrow, tool-facing subset of a session-aware
 // sandbox manager. In production it is satisfied by
-// *SessionBoundManager; tests can stub it with an in-memory fake.
+// *sandbox.SessionBoundManager; tests can stub it with an in-memory fake.
 //
 // Keeping the interface local to the tools package avoids leaking a
 // dependency on internal/application/service (which is a higher layer)
 // and mirrors the pattern used by ArtifactCollector.SandboxArtifactSource.
 type SandboxFileSource interface {
-	ListSessionFiles(ctx context.Context, sessionID, dir string) ([]RemoteDirEntry, error)
-	StatSessionFile(ctx context.Context, sessionID, path string) (*RemoteStatEntry, error)
+	ListSessionFiles(ctx context.Context, sessionID, dir string) ([]sandbox.RemoteDirEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, path string) (*sandbox.RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, path string) ([]byte, error)
 }
 
@@ -62,7 +61,7 @@ const (
 var listSandboxFilesTool = BaseTool{
 	name: ToolListSandboxFiles,
 	description: `List files inside the current session's sandbox when no shell executor is available.
-Relative paths resolve from /workspace; omitted path lists the artifact output directory.
+Relative paths resolve from /workspace; omitted path lists /workspace/output.
 Use known paths directly with read_file; list only to discover unknown files.
 Results are bounded by max_entries. An unprovisioned session returns an empty listing.`,
 	schema: utils.GenerateSchema[ListSandboxFilesInput](),
@@ -71,9 +70,9 @@ Results are bounded by max_entries. An unprovisioned session returns an empty li
 // ListSandboxFilesInput defines the input parameters for list_sandbox_files.
 type ListSandboxFilesInput struct {
 	// Path is the absolute path inside the sandbox to list. When empty
-	// the tool falls back to skills.ArtifactOutputDir(). Relative paths resolve
-	// from /workspace inside the current session sandbox.
-	Path string `json:"path,omitempty" jsonschema:"Optional absolute or /workspace-relative sandbox path to list. Defaults to the session's artifact output directory."` //nolint:lll // one-line struct tag
+	// the tool falls back to layoutDefaultListDir. Relative paths resolve
+	// from the workspace root.
+	Path string `json:"path,omitempty" jsonschema:"Optional absolute or /workspace-relative sandbox path to list. Defaults to /workspace/output on remote sandboxes, or the working directory on host."` //nolint:lll // one-line struct tag
 	// MaxEntries caps the listing size to protect the LLM context.
 	// Zero uses defaultListSandboxMaxEntries.
 	MaxEntries int `json:"max_entries,omitempty" jsonschema:"Optional cap on the number of entries returned. Defaults to 200, hard-capped at 500. Use a smaller value when you only need to check whether a specific file exists."`
@@ -168,11 +167,16 @@ func (t *ListSandboxFilesTool) Execute(ctx context.Context, args json.RawMessage
 	if targetDir == "" {
 		targetDir = layoutDefaultListDir(layout)
 	} else {
-		targetDir = ResolveWorkspacePath(targetDir)
+		targetDir = resolveIn(layout, targetDir)
 	}
 	rootDir, ok := inspectRoot(layout, targetDir)
 	if !ok {
-		rootDir = "/"
+		// Report the resolved directory, not input.Path: an omitted path
+		// would otherwise be refused as `path ""`.
+		return &types.ToolResult{
+			Success: false,
+			Error:   inspectScopeErrorIn(layout, targetDir),
+		}, nil
 	}
 
 	maxEntries := input.MaxEntries
@@ -280,44 +284,12 @@ func resolveSessionID(ctx context.Context) string {
 	return ""
 }
 
-// sandboxInspectableRoots labels familiar workspace paths in file metadata.
-// It is not a read/list allowlist. Ordered most specific first, the root names the
-// artifact or attachment tree when the path is inside one.
-func sandboxInspectableRoots() []string {
-	return []string{
-		skills.ArtifactOutputDir(),
-		SessionInputRoot,
-		SessionWorkspaceRoot,
-	}
-}
-
-func relativeSkillFileFromImagePath(clean, skillName string) string {
-	dir, err := SkillDirFor(skillName)
-	if err != nil || clean == dir {
-		return ""
-	}
-	prefix := dir + "/"
-	if strings.HasPrefix(clean, prefix) {
-		return strings.TrimPrefix(clean, prefix)
-	}
-	return ""
-}
-
-// matchingInspectableRoot returns the named workspace root that contains
-// clean, or ("", false) when the path sits outside every root.
-func matchingInspectableRoot(clean string) (string, bool) {
-	for _, root := range sandboxInspectableRoots() {
-		if isUnderRoot(clean, root) {
-			return root, true
-		}
-	}
-	return "", false
-}
-
 // isUnderRoot reports whether clean sits at or underneath root. Both
-// arguments must already be cleaned. Readers use this to label workspace roots;
-// writers also use it to preserve attachment write protection. It is not a
-// privilege boundary (shell_exec can already reach the same files).
+// arguments must already be cleaned. On a remote sandbox this labels roots
+// and protects the attachment tree; shell_exec can still reach the same
+// files. On a host layout, write scope and work_dir clamping use this as
+// the tool-layer boundary — the OS sandbox PathGuard remains the real
+// privilege check, including symlink follow.
 func isUnderRoot(clean, root string) bool {
 	if clean == root {
 		return true

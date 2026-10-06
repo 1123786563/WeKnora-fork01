@@ -202,7 +202,11 @@ func (f *semanticScopeFixture) AddSharedKB(owner, member uint64, kb string) {
 	f.t.Helper()
 	f.AddOwnedKB(owner, kb)
 	require.NoError(f.t, f.DB.Exec("INSERT INTO organizations(id,name,owner_id) VALUES('scope-org','scope-org','owner') ON CONFLICT(id) DO NOTHING").Error)
-	require.NoError(f.t, f.DB.Exec("INSERT INTO organization_tenant_members(id,organization_id,tenant_id,role) VALUES('scope-member','scope-org',?,'editor') ON CONFLICT(id) DO NOTHING", member).Error)
+	// Sharing requires the source tenant to be an org member (ShareKnowledgeBase
+	// refuses non-member sharers, and a lapsed source membership voids the
+	// share), so the owner joins as admin alongside the reader member.
+	require.NoError(f.t, f.DB.Exec("INSERT INTO organization_tenant_members(id,organization_id,tenant_id,role) VALUES('scope-owner','scope-org',?,'admin') ON CONFLICT(organization_id, tenant_id) DO NOTHING", owner).Error)
+	require.NoError(f.t, f.DB.Exec("INSERT INTO organization_tenant_members(id,organization_id,tenant_id,role) VALUES('scope-member','scope-org',?,'editor') ON CONFLICT(organization_id, tenant_id) DO NOTHING", member).Error)
 	require.NoError(f.t, f.DB.Exec("INSERT INTO kb_shares(id,knowledge_base_id,organization_id,shared_by_user_id,source_tenant_id,permission) VALUES(?,?,'scope-org','owner',?,'editor') ON CONFLICT(id) DO NOTHING", kb, kb, owner).Error)
 }
 func (f *semanticScopeFixture) AddActiveSemanticDocument(tenant uint64, kb, doc string, revision uint64) {

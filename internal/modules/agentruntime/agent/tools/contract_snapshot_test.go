@@ -29,22 +29,28 @@ import (
 )
 
 // TestAvailableToolDefinitionsContractSnapshot freezes the full UI tool catalog.
+//
+// 2026-10-06 re-baseline: the upstream merge unified the retrieval surface
+// (search_knowledge / read_document / list_documents replace the retired
+// grep_chunks / knowledge_search / list_knowledge_chunks / get_document_info
+// legacy identifiers; wiki_read_source_doc retired with them — see the
+// LegacyTool* block in definitions.go). The catalog below freezes the
+// post-merge contract; the pre-merge 21-entry snapshot stayed red because it
+// predated that intentional change.
 func TestAvailableToolDefinitionsContractSnapshot(t *testing.T) {
 	want := []AvailableTool{
 		{Name: "thinking", Label: "思考", Description: "动态和反思性的问题解决思考工具"},
 		{Name: "todo_write", Label: "制定计划", Description: "创建结构化的研究计划"},
-		{Name: "grep_chunks", Label: "关键词搜索", Description: "快速定位包含特定关键词的文档和分块"},
-		{Name: "knowledge_search", Label: "语义搜索", Description: "理解问题并查找语义相关内容"},
-		{Name: "list_knowledge_chunks", Label: "查看文档分块", Description: "获取文档完整分块内容"},
+		{Name: "search_knowledge", Label: "检索知识库", Description: "语义、关键词或混合检索知识库分块"},
+		{Name: "read_document", Label: "阅读文档", Description: "读取文档元数据与分块内容，支持分页和文内查找"},
+		{Name: "list_documents", Label: "浏览文档列表", Description: "分页列出知识库中的文档"},
 		{Name: "query_knowledge_graph", Label: "查询知识图谱", Description: "从知识图谱中查询关系"},
-		{Name: "get_document_info", Label: "获取文档信息", Description: "查看文档元数据"},
 		{Name: "search_conversations", Label: "回顾历史对话", Description: "在用户自己的历史会话中查找之前聊过的内容"},
 		{Name: "database_query", Label: "查询数据库", Description: "查询数据库中的信息"},
 		{Name: "data_analysis", Label: "数据分析", Description: "理解数据文件并进行数据分析"},
 		{Name: "data_schema", Label: "查看数据元信息", Description: "获取表格文件的元信息"},
 		{Name: "wiki_read_page", Label: "读取Wiki页面", Description: "读取指定的Wiki页面内容"},
 		{Name: "wiki_search", Label: "搜索Wiki", Description: "在Wiki中搜索页面"},
-		{Name: "wiki_read_source_doc", Label: "精读源文档", Description: "使用知识点深入阅读特定原始文档"},
 		{Name: "wiki_flag_issue", Label: "标记Wiki问题", Description: "标记页面中存在的事实错误或合并冲突问题"},
 		{Name: "wiki_write_page", Label: "创建/覆盖Wiki", Description: "创建新页面或完全覆盖已有页面"},
 		{Name: "wiki_replace_text", Label: "局部替换Wiki", Description: "替换Wiki页面中的特定文本"},
@@ -65,12 +71,14 @@ func TestAvailableToolDefinitionsContractSnapshot(t *testing.T) {
 }
 
 // TestDefaultAllowedToolsSnapshot freezes the exact default allowlist order.
+// Re-baselined with the catalog above: the unified retrieval names replace the
+// retired knowledge_search / grep_chunks / list_knowledge_chunks /
+// get_document_info entries.
 func TestDefaultAllowedToolsSnapshot(t *testing.T) {
 	want := []string{
-		"knowledge_search",
-		"grep_chunks",
-		"list_knowledge_chunks",
-		"get_document_info",
+		"search_knowledge",
+		"read_document",
+		"list_documents",
 		"search_conversations",
 	}
 	got := DefaultAllowedTools()
@@ -126,7 +134,7 @@ func TestConstructibleToolSchemaBytesSnapshot(t *testing.T) {
 		wantSHA string
 	}{
 		{"app_connector", NewAppConnectorTool(nil), "dea9299165858a2359a011aae0e5306b57ed47a34caff95e91ad02c552d0d55e"},
-		{"list_sandbox_files", NewListSandboxFilesTool(nil), "0f855075774f9309e5d7bb1dc51536c3ab149b9404a554e60ab8e62297db1684"},
+		{"list_sandbox_files", NewListSandboxFilesTool(nil), "29ac5d7626d1f0e25eb91385b556a01ff8d01305cb4ee2a7fa8e353235cb92cc"},
 		{"write_sandbox_file", NewWriteSandboxFileTool(nil, 0), "443aa6f35b28d21ce7618869e9fbcd3bb712daed3dfd8c43555d5e932a38ae43"},
 		{"edit_sandbox_file", NewEditSandboxFileTool(nil), "5d7f59f08c706b6d64724eb2ba74e28c099ab302593c2a147b1fc7eb736033e2"},
 		{"shell_exec", NewShellExecTool(nil, nil), "70ff73d6f5bbb963f4973d7be1168f51b18278b7445401b5c12556d568fda9ed"},
