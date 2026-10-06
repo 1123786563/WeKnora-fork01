@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -229,6 +230,17 @@ func watchStreamStall(
 	done := make(chan struct{})
 
 	go func() {
+		// The watchdog runs detached from the streaming goroutine, so nothing
+		// above it can recover a panic here (recover is per goroutine). A
+		// broken watchdog (e.g. a degenerate timeout making NewTicker panic)
+		// degrades to losing stall detection for this stream instead of
+		// taking down the whole process.
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf(ctx, "[Agent][Stream] Stall watchdog panicked; stall detection disabled: %v\n%s",
+					r, debug.Stack())
+			}
+		}()
 		// Poll well inside the window so the detected gap stays close to the
 		// configured timeout instead of rounding up to twice it.
 		ticker := time.NewTicker(stallTimeout / 4)
