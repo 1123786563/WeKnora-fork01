@@ -387,6 +387,11 @@ func (s *organizationService) AddTenantMember(ctx context.Context, orgID string,
 func (s *organizationService) addTenantMemberWithinLimit(
 	ctx context.Context, member *types.OrganizationTenantMember, memberLimit int,
 ) error {
+	// Membership writes must cross the semantic revocation barrier before the
+	// INSERT lands, or members already served stale-scope KB access keep it.
+	if err := s.invalidateSemanticOrganization(ctx, member.OrganizationID); err != nil {
+		return err
+	}
 	err := s.orgRepo.AddTenantMember(ctx, member, memberLimit)
 	if errors.Is(err, repository.ErrOrgMemberLimitReached) {
 		return ErrOrgMemberLimitReached
@@ -422,6 +427,9 @@ func (s *organizationService) RemoveTenantMember(ctx context.Context, orgID stri
 	}
 	_ = operatorUserID
 
+	if err := s.invalidateSemanticOrganization(ctx, orgID); err != nil {
+		return err
+	}
 	if err := s.orgRepo.RemoveTenantMember(ctx, orgID, memberTenantID); err != nil {
 		return err
 	}
