@@ -139,6 +139,139 @@ func TestRunKnowledgeListReparseSubmissionsSucceeds(t *testing.T) {
 	require.Equal(t, knowledgeListReparseOutcome{Submitted: 2}, outcome)
 }
 
+// reparseConfigScenario builds the manual-knowledge + queue stubs shared by
+// the #3851 reparse-config scenarios: the upload confirm step runs against
+// kbUpload, then the KB object itself is reconfigured in place to simulate the
+// settings change that happens between upload and reparse.
+func reparseConfigScenario(t *testing.T, kb *types.KnowledgeBase) (*knowledgeService, *types.Knowledge, context.Context) {
+	t.Helper()
+	knowledge := &types.Knowledge{
+		ID: "knowledge-1", TenantID: 7, KnowledgeBaseID: "kb-1",
+		Type: types.KnowledgeTypeManual, ParseStatus: types.ParseStatusCompleted,
+	}
+	require.NoError(t, knowledge.SetManualMetadata(
+		types.NewManualKnowledgeMetadata("# content", types.ManualKnowledgeStatusPublish, 1)))
+	svc := &knowledgeService{
+		repo:      &reparseFailureKnowledgeRepo{knowledge: knowledge},
+		kbService: &reparseFailureKBService{kb: kb},
+		task:      &wikiEnqueueFailureTaskQueue{},
+	}
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
+	ctx, err := access.WithKBTaskWrite(ctx, kb, 7)
+	require.NoError(t, err)
+	return svc, knowledge, ctx
+}
+
+// Scenario (a) of #3851: upload with question generation on (KB default,
+// nothing overridden), KB disables it, reparse with an empty body — the new
+// snapshot must resolve question generation off instead of replaying the
+// upload-time dialog snapshot.
+func TestReparseKnowledgeFollowsLatestKBConfigWhenNotOverridden(t *testing.T) {
+	kb := &types.KnowledgeBase{
+		ID: "kb-1", TenantID: 7,
+		ChunkingConfig:           types.ChunkingConfig{ChunkSize: 512, ChunkOverlap: 50},
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{Enabled: true, QuestionCount: 3},
+	}
+	svc, knowledge, ctx := reparseConfigScenario(t, kb)
+
+	// Upload confirm: the dialog posts its full prefilled state; the service
+	// persists only deviations, so nothing is stored.
+	_, err := ApplyKnowledgeProcessOverrides(ctx, kb, knowledge, dialogStyleOverrides(kb, nil), nil, nil)
+	require.NoError(t, err)
+
+	// The KB is reconfigured between upload and reparse.
+	kb.QuestionGenerationConfig = &types.QuestionGenerationConfig{Enabled: false}
+	kb.ChunkingConfig.ChunkSize = 1024
+
+	got, err := svc.ReparseKnowledge(ctx, knowledge.ID, nil)
+	require.NoError(t, err)
+	stored, err := got.ProcessOverrides()
+	require.NoError(t, err)
+	eff := ResolveProcessConfig(kb, stored)
+	require.False(t, eff.QuestionGenerationConfig.Enabled,
+		"reparse must resolve the KB's latest question generation setting")
+	require.Equal(t, 1024, eff.ChunkingConfig.ChunkSize,
+		"reparse must resolve the KB's latest chunking config")
+}
+
+// Scenario (b) of #3851: a chunk size the user explicitly set at upload stays
+// pinned across a later KB change, while the fields the user never overrode
+// follow the KB's new values.
+func TestReparseKnowledgeKeepsUploadExplicitOverrideOverKBChange(t *testing.T) {
+	kb := &types.KnowledgeBase{
+		ID: "kb-1", TenantID: 7,
+		ChunkingConfig:           types.ChunkingConfig{ChunkSize: 512, ChunkOverlap: 50},
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{Enabled: true, QuestionCount: 3},
+	}
+	svc, knowledge, ctx := reparseConfigScenario(t, kb)
+
+	_, err := ApplyKnowledgeProcessOverrides(ctx, kb, knowledge, dialogStyleOverrides(kb,
+		&types.KnowledgeProcessOverrides{
+			ChunkingConfig: &types.ChunkingConfig{ChunkSize: 2048, ChunkOverlap: 50},
+		}), nil, nil)
+	require.NoError(t, err)
+
+	kb.ChunkingConfig.ChunkSize = 1024
+	kb.QuestionGenerationConfig = &types.QuestionGenerationConfig{Enabled: false}
+
+	got, err := svc.ReparseKnowledge(ctx, knowledge.ID, nil)
+	require.NoError(t, err)
+	stored, err := got.ProcessOverrides()
+	require.NoError(t, err)
+	require.NotNil(t, stored.ChunkingConfig,
+		"the upload-time explicit chunking override must survive the reparse")
+	eff := ResolveProcessConfig(kb, stored)
+	require.Equal(t, 2048, eff.ChunkingConfig.ChunkSize,
+		"an explicit upload override wins over the KB's later change")
+	require.False(t, eff.QuestionGenerationConfig.Enabled,
+		"fields the user never overrode follow the KB's latest config")
+}
+
+// Scenario (c) of #3851: overrides the reparse request supplies take
+// priority; fields the request omits keep the upload-time explicit override.
+func TestReparseKnowledgeRequestOverridesTakePriority(t *testing.T) {
+	kb := &types.KnowledgeBase{
+		ID: "kb-1", TenantID: 7,
+		ChunkingConfig:           types.ChunkingConfig{ChunkSize: 512, ChunkOverlap: 50},
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{Enabled: true, QuestionCount: 3},
+	}
+	svc, knowledge, ctx := reparseConfigScenario(t, kb)
+
+	_, err := ApplyKnowledgeProcessOverrides(ctx, kb, knowledge, dialogStyleOverrides(kb,
+		&types.KnowledgeProcessOverrides{
+			ChunkingConfig: &types.ChunkingConfig{ChunkSize: 2048, ChunkOverlap: 50},
+		}), nil, nil)
+	require.NoError(t, err)
+
+	kb.ChunkingConfig.ChunkSize = 1024
+	kb.QuestionGenerationConfig = &types.QuestionGenerationConfig{Enabled: false}
+
+	// The request re-enables question generation (a deviation from the KB's
+	// current setting) while saying nothing about chunking.
+	got, err := svc.ReparseKnowledge(ctx, knowledge.ID, &types.KnowledgeProcessOverrides{
+		QuestionGenerationConfig: &types.QuestionGenerationConfig{Enabled: true, QuestionCount: 5},
+	})
+	require.NoError(t, err)
+	stored, err := got.ProcessOverrides()
+	require.NoError(t, err)
+	require.NotNil(t, stored.QuestionGenerationConfig, "the new request override must be persisted")
+	require.Equal(t, 5, stored.QuestionGenerationConfig.QuestionCount)
+	require.NotNil(t, stored.ChunkingConfig, "the omitted field keeps the upload-time override")
+	eff := ResolveProcessConfig(kb, stored)
+	require.True(t, eff.QuestionGenerationConfig.Enabled, "the request override wins")
+	require.Equal(t, 2048, eff.ChunkingConfig.ChunkSize, "the omitted override survives")
+
+	// A request that overrides the same field replaces the stored choice.
+	got, err = svc.ReparseKnowledge(ctx, knowledge.ID, &types.KnowledgeProcessOverrides{
+		ChunkingConfig: &types.ChunkingConfig{ChunkSize: 4096, ChunkOverlap: 50},
+	})
+	require.NoError(t, err)
+	stored, err = got.ProcessOverrides()
+	require.NoError(t, err)
+	require.Equal(t, 4096, ResolveProcessConfig(kb, stored).ChunkingConfig.ChunkSize,
+		"the newest explicit chunking choice wins")
+}
+
 func TestReparseKnowledgePreservesOrChangesSummaryChoice(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -180,8 +313,13 @@ func TestReparseKnowledgePreservesOrChangesSummaryChoice(t *testing.T) {
 			require.Equal(t, []string{types.TypeManualProcess}, queue.taskTypes)
 			overrides, err := got.ProcessOverrides()
 			require.NoError(t, err)
-			require.NotNil(t, overrides.SummaryEnabled)
-			require.Equal(t, tc.want, *overrides.SummaryEnabled)
+			// Since #3851 reparse persists only overrides that deviate from
+			// the KB: asking to re-enable the KB default stores nothing, so
+			// the stored pointer is optional — the effective choice is what
+			// must hold in every case.
+			if overrides != nil && overrides.SummaryEnabled != nil {
+				require.Equal(t, tc.want, *overrides.SummaryEnabled)
+			}
 			require.Equal(t, tc.want, ResolveProcessConfig(kb, overrides).SummaryEnabled)
 		})
 	}

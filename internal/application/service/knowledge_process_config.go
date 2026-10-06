@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -135,11 +136,152 @@ func validateDefaultFileImportRequirements(
 	return nil
 }
 
+// explicitProcessOverrides narrows request overrides to the subset that
+// actually deviates from what the knowledge base would resolve on its own.
+//
+// Upload confirm dialogs POST their whole form state as process_config — every
+// section, prefilled from KB defaults. Persisting that verbatim froze the
+// upload-time KB settings as per-document overrides, so a later KB change
+// (e.g. disabling question generation) never reached the document on reparse:
+// ResolveProcessConfig kept replaying the frozen snapshot (#3851). Recording
+// only the deviations keeps the contract reparse assumes: fields the user
+// explicitly changed stay pinned to the document, everything else keeps
+// following the KB's latest config.
+//
+// Resolution is untouched: ResolveProcessConfig(kb, explicit) equals
+// ResolveProcessConfig(kb, overrides) because every dropped field resolves to
+// the KB value it was compared against. nil means "no deviation" — nothing
+// worth persisting.
+func explicitProcessOverrides(
+	kb *types.KnowledgeBase,
+	overrides *types.KnowledgeProcessOverrides,
+) *types.KnowledgeProcessOverrides {
+	if overrides == nil {
+		return nil
+	}
+	base := ResolveProcessConfig(kb, nil)
+	eff := ResolveProcessConfig(kb, overrides)
+	explicit := types.KnowledgeProcessOverrides{}
+	deviates := false
+
+	if overrides.SummaryEnabled != nil && eff.SummaryEnabled != base.SummaryEnabled {
+		explicit.SummaryEnabled = overrides.SummaryEnabled
+		deviates = true
+	}
+	if !reflect.DeepEqual(eff.ChunkingConfig, base.ChunkingConfig) {
+		if len(overrides.ParserEngineRules) > 0 {
+			explicit.ParserEngineRules = overrides.ParserEngineRules
+			deviates = true
+		}
+		if overrides.ChunkingConfig != nil {
+			explicit.ChunkingConfig = overrides.ChunkingConfig
+			deviates = true
+		}
+	}
+	if overrides.EnableMultimodel != nil && eff.EnableMultimodel != base.EnableMultimodel {
+		explicit.EnableMultimodel = overrides.EnableMultimodel
+		deviates = true
+	}
+	if overrides.VLMConfig != nil && !reflect.DeepEqual(eff.VLMConfig, base.VLMConfig) {
+		explicit.VLMConfig = overrides.VLMConfig
+		deviates = true
+	}
+	if overrides.ASRConfig != nil && !reflect.DeepEqual(eff.ASRConfig, base.ASRConfig) {
+		explicit.ASRConfig = overrides.ASRConfig
+		deviates = true
+	}
+	if overrides.QuestionGenerationConfig != nil && !reflect.DeepEqual(eff.QuestionGenerationConfig, base.QuestionGenerationConfig) {
+		explicit.QuestionGenerationConfig = overrides.QuestionGenerationConfig
+		deviates = true
+	}
+	if overrides.GraphEnabled != nil && eff.GraphEnabled != base.GraphEnabled {
+		explicit.GraphEnabled = overrides.GraphEnabled
+		deviates = true
+	}
+	if overrides.ImageAttrsEnabled != nil && eff.ImageAttrsEnabled != base.ImageAttrsEnabled {
+		explicit.ImageAttrsEnabled = overrides.ImageAttrsEnabled
+		deviates = true
+	}
+	if overrides.ImageActions != nil && !reflect.DeepEqual(eff.ImageActions, base.ImageActions) {
+		explicit.ImageActions = overrides.ImageActions
+		deviates = true
+	}
+	if overrides.ExtractConfig != nil && !reflect.DeepEqual(eff.ExtractConfig, base.ExtractConfig) {
+		explicit.ExtractConfig = overrides.ExtractConfig
+		deviates = true
+	}
+	// Parser-engine key/value overrides have no KB-level baseline; the request
+	// is their only source, so any non-empty map is an explicit choice.
+	if len(overrides.ParserEngineOverrides) > 0 {
+		explicit.ParserEngineOverrides = overrides.ParserEngineOverrides
+		deviates = true
+	}
+
+	if !deviates {
+		return nil
+	}
+	return &explicit
+}
+
+// mergeProcessOverrides layers reparse-request overrides on top of the
+// overrides a knowledge already stores: a field the request supplies replaces
+// the stored choice, a field it omits keeps the upload-time explicit override.
+// Nil operands fall through to the other side.
+func mergeProcessOverrides(stored, request *types.KnowledgeProcessOverrides) *types.KnowledgeProcessOverrides {
+	if stored == nil {
+		return request
+	}
+	if request == nil {
+		return stored
+	}
+	merged := *stored
+	if request.SummaryEnabled != nil {
+		merged.SummaryEnabled = request.SummaryEnabled
+	}
+	if len(request.ParserEngineRules) > 0 {
+		merged.ParserEngineRules = request.ParserEngineRules
+	}
+	if request.ChunkingConfig != nil {
+		merged.ChunkingConfig = request.ChunkingConfig
+	}
+	if request.EnableMultimodel != nil {
+		merged.EnableMultimodel = request.EnableMultimodel
+	}
+	if request.VLMConfig != nil {
+		merged.VLMConfig = request.VLMConfig
+	}
+	if request.ASRConfig != nil {
+		merged.ASRConfig = request.ASRConfig
+	}
+	if request.QuestionGenerationConfig != nil {
+		merged.QuestionGenerationConfig = request.QuestionGenerationConfig
+	}
+	if request.GraphEnabled != nil {
+		merged.GraphEnabled = request.GraphEnabled
+	}
+	if request.ImageAttrsEnabled != nil {
+		merged.ImageAttrsEnabled = request.ImageAttrsEnabled
+	}
+	if request.ImageActions != nil {
+		merged.ImageActions = request.ImageActions
+	}
+	if request.ExtractConfig != nil {
+		merged.ExtractConfig = request.ExtractConfig
+	}
+	if len(request.ParserEngineOverrides) > 0 {
+		merged.ParserEngineOverrides = request.ParserEngineOverrides
+	}
+	return &merged
+}
+
 // resolveFileImportProcessConfig is the single gate every file import passes
 // through: it rejects unsupported extensions, enforces the VLM/ASR
 // prerequisites for the resolved type, and returns the effective processing
 // config for task enqueue. Persisting overrides onto the knowledge record stays
-// with the caller, which owns the record's lifecycle.
+// with the caller, which owns the record's lifecycle — but every caller
+// persists the very struct passed here, so this gate narrows it to the explicit
+// deviations (#3851): what callers store is the deviation record, never the
+// dialog's prefilled full snapshot.
 func resolveFileImportProcessConfig(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
@@ -159,6 +301,11 @@ func resolveFileImportProcessConfig(
 	if processOverrides != nil {
 		if err := ValidateProcessOverrides(ctx, kb, processOverrides, []string{fileType}); err != nil {
 			return eff, err
+		}
+		if explicit := explicitProcessOverrides(kb, processOverrides); explicit != nil {
+			*processOverrides = *explicit
+		} else {
+			*processOverrides = types.KnowledgeProcessOverrides{}
 		}
 	} else if err := validateDefaultFileImportRequirements(ctx, kb, eff, fileType); err != nil {
 		return eff, err
@@ -209,7 +356,10 @@ func ValidateProcessOverrides(
 }
 
 // ApplyKnowledgeProcessOverrides validates optional overrides, persists them on the
-// knowledge record, and returns the effective config for task enqueue.
+// knowledge record, and returns the effective config for task enqueue. Only
+// the fields that deviate from the KB's own config are persisted (#3851), so
+// the stored overrides stay the document's explicit choices rather than a
+// frozen copy of the upload-time KB settings.
 func ApplyKnowledgeProcessOverrides(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
@@ -228,7 +378,7 @@ func ApplyKnowledgeProcessOverrides(
 	if err := ValidateProcessOverrides(ctx, kb, processOverrides, fileTypes); err != nil {
 		return eff, err
 	}
-	if err := knowledge.SetProcessOverrides(processOverrides); err != nil {
+	if err := knowledge.SetProcessOverrides(explicitProcessOverrides(kb, processOverrides)); err != nil {
 		return eff, err
 	}
 	return eff, nil

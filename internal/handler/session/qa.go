@@ -776,6 +776,11 @@ type sseStreamContext struct {
 	// mode releases on completion (the pipeline returns before the stream
 	// finishes); agent mode releases when AgentQA returns.
 	releaseTurn func()
+	// answerUsage accumulates the model-reported usage of the turn's answer
+	// stream(s) (issue #3865), mirroring smart reasoning's TurnUsage. It rides
+	// the assistant message so the persisted row, SP12 accounting and the
+	// completion event all carry the same numbers.
+	answerUsage types.TokenUsage
 }
 
 // setupSSEStream sets up the SSE streaming context
@@ -1477,6 +1482,12 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 			if data.Truncated {
 				markQuickAnswerTruncated(streamCtx.assistantMessage)
 			}
+			// Must run before completeAssistantMessage: the fold sets
+			// assistantMessage.Usage, which the SP12 accounting inside reads
+			// and the completion event below forwards to the client.
+			if usage, ok := data.Usage.(*types.TokenUsage); ok {
+				foldQuickAnswerUsage(streamCtx, usage)
+			}
 			if data.Done {
 				if completionHandled {
 					return nil
@@ -1493,7 +1504,10 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 				streamCtx.eventBus.Emit(streamCtx.asyncCtx, event.Event{
 					Type:      event.EventAgentComplete,
 					SessionID: sessionID,
-					Data:      event.AgentCompleteData{FinalAnswer: streamCtx.assistantMessage.Content},
+					Data: event.AgentCompleteData{
+						FinalAnswer: streamCtx.assistantMessage.Content,
+						Usage:       streamCtx.assistantMessage.Usage,
+					},
 				})
 			}
 			return nil
@@ -2022,6 +2036,19 @@ func appendQuickAnswerReasoning(msg *types.Message, content string) {
 	ensureQuickAnswerStep(msg).ReasoningContent += content
 }
 
+// foldQuickAnswerUsage folds one streamed answer's model-reported usage into
+// the turn's running total (issue #3865). The total rides the assistant
+// message so the persisted row, SP12 accounting and the completion event all
+// carry the same numbers, exactly like smart reasoning's TurnUsage. A nil
+// usage (provider reported none) keeps the message's usage absent.
+func foldQuickAnswerUsage(streamCtx *sseStreamContext, usage *types.TokenUsage) {
+	if streamCtx == nil || streamCtx.assistantMessage == nil || usage == nil {
+		return
+	}
+	streamCtx.answerUsage.Accumulate(*usage)
+	streamCtx.assistantMessage.Usage = &streamCtx.answerUsage
+}
+
 // completeQuickAnswerTurn finishes a KnowledgeQA (fast-answer) turn.
 // EventAgentComplete must run before the GORM write: handleComplete attaches
 // SandboxCheckpoint (and artifacts) to the in-memory message, and
@@ -2044,6 +2071,7 @@ func (h *Handler) completeQuickAnswerTurn(
 			SessionID: streamCtx.assistantMessage.SessionID,
 			Data: event.AgentCompleteData{
 				MessageID: streamCtx.assistantMessage.ID,
+				Usage:     streamCtx.assistantMessage.Usage,
 			},
 		})
 	}

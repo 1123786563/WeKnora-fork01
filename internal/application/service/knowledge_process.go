@@ -14,6 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/common"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
@@ -21,7 +22,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
 	"github.com/Tencent/WeKnora/internal/sourceloc"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -2694,14 +2694,23 @@ func (s *knowledgeService) reparseKnowledge(
 	tenantID := existing.TenantID
 
 	// When the caller supplies new overrides (e.g. via the reparse confirm
-	// dialog), validate them against this knowledge's file type, then persist
-	// to metadata so both this call's enqueue and the worker re-read the same
-	// config. nil keeps whatever was stored at upload time.
+	// dialog), layer them over the overrides the knowledge already stores — a
+	// field the request omits keeps the upload-time explicit choice — then
+	// validate the merged config against this knowledge's file type and
+	// persist it narrowed to the explicit deviations, so the dialog's
+	// prefilled KB defaults are not frozen onto the document (#3851). nil
+	// keeps whatever was stored at upload time.
 	if processOverrides != nil {
-		if err := ValidateProcessOverrides(ctx, kb, processOverrides, reparseFileTypes(existing)); err != nil {
+		storedOverrides, err := existing.ProcessOverrides()
+		if err != nil {
+			logger.Errorf(ctx, "Failed to read process overrides on reparse: %v", err)
 			return nil, err
 		}
-		if err := existing.SetProcessOverrides(processOverrides); err != nil {
+		effectiveOverrides := mergeProcessOverrides(storedOverrides, processOverrides)
+		if err := ValidateProcessOverrides(ctx, kb, effectiveOverrides, reparseFileTypes(existing)); err != nil {
+			return nil, err
+		}
+		if err := existing.SetProcessOverrides(explicitProcessOverrides(kb, effectiveOverrides)); err != nil {
 			logger.Errorf(ctx, "Failed to set process overrides on reparse: %v", err)
 			return nil, err
 		}
