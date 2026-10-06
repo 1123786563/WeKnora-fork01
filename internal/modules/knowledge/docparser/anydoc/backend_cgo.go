@@ -4,7 +4,6 @@ package anydoc
 
 import (
 	"fmt"
-	"mime"
 	"strings"
 
 	upstream "github.com/firecrawl/anydoc/go"
@@ -183,28 +182,8 @@ func inlineText(inlines []upstream.Inline) string {
 	return strings.TrimSpace(text.String())
 }
 
-func extensionFor(mediaType string) string {
-	switch strings.ToLower(strings.TrimSpace(mediaType)) {
-	case "image/jpeg", "image/jpg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "image/webp":
-		return ".webp"
-	case "image/bmp":
-		return ".bmp"
-	case "image/tiff":
-		return ".tiff"
-	case "image/svg+xml":
-		return ".svg"
-	}
-	// Anything else (EMF/WMF drawings, unknown object payloads) keeps
-	// whatever extension the media type registry knows, and .bin otherwise,
-	// so downstream storage never writes an extension-less blob.
-	if exts, err := mime.ExtensionsByType(mediaType); err == nil && len(exts) > 0 {
-		return exts[0]
-	}
-	return ".bin"
-}
+// extensionFor now lives in asset_extensions.go: it mirrors the fixed table
+// in asset_links.rs::extension_for so asset names always match the
+// Rust-generated `images/image-N<ext>` markdown links exactly (#3932).
+// Its former mime.ExtensionsByType fallback drifted with the host's
+// /etc/mime.types and broke that match for EMF/WMF assets.

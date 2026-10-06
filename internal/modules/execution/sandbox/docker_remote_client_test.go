@@ -54,6 +54,10 @@ type fakeDockerEngine struct {
 	execStderr  string
 	execExit    int
 	execErr     error
+	// execErrHook lets a test fail one specific exec the way the daemon would,
+	// e.g. a 404 on the exec that raced the idle sweeper deleting the
+	// container. Call numbers are 1-based across all ExecCreate calls.
+	execErrHook func(call int) error
 	// execNotRunningOnce makes the first ExecCreate fail the way the daemon
 	// does when the container has not reached State.Running yet.
 	execNotRunningOnce bool
@@ -192,6 +196,11 @@ func (f *fakeDockerEngine) ExecCreate(
 	if f.execNotRunningOnce && len(f.execOptions) == 1 {
 		return client.ExecCreateResult{}, cerrdefs.ErrConflict.WithMessage(
 			"container is not running")
+	}
+	if f.execErrHook != nil {
+		if err := f.execErrHook(len(f.execOptions)); err != nil {
+			return client.ExecCreateResult{}, err
+		}
 	}
 	if f.execErr != nil {
 		return client.ExecCreateResult{}, f.execErr
@@ -942,6 +951,56 @@ func TestDockerClientReadFileMapsFailures(t *testing.T) {
 			require.True(t, tt.refused(err), "got %v", err)
 		})
 	}
+}
+
+// An exec-backed helper that dies without writing anything — SIGKILLed
+// alongside its container by the idle sweeper's force delete, or by the exec
+// wrapper's timeout — must not truncate its error at the colon: the exit code
+// is the only evidence left, and an empty detail made the failure look like a
+// malformed message instead of a killed process (issue #3942's signature).
+func TestDockerFileOpFailuresCarryExitCodeWhenStderrEmpty(t *testing.T) {
+	engine := newFakeDockerEngine()
+	engine.execExit = 137
+	engine.execStderr = ""
+	docker := newTestDockerClient(t, engine)
+	ctx := context.Background()
+	handle := testHandle("c")
+
+	err := docker.MakeDir(ctx, handle, "/workspace/input/spec")
+	require.Error(t, err)
+	require.Contains(t, err.Error(),
+		"mkdir -p /workspace/input/spec: exit=137 stderr=<empty>")
+
+	err = docker.WriteFile(ctx, handle, "/workspace/input/spec/notes.txt", []byte("x"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exit=137 stderr=<empty>",
+		"every exec-backed helper, not just MakeDir, must name its exit code")
+
+	err = docker.Remove(ctx, handle, "/workspace/input/spec")
+	require.Error(t, err)
+	require.Contains(t, err.Error(),
+		"rm -rf /workspace/input/spec: exit=137 stderr=<empty>")
+
+	_, err = docker.ListDir(ctx, handle, "/workspace/output")
+	require.Error(t, err)
+	require.Contains(t, err.Error(),
+		"find /workspace/output: exit=137 stderr=<empty>")
+}
+
+// A helper that did complain about itself keeps carrying its own words: the
+// empty-stderr marker must not replace real stderr, which is what callers
+// match permission and already-exists failures against.
+func TestDockerFileOpFailuresKeepToolStderrWhenPresent(t *testing.T) {
+	engine := newFakeDockerEngine()
+	engine.execExit = 1
+	engine.execStderr = "mkdir: cannot create directory '/workspace/input/spec': Permission denied"
+	docker := newTestDockerClient(t, engine)
+
+	err := docker.MakeDir(context.Background(), testHandle("c"), "/workspace/input/spec")
+	require.Error(t, err)
+	require.Contains(t, err.Error(),
+		"mkdir -p /workspace/input/spec: mkdir: cannot create directory")
+	require.NotContains(t, err.Error(), "stderr=<empty>")
 }
 
 // The attack this closes: the sandbox account can write to /workspace, and

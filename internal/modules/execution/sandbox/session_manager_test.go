@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -942,4 +943,87 @@ func TestNewSessionBoundManagerBindsBootstrapperToClient(t *testing.T) {
 // optional turn-lease type assert fails.
 type leaseFreeBindingStore struct {
 	SessionSandboxBindingStore
+}
+
+func newDockerStagingTestManager(
+	t *testing.T,
+	engine *fakeDockerEngine,
+) (*SessionBoundManager, *DockerRemoteClient, SessionSandboxBindingStore) {
+	t.Helper()
+	engine.imagePresent["weknora/sandbox:test"] = true
+	docker := newTestDockerClient(t, engine)
+	cfg := DefaultConfig()
+	cfg.Type = SandboxTypeDocker
+	cfg.DockerImage = "weknora/sandbox:test"
+	store := NewMemorySessionSandboxBindingStore()
+	mgr, err := NewSessionBoundManager(SessionBoundManagerConfig{
+		Config:          cfg,
+		Client:          docker,
+		Store:           store,
+		Checker:         &fakeSessionExistenceChecker{exists: true},
+		SkipHealthProbe: true,
+	})
+	require.NoError(t, err)
+	return mgr, docker, store
+}
+
+// The docker idle sweeper deletes idle containers with no coordination with
+// the binding store, and a session's first exec is what refreshes the
+// activity marker the sweep reads. Attachment staging is usually that first
+// exec, so it can be the operation that finds the bound sandbox already
+// reclaimed (#3942): the daemon answers the staging exec with a 404, which
+// CanReplaceRemoteBinding proves replaceable. The staging must re-resolve —
+// replacing the binding and provisioning a replacement — and succeed once,
+// instead of failing the whole turn with an empty assistant message.
+func TestWriteSessionInputFileRebindsWhenSweepReclaimedSandbox(t *testing.T) {
+	engine := newFakeDockerEngine()
+	mgr, _, store := newDockerStagingTestManager(t, engine)
+
+	ctx := types.WithSandboxTenantID(context.Background(), 7)
+	require.NoError(t, mgr.WriteSessionInputFile(ctx, "session-a", "/workspace/input/spec.md", []byte("v1")))
+
+	// The second staging races the sweeper: Resolve connected to container-1
+	// while it still existed, the sweep force-deleted it right before the
+	// staging mkdir (exec #4), and the daemon answers 404. The replacement
+	// sandbox is created as container-2.
+	engine.createdID = "container-2"
+	engine.execErrHook = func(call int) error {
+		if call != 4 {
+			return nil
+		}
+		delete(engine.inspect, "container-1")
+		return cerrdefs.ErrNotFound.WithMessage("no such container")
+	}
+
+	require.NoError(t, mgr.WriteSessionInputFile(ctx, "session-a", "/workspace/input/spec.md", []byte("v2")),
+		"a staging that proved the sandbox gone must heal through one rebinding retry")
+
+	binding, err := store.Get(ctx, SessionSandboxKey{TenantID: 7, SessionID: "session-a"})
+	require.NoError(t, err)
+	require.Equal(t, "container-2", binding.SandboxID,
+		"the vanished sandbox must have been replaced, not left bound")
+}
+
+// A staging failure that does not prove the sandbox is gone — a permission
+// refusal from the container itself — must surface unchanged and leave the
+// binding alone: rebinding on an in-place refusal would churn sandboxes and
+// hide the real problem.
+func TestWriteSessionInputFileSurfacesNonReplaceableStagingFailures(t *testing.T) {
+	engine := newFakeDockerEngine()
+	engine.execExit = 1
+	engine.execStderr = "mkdir: cannot create directory '/workspace/input': Permission denied"
+	mgr, _, store := newDockerStagingTestManager(t, engine)
+
+	ctx := types.WithSandboxTenantID(context.Background(), 7)
+	err := mgr.WriteSessionInputFile(ctx, "session-a", "/workspace/input/spec.md", []byte("v1"))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sandbox: create input directory")
+	require.False(t, CanReplaceRemoteBinding(err))
+	binding, getErr := store.Get(ctx, SessionSandboxKey{TenantID: 7, SessionID: "session-a"})
+	require.NoError(t, getErr)
+	require.Equal(t, "container-1", binding.SandboxID,
+		"a non-replaceable failure must not touch the binding")
+	require.Len(t, engine.created, 1,
+		"no replacement sandbox may be provisioned for an in-place refusal")
 }

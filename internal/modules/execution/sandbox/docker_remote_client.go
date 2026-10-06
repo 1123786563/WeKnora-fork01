@@ -905,7 +905,7 @@ func (c *DockerRemoteClient) WriteFile(
 		return dockerError("WriteFile", err)
 	}
 	if result.ExitCode != 0 {
-		return dockerFileOpError("WriteFile", clean, result.Stderr)
+		return dockerFileOpError("WriteFile", clean, result.ExitCode, result.Stderr)
 	}
 	return nil
 }
@@ -940,7 +940,7 @@ func (c *DockerRemoteClient) ReadFile(
 		return nil, dockerError("ReadFile", err)
 	}
 	if result.ExitCode != 0 {
-		return nil, dockerFileOpError("ReadFile", clean, result.Stderr)
+		return nil, dockerFileOpError("ReadFile", clean, result.ExitCode, result.Stderr)
 	}
 	return []byte(result.Stdout), nil
 }
@@ -984,7 +984,7 @@ func (c *DockerRemoteClient) Stat(
 		return nil, dockerError("Stat", err)
 	}
 	if result.ExitCode != 0 {
-		return nil, dockerFileOpError("Stat", clean, result.Stderr)
+		return nil, dockerFileOpError("Stat", clean, result.ExitCode, result.Stderr)
 	}
 	entries := parseDockerFindOutput(result.Stdout)
 	if len(entries) == 0 {
@@ -1007,7 +1007,7 @@ func (c *DockerRemoteClient) Stat(
 // NotFound so callers can treat it as "nothing there"; everything else,
 // permission denials included, is an invalid request carrying the tool's own
 // complaint rather than a synthesised one.
-func dockerFileOpError(op, clean, stderr string) error {
+func dockerFileOpError(op, clean string, exitCode int, stderr string) error {
 	if strings.Contains(stderr, "No such file or directory") {
 		return &RemoteError{
 			Kind:     RemoteErrorKindNotFound,
@@ -1020,7 +1020,7 @@ func dockerFileOpError(op, clean, stderr string) error {
 		Kind:     RemoteErrorKindInvalidRequest,
 		Provider: SandboxTypeDocker,
 		Op:       op,
-		Message:  fmt.Sprintf("%s %s: %s", op, clean, firstNonEmptyLine(stderr)),
+		Message:  fmt.Sprintf("%s %s: %s", op, clean, dockerExecFailureDetail(exitCode, stderr)),
 	}
 }
 
@@ -1056,7 +1056,7 @@ func (c *DockerRemoteClient) makeDir(ctx context.Context, id, dir, op string) er
 			Kind:     RemoteErrorKindInvalidRequest,
 			Provider: SandboxTypeDocker,
 			Op:       op,
-			Message:  fmt.Sprintf("mkdir -p %s: %s", dir, firstNonEmptyLine(result.Stderr)),
+			Message:  fmt.Sprintf("mkdir -p %s: %s", dir, dockerExecFailureDetail(result.ExitCode, result.Stderr)),
 		}
 	}
 	return nil
@@ -1093,7 +1093,7 @@ func (c *DockerRemoteClient) Remove(
 			Kind:     RemoteErrorKindInvalidRequest,
 			Provider: SandboxTypeDocker,
 			Op:       "Remove",
-			Message:  fmt.Sprintf("rm -rf %s: %s", clean, firstNonEmptyLine(result.Stderr)),
+			Message:  fmt.Sprintf("rm -rf %s: %s", clean, dockerExecFailureDetail(result.ExitCode, result.Stderr)),
 		}
 	}
 	return nil
@@ -1142,7 +1142,7 @@ func (c *DockerRemoteClient) ListDir(
 			Kind:     RemoteErrorKindInternal,
 			Provider: SandboxTypeDocker,
 			Op:       "ListDir",
-			Message:  fmt.Sprintf("find %s: %s", clean, firstNonEmptyLine(result.Stderr)),
+			Message:  fmt.Sprintf("find %s: %s", clean, dockerExecFailureDetail(result.ExitCode, result.Stderr)),
 		}
 	}
 	return parseDockerFindOutput(result.Stdout), nil
@@ -1313,6 +1313,20 @@ func firstNonEmptyLine(output string) string {
 		}
 	}
 	return ""
+}
+
+// dockerExecFailureDetail explains why an exec-backed helper exited non-zero.
+// The tool's own stderr is the normal answer and is passed through untouched.
+// An empty stderr means the process died without reporting anything — killed
+// alongside its container (a force delete of the sandbox mid-exec is exactly
+// what the idle sweeper's ContainerRemove does) or by the exec wrapper's own
+// timeout — so the exit code is surfaced explicitly instead of leaving the
+// message truncated at the colon with no evidence of what happened.
+func dockerExecFailureDetail(exitCode int, stderr string) string {
+	if detail := firstNonEmptyLine(stderr); detail != "" {
+		return detail
+	}
+	return fmt.Sprintf("exit=%d stderr=<empty>", exitCode)
 }
 
 var (
