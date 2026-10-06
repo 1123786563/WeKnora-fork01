@@ -58,3 +58,38 @@ func TestProviderCallbackRouteIsAnonymouslyReachable(t *testing.T) {
 		t.Fatalf("non-callback commercial route must still require auth, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCommercialWebhookRouteIsAnonymouslyReachable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(middleware.Auth(nil, nil, nil, nil, nil))
+	v1 := engine.Group("/api/v1")
+	RegisterCommercialRoutes(v1, handler.NewCommercialHandler(nil), handler.NewCommercialWebhookHandler(nil))
+
+	t.Run("anonymous POST reaches fail-closed webhook handler", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/webhooks/lago", strings.NewReader("body=1"))
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("anonymous webhook POST must reach the nil handler and fail closed with 503, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("webhook GET remains authenticated", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/commercial/webhooks/lago", nil)
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("anonymous webhook GET must remain behind auth, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("unrelated commercial POST remains authenticated", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/orders", strings.NewReader("{}"))
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("anonymous unrelated commercial POST must remain behind auth, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

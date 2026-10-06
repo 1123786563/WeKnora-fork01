@@ -13,6 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/container"
 	sessionhandler "github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/dig"
 )
@@ -46,6 +47,10 @@ func TestBuildContainerBootsLite(t *testing.T) {
 	require.NotNil(t, session)
 	claims := reflect.ValueOf(session).Elem().FieldByName("agentChatTurnClaimStore")
 	require.False(t, claims.IsNil(), "wireAgentSecuritySessionClaims must observe a live session handler")
+
+	var router *gin.Engine
+	require.NoError(t, c.Invoke(func(engine *gin.Engine) { router = engine }))
+	require.NotNil(t, router)
 
 	var cleaner interfaces.ResourceCleaner
 	require.NoError(t, c.Invoke(func(cl interfaces.ResourceCleaner) { cleaner = cl }))

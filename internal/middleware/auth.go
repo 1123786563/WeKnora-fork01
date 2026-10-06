@@ -78,6 +78,10 @@ var noAuthAPI = map[string][]string{
 	// (routes_commercial.go mounts the group under the authenticated /api/v1
 	// tree by design; the fail-closed handler rejects unsigned bodies).
 	"/api/v1/commercial/callbacks/*": {"POST"},
+	// Billing-authority webhooks use an HMAC signature over the raw request
+	// body as their authentication boundary. Auth wraps /api/v1 directly, so
+	// only POSTs on this webhook path bypass session/API-key authentication.
+	"/api/v1/commercial/webhooks/*": {"POST"},
 }
 
 // 检查请求是否在无需认证的API列表中

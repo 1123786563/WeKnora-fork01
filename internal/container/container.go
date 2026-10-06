@@ -1129,6 +1129,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// authority's Reconcile family stays fail-closed until its real-stack
 	// enablement, so both faces degrade honestly (503 / quiet no-op).
 	must(container.Provide(newCommercialWebhookService))
+	must(container.Provide(handler.NewCommercialWebhookHandler))
 	must(container.Provide(newCommercialReconciliationService))
 	must(container.Invoke(startCommercialReconciliation))
 	// A03 action approval pipeline: the persisted action store and the
