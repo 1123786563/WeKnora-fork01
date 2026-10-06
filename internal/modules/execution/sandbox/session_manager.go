@@ -512,6 +512,17 @@ func (m *SessionBoundManager) EnsureSessionDir(ctx context.Context, sessionID, d
 // remote sandbox, provisioning the sandbox on first call. It is refused when
 // the manager has fallen back to Local (writing to the host would leak
 // attachments outside the tenant's isolation boundary).
+//
+// The docker idle sweeper reclaims idle containers with no coordination with
+// the binding store (that is deliberate — the lifecycle treats a sandbox the
+// provider no longer has as replaceable), and a session's first exec is what
+// refreshes the activity marker the sweep reads. Attachment staging is usually
+// that first exec, so it is the one operation that can hit a sandbox the sweep
+// deleted between Resolve and the exec. A staging failure that proves the
+// sandbox is gone (CanReplaceRemoteBinding) is therefore retried once against
+// a freshly resolved — and thus freshly provisioned — sandbox rather than
+// failing the whole turn. Staging is idempotent (mkdir -p plus overwrite), and
+// every other error class surfaces unchanged.
 func (m *SessionBoundManager) WriteSessionInputFile(
 	ctx context.Context, sessionID, filePath string, content []byte,
 ) error {
@@ -529,6 +540,34 @@ func (m *SessionBoundManager) WriteSessionInputFile(
 	if err != nil {
 		return err
 	}
+	if err := m.stageSessionInput(ctx, handle, clean, content); err != nil {
+		if !CanReplaceRemoteBinding(err) {
+			return err
+		}
+		replacement, resolveErr := m.resolveSession(ctx, sessionID)
+		if resolveErr != nil {
+			// The original staging failure already proves the sandbox is
+			// gone; a resolve error on top of it adds nothing actionable.
+			return err
+		}
+		log.Printf(
+			"[sandbox] session %s: input staging hit a sandbox the provider no "+
+				"longer has; rebound to %s and retrying once",
+			sessionID, replacement.ID(),
+		)
+		return m.stageSessionInput(ctx, replacement, clean, content)
+	}
+	return nil
+}
+
+// stageSessionInput provisions the attachment's parent directory and writes
+// the file through it with one exec identity.
+func (m *SessionBoundManager) stageSessionInput(
+	ctx context.Context,
+	handle RemoteSandboxHandle,
+	clean string,
+	content []byte,
+) error {
 	if err := ignoreExistingDir(m.client.MakeDir(ctx, handle, path.Dir(clean))); err != nil {
 		return fmt.Errorf("sandbox: create input directory: %w", err)
 	}
