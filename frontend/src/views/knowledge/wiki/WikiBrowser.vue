@@ -596,7 +596,7 @@
                   <span class="wiki-reader-footer-value">
                     <a v-for="link in selectedPage.in_links" :key="'in-' + link" href="#"
                       class="wiki-content-link" @click.prevent="navigateToSlug(link)">
-                      {{ slugDisplayName(link) }}
+                      {{ wikiLinkLabel(selectedPage.link_titles, link, slugDisplayName(link)) }}
                     </a>
                   </span>
                 </div>
@@ -809,6 +809,7 @@ import {
   expandedWikiDirectoryPaths,
   expandWikiDirectoryPath,
 } from './wikiDirectoryState'
+import { wikiLinkLabel } from './wikiLinkLabel'
 import { getKnowledgeDetails } from '@/api/knowledge-base'
 import { createSessions } from '@/api/chat'
 import ChatView from '@/views/chat/index.vue'

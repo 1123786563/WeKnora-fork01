@@ -28,6 +28,10 @@ export interface WikiPage {
   source_refs: string[];
   in_links: string[];
   out_links: string[];
+  // slug→title map for every slug in in_links / out_links, resolved by the
+  // backend in one batched query (page detail responses only). Absent slugs
+  // (missing target page) fall back to the slug; absent on list payloads.
+  link_titles?: Record<string, string>;
   page_metadata: Record<string, any>;
   version: number;
   // Author kind of the current version: 'pipeline' | 'agent' | 'user' |

@@ -174,6 +174,26 @@ func (h *Handler) guardTaskDeletion(c *gin.Context, ctx context.Context, session
 	return true
 }
 
+// loadSessionForManagement resolves the ownership pre-check of the session
+// management mutations (PUT /sessions/:id, DELETE /sessions/:id, batch
+// delete): the caller's owner scope first and — for Admin+ only — the
+// tenant-wide fallback, mirroring the service layer's sessionManagementScope
+// so an admin can manage tenant channel sessions (embed/API/IM) whose user_id
+// is a principal storage id the strict owner scope can never match. Runtime
+// mutation endpoints (QA, stream, attachments, title generation) keep the
+// strict GetOwnedSession check.
+func (h *Handler) loadSessionForManagement(ctx context.Context, id string) (*types.Session, error) {
+	session, err := h.sessionService.GetOwnedSession(ctx, id)
+	if err == nil || !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		return session, err
+	}
+	tenantID, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenantID == 0 {
+		return nil, err
+	}
+	return h.sessionService.GetSessionByID(ctx, tenantID, id)
+}
+
 // tombstoneCraftSession runs the craft tombstone best-effort at the session
 // deletion entrance. The periodic sweep's discovery pass re-derives the
 // tombstone for sessions deleted without it, so a tombstone failure never
@@ -564,7 +584,7 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 
 	session.ID = id
 	session.TenantID = tenantID.(uint64)
-	if existing, loadErr := h.sessionService.GetOwnedSession(ctx, id); loadErr != nil {
+	if existing, loadErr := h.loadSessionForManagement(ctx, id); loadErr != nil {
 		c.Error(errors.NewNotFoundError(loadErr.Error()))
 		return
 	} else {
@@ -645,7 +665,7 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		return
 	}
 
-	if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+	if _, ownErr := h.loadSessionForManagement(ctx, id); ownErr != nil {
 		c.Error(errors.NewNotFoundError("session not found"))
 		return
 	}
@@ -817,7 +837,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 
 	for _, id := range sanitizedIDs {
-		if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+		if _, ownErr := h.loadSessionForManagement(ctx, id); ownErr != nil {
 			c.Error(errors.NewNotFoundError("session not found"))
 			return
 		}

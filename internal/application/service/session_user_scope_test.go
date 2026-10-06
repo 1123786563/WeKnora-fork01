@@ -658,3 +658,141 @@ func TestListSessionsNonAdminUserIDParamCannotEscapeScope(t *testing.T) {
 	require.Equal(t, bob.ID, rows[0].ID,
 		"a non-admin's user_id param must not override the owner scope")
 }
+
+// --- Session management scope (#3926) ---
+//
+// Embed-channel sessions store the embed principal's storage id
+// ("embed_session:<tenant>:<channel>:<session>") in sessions.user_id, so the
+// strict owner scope of the management mutations can never match them: admins
+// saw the sessions in the (Admin+ scoped) listing but every delete failed
+// with "session not found". The management scope gives delete/update/batch
+// delete the same tenant-wide view ListSessions grants Admin+ callers, while
+// non-admin semantics stay strictly unchanged.
+
+func testAdminScopeContext(tenantID uint64, userID string) context.Context {
+	return context.WithValue(
+		testSessionScopeContext(tenantID, userID),
+		types.TenantRoleContextKey, types.TenantRoleAdmin,
+	)
+}
+
+// seedManagementScopeSessions returns alice's own web session, bob's foreign
+// web session, and one embed-channel session in tenant 1.
+func seedManagementScopeSessions(t *testing.T, db *gorm.DB) (own, foreign, embed *types.Session) {
+	t.Helper()
+	own = &types.Session{TenantID: 1, UserID: "alice", Title: "alice web"}
+	foreign = &types.Session{TenantID: 1, UserID: "bob", Title: "bob web"}
+	embed = &types.Session{
+		TenantID:    1,
+		Title:       "embed chat",
+		Description: types.EmbedSessionMarkerPrefix + "ch-1",
+		UserID:      types.EmbedSessionPrincipal(1, "ch-1", "sess-1").StorageID(),
+	}
+	require.NoError(t, db.Create(own).Error)
+	require.NoError(t, db.Create(foreign).Error)
+	require.NoError(t, db.Create(embed).Error)
+	return own, foreign, embed
+}
+
+func countLiveSessions(t *testing.T, db *gorm.DB, id string) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, db.Model(&types.Session{}).Where("id = ?", id).Count(&n).Error)
+	return n
+}
+
+func TestDeleteSessionManagementScope(t *testing.T) {
+	svc, db := newSessionServiceForHostDeleteTest(t, stubHostManager{}, nil)
+	own, foreign, embed := seedManagementScopeSessions(t, db)
+
+	// A non-admin user cannot delete the embed channel session, nor another
+	// user's session — strict owner scope, unchanged.
+	require.ErrorIs(t,
+		svc.DeleteSession(testSessionScopeContext(1, "alice"), embed.ID),
+		apperrors.ErrSessionNotFound)
+	require.ErrorIs(t,
+		svc.DeleteSession(testSessionScopeContext(1, "alice"), foreign.ID),
+		apperrors.ErrSessionNotFound)
+	require.EqualValues(t, 1, countLiveSessions(t, db, embed.ID))
+	require.EqualValues(t, 1, countLiveSessions(t, db, foreign.ID))
+
+	// Admin+ deletes the embed channel session (#3926) — and remains able to
+	// delete their own session.
+	require.NoError(t, svc.DeleteSession(testAdminScopeContext(1, "admin-user"), embed.ID))
+	require.EqualValues(t, 0, countLiveSessions(t, db, embed.ID))
+	require.NoError(t, svc.DeleteSession(testAdminScopeContext(1, "admin-user"), own.ID))
+	require.EqualValues(t, 0, countLiveSessions(t, db, own.ID))
+}
+
+// The Admin+ widening never crosses tenants: the repository's tenant filter
+// is part of the scope, not bypassed by it.
+func TestDeleteSessionAdminScopeStaysTenantScoped(t *testing.T) {
+	svc, db := newSessionServiceForHostDeleteTest(t, stubHostManager{}, nil)
+	otherTenant := &types.Session{
+		TenantID:    2,
+		Title:       "other tenant embed chat",
+		Description: types.EmbedSessionMarkerPrefix + "ch-9",
+		UserID:      types.EmbedSessionPrincipal(2, "ch-9", "sess-9").StorageID(),
+	}
+	require.NoError(t, db.Create(otherTenant).Error)
+
+	require.ErrorIs(t,
+		svc.DeleteSession(testAdminScopeContext(1, "admin-user"), otherTenant.ID),
+		apperrors.ErrSessionNotFound)
+	require.EqualValues(t, 1, countLiveSessions(t, db, otherTenant.ID))
+}
+
+func TestBatchDeleteSessionsAdminDeletesEmbedAndForeignSessions(t *testing.T) {
+	svc, db := newSessionServiceForHostDeleteTest(t, stubHostManager{}, nil)
+	own, foreign, embed := seedManagementScopeSessions(t, db)
+
+	require.NoError(t, svc.BatchDeleteSessions(
+		testAdminScopeContext(1, "admin-user"),
+		[]string{embed.ID, foreign.ID, own.ID},
+	))
+	for _, s := range []*types.Session{embed, foreign, own} {
+		require.EqualValues(t, 0, countLiveSessions(t, db, s.ID))
+	}
+}
+
+func TestBatchDeleteSessionsNonAdminOnlyDeletesOwnSessions(t *testing.T) {
+	svc, db := newSessionServiceForHostDeleteTest(t, stubHostManager{}, nil)
+	own, foreign, embed := seedManagementScopeSessions(t, db)
+
+	// bob asks to delete his session together with alice's and the embed
+	// channel's: only his own row goes away, the others are skipped.
+	require.NoError(t, svc.BatchDeleteSessions(
+		testSessionScopeContext(1, "bob"),
+		[]string{foreign.ID, own.ID, embed.ID},
+	))
+	require.EqualValues(t, 0, countLiveSessions(t, db, foreign.ID))
+	require.EqualValues(t, 1, countLiveSessions(t, db, own.ID))
+	require.EqualValues(t, 1, countLiveSessions(t, db, embed.ID))
+}
+
+func TestUpdateSessionManagementScope(t *testing.T) {
+	svc, db := newTestSessionService(t)
+	_, _, embed := seedManagementScopeSessions(t, db)
+
+	// A non-admin user cannot rename the embed channel session.
+	err := svc.UpdateSession(testSessionScopeContext(1, "alice"), &types.Session{
+		ID:          embed.ID,
+		TenantID:    1,
+		Title:       "hijacked",
+		Description: types.EmbedSessionMarkerPrefix + "ch-1",
+	})
+	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
+
+	// Admin+ renames it through the same tenant-wide management scope.
+	err = svc.UpdateSession(testAdminScopeContext(1, "admin-user"), &types.Session{
+		ID:          embed.ID,
+		TenantID:    1,
+		Title:       "admin renamed",
+		Description: types.EmbedSessionMarkerPrefix + "ch-1",
+	})
+	require.NoError(t, err)
+
+	var got types.Session
+	require.NoError(t, db.First(&got, "id = ?", embed.ID).Error)
+	require.Equal(t, "admin renamed", got.Title)
+}
