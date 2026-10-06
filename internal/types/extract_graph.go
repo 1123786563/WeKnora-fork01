@@ -26,6 +26,13 @@ type GraphRelation struct {
 	Node1 string `json:"node1,omitempty"`
 	Node2 string `json:"node2,omitempty"`
 	Type  string `json:"type,omitempty"`
+	// Node1Chunks/Node2Chunks carry the chunk evidence of the specific node
+	// instances that are this relation's endpoints. Populated by graph stores
+	// that know it (Neo4j SearchNode); empty when the backend does not.
+	// Consumers must fall back to name-based node chunks when absent, and
+	// writers must not persist them — they are read-side evidence only.
+	Node1Chunks []string `json:"node1_chunks,omitempty"`
+	Node2Chunks []string `json:"node2_chunks,omitempty"`
 }
 
 type GraphData struct {
