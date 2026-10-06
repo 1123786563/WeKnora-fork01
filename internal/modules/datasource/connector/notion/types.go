@@ -265,8 +265,32 @@ type attachment struct {
 
 // paginatedResponse is the common response wrapper for paginated Notion API responses.
 type paginatedResponse struct {
-	Object     string          `json:"object"` // "list"
-	Results    json.RawMessage `json:"results"`
-	HasMore    bool            `json:"has_more"`
-	NextCursor string          `json:"next_cursor,omitempty"`
+	Object        string               `json:"object"` // "list"
+	Results       json.RawMessage      `json:"results"`
+	HasMore       bool                 `json:"has_more"`
+	NextCursor    string               `json:"next_cursor,omitempty"`
+	RequestStatus *notionRequestStatus `json:"request_status,omitempty"`
+}
+
+// notionRequestStatus mirrors the request_status envelope Notion attaches to
+// paginated responses. type == "incomplete" means the vendor dropped results
+// (e.g. incomplete_reason "query_result_limit_reached" when a query exceeds the
+// vendor's result row limit). Crucially, has_more is still false at the limit,
+// so without this field a truncated read is indistinguishable from a complete
+// one — every page must be checked (the signal can precede the last page).
+type notionRequestStatus struct {
+	Type             string `json:"type"` // "complete" | "incomplete"
+	IncompleteReason string `json:"incomplete_reason,omitempty"`
+}
+
+// request_status.type values.
+const (
+	requestStatusComplete   = "complete"
+	requestStatusIncomplete = "incomplete"
+)
+
+// truncated reports whether the vendor marked this response as incomplete,
+// i.e. the results are an arbitrary subset of the source data.
+func (r *paginatedResponse) truncated() bool {
+	return r.RequestStatus != nil && r.RequestStatus.Type == requestStatusIncomplete
 }
