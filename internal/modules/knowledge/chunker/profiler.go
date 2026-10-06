@@ -84,6 +84,72 @@ func (p *DocProfile) HeuristicMarkerTotal() int {
 		p.AllCapsShortLineCount + p.VisualSepCount + p.FormFeedCount
 }
 
+// fenceState tracks the fenced-code-block scanning state shared by the
+// profiler and the heading / heuristic boundary scanners. It follows
+// CommonMark 0.31.2 §4.5:
+//   - A fence opens with ≥3 backticks or ≥3 tildes (up to 3 leading spaces).
+//     The info string of a backtick fence must not contain a backtick; tilde
+//     fences have no such restriction.
+//   - A fence closes only with a run of the SAME character that is at least
+//     as long as the opening fence and is followed by nothing but
+//     spaces/tabs — so a shorter or "decorated" run inside a longer fence
+//     stays literal content.
+//   - An unclosed fence extends to the end of the document.
+//
+// fenceState must be fed lines in document order, one update call per line.
+type fenceState struct {
+	active bool
+	ch     byte // '`' or '~' — character of the opening fence
+	length int  // opening fence length; a closing fence must be at least this long
+}
+
+// update advances the state by one line and reports whether the line itself
+// is a fence delimiter (opening or closing). Callers must treat delimiter
+// lines and the content they surround as structure-free text: no heading,
+// boundary, or other line-shape signals may be derived from them.
+func (f *fenceState) update(line string) bool {
+	// At most 3 leading spaces (or tabs) of indentation are allowed.
+	i := 0
+	for i < len(line) && i < 3 && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	rest := line[i:]
+	if !f.active {
+		ch, n := fenceRun(rest)
+		if n < 3 {
+			return false
+		}
+		info := strings.TrimSpace(rest[n:])
+		if ch == '`' && strings.ContainsAny(info, "`") {
+			// e.g. the inline-code wrapper "`` `code` ``" is not a fence.
+			return false
+		}
+		f.active, f.ch, f.length = true, ch, n
+		return true
+	}
+	// Closing fence: same character, run ≥ opening length, nothing but
+	// spaces/tabs after it.
+	ch, n := fenceRun(rest)
+	if ch == f.ch && n >= f.length && strings.TrimSpace(rest[n:]) == "" {
+		f.active = false
+		return true
+	}
+	return false
+}
+
+// fenceRun returns the fence character ('`' or '~') and the length of the run
+// at the start of s, or (0, 0) when s does not start with a fence character.
+func fenceRun(s string) (byte, int) {
+	if len(s) == 0 || (s[0] != '`' && s[0] != '~') {
+		return 0, 0
+	}
+	n := 1
+	for n < len(s) && s[n] == s[0] {
+		n++
+	}
+	return s[0], n
+}
+
 // ProfileDocument runs a single pass over text and returns its profile.
 func ProfileDocument(text string) *DocProfile {
 	p := &DocProfile{
@@ -101,20 +167,21 @@ func ProfileDocument(text string) *DocProfile {
 
 	// First pass: per-line markers and length stats
 	var lengths []float64
-	inFence := false
+	var fence fenceState
 	codeChars := 0
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Toggle fenced-code state. We use a 3-backtick prefix detector here
-		// rather than a full regex so we don't have to fight with the
-		// protected-pattern logic later.
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+		// Fence delimiter lines (opening or closing) set HasCode and
+		// contribute no line-shape signals. The shared fenceState helper
+		// (CommonMark §4.5) recognizes backtick and tilde fences, refuses
+		// fake closes (shorter runs, trailing text), and keeps an unclosed
+		// fence open to the end of the document.
+		if fence.update(line) {
 			p.HasCode = true
 			continue
 		}
-		if inFence {
+		if fence.active {
 			codeChars += len([]rune(line))
 			continue
 		}
