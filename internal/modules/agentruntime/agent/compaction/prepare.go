@@ -3,8 +3,8 @@ package compaction
 import (
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/models/chat"
 	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 )
 
 // The summary is injected as a `user` message rather than a second `system`

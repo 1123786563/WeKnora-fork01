@@ -11,8 +11,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/types"

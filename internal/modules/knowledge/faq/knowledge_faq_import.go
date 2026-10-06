@@ -14,7 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -2689,7 +2689,7 @@ func (s *Service) executeFAQMergeOperations(
 
 		// 4. 重建索引（EFPutDocument 会自动覆盖相同 SourceID）
 		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, false); err != nil {
-}
+		}
 		// 4. 重建索引。先删旧索引：ES v8、Qdrant 等引擎不会覆盖相同 SourceID。
 		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, true); err != nil {
 			return mergedCount, fmt.Errorf("failed to re-index merged chunks: %w", err)
@@ -2717,7 +2717,6 @@ func (s *Service) executeFAQMergeOperations(
 
 	return mergedCount, nil
 }
-
 
 // faqTagInfo returns the external (seq_id, name) pair for tagID, or zero values
 // when the chunk has no tag or the tag could not be loaded.

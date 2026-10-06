@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	"github.com/Tencent/WeKnora/internal/browserskill"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
+	"github.com/Tencent/WeKnora/internal/models/api"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 )

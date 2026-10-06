@@ -1,8 +1,8 @@
 package compaction
 
 import (
+	"github.com/Tencent/WeKnora/internal/models/chat"
 	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 )
 
 // CutPoint is where the conversation is divided into "summarize this" and

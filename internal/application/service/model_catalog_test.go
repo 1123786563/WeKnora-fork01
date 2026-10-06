@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
-	modelruntime "github.com/Tencent/WeKnora/internal/modules/airesource/models/runtime"
+	"github.com/Tencent/WeKnora/internal/models/api"
+	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"

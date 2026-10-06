@@ -11,7 +11,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	modelruntime "github.com/Tencent/WeKnora/internal/modules/airesource/models/runtime"
+	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
