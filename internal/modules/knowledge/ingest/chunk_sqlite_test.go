@@ -476,3 +476,33 @@ func TestUpdateChunkFieldsByIDs_ScopesByTenantAndSetsUpdatedAt(t *testing.T) {
 	require.NoError(t, repo.UpdateChunkFieldsByIDs(ctx, 1, nil, map[string]interface{}{"status": 0}))
 	require.NoError(t, repo.UpdateChunkFieldsByIDs(ctx, 1, []string{mine.ID}, nil))
 }
+
+func TestListAllFAQChunksForExport_IncludesSeqID(t *testing.T) {
+	db := setupChunkTestDB(t)
+	repo := NewChunkRepository(db)
+	ctx := context.Background()
+
+	kbID := uuid.New().String()
+	knowledgeID := uuid.New().String()
+
+	chunks := []*types.Chunk{
+		makeChunk(kbID, knowledgeID, "faq"),
+		makeChunk(kbID, knowledgeID, "faq"),
+	}
+	for _, c := range chunks {
+		c.Status = int(types.ChunkStatusIndexed)
+	}
+	noise := makeChunk(uuid.New().String(), uuid.New().String(), "default")
+
+	require.NoError(t, repo.CreateChunks(ctx, append(chunks, noise)))
+
+	var want []int64
+	require.NoError(t, db.Model(&types.Chunk{}).Where("knowledge_id = ?", knowledgeID).Order("seq_id").Pluck("seq_id", &want).Error)
+
+	exported, err := repo.ListAllFAQChunksForExport(ctx, 1, knowledgeID)
+	require.NoError(t, err)
+	require.Len(t, exported, 2)
+	for i, c := range exported {
+		assert.Equal(t, want[i], c.SeqID, "export projection must carry seq_id (issue #3774: exported id was 0)")
+	}
+}
