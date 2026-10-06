@@ -760,6 +760,14 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 	var allResults []*types.IndexWithScore
 	limit := uint32(params.TopK)
 
+	// Count per-collection failures (keeping the first one) so a total outage
+	// can be told apart from "no content matched": swallowing every failure and
+	// returning empty results would make callers answer "no relevant content"
+	// for a store that never answered the query (#3835).
+	searched := 0
+	failed := 0
+	var firstFailure error
+
 	log.Debugf("[Qdrant] Found %d collections, base name: %s", len(collections), q.collectionBaseName)
 
 	// Tokenize query for OR-based search (better for Chinese and multi-word queries)
@@ -775,6 +783,8 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 			log.Debugf("[Qdrant] Skipping collection %s (doesn't match base name %s)", collectionName, q.collectionBaseName)
 			continue
 		}
+
+		searched++
 
 		filter := q.getBaseFilter(params)
 
@@ -801,6 +811,10 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 		})
 		if err != nil {
 			log.Warnf("[Qdrant] Keywords search failed in %s: %v", collectionName, err)
+			failed++
+			if firstFailure == nil {
+				firstFailure = fmt.Errorf("%s: %w", collectionName, err)
+			}
 			continue
 		}
 
@@ -824,6 +838,18 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 			pointID := point.Id.GetUuid()
 			allResults = append(allResults, fromQdrantVectorEmbedding(pointID, embedding, types.MatchTypeKeywords))
 		}
+	}
+
+	// Every attempted collection failing means the retrieval never ran; return
+	// the failure so callers take the real error path instead of reading empty
+	// results as "the library has no such content" (#3835). This mirrors
+	// VectorRetrieve, which fails loudly when its single collection errors.
+	if failed > 0 && failed == searched {
+		log.Errorf("[Qdrant] Keywords search failed in all %d collections", searched)
+		return nil, fmt.Errorf("keywords search failed in all %d qdrant collections, first failure: %w", searched, firstFailure)
+	}
+	if failed > 0 {
+		log.Warnf("[Qdrant] Keywords search failed in %d of %d collections, returning results from the healthy ones", failed, searched)
 	}
 
 	// Limit results to topK

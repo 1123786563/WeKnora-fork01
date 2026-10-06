@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -41,6 +42,11 @@ type sqliteRepository struct {
 	// all consult it, and an unguarded map write is a fatal runtime error.
 	vecMu     sync.RWMutex
 	vecTables map[int]bool // tracks which vec0 tables have been created (keyed by dimension)
+	// ftsReady records whether the FTS5 table exists. Builds without the
+	// sqlite_fts5 tag cannot create it at all, so FTS inserts are skipped
+	// instead of failing every save; once the table exists, an insert error
+	// is a real failure and must reach the caller.
+	ftsReady bool
 }
 
 func NewSQLiteRetrieveEngineRepository(db *gorm.DB) interfaces.RetrieveEngineRepository {
@@ -50,12 +56,13 @@ func NewSQLiteRetrieveEngineRepository(db *gorm.DB) interfaces.RetrieveEngineRep
 		logger.GetLogger(context.Background()).Errorf("[SQLite] Failed to auto-migrate lite_embeddings: %v", err)
 	}
 
-	initFTS5(db)
+	ftsReady := initFTS5(db)
 	enableImageChunkIndexes(db)
 
 	repo := &sqliteRepository{
 		db:        db,
 		vecTables: make(map[int]bool),
+		ftsReady:  ftsReady,
 	}
 
 	repo.ensureExistingVecTables()
@@ -85,7 +92,11 @@ func enableImageChunkIndexes(db *gorm.DB) {
 	}
 }
 
-func initFTS5(db *gorm.DB) {
+// initFTS5 creates the FTS5 table and reports whether it is ready. A false
+// return means this build/deployment has no usable FTS5 (e.g. built without
+// the sqlite_fts5 tag), in which case keyword retrieval and FTS inserts are
+// disabled rather than failing every save.
+func initFTS5(db *gorm.DB) bool {
 	var sqlStr string
 	db.Raw("SELECT sql FROM sqlite_master WHERE type='table' AND name='lite_embeddings_fts'").Scan(&sqlStr)
 	// If the table exists but is not contentless (i.e. uses content='lite_embeddings'), recreate it
@@ -104,7 +115,7 @@ func initFTS5(db *gorm.DB) {
 		)`
 		if err := db.Exec(createSQL).Error; err != nil {
 			logger.GetLogger(context.Background()).Warnf("[SQLite] Failed to create FTS5 table: %v", err)
-			return
+			return false
 		}
 		logger.GetLogger(context.Background()).Infof("[SQLite] Populating contentless FTS5 table from lite_embeddings with bigrams")
 
@@ -120,11 +131,12 @@ func initFTS5(db *gorm.DB) {
 		var rows []Row
 		db.Raw("SELECT id, content, source_id, chunk_id, knowledge_id, knowledge_base_id FROM lite_embeddings").Scan(&rows)
 		for _, r := range rows {
-			db.Exec(`INSERT INTO lite_embeddings_fts(rowid, content, source_id, chunk_id, knowledge_id, knowledge_base_id) 
+			db.Exec(`INSERT INTO lite_embeddings_fts(rowid, content, source_id, chunk_id, knowledge_id, knowledge_base_id)
 				VALUES(?, ?, ?, ?, ?, ?)`,
 				r.ID, tokenizeCJKBigram(r.Content), r.SourceID, r.ChunkID, r.KnowledgeID, r.KnowledgeBaseID)
 		}
 	}
+	return true
 }
 
 func vecTableName(dim int) string {
@@ -250,10 +262,17 @@ func (r *sqliteRepository) BatchSave(ctx context.Context, indexInfoList []*types
 		if err := tx.Create(rows).Error; err != nil {
 			return err
 		}
+		// Index-row errors abort the transaction: returning nil here would
+		// commit the lite_embeddings rows while their vec0/FTS entries are
+		// missing, and the chunks then never surface in retrieval.
 		for i, row := range rows {
-			r.syncFTS5Insert(tx, row)
+			if err := r.syncFTS5Insert(tx, row); err != nil {
+				return err
+			}
 			if len(embs[i]) > 0 && row.ID > 0 {
-				r.insertVec(tx, row.ID, row.Dimension, embs[i])
+				if err := r.insertVec(tx, row.ID, row.Dimension, embs[i]); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -329,9 +348,13 @@ func (r *sqliteRepository) CopyIndices(ctx context.Context,
 				logger.GetLogger(ctx).Warnf("[SQLite] CopyIndices: failed to copy source %s: %v", src.SourceID, err)
 				continue
 			}
-			r.syncFTS5Insert(r.db.WithContext(ctx), &newRow)
+			if err := r.syncFTS5Insert(r.db.WithContext(ctx), &newRow); err != nil {
+				return err
+			}
 			if src.Dimension > 0 && newRow.ID > 0 {
-				r.copyVec(ctx, src.ID, newRow.ID, src.Dimension)
+				if err := r.copyVec(ctx, src.ID, newRow.ID, src.Dimension); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -352,16 +375,52 @@ func copiedSourceID(sourceID, sourceChunkID, targetChunkID string) string {
 	return uuid.New().String()
 }
 
+// Both batch updates write one statement per chunk, so a failing statement only
+// affects its own row. Errors are therefore accumulated and the whole batch is
+// attempted (like the Milvus and Qdrant engines do) instead of stopping at the
+// first failure and leaving an arbitrary prefix of the map applied, only to be
+// reported as a blanket failure. Matching 0 rows is not an error, mirroring the
+// postgres engine, which only returns result.Error.
 func (r *sqliteRepository) BatchUpdateChunkEnabledStatus(ctx context.Context, chunkStatusMap map[string]bool) error {
+	var updateErrs []error
 	for chunkID, enabled := range chunkStatusMap {
-		r.db.WithContext(ctx).Model(&sqliteEmbedding{}).Where("chunk_id = ?", chunkID).Update("is_enabled", enabled)
+		if err := r.updateChunkIndexColumn(ctx, "is_enabled", chunkID, enabled); err != nil {
+			updateErrs = append(updateErrs,
+				fmt.Errorf("[SQLite] failed to update is_enabled for chunk %s: %w", chunkID, err))
+		}
 	}
-	return nil
+	return errors.Join(updateErrs...)
 }
 
 func (r *sqliteRepository) BatchUpdateChunkTagID(ctx context.Context, chunkTagMap map[string]string) error {
+	var updateErrs []error
 	for chunkID, tagID := range chunkTagMap {
-		r.db.WithContext(ctx).Model(&sqliteEmbedding{}).Where("chunk_id = ?", chunkID).Update("tag_id", tagID)
+		if err := r.updateChunkIndexColumn(ctx, "tag_id", chunkID, tagID); err != nil {
+			updateErrs = append(updateErrs,
+				fmt.Errorf("[SQLite] failed to update tag_id for chunk %s: %w", chunkID, err))
+		}
+	}
+	return errors.Join(updateErrs...)
+}
+
+// updateChunkIndexColumn applies a single per-chunk UPDATE to the retrieval
+// index copy. A statement matching no row is not an error -- that row may never
+// have reached the index -- but it would otherwise stay completely invisible,
+// so it is warned about with the table, column and chunk it was meant for.
+func (r *sqliteRepository) updateChunkIndexColumn(
+	ctx context.Context, column, chunkID string, value any,
+) error {
+	result := r.db.WithContext(ctx).Model(&sqliteEmbedding{}).
+		Where("chunk_id = ?", chunkID).
+		Update(column, value)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		logger.GetLogger(ctx).Warnf(
+			"[SQLite] update of %s.%s matched 0 rows for chunk %s",
+			sqliteEmbedding{}.TableName(), column, chunkID,
+		)
 	}
 	return nil
 }
@@ -597,14 +656,20 @@ func extractEmbedding(params map[string]any, sourceID string) []float32 {
 }
 
 // insertVec writes a row's vector through db. The vec0 table for dim must
-// already exist (ensureVecTable), since db may be a transaction.
-func (r *sqliteRepository) insertVec(db *gorm.DB, rowID uint, dim int, emb []float32) {
+// already exist (ensureVecTable), since db may be a transaction. An error must
+// reach the caller: the vec0 row is what vector retrieval joins on, so a
+// swallowed failure leaves the chunk committed but unfindable.
+func (r *sqliteRepository) insertVec(db *gorm.DB, rowID uint, dim int, emb []float32) error {
+	tbl := vecTableName(dim)
 	blob, err := sqlite_vec.SerializeFloat32(emb)
 	if err != nil {
-		return
+		return fmt.Errorf("[SQLite] serialize vector for row %d into %s failed: %w", rowID, tbl, err)
 	}
-	sql := fmt.Sprintf("INSERT INTO %s(rowid, embedding) VALUES (?, ?)", vecTableName(dim))
-	db.Exec(sql, rowID, blob)
+	sql := fmt.Sprintf("INSERT INTO %s(rowid, embedding) VALUES (?, ?)", tbl)
+	if err := db.Exec(sql, rowID, blob).Error; err != nil {
+		return fmt.Errorf("[SQLite] insert into %s failed for row %d: %w", tbl, rowID, err)
+	}
+	return nil
 }
 
 func (r *sqliteRepository) deleteRowsAndVecs(db *gorm.DB, rows []sqliteEmbedding) {
@@ -628,24 +693,39 @@ func (r *sqliteRepository) deleteRowsAndVecs(db *gorm.DB, rows []sqliteEmbedding
 	}
 }
 
-func (r *sqliteRepository) copyVec(_ context.Context, srcID, dstID uint, dim int) {
-	if !r.hasVecTable(dim) {
-		return
-	}
+// copyVec duplicates a source row's vector under a new rowid. A missing vec0
+// table is an error rather than a skip: the copy claims success while vector
+// retrieval on the target chunk silently finds nothing.
+func (r *sqliteRepository) copyVec(_ context.Context, srcID, dstID uint, dim int) error {
 	tbl := vecTableName(dim)
-	r.db.Exec(fmt.Sprintf(
+	if !r.hasVecTable(dim) {
+		return fmt.Errorf("[SQLite] cannot copy vector from row %d to row %d: vec0 table %s is not ready", srcID, dstID, tbl)
+	}
+	sql := fmt.Sprintf(
 		"INSERT INTO %s(rowid, embedding) SELECT ?, embedding FROM %s WHERE rowid = ?",
 		tbl, tbl,
-	), dstID, srcID)
+	)
+	if err := r.db.Exec(sql, dstID, srcID).Error; err != nil {
+		return fmt.Errorf("[SQLite] copy vector from row %d to row %d in %s failed: %w", srcID, dstID, tbl, err)
+	}
+	return nil
 }
 
-func (r *sqliteRepository) syncFTS5Insert(db *gorm.DB, row *sqliteEmbedding) {
+func (r *sqliteRepository) syncFTS5Insert(db *gorm.DB, row *sqliteEmbedding) error {
 	if row.ID == 0 {
-		return
+		return nil
+	}
+	if !r.ftsReady {
+		// FTS5 is unavailable in this build (no sqlite_fts5 tag); keyword
+		// retrieval is disabled, so there is no table to keep in sync.
+		return nil
 	}
 	tokenizedContent := tokenizeCJKBigram(row.Content)
 	sql := `INSERT INTO lite_embeddings_fts(rowid, content, source_id, chunk_id, knowledge_id, knowledge_base_id) VALUES(?, ?, ?, ?, ?, ?)`
-	db.Exec(sql, row.ID, tokenizedContent, row.SourceID, row.ChunkID, row.KnowledgeID, row.KnowledgeBaseID)
+	if err := db.Exec(sql, row.ID, tokenizedContent, row.SourceID, row.ChunkID, row.KnowledgeID, row.KnowledgeBaseID).Error; err != nil {
+		return fmt.Errorf("[SQLite] insert into lite_embeddings_fts failed for row %d (chunk %s): %w", row.ID, row.ChunkID, err)
+	}
+	return nil
 }
 
 type whereClause struct {
