@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"

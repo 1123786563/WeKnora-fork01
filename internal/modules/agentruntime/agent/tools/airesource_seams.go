@@ -10,7 +10,7 @@ package tools
 // （Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）。
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
 )

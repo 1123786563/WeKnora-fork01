@@ -12,11 +12,11 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"

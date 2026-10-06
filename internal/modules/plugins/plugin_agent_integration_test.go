@@ -13,9 +13,9 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/event"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/plugins/plugintest"
 	"github.com/Tencent/WeKnora/internal/types"

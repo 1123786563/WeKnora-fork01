@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"

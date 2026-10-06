@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/plugins/plugintest"
 	"github.com/Tencent/WeKnora/internal/types"

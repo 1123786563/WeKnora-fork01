@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
-	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/plugins/plugintest"
 	"github.com/Tencent/WeKnora/internal/types"
