@@ -214,19 +214,17 @@ func findHeadingBoundaries(text string, primaryLevel int) []headingBoundary {
 	}
 
 	pos := 0
-	inFence := false
+	var fence fenceState
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+		if fence.update(line) {
 			pos += utf8.RuneCountInString(line)
 			if i < len(lines)-1 {
 				pos++ // newline
 			}
 			continue
 		}
-		if !inFence {
+		if !fence.active {
 			m := MarkdownHeadingPattern.FindStringSubmatch(line)
 			if m != nil {
 				level := len(m[1])
@@ -259,14 +257,9 @@ func observeSubHeadings(runes []rune, primaryLevel int, h *HeadingHierarchy) {
 		return
 	}
 	text := string(runes)
-	inFence := false
+	var fence fenceState
 	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
+		if fence.update(line) || fence.active {
 			continue
 		}
 		m := MarkdownHeadingPattern.FindStringSubmatch(line)
@@ -298,19 +291,17 @@ func sectionBreadcrumbs(sectionRunes []rune, primaryLevel int, seed HeadingHiera
 	h := seed
 	result := []sectionBreadcrumb{{runeStart: 0, breadcrumb: h.BreadcrumbWithHashes()}}
 	pos := 0
-	inFence := false
+	var fence fenceState
 	lines := strings.Split(string(sectionRunes), "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+		if fence.update(line) {
 			pos += utf8.RuneCountInString(line)
 			if i < len(lines)-1 {
 				pos++
 			}
 			continue
 		}
-		if !inFence {
+		if !fence.active {
 			if m := MarkdownHeadingPattern.FindStringSubmatch(line); m != nil && len(m[1]) > primaryLevel {
 				h.Observe(line)
 				result = append(result, sectionBreadcrumb{

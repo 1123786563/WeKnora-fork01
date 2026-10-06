@@ -121,12 +121,11 @@ func findHeuristicBoundaries(text string, langs []string) []boundary {
 	lines := strings.Split(text, "\n")
 	chapterPatterns := ChapterPatternsForLangs(langs)
 	pos := 0
-	inFence := false
+	var fence fenceState
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
-		} else if !inFence {
+		if fence.update(line) {
+			// Fence delimiter line — no boundary signals from it.
+		} else if !fence.active {
 			runeStart := pos
 			added := false
 			for _, pat := range chapterPatterns {

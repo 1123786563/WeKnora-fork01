@@ -21,8 +21,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/providers"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
@@ -2070,6 +2071,33 @@ func classifyConnectionError(errMsg string) string {
 	}
 }
 
+// isEndpointBadRequest reports whether err is an HTTP 400 reply from the
+// model endpoint. The minimal probe sent by checkChatModelConnection
+// (MaxTokens: 1) can legitimately be rejected — most notably by reasoning
+// models (e.g. gpt-5.x behind LiteLLM) that cannot finish a message within a
+// single token ("Could not finish the message because max_tokens ..."). A 400
+// still proves the endpoint was reachable and the credentials were accepted,
+// so callers treat it as success. Detection is structured first, strings as
+// fallback, because not every chat path surfaces a typed error:
+//
+//  1. *api.HTTPError — the typed error of the in-house api layer, whose
+//     StatusCode field is authoritative (Error(): "API request failed with
+//     status %d: %s").
+//  2. chat's raw-HTTP and Anthropic paths flatten the status into a plain
+//     fmt.Errorf with the same wording, so match that string too.
+//  3. the go-openai SDK wording ("error, status code: 400, ...") is kept for
+//     providers still reached through that client or wrappers that re-wrap
+//     its message.
+func isEndpointBadRequest(err error) bool {
+	var httpErr *api.HTTPError
+	if stderrors.As(err, &httpErr) {
+		return httpErr.StatusCode == http.StatusBadRequest
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "API request failed with status 400") ||
+		strings.Contains(msg, "status code: 400")
+}
+
 // checkChatModelConnection 使用 chat 模块做一次最小化调用来测试连通性与鉴权。
 // 与生产路径走完全相同的 ConfigFromModel → NewChat 流程，因此 CustomHeaders、
 // ExtraConfig、Provider 等字段都会被正确透传。
@@ -2091,8 +2119,10 @@ func (h *InitializationHandler) checkChatModelConnection(
 	if err != nil {
 		errMsg := err.Error()
 		// 400 = endpoint reachable + auth ok, just a parameter mismatch
-		// (e.g. max_tokens vs max_completion_tokens). Treat as success.
-		if strings.Contains(errMsg, "status code: 400") {
+		// (e.g. max_tokens vs max_completion_tokens, or a reasoning model
+		// that cannot finish inside the probe's MaxTokens: 1). Treat as
+		// success.
+		if isEndpointBadRequest(err) {
 			return true, "连接正常，模型可用"
 		}
 		// For every other failure mode we surface a human-readable hint

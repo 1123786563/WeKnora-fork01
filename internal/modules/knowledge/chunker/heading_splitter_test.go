@@ -3,6 +3,7 @@ package chunker
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSplitByHeadings_BasicSections(t *testing.T) {
@@ -319,6 +320,131 @@ body B.`
 					i, heading, n, c.Content)
 			}
 		}
+	}
+}
+
+// TestSplitByHeadings_DeepSubHeadingInLargeSection covers issue #1674: when a
+// shallow heading level repeats and therefore becomes the dominant split
+// backbone, a long section split into sub-chunks must still carry the deep
+// `###`/`####` heading that defines a sub-chunk's meaning, not just the
+// section-level header. The marker line sits far below its deep heading, in a
+// later sub-chunk that has no heading of its own.
+// --- Fence-aware heading scanning (issue #3951) ---
+
+// runeOffset returns the rune offset of sub within doc.
+func runeOffset(t *testing.T, doc, sub string) int {
+	t.Helper()
+	idx := strings.Index(doc, sub)
+	if idx < 0 {
+		t.Fatalf("substring %q not found in doc", sub)
+	}
+	return utf8.RuneCountInString(doc[:idx])
+}
+
+// TestFindHeadingBoundaries_TildeFenceIsCode is the issue #3951 repro: the
+// heading scanner previously only toggled on ```-prefixed lines, so literal
+// headings inside ~~~ fences produced section boundaries.
+func TestFindHeadingBoundaries_TildeFenceIsCode(t *testing.T) {
+	doc := "# Real\n~~~markdown\n# Fake\n## Fake sub\n~~~\n# After\n## Real sub"
+	bounds := findHeadingBoundaries(doc, 1)
+	if len(bounds) != 2 {
+		t.Fatalf("expected exactly 2 boundaries (Real at 0, After), got %d: %+v", len(bounds), bounds)
+	}
+	if bounds[0].line != "# Real" {
+		t.Errorf("leading boundary should absorb heading %q, got %q", "# Real", bounds[0].line)
+	}
+	if bounds[1].line != "# After" {
+		t.Errorf("second boundary should be %q, got %q", "# After", bounds[1].line)
+	}
+	if want := runeOffset(t, doc, "# After"); bounds[1].runeStart != want {
+		t.Errorf("After boundary at rune %d, want %d", bounds[1].runeStart, want)
+	}
+}
+
+// TestFindHeadingBoundaries_LongFenceKeepsInnerShortFenceLiteral: a ```
+// line inside a ```` fence is content, not a close — the fake heading after
+// it must not become a boundary.
+func TestFindHeadingBoundaries_LongFenceKeepsInnerShortFenceLiteral(t *testing.T) {
+	doc := "# Real\n````\n# Fake\n```\nstill literal\n````\n# After"
+	bounds := findHeadingBoundaries(doc, 1)
+	if len(bounds) != 2 {
+		t.Fatalf("expected exactly 2 boundaries (Real, After), got %d: %+v", len(bounds), bounds)
+	}
+	if bounds[1].line != "# After" {
+		t.Errorf("second boundary should be %q, got %q", "# After", bounds[1].line)
+	}
+}
+
+// TestFindHeadingBoundaries_FakeCloseKeepsFenceOpen: a closing fence may not
+// carry trailing text, so "### Fake" after "``` fake close" stays literal.
+func TestFindHeadingBoundaries_FakeCloseKeepsFenceOpen(t *testing.T) {
+	doc := "# Real\n```\ncode\n``` fake close\n### Fake\n```\n# After"
+	bounds := findHeadingBoundaries(doc, 1)
+	if len(bounds) != 2 {
+		t.Fatalf("expected exactly 2 boundaries (Real, After), got %d: %+v", len(bounds), bounds)
+	}
+	if bounds[1].line != "# After" {
+		t.Errorf("second boundary should be %q, got %q", "# After", bounds[1].line)
+	}
+}
+
+// TestFindHeadingBoundaries_UnclosedFenceToEof: without a valid closing
+// fence, every later "#" line is literal content and yields no boundary.
+func TestFindHeadingBoundaries_UnclosedFenceToEof(t *testing.T) {
+	doc := "# Real\n```python\n# Not a heading\n## Nor this\nx = 1"
+	bounds := findHeadingBoundaries(doc, 1)
+	if len(bounds) != 1 {
+		t.Fatalf("expected only the leading boundary, got %d: %+v", len(bounds), bounds)
+	}
+}
+
+// TestSplitByHeadings_ContextHeaderNotPollutedByFencedHeadings guards the
+// chunk breadcrumb: a fenced pseudo-heading must never enter the hierarchy,
+// neither for the section breadcrumb nor for sub-chunk breadcrumbs of a
+// large section, and real headings after a valid close are recognized.
+func TestSplitByHeadings_ContextHeaderNotPollutedByFencedHeadings(t *testing.T) {
+	body := strings.Repeat("Lorem ipsum dolor sit amet consectetur adipiscing elit. ", 4)
+	doc := "# Real\n" + body + "\n\n~~~markdown\n# Fake\n## Fake sub\n~~~\n\n" +
+		"POSTFENCE prose marker that pads the tail of the first section out past the sub-split budget one two three four five.\n\n" +
+		"## Real sub\n" + body
+	cfg := SplitterConfig{ChunkSize: 300, ChunkOverlap: 0}
+	chunks := splitByHeadingsImpl(doc, cfg, nil)
+	if len(chunks) == 0 {
+		t.Fatal("expected chunks")
+	}
+	for i, c := range chunks {
+		if strings.Contains(c.ContextHeader, "Fake") {
+			t.Errorf("chunk %d ContextHeader polluted by fenced heading:\n%s", i, c.ContextHeader)
+		}
+	}
+	// Post-fence prose still belongs to the "# Real" section: the chunk
+	// holding it must carry the real breadcrumb, not lose it.
+	postFound := false
+	for _, c := range chunks {
+		if strings.Contains(c.Content, "POSTFENCE") {
+			postFound = true
+			if !strings.Contains(c.ContextHeader, "# Real") {
+				t.Errorf("post-fence chunk lost its real breadcrumb:\n%s", c.ContextHeader)
+			}
+		}
+	}
+	if !postFound {
+		t.Fatal("no chunk contains the post-fence prose marker")
+	}
+	// Headings after a valid close are recognized: "## Real sub" starts its
+	// own chunk with the full real breadcrumb.
+	subFound := false
+	for _, c := range chunks {
+		if strings.Contains(c.Content, "## Real sub") {
+			subFound = true
+			if !strings.Contains(c.ContextHeader, "# Real") ||
+				!strings.Contains(c.ContextHeader, "## Real sub") {
+				t.Errorf("Real sub chunk breadcrumb should contain both real headings:\n%s", c.ContextHeader)
+			}
+		}
+	}
+	if !subFound {
+		t.Fatal("no chunk contains the real sub-heading — close-and-resume broken")
 	}
 }
 
