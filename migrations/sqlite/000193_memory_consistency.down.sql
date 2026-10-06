@@ -1,4 +1,2 @@
-DROP INDEX IF EXISTS idx_memory_replaces;
-DROP TABLE IF EXISTS memory_extraction_sessions;
-ALTER TABLE memory_items DROP COLUMN replaces_id;
-ALTER TABLE memory_subjects DROP COLUMN extraction_state;
+-- No-op counterpart: the schema belongs to 000074 on every chain, and its own
+-- down migration removes it.

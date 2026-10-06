@@ -36,14 +36,15 @@ func TestCraftRunCapturePromotionMigration(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _, _ = m.Close() })
 		// F08's receipt migration follows F06 in this integration chain. Roll
-		// both back so the promotion migration is the final down step. The
-		// agent_release_evaluations migration (000190) now trails them, so it
-		// rolls back and replays with the pair.
-		require.NoError(t, m.Steps(-3), "evaluations, receipt and promotion down migrations")
+		// back to just below the promotion migration (000187) so it is the
+		// final down step. Version-anchored instead of Steps(-N): migrations
+		// renumbered past 000190 by the upstream-merge dedup changed the tail
+		// count, and no-op versions must roll back harmlessly on the way.
+		require.NoError(t, m.Migrate(187), "roll back to before the promotion migration")
 		require.False(t, db.Migrator().HasTable("craft_run_capture_promotion_cursor"))
 		require.False(t, db.Migrator().HasTable("craft_run_capture_promotion_attempts"))
 		require.False(t, db.Migrator().HasTable("craft_web_build_receipts"))
-		require.NoError(t, m.Steps(3), "promotion, receipt and evaluations up migrations replay")
+		require.NoError(t, m.Up(), "replay through the promotion migration and the renumbered tail")
 		require.True(t, db.Migrator().HasTable("craft_run_capture_promotion_cursor"))
 		require.True(t, db.Migrator().HasTable("craft_run_capture_promotion_attempts"))
 		require.True(t, db.Migrator().HasTable("craft_web_build_receipts"))

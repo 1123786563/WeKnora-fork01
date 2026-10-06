@@ -1,3 +1,3 @@
-DROP TABLE IF EXISTS browser_task_interruptions;
-DROP TABLE IF EXISTS browser_pairings;
-DROP TABLE IF EXISTS browser_devices;
+-- No-op counterpart: the tables belong to 000076 on every chain, and its own
+-- down migration removes them. Dropping here would strip tables that 000076
+-- still owns.
