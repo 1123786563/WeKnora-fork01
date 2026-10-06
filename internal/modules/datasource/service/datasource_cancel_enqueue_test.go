@@ -57,6 +57,12 @@ func (f *fakeCancelTaskInspector) CancelTasksForKnowledge(context.Context, strin
 	return 0, 0, nil
 }
 
+func (f *fakeCancelTaskInspector) HasQueuedDeleteTasksForKnowledge(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (f *fakeCancelTaskInspector) QueuedKnowledgeIDs(context.Context) (map[string]struct{}, error) {
+	return nil, nil
+}
 func (f *fakeCancelTaskInspector) HasQueuedTasksForKnowledge(context.Context, string) (bool, error) {
 	return false, nil
 }

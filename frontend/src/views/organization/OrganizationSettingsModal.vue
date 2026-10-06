@@ -151,6 +151,18 @@
                               @change="handleValidityChange" />
                           </div>
 
+                          <!-- 需要审核开关（上游：邀请制注册审核档位） -->
+                          <div class="invite-method">
+                            <div class="invite-method-header">
+                              <t-icon name="check-circle" class="invite-icon" />
+                              <span class="invite-method-title">{{ $t('organization.settings.requireApproval') }}</span>
+                            </div>
+                            <div class="approval-toggle">
+                              <t-switch v-model="formData.require_approval" @change="handleApprovalToggle" />
+                              <span class="approval-desc">{{ $t('organization.settings.requireApprovalDesc') }}</span>
+                            </div>
+                          </div>
+
                           <div class="invite-divider"></div>
 
                           <!-- 邀请链接 -->

@@ -76,8 +76,6 @@ miniprogram/project.private.config.json
 # Staging dir for the Docker sandbox self-check probe (removed after each run)
 .weknora-sandbox-check-*
 
-
-
 # Local-only sandbox evidence: ids, payer data, signed requests, keys
 artifacts/
 DSH_*.txt
@@ -123,3 +121,6 @@ docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot
 
 # #104 restore drill artifacts (operator-local, never commit)
 deploy/lago/backups/
+
+# Locally built BrowserSkill runtime and extension bundles
+/artifacts/browserskill/

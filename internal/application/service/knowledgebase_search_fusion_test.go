@@ -12,11 +12,11 @@ import (
 func TestFuseOrDeduplicate_KeywordOnlyRescalesUnboundedBM25(t *testing.T) {
 	t.Parallel()
 
-	got := fuseOrDeduplicate(context.Background(), nil, []*types.IndexWithScore{
+	got := fuseOrDeduplicate(context.Background(), nil, [][]*types.IndexWithScore{[]*types.IndexWithScore{
 		{ChunkID: "strong", Score: 16.1239},
 		{ChunkID: "mid", Score: 8.06195},
 		{ChunkID: "weak", Score: 4.030975},
-	}, nil)
+	}}, nil)
 
 	require.Len(t, got, 3)
 	require.Equal(t, "strong", got[0].ChunkID)
@@ -32,18 +32,18 @@ func TestFuseOrDeduplicate_KeywordOnlyRescalesUnboundedBM25(t *testing.T) {
 func TestFuseOrDeduplicate_KeywordOnlyLeavesUnitIntervalScores(t *testing.T) {
 	t.Parallel()
 
-	flat := fuseOrDeduplicate(context.Background(), nil, []*types.IndexWithScore{
+	flat := fuseOrDeduplicate(context.Background(), nil, [][]*types.IndexWithScore{[]*types.IndexWithScore{
 		{ChunkID: "a", Score: 1.0},
 		{ChunkID: "b", Score: 1.0},
-	}, nil)
+	}}, nil)
 	require.Len(t, flat, 2)
 	require.InDelta(t, 1.0, flat[0].Score, 1e-9)
 	require.InDelta(t, 1.0, flat[1].Score, 1e-9)
 
-	bounded := fuseOrDeduplicate(context.Background(), nil, []*types.IndexWithScore{
+	bounded := fuseOrDeduplicate(context.Background(), nil, [][]*types.IndexWithScore{[]*types.IndexWithScore{
 		{ChunkID: "high", Score: 0.8},
 		{ChunkID: "low", Score: 0.4},
-	}, nil)
+	}}, nil)
 	require.Equal(t, "high", bounded[0].ChunkID)
 	require.InDelta(t, 0.8, bounded[0].Score, 1e-9)
 	require.InDelta(t, 0.4, bounded[1].Score, 1e-9)
@@ -52,10 +52,10 @@ func TestFuseOrDeduplicate_KeywordOnlyLeavesUnitIntervalScores(t *testing.T) {
 func TestFuseOrDeduplicate_VectorOnlyKeepsEmbeddingScores(t *testing.T) {
 	t.Parallel()
 
-	got := fuseOrDeduplicate(context.Background(), []*types.IndexWithScore{
+	got := fuseOrDeduplicate(context.Background(), [][]*types.IndexWithScore{[]*types.IndexWithScore{
 		{ChunkID: "near", Score: 0.91},
 		{ChunkID: "far", Score: 0.22},
-	}, nil, nil)
+	}}, nil, nil)
 
 	require.Equal(t, "near", got[0].ChunkID)
 	require.InDelta(t, 0.91, got[0].Score, 1e-9)
@@ -66,8 +66,8 @@ func TestFuseOrDeduplicate_HybridUsesRRFNotRawBM25(t *testing.T) {
 	t.Parallel()
 
 	got := fuseOrDeduplicate(context.Background(),
-		[]*types.IndexWithScore{{ChunkID: "vec", Score: 0.9}},
-		[]*types.IndexWithScore{{ChunkID: "kw", Score: 16.1239}},
+		[][]*types.IndexWithScore{{{ChunkID: "vec", Score: 0.9}}},
+		[][]*types.IndexWithScore{{{ChunkID: "kw", Score: 16.1239}}},
 		nil,
 	)
 

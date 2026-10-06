@@ -65,7 +65,7 @@ func (s *fakeSubagentAgentService) GetAgentByID(_ context.Context, id string) (*
 	return nil, ErrAgentNotFound
 }
 
-func (s *fakeSubagentAgentService) UpdateAgent(_ context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
+func (s *fakeSubagentAgentService) UpdateAgent(_ context.Context, agent *types.CustomAgent, _ *string) (*types.CustomAgent, error) {
 	s.updated = append(s.updated, agent)
 	return agent, nil
 }

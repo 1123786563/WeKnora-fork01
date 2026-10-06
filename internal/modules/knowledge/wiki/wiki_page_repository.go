@@ -15,6 +15,18 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// likeEscapeChar is the SQL ESCAPE character paired with escapeLikePattern.
+const likeEscapeChar = `\`
+
+// escapeLikePattern escapes LIKE / ILIKE metacharacters so the returned string
+// can be safely concatenated with % wildcards without unintended matches.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
+}
+
 // Pass B (23-knowledge-wikifaq) 拓扑裁定：5 个哨兵的物理定义留在宿主
 // repository 包（他 owner agentruntime/agent/tools 以
 // repository.ErrWikiPageNotFound 做 errors.Is；且 repository→wiki import
@@ -892,10 +904,7 @@ func (r *wikiPageRepository) ListSummariesByKnowledgeIDs(
 	out := make(map[string]string, len(rows))
 	for _, r := range rows {
 		for _, ref := range r.SourceRefs {
-			refKID := ref
-			if pipeIdx := strings.Index(ref, "|"); pipeIdx > 0 {
-				refKID = ref[:pipeIdx]
-			}
+			refKID := types.WikiSourceKnowledgeID(ref)
 			if _, want := kidSet[refKID]; !want {
 				continue
 			}
@@ -1255,8 +1264,9 @@ func EscapeLikePattern(s string) string {
 	return apprepo.EscapeLikePattern(s)
 }
 
-// Search performs case-insensitive POSIX regex search on wiki pages within a knowledge base.
-// The query is interpreted as a PostgreSQL regular expression (via ~*).
+// Search performs full-text search on wiki pages within a knowledge base.
+// PostgreSQL interprets the query as a case-insensitive POSIX regex (~*);
+// SQLite / Lite matches a literal substring with LIKE (wildcards escaped).
 //
 // Results are ranked by where the query hit, highest-relevance first:
 //
@@ -1270,7 +1280,53 @@ func EscapeLikePattern(s string) string {
 // see pages like "华为" or "Index" ahead of the actual 王新 page just
 // because they mention 王新 in their body and were updated more recently.
 // updated_at stays as the tiebreaker so same-rank ties stay deterministic.
-func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query string, limit int) ([]*types.WikiPage, error) {
+func (r *wikiPageRepository) Search(
+	ctx context.Context, kbID string, query string, limit int,
+) ([]*types.WikiPage, error) {
+	return r.SearchAcross(ctx, []string{kbID}, query, limit)
+}
+
+func wikiSearchPredicate(column, op string, withEscape bool) string {
+	if withEscape {
+		return column + " " + op + " ? ESCAPE ?"
+	}
+	return column + " " + op + " ?"
+}
+
+func wikiSearchMatchArgs(pattern, escape string, withEscape bool, copies int) []interface{} {
+	n := copies
+	if withEscape {
+		n *= 2
+	}
+	args := make([]interface{}, 0, n)
+	for i := 0; i < copies; i++ {
+		args = append(args, pattern)
+		if withEscape {
+			args = append(args, escape)
+		}
+	}
+	return args
+}
+
+func (r *wikiPageRepository) wikiSearchMatchOp() (op string, withEscape bool) {
+	// SQLite / Lite (desktop single-binary) has no POSIX ~*; LIKE matches
+	// a literal substring. Postgres production keeps ~*.
+	if r.wikiDialect() == "sqlite" {
+		return "LIKE", true
+	}
+	return "~*", false
+}
+
+// SearchAcross searches wiki pages in the given knowledge bases with the
+// same field-priority rank as the single-KB Search path, then truncates
+// to a global top-N. SQLite / Lite uses LIKE with an explicit ESCAPE;
+// Postgres uses POSIX ~*.
+func (r *wikiPageRepository) SearchAcross(
+	ctx context.Context, kbIDs []string, query string, limit int,
+) ([]*types.WikiPage, error) {
+	if len(kbIDs) == 0 {
+		return nil, nil
+	}
 	if limit <= 0 {
 		limit = 10
 	}
@@ -1278,22 +1334,31 @@ func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query stri
 		limit = 50
 	}
 
-	// CASE expression is evaluated per-row during SELECT; we order by the
-	// alias so the DB only computes the rank once. Parameterized four
-	// times with the same regex to avoid coupling to GORM's positional
-	// arg rewriting quirks.
+	op, withEscape := r.wikiSearchMatchOp()
+	pattern := query
+	if withEscape {
+		pattern = "%" + escapeLikePattern(query) + "%"
+	}
+	pred := func(column string) string {
+		return wikiSearchPredicate(column, op, withEscape)
+	}
 	rankExpr := "CASE " +
-		"WHEN title ~* ? THEN 4 " +
-		"WHEN slug ~* ? THEN 3 " +
-		"WHEN summary ~* ? THEN 2 " +
-		"WHEN content ~* ? THEN 1 " +
+		"WHEN " + pred("title") + " THEN 4 " +
+		"WHEN " + pred("slug") + " THEN 3 " +
+		"WHEN " + pred("summary") + " THEN 2 " +
+		"WHEN " + pred("content") + " THEN 1 " +
 		"ELSE 0 END AS match_rank"
+	matchClause := "(" + pred("title") + " OR " + pred("content") +
+		" OR " + pred("summary") + " OR " + pred("slug") + ")"
+	matchArgs := wikiSearchMatchArgs(pattern, likeEscapeChar, withEscape, 4)
+	whereArgs := make([]interface{}, 0, 1+len(matchArgs))
+	whereArgs = append(whereArgs, kbIDs)
+	whereArgs = append(whereArgs, matchArgs...)
 
 	var pages []*types.WikiPage
 	if err := r.db.WithContext(ctx).
-		Select("*, "+rankExpr, query, query, query, query).
-		Where("knowledge_base_id = ? AND (title ~* ? OR content ~* ? OR summary ~* ? OR slug ~* ?)",
-			kbID, query, query, query, query).
+		Select("*, "+rankExpr, matchArgs...).
+		Where("knowledge_base_id IN ? AND "+matchClause, whereArgs...).
 		Where("status != ?", "archived").
 		Order("match_rank DESC, updated_at DESC").
 		Limit(limit).
@@ -1361,8 +1426,69 @@ func (r *wikiPageRepository) ListIssues(ctx context.Context, kbID string, slug s
 	return issues, nil
 }
 
-func (r *wikiPageRepository) UpdateIssueStatus(ctx context.Context, issueID string, status string) error {
-	return r.db.WithContext(ctx).Model(&types.WikiPageIssue{}).
-		Where("id = ?", issueID).
-		Update("status", status).Error
+func (r *wikiPageRepository) UpdateIssueStatus(ctx context.Context, kbID string, issueID string, status string) error {
+	// Scoped to the knowledge base the caller was authorized for: issue IDs are
+	// listed to readers, so an ID alone must not reach another KB's issue.
+	result := r.db.WithContext(ctx).Model(&types.WikiPageIssue{}).
+		Where("id = ? AND knowledge_base_id = ?", issueID, kbID).
+		Update("status", status)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrWikiIssueNotFound
+	}
+	return nil
+}
+
+// DeleteByKnowledgeBaseID soft-deletes all wiki pages in a knowledge base.
+func (r *wikiPageRepository) DeleteByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiPage{})
+}
+
+// ErrWikiIssueNotFound mirrors the repository sentinel (import-cycle-free).
+var ErrWikiIssueNotFound = errors.New("wiki issue not found")
+
+// deleteByTenantAndKnowledgeBase scopes a bulk delete to one tenant's KB.
+func (r *wikiPageRepository) deleteByTenantAndKnowledgeBase(
+	ctx context.Context, tenantID uint64, kbID string, model any,
+) error {
+	if kbID == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND knowledge_base_id = ?", tenantID, kbID).
+		Delete(model).Error
+}
+
+// DeleteFoldersByKnowledgeBaseID soft-deletes all wiki folders in a knowledge
+// base, bypassing the emptiness guard that DeleteFolder enforces.
+func (r *wikiPageRepository) DeleteFoldersByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiFolder{})
+}
+
+// DeleteIssuesByKnowledgeBaseID soft-deletes all wiki issues in a knowledge base.
+func (r *wikiPageRepository) DeleteIssuesByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	return r.deleteByTenantAndKnowledgeBase(ctx, tenantID, kbID, &types.WikiPageIssue{})
+}
+
+// DeleteRevisionsByKnowledgeBaseID hard-deletes all wiki page revisions in a
+// knowledge base: wiki_page_revisions stores immutable snapshots with no
+// deleted_at column, so GORM's Delete is a physical DELETE.
+func (r *wikiPageRepository) DeleteRevisionsByKnowledgeBaseID(
+	ctx context.Context, tenantID uint64, kbID string,
+) error {
+	if kbID == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Unscoped().
+		Where("tenant_id = ? AND knowledge_base_id = ?", tenantID, kbID).
+		Delete(&types.WikiPageRevision{}).Error
 }

@@ -22,7 +22,7 @@ func newWikiRevisionTestService(t *testing.T) (context.Context, wikiRevisionTest
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
 	repo := NewWikiPageRepository(db)
-	svc := NewWikiPageService(repo, nil, nil, nil, nil, Seams{})
+	svc := NewWikiPageService(repo, nil, nil, nil, nil, Seams{}, nil)
 	return context.Background(), wikiRevisionTestHarness{svc: svc}, db
 }
 

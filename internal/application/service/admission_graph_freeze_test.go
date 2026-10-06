@@ -57,7 +57,7 @@ func newFreezerFixtureService(t *testing.T) *sessionService {
 		cfg:                   &config.Config{},
 		sessionRepo:           repository.NewSessionRepository(db),
 		modelService:          NewModelService(repository.NewModelRepository(db), nil, nil, nil, nil, nil),
-		customAgents:          NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil),
+		customAgents:          NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil),
 		webSearchProviderRepo: repository.NewWebSearchProviderRepository(db),
 	}
 }

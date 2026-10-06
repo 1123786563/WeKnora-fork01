@@ -277,7 +277,7 @@ func TestAdmissionTransientAgentGateErrorKeepsPendingForRetry(t *testing.T) {
 // release pins exactly like production, see internal/container/workbench.go.
 func newAgentUseAdmissionCoordinator(t *testing.T, db *gorm.DB, budget TaskBudgetPort) *AdmissionCoordinator {
 	t.Helper()
-	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := appservice.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	security := appservice.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db))
 	security.SetAgentVersionService(versions)

@@ -30,6 +30,12 @@ func TestCubeSessionConnectReusesProbeHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, token, InboundTokenOf(handle))
+	handle, err = connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
+		SandboxID: created.ID(), TrafficAccessToken: "restored-token",
+	})
+	require.NoError(t, err)
+	require.Equal(t, created.ID(), handle.ID())
+	require.Equal(t, "restored-token", InboundTokenOf(handle))
 	require.EqualValues(t, 1, mock.connectCount.Load())
 	require.EqualValues(t, 1, mock.infoCount.Load())
 
@@ -51,6 +57,12 @@ func TestE2BSessionConnectReusesProbeHandleAndResumes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID(), handle.ID())
 	require.Equal(t, token, InboundTokenOf(handle))
+	handle, err = connectRemoteSession(ctx, wrapLangfuseRemoteClient(client), RemoteConnectRequest{
+		SandboxID: created.ID(), TrafficAccessToken: "restored-token",
+	})
+	require.NoError(t, err)
+	require.Equal(t, created.ID(), handle.ID())
+	require.Equal(t, "restored-token", InboundTokenOf(handle))
 	require.EqualValues(t, 1, mock.connectCount.Load())
 	require.EqualValues(t, 1, mock.infoCount.Load())
 	require.Equal(t, "running", mock.sandboxes[created.ID()]["state"])

@@ -10,8 +10,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
-)
+	"github.com/Tencent/WeKnora/internal/types/interfaces")
+
+// ServedInfoOf forwards the agentcatalog helper for the host handler.
+var ServedInfoOf = acatsvc.ServedInfoOf
 
 // —— Pass B 25b 过渡残差（b2-ac-skills 产出；IB2 按 brief 删除；禁止新增业务逻辑）——
 // remove_at: ib2
@@ -47,6 +49,7 @@ type (
 	SkillCatalogInstallView   = acatsvc.SkillCatalogInstallView
 	CatalogInstallResult      = acatsvc.CatalogInstallResult
 	SkillAdminUpdate          = acatsvc.SkillAdminUpdate
+	SkillServedInfo           = acatsvc.SkillServedInfo
 	SkillProgress             = acatsvc.SkillProgress
 	SkillInstallGuidance      = acatsvc.SkillInstallGuidance
 	SkillInstallGuidanceState = acatsvc.SkillInstallGuidanceState

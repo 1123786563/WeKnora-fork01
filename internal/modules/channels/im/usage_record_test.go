@@ -43,7 +43,7 @@ func imUsageFixture() (*Service, *stubIMUsageRecorder, *types.Message, *types.Se
 	}
 	session := &types.Session{ID: "sess-im-1", TenantID: 7}
 	agent := &types.CustomAgent{Config: types.CustomAgentConfig{ModelID: "glm-4.7"}}
-	ctx := withIMIdentity(context.Background(), 7, "ch-1", &IncomingMessage{Platform: "wecom", UserID: "wx-u1"})
+	ctx := withIMIdentity(context.Background(), &IMChannel{TenantID: 7}, &IncomingMessage{Platform: "wecom", UserID: "wx-u1"})
 	return svc, rec, msg, session, agent, ctx
 }
 

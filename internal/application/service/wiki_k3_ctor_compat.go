@@ -49,7 +49,7 @@ func NewWikiPageService(
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	redisClient *redis.Client,
 ) interfaces.WikiPageService {
-	return wiki.NewWikiPageService(repo, chunkRepo, kbService, taskPendingRepo, redisClient, wikiK3Seams())
+	return wiki.NewWikiPageService(repo, chunkRepo, kbService, taskPendingRepo, redisClient, wikiK3Seams(), nil)
 }
 
 // NewWikiIngestService creates a new wiki ingest service.

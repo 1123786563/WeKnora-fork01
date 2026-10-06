@@ -66,7 +66,7 @@ func canonicalQARequestHash(req *CreateKnowledgeQARequest, attachments []string)
 		AgentID:          req.AgentID,
 		AgentEnabled:     req.AgentEnabled,
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
-		KnowledgeIDs:     req.KnowledgeIds,
+		KnowledgeIDs:     req.KnowledgeIDs,
 		TagIDs:           req.TagIDs,
 		MCPServiceIDs:    req.MCPServiceIDs,
 		SkillNames:       req.SkillNames,

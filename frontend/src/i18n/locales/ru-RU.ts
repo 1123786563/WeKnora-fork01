@@ -38,16 +38,10 @@ export default {
       unpublished: 'Не опубликовано',
     },
     connections: {
-      title: 'Подключения приложений',
-      description: 'Подключения приложений этого рабочего пространства с разделением личных и общих подключений и указанием владельца аккаунта. Сетевые адреса среды, ссылки на секреты и внутренние псевдонимы никогда не отображаются.',
-      refresh: 'Обновить',
-      loadFailed: 'Не удалось загрузить подключения',
-      empty: 'Нет подключений',
       memberCannotManage: 'Ваша роль не позволяет управлять подключениями (нужен владелец или администратор рабочего пространства).',
       colId: 'Подключение',
       colKind: 'Тип',
       colAccount: 'Аккаунт',
-      colState: 'Состояние',
       colActions: 'Действия',
       kindPersonal: 'Личное',
       kindSpace: 'Общее',
@@ -63,10 +57,6 @@ export default {
       remoteCleanupNote: 'Локально отключено; очистка на стороне провайдера завершается асинхронно',
     },
     authorization: {
-      title: 'Статус авторизации',
-      description: 'Опрос локальной попытки авторизации до завершения внешней авторизации.',
-      refresh: 'Обновить',
-      loadFailed: 'Не удалось загрузить статус авторизации',
       attemptLabel: 'Попытка авторизации',
       connectionLabel: 'Подключение',
       statusLabel: 'Статус',
@@ -87,10 +77,6 @@ export default {
       },
     },
     actions: {
-      title: 'Согласование действия',
-      description: 'Зафиксированный сервером снимок вызова (аккаунт, цель, аргументы); согласование привязывается именно к этому снимку.',
-      refresh: 'Обновить',
-      loadFailed: 'Не удалось загрузить действие',
       notFound: 'Действие не найдено или не принадлежит этому рабочему пространству',
       accountLabel: 'Аккаунт (подключение)',
       targetLabel: 'Цель',
@@ -113,23 +99,287 @@ export default {
         queued: 'В очереди',
         dispatched: 'Отправлено',
         succeeded: 'Успешно',
-        failed: 'Ошибка',
-        other: 'Состояние: {state}',
       },
     },
   },
   agentEngine: { label: 'Движок', builtin: 'Встроенный ReAct', trpc: 'tRPC Agent (устойчивое восстановление)' },
   agentRunRecovery: { title: 'Запуск требует внимания', defaultReason: 'Запуск приостановлен в ожидании безопасного решения.', tool: 'Инструмент: {name}', resultLabel: 'Результат инструмента', resultPlaceholder: 'Вставьте проверенный структурированный результат (JSON или текст)', retry: 'Повторить', provideResult: 'Указать результат', terminate: 'Завершить', failed: 'Не удалось обновить запуск' },
 
+  modelCatalog: {
+    "title": "Каталог моделей",
+    "description": "Каталог моделей определяет, какие модели предлагаются при добавлении модели, и значения по умолчанию, например контекстное окно и поддержку рассуждений. Изменения здесь сразу применяются ко всем рабочим пространствам.",
+    "howItWorks": "Порядок применения настроек",
+    "layers": {
+      "builtin": "Встроенный каталог: список моделей по умолчанию, поставляемый с релизом.",
+      "deployment": "Файл развёртывания: models.json на сервере, переопределяет встроенный каталог.",
+      "console": "Изменения администратора: правки на этой странице, имеют приоритет над обоими.",
+      "explicit": "Значения, заданные в рабочем пространстве в настройках модели, всегда важнее; изменения каталога не перезаписывают сохранённые модели.",
+    },
+    "add": "Добавить модель",
+    "more": "Ещё",
+    "jsonEditor": "Редактировать JSON",
+    "history": "История версий",
+    "import": "Импорт JSON",
+    "export": "Экспорт изменений",
+    "search": "Поиск по ID или названию модели",
+    "allProviders": "Все провайдеры",
+    "allTypes": "Все типы",
+    "onlyModified": "Только изменённые",
+    "summary": "Моделей: {count} · версия {version}",
+    "columns": {
+      "model": "Модель",
+      "provider": "Провайдер",
+      "type": "Тип",
+      "tokens": "Контекст / вывод",
+      "capabilities": "Возможности",
+      "source": "Источник",
+    },
+    "capability": {
+      "reasoning": "Рассуждения",
+      "image": "Изображения",
+      "audio": "Аудио",
+      "video": "Видео",
+    },
+    "source": {
+    },
+    "rule": "Шаблон",
+    "ruleTip": "Задаёт значения по умолчанию для семейства моделей по шаблону имени. Шаблоны не показываются в списке выбора.",
+    "hidden": "Скрыта",
+    "edit": "Изменить",
+    "view": "Просмотр",
+    "empty": "Подходящих моделей нет",
+    "editDescription": "{provider} · {type}",
+    "ruleNotice": "Этот шаблон задаёт значения по умолчанию для моделей с подходящими именами. Чтобы изменить его, используйте «Ещё → Редактировать JSON».",
+    "fieldsSection": "Значения по умолчанию",
+    "nameDesc": "Название в списке выбора моделей.",
+    "dimension": "Размерность векторов",
+    "dimensionDesc": "Подставляется при добавлении этой модели эмбеддингов; должна совпадать с фактическим выводом модели.",
+    "inputDesc": "Типы входных данных модели. С изображениями модель можно использовать как визуальную.",
+    "thinkingLevels": "Уровни рассуждений",
+    "thinkingLevelsDesc": "Интенсивность рассуждений, доступная в чате. Без «Выкл» модель рассуждает всегда.",
+    "levelsNeedReasoning": "Включите «Рассуждения», чтобы настроить уровни.",
+    "levelsUnsupported": "API этого провайдера не поддерживает уровни рассуждений.",
+    "textOnly": "Только текст",
+    "noLevels": "Нет",
+    "sourceLink": "Документация провайдера",
+    "customHint": "Эту модель добавил администратор на этой странице; все её значения заданы здесь.",
+    "fieldsHint": "Значения, заданные в рабочем пространстве в настройках модели, по-прежнему важнее. Очистите поле, чтобы вернуть значение по умолчанию.",
+    "context": "Контекстное окно",
+    "contextDesc": "Максимальное число токенов, которое модель обрабатывает за раз.",
+    "output": "Макс. вывод",
+    "outputDesc": "Максимальное число токенов в одном ответе.",
+    "reasoning": "Рассуждения",
+    "reasoningDesc": "Может ли модель выводить ход рассуждений.",
+    "hide": "Скрыть из списка выбора",
+    "hideDesc": "Скрытая модель не предлагается при добавлении. Уже настроенные модели не затрагиваются.",
+    "inputModes": "Типы входных данных",
+    "inherited": "По умолчанию: {value}",
+    "notSet": "Не задано",
+    "optional": "Необязательно",
+    "yes": "Да",
+    "no": "Нет",
+    "modified": "Изменено",
+    "layersSection": "Значения по уровням",
+    "layerField": "Параметр",
+    "layerBuiltin": "Встроенный",
+    "layerDeployment": "Развёртывание",
+    "layerEffective": "Действующее",
+    "save": "Сохранить и применить",
+    "restore": "Восстановить по умолчанию",
+    "restoreConfirm": "Удалить все изменения администратора для этой модели и сразу применить?",
+    "restored": "Восстановлено. Другие экземпляры синхронизируются примерно за 5 секунд.",
+    "remove": "Удалить модель",
+    "removeConfirm": "Удалить эту добавленную администратором модель из каталога и сразу применить?",
+    "removed": "Удалено. Другие экземпляры синхронизируются примерно за 5 секунд.",
+    "published": "Применено. Другие экземпляры синхронизируются примерно за 5 секунд.",
+    "conflict": "Другой администратор обновил каталог. Страница обновлена, повторите действие.",
+    "loadFailed": "Не удалось загрузить каталог моделей",
+    "deploymentError": "Не удалось загрузить файл развёртывания models.json, используется только встроенный каталог: {error}",
+    "syncError": "Не удалось синхронизировать последнюю версию; страница может показывать не действующую конфигурацию: {error}",
+    "addDescription": "Добавьте модель, которой ещё нет в каталоге. После этого её можно сразу выбрать в настройках моделей.",
+    "modelId": "ID модели",
+    "modelIdPlaceholder": "Имя модели в API провайдера, например gpt-5-mini",
+    "displayName": "Отображаемое имя",
+    "required": "Выберите провайдера и укажите ID модели",
+    "exists": "Эта модель уже есть в каталоге — отредактируйте её",
+    "jsonDescription": "Редактирование всех изменений администратора в формате models.json. Удобно для массовых правок и миграции.",
+    "jsonHint": "Указывайте только изменяемые поля; удалите поле, чтобы вернуть значение по умолчанию. Учётные данные, заголовки и ссылки на переменные окружения храните в настройках моделей или файлах развёртывания. Значки — только встроенный SVG. Не более 1 МиБ.",
+    "jsonClear": "Очистить все изменения",
+    "jsonCheck": "Проверить изменения",
+    "jsonPublish": "Опубликовать изменения ({count})",
+    "jsonUnchanged": "Совпадает с действующей конфигурацией — публиковать нечего.",
+    "changesTitle": "Изменения к применению",
+    "change": {
+      "added": "Добавлено",
+      "removed": "Удалено",
+      "updated": "Изменено",
+    },
+    "publishHint": "На этом экземпляре применяется сразу, другие синхронизируются примерно за 5 секунд.",
+    "invalid": "Введите models.json с объектом providers.",
+    "tooLarge": "Файл не должен превышать 1 МиБ.",
+    "historyDescription": "Хранятся последние 20 версий. Восстановленная версия применяется сразу.",
+    "historyVersion": "Версия {version}",
+    "historyCurrent": "Текущая",
+    "historyRestore": "Восстановить",
+    "historyRestoreConfirm": "Восстановить версию {version} и сразу применить её ко всем рабочим пространствам?",
+    "historyEmpty": "Предыдущих версий нет",
+    "historyModels": "Изменено моделей: {count}",
+    "historyNoOverrides": "Нет изменений администратора",
+  },
+  toolbox: {
+    "unavailable": "В текущем рабочем пространстве нет доступных инструментов.",
+  },
+  localBrowser: {
+    pipOpen: "Открыть плавающее окно",
+    pipReturn: "Вернуть предпросмотр в чат",
+    pipFailed: "Не удалось открыть плавающее окно. Повторите попытку.",
+
+    captureScreenshot: "Сделать снимок страницы",
+    navigationIncomplete: "Страница не достигла нужного этапа загрузки. Проверьте её состояние.",
+    noEntries: "Записи отсутствуют.",
+    stopping: "Завершение задачи…",
+    elapsedSeconds: "{seconds} с",
+
+    searchInstructionsTitle: "Инструкции поиска в браузере",
+    searchInstructionsDescription: "Укажите предпочитаемую поисковую систему и URL поиска.",
+    searchInstructionsHint: "Применяется со следующего запроса. Пустое поле — настройки по умолчанию.",
+    searchInstructionsReset: "Восстановить по умолчанию",
+    searchInstructionsSaved: "Сохранено",
+
+    "sourceHint": "Использовать локальный браузер для просмотра страниц и работы с ними в этом запросе совместно с веб-поиском, базами знаний и другими инструментами.",
+    "pressKey": "Нажать клавишу",
+    "hoverPage": "Навести на элемент",
+    "scrollPage": "Прокрутить страницу",
+    "focusElement": "Сфокусировать элемент",
+    "blurElement": "Убрать фокус",
+    "selectOption": "Выбрать вариант",
+    "closeTab": "Закрыть вкладку",
+    "runScript": "Выполнить скрипт страницы",
+    "readConsole": "Просмотреть консоль",
+    "readNetwork": "Просмотреть сетевые запросы",
+    "resizeWindow": "Изменить размер окна",
+    "emulateDevice": "Эмулировать устройство",
+    "actionPending": "Управление браузером…",
+    "actionRecorded": "Действие браузера записано",
+    "untitledTab": "Вкладка без названия",
+    "contentTruncated": "Показана только часть содержимого страницы.",
+    "controlScope": "Управление браузером только этого диалога",
+    "pauseHint": "Прервать действие браузера, сохранив страницы для продолжения. Диалог не останавливается.",
+    "stopHint": "Закрыть вкладки этой задачи и вернуть заимствованные. Браузер и сопряжение сохраняются.",
+    "openPage": "Открыть страницу",
+    "switchPage": "Переключить страницу",
+    "readPage": "Просмотреть страницу",
+    "listTabs": "Список вкладок",
+    "clickPage": "Нажать на элемент",
+    "fillPage": "Ввести данные",
+    "waitPage": "Ожидать страницу",
+    "openTab": "Создать вкладку задачи",
+    "switchTab": "Переключить вкладку задачи",
+    "authorizeTab": "Запросить доступ",
+    "returnTab": "Вернуть вкладку",
+    "needHelp": "Нужен ваш ввод",
+    "browserAction": "Действие браузера",
+    "actionFailed": "Не завершено",
+    "actionCompleted": "Действие завершено",
+    "commandBusy": "Предыдущая команда ещё выполняется. Дождитесь завершения.",
+    "invalidArguments": "Аргументы инструмента браузера неверны или неполны. Агент должен исправить их перед выполнением.",
+    "commandInterrupted": "Действие прервано. Проверьте страницу перед продолжением через предпросмотр.",
+    "actionFailedHint": "Действие браузера не завершено. Проверьте страницу и повторите попытку.",
+    "previewStale": "Изображение не обновлено",
+    "previewIdle": "Сохранено последнее изображение",
+    "previewLive": "Изображение обновляется",
+    "previewLoading": "Получение изображения",
+    "borrowHint": "Перейдите на запрашиваемую вкладку и выберите «Разрешить» или «Отклонить» в окне BrowserSkill. После разрешения работа продолжится автоматически. Продолжение приостановленной задачи не даёт разрешения на доступ к вкладке.",
+    "helpHint": "Требуется проверка или разрешение. Нажмите предпросмотр для перехода.",
+
+    "settingsTitle": "Подключение браузера",
+    "settingsDescription": "Подключите локальный Chrome или Edge через BrowserSkill, чтобы управлять реальными страницами из диалогов.",
+    "openSettings": "Открыть настройки",
+    "settingsHint": "Подключите BrowserSkill в разделе «Инструменты», чтобы использовать локальный браузер.",
+
+    "sandbox": "Браузер песочницы",
+    "local": "Локальный браузер",
+    "paused": "Приостановлено",
+    "connected": "Подключено",
+    "disconnected": "Не подключено",
+    "resume": "Продолжить в браузере",
+    "pause": "Приостановить браузер",
+    "start": "Начать задачу",
+    "stop": "Завершить задачу браузера",
+    "resumeShort": "Продолжить",
+    "pauseShort": "Пауза",
+    "stopShort": "Завершить",
+    "pairHint": "Откройте в расширении «Настройки подключения → Удалённое подключение», вставьте ссылку и подтвердите сервер. Ссылка действует 5 минут и используется один раз.",
+    "copyPairing": "Скопировать ссылку",
+    "copied": "Скопировано",
+    "windowHint": "Задачи выполняются в отдельном окне браузера. Заимствование существующих вкладок требует вашего разрешения.",
+    "preview": "Предпросмотр локального браузера",
+    "waiting": "Ожидание страницы задачи",
+    "startHint": "Запрос к браузеру создаёт отдельное окно агента.",
+    "revoke": "Отозвать доступ устройства",
+    "revokeConfirm": "После отзыва потребуется повторное подключение, чтобы снова использовать локальный браузер.",
+    "failed": "Операция не удалась. Повторите попытку.",
+    "productDescription": "Расширение Chrome и Edge с открытым исходным кодом: агент открывает страницы, читает их и выполняет действия в вашем браузере.",
+    "offline": "Не в сети",
+    "notPaired": "Не подключён",
+    "lastSeen": "Последнее подключение",
+    "readyHint": "Готово. Вернитесь в диалог и опишите задачу для браузера.",
+    "capabilitiesTitle": "Агент может",
+    "sidebarStatus": "Показывать статус подключения на боковой панели",
+    "reconnectHint": "Авторизация сохранена. Откройте браузер и BrowserSkill для автоматического подключения.",
+    "replaceDevice": "Сменить браузер",
+    "installExtension": "Установите BrowserSkill",
+    "storeInstall": "Интернет-магазин Chrome",
+    "edgeStoreInstall": "Надстройки Edge",
+    "extensionMinVersion": "Требуется BrowserSkill v{version} или новее. Поддерживаются Chrome и Edge.",
+    "extensionOutdated": "Версия расширения v{current} устарела. Обновите до v{version} или новее.",
+    "manualInstall": "Установить вручную (альтернатива)",
+    "storeInstallHint": "Установите BrowserSkill из Интернет-магазина Chrome или надстроек Edge, затем вернитесь сюда для сопряжения.",
+    "installHint": "Если магазин недоступен или версия несовместима, скачайте подходящий пакет и установите его вручную.",
+    "downloadExtension": "Скачать совместимый пакет",
+    "officialExtension": "Официальное расширение (Интернет-магазин Chrome)",
+    "installGuide": "Как установить скачанный пакет?",
+    "pairGuide": "Как использовать ссылку сопряжения?",
+    "pairBrowser": "Подключите браузер",
+    "packageUnavailable": "Запросите совместимое расширение у администратора.",
+    "manualCopy": "Скопируйте ссылку ниже. Она действует 5 минут и используется один раз.",
+    "pairingReady": "Ссылка скопирована. Вставьте её в расширение в течение 5 минут. Используется один раз.",
+    "copyAgain": "Копировать ещё раз",
+    "usageTitle": "Как пользоваться",
+    "usageStep1Title": "Установите расширение",
+    "usageStep1Text": "Распакуйте ZIP, введите chrome://extensions (в Edge — edge://extensions) в адресной строке, включите режим разработчика, нажмите «Загрузить распакованное расширение» и выберите папку расширения.",
+    "usageStep2Title": "Подключите браузер",
+    "usageStep2Text": "Вставьте ссылку в «Настройки подключения → Удалённое подключение» расширения и подтвердите сервер. Одно подключение используется во всех диалогах пространства.",
+    "usageStep3Title": "Опишите задачу в диалоге",
+    "usageStep3Text": "Перед отправкой веб-задачи включите локальный браузер в поле ввода диалога. Подключение не включает эту опцию автоматически. Задачи выполняются в отдельном окне агента.",
+    "usageStep4Title": "Просматривайте и продолжайте через предпросмотр",
+    "usageStep4Text": "В диалоге появится миниатюра. Нажмите её, чтобы перейти к вкладке задачи. Прерванные задачи остаются на паузе после переподключения — продолжите через предпросмотр. Для существующих вкладок нужно разрешение.",
+    "running": "Выполняется",
+    "locateWindow": "Показать браузер",
+    "reconnectShort": "Ожидание подключения",
+},
+  resourceSort: {
+    title: 'Сортировка',
+    updatedTime: 'Время обновления',
+    updatedTimeDescription: 'Вариант по умолчанию.',
+    createdTime: 'Время создания',
+    createdTimeDescription: 'Показать недавно или давно созданные элементы',
+    name: 'Название',
+    nameDescription: 'Быстро найти элемент по известному названию',
+    recentlyUpdated: 'Сначала обновлённые',
+    earliestUpdated: 'Сначала давно обновлённые',
+    recentlyCreated: 'Сначала новые',
+    earliestCreated: 'Сначала старые',
+    nameAscending: 'A–Z',
+    nameDescending: 'Z–A',
+  },
   platformApiKeys: {
-    title: 'Платформенные API-ключи',
     description: 'Учетные данные для автоматизации между рабочими пространствами. Для API пространства используйте X-Tenant-ID.',
     securityNotice: 'Платформенный ключ может выбрать любое пространство. Выдавайте только необходимые права; секрет показывается один раз.',
     create: 'Создать платформенный API-ключ',
     createDescription: 'Ключ не привязан к пространству, но каждая операция ограничена правами.',
     loading: 'Загрузка…',
     empty: 'Платформенных ключей нет',
-    name: 'Название',
     namePlaceholder: 'Например: центральная автоматизация',
     key: 'Ключ',
     capability: 'Права',
@@ -138,7 +388,6 @@ export default {
     capabilityHint: 'Права пространства применяются к X-Tenant-ID, системные права — к API управления платформой.',
     lastUsed: 'Последнее использование',
     createdAt: 'Создан',
-    actions: 'Действия',
     never: 'Никогда',
     systemCapabilityGroup: 'Управление платформой',
     createdTitle: 'Платформенный API-ключ создан',
@@ -159,16 +408,10 @@ export default {
       settingsManage: 'Изменение настроек платформы.',
       runtimeRead: 'Просмотр очередей и задач.',
       runtimeManage: 'Повтор, запуск, отмена и удаление задач.',
-      auditRead: 'Чтение системного журнала аудита.'
+      auditRead: 'Чтение системного журнала аудита.',
     },
     capabilities: {
-      tenantsRead: 'Просмотр пространств',
-      tenantsManage: 'Управление пространствами',
-      settingsRead: 'Просмотр системных настроек',
-      settingsManage: 'Управление системными настройками',
-      runtimeRead: 'Просмотр очередей',
-      runtimeManage: 'Управление очередями',
-      auditRead: 'Просмотр аудита'
+      auditRead: 'Просмотр аудита',
     }
   },
   tenantInvitation: {
@@ -189,13 +432,9 @@ export default {
       alreadyMember: 'This user is already an active member of the workspace.',
       notPending: 'The invitation is no longer pending.',
       forbidden: 'Only the invitee can accept or decline this invitation.',
-      notFound: 'Invitation not found or already withdrawn.',
-      generic: 'Something went wrong. Please try again.'
+      generic: 'Something went wrong. Please try again.',
     },
     myInbox: {
-      title: 'My invitations',
-      description: 'Invitations from other workspaces. Accept to join with the assigned role.',
-      empty: 'No pending invitations.',
       acceptButton: 'Accept',
       declineButton: 'Decline',
       acceptSuccess: 'Joined "{tenant}".',
@@ -203,7 +442,7 @@ export default {
       from: 'From',
       tenantLabel: 'Workspace',
       expiresIn: 'Expires: {date}',
-      messageLabel: 'Message'
+      messageLabel: 'Message',
     },
     status: {
       pending: 'Pending',
@@ -211,52 +450,42 @@ export default {
       accepted: 'Accepted',
       declined: 'Declined',
       revoked: 'Revoked',
-      expired: 'Expired'
+      expired: 'Expired',
     },
     columns: {
       invitee: 'Invitee',
       role: 'Role',
       inviter: 'Inviter',
       expiresAt: 'Expires',
-      status: 'Status',
-      operations: 'Actions'
+      operations: 'Actions',
     },
     revoke: {
       button: 'Revoke',
       confirmBody: 'After revoke, {email} can no longer accept this invitation. You can send a new one if needed.',
       confirm: 'Revoke',
-      success: 'Invitation revoked.'
+      success: 'Invitation revoked.',
     },
     shareLink: {
-      button: 'Generate share link',
       cellTitle: 'Invite via link',
       cellAccepted: '{count} joined',
       cellEmpty: 'No one has joined yet',
       dialogTitle: 'Generate share invitation link',
-      description: 'Generate a multi-use registration link you can drop in a group chat. Anyone who opens it registers with their own email and joins this workspace. Expires in {days} days, or revoke it any time from the list.',
       generate: 'Generate link',
       resultTitle: 'Invitation link ready',
       resultBody: 'Copy the link below and share it via any private channel. It\'s also saved in the list — you can re-copy or revoke it later.',
-      revokeConfirm: 'Revoking will block anyone who hasn\'t registered yet from using this link. Generate a new one to re-share.'
+      revokeConfirm: 'Revoking will block anyone who hasn\'t registered yet from using this link. Generate a new one to re-share.',
     }
   },
   tenantMember: {
-    title: 'Участники',
     sectionDescription: 'Приглашайте коллег в пространство и управляйте их ролями. Добавлять и удалять участников может только Владелец.',
     learnRbacGuide: 'Подробнее о RBAC',
     listTitle: 'Участники пространства',
-    loading: 'Загрузка участников…',
     retry: 'Повторить',
-    empty: 'Участников пока нет. Пригласите коллегу, чтобы начать.',
     emptySearch: 'Нет участников по запросу "{q}".',
     searchPlaceholder: 'Поиск по имени или email',
     audit: {
       tabLabel: 'Журнал аудита',
-      description: 'Регистрирует все изменения участников и отказы в доступе в этом пространстве, в обратном хронологическом порядке. Повторные отказы в течение минуты дедуплицируются.',
-      refresh: 'Обновить',
       end: 'Конец журнала.',
-      empty: 'Событий аудита пока нет.',
-      forbidden: 'Нет прав для просмотра журнала аудита.',
       systemActor: 'Система',
       requiredRole: 'Требуемая роль: {role}',
       expanded: {
@@ -264,11 +493,11 @@ export default {
         targetUserId: 'ID целевого пользователя',
         targetType: 'Тип цели',
         targetId: 'ID цели',
-        details: 'Сырые детали'
+        details: 'Сырые детали',
       },
       outcome: {
         success: 'Успех',
-        denied: 'Отказ'
+        denied: 'Отказ',
       },
       action: {
         'rbac.member_added': 'Добавлен участник',
@@ -280,7 +509,7 @@ export default {
         'rbac.invitation_accepted': 'Приглашение принято',
         'rbac.invitation_declined': 'Приглашение отклонено',
         'rbac.invitation_revoked': 'Приглашение отозвано',
-        'rbac.invitation_expired': 'Приглашение истекло'
+        'rbac.invitation_expired': 'Приглашение истекло',
       },
       columns: {
         time: 'Время',
@@ -288,70 +517,43 @@ export default {
         action: 'Событие',
         target: 'Цель',
         path: 'Запрос',
-        outcome: 'Результат'
+        outcome: 'Результат',
       }
     },
-    errors: {
-      emailRequired: 'Укажите email',
-      emailFormat: 'Неверный формат email',
-      roleRequired: 'Выберите роль',
-      userNotFound: 'Пользователь с таким email не зарегистрирован. Попросите его зарегистрироваться.',
-      lastOwner: 'Нельзя понизить, удалить или покинуть как последний Владелец. Сначала повысьте кого-то ещё до Владельца.',
-      notFound: 'Участник не найден.',
-      invalidRole: 'Роль должна быть owner / admin / contributor / viewer.',
-      generic: 'Что-то пошло не так. Попробуйте ещё раз.'
-    },
     roleChange: {
-      success: 'Роль обновлена'
+      success: 'Роль обновлена',
     },
     leave: {
       confirmTitle: 'Покинуть это пространство?',
-      confirmBody: 'Вы потеряете доступ ко всем базам знаний и агентам в этом пространстве. Позже вас можно будет пригласить снова.',
-      confirm: 'Покинуть',
-      success: 'Вы покинули пространство'
+      success: 'Вы покинули пространство',
     },
     remove: {
-      button: 'Удалить',
-      confirmBody: 'Вы уверены, что хотите удалить {name} из этого пространства? Доступ будет отозван немедленно.',
-      confirm: 'Удалить',
-      success: 'Участник удалён'
+      success: 'Участник удалён',
     },
     add: {
-      button: 'Пригласить',
-      dialogTitle: 'Пригласить участника',
       emailLabel: 'Email',
       emailPlaceholder: 'invitee{\'@\'}example.com',
-      roleLabel: 'Роль'
+      roleLabel: 'Роль',
     },
     role: {
       owner: 'Владелец',
       admin: 'Администратор',
       contributor: 'Участник',
-      viewer: 'Наблюдатель'
-    },
-    columns: {
-      member: 'Имя и email',
-      role: 'Роль',
-      joinedAt: 'Дата вступления',
-      operations: 'Действия'
+      viewer: 'Наблюдатель',
     },
     permissions: {
-      title: 'Права ролей',
       desc: 'Что может делать каждая роль внутри этого пространства. Контролируется сервером; элементы UI лишь отражают правила.',
       iconHint: 'Наведите курсор, чтобы открыть описание прав ролей',
       manageMembers: 'Управление участниками',
       manageTenantConfig: 'Изменение настроек пространства',
       manageInfra: 'Настройка моделей / векторных хранилищ / IM-каналов',
       createOwnKB: 'Создание и редактирование своих БЗ и агентов',
-      readAll: 'Чтение содержимого пространства'
+      readAll: 'Чтение содержимого пространства',
     }
   },
   userProfile: {
-    title: 'Информация о пользователе',
-    description: 'Просмотр базовых данных аккаунта (ID пользователя, имя, email, дата регистрации) и смена пароля.',
     changePassword: {
       label: 'Сменить пароль',
-      description: 'Подтвердите текущий пароль и задайте новый. После успешной смены все сессии будут отозваны, потребуется повторный вход.',
       currentLabel: 'Текущий пароль',
       currentPlaceholder: 'Введите текущий пароль',
       currentRequired: 'Введите текущий пароль',
@@ -360,7 +562,6 @@ export default {
       confirmLabel: 'Подтвердите новый пароль',
       confirmPlaceholder: 'Введите новый пароль ещё раз',
       submit: 'Обновить пароль',
-      success: 'Пароль обновлён. Войдите снова с новым паролем.',
       failed: 'Не удалось сменить пароль. Проверьте текущий пароль.',
       policyFailed: 'Новый пароль: 8–32 символа, буквы и цифры',
       sameAsCurrent: 'Новый пароль не должен совпадать с текущим',
@@ -373,18 +574,16 @@ export default {
     unconfigured: 'Не настроено',
     configure: 'Настроить',
     update: 'Заменить',
-    remove: 'Удалить',
     inputPlaceholder: 'Введите значение',
     savedToast: 'Учётные данные сохранены',
     saveFailed: 'Не удалось сохранить учётные данные',
     removedToast: 'Учётные данные удалены',
     removeFailed: 'Не удалось удалить учётные данные',
     confirmRemovePrompt: 'Удалить учётные данные? Действие необратимо.',
-    confirmRemove: 'Подтвердить удаление'
+    confirmRemove: 'Подтвердить удаление',
   },
   integrations: {
     cli: {
-      title: 'WeKnora CLI',
       subtitle: 'Управляйте базами знаний и документами, ищите информацию и задавайте вопросы из терминала. Подключайте скрипты и инструменты ИИ через CLI или MCP.',
       docs: 'Документация CLI',
       docsHint: 'Установка и полный справочник команд',
@@ -402,7 +601,6 @@ export default {
       copy: 'Копировать',
       copied: 'Скопировано',
     },
-    title: 'Публикация и интеграция',
     selectAgentPlaceholder: 'Выберите агента',
     selectAgentHint: 'Сначала выберите агента',
     boundAgent: 'Привязанный агент',
@@ -410,12 +608,9 @@ export default {
     filterByAgentWithName: 'Фильтр по агенту: {name}',
     filterAllAgents: 'Все агенты',
     claw: {
-      title: 'WeKnora Skill',
-      subtitle: 'Импорт документов и гибридный поиск (вектор + ключевые слова) через REST API WeKnora — загрузки, URL, Markdown и поиск.',
       capabilitiesTitle: 'Возможности Skill',
       stepsTitle: 'Шаги настройки',
       openApiSettings: 'Открыть API-информацию',
-      copy: 'Копировать',
       copyEnvSuccess: 'Пример переменных скопирован',
       copyCmdSuccess: 'Команда установки скопирована',
       ecosystemNote: 'Skill размещён на ClawHub ({\'@\'}lyingbug/weknora). Полная документация API — на странице ClawHub.',
@@ -425,115 +620,58 @@ export default {
       steps: {
         verify: {
           title: 'Проверка',
-          desc: 'Попросите агента вывести список БЗ или выполнить поиск.'
+          desc: 'Попросите агента вывести список БЗ или выполнить поиск.',
         },
         install: {
-          title: 'Установка Skill',
-          desc: 'Выполните команду ниже в среде с OpenClaw CLI или следуйте инструкциям на ClawHub.'
+          desc: 'Выполните команду ниже в среде с OpenClaw CLI или следуйте инструкциям на ClawHub.',
         },
         env: {
-          title: 'Переменные окружения',
-          desc: 'Задайте WEKNORA_BASE_URL и WEKNORA_API_KEY в shell или ~/.zshrc / ~/.bashrc. Пример ниже использует текущий API URL — замените API Key на фактическое значение.'
+          desc: 'Задайте WEKNORA_BASE_URL и WEKNORA_API_KEY в shell или ~/.zshrc / ~/.bashrc. Пример ниже использует текущий API URL — замените API Key на фактическое значение.',
         },
         api: {
-          title: 'API-учётные данные',
-          desc: 'Скопируйте API Key и URL в «Настройки → API-информация».'
+          desc: 'Скопируйте API Key и URL в «Настройки → API-информация».',
         }
       },
       capabilities: {
         browse: {
-          title: 'Просмотр знаний',
-          desc: 'Списки БЗ и записей, детали и управление контентом.'
+          desc: 'Списки БЗ и записей, детали и управление контентом.',
         },
         search: {
-          title: 'Гибридный поиск',
-          desc: 'hybrid-search по одной БЗ и knowledge-search по нескольким.'
+          desc: 'hybrid-search по одной БЗ и knowledge-search по нескольким.',
         },
         manual: {
-          title: 'Markdown',
-          desc: 'Создание и правка записей в формате Markdown.'
+          desc: 'Создание и правка записей в формате Markdown.',
         },
         url: {
-          title: 'Импорт URL',
-          desc: 'Загрузка веб-страниц по URL с отслеживанием parse_status.'
+          desc: 'Загрузка веб-страниц по URL с отслеживанием parse_status.',
         },
         upload: {
-          title: 'Загрузка файлов',
-          desc: 'PDF, Word, Excel и др. с автоматическим разбором.'
+          desc: 'PDF, Word, Excel и др. с автоматическим разбором.',
         }
       }
     },
     chrome: {
-      title: 'Помощник по знаниям',
-      subtitle: 'Для self-hosted WeKnora: вопросы в боковой панели, клиппинг страниц и Markdown-заметки в базы знаний прямо при просмотре.',
-      capabilitiesTitle: 'Возможности',
-      stepsTitle: 'Шаги настройки',
-      openApiSettings: 'Открыть API-информацию',
-      copy: 'Копировать',
       copySuccess: 'URL API скопирован',
-      installCta: 'Chrome Web Store',
-      installCtaHint: 'Официальное расширение · откроется в новой вкладке',
       storeMeta: 'Chrome Web Store · v1.0.0',
-      steps: {
-        connect: {
-          title: 'Подключите в расширении',
-          desc: 'В настройках расширения выберите режим enterprise/developer и введите API URL и API Key. Ниже — текущий URL сервиса.'
-        },
-        install: {
-          title: 'Установите расширение',
-          desc: 'Установите «Помощник по знаниям» из Chrome Web Store.'
-        },
-        port: {
-          title: 'Десктоп: фиксированный порт',
-          desc: 'В WeKnora Desktop задайте фиксированный порт API (например 37841) в API-информации.'
-        },
-        api: {
-          title: 'Получите API-учётные данные',
-          desc: 'Скопируйте API Key и базовый URL в «Настройки → API-информация».'
-        }
-      },
       scenarios: {
         research: 'Исследования',
         learning: 'Учёба',
         tech: 'Техдокументация',
-        work: 'Рабочие знания'
+        work: 'Рабочие знания',
       },
-      capabilities: {
-        shortcuts: {
-          title: 'Горячие клавиши',
-          desc: 'Настраиваемые сочетания для вопросов, панели и ускорения работы.'
-        },
-        notes: {
-          title: 'Markdown-заметки',
-          desc: 'Встроенный редактор Markdown с сохранением в базу знаний в один клик.'
-        },
-        clip: {
-          title: 'Сбор веб-контента',
-          desc: 'Сохранение URL, AI-извлечение текста или выбор области на странице.'
-        },
-        qa: {
-          title: 'Q&A по базе знаний',
-          desc: 'Боковая панель, несколько БЗ, режимы быстрый/глубокий/точный — без смены вкладки.'
-        }
-      }
     },
     agentEditor: {
-      label: 'Каналы публикации',
-      desc: 'Публикуйте агента в IM или на сайт. Управление — в разделе «Интеграции».'
+      desc: 'Публикуйте агента в IM или на сайт. Управление — в разделе «Интеграции».',
     },
     embedOverview: {
-      title: 'Каналы веб-встраивания'
+      title: 'Каналы веб-встраивания',
     },
     imOverview: {
-      title: 'Подключённые IM-каналы'
+      title: 'Подключённые IM-каналы',
     },
     api: {
-      title: 'API-интеграция',
-      subtitle: 'Подключайте сервис через REST API и настройте идентификацию конечного пользователя в запросах.',
       loading: 'Загрузка настроек API-интеграции...',
       retry: 'Повторить',
-      copy: 'Копировать',
-      copySuccess: 'Скопировано',
       baseUrl: 'Базовый URL API',
       baseUrlDesc: 'Используйте с путями REST API.',
       apiKeys: 'API Keys',
@@ -679,10 +817,107 @@ export default {
       playgroundSuccess: 'Тест завершён ({ms}ms)',
       playgroundStopped: 'Тест остановлен',
       playgroundFailed: 'Тест API Playground не удался',
-      loadFailed: 'Не удалось загрузить настройки API-интеграции',
       saveFailed: 'Не удалось сохранить настройки API-интеграции',
       saveSuccess: 'Настройки API-интеграции сохранены',
-      autoSaveNeedSecret: 'Для signed-token режима нужен HMAC secret перед автосохранением.'
+      autoSaveNeedSecret: 'Для signed-token режима нужен HMAC secret перед автосохранением.',
+    },
+    mcpserver: {
+      listTitle: 'Опубликованные конечные точки',
+      disabled: 'Отключена',
+      cardSummary: 'Инструментов: {tools} · {scope}',
+              scopeAll: 'Все базы знаний',
+      scopeCount: 'Баз знаний: {count}',
+      create: 'Новая конечная точка',
+      editTitle: 'Изменить конечную точку MCP',
+      createTitle: 'Новая конечная точка MCP',
+      drawerDesc: 'Конечная точка определяет, какие базы знаний видит клиент и какие инструменты может вызывать. Токен показывается один раз: при создании и при ротации.',
+      sectionBasic: 'Основное',
+      nameLabel: 'Название',
+      namePlaceholder: 'Например: помощник по документации',
+      descriptionLabel: 'Описание',
+      descriptionPlaceholder: 'Необязательно: кто и для чего использует',
+      enabledLabel: 'Включена',
+      sectionScope: 'Область баз знаний',
+      kbScopeLabel: 'Доступные базы знаний',
+      kbScopePlaceholder: 'Пусто — все базы знаний пространства',
+      kbScopeHint: 'Все инструменты поиска, вопросов и записи ограничены этими базами знаний. Пусто означает всё пространство.',
+      sectionTools: 'Доступные инструменты',
+      toolsHint: 'В список клиента попадают только отмеченные инструменты; неотмеченные отклоняются даже при вызове по имени. Инструменты записи по умолчанию выключены.',
+      clearGroup: 'Снять',
+      selectGroup: 'Выбрать все',
+      toolsRequired: 'Выберите хотя бы один инструмент',
+      groups: {
+        retrieve: 'Поиск и чтение',
+        chat: 'Вопросы и ответы',
+        wiki: 'Wiki',
+        ingest: 'Запись (включайте осторожно)',
+      },
+      tools: {
+        list_knowledge_bases: 'Список баз знаний',
+        list_knowledge_basesDesc: 'Возвращает базы знаний в области и поддерживаемые режимы поиска',
+        search_knowledge: 'Семантический поиск',
+        search_knowledgeDesc: 'Находит релевантные фрагменты по вопросу на естественном языке, с источниками',
+        grep_chunks: 'Поиск по ключевым словам / regex',
+        grep_chunksDesc: 'Регистронезависимый regex по исходным фрагментам; подходит для точных терминов, кодов и имён',
+        list_documents: 'Список документов',
+        list_documentsDesc: 'Постраничный список документов одной базы знаний',
+        read_document: 'Прочитать документ',
+        read_documentDesc: 'Метаданные документа и его фрагменты по порядку',
+        ask: 'Задать вопрос',
+        askDesc: 'Запускает агента, настроенного на конечной точке, и возвращает ответ с цитатами; поддерживает продолжение диалога',
+        wiki_search: 'Поиск по Wiki',
+        wiki_searchDesc: 'Поиск по сгенерированным страницам Wiki',
+        wiki_read_page: 'Прочитать страницу Wiki',
+        wiki_read_pageDesc: 'Читает одну страницу Wiki по slug',
+        wiki_index: 'Оглавление Wiki',
+        wiki_indexDesc: 'Показывает оглавление Wiki базы знаний',
+        add_document: 'Добавить документ',
+        add_documentDesc: 'Добавляет документ из Markdown-текста или по URL',
+        update_document: 'Обновить документ',
+        update_documentDesc: 'Заменяет содержимое или заголовок Markdown-документа',
+        delete_document: 'Удалить документ',
+        delete_documentDesc: 'Безвозвратно удаляет документ и его индекс',
+      },
+      sectionAsk: 'Настройки вопросов',
+      defaultAgentLabel: 'Агент по умолчанию',
+      defaultAgentPlaceholder: 'Пусто — встроенный быстрый ответ',
+      defaultAgentHint: 'Агент, которого запускает инструмент ask. Клиент не может выбрать агента сам; пусто — встроенный быстрый ответ.',
+      sectionLimits: 'Ограничение частоты',
+      rateLimitLabel: 'Максимум вызовов в минуту',
+      rateLimitHint: 'Применяется ко всем вызовам инструментов этой конечной точки; при превышении клиент получает ошибку.',
+      sectionConnect: 'Подключение',
+      stepConfig: 'Настройка',
+      stepConnect: 'Подключение',
+      snippetsLabel: 'Конфигурация клиента',
+      connectHintExisting: 'Токен показывался один раз при создании (текущий начинается с {hint}…). Чтобы получить новый, выполните ротацию.',
+      tokenDialogTitle: 'Конечная точка готова, сохраните токен',
+      connectDialogTitle: 'Подключение к конечной точке',
+      tokenOnce: 'Токен показывается только один раз. Скопируйте его сейчас и сохраните в надёжном месте.',
+      connectPlaceholderHint: 'Из соображений безопасности токен больше не показывается; в примерах ниже стоит заполнитель, замените его сохранённым токеном.',
+      tokenLabel: 'Токен',
+      urlLabel: 'URL конечной точки',
+      snippet: {
+        httpTitle: 'Cursor / VS Code / Claude Desktop',
+        httpDesc: 'Клиенты с поддержкой Streamable HTTP принимают этот блок mcpServers как есть.',
+        claudeCodeTitle: 'Claude Code',
+        claudeCodeDesc: 'Одна команда в терминале.',
+        stdioTitle: 'Клиенты только со stdio',
+        stdioDesc: 'Через мост mcp-remote; на машине клиента нужен Node.js.',
+      },
+      nameRequired: 'Укажите название',
+      updated: 'Конечная точка обновлена',
+      created: 'Конечная точка создана',
+      deleted: 'Конечная точка удалена',
+      deleteFailed: 'Не удалось удалить',
+      rotated: 'Токен заменён; старый токен больше не действует',
+      rotateFailed: 'Не удалось заменить токен',
+      disabledToast: 'Конечная точка отключена',
+      enabledToast: 'Конечная точка включена',
+      menuConnect: 'Подключение',
+      menuDisable: 'Отключить',
+      menuEnable: 'Включить',
+      menuRotate: 'Заменить токен',
+      deleteConfirm: 'Клиенты, использующие эту конечную точку, будут немедленно отключены. Удалить?',
     },
     tabs: {
       im: 'IM-интеграция',
@@ -690,19 +925,13 @@ export default {
       api: 'API-интеграция',
       chrome: 'Расширение Chrome',
       cli: 'CLI',
-      claw: 'Claw Skill'
+      claw: 'Claw Skill',
+      mcpserver: 'MCP-сервер',
     }
   },
   datasource: {
-    title: 'Источники данных',
-    description: 'Настройте внешние источники данных для автоматической синхронизации контента',
-    add: 'Добавить источник',
-    empty: 'Источники данных не настроены',
     edit: 'Редактировать',
     delete: 'Удалить',
-    deleteConfirm: 'Удалить этот источник данных? Синхронизированные знания не будут удалены.',
-    deleteSuccess: 'Источник данных удалён',
-    deleteFailed: 'Не удалось удалить',
     deletePanelTitle: 'Удаление источника данных {name}',
     deletePanelKeep: 'Удаляется только источник данных; документы, уже синхронизированные в базу знаний, сохраняются.',
     deletePanelCount: 'Синхронизированные документы: {count}',
@@ -726,7 +955,6 @@ export default {
     createTitle: 'Добавить источник данных',
     editTitle: 'Редактировать источник данных',
     nameLabel: 'Название',
-    namePlaceholder: 'Введите название источника данных',
     sectionBasic: 'Основная информация',
     testConnection: 'Проверить подключение',
     testSuccess: 'Подключение успешно',
@@ -736,7 +964,6 @@ export default {
     isRequired: 'обязательно для заполнения',
     credentialsLabel: 'учётные данные',
     gitlab: {
-      baseUrl: 'URL GitLab', accessToken: 'Персональный токен доступа', projects: 'Проекты GitLab',
       projectsHint: 'Укажите ID проекта или путь в пространстве имён (например group/project), а также при необходимости ветку и каталоги.',
       project: 'Проект', projectId: 'ID проекта', projectIdPlaceholder: 'Например: 12345 или group/project',
       ref: 'Ветка', refPlaceholder: 'Оставьте пустым, чтобы использовать ветку по умолчанию',
@@ -764,7 +991,6 @@ export default {
     createAndSyncSuccess: 'Источник данных создан, задача синхронизации поставлена в очередь',
     createButSyncFailed: 'Источник данных создан, но не удалось запустить синхронизацию',
     updateSuccessSyncHint: 'Источник данных обновлён. Редактирование не запускает синхронизацию автоматически; нажмите «Синхронизировать», чтобы импортировать изменения.',
-    saveFailed: 'Не удалось сохранить',
     syncHistory: 'История синхронизации',
     refreshLogs: 'Обновить журнал',
     noLogs: 'Нет записей синхронизации',
@@ -780,6 +1006,20 @@ export default {
     prereqStep3Brief_yuque: '(Опционально) Для Enterprise укажите Base URL',
     prereqStep3Desc_yuque: 'Пользователям публичного облака указывать не нужно. Для Yuque Enterprise или приватного развёртывания укажите корпоративный домен',
     prereqOpenConsole_yuque: 'Перейти к настройкам Yuque Token',
+    yuqueFolderModeLabel: 'Структура папок',
+    yuqueFolderModeToc: 'Как в оглавлении Yuque',
+    yuqueFolderModeNone: 'Всё в корне',
+    yuqueFolderModeHint: 'Раскладывает документы по папкам согласно оглавлению Yuque. Обратите внимание: папки, перемещённые вручную в базе знаний, будут перезаписаны структурой Yuque при следующей синхронизации этого документа.',
+    yuqueTOCOnly: 'Синхронизировать только видимые в оглавлении Yuque документы',
+    yuqueTOCOnlyHint: 'Требуется режим «Как в оглавлении Yuque». Документы, уже добавленные в базу знаний, остаются нетронутыми — документ, которого нет в оглавлении Yuque, просто перестаёт добавляться, но не удаляется.',
+    prereqBarText_dingtalk: 'Используете впервые? Откройте руководство по настройке приложения DingTalk',
+    prereqStep1Brief_dingtalk: 'Создайте внутреннее корпоративное приложение',
+    prereqStep1Desc_dingtalk: 'Создайте внутреннее приложение в DingTalk Open Platform и скопируйте Client ID и Client Secret.',
+    prereqStep2Brief_dingtalk: 'Предоставьте права чтения базы знаний',
+    prereqStep2Desc_dingtalk: 'Предоставьте права Wiki.Workspace.Read, Wiki.Node.Read и Storage.File.Read.',
+    prereqStep3Brief_dingtalk: 'Укажите Union ID оператора',
+    prereqStep3Desc_dingtalk: 'Укажите Union ID пользователя DingTalk, у которого есть доступ к целевым базам знаний.',
+    prereqOpenConsole_dingtalk: 'Открыть консоль разработчика DingTalk',
     prereqBarText_ima: 'В первый раз? Нажмите, чтобы увидеть руководство по настройке Tencent IMA OpenAPI',
     prereqStep1Brief_ima: 'Включите доступ к IMA agent OpenAPI',
     prereqStep1Desc_ima: 'Войдите на https://ima.qq.com/agent-interface и подайте заявку на доступ к OpenAPI',
@@ -834,37 +1074,46 @@ export default {
     resourceType: {
       wikiSpace: 'Пространство вики',
       docCategory: 'Тег документа',
-      book: 'База знаний Yuque'
+      book: 'База знаний Yuque',
     },
     scheduleHuman: {
       '30min': 'Каждые 30 мин',
       '1h': 'Каждый час',
       '6h': 'Каждые 6 часов',
       '12h': 'Каждые 12 часов',
-      '24h': 'Ежедневно'
+      '24h': 'Ежедневно',
     },
     field: {
       appId: 'App ID',
       appSecret: 'App Secret',
       integrationToken: 'Integration Token',
       apiToken: 'API Token',
+      confluenceEdition: 'Версия Confluence',
+      confluenceEditionServer: 'Server / Data Center',
+      confluenceEditionCloud: 'Cloud',
+      confluenceBaseUrl: 'URL Confluence',
+      confluenceUsername: 'Имя пользователя или эл. почта',
+      confluencePassword: 'Пароль Server/DC',
+      confluenceApiToken: 'API-токен Cloud',
+      clientId: 'Client ID',
+      clientSecret: 'Client Secret',
+      operatorId: 'Union ID оператора',
+      operatorIdHint: 'Укажите Union ID пользователя DingTalk, у которого есть доступ к целевым базам знаний.',
       imaClientId: 'IMA ClientID',
       imaApiKey: 'IMA APIKey',
-      baseUrl: 'Base URL',
       baseUrlHint: 'Оставьте пустым, чтобы использовать адрес общедоступного облака по умолчанию. Для частных/корпоративных развертываний или при доступе через обратный прокси введите ваш собственный адрес (например, https://api-proxy.example.com)',
       feedUrls: 'Адреса лент',
       feedUrlsHint: 'По одному адресу ленты RSS / Atom в строке; можно указать несколько.',
       authHeaders: 'Пользовательские заголовки (необязательно)',
       authHeadersHint: 'Для приватных лент. По одному в строке в формате «Имя: Значение», например Authorization: Bearer xxxx',
-      confluenceEdition: 'Edition (server / cloud)',
-      confluenceUsername: 'Username',
-      confluenceApiToken: 'API Token',
       confluenceApiTokenHint: 'Required for the cloud edition',
-      confluencePassword: 'Password',
       confluencePasswordHint: 'Required for the server edition',
       dingtalkClientId: 'Client ID (AppKey)',
       dingtalkClientSecret: 'Client Secret (AppSecret)',
-      dingtalkOperatorId: 'Operator ID'
+      dingtalkOperatorId: 'Operator ID',
+    },
+    confluence: {
+      cloudFolderLimitation: 'Confluence Cloud пока не может показать здесь страницы из папок верхнего уровня пространства; при выборе всего пространства они будут синхронизированы.',
     },
     connectorDesc: {
       feishu: 'Синхронизация документов, таблиц и файлов из Feishu Wiki',
@@ -872,69 +1121,49 @@ export default {
       feishu_drive: 'Синхронизация документов, таблиц и файлов из папки Feishu Drive',
       lark_drive: 'Синхронизация документов, таблиц и файлов из папки Lark Drive',
       notion: 'Синхронизация страниц и баз данных из Notion',
+      confluence: 'Синхронизация пространств и страниц Confluence в Markdown',
       yuque: 'Синхронизация документов из баз знаний Yuque',
+      dingtalk: 'Синхронизация онлайн-документов из баз знаний DingTalk',
       ima: 'Синхронизация документов, заметок и файлов из баз знаний Tencent IMA (ИИ-сессии и разбор видео не поддерживаются)',
       rss: 'Синхронизация статей из лент RSS / Atom',
       gitlab: 'Синхронизация файлов из проектов GitLab',
-      confluence: 'Sync pages from Confluence spaces',
-      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     connector: {
-      feishu: 'Feishu (Фэйшу)',
-      lark: 'Lark',
-      feishu_drive: 'Feishu Drive',
-      lark_drive: 'Lark Drive',
-      notion: 'Notion',
-      yuque: 'Yuque (Юйцюэ)',
-      ima: 'Tencent IMA',
-      rss: 'RSS / Atom лента',
-      gitlab: 'GitLab',
-      confluence: 'Confluence',
-      dingtalk: 'DingTalk (Knowledge Base)'
+      dingtalk: 'DingTalk (Knowledge Base)',
     },
     logDetail: {
       startTime: 'Время начала',
       endTime: 'Время окончания',
       failedItems: 'Документы с ошибкой',
       failedItemsMore: 'Ещё {n} документов с ошибкой не показаны',
-      docsFailedSummary: 'Не удалось синхронизировать документов: {n}'
+      docsFailedSummary: 'Не удалось синхронизировать документов: {n}',
     },
     logSummary: {
       total: 'Всего запусков',
-      success: 'Успешно',
-      failed: 'Ошибки',
-      items: 'Элементов синхронизации'
+      items: 'Элементов синхронизации',
     },
     logMetric: {
-      total: 'Всего',
       skipped: 'Пропущено',
-      failed: 'ошибок'
+      failed: 'ошибок',
     },
     logStatus: {
       running: 'Синхронизация',
-      success: 'Успешно',
       partial: 'Частично',
-      failed: 'Ошибка',
-      canceled: 'Отменено'
+      canceled: 'Отменено',
     },
     step: {
       selectType: 'Выберите тип',
       credentials: 'Учётные данные',
       resources: 'Ресурсы',
-      strategy: 'Стратегия'
+      strategy: 'Стратегия',
     },
     conflict: {
       overwrite: 'Перезаписать',
-      skip: 'Пропустить существующие'
-    },
-    status: {
-      active: 'Подключено',
-      paused: 'Приостановлено',
-      error: 'Ошибка'
+      skip: 'Пропустить существующие',
     },
     syncMode: {
       incremental: 'Инкрементная',
-      full: 'Полная'
+      full: 'Полная',
     },
     drive: {
       folderTokenLabel: 'Токен папки Drive',
@@ -950,6 +1179,8 @@ export default {
       loadNotFoundHint: 'folder_token не существует или удалён. Проверьте токен, скопированный из URL папки Feishu Drive.',
     },
     syncError: {
+      dingtalk_document_failed: 'Не удалось прочитать документ DingTalk. Проверьте права доступа и повторите синхронизацию.',
+      dingtalk_resource_failed: 'Ресурс DingTalk недоступен. Проверьте права доступа и выбранные ресурсы, затем повторите попытку.',
       deletion_lookup_failed: 'Не удалось найти элемент перед удалением; подробности в журнале сервера',
       deletion_failed: 'Не удалось удалить элемент; подробности в журнале сервера',
       ingest_failed: 'Не удалось импортировать элемент; подробности в журнале сервера',
@@ -968,18 +1199,16 @@ export default {
       confluence_rate_limited: 'Confluence API rate limited; will retry on the next sync',
       confluence_server_unavailable: 'Confluence service temporarily unavailable; will retry on the next sync',
       confluence_sync_failed: 'Confluence page could not be synced; see server logs',
-      dingtalk_document_failed: 'DingTalk document could not be read; retry on the next sync',
-      dingtalk_resource_failed: 'DingTalk resource is unavailable; check access and the saved selection, then retry',
       targeted_unsupported: 'This connector does not support retrying a single item; run a normal sync',
       not_found: 'The item no longer exists at the source',
-      fetch_failed: 'Refetch failed'
+      fetch_failed: 'Refetch failed',
     },
   },
   ollama: {
     unknown: 'Неизвестно',
     today: 'Сегодня',
     yesterday: 'Вчера',
-    daysAgo: '{days} дней назад'
+    daysAgo: '{days} дней назад',
   },
   mermaid: {
     diagram: 'Диаграмма',
@@ -989,18 +1218,15 @@ export default {
     reset: 'Сброс',
     download: 'Скачать изображение',
     close: 'Закрыть',
-    downloading: 'Загрузка...'
+    downloading: 'Загрузка...',
   },
   faqManager: {
     import: {
       recentResult: 'Последние результаты импорта',
       totalData: 'Данные импорта',
-      success: 'Успешно',
       added: 'Добавлено',
       merged: 'Объединено',
       partialFailed: 'Частично неудачно',
-      failed: 'Ошибка',
-      skipped: 'Пропущено',
       progressHint: 'Проверка и импорт данных FAQ...',
       downloadReasons: 'Скачать причины',
       appendMode: 'Режим добавления',
@@ -1010,14 +1236,12 @@ export default {
       importFailed: 'Ошибка импорта',
       waiting: 'Ожидание...',
       importInProgress: 'Импорт выполняется, дождитесь завершения',
-      noFailedRecords: 'Нет записей с ошибками для скачивания'
+      noFailedRecords: 'Нет записей с ошибками для скачивания',
     }
   },
   agentEditor: {
     builtinHint: 'Это встроенный агент. Имя и описание нельзя изменить, но можно настроить параметры конфигурации.',
     fileTypes: {
-      label: 'Поддерживаемые типы файлов',
-      desc: 'Ограничение выбираемых типов файлов. Пустое поле — все типы поддерживаются.',
       allTypes: 'Все типы',
       pdf: 'PDF-документы',
       word: 'Документы Word (.docx/.doc)',
@@ -1027,44 +1251,35 @@ export default {
       csv: 'Файлы CSV',
       excel: 'Таблицы Excel (.xlsx/.xls)',
       imageLabel: 'Изображения',
-      image: 'Изображения (.jpg/.jpeg/.png)'
+      image: 'Изображения (.jpg/.jpeg/.png)',
     },
     fallback: {
       fixed: 'Фиксированный ответ',
-      model: 'Генерация моделью'
+      model: 'Генерация моделью',
     },
     dataAnalysis: {
       enableLabel: 'Включить анализ табличных данных',
-      enableDesc: 'Если извлечённые фрагменты относятся к файлу CSV/Excel, перед ответом LLM сгенерирует SQL-запрос DuckDB. Это добавляет ещё один вызов LLM и несколько секунд задержки, поэтому включайте только при действительной необходимости SQL-анализа.'
+      enableDesc: 'Если извлечённые фрагменты относятся к файлу CSV/Excel, перед ответом LLM сгенерирует SQL-запрос DuckDB. Это добавляет ещё один вызов LLM и несколько секунд задержки, поэтому включайте только при действительной необходимости SQL-анализа.',
     },
     faq: {
-      title: 'Стратегия приоритета FAQ',
-      enableLabel: 'Включить приоритет FAQ',
-      enableDesc: 'Ответы FAQ будут приоритетнее обычных документов, повышая точность ответов',
       thresholdLabel: 'Порог прямого ответа',
       thresholdDesc: 'Если сходство вопроса с FAQ превышает это значение, ответ FAQ используется напрямую',
       boostLabel: 'Коэффициент FAQ',
-      boostDesc: 'Умножение оценки релевантности FAQ на этот коэффициент для повышения ранга'
+      boostDesc: 'Умножение оценки релевантности FAQ на этот коэффициент для повышения ранга',
     },
     chatParser: {
-      label: 'Политика разбора вложений чата',
-      desc: 'Выберите движок разбора по типу файла для вложений чата этого агента.',
       waitTimeoutLabel: 'Тайм-аут ожидания разбора вложений (с)',
-      waitTimeoutDesc: 'Сколько ход чата ждёт ещё разбираемые вложения, прежде чем продолжить только с готовыми. Увеличьте для больших/сканированных файлов. 0 использует глобальное значение по умолчанию.'
+      waitTimeoutDesc: 'Сколько ход чата ждёт ещё разбираемые вложения, прежде чем продолжить только с готовыми. Увеличьте для больших/сканированных файлов. 0 использует глобальное значение по умолчанию.',
     },
     audioUpload: {
-      label: 'Загрузка аудио',
-      desc: 'Позволяет пользователям загружать аудиофайлы в чате. Система автоматически транскрибирует их с помощью ASR-модели.',
       asrModel: 'ASR-модель',
       asrModelDesc: 'Модель распознавания речи. Если не настроена, аудиофайлы передаются как заглушки.',
-      asrModelPlaceholder: 'Выберите ASR-модель'
+      asrModelPlaceholder: 'Выберите ASR-модель',
     },
     imageUpload: {
       navLabel: 'Загрузка вложений',
       sectionTitle: 'Загрузка вложений',
       sectionDesc: 'Настройте загрузку и разбор изображений, документов и аудио в чате, а также связанные модели',
-      label: 'Загрузка изображений',
-      desc: 'Разрешить пользователям загружать изображения в чате для понимания через VLM',
       vlmModel: 'Модель VLM',
       vlmModelDesc: 'Визуально-языковая модель для анализа изображений',
       vlmModelPlaceholder: 'Выберите модель VLM',
@@ -1079,28 +1294,22 @@ export default {
       storageProviderPlaceholder: 'Выберите хранилище',
       storageDefault: 'Системное значение',
       notConfigured: 'Не настроено',
-      goStorageSettings: 'Перейти к настройкам хранилища'
+      goStorageSettings: 'Перейти к настройкам хранилища',
     },
     llmCallTimeout: {
-      label: 'Таймаут вызова LLM',
-      desc: 'Максимальное время ожидания одного вызова LLM (в секундах). По истечении этого времени вызов прерывается',
       hint: 'Оставьте пустым или 0, чтобы использовать значение по умолчанию (120 секунд)',
-      placeholder: 'Введите количество секунд, рекомендуемый диапазон 60-1800'
+      placeholder: 'Введите количество секунд, рекомендуемый диапазон 60-1800',
     },
     mcp: {
-      label: 'MCP-сервисы',
-      desc: 'Выберите MCP-сервисы, доступные агенту',
       selectLabel: 'Выбор MCP-сервисов',
       selectDesc: 'Выберите MCP-сервисы для включения',
       selectPlaceholder: 'Выберите MCP-сервисы',
       authWaitTimeout: 'Тайм-аут ожидания аутентификации (с)',
       authWaitTimeoutDesc: 'Максимальное время ожидания (в секундах) завершения OAuth-аутентификации при запросе во время диалога; по его истечении запрос пропускается (влияет только на MCP-сервисы с OAuth).',
       authWaitTimeoutPlaceholder: 'Default 600 seconds',
-      unavailableService: 'Недоступный сервис'
+      unavailableService: 'Недоступный сервис',
     },
     agentType: {
-      label: 'Тип агента',
-      desc: 'Выбор пресета автоматически заполняет системный промпт, список инструментов и рекомендуемую область баз знаний.',
       defaultNamePattern: 'Мой {label}',
       kbIncompatibleWarn: 'Выбранные базы знаний ({count}) несовместимы с текущим типом. Настройте вручную.',
       kbMismatch: {
@@ -1109,17 +1318,12 @@ export default {
         hybridRagWiki: 'Поиск не включён',
         dataAnalysis: 'Требуется RAG (не FAQ)',
         quickAnswer: 'Быстрый ответ требует RAG-поиск',
-        generic: 'Несовместимо с типом'
+        generic: 'Несовместимо с типом',
       }
     },
     im: {
-      title: 'Интеграция IM',
-      description: 'Подключите агента к платформам мгновенных сообщений, таким как Feishu, Slack, Telegram, DingTalk, Mattermost, QQBot и Yunzhijia',
-      feishu: 'Feishu',
-      lark: 'Lark',
       slack: 'Slack',
       telegram: 'Telegram',
-      dingtalk: 'DingTalk',
       mattermost: 'Mattermost',
       wecom: 'WeCom',
       wechat: 'WeChat',
@@ -1127,9 +1331,7 @@ export default {
       yunzhijia: 'Yunzhijia',
       addChannel: 'Добавить канал',
       channelsTitle: 'IM-каналы',
-      disabled: 'Отключено',
       editChannel: 'Редактировать канал',
-      deleteConfirm: 'Вы уверены, что хотите удалить этот канал? Это действие не может быть отменено.',
       channelName: 'Имя канала',
       channelNamePlaceholder: 'Введите имя для легкой идентификации',
       channelNameDefaultHint: 'По умолчанию используется название платформы; можно изменить. Если оставить пустым, при сохранении подставится название платформы',
@@ -1139,7 +1341,6 @@ export default {
       outputStream: 'Стриминг',
       outputFull: 'Полное выходное значение',
       callbackUrl: 'URL обратного вызова',
-      empty: 'Нет IM-каналов',
       unnamed: 'Неименованный канал',
       docLink: 'Руководство по интеграции',
       wecomConsole: 'Консоль WeCom',
@@ -1188,6 +1389,9 @@ export default {
       sessionModeUser: 'По пользователю (по умолчанию)',
       sessionModeThread: 'По потоку',
       sessionModeHint: 'Режим пользователя: отдельный диалог для каждого пользователя. /clear для нового диалога. Режим потока: отдельный диалог для каждого потока. Несколько человек могут общаться в одном потоке.',
+      replyLanguage: 'Язык ответов',
+      replyLanguageDefault: 'Использовать системный язык',
+      replyLanguageHint: 'Фиксирует язык ответов агента для этого канала. Если не задан, используется язык развёртывания по умолчанию.',
       wechatScanBind: 'Сканировать QR-код для привязки WeChat',
       wechatScanning: 'Отсканируйте QR-код в WeChat',
       wechatBindSuccess: 'WeChat успешно привязан',
@@ -1209,17 +1413,22 @@ export default {
       sectionSession: 'Сессии',
       sectionCallback: 'URL обратного вызова',
       sectionKnowledge: 'Хранение файлов',
-      sectionStatus: 'Статус'
+      sectionStatus: 'Статус',
     },
     embed: {
-      title: 'Встраивание на веб-страницу',
-      description: 'Встройте агента на свою веб-страницу: посетители смогут общаться через встроенное окно чата или плавающую кнопку. Область баз знаний следует настройкам этого агента.'
+      description: 'Встройте агента на свою веб-страницу: посетители смогут общаться через встроенное окно чата или плавающую кнопку. Область баз знаний следует настройкам этого агента.',
     },
     tools: {
       thinking: 'Размышление',
       thinkingDesc: 'Динамический инструмент рефлексивного решения проблем',
       todoWrite: 'Планирование',
       todoWriteDesc: 'Создание структурированных исследовательских планов',
+      searchKnowledge: 'Поиск по базе знаний',
+      searchKnowledgeDesc: 'Семантический, ключевой или гибридный поиск по фрагментам базы знаний',
+      readDocument: 'Чтение документа',
+      readDocumentDesc: 'Чтение метаданных и фрагментов документа с постраничной навигацией и поиском внутри документа',
+      listDocuments: 'Список документов',
+      listDocumentsDesc: 'Постраничный просмотр документов базы знаний',
       grepChunks: 'Поиск по ключевым словам',
       grepChunksDesc: 'Быстрый поиск документов и фрагментов с определёнными ключевыми словами',
       knowledgeSearch: 'Семантический поиск',
@@ -1275,21 +1484,19 @@ export default {
       statusInactive: '{count} отмеченных инструментов не смогут работать при текущей конфигурации',
       effectiveLabel: 'Итоговые активные инструменты',
       effectiveDesc: 'Рассчитано на основе текущей конфигурации — это набор инструментов, которые агент сможет вызывать после сохранения',
-      effectiveEmpty: 'Нет доступных инструментов — агент перейдёт к простому чату с моделью'
+      effectiveEmpty: 'Нет доступных инструментов — агент перейдёт к простому чату с моделью',
     },
     desc: {
       name: 'Задайте легко узнаваемое имя для агента',
-      description: 'Кратко опишите назначение и особенности агента',
       systemPrompt: 'Пользовательский системный промпт для определения поведения и роли агента',
+      promptInheritance: "Неизменённый текст следует обновлениям шаблона; изменённый сохраняется как собственный промпт. В режиме агента здесь задаются роль и порядок работы; права инструментов и выбор источников для запроса управляются отдельно.",
       leaveEmptyDefault: '(оставьте пустым для системного значения по умолчанию)',
       contextTemplate: 'Определите формат передачи найденного контента модели',
-      model: 'Выберите LLM, используемую агентом',
       temperature: 'Контроль случайности выхода: 0 — наиболее детерминированный, 1 — наиболее случайный',
       maxTokens: 'Максимум токенов в ответе. «По умолчанию» — 2048. «Своё» сохраняет введённое число.',
       maxTokensAgent: 'Максимум токенов за один раунд рассуждения, включая JSON вызовов инструментов. «По умолчанию»: 4096 без песочницы, 24576 с записью/правкой файлов. «Своё» сохраняет введённое число и больше не меняется.',
-      thinking: 'Включить расширенное мышление модели (требуется поддержка модели)',
       conversationSection: 'Настройка параметров многооборотного диалога и перефразирования вопросов',
-      conversationSectionAgent: 'Объём предыдущего диалога в каждом ходе. Умные рассуждения всегда многооборотные',
+      conversationSectionAgent: 'Умные рассуждения всегда многооборотные. Предыдущий диалог хранится в пределах контекстного окна модели, а при его заполнении ранние ходы автоматически сжимаются в сводку',
       multiTurn: 'При включении сохраняется контекст истории диалога',
       historyRounds: 'Количество последних раундов диалога для сохранения в контексте',
       retainRetrievalHistory: 'Сохранять результаты поиска из прошлых ходов. При отключении каждый ход ищет заново',
@@ -1301,7 +1508,6 @@ export default {
       selectTools: 'Выберите инструменты, доступные агенту',
       maxIterations: 'Ограничивает число шагов рассуждения за одну задачу. «Без ограничения» — цикл идёт, пока модель не остановится сама или вы не остановите её.',
       kbScope: 'Выберите область баз знаний, доступных агенту',
-      webSearch: 'При включении агент может искать информацию в интернете',
       webSearchProvider: 'Укажите поисковый движок для этого агента. Если оставить пустым, будет использоваться движок по умолчанию',
       webSearchMaxResults: 'Максимальное количество результатов на один поиск',
       webFetchEnabled: 'Автоматически загружать полное содержимое лучших страниц после Rerank для повышения качества ответов',
@@ -1315,12 +1521,12 @@ export default {
       rerankThreshold: 'Минимальная оценка релевантности для переранжирования',
       fallbackStrategy: 'Действие при отсутствии релевантного контента в базе знаний',
       fallbackResponse: 'Фиксированный текст при невозможности ответить',
-      fallbackPrompt: 'Промпт для генерации ответа модели, когда ответ не найден в базе знаний'
+      fallbackPrompt: 'Промпт для генерации ответа модели, когда ответ не найден в базе знаний',
     },
     selection: {
       all: 'Все',
       selected: 'Выбранные',
-      disabled: 'Отключено'
+      disabled: 'Отключено',
     },
     promptNav: {
       ariaLabel: 'Оглавление промптов',
@@ -1329,25 +1535,20 @@ export default {
       intent: 'Промпты намерений',
       rewriteSystem: 'Перефраз · Система',
       rewriteUser: 'Перефраз · Пользователь',
-      fallback: 'Запасной ответ'
+      fallback: 'Запасной ответ',
     },
     intentPrompts: {
-      title: 'Промпты намерений',
-      sectionDesc: 'Настройте системные промпты для разных намерений запроса; по умолчанию используются шаблоны системы',
       intentLabel: 'Намерение',
       promptPlaceholder: 'Введите пользовательский системный промпт...',
       customized: 'Настроено',
-      empty: 'Нет доступных шаблонов намерений'
+      empty: 'Нет доступных шаблонов намерений',
     },
     placeholders: {
       available: 'Доступные переменные: ',
       clickToInsert: '(нажмите для вставки)',
-      hint: '(нажмите для вставки или введите {\'{{\'} для списка)'
+      hint: '(нажмите для вставки или введите {\'{{\'} для списка)',
     },
     questionSuggestions: {
-      navLabel: 'Рекомендуемые вопросы',
-      title: 'Рекомендации вопросов в диалоге',
-      description: 'Единая политика агента для стартовых и контекстных вопросов после ответа.',
       startersTitle: 'Стартовые вопросы',
       followUpsTitle: 'Вопросы после ответа',
       enableStarters: 'Показывать стартовые вопросы',
@@ -1359,7 +1560,6 @@ export default {
       curatedItems: 'Редакторские вопросы',
       curatedItemsDesc: 'Имеют приоритет в гибридном режиме.',
       addItem: 'Добавить вопрос',
-      model: 'Модель генерации',
       modelDesc: 'Если не выбрана, используется модель текущего ответа.',
       advancedSettings: 'Расширенные настройки генерации',
       displayRules: 'Правила показа и резерва',
@@ -1377,51 +1577,22 @@ export default {
       modeHybrid: 'Гибрид',
       categoryClarify: 'Уточнение',
       categoryDeepen: 'Углубление',
-      categoryAction: 'Следующий шаг'
+      categoryAction: 'Следующий шаг',
     },
     navGroups: {
       basic: 'Основное',
       knowledge: 'Знания и поиск',
       capability: 'Расширения',
-      integration: 'Публикация и интеграция'
+      integration: 'Публикация и интеграция',
     }
   },
   agentStream: {
     saveToKb: {
       emptyContent: 'Текущий ответ пуст, сохранение в базу знаний невозможно',
-      editorOpened: 'Редактор открыт, выберите базу знаний и сохраните'
+      editorOpened: 'Редактор открыт, выберите базу знаний и сохраните',
     },
     copy: {
-      emptyContent: 'Текущий ответ пуст, копирование невозможно',
-      success: 'Скопировано в буфер обмена',
-      failed: 'Ошибка копирования, скопируйте вручную'
-    },
-    mcp: {
-      discoverTools: "Поиск инструментов MCP",
-      listServers: "Сервисы MCP",
-      listTools: "Инструменты MCP",
-      searchTools: "Поиск инструментов MCP",
-      describeTool: "Чтение определения инструмента",
-      callTool: "Вызов инструмента MCP",
-      showing: "Показано {count} из {total}",
-      moreAvailable: "Есть другие результаты",
-      empty: "Нечего показать",
-      parameters: "Параметры",
-      expand: "Показать описание",
-      collapse: "Свернуть",
-      required: "Обязательно",
-      fullSchema: "Полное описание параметров",
-      failed: "Ошибка операции MCP",
-      result: "Результат",
-      status: {
-        not_loaded: "Не загружено",
-        loading: "Загрузка",
-        ready: "Доступно",
-        needs_auth: "Требуется авторизация",
-        error: "Ошибка подключения",
-        disabled: "Отключено",
-        unavailable: "Недоступно",
-      },
+      failed: 'Ошибка копирования, скопируйте вручную',
     },
     toolStatus: {
       calling: 'Вызов {name}...',
@@ -1429,11 +1600,9 @@ export default {
       searchKbFailed: 'Ошибка поиска по базе знаний',
       searchMixed: 'Поиск в базе знаний и сети',
       searchMixedFailed: 'Ошибка поиска',
-      webSearch: 'Веб-поиск',
       webSearchFailed: 'Ошибка веб-поиска',
       grepSearch: 'Поиск по ключевым словам',
       grepSearchFailed: 'Ошибка поиска по ключевым словам',
-      getDocInfo: 'Получение информации о документе',
       getDocInfoFailed: 'Ошибка получения информации о документе',
       viewDocument: 'View document',
       thinkingDone: 'Размышление завершено',
@@ -1450,7 +1619,7 @@ export default {
       queryUnderstandDone: 'Запрос понят',
       called: 'Вызван {name}',
       calledFailed: 'Ошибка вызова {name}',
-      shellExecRunning: 'Выполнение команды в песочнице...'
+      shellExecRunning: 'Выполнение команды в песочнице...',
     },
     ragPipeline: {
       searching: 'Поиск в базе знаний...',
@@ -1459,22 +1628,25 @@ export default {
       searchingWebWithQuery: 'Поиск в сети: «{query}»',
       searchingMixed: 'Поиск в базе знаний и сети...',
       searchingMixedWithQuery: 'Поиск в базе знаний и сети: «{query}»',
-      searchDone: 'Поиск завершён'
+      searchDone: 'Поиск завершён',
     },
     attachmentParsing: {
       parsedSummary: 'Разобрано вложений: {count}',
       parsedWithSkipped: 'Разобрано вложений: {parsed}, пропущено (ещё обрабатываются): {skipped}',
-      noneReady: 'Нет готовых разобранных вложений'
+      noneReady: 'Нет готовых разобранных вложений',
     },
     knowledgeChunksList: {
       chunkRange: 'Загружено {fetched} / {total} фрагментов',
-      page: 'Стр. {page}, по {pageSize} на странице'
+      page: 'Стр. {page}, по {pageSize} на странице',
+      offsetRange: 'Фрагменты {from}–{to}',
+      queryMatches: 'Поиск «{query}» в документе: совпадений {count}',
+      queryNoMatch: 'Поиск «{query}» в документе: совпадений нет',
     },
     grepResults: {
       chunkHits: '{count} фрагм.',
       keywordHits: '{count} вх.',
       titleMatch: 'заголовок',
-      faqEntry: 'FAQ entry'
+      faqEntry: 'FAQ entry',
     },
     search: {
       noResults: 'Совпадения не найдены',
@@ -1483,67 +1655,33 @@ export default {
       foundResults: 'Найдено {count} результат(ов)',
       foundMixedResults: 'Найдено {count} результат(ов) ({docCount} док., {webCount} веб)',
       webResults: 'Найдено {count} веб-результат(ов)',
-      grepSummary: 'Найдено фрагментов: {chunks}, в документах: {docs}'
+      grepSummary: 'Найдено фрагментов: {chunks}, в документах: {docs}',
     },
     plan: {
       inProgress: 'В процессе',
-      pending: 'Ожидание',
-      completed: 'Завершено'
+      completed: 'Завершено',
     },
     toolSummary: {
       getDocument: 'Получить документ: {title}',
       document: 'Документ',
-      listChunks: 'Просмотр {title}',
       listFaqEntry: 'View FAQ: {question}',
-      deepThinking: 'Глубокое размышление'
+      deepThinking: 'Глубокое размышление',
     },
     citation: {
-      notFound: 'Содержимое не найдено',
-      loadFailed: 'Ошибка загрузки',
-      noKbForWiki: 'Не удалось определить связанную базу знаний, Wiki не может быть открыта'
-    },
-    tools: {
-      searchKnowledge: 'Поиск по базе знаний',
-      grepChunks: 'Поиск по текстовому шаблону',
-      webSearch: 'Веб-поиск',
-      webFetch: 'Загрузка веб-страницы',
-      getDocumentInfo: 'Получение информации о документе',
-      listKnowledgeChunks: 'Список фрагментов знаний',
-      getRelatedDocuments: 'Поиск связанных документов',
-      getDocumentContent: 'Получение содержимого документа',
-      wikiReadSourceDoc: 'Читать исходный документ',
-      todoWrite: 'Управление планами',
-      knowledgeGraphExtract: 'Извлечение графа знаний',
-      thinking: 'Размышление',
-      attachmentParsing: 'Разбор вложения',
-      imageAnalysis: 'Анализ изображения',
-      queryUnderstand: 'Понимание запроса',
-      queryKnowledgeGraph: 'Запрос графа знаний',
-      readSkill: 'Чтение навыка',
-      executeSkillScript: 'Выполнение скрипта навыка',
-      listSandboxFiles: 'Список файлов песочницы',
-      readFile: 'Чтение файла',
-      readSandboxFile: 'Чтение файла песочницы',
-      writeSandboxFile: 'Запись файла песочницы',
-      editSandboxFile: 'Правка файла песочницы',
-      shellExec: 'Выполнение команды в песочнице',
-      dataAnalysis: 'Анализ данных',
-      dataSchema: 'Структура данных',
-      databaseQuery: 'Запрос к базе данных'
+      noKbForWiki: 'Не удалось определить связанную базу знаний, Wiki не может быть открыта',
     },
     skillFiles: {
       heading: 'Файлы навыка',
       script: 'скрипт',
-      instructions: 'Инструкции навыка'
+      instructions: 'Инструкции навыка',
     },
     sandboxFiles: {
       found: 'Найдено файлов: {count}',
-      empty: 'Нет файлов',
       truncated: 'Список обрезан',
       wrote: 'Записано',
       edited: 'Изменено',
       replacements: 'Замен: {count}',
-      moreLines: 'ещё {count} строк'
+      moreLines: 'ещё {count} строк',
     },
     shellExec: {
       workDir: 'Каталог',
@@ -1551,19 +1689,15 @@ export default {
       stdout: 'Stdout',
       stderr: 'Stderr',
       emptyOutput: 'Нет вывода',
-      truncated: 'Вывод обрезан',
       killed: 'Прервано по таймауту',
-      binarySuppressed: 'Двоичный вывод опущен. Сохраните файлы в каталог артефактов и скачайте их.'
+      binarySuppressed: 'Двоичный вывод опущен. Сохраните файлы в каталог артефактов и скачайте их.',
     },
     mcpOAuth: {
-      waiting: 'Ожидание авторизации · {target}',
       waitingStatus: 'Ожидание авторизации',
       targetWithTool: '{service} › {tool}',
       titleWithService: 'OAuth · {service}',
       titleWithTool: 'OAuth · {service} › {tool}',
-      desc: 'Авторизация откроет новое окно для входа. После успешной авторизации вызов инструмента продолжится автоматически.',
       authorize: 'Авторизовать',
-      skip: 'Пропустить',
       countdownShort: '{seconds} с',
       authorizedTag: 'Авторизовано',
       timedOutTag: 'Время авторизации истекло',
@@ -1571,31 +1705,22 @@ export default {
       authorizedToast: 'Авторизация успешна, продолжаем',
       startFailed: 'Не удалось начать авторизацию',
       resumeFailed: 'Не удалось возобновить выполнение, повторите попытку',
-      skipFailed: 'Не удалось пропустить, повторите попытку'
+      skipFailed: 'Не удалось пропустить, повторите попытку',
     },
     toolApproval: {
-      waiting: 'Ожидание проверки · {target}',
-      waitingStatus: 'Ожидание проверки',
-      targetWithTool: '{service} › {tool}',
       titleWithTarget: 'Проверка · {service} › {tool}',
-      argsLabel: 'Аргументы',
       argsModified: 'Изменено',
-      countdownShort: '{seconds} с',
-      approve: 'Подтвердить и выполнить',
       reject: 'Отклонить',
       approvedTag: 'Подтверждено',
       rejectedTag: 'Отклонено',
       invalidJson: 'Некорректный JSON',
       submitted: 'Отправлено',
       submitFailed: 'Ошибка отправки',
-      userRejected: 'Отклонено пользователем'
+      userRejected: 'Отклонено пользователем',
     }
   },
   kbSettings: {
     parser: {
-      title: 'Парсер',
-      description: 'Выберите парсеры для разных типов файлов. Для ненастроенных типов будет использован встроенный парсер.',
-      loading: 'Загрузка...',
       noEngineAvailable: 'Нет доступных парсеров или сервис парсинга не настроен.',
       default: 'По умолчанию',
       goConfig: 'Перейти к настройке →',
@@ -1615,48 +1740,38 @@ export default {
       engines: {
         opendataloader: {
           name: 'OpenDataLoader',
-          desc: 'Парсер OpenDataLoader PDF (анализ вёрстки; требуются Java 11+ и opendataloader-pdf)'
+          desc: 'Парсер OpenDataLoader PDF (анализ вёрстки; требуются Java 11+ и opendataloader-pdf)',
         },
         markitdown: {
-          name: 'MarkItDown',
-          desc: 'Конвертер Microsoft MarkItDown (PDF/Office/HTML и др.)'
+          desc: 'Конвертер Microsoft MarkItDown (PDF/Office/HTML и др.)',
         },
         weknoracloud: {
-          name: 'WeKnora Cloud',
-          desc: 'Парсинг документов через WeKnora Cloud'
+          desc: 'Парсинг документов через WeKnora Cloud',
         },
         paddleocr_vl_cloud: {
-          name: 'PaddleOCR-VL Cloud',
-          desc: 'PaddleOCR-VL Cloud API'
+          desc: 'PaddleOCR-VL Cloud API',
         },
         paddleocr_vl: {
-          name: 'PaddleOCR-VL',
-          desc: 'Самостоятельно развёрнутый сервис PaddleOCR-VL'
+          desc: 'Самостоятельно развёрнутый сервис PaddleOCR-VL',
         },
         mineru_cloud: {
-          name: 'MinerU Cloud',
-          desc: 'MinerU Cloud API'
+          desc: 'MinerU Cloud API',
         },
         mineru: {
-          name: 'MinerU',
-          desc: 'Самостоятельно развёрнутый сервис MinerU'
+          desc: 'Самостоятельно развёрнутый сервис MinerU',
         },
         simple: {
-          name: 'Simple',
-          desc: 'Простой формат и анализ изображений (внешний сервис не требуется)'
+          desc: 'Простой формат и анализ изображений (внешний сервис не требуется)',
         },
         anydoc: {
-          name: 'anydoc',
-          desc: 'Разбор офисных документов внутри процесса (внешний сервис не требуется)'
+          desc: 'Разбор офисных документов внутри процесса (внешний сервис не требуется)',
         },
         builtin: {
-          name: 'Встроенный',
-          desc: 'Встроенный парсер DocReader (docx/pdf/xlsx и другие сложные форматы)'
+          desc: 'Встроенный парсер DocReader (docx/pdf/xlsx и другие сложные форматы)',
         }
       }
     },
     storage: {
-      title: 'Хранилище',
       selectDescription: 'Выберите конкретный экземпляр хранилища для привязки этой базы знаний.',
       defaultTag: 'По умолчанию',
       instanceLabel: 'Экземпляр хранилища',
@@ -1664,12 +1779,9 @@ export default {
       migrateHint: 'В этой базе знаний уже есть файлы; сменить экземпляр можно только через процедуру миграции хранилища.',
       manageInstances: 'Управление экземплярами хранилища',
       localStorage: 'Локальное хранилище',
-      loading: 'Загрузка...'
+      loading: 'Загрузка...',
     },
     vectorStore: {
-      title: 'Vector Store',
-      description: 'Choose which vector store this knowledge base writes to. The binding is permanent — to move an existing KB to a different store, create a new KB and re-index.',
-      loading: 'Loading vector stores...',
       engineLabel: 'Vector store',
       engineDesc: 'Pick a store from the global Vector Stores configuration, or leave as System default to use the workspace-wide RETRIEVE_DRIVER engine.',
       boundLabel: 'Bound vector store',
@@ -1677,17 +1789,20 @@ export default {
       immutableHint: 'Cannot be changed after creation. To migrate later, create a new KB bound to the desired store and re-index.',
       immutableEdit: 'Vector store binding cannot be changed after creation.',
       unavailableHint: 'The bound vector store is currently unavailable; check its connection configuration in Settings → Vector Stores.',
-      goGlobalSettings: 'Go to Vector Store Settings'
+      goGlobalSettings: 'Go to Vector Store Settings',
     }
   },
   vectorStoreBadge: {
     systemDefault: 'System default',
     sharedFromOrg: 'Shared from another organization',
     unknownStore: 'Unknown store',
-    unavailable: 'Unavailable'
+    unavailable: 'Unavailable',
   },
-  tools: {
+  toolLabels: {
     multiKbSearch: 'Кросс-КБ поиск',
+    searchKnowledge: 'Поиск по базе знаний',
+    readDocument: 'Чтение документа',
+    listDocuments: 'Список документов',
     knowledgeSearch: 'Поиск по базе знаний',
     grepChunks: 'Поиск по текстовому шаблону',
     getChunkDetail: 'Получить детали фрагмента',
@@ -1696,7 +1811,7 @@ export default {
     getDocumentInfo: 'Получить информацию о документе',
     queryKnowledgeGraph: 'Запрос к графу знаний',
     think: 'Глубокое размышление',
-    todoWrite: 'Составить план'
+    todoWrite: 'Составить план',
   },
   commandPalette: {
     placeholder: 'Поиск по базам знаний, файлам, диалогам…',
@@ -1708,12 +1823,11 @@ export default {
       enter: 'Открыть',
       cmdNumber: 'Быстрый переход',
       cmdEnter: 'Начать диалог',
-      esc: 'Закрыть'
+      esc: 'Закрыть',
     },
     empty: {
-      noResults: 'Совпадений не найдено',
       askAi: 'Спросить ИИ',
-      adjustRetrieval: 'Настроить поиск'
+      adjustRetrieval: 'Настроить поиск',
     },
     quick: {
       newChat: 'Новый диалог',
@@ -1721,32 +1835,27 @@ export default {
       agents: 'Открыть агенты',
       organizations: 'Открыть общие пространства',
       settings: 'Открыть настройки',
-      productTour: 'Обучение'
+      productTour: 'Обучение',
     },
     match: {
       vector: 'Вектор',
-      keyword: 'Ключ.'
+      keyword: 'Ключ.',
     },
     group: {
       chunks: 'Файлы базы знаний',
       messages: 'Сообщения',
       kbs: 'Базы знаний',
-      agents: 'Агенты',
       sessionsByTitle: 'Диалоги (по названию)',
       commands: 'Команды',
       recent: 'Недавние',
-      quickActions: 'Быстрые действия'
+      quickActions: 'Быстрые действия',
     },
     scope: {
-      placeholder: 'Поиск в этой базе знаний…',
-      remove: 'Убрать область (Backspace)'
+      remove: 'Убрать область (Backspace)',
     }
   },
   preview: {
     tab: 'Предпросмотр',
-    loading: 'Загрузка предпросмотра документа...',
-    loadFailed: 'Не удалось загрузить предпросмотр документа',
-    retry: 'Повторить',
     unsupported: 'Этот тип файла не поддерживает онлайн-просмотр',
     unsupportedHint: 'Скачайте файл и откройте локально',
     fullscreen: 'Полноэкранный режим',
@@ -1755,20 +1864,15 @@ export default {
     htmlSource: 'Исходный код',
     audioLoading: 'Загрузка аудио…',
     audioNotSupported: 'Ваш браузер не поддерживает воспроизведение аудио',
-    videoNotSupported: 'Ваш браузер не поддерживает воспроизведение видео'
+    videoNotSupported: 'Ваш браузер не поддерживает воспроизведение видео',
   },
   organization: {
-    title: 'Shared Spaces',
     subtitle: 'Create or join shared spaces so multiple workspaces can collaborate and share knowledge bases and agents',
     createOrg: 'Создать общее пространство',
     joinOrg: 'Присоединиться к общему пространству',
-    name: 'Название общего пространства',
-    namePlaceholder: 'Введите название общего пространства',
-    nameRequired: 'Введите название общего пространства',
     avatar: 'Аватар общего пространства',
     avatarClear: 'Clear',
     avatarPickerHint: 'Выберите эмодзи в качестве аватара общего пространства',
-    description: 'Описание общего пространства',
     descriptionPlaceholder: 'Введите описание общего пространства (необязательно)',
     noDescription: 'No description',
     memberCount: 'Member count',
@@ -1779,17 +1883,13 @@ export default {
     refreshInviteCode: 'Refresh Invite Code',
     inviteCodeRefreshed: 'Invite code refreshed',
     inviteCodeRefreshFailed: 'Failed to refresh invite code',
-    leave: 'Покинуть общее пространство',
     leaveConfirmTitle: 'Покинуть общее пространство',
     leaveConfirmMessage: 'Вы уверены, что хотите покинуть общее пространство «{name}»? После выхода вы потеряете доступ к базам знаний, которыми поделились в этом общем пространстве.',
     leaveSuccess: 'Вы покинули общее пространство',
     leaveFailed: 'Не удалось покинуть общее пространство',
     deleteConfirmTitle: 'Удалить общее пространство',
     deleteConfirmMessage: 'Вы уверены, что хотите удалить общее пространство «{name}»? Все участники будут удалены. Это действие необратимо.',
-    deleteSuccess: 'Общее пространство удалено',
-    deleteFailed: 'Не удалось удалить общее пространство',
     createSuccess: 'Общее пространство успешно создано',
-    createFailed: 'Не удалось создать общее пространство',
     joinSuccess: 'Вы успешно присоединились к общему пространству',
     joinFailed: 'Не удалось присоединиться к общему пространству',
     manageMembers: 'Manage Members',
@@ -1798,7 +1898,6 @@ export default {
     roleUpdateFailed: 'Failed to update role',
     memberRemoved: 'Member removed',
     memberRemoveFailed: 'Failed to remove member',
-    empty: 'Вы ещё не присоединились ни к одному общему пространству',
     emptyDesc: 'Создайте общее пространство или присоединитесь к существующему по коду приглашения',
     createdByMe: 'Created by me',
     joinedByMe: 'Joined',
@@ -1807,7 +1906,6 @@ export default {
     emptyJoined: 'Вы ещё не присоединились ни к одному общему пространству',
     emptyJoinedDesc: 'Присоединитесь к существующему общему пространству по коду приглашения',
     share: {
-      title: 'Поделиться в общем пространстве',
       selectOrg: 'Выберите общее пространство',
       selectOrgPlaceholder: 'Выберите общее пространство для предоставления доступа',
       permission: 'Permission',
@@ -1819,7 +1917,6 @@ export default {
       sharedTo: 'Shared to',
       noShares: 'Пока не предоставлен доступ ни в одном общем пространстве',
       searchPlaceholder: 'Поиск общих пространств…',
-      loading: 'Loading…',
       emptySearch: 'Не найдено общих пространств по запросу «{q}»',
       addShareDialogTitle: 'Поделиться в общем пространстве',
       unshareAction: 'Remove share',
@@ -1828,37 +1925,25 @@ export default {
       sharedFrom: 'From',
       permissionReadonly: 'Read-only',
       permissionEditable: 'Editable',
-      columns: {
-        space: 'Общее пространство',
-        permission: 'Permission',
-        sharedAt: 'Shared',
-        operations: 'Actions'
-      }
     },
     addMember: {
-      button: 'Add Member',
-      dialogTitle: 'Add Member',
       tipTenant: 'Членство задаётся на уровне пространства: после присоединения пространства все его пользователи получают доступ к этому пространству. Результаты ниже сгруппированы по пространству.',
-      searchTenant: 'Выбрать пространство',
-      searchTenantPlaceholder: 'Поиск по имени пространства...',
-      searchTenantHint: 'Введите не менее 2 символов; результаты сгруппированы по пространству и не включают уже добавленных.',
+      searchTenant: 'ID рабочего пространства',
+      searchTenantPlaceholder: 'Введите полный ID рабочего пространства',
+      searchTenantHint: 'Укажите точный ID рабочего пространства или поделитесь ссылкой-приглашением.',
       selectRole: 'Assign Role',
       confirmBtn: 'Add',
-      success: 'Member added successfully',
-      failed: 'Failed to add member'
+      failed: 'Failed to add member',
     },
     upgrade: {
       requestUpgrade: 'Request upgrade',
-      pending: 'Pending review',
-      dialogTitle: 'Request upgrade',
       dialogDesc: 'Your role updates after a space admin approves.',
       currentRole: 'Current Role',
-      selectRole: 'Request Role',
       reason: 'Reason (Optional)',
       reasonPlaceholder: 'Please briefly explain why you need higher permissions...',
       submitBtn: 'Submit Request',
       submitSuccess: 'Upgrade request submitted, waiting for admin approval',
-      submitFailed: 'Failed to submit request'
+      submitFailed: 'Failed to submit request',
     },
     editor: {
       navBasic: 'Basic Info',
@@ -1894,15 +1979,9 @@ export default {
       howToGetCode: 'How to get an invite code?',
       step1: 'Свяжитесь с администратором общего пространства, к которому хотите присоединиться',
       step2: 'Попросите их поделиться кодом приглашения общего пространства',
-      step3: 'Paste the invite code in the input field above'
-    },
-    navGroups: {
-      basic: 'Basic',
-      management: 'Members & Collaboration',
-      resources: 'Shared Resources'
+      step3: 'Paste the invite code in the input field above',
     },
     settings: {
-      editTitle: 'Настройки общего пространства',
       membersDesc: 'Просмотр и управление участниками пространства и их ролями. Каждый участник представляет одно рабочее пространство: все его пользователи получают одинаковый доступ к общему пространству.',
       permissionsIconHint: 'Просмотр прав по ролям',
       sharedDesc: 'Просмотр всех баз знаний, которыми поделились в этом общем пространстве',
@@ -1949,73 +2028,34 @@ export default {
       pendingJoinRequestsBadge: 'Pending join requests to review',
       pendingReview: 'Pending',
       assignRole: 'Assign role',
-      approve: 'Approve',
-      reject: 'Reject',
       approveSuccess: 'Request approved',
       rejectSuccess: 'Request rejected',
-      reviewFailed: 'Operation failed, please try again'
+      reviewFailed: 'Operation failed, please try again',
     },
     detail: {
       removeMemberConfirm: 'Are you sure you want to remove "{name}"?',
-      removeMember: 'Remove Member'
-    },
-    role: {
-      admin: 'Admin',
-      editor: 'Editor',
-      viewer: 'Viewer'
+      removeMember: 'Remove Member',
     },
     sharedResources: {
       kbListTitle: 'Shared knowledge bases',
       agentListTitle: 'Shared agents',
-      loading: 'Loading…',
-      columns: {
-        name: 'Name',
-        sharedBy: 'Shared by',
-        sharedAt: 'Shared at',
-        permission: 'Permission'
-      }
     },
     joinRequests: {
-      listTitle: 'Pending requests',
-      searchPlaceholder: 'Search applicants…',
-      loading: 'Loading requests…',
-      emptySearch: 'No requests matching "{q}"',
       typeJoin: 'Join',
       typeUpgrade: 'Upgrade',
       rejectConfirm: 'Reject this request?',
       approveTitle: 'Approve request',
       approveDesc: 'Assign a role for "{name}" after approval',
-      columns: {
-        applicant: 'Applicant',
-        type: 'Type',
-        requestedRole: 'Requested role',
-        message: 'Note',
-        appliedAt: 'Applied'
-      }
     },
     members: {
-      listTitle: 'Участники общего пространства',
-      searchPlaceholder: 'Search members…',
-      loading: 'Loading members…',
-      emptySearch: 'No members matching "{q}"',
-      columns: {
-        member: 'Member',
-        role: 'Role',
-        joinedAt: 'Joined',
-        operations: 'Actions'
-      }
     },
     invite: {
-      loading: 'Loading...',
       previewTitle: 'Присоединиться к общему пространству',
       inputDesc: 'Введите код приглашения (или вставьте его из ссылки-приглашения), чтобы просмотреть информацию об общем пространстве и присоединиться',
       previewAction: 'View',
       primaryJoin: 'Join',
       invalidCode: 'Invite code is invalid or expired',
       previewFailed: 'Preview failed, please try again',
-      knowledgeBases: 'Knowledge Bases',
-      agents: 'Agents',
-      alreadyMember: 'Вы уже являетесь участником этого общего пространства',
       submitRequest: 'Request to Join',
       requireApprovalTip: 'Для присоединения к этому общему пространству требуется одобрение администратора',
       approvalLabel: 'Join method',
@@ -2023,30 +2063,22 @@ export default {
       noApproval: 'No approval required',
       defaultRoleAfterJoin: 'Default role after joining: {role}',
       requestRole: 'Requested role',
-      selectRole: 'Select role',
       messagePlaceholder: 'Optional: message (e.g. intro or reason to join)',
       applicationNote: 'Application note (optional)',
       joinSuccess: 'Вы успешно присоединились к общему пространству!',
       joinFailed: 'Failed to join, please try again',
       requestSubmitted: 'Request submitted, please wait for admin approval',
       requestFailed: 'Failed to submit request, please try again',
-      viewOrganization: 'Просмотреть общее пространство'
+      viewOrganization: 'Просмотреть общее пространство',
     },
     join: {
-      title: 'Присоединиться к общему пространству',
       joining: 'Присоединение к общему пространству...',
-      success: 'Вы успешно присоединились к общему пространству!',
-      failed: 'Не удалось присоединиться к общему пространству',
       noCode: 'Invite code not found',
       goToOrganizations: 'Перейти к списку общих пространств',
-      confirmTitle: 'Подтвердите присоединение к общему пространству',
-      confirm: 'Confirm Join',
       preview: 'Preview & Join',
       memberCount: '{count} members',
       shareCount: '{count} shared knowledge bases',
       agentShareCount: '{count} agents',
-      alreadyMember: 'Вы уже являетесь участником этого общего пространства',
-      invalidCode: 'Invalid invite code',
       byInviteCode: 'Enter invite code',
       searchSpaces: 'Поиск общих пространств',
       searchSpacesDesc: 'Просматривайте или ищите открытые для поиска общие пространства и присоединяйтесь к ним без кода приглашения',
@@ -2055,13 +2087,13 @@ export default {
       noSearchResult: 'Подходящие общие пространства не найдены',
       noSearchableSpaces: 'Пока нет открытых для поиска общих пространств, или введите ключевые слова для поиска',
       memberLimitReached: 'Full',
-      backToSearch: 'Back to search'
+      backToSearch: 'Back to search',
     },
     rbac: {
       needTenantAdminTip: 'Для этого действия требуется роль admin или выше в текущем пространстве. Обратитесь к владельцу пространства.',
       cannotCreate: 'Недостаточно прав в текущем пространстве для создания общего пространства',
       cannotJoin: 'Недостаточно прав в текущем пространстве для присоединения к общему пространству',
-      cannotManage: 'Недостаточно прав в текущем пространстве для управления общим пространством'
+      cannotManage: 'Недостаточно прав в текущем пространстве для управления общим пространством',
     }
   },
   promptTemplate: {
@@ -2071,15 +2103,13 @@ export default {
     resetDefault: 'Reset Default',
     default: 'Default',
     withKnowledgeBase: 'KB',
-    withWebSearch: 'Web Search'
+    withWebSearch: 'Web Search',
   },
   mcpMetadata: {
     "searchTools": "Поиск по имени или описанию инструмента",
     "retry": "Повторить",
     "details": "Подробнее",
-    "description": "Описание",
     "parameters": "Параметры",
-    "required": "Обязательный",
     "fullSchema": "Полное определение",
     "noDescription": "Описание отсутствует",
     "noParameters": "Определение параметров отсутствует",
@@ -2105,14 +2135,12 @@ export default {
     "serverDocumentation": "Исходная документация сервера",
     "noServerDocumentation": "Ответ initialize этого MCP-сервера не содержит instructions / serverInfo.description (оба поля необязательны). Текст инструментов — в description ниже.",
     "policyHint": "Настройки включения и подтверждения сохраняются сразу и не сбрасываются при обновлении каталога.",
-    "failed": "Не удалось загрузить каталог инструментов",
     "setupProgress": "Шаги настройки MCP",
     "connection": "Подключение",
     "toolsAndUsage": "Инструменты и назначение",
     "previous": "Назад",
     "usage": "Назначение сервиса",
     "usageHint": "Модель читает обзор, затем загружает нужные инструменты. Ваш текст сохраняется при обновлении.",
-    "summary": "Краткое назначение",
     "summaryPlaceholder": "Например: проверка заказов, доставки и возвратов.",
     "usageInstructions": "Инструкции по использованию",
     "instructionsPlaceholder": "Кратко опишите назначение, сценарии использования и основные ограничения.",
@@ -2121,21 +2149,17 @@ export default {
     "instructionsRequired": "Инструкции по использованию обязательны",
     "generated": "Создано. Проверьте и сохраните результат.",
     "generateFailed": "Не удалось создать инструкции. Проверьте синхронизацию инструментов и наличие активной модели чата, затем повторите попытку.",
-    "saveNext": "Сохранить и продолжить"
+    "saveNext": "Сохранить и продолжить",
 },
   mcpServiceDialog: {
     addTitle: 'Добавить сервис MCP',
-    editTitle: 'Редактировать сервис MCP',
+    addDesc: 'Подключите внешний сервис MCP, чтобы агенты могли вызывать его инструменты.',
     basicSection: 'Основное',
     connectionSection: 'Подключение',
     enableServiceDesc: 'При выключении сервис не будет вызываться',
     testAfterSaveHint: 'Сохраните, чтобы протестировать подключение',
     unitSecond: 'с',
     unitTimes: '×',
-    name: 'Название сервиса',
-    namePlaceholder: 'Введите название сервиса',
-    description: 'Описание',
-    descriptionPlaceholder: 'Введите описание сервиса',
     transportType: 'Тип транспорта',
     serviceUrl: 'URL сервиса',
     serviceUrlPlaceholder: 'https://example.com/mcp',
@@ -2145,7 +2169,14 @@ export default {
     authTypeNone: 'Нет / Свой заголовок',
     authTypeApiKey: 'API Key / Token',
     authTypeOAuth: 'OAuth 2.0 (авторизация при первом подключении)',
-    oauthRefreshable: 'Token expired; it will refresh automatically on next use',
+    oauthScopes: 'Области (необязательно, через пробел)',
+    oauthAuthorization: 'Статус авторизации',
+    oauthAuthorized: 'Авторизовано',
+    oauthRefreshable: 'Срок действия токена истёк; он будет автоматически обновлён при следующем использовании',
+    oauthUnauthorized: 'Не авторизовано',
+    oauthAuthorize: 'Авторизоваться',
+    oauthReauthorize: 'Авторизовать повторно',
+    oauthRevoke: 'Отозвать авторизацию',
     oauthAuthorizeHint: 'Нажатие «Авторизоваться» сначала сохранит текущую конфигурацию, затем запустит авторизацию (каждый пользователь авторизуется отдельно).',
     apiKeyHeader: 'Имя заголовка',
     apiKeyHeaderDesc: 'По умолчанию X-API-Key. Для Bearer укажите Authorization и впишите "Bearer <token>" в значение ниже; для «сырого» токена используйте Authorization и сам токен.',
@@ -2157,97 +2188,60 @@ export default {
     retryDelaySec: 'Задержка (с)',
     codeImport: {
       toggle: 'Импорт из кода',
-      hint: 'Вставьте стандартную JSON-конфигурацию mcpServers для автозаполнения формы',
       parse: 'Разобрать и заполнить',
       editOverwriteHint: 'Импорт перезапишет текущую форму (сохранённые учётные данные не затрагиваются; нажмите «Сохранить», чтобы применить)',
       toasts: {
         filled: 'Форма заполнена, проверьте и сохраните',
-        multipleServers: 'Обнаружено несколько сервисов, импортирован первый: {name}'
+        multipleServers: 'Обнаружено несколько сервисов, импортирован первый: {name}',
       },
       errors: {
         empty: 'Сначала вставьте конфигурацию',
         invalidJson: 'Не удалось разобрать, проверьте формат JSON',
         noServer: 'Конфигурация сервиса MCP не найдена',
         missingUrl: 'В конфигурации отсутствует url',
-        stdioUnsupported: 'Конфигурации stdio (command/args) не поддерживаются; используйте удалённую конфигурацию с url'
+        stdioUnsupported: 'Конфигурации stdio (command/args) не поддерживаются; используйте удалённую конфигурацию с url',
       }
     },
     customHeaders: {
-      label: 'Пользовательские заголовки (необязательно)',
-      desc: 'HTTP-заголовки, добавляемые к каждому запросу MCP; обычно используются для аутентификации на корпоративном шлюзе, трассировки и т. п.',
       add: 'Добавить заголовок',
       keyPlaceholder: 'Имя заголовка',
-      valuePlaceholder: 'Значение заголовка'
+      valuePlaceholder: 'Значение заголовка',
     },
     toasts: {
-      created: 'Сервис MCP создан',
-      updated: 'Сервис MCP обновлён',
       createFailed: 'Не удалось создать сервис MCP',
       updateFailed: 'Не удалось обновить сервис MCP',
-      oauthRequired: 'Сервис требует OAuth. Переключено на OAuth 2.0 — сохраните и нажмите «Авторизоваться».'
+      oauthRequired: 'Сервис требует OAuth. Переключено на OAuth 2.0 — сохраните и нажмите «Авторизоваться».',
+      authorized: 'Авторизация выполнена',
+      authorizeFailed: 'Не удалось начать авторизацию',
+      revokeFailed: 'Не удалось отозвать авторизацию',
     },
     rules: {
-      nameRequired: 'Введите название сервиса',
       transportRequired: 'Выберите тип транспорта',
       urlRequired: 'Введите URL сервиса',
-      urlInvalid: 'Введите корректный URL'
+      urlInvalid: 'Введите корректный URL',
     }
   },
   ollamaSettings: {
-    title: 'Настройки Ollama',
-    description: 'Управление локальным сервисом Ollama и моделями',
-    toasts: {
-      connected: 'Соединение установлено',
-      connectFailed: 'Не удалось подключиться. Проверьте, запущен ли Ollama',
-      listFailed: 'Не удалось получить список моделей',
-      downloadFailed: 'Не удалось загрузить. Попробуйте позже',
-      downloadStarted: 'Начата загрузка модели {name}',
-      downloadCompleted: 'Модель {name} загружена',
-      progressFailed: 'Не удалось получить прогресс загрузки'
-    },
     installed: {
-      title: 'Установленные модели',
-      desc: 'Список моделей, установленных в Ollama',
-      empty: 'Установленные модели отсутствуют'
+      empty: 'Установленные модели отсутствуют',
     },
     download: {
-      title: 'Загрузка моделей',
       descPrefix: 'Введите имя модели для загрузки,',
       browse: 'Открыть каталог моделей Ollama',
-      placeholder: 'например: qwen2.5:0.5b',
       download: 'Скачать',
-      downloading: 'Загрузка: {name}'
+      downloading: 'Загрузка: {name}',
     },
     address: {
-      label: 'Адрес сервиса',
-      desc: 'API‑адрес локального сервиса Ollama, определяется автоматически. Чтобы изменить, задайте значение в .env',
-      placeholder: 'http://localhost:11434',
-      failed: 'Ошибка подключения. Проверьте, запущен ли Ollama и корректен ли адрес'
+      failed: 'Ошибка подключения. Проверьте, запущен ли Ollama и корректен ли адрес',
     },
-    status: {
-      label: 'Статус Ollama',
-      desc: 'Автоматическая проверка доступности локального сервиса Ollama. При ошибке адреса или остановке сервиса статус будет «Недоступно».',
-      testing: 'Проверка',
-      available: 'Доступно',
-      unavailable: 'Недоступно',
-      untested: 'Не проверено',
-      retest: 'Проверить снова'
-    }
   },
   modelSettings: {
-    title: 'Настройки моделей',
-    description: 'Управление типами AI‑моделей: локальные (Ollama) и удалённые API',
     copySuffix: ' копия',
     builtinTag: 'Встроенная',
     confirmDelete: 'Удалить модель «{name}»?',
     usage: {
-      title: 'Модель нельзя удалить',
-      description: 'Модель «{name}» используется в следующих настройках. Откройте каждую конфигурацию и выберите другую модель, затем повторите удаление.',
-      knowledgeBases: 'Базы знаний ({count})',
-      agents: 'Агенты ({count})',
       longTermMemory: 'Долговременная память',
       openConfiguration: 'Открыть настройки',
-      truncated: 'Показаны первые {shown} из {total}',
       bindings: {
         embedding_model: 'Модель эмбеддингов',
         summary_model: 'Модель суммаризации',
@@ -2255,22 +2249,22 @@ export default {
         vlm_model: 'Модель компьютерного зрения',
         asr_model: 'Модель распознавания речи',
         wiki_synthesis_model: 'Модель синтеза Wiki',
+        auto_tag_model: 'Модель автоматической разметки',
         chat_model: 'Диалоговая модель',
         rerank_model: 'Модель реранжирования',
         query_understand_model: 'Модель понимания запроса',
         follow_up_model: 'Модель уточняющих вопросов',
         extract_model: 'Модель извлечения памяти',
-        unknown: 'Другая настройка модели'
+        unknown: 'Другая настройка модели',
       }
     },
     debug: {
-      title: 'Тест модели',
-      description: 'Отправьте реальный запрос к настроенной модели и проверьте ответ и время выполнения',
+      reasoningEffort: 'Интенсивность размышлений',
+      reasoningEffortDesc: 'Отправляет reasoning_effort с уровнями, которые сообщает каталог модели',
       groupModel: 'Выбор модели',
       groupInput: 'Тестовый ввод',
       groupResult: 'Результат',
       modelType: 'Тип модели',
-      model: 'Модель',
       modelPlaceholder: 'Выберите модель для теста',
       noModelsForType: 'Нет сохранённых моделей этого типа',
       query: 'Ввод',
@@ -2285,230 +2279,202 @@ export default {
       imageFile: 'Файл изображения',
       audioFile: 'Аудиофайл',
       chooseFile: 'Выбрать файл',
-      parameters: 'Параметры запроса',
-      thinking: 'Режим размышления',
-      thinkingDesc: 'Применяется только к моделям с поддержкой размышления',
-      systemPrompt: 'System Prompt',
       systemPromptPlaceholder: 'Необязательно: системный промпт',
       run: 'Запустить тест',
       copyResult: 'Копировать результат',
       history: 'История',
-      thinkOn: 'Размышление вкл.',
-      thinkOff: 'Размышление выкл.',
       runLabel: 'Запуск №{n}',
-      success: 'Запрос выполнен',
-      failed: 'Запрос не выполнен',
       rawResponse: 'Ответ',
       requestPreview: 'Просмотр запроса',
-      requestFailed: 'Не удалось выполнить тест модели',
       metrics: {
+        thinkingFormat: 'Формат размышлений',
+        requestedReasoningEffort: 'Запрошенная интенсивность',
         dimension: 'Размерность вектора',
         resultCount: 'Количество результатов',
         answerChars: 'Символов в ответе',
         reasoningChars: 'Символов рассуждения',
         reasoningReturned: 'Рассуждение возвращено',
         textChars: 'Символов транскрипции',
-        segmentCount: 'Количество сегментов'
+        segmentCount: 'Количество сегментов',
       }
     },
     builtinModels: {
-      title: 'Встроенные модели',
-      description: 'Встроенные модели видны всем пространствам. Конфиденциальная информация скрыта, их нельзя редактировать или удалять.',
       descriptionAdmin: 'Встроенные модели видны всем пространствам. Системные администраторы могут изменять конфигурацию и учетные данные; удаление управляется конфигурацией развертывания.',
-      viewGuide: 'Посмотреть руководство по управлению встроенными моделями'
-    },
-    toasts: {
-      nameRequired: 'Название модели не может быть пустым',
-      nameTooLong: 'Название модели не может превышать 100 символов',
-      displayNameTooLong: 'Отображаемое имя не может превышать 100 символов',
-      baseUrlRequired: 'Для удалённых API требуется Base URL',
-      baseUrlInvalid: 'Некорректный Base URL, укажите правильный адрес',
-      dimensionInvalid: 'Размерность встраивания должна быть 128–4096',
-      updated: 'Модель обновлена',
-      added: 'Модель добавлена',
-      saveFailed: 'Не удалось сохранить модель',
-      deleted: 'Модель удалена',
-      deleteFailed: 'Не удалось удалить модель',
-      builtinCannotEdit: 'Встроенные модели нельзя редактировать',
-      builtinCannotDelete: 'Встроенные модели нельзя удалить',
-      builtinCannotCopy: 'Встроенные модели нельзя копировать',
-      copied: 'Модель скопирована',
-      copyFailed: 'Не удалось скопировать модель'
+      viewGuide: 'Посмотреть руководство по управлению встроенными моделями',
     },
     asr: {
-      title: 'ASR модели речи',
-      desc: 'Модели распознавания речи для транскрибации аудио (например, OpenAI Whisper)',
-      empty: 'Нет ASR моделей'
+      empty: 'Нет ASR моделей',
     },
     vllm: {
-      title: 'VLLM модели зрения',
-      desc: 'Визуально-языковые модели для мультимодального понимания',
-      empty: 'Нет VLLM моделей'
+      empty: 'Нет VLLM моделей',
     },
     rerank: {
-      title: 'Модели ReRank',
-      desc: 'Модели для повторной ранжировки результатов',
-      empty: 'Нет моделей ReRank'
+      empty: 'Нет моделей ReRank',
     },
     embedding: {
-      title: 'Модели встраивания',
-      desc: 'Модели для векторизации текста',
-      empty: 'Нет моделей встраивания'
+      empty: 'Нет моделей встраивания',
     },
     chat: {
-      title: 'Модели диалога',
-      desc: 'Модели для диалога',
-      empty: 'Нет моделей диалога'
+      empty: 'Нет моделей диалога',
     },
     source: {
       remote: 'Удалённая',
       openaiCompatible: 'Совместимо с OpenAI',
-      custom: 'Своё'
-    },
-    actions: {
-      addModel: 'Добавить модель',
-      debugModel: 'Тест модели'
+      custom: 'Своё',
     },
     typeShort: {
       chat: 'Чат',
       embedding: 'Embedding',
       rerank: 'ReRank',
       vllm: 'Зрение',
-      asr: 'Речь'
+      asr: 'Речь',
     }
   },
   mcpSettings: {
     addUsageInstructions: "Добавить инструкции",
     noUsageInstructions: "Инструкции пока не добавлены",
-    title: 'Сервисы MCP',
-    description: 'Управление внешними сервисами MCP (Model Context Protocol) для использования инструментов и ресурсов в режиме Agent',
     enabled: 'Включён',
     disabled: 'Отключён',
     configuredServices: 'Настроенные сервисы',
     manageAndTest: 'Управляйте и тестируйте подключения MCP',
     addService: 'Добавить сервис',
-    empty: 'Сервисы MCP отсутствуют',
     deleteConfirmBody: 'Удалить сервис MCP «{name}»? Действие необратимо.',
     unnamed: 'Без названия',
     builtin: 'Встроенный',
     toolCount: '{count} инструментов',
     toolsNotSynced: 'Инструменты не синхронизированы',
     toolsStale: 'Нужна повторная синхронизация',
-    toasts: {
-      loadFailed: 'Не удалось загрузить список MCP сервисов',
-      enabled: 'Сервис MCP включён',
-      disabled: 'Сервис MCP выключен',
-      updateStateFailed: 'Не удалось обновить статус сервиса MCP',
-      testing: 'Тестируем {name}...',
-      noResponse: 'Тест не удался: нет ответа от сервера',
-      testFailed: 'Не удалось протестировать сервис MCP',
-      deleted: 'Сервис MCP удалён',
-      deleteFailed: 'Не удалось удалить сервис MCP'
-    },
-    actions: {
-      test: 'Тест соединения'
-    }
   },
   conversationSettings: {
     maxTokens: {
-      desc: 'Maximum number of tokens to generate in the response'
+      desc: 'Maximum number of tokens to generate in the response',
     },
     temperature: {
-      desc: 'Controls randomness in outputs. 0 is most deterministic; 1 is most random'
+      desc: 'Controls randomness in outputs. 0 is most deterministic; 1 is most random',
     },
     systemPrompt: {
-      desc: 'Системный промпт для обычного режима диалога'
+      desc: 'Системный промпт для обычного режима диалога',
     },
     contextTemplate: {
-      desc: 'Шаблон промпта для генерации ответов на основе результатов поиска в обычном режиме'
+      desc: 'Шаблон промпта для генерации ответов на основе результатов поиска в обычном режиме',
     },
     rerankModel: {
-      desc: 'Model for re-ranking search results (optional)'
+      desc: 'Model for re-ranking search results (optional)',
     },
     chatModel: {
-      desc: 'Large language model used for summarization and abstract generation'
+      desc: 'Large language model used for summarization and abstract generation',
     },
     rewritePrompt: {
-      desc: 'System prompt used during query rewrite'
+      desc: 'System prompt used during query rewrite',
     },
     fallbackPrompt: {
-      desc: 'Prompt used when fallback strategy is "model"'
+      desc: 'Prompt used when fallback strategy is "model"',
     },
     fallbackResponse: {
-      desc: 'Text returned when using the fixed fallback strategy'
+      desc: 'Text returned when using the fixed fallback strategy',
     },
     fallbackStrategy: {
-      desc: 'How to respond when no relevant documents are found'
+      desc: 'How to respond when no relevant documents are found',
     },
     enableQueryExpansion: {
-      desc: 'При низкой выдаче обращаться к LLM для генерации дополнительных запросов (дороже и медленнее)'
+      desc: 'При низкой выдаче обращаться к LLM для генерации дополнительных запросов (дороже и медленнее)',
     },
     enableRewrite: {
-      desc: 'Automatically rewrite multi-turn queries for better recall'
+      desc: 'Automatically rewrite multi-turn queries for better recall',
     },
     rerankThreshold: {
-      desc: 'Minimum score required after re-ranking'
+      desc: 'Minimum score required after re-ranking',
     },
     rerankTopK: {
-      desc: 'Documents kept after re-ranking'
+      desc: 'Documents kept after re-ranking',
     },
     vectorThreshold: {
-      desc: 'Minimum similarity for vector retrieval'
+      desc: 'Minimum similarity for vector retrieval',
     },
     keywordThreshold: {
-      desc: 'Minimum score for keyword retrieval'
+      desc: 'Minimum score for keyword retrieval',
     },
     embeddingTopK: {
-      desc: 'Number of documents kept after vector retrieval'
+      desc: 'Number of documents kept after vector retrieval',
     },
     maxRounds: {
-      desc: 'Number of rounds kept for context and query rewrite'
+      desc: 'Number of rounds kept for context and query rewrite',
     },
     models: {
-      chatGroupLabel: 'Thinking / Chat Models'
+      chatGroupLabel: 'Thinking / Chat Models',
     }
   },
   agentSettings: {
-    systemPrompt: {
-      desc: 'Настройте системный промпт Agent. Подстановки будут заменены во время выполнения.'
-    },
     allowedTools: {
-      desc: 'Список инструментов, доступных Agent'
-    },
-    temperature: {
-      desc: 'Контролирует случайность ответа. 0 — детерминированно, 1 — максимально случайно'
-    },
-    rerankModel: {
-      desc: 'Повторная ранжировка результатов поиска и нормализация релевантности'
+      desc: 'Список инструментов, доступных Agent',
     },
     thinkingModel: {
-      desc: 'LLM для рассуждений и планирования'
+      desc: 'LLM для рассуждений и планирования',
     },
     maxIterations: {
-      desc: 'Ограничивает число шагов рассуждения за одну задачу. «Без ограничения» — цикл идёт, пока модель не остановится сама или вы не остановите её.'
+      desc: 'Ограничивает число шагов рассуждения за одну задачу. «Без ограничения» — цикл идёт, пока модель не остановится сама или вы не остановите её.',
     },
     modelRecommendation: {
-      title: 'Model Recommendation'
+      title: 'Model Recommendation',
     }
   },
   upload: {
     uploadDocument: 'Загрузить документ',
     uploadFolder: 'Загрузить папку',
     onlineEdit: 'Онлайн редактирование',
-    deleteRecord: 'Удалить запись'
+    deleteRecord: 'Удалить запись',
+  },
+  uploadTasks: {
+    panelLabel: 'Загрузки',
+    titleUploading: 'Загрузка {done} из {total}',
+    titleParsing: 'Разбор {done} из {total}',
+    titleDone: 'Готово',
+    titleDoneWithIssues: 'Готово: {ok}, не завершено: {bad}',
+    titleCancelled: 'Загрузка отменена',
+    destination: 'Куда: {name}',
+    destinationMany: 'Куда: баз знаний — {count}',
+    remaining: 'осталось около {time}',
+    eta: {
+      seconds: '{n} с',
+      minutes: '{n} мин',
+      hours: '{n} ч',
+    },
+    hintUploading: 'Не закрывайте и не обновляйте страницу до завершения загрузки',
+    hintParsing: 'Все файлы загружены. Разбор продолжится в фоне — страницу можно закрыть',
+    legend: {
+      ready: 'Доступно для поиска',
+      duplicate: 'Уже есть',
+    },
+    filterAll: 'Все',
+    filterIssues: 'Не завершено',
+    phaseWaiting: 'В очереди',
+    phaseSaving: 'Сохранение…',
+    phasePending: 'Ожидает разбора',
+    phaseParsing: 'Разбор',
+    phaseFinalizing: 'Доступно для поиска, идёт оптимизация',
+    phaseReady: 'Готово',
+    phaseUploadFailed: 'Ошибка загрузки',
+    phaseParseFailed: 'Ошибка разбора',
+    phaseDuplicate: 'Такой файл уже есть',
+    phaseCancelled: 'Отменено',
+    phaseDeleted: 'Удалено',
+    cancel: 'Отменить',
+    cancelAll: 'Отменить все',
+    retryFailed: 'Повторить ({count})',
+    open: 'Открыть',
+    collapse: 'Свернуть',
+    closeConfirm: 'Закрытие отменит загрузку оставшихся файлов ({count})',
+    closeConfirmOk: 'Отменить загрузку',
+    closeConfirmKeep: 'Продолжить загрузку',
   },
   time: {
-    today: 'Сегодня',
-    yesterday: 'Вчера',
     last7Days: 'Последние 7 дней',
     last30Days: 'Последние 30 дней',
     lastYear: 'Последний год',
     earlier: 'Ранее',
-    pinned: 'Закреплено'
+    pinned: 'Закреплено',
   },
   platform: {
-    subtitle: 'Корпоративная платформа знаний на базе больших языковых моделей',
-    description: 'RAG-поиск, агентные рассуждения и Wiki-базы знаний — чтобы документы действительно понимались и приносили пользу',
     rag: 'RAG расширенная генерация',
     agent: 'ReAct агент',
     wiki: 'Wiki-база знаний',
@@ -2527,7 +2493,7 @@ export default {
       wikiTitle: 'Wiki-база знаний',
       wikiDesc: 'Дистилляция документов в структурированные связанные знания',
       smartDocRetrievalTitle: 'Интеллектуальный поиск документов',
-      smartDocRetrievalDesc: 'Многоформатный разбор PDF/Word/изображений'
+      smartDocRetrievalDesc: 'Многоформатный разбор PDF/Word/изображений',
     }
   },
   font: {
@@ -2543,27 +2509,25 @@ export default {
     size: {
       small: 'Маленький',
       normal: 'Обычный',
-      large: 'Крупный'
+      large: 'Крупный',
     },
     mono: {
-      system: 'Системный по умолчанию',
       menlo: 'Menlo',
       monaco: 'Monaco',
       consolas: 'Consolas',
       cascadia: 'Cascadia Code',
       'dejavu-mono': 'DejaVu Sans Mono',
       'liberation-mono': 'Liberation Mono',
-      monospace: 'Стандартный моноширинный'
+      monospace: 'Стандартный моноширинный',
     },
     sans: {
-      system: 'Системный по умолчанию',
       pingfang: 'PingFang SC',
       georgia: 'Georgia (с засечками)',
       yahei: 'Microsoft YaHei',
       times: 'Times New Roman (с засечками)',
       'noto-cjk': 'Noto Sans CJK',
       'dejavu-serif': 'DejaVu Serif (с засечками)',
-      'sans-serif': 'Стандартный без засечек'
+      'sans-serif': 'Стандартный без засечек',
     }
   },
   theme: {
@@ -2572,16 +2536,13 @@ export default {
     light: 'Светлая',
     dark: 'Тёмная',
     system: 'Системная',
-    selectTheme: 'Выбрать тему'
+    selectTheme: 'Выбрать тему',
   },
   general: {
-    title: 'Общие настройки',
     allSettings: 'Все настройки',
     personalSettings: 'Личные настройки',
     helpAndDocs: 'Справка и документация',
-    description: 'Настройка языка, внешнего вида и других базовых параметров',
-    settings: 'Настройки',
-    close: 'Закрыть настройки'
+    close: 'Закрыть настройки',
   },
   language: {
     zhCN: '简体中文',
@@ -2592,251 +2553,31 @@ export default {
     selectLanguage: 'Выбрать язык',
     language: 'Язык',
     languageDescription: 'Выберите язык отображения интерфейса',
-    languageSaved: 'Настройки языка сохранены'
+    languageSaved: 'Настройки языка сохранены',
   },
   model: {
+    reasoning: {
+      levels: {
+        off: 'Выкл',
+        auto: 'Авто',
+        minimal: 'Минимальный',
+        low: 'Низкий',
+        medium: 'Средний',
+        high: 'Высокий',
+        xhigh: 'Очень высокий',
+        max: 'Максимальный',
+      },
+      levelDescriptions: {
+      },
+    },
     modelName: 'Название модели',
     defaultTag: 'По умолчанию',
     addModelInSettings: 'Перейти в общие настройки для добавления моделей',
-    loadFailed: 'Не удалось загрузить список моделей',
     selectModelPlaceholder: 'Выберите модель',
-    searchPlaceholder: 'Поиск моделей...',
-    builtinTag: 'Built-in',
-    editor: {
-      addTitle: 'Добавить модель',
-      editTitle: 'Редактировать модель',
-      sectionType: 'Тип модели',
-      typeLabel: 'Тип модели',
-      sectionSource: 'Источник',
-      sectionProvider: 'Настройки провайдера',
-      sectionAdvanced: 'Дополнительные параметры',
-      sourceLabel: 'Источник модели',
-      sourceLocal: 'Ollama',
-      sourceRemote: 'API',
-      baseUrlLabel: 'Base URL',
-      displayNameLabel: 'Отображаемое имя (опционально)',
-      displayNamePlaceholder: 'например: модель поддержки',
-      displayNameDesc: 'Используется только в интерфейсе. Для вызовов по-прежнему используется имя модели выше.',
-      baseUrlPlaceholder: 'например: https://api.openai.com/v1',
-      baseUrlPlaceholderVllm: 'например: http://localhost:11434/v1',
-      baseUrlPlaceholderAsr: 'например: https://api.openai.com/v1',
-      apiKeyOptional: 'API Key (опционально)',
-      apiKeyPlaceholder: 'Введите API Key',
-      customHeadersLabel: 'Пользовательские заголовки запроса (опционально)',
-      customHeadersDesc: 'Дополнительные HTTP-заголовки, добавляемые к запросам к удалённому API модели (например, для авторизации корпоративного шлюза или трассировки). Зарезервированные заголовки, такие как Authorization / Content-Type, игнорируются.',
-      customHeadersAdd: 'Добавить заголовок',
-      customHeadersKeyPlaceholder: 'Имя заголовка',
-      customHeadersValuePlaceholder: 'Значение заголовка',
-      testing: 'Проверка...',
-      testConnection: 'Проверить соединение',
-      downloadLabel: 'Скачать: {keyword}',
-      refreshList: 'Обновить список',
-      dimensionLabel: 'Размерность вектора',
-      dimensionPlaceholder: 'например: 1536',
-      checkDimension: 'Определить размерность',
-      dimensionDetected: 'Определение выполнено, размерность: {value}',
-      dimensionFailed: 'Не удалось определить, введите размерность вручную',
-      remoteDimensionDetected: 'Обнаружена размерность: {value}',
-      dimensionOverrideLabel: 'Пользовательская выходная размерность',
-      dimensionOverrideDesc: 'Включайте только если документация провайдера подтверждает поддержку параметра dimensions.',
-      supportsVisionLabel: 'Поддержка визуального / мультимодального ввода',
-      supportsVisionDesc: 'Поддерживает ли модель изображения и другой мультимодальный ввод',
-      contextWindowLabel: 'Контекстное окно',
-      contextWindowPlaceholder: 'По умолчанию {value}',
-      contextWindowDesc: 'Сколько токенов модель принимает за один запрос. Сжатие истории агента использует этот лимит. Пустое значение — по умолчанию 200000 (200K). Укажите реальное окно провайдера: завышенное значение не запускает сжатие, и провайдер отклоняет запрос.',
-      contextWindowDefaultHint: 'Не задано, используется значение по умолчанию {value}',
-      contextWindowTokens: '{count} токенов',
-      maxConcurrencyLabel: 'Лимит фоновой параллельности',
-      maxConcurrencyPlaceholder: '0 — использовать глобальное значение',
-      maxConcurrencyDesc: 'Ограничивает число одновременных фоновых вызовов (индексация/обогащение) к этой модели, общее для модели по всем репликам. 0 или пусто — используется глобальное значение по умолчанию; интерактивный чат не затрагивается.',
-      thinkingControlLabel: 'Формат параметров режима размышления',
-      thinkingControlDesc: 'Определяет, как переключатель «Режим размышления» агента записывается в API. При возможности выбирается по поставщику/модели; при несоответствии измените по документации API. При выборе «Не отправлять» переключатель «Режим размышления» агента не действует.',
-      dimensionHint: 'Модель выбрана. Нажмите «Определить размерность», чтобы автоматически получить значение.',
-      loadModelListFailed: 'Не удалось загрузить список моделей',
-      listRefreshed: 'Список обновлён',
-      fillModelAndUrl: 'Сначала заполните идентификатор модели и Base URL',
-      remoteBaseUrlRequired: 'Для Remote API необходимо указать Base URL',
-      unsupportedModelType: 'Неподдерживаемый тип модели',
-      connectionSuccess: 'Соединение установлено',
-      connectionFailed: 'Соединение не установлено',
-      connectionConfigError: 'Соединение не установлено, проверьте конфигурацию',
-      downloadStarted: 'Начата загрузка {name}',
-      downloadCompleted: '{name} успешно загружена',
-      downloadFailed: 'Не удалось загрузить {name}',
-      downloadStartFailed: 'Не удалось запустить загрузку',
-      ollamaUnavailable: 'Сервис Ollama недоступен, локальные модели недоступны для выбора',
-      ollamaNotSupportRerank: 'Ollama не поддерживает модели ReRank, используйте удалённый API',
-      goToOllamaSettings: 'Открыть настройки',
-      providerLabel: 'Провайдер',
-      providerPlaceholder: 'Выберите провайдера модели',
-      providers: {
-        novita: {
-          label: 'Novita AI',
-          description: 'moonshotai/kimi-k2.5, zai-org/glm-5, minimax/minimax-m2.7, qwen/qwen3-embedding-0.6b, etc.'
-        },
-        nvidia: {
-          label: 'NVIDIA',
-          description: 'deepseek-ai-deepseek-v3_1, nv-embed-v1, rerank-qa-mistral-4b, etc.'
-        },
-        lkeap: {
-          label: 'Tencent Cloud LKEAP',
-          description: 'DeepSeek-R1, DeepSeek-V3, lke-reranker-base и др.'
-        },
-        longcat: {
-          label: 'LongCat AI',
-          description: 'LongCat-Flash-Chat, LongCat-Flash-Thinking, etc.'
-        },
-        qianfan: {
-          label: 'Baidu Qianfan',
-          description: 'ernie-5.0-thinking-preview, embedding-v1, bce-reranker-base, etc.'
-        },
-        moonshot: {
-          label: 'Moonshot',
-          description: 'kimi-k2-turbo-preview, moonshot-v1-8k-vision-preview, etc.'
-        },
-        qiniu: {
-          label: 'Qiniu Cloud',
-          description: 'deepseek/deepseek-v3.2-251201, z-ai/glm-4.7, etc.'
-        },
-        modelscope: {
-          label: 'ModelScope',
-          description: 'Qwen/Qwen3-8B, Qwen/Qwen3-Embedding-8B, etc.'
-        },
-        gpustack: {
-          label: 'GPUStack',
-          description: 'Choose your deployed model on GPUStack'
-        },
-        gemini: {
-          label: 'Google Gemini',
-          description: 'gemini-3-flash-preview, gemini-2.5-pro, etc.'
-        },
-        mimo: {
-          label: 'MiMo',
-          description: 'mimo-v2-flash'
-        },
-        minimax: {
-          label: 'MiniMax',
-          description: 'MiniMax-M3, MiniMax-M2.7, MiniMax-M2.7-highspeed, etc.'
-        },
-        hunyuan: {
-          label: 'Hunyuan',
-          description: 'hunyuan-pro, hunyuan-standard, hunyuan-embedding, etc.'
-        },
-        deepseek: {
-          label: 'DeepSeek',
-          description: 'deepseek-chat, deepseek-reasoner, etc.'
-        },
-        volcengine: {
-          label: 'Volcengine',
-          description: 'doubao-1-5-pro-32k-250115, doubao-embedding-vision-250615, etc.'
-        },
-        jina: {
-          label: 'Jina',
-          description: 'jina-clip-v1, jina-embeddings-v2-base-zh, etc.'
-        },
-        siliconflow: {
-          label: 'SiliconFlow',
-          description: 'deepseek-ai/DeepSeek-V3.1, etc.'
-        },
-        generic: {
-          label: 'Пользовательский (OpenAI-совместимый)',
-          description: 'Generic API endpoint'
-        },
-        requesty: {
-          label: 'Requesty',
-          description: 'openai/gpt-4o-mini, anthropic/claude-sonnet-4-5, etc.'
-        },
-        openrouter: {
-          label: 'OpenRouter',
-          description: 'openai/gpt-5.2-chat, google/gemini-3-flash-preview, etc.'
-        },
-        litellm: {
-          label: 'LiteLLM',
-          description: 'Self-hosted прокси к 100+ провайдерам (OpenAI, Anthropic, Gemini, Bedrock и др.). Замените URL-заглушку; localhost нужно добавить в SSRF_WHITELIST.'
-        },
-        zhipu: {
-          label: 'Zhipu BigModel',
-          description: 'glm-4.7, embedding-3, rerank, etc.'
-        },
-        aliyun: {
-          label: 'Aliyun DashScope',
-          description: 'qwen-plus, tongyi-embedding-vision-plus, qwen3-rerank, etc.'
-        },
-        azure_openai: {
-          label: 'Azure OpenAI',
-          description: 'Сервис OpenAI на платформе Microsoft Azure'
-        },
-        anthropic: {
-          label: 'Anthropic',
-          description: 'Claude models via native Anthropic Messages API'
-        },
-        openai: {
-          label: 'OpenAI',
-          description: 'gpt-5.2, gpt-5-mini, etc.'
-        }
-      },
-      validation: {
-        modelNameRequired: 'Введите название модели',
-        modelNameEmpty: 'Название модели не может быть пустым',
-        modelNameMax: 'Название модели не может превышать 100 символов',
-        baseUrlRequired: 'Введите Base URL',
-        baseUrlEmpty: 'Base URL не может быть пустым',
-        baseUrlInvalid: 'Недопустимый Base URL, введите корректный адрес'
-      },
-      thinkingControl: {
-        thinkingType: {
-          label: 'thinking.type',
-          hint: 'Volcengine Ark; Tencent LKEAP (DeepSeek V3 и др.; по умолчанию для LKEAP; для R1 — «Не отправлять»)'
-        },
-        enableThinking: {
-          label: 'enable_thinking',
-          hint: 'Alibaba DashScope: qwen3, qwen-plus, qwen-max, qwen-turbo'
-        },
-        chatTemplateKwargs: {
-          label: 'chat_template_kwargs',
-          hint: 'Пользовательские OpenAI-совместимые шлюзы, NVIDIA NIM, vLLM / локальный Qwen'
-        },
-        none: {
-          label: 'Не отправлять параметры размышления',
-          hint: 'Переключатель «Режим размышления» агента не действует; параметры размышления не отправляются в запросе'
-        }
-      },
-      volcengine: {
-        accessKeyLabel: 'Access Key ID',
-        accessKeyPlaceholder: 'Volcengine Access Key ID',
-        secretKeyLabel: 'Secret Access Key',
-        secretKeyPlaceholder: 'Volcengine Secret Access Key',
-        rerankCredentialHint: 'Rerank использует подпись VikingDB AK/SK, а не Ark API key. Рекомендуемая модель: doubao-seed-rerank.'
-      },
-      lkeap: {
-        secretIdLabel: 'SecretId',
-        secretIdPlaceholder: 'Tencent Cloud API SecretId',
-        secretKeyLabel: 'SecretKey',
-        secretKeyPlaceholder: 'Tencent Cloud API SecretKey',
-        regionLabel: 'Region',
-        regionPlaceholder: 'ap-guangzhou',
-        regionDesc: 'RunRerank supports ap-beijing, ap-guangzhou, etc. Default: ap-guangzhou',
-        rerankCredentialHint: 'Rerank uses Tencent Cloud API signature (not the OpenAI-style LKEAP API key). Create SecretId/SecretKey in the CAM console.'
-      },
-      modelNamePlaceholder: {
-        local: 'например: llama2:latest',
-        remote: 'например: gpt-4, claude-3-opus',
-        localVllm: 'например: llava:latest',
-        remoteVllm: 'например: gpt-4-vision-preview',
-        remoteAsr: 'например: whisper-1'
-      },
-      description: {
-        chat: 'Настройте языковую модель для диалогов',
-        embedding: 'Настройте модель встраивания для текстовой векторизации',
-        rerank: 'Настройте модель для повторного ранжирования результатов',
-        vllm: 'Настройте визуально-языковую модель для мультимодального понимания',
-        asr: 'Настройте модель распознавания речи для транскрибации аудио',
-        default: 'Настройте информацию о модели'
-      }
-    }
   },
   error: {
     networkError: 'Ошибка сети, проверьте подключение',
+    requestTimeout: 'Время ожидания запроса истекло. Для больших файлов или медленного соединения повторите попытку',
     invalidCredentials: 'Неверное имя пользователя или пароль',
     tokenRefreshFailed: 'Не удалось обновить токен',
     pleaseRelogin: 'Пожалуйста, войдите снова',
@@ -2849,22 +2590,18 @@ export default {
     streamFailed: 'Ошибка потокового соединения',
     initialization: {
       checkFailed: 'Проверка не пройдена',
-      testFailed: 'Тест не пройден'
+      testFailed: 'Тест не пройден',
     },
     tenant: {
-      listFailed: 'Не удалось получить список пространств',
       searchFailed: 'Не удалось выполнить поиск пространств',
       getApiPrincipalConfigFailed: 'Не удалось получить конфигурацию API principal',
       updateApiPrincipalConfigFailed: 'Не удалось обновить конфигурацию API principal',
       createApiPrincipalTestTokenFailed: 'Не удалось создать тестовый API Token',
-      updateFailed: 'Не удалось обновить информацию о пространстве',
-      deleteFailed: 'Failed to delete workspace'
+      deleteFailed: 'Failed to delete workspace',
     },
     model: {
-      createFailed: 'Не удалось создать модель',
       getFailed: 'Не удалось получить модель',
-      updateFailed: 'Не удалось обновить модель',
-      deleteFailed: 'Не удалось удалить модель'
+      deleteFailed: 'Не удалось удалить модель',
     },
     auth: {
       loginFailed: 'Ошибка входа',
@@ -2874,32 +2611,23 @@ export default {
       updatePreferencesFailed: 'Не удалось обновить настройки',
       refreshTokenFailed: 'Не удалось обновить токен',
       logoutFailed: 'Ошибка выхода',
-      validateTokenFailed: 'Ошибка проверки токена'
+      validateTokenFailed: 'Ошибка проверки токена',
     }
   },
   mcp: {
     testResult: {
-      title: 'Результат теста: {name}',
-      connectionSuccess: 'Соединение установлено',
-      connectionFailed: 'Соединение не удалось',
       toolsTitle: 'Доступные инструменты',
       resourcesTitle: 'Доступные ресурсы',
-      descriptionLabel: 'Описание',
       schemaLabel: 'Структура параметров',
       emptyDescription: 'Сервис не предоставил инструменты или ресурсы',
-      requireApproval: 'Требуется подтверждение',
-      requireApprovalTip: 'При включении агент ждёт подтверждения перед вызовом инструмента.',
       approvalSaveFailed: 'Не удалось сохранить настройку',
       toolEnabled: 'Включить инструмент',
       toolEnabledTip: 'Если отключить, агент не увидит и не вызовет этот инструмент.',
-      toolEnabledSaveFailed: 'Не удалось сохранить настройку инструмента'
+      toolEnabledSaveFailed: 'Не удалось сохранить настройку инструмента',
     }
   },
   system: {
-    title: 'Системная информация',
-    sectionDescription: 'Просмотр сведений о версии системы и конфигурации учётной записи пользователя',
     loadingInfo: 'Загрузка данных...',
-    retry: 'Повторить',
     versionLabel: 'Версия приложения',
     versionDescription: 'Версия сервиса приложения (weknora-app)',
     frontendVersionLabel: 'Версия UI',
@@ -2930,12 +2658,7 @@ export default {
     vectorStoreEngineDescription: 'Используемый в настоящее время движок векторного хранилища',
     graphDatabaseEngineLabel: 'Движок графовой базы данных',
     graphDatabaseEngineDescription: 'Используемый в настоящее время движок графовой базы данных',
-    unknown: 'Неизвестно',
     globalSettings: {
-      title: 'Системные настройки',
-      description: 'Настройки платформы, применяемые в режиме реального времени. Изменения сразу действуют для всех пространств. Доступны только системным администраторам.',
-      loading: 'Загрузка...',
-      empty: 'Нет доступных для настройки параметров',
       saving: 'Сохранение',
       saved: 'Сохранено',
       saveAnnouncement: '{label} сохранено',
@@ -2951,9 +2674,7 @@ export default {
         description: 'События уровня платформы: изменения системных настроек, выдача/отзыв роли системного администратора, массовая синхронизация квот. Сортировка от новых к старым.',
         refresh: 'Обновить',
         retry: 'Повторить',
-        loading: 'Загрузка…',
         end: 'Конец списка.',
-        empty: 'Событий аудита платформы пока нет.',
         forbidden: 'Нет прав на просмотр журнала аудита платформы.',
         systemActor: 'Система',
         drawer: {
@@ -2961,14 +2682,14 @@ export default {
           sectionIdentifiers: 'Связанные идентификаторы',
           sectionRequest: 'Запрос',
           targetChange: 'Изменение',
-          requestMethod: 'Метод'
+          requestMethod: 'Метод',
         },
         expanded: {
           actorId: 'ID инициатора',
           targetUserId: 'ID целевого пользователя',
           targetType: 'Тип цели',
           targetId: 'ID цели',
-          details: 'Сырые детали'
+          details: 'Сырые детали',
         },
         target: {
           bulkQuota: 'Массовая синхронизация: квота хранилища по умолчанию',
@@ -2976,11 +2697,11 @@ export default {
           promoteIdempotent: 'Уже системный администратор (идемпотентно)',
           revokeNoop: 'И так не был системным администратором (идемпотентно)',
           requiredRole: 'Требуемая роль: {role}',
-          valueNull: '(не задано)'
+          valueNull: '(не задано)',
         },
         outcome: {
           success: 'Успешно',
-          denied: 'Отказано'
+          denied: 'Отказано',
         },
         action: {
           'system.setting_changed': 'Изменена системная настройка',
@@ -2994,7 +2715,7 @@ export default {
           'system.queue_task_deleted': 'Удалена запись о сбойной задаче',
           'system.queue_task_run_now': 'Задача очереди запущена сейчас',
           'system.queue_task_cancelled': 'Задача очереди отменена',
-          'system.queue_archived_purged': 'Очищены все сбойные задачи'
+          'system.queue_archived_purged': 'Очищены все сбойные задачи',
         },
         columns: {
           time: 'Время',
@@ -3002,13 +2723,13 @@ export default {
           action: 'Событие',
           target: 'Цель',
           path: 'Запрос',
-          outcome: 'Результат'
+          outcome: 'Результат',
         },
         actorRole: {
-          system_admin: 'Системный администратор'
+          system_admin: 'Системный администратор',
         },
         errors: {
-          generic: 'Не удалось загрузить журнал аудита'
+          generic: 'Не удалось загрузить журнал аудита',
         }
       },
       bulkApply: {
@@ -3016,13 +2737,9 @@ export default {
         tooltip: 'По умолчанию сохранённое значение применяется только к новым пространствам. Нажмите, чтобы также перезаписать все существующие.',
         confirmBtn: 'Подтвердить применение',
         confirmBody: 'Перезаписать квоту хранилища всех существующих пространств значением {value} ГБ. Пространства, чью квоту вручную правили эксплуатация, также будут перезаписаны. Продолжить?',
-        success: 'Обновлена квота хранилища у {count} пространств: {gb} ГБ',
-        failed: 'Ошибка применения ко всем пространствам'
+        failed: 'Ошибка применения ко всем пространствам',
       },
       passwordReset: {
-        label: 'Сброс пароля пользователя',
-        description: 'Задайте новый пароль другому пользователю, который не может войти. После сброса все его текущие сеансы будут завершены, и потребуется войти с новым паролем.',
-        action: 'Сбросить пароль',
         dialogTitle: 'Сброс пароля другого пользователя',
         warning: 'Это операция повышенного риска. Внимательно проверьте email пользователя. Здесь нельзя сбросить собственный пароль.',
         emailLabel: 'Email пользователя',
@@ -3031,30 +2748,13 @@ export default {
         newPasswordPlaceholder: 'Введите новый пароль',
         confirmPasswordLabel: 'Подтвердите новый пароль',
         confirmPasswordPlaceholder: 'Введите новый пароль ещё раз',
-        confirmBtn: 'Подтвердить сброс',
-        success: 'Пароль сброшен, существующие сеансы пользователя завершены',
-        failed: 'Не удалось сбросить пароль',
       },
       createUser: {
-        label: 'Создать пользователя',
-        description: 'Завести новый локальный аккаунт. Если режим пространства по умолчанию — «создавать личное пространство», пользователь получит личное пространство так же, как при самостоятельной регистрации.',
-        action: 'Создать пользователя',
-        dialogTitle: 'Создание нового пользователя',
-        warning: 'Это операция повышенного риска. Внимательно проверьте имя пользователя и email — это его единственные учётные данные для входа.',
         usernameLabel: 'Имя пользователя',
         usernamePlaceholder: '2–50 символов',
-        emailLabel: 'Email',
-        emailPlaceholder: 'Введите корректный email',
         autoGenerateLabel: 'Сгенерировать случайный пароль автоматически',
-        newPasswordLabel: 'Новый пароль',
-        newPasswordPlaceholder: '8–32 символа, включая буквы и цифры',
-        confirmPasswordLabel: 'Подтвердите новый пароль',
-        confirmPasswordPlaceholder: 'Введите новый пароль ещё раз',
-        confirmBtn: 'Создать пользователя',
-        success: 'Пользователь создан',
         successIdempotent: 'Пользователь уже существует; изменений нет',
         missingPassword: 'Пользователь создан, но сгенерированный пароль не вернулся. Сбросьте пароль, чтобы восстановить доступ.',
-        failed: 'Не удалось создать пользователя',
         validation: {
           usernameRequired: 'Введите имя пользователя',
           usernameLength: 'Имя пользователя должно содержать от 2 до 50 символов',
@@ -3065,7 +2765,7 @@ export default {
           passwordLetter: 'Пароль должен содержать букву',
           passwordNumber: 'Пароль должен содержать цифру',
           confirmRequired: 'Введите новый пароль ещё раз',
-          passwordMismatch: 'Пароли не совпадают'
+          passwordMismatch: 'Пароли не совпадают',
         },
         generated: {
           successTitle: 'Пользователь создан',
@@ -3075,12 +2775,10 @@ export default {
           passwordLabel: 'Сгенерированный пароль',
           copyBtn: 'Скопировать данные аккаунта',
           copySuccess: 'Данные аккаунта скопированы в буфер обмена',
-          acknowledgeBtn: 'Я сохранил пароль'
+          acknowledgeBtn: 'Я сохранил пароль',
         }
       },
       admins: {
-        label: 'Системные администраторы',
-        description: 'Пользователи с правами уровня платформы. Введите email и нажмите Enter, чтобы повысить пользователя до администратора; нажмите × на теге, чтобы отозвать права. Вы (текущий пользователь) являетесь администратором и не отображаетесь в списке — отозвать собственные права нельзя.',
         placeholder: 'Введите email пользователя и нажмите Enter',
         loadFailed: 'Не удалось загрузить системных администраторов',
         saveSuccess: 'Системные администраторы обновлены',
@@ -3089,27 +2787,18 @@ export default {
           revoke: {
             header: 'Отозвать права администратора',
             body: 'Отозвать права системного администратора у {email}? После отзыва пользователь потеряет доступ ко всем системным функциям.',
-            confirmBtn: 'Отозвать'
+            confirmBtn: 'Отозвать',
           },
           promote: {
-            header: 'Повысить до системного администратора',
-            body: 'Повысить пользователя {email} до системного администратора? Пользователь получит права уровня платформы: доступ ко всем пространствам, изменение системных настроек и управление списком администраторов.',
-            confirmBtn: 'Повысить'
+            confirmBtn: 'Повысить',
           }
         }
       },
       reset: {
-        label: 'Сбросить',
-        tooltip: 'Очистить переопределение из UI и вернуться к переменной окружения или встроенному значению по умолчанию',
-        confirmBtn: 'Подтвердить сброс',
-        confirmBody: 'Сбросить «{label}»? Это удалит запись переопределения в БД и вернёт значение из переменной окружения или встроенное по умолчанию.',
-        success: 'Сброшено к значению по умолчанию',
-        failed: 'Ошибка сброса'
+        failed: 'Ошибка сброса',
       },
       messages: {
-        loadFailed: 'Не удалось загрузить системные настройки',
-        saveSuccess: 'Сохранено',
-        saveFailed: 'Ошибка сохранения'
+        saveFailed: 'Ошибка сохранения',
       },
       listConfirm: {
         ssrf: {
@@ -3117,38 +2806,36 @@ export default {
             remove: {
               header: 'Удалить запись из белого списка SSRF',
               body: 'Удалить {entry} из белого списка SSRF? После удаления запись снова будет блокироваться защитой от SSRF.',
-              confirmBtn: 'Удалить'
+              confirmBtn: 'Удалить',
             },
             add: {
-              header: 'Добавить запись в белый список SSRF',
-              body: 'Добавить {entry} в белый список SSRF? Соответствующие хосты / IP / подсети будут обходить защиту от SSRF и смогут обращаться к внутренним сервисам через агентов. Добавляйте только полностью доверенные записи.',
-              confirmBtn: 'Добавить'
+              confirmBtn: 'Добавить',
             }
           }
         }
       },
       confirm: {
-        confirmBtn: 'Подтвердить сохранение',
         cancelBtn: 'Отмена',
         emptyValue: '(пусто)',
         bodyAuthRegistrationMode: 'Вы собираетесь изменить «{label}» на: {value}\n\nЕсли переключить на self_serve, любой пользователь публичного интернета сможет создать аккаунт — убедитесь, что это ожидаемое поведение.',
-        bodySandboxDockerEnabled: 'После включения администраторы пространства смогут направить песочницу на локальный демон Docker. Локальный docker.sock равносилен root на хосте. Только для частной одноузловой установки с примонтированным демоном или удалённым tcp:// с TLS.'
+        bodySandboxDockerEnabled: 'После включения администраторы пространства смогут направить песочницу на локальный демон Docker. Локальный docker.sock равносилен root на хосте. Только для частной одноузловой установки с примонтированным демоном или удалённым tcp:// с TLS.',
       },
       enumLabels: {
         auth: {
           default_tenant_mode: {
             create_personal: 'Создавать личное пространство',
-            tenantless: 'Не создавать пространство'
+            tenantless: 'Не создавать пространство',
           },
           registration_mode: {
             self_serve: 'Самостоятельная (любой может зарегистрироваться)',
-            invite_only: 'Только по приглашению (открытая регистрация отключена)'
+            invite_register: 'Регистрация по приглашению (нужна действующая ссылка)',
+            invite_only: 'Регистрация закрыта (существующие аккаунты могут принять приглашение)',
           }
         }
       },
       keyDescriptions: {
         model: {
-          max_concurrency: 'Лимит по умолчанию на количество одновременных фоновых вызовов (индексация/обогащение) к одной модели, привязанный к ID модели и общий для всех реплик. Читается при каждом вызове и применяется сразу без перезапуска. 0 или отрицательное значение отключает лимит по умолчанию (каждая модель всё равно соблюдает собственный лимит, заданный в управлении моделями). Влияет только на фоновые задачи, не на интерактивный чат.'
+          max_concurrency: 'Лимит по умолчанию на количество одновременных фоновых вызовов (индексация/обогащение) к одной модели, привязанный к ID модели и общий для всех реплик. Читается при каждом вызове и применяется сразу без перезапуска. 0 или отрицательное значение отключает лимит по умолчанию (каждая модель всё равно соблюдает собственный лимит, заданный в управлении моделями). Влияет только на фоновые задачи, не на интерактивный чат.',
         },
         asynq: {
           core_concurrency: 'Гарантированный параллелизм разбора документов на процесс; также может использовать общий эластичный пул. Минимум 1; требуется перезапуск.',
@@ -3156,68 +2843,24 @@ export default {
           enrichment_concurrency: 'Гарантированный параллелизм сводок, изображений, графа и вопросов на процесс; также может использовать общий пул. Минимум 1; требуется перезапуск.',
           maintenance_concurrency: 'Параллелизм синхронизации, пакетных операций и очистки на процесс, изолированный от пользовательского конвейера. Минимум 1; требуется перезапуск.',
           shared_concurrency: 'Эластичный параллелизм на процесс, общий для разбора и обогащения и используемый стороной с очередью. Минимум 1; требуется перезапуск.',
-          wiki_concurrency: 'Параллелизм выделенного пула Wiki на процесс, изолированного от остальных задач. Минимум 1; требуется перезапуск сервиса.'
+          wiki_concurrency: 'Параллелизм выделенного пула Wiki на процесс, изолированного от остальных задач. Минимум 1; требуется перезапуск сервиса.',
         },
         tenant: {
           max_owned_per_user: 'Максимальное число пространств, которыми может владеть обычный (не супер) пользователь через самостоятельное создание. Читается при каждом создании пространства и вступает в силу сразу после сохранения. 0 — встроенное значение по умолчанию 10; отрицательное значение полностью снимает ограничение (не рекомендуется для публичных развёртываний).',
           self_service_creation_enabled: 'Разрешает обычным пользователям самостоятельно создавать пространства. Если отключено, они могут только присоединяться по приглашению; межпространственные суперпользователи не ограничены.',
           default_storage_quota_gb: 'Квота хранилища по умолчанию (ГБ) для нового пространства: векторы, оригиналы, текст, индексы и т.д. Читается только при создании — изменения применяются только к новым пространствам и не перезаписывают существующие. 0 или отрицательное значение — встроенное значение по умолчанию 10 ГБ.',
           auto_create_api_key: 'Автоматически создаёт API-ключ full_access и возвращает его открытый токен при создании пространства. Включайте только для старых интеграций; по умолчанию отключено.',
-          auto_accept_invitation: 'Если включено, приглашение зарегистрированного пользователя по email сразу добавляет его в пространство без подтверждения во входящих. Если выключено, сохраняется схема «отправка приглашения → подтверждение». Вступает в силу сразу после сохранения.'
-        },
-        ssrf: {
-          whitelist: 'Белый список SSRF-защиты. Можно указать example.com / *.foo.com / 10.0.0.0/8 / 2001:db8::1. Вступает в силу сразу после сохранения. Переменная окружения SSRF_WHITELIST_EXTRA по-прежнему задаётся при развёртывании и здесь не переопределяется.'
+          auto_accept_invitation: 'Если включено, приглашение зарегистрированного пользователя по email сразу добавляет его в пространство без подтверждения во входящих. Если выключено, сохраняется схема «отправка приглашения → подтверждение». Вступает в силу сразу после сохранения.',
         },
         sandbox: {
-          docker_enabled: 'Разрешить бэкенд песочницы Docker. Локальный docker.sock равносилен root на хосте, поэтому по умолчанию выключено. Включить может только системный администратор; изменение действует сразу. Включайте только на частной одноузловой установке с примонтированным сокетом демона или удалённым tcp:// с TLS.'
+          docker_enabled: 'Разрешить бэкенд песочницы Docker. Локальный docker.sock равносилен root на хосте, поэтому по умолчанию выключено. Включить может только системный администратор; изменение действует сразу. Включайте только на частной одноузловой установке с примонтированным сокетом демона или удалённым tcp:// с TLS.',
         },
-        auth: {
-          registration_mode: 'Режим самостоятельной регистрации. self_serve = любой может создать аккаунт; invite_only = открытая регистрация отключена, приглашать могут только Owner/Admin. Вступает в силу сразу после сохранения; используйте self_serve осторожно (в публичном интернете появятся спам-регистрации).',
-          default_tenant_mode: 'Политика пространства после открытой регистрации. create_personal создаёт личное пространство с ролью Owner; tenantless создаёт только аккаунт до принятия приглашения или самостоятельного создания пространства.',
-          complex_password_enabled: 'Определяет, требуется ли сложный пароль. При включении пароль должен содержать прописные и строчные буквы, цифры и специальные символы. Изменение вступает в силу немедленно и применяется только к новым пользователям при регистрации, а также при изменении или сбросе пароля. Специальные символы включают: {specialChars}'
-        }
       },
       keyLabels: {
-        model: {
-          max_concurrency: 'Лимит параллелизма модели по умолчанию'
-        },
-        asynq: {
-          core_concurrency: 'Гарантированный параллелизм разбора',
-          postprocess_concurrency: 'Параллелизм постобработки',
-          enrichment_concurrency: 'Гарантированный параллелизм обогащения',
-          maintenance_concurrency: 'Параллелизм обслуживания',
-          shared_concurrency: 'Общий эластичный параллелизм',
-          wiki_concurrency: 'Параллелизм воркеров Wiki'
-        },
-        tenant: {
-          max_owned_per_user: 'Максимум пространств на пользователя',
-          self_service_creation_enabled: 'Разрешить самостоятельное создание пространств',
-          default_storage_quota_gb: 'Квота хранилища для новых пространств по умолчанию (ГБ)',
-          auto_create_api_key: 'Автоматически создавать API-ключ для новых пространств',
-          auto_accept_invitation: 'Автоматически принимать приглашённых зарегистрированных пользователей'
-        },
-        ssrf: {
-          whitelist: 'Белый список SSRF-защиты'
-        },
-        sandbox: {
-          docker_enabled: 'Включить песочницу Docker'
-        },
-        auth: {
-          registration_mode: 'Режим самостоятельной регистрации',
-          default_tenant_mode: 'Создание пространства по умолчанию',
-          complex_password_enabled: 'Включить сложные пароли'
-        }
       },
       runtime: {
-        title: 'Среда выполнения очередей',
-        description: 'Текущая нагрузка фоновых очередей и ёмкость каждого изолированного пула на процесс. Автообновление каждые 5 сек.',
-        refresh: 'Обновить',
         autoRefresh: 'Автообновление (каждые 5 сек)',
-        loading: 'Загрузка...',
-        retry: 'Повторить',
         unavailableTitle: 'Очереди задач недоступны',
-        unavailable: 'В этой конфигурации нет очереди Redis / asynq (режим Lite) — отображать нечего.',
-        empty: 'Нет данных об очередях',
         detailsTitle: 'Сведения об очередях',
         detailsDescription: 'Текущая нагрузка и ожидание для каждого канала. «Окончательный сбой» означает, что лимит повторов исчерпан и задача больше не запустится автоматически.',
         poolsTitle: 'Пулы воркеров',
@@ -3231,7 +2874,6 @@ export default {
         footnote: 'Карточки показывают активные задачи/живую ёмкость кластера. Настройки на процесс требуют перезапуска; общий пул обслуживает только разбор и обогащение.',
         updatedAt: 'Обновлено в {value}',
         models: {
-          title: 'Параллелизм моделей',
           description: 'Фактический параллелизм вызовов модели из фоновых задач. Раздел выше планирует задачи; этот раздел показывает отдельный этап ограничения на стороне модели.',
           scope: 'Активные — по всему кластеру · ожидающие — локально',
           disabled: 'Управление фоновым параллелизмом моделей отключено. Настройте лимит по умолчанию в глобальных настройках.',
@@ -3239,22 +2881,19 @@ export default {
           backgroundOnly: 'Только фоновые задачи; интерактивный чат не учитывается',
           status: {
             queued: 'Ограничение',
-            full: 'На лимите'
+            full: 'На лимите',
           },
           columns: {
             model: 'ID модели',
             active: 'В работе',
             waiting: 'Ожидание ограничения',
-            usage: 'Параллелизм'
+            usage: 'Параллелизм',
           }
         },
         tasks: {
-          title: 'Сведения о задачах · {queue}',
-          description: 'Запланированные и повторные задачи показаны по ближайшему запуску, остальные — от новых к старым.',
           listTitle: 'Задачи: {state}',
           openAria: 'Показать задач {state} в очереди {queue}: {count}',
           unavailable: 'Подробности сбоев недоступны в этой конфигурации',
-          empty: 'В этой очереди нет задач {state}',
           loadError: 'Не удалось загрузить сведения о сбоях',
           loadMore: 'Показать ещё',
           loadedSummary: 'Загружено {count} · прокрутите или нажмите, чтобы загрузить ещё',
@@ -3296,28 +2935,20 @@ export default {
           actionError: {
             cancel: 'Не удалось отменить задачу',
             run_now: 'Не удалось запустить задачу',
-            delete: 'Не удалось удалить запись'
+            delete: 'Не удалось удалить запись',
           },
           actionSuccess: {
-            cancel: 'Задача отменена',
-            run_now: 'Задача переведена в ожидание',
-            delete: 'Запись о сбое удалена'
+            delete: 'Запись о сбое удалена',
           },
           guides: {
-            active: 'Проверьте исполнителя, время запуска, срок и признак потери связи. Отмена доступна только при безопасном обновлении бизнес-состояния.',
             pending: 'Задачи ещё не взяты исполнителем. Отмена обновляет бизнес-состояние, а не только удаляет данные Redis.',
             scheduled: 'Запланированные задачи можно запустить раньше; задачи документов также поддерживают безопасную отмену.',
             retry: 'Оцените последнюю ошибку, число попыток и время следующего запуска.',
             archived: 'Сначала устраните причину. Удаление записи не завершает исходную бизнес-задачу.',
-            completed: 'Показаны только недавние завершённые задачи с хранением результата. Действий нет.'
+            completed: 'Показаны только недавние завершённые задачи с хранением результата. Действий нет.',
           },
           states: {
-            active: 'Активные',
-            pending: 'Ожидают',
-            scheduled: 'Запланированы',
-            retry: 'Повтор',
-            archived: 'Окончательный сбой',
-            completed: 'Завершены'
+            completed: 'Завершены',
           },
           taskTypes: {
             documentProcess: 'Разбор документа',
@@ -3338,12 +2969,11 @@ export default {
             kbClone: 'Клонирование базы знаний',
             kbDelete: 'Удаление базы знаний',
             wikiIngest: 'Создание Wiki-контента',
-            wikiFinalize: 'Завершение Wiki'
+            wikiFinalize: 'Завершение Wiki',
           }
         },
         failedNotice: {
-          title: '{count} сбойных задач требуют внимания',
-          description: 'Нажмите красное число в столбце «Окончательные сбои», чтобы увидеть причину, затем повторите после исправления.'
+          description: 'Нажмите красное число в столбце «Окончательные сбои», чтобы увидеть причину, затем повторите после исправления.',
         },
         status: {
           working: 'В работе',
@@ -3351,25 +2981,10 @@ export default {
           idle: 'Простой',
           actionRequired: 'Нужно действие',
           retrying: 'Повторяется',
-          paused: 'Приостановлено'
-        },
-        columns: {
-          queue: 'Очередь',
-          active: 'Активные',
-          pending: 'Ожидают',
-          scheduled: 'Запланир.',
-          retry: 'Повтор',
-          archived: 'Сбой',
-          completed: 'Завершено',
-          latency: 'Макс. ожидание',
-          status: 'Статус'
+          paused: 'Приостановлено',
         },
         summary: {
-          title: 'Обзор выполнения',
-          active: 'Активные',
-          pending: 'В очереди',
-          retry: 'Повтор',
-          archived: 'Окончательный сбой'
+          archived: 'Окончательный сбой',
         },
         pools: {
           core: 'Основной разбор',
@@ -3377,178 +2992,86 @@ export default {
           enrichment: 'Обогащение',
           maintenance: 'Обслуживание и синхронизация',
           shared: 'Общий эластичный пул',
-          wiki: 'Пул Wiki'
+          wiki: 'Пул Wiki',
         },
         poolDescriptions: {
-          core: 'Гарантированная ёмкость разбора документов',
-          postprocess: 'Завершение разбора и запуск обогащения',
-          enrichment: 'Сводки, изображения, граф и генерация вопросов',
-          maintenance: 'Синхронизация источников, пакетные задачи и удаление',
-          shared: 'Используется разбором или обогащением по мере очереди',
-          wiki: 'Создание содержимого Wiki и финальная обработка'
+          wiki: 'Создание содержимого Wiki и финальная обработка',
         },
         queueNames: {
           default: 'Разбор документов',
           chat_attachment: 'Разбор вложений чата',
-          postprocess: 'Постобработка',
           summary: 'Сводки',
           sync: 'Синхронизация источников',
           low: 'Обслуживание и пакеты',
           multimodal: 'Мультимодальные',
           graph: 'Извлечение графа',
           question: 'Вопросы',
-          wiki: 'Wiki-конвейер'
+          wiki: 'Wiki-конвейер',
         },
         queueDescriptions: {
-          default: 'Разбор документов, ручной повторный разбор',
-          chat_attachment: 'Разбор вложений, загруженных в сессии',
-          postprocess: 'Завершение разбора, запуск обогащения',
-          summary: 'Сводки документов и таблиц',
-          sync: 'Ручная и плановая синхронизация',
-          low: 'Импорт FAQ, пакетный повторный разбор, очистка',
-          multimodal: 'OCR изображений, визуальные описания',
-          graph: 'Извлечение графа по фрагментам',
-          question: 'Генерация вопросов по фрагментам',
-          wiki: 'Создание контента, финализация индекса'
+          wiki: 'Создание контента, финализация индекса',
         },
-        errors: {
-          generic: 'Не удалось загрузить состояние очередей'
-        }
       },
       runtimeTable: {
         setting: 'Параметр и назначение',
-        value: 'Текущее значение'
+        value: 'Текущее значение',
       },
       sections: {
         other: {
           tab: 'Другое {count}',
-          title: 'Другие настройки',
-          description: 'Настройки этого развёртывания вне стандартных групп.'
+          description: 'Настройки этого развёртывания вне стандартных групп.',
         },
         security: {
-          tab: 'Сетевая безопасность {count}',
-          title: 'Сетевая безопасность',
-          description: 'Белый список SSRF и разрешение песочницы Docker (локальный docker.sock равносилен root на хосте).'
+          description: 'Белый список SSRF и разрешение песочницы Docker (локальный docker.sock равносилен root на хосте).',
         },
         runtime: {
-          tab: 'Среда и параллелизм {count}',
-          title: 'Среда и параллелизм',
-          description: 'Параллелизм фоновых пулов и сервисов моделей.',
-          restartHint: 'Настройки воркеров требуют перезапуска'
-        },
-        tenant: {
-          tab: 'Значения пространства {count}',
-          title: 'Значения пространства по умолчанию',
-          description: 'Начальные квоты и режимы совместимости для новых пространств.'
+          restartHint: 'Настройки воркеров требуют перезапуска',
         },
         access: {
-          tab: 'Учётные записи и доступ {count}',
-          title: 'Учётные записи и доступ',
-          description: 'Системные администраторы, открытая регистрация и правила создания пространств.'
+          description: 'Системные администраторы, открытая регистрация и правила создания пространств.',
         }
       },
       priorityHint: {
         disclosure: 'Источник и приоритет конфигурации',
         tier1: 'Параметры, сохранённые на этой странице (с пометкой «Переопределено»), всегда имеют приоритет — переменная окружения для них игнорируется.',
         tier2: 'Параметры, не сохранённые здесь, берутся из переменной окружения, а если её нет — из встроенного значения по умолчанию.',
-        tier3: 'Чтобы вернуть параметр под управление переменной окружения, нажмите кнопку «Сбросить» в его строке.'
+        tier3: 'Чтобы вернуть параметр под управление переменной окружения, нажмите кнопку «Сбросить» в его строке.',
       }
     },
     messages: {
       fetchFailed: 'Не удалось получить информацию о системе',
-      networkError: 'Ошибка сети, попробуйте позже'
+      networkError: 'Ошибка сети, попробуйте позже',
     }
   },
   tenant: {
-    title: 'Информация о пространстве',
     currentTenant: 'Текущее пространство',
     switchTenant: 'Переключить рабочее пространство',
-    sectionDescription: 'Просмотр детальной конфигурации пространства',
     statusActive: 'Активен',
     statusInactive: 'Не активирован',
     statusSuspended: 'Приостановлен',
     statusUnknown: 'Неизвестен',
-    loadingInfo: 'Загрузка данных...',
-    retry: 'Повторить',
-    unknown: 'Неизвестно',
     formatError: 'Ошибка формата',
-    searchPlaceholder: 'Поиск по имени или введите ID пространства...',
     noMatch: 'Не найдено подходящих пространств',
     switchSuccessTitle: 'Пространство переключено',
     switchSuccessContent: 'Вы вошли в {name}',
     loadTenantsFailed: 'Не удалось загрузить список пространств',
-    loading: 'Загрузка...',
     loadMore: 'Загрузить еще',
-    api: {
-      title: 'Информация об API',
-      docLabel: 'Документация API',
-      docDescription: 'Ознакомьтесь с полной документацией и примерами API,',
-      openDoc: 'Открыть документацию',
-      userIdLabel: 'ID пользователя',
-      userIdDescription: 'Ваш уникальный идентификатор пользователя',
-      usernameLabel: 'Имя пользователя',
-      usernameDescription: 'Имя, используемое для входа',
-      emailLabel: 'Электронная почта',
-      emailDescription: 'Ваш зарегистрированный адрес электронной почты',
-      createdAtLabel: 'Время регистрации',
-      createdAtDescription: 'Время создания учётной записи',
-      desktopPortLabel: 'Локальный порт API (desktop)',
-      desktopPortDescription: 'Укажите фиксированный порт (например, 37841), чтобы расширение Chrome и другие инструменты всегда использовали один URL API. 0 — случайный порт при каждом запуске. После сохранения перезапустите приложение.',
-      desktopPortSave: 'Сохранить',
-      desktopPortSaved: 'Сохранено. Перезапустите приложение, чтобы применить.',
-      desktopPortSaveFailed: 'Не удалось сохранить',
-      desktopPortInvalid: 'Введите порт от 0 до 65535',
-      desktopBindPublicLabel: 'Разрешить доступ к API в LAN',
-      desktopBindPublicDescription: 'Встроенный сервер слушает 0.0.0.0 — другие устройства в локальной сети смогут обращаться к API по адресу ниже. Риски доступа выше; настройте брандмауэр и маршрутизацию. После изменения перезапустите приложение.',
-      desktopBindPublicSaved: 'Сохранено. Перезапустите приложение, чтобы применить.',
-      desktopBindPublicSaveFailed: 'Не удалось сохранить',
-      lanUrlLabel: 'Базовый URL API для LAN',
-      lanUrlDescription: 'Отображается после включения доступа в LAN и перезапуска. Если IP неверный, подставьте IPv4 из сетевых настроек системы.',
-      lanUrlCopyTitle: 'Копировать LAN URL API',
-      lanUrlUnavailable: 'API слушает все интерфейсы, но LAN IPv4 не удалось определить автоматически. Узнайте IPv4 в настройках сети и соберите http://ВАШ_IP:ПОРТ/api/v1 вручную.'
-    },
-    messages: {
-      fetchFailed: 'Не удалось получить информацию о пространстве',
-      networkError: 'Ошибка сети, попробуйте позже'
-    },
     deleteDangerZone: {
-      title: 'Delete this workspace',
-      desc: 'Delete the whole workspace and its configuration. Members will no longer be able to access its knowledge bases, agents, or API key.',
-      button: 'Delete workspace',
-      confirmTitle: 'Delete this workspace?',
-      confirmBody: 'This will delete "{name}" and make its knowledge bases, agents, members, and API key unavailable. This action cannot be undone.',
       confirmHint: 'Type the workspace name "{name}" to confirm deletion.',
-      confirm: 'Delete workspace',
       nameMismatch: 'Workspace name does not match',
-      success: 'Workspace deleted',
-      failed: 'Failed to delete workspace'
+      failed: 'Failed to delete workspace',
     },
     leaveDangerZone: {
-      title: 'Покинуть это рабочее пространство',
-      desc: 'Завершает ваше членство в этом пространстве. Вы потеряете доступ к базам знаний и агентам. Позже вас можно снова пригласить.',
-      button: 'Покинуть пространство'
-    },
-    storage: {
-      quotaLabel: 'Квота хранения',
-      quotaDescription: 'Общий объём хранилища, выделенный пространству',
-      usedLabel: 'Использовано хранения',
-      usedDescription: 'Объём уже использованного пространства',
-      usageLabel: 'Использование хранения',
-      usageDescription: 'Процент использованного пространства'
+      button: 'Покинуть пространство',
     },
     details: {
       idLabel: 'ID пространства',
       idDescription: 'Уникальный идентификатор вашего пространства',
-      nameLabel: 'Название пространства',
       nameDescription: 'Название пространства, к которому вы принадлежите',
-      descriptionLabel: 'Описание пространства',
       descriptionDescription: 'Подробное описание пространства',
       businessLabel: 'Бизнес пространства',
       businessDescription: 'Бизнес-направление, к которому относится пространство',
-      statusLabel: 'Статус пространства',
       statusDescription: 'Текущий рабочий статус пространства',
-      createdAtLabel: 'Время создания пространства',
-      createdAtDescription: 'Дата и время создания пространства',
       editName: 'Изменить имя',
       editNamePlaceholder: 'Введите новое имя пространства',
       editNameConfirm: 'Сохранить',
@@ -3560,28 +3083,17 @@ export default {
       editDescriptionPlaceholder: 'Введите новое описание пространства',
       editDescriptionSuccess: 'Описание пространства обновлено',
       editDescriptionFailed: 'Не удалось обновить описание пространства',
-      descriptionEmptyPlaceholder: 'Не указано'
+      descriptionEmptyPlaceholder: 'Не указано',
     },
     create: {
-      action: 'Создать новое рабочее пространство',
-      dialogTitle: 'Создать новое рабочее пространство',
       dialogSubtitle: 'У рабочего пространства собственные базы знаний и участники. Вы станете его владельцем.',
-      nameLabel: 'Название',
-      namePlaceholder: 'Например: Мой новый проект',
-      nameRequired: 'Введите название рабочего пространства',
-      descriptionLabel: 'Описание (необязательно)',
-      descriptionPlaceholder: 'Кратко опишите назначение рабочего пространства',
-      submit: 'Создать',
-      cancel: 'Отмена',
-      success: 'Рабочее пространство создано',
-      failed: 'Не удалось создать рабочее пространство',
-      disabled: 'В этой системе присоединиться к пространству можно только по приглашению; создать его самостоятельно нельзя.'
+      disabled: 'В этой системе присоединиться к пространству можно только по приглашению; создать его самостоятельно нельзя.',
     },
     switcher: {
       menuLabel: 'Переключить рабочее пространство',
       currentBadge: 'Текущий',
       homeTooltip: 'Ваше основное рабочее пространство',
-      empty: 'Вы состоите только в одном рабочем пространстве'
+      empty: 'Вы состоите только в одном рабочем пространстве',
     }
   },
   chat: {
@@ -3631,7 +3143,19 @@ export default {
         artifactsAll: 'Все файлы',
         artifactsSearch: 'Поиск по имени файла',
         artifactsNoMatches: 'Нет подходящих файлов',
-        desktopPlaceholder: 'Визуализация рабочего стола скоро появится',
+        desktopNotStarted: 'The desktop is not connected yet. Connecting it attaches to this conversation\'s sandbox.',
+        desktopStart: 'Connect desktop',
+        desktopStarting: 'Connecting to the desktop… (3-8 seconds on first use)',
+        desktopUnsupported: 'This sandbox config has no desktop. Pick a desktop-image template in the workspace sandbox settings, on a Cube or E2B backend.',
+        desktopBusy: 'This conversation already has a desktop open. Only one connection is allowed at a time, otherwise two people share one keyboard and mouse.',
+        desktopStartFailed: 'The desktop failed to start. You can retry.',
+        desktopRebuilt: 'The sandbox was rebuilt for a skill update, so the previous desktop and any unsaved work are gone. Reconnecting gives you a fresh desktop.',
+        desktopNeedsProvision: 'This conversation has no running sandbox. Create and connect starts a new sandbox, billed according to your workspace configuration.',
+        desktopCreateAndStart: 'Create and connect',
+        desktopPaused: 'This conversation\'s sandbox is paused. Connecting the desktop resumes it.',
+        desktopDisconnected: 'Desktop disconnected',
+        desktopIdleDisconnected: 'The desktop disconnected after being idle. The sandbox will pause on its own TTL. You can reconnect.',
+        desktopRetry: 'Reconnect',
         notStarted: 'Терминал ещё не запущен. Запуск подключит его к песочнице этого диалога, создав или возобновив её при необходимости.',
         paused: 'Песочница этого диалога приостановлена. Запуск терминала возобновит её.',
         start: 'Запустить терминал',
@@ -3641,16 +3165,28 @@ export default {
         noSandbox: 'Песочницы ещё нет, а у текущего агента не настроен бэкенд песочницы — непонятно, где её создавать. Переключитесь на агента с настроенной песочницей или отправьте сообщение с выполнением кода.',
         unsupported: 'Текущий бэкенд песочницы не поддерживает интерактивный терминал',
         disconnected: 'Соединение потеряно',
-        retry: 'Переподключиться',
         sessionEnded: 'Сеанс терминала завершён',
         idleDisconnected: 'Терминал отключён из‑за простоя. Песочница приостановится по своему TTL. Можно подключиться снова.',
         authRevoked: 'Сессия больше не действительна, терминал отключён. Войдите снова и переподключитесь.',
     },
     questionMinimapTitle: 'Вопросы',
+    questionMinimapPosition: 'Реплика {current} из {total}',
     questionMinimapAriaLabel: 'Содержание вопросов',
     questionMinimapAttachmentPlaceholder: '(Вложение)',
     referenceChunkCount: '{count} фрагмент(ов)',
     fallbackHint: 'В базе знаний не найдено релевантного содержимого. Выше представлен прямой ответ модели.',
+    truncatedHint: 'Ответ обрезан на лимите вывода модели за один ответ. Выше — то, что было создано до обрыва.',
+    rewind: {
+      tooltip: 'Откатить сюда',
+      confirmButton: 'Откатить',
+      cancelButton: 'Отмена',
+      busy: 'Дождитесь окончания текущего ответа, прежде чем откатывать',
+      noCheckpoint: 'Нельзя откатить: есть живая рабочая область, но нет достижимой контрольной точки',
+      sandboxReplaced: 'Нельзя откатить: песочница заменена, старая контрольная точка недоступна',
+      reloadFailed: 'Диалог откачен, но историю не удалось перезагрузить. Обновите страницу, если пропали более ранние сообщения',
+      skipNoSandbox: 'Диалог откачен, рабочая область не изменена (нет привязанной песочницы)',
+      skipNoCheckpoint: 'Диалог откачен, рабочая область не изменена (нет контрольной точки для отката)',
+    },
     requestInfoTitle: 'Request info',
     requestInfoRequestId: 'Request ID',
     requestInfoMessageId: 'Message ID',
@@ -3663,6 +3199,20 @@ export default {
     channelIm: 'IM',
     chunkLabel: 'Фрагмент {index}:',
     navigateToDocument: 'Просмотр документа',
+    referenceSourceBack: 'Все источники',
+    referenceSourceView: 'Открыть оригинал',
+    referenceSourceRelocate: 'Найти снова',
+    referenceSourceLocating: 'Поиск цитируемого фрагмента…',
+    referenceSourceExact: "Фрагмент источника найден",
+    referenceSourcePartial: "Проверенные фрагменты выделены; часть цитаты не сопоставлена",
+    referenceSourceBlock: "Найдена область источника; точное совпадение текста не подтверждено",
+    referenceSourceAmbiguous: "Найдено несколько совпадений; точное место неизвестно",
+    referenceSourceStale: "Источник или содержимое изменены; точное место цитаты недоступно",
+    referenceSourcePrevious: "Предыдущее место цитирования",
+    referenceSourceNext: "Следующее место цитирования",
+    referenceSourceFoundPage: 'Найдено на странице {page}',
+    referenceSourceNotFound: 'Не удалось точно найти фрагмент; открыт оригинал',
+    referenceSourceOpenWeb: 'Открыть веб-страницу на этом фрагменте',
     chunkIdLabel: 'ID фрагмента:',
     documentIdLabel: 'ID документа:',
     faqIdLabel: 'FAQ ID:',
@@ -3746,6 +3296,7 @@ export default {
     processError: 'Ошибка обработки',
     sessionExcerpt: 'Выдержка из сессии',
     noAnswerContent: '(Нет содержимого ответа)',
+    manualSourcesHeading: 'Источники',
     noMatchFound: 'Совпадений не найдено',
     deleteSessionFailed: 'Ошибка удаления, попробуйте позже!',
     imageTooMany: 'Максимум 5 изображений',
@@ -3758,21 +3309,16 @@ export default {
     attachmentTooLarge: 'Файл {name} превышает лимит {max} МБ',
     attachmentTypeNotSupported: 'Неподдерживаемый тип файла: {name}',
     attachmentUploading: 'Загрузка {progress}%',
-    attachmentParsing: 'Обработка',
     attachmentReady: 'Готово',
     attachmentUploadFailed: 'Не удалось загрузить вложение',
     attachmentParseFailed: 'Не удалось обработать вложение',
-    attachmentStillProcessing: 'Вложение {name} ещё обрабатывается'
+    attachmentStillProcessing: 'Вложение {name} ещё обрабатывается',
   },
   knowledgeEditor: {
     titleCreate: 'Создать базу знаний',
     titleEdit: 'Настройки базы знаний',
     advanced: {
-      title: 'Расширенные настройки',
-      description: 'Настройте генерацию вопросов и мультимодальные возможности',
       multimodal: {
-        label: 'Мультимодальная функция',
-        description: 'Включите понимание мультимедийного контента, такого как изображения',
         vllmLabel: 'VLLM модель для зрения',
         vllmDescription: 'Визуально-языковая модель, необходимая для мультимодального понимания',
         vllmPlaceholder: 'Выберите VLLM модель (обязательно)',
@@ -3781,53 +3327,45 @@ export default {
         descriptionLanguageAuto: 'Следовать языку документа',
         customInstructionsLabel: 'Инструкции обработки изображений',
         customInstructionsDescription: 'Добавьте визуальные приоритеты, сохраняя правила OCR и Markdown',
-        customInstructionsPlaceholder: 'Например: распознавать шильдики, модели, коды ошибок и единицы таблиц…'
+        customInstructionsPlaceholder: 'Например: распознавать шильдики, модели, коды ошибок и единицы таблиц…',
+        imageAttrsLabel: 'Наблюдение атрибутов изображений',
+        imageAttrsDescription: 'Когда включено, каждое изображение сначала наблюдается на атрибуты и описывается, затем атрибуты решают, нужен ли OCR текста в изображении. Когда выключено — базовый режим: каждое изображение описывается и распознаётся',
+        imageAttrsSchemaLabel: 'Наблюдаемые атрибуты изображений',
+        imageAttrsSchemaDescription: 'Модель наблюдает перечисленные ниже атрибуты (определены реестром бэкенда), чтобы управлять политикой OCR',
+        imageAttrsOcrConditions: 'Запуск OCR по наблюдаемым условиям атрибутов',
+        imageAttrsOcrConditionsDesc: 'Когда наблюдаемые атрибуты соответствуют условиям ниже, для изображения выполняется OCR',
+        imageAttrsOcrOnUnobserved: 'Запускать OCR при сбое наблюдения атрибутов изображения',
+        imageAttrsOcrOnUnobservedDesc: 'Если модель не смогла корректно наблюдать атрибуты изображения, OCR по умолчанию всё равно выполняется, чтобы не потерять текст; выключите, чтобы пропустить. (Небольшая визуальная модель вроде 4B или пользовательские инструкции к изображениям, конфликтующие с системным промптом, могут привести к сбою наблюдения; модели 8B и выше ошибаются редко, поэтому отключать не рекомендуется)',
+        imagePipelineKbNote: 'По умолчанию следуют настройкам базы знаний; можно изменить для этой задачи',
       },
       tableMetadataInstructions: {
-        label: 'Инструкции метаданных таблиц',
-        description: 'Добавьте бизнес-контекст и семантику полей к сводкам CSV/Excel',
-        placeholder: 'Например: таблица заказов продаж, суммы в CNY, status использует внутренние коды…'
+        placeholder: 'Например: таблица заказов продаж, суммы в CNY, status использует внутренние коды…',
       },
       questionGeneration: {
-        label: 'AI генерация вопросов',
-        description: 'Генерация связанных вопросов для каждого фрагмента с помощью LLM при парсинге документа для улучшения полноты поиска. Включение увеличит время парсинга документа.',
         countLabel: 'Количество вопросов',
         countDescription: 'Количество вопросов для генерации на фрагмент документа (1-10)',
     instructionsLabel: 'Инструкции генерации вопросов',
         instructionsDescription: 'Задайте аудиторию, сценарий и формулировки, сохраняя стабильный формат вывода',
-        instructionsPlaceholder: 'Например: естественные вопросы службы поддержки без экзаменационного стиля…'
+        instructionsPlaceholder: 'Например: естественные вопросы службы поддержки без экзаменационного стиля…',
+      },
+      profile: {
+        modelLabel: 'Модель генерации',
+        modelDescription: 'Если не выбрана, используется модель резюмирования базы знаний.',
+        modelPlaceholder: 'Выберите модель генерации',
+        instructionsLabel: 'Требования к описанию',
+        instructionsPlaceholder: 'Например: для сотрудников поддержки, описать продуктовые линейки простыми словами, сохранить номера моделей…',
       },
       autoTag: {
-        label: 'Автоматические теги',
-        description: 'После разбора документа выбираются подходящие существующие теги базы знаний. Теги не создаются и не удаляются, но выполняется дополнительный вызов модели.',
-        modelLabel: 'Модель классификации',
-        modelDescription: 'Если не выбрана, используется модель резюмирования базы знаний.',
-        modelPlaceholder: 'Выберите модель классификации',
         maxTagsLabel: 'Максимум тегов на документ',
         maxTagsDescription: 'Автоматически связывать от 1 до 10 существующих тегов.',
         skipIfTaggedLabel: 'Пропускать документы с тегами',
-        skipIfTaggedDescription: 'Если включено, документы с тегами, заданными вручную при загрузке, не размечаются автоматически, что сохраняет намерение пользователя.'
+        skipIfTaggedDescription: 'Если включено, документы с тегами, заданными вручную при загрузке, не размечаются автоматически, что сохраняет намерение пользователя.',
       }
     },
-    asr: {
-      title: 'Распознавание речи для аудио',
-      description: 'Настройте ASR (речь → текст). При включении можно загружать аудиофайлы и транскрибировать их в текст (mp3, wav, m4a, flac, ogg и др.). Загрузка видео не поддерживается.',
-      label: 'Включить распознавание речи для аудио',
-      desc: 'При включении в базу можно загружать аудио; речь транскрибируется в текст для парсинга и поиска',
-      modelLabel: 'Модель ASR',
-      modelDescription: 'Модель распознавания речи для транскрибации аудио (например, OpenAI Whisper)',
-      modelPlaceholder: 'Выберите модель ASR',
-      languageLabel: 'Подсказка языка аудио',
-      languageDescription: 'Необязательно. Основной язык может улучшить распознавание некоторыми ASR-моделями; пустое значение включает автоопределение.',
-      languagePlaceholder: 'Например zh или en; пусто — автоопределение'
-    },
     multimodal: {
-      title: 'Обработка изображений',
-      description: 'Настройте понимание изображений для парсинга и поиска нетекстового контента'
+      description: 'Настройте понимание изображений для парсинга и поиска нетекстового контента',
     },
     chunking: {
-      title: 'Настройки разбиения',
-      description: 'Управляет тем, как загруженные документы разбиваются перед эмбеддингом. Значения по умолчанию подходят для большинства случаев — настройте только если качество поиска плохое.',
       sizeLabel: 'Размер блока',
       sizeDescription: 'Максимальное количество символов в блоке (100–4000). По умолчанию 512 ≈ 100–130 английских токенов. Меньше для FAQ (200–400), больше для повествовательных документов (1000–2000).',
       characters: 'символов',
@@ -3853,13 +3391,11 @@ export default {
       languagesDescription: 'Ограничивает эвристические паттерны выбранными языками (DE/EN/ZH). Пусто = автоопределение из образца. Установите явно для однородных корпусов, чтобы избежать ложных срабатываний между языками.',
       languagesPlaceholder: 'Автоопределение',
       debug: {
-        toggle: 'Проверить разбиение',
         toggleHint: 'Запустить разбиение для примера текста без повторной загрузки',
         sampleLabel: 'Пример текста',
         samplePlaceholder: 'Вставьте фрагмент Markdown / простого текста, чтобы увидеть, как его разобьет текущая конфигурация…',
         presetLabel: 'Загрузить пример:',
         runButton: 'Запустить предпросмотр',
-        loading: 'Запуск разбиения на примере…',
         errorPrefix: 'Ошибка предпросмотра',
         selectedTier: 'Выбранная стратегия',
         rejected: 'Отклоненные уровни',
@@ -3867,7 +3403,7 @@ export default {
         fallbackWarning: 'Цепочка стратегий полностью исчерпана — текущие настройки не позволяют разумно разбить контент',
         stats: {
           chunks: 'блоков',
-          truncated: 'обрезано; всего {total}'
+          truncated: 'обрезано; всего {total}',
         },
         profile: {
           lines: 'строк',
@@ -3875,36 +3411,32 @@ export default {
           headings: 'заголовков Markdown',
           pageBreaks: 'разрывов страниц',
           chapterMarkers: 'маркеров глав',
-          languages: 'языки'
+          languages: 'языки',
         },
         samples: {
           markdown: 'Markdown-документ',
           faq: 'Список FAQ',
           chapter: 'Главы PDF',
-          plain: 'Обычный текст'
+          plain: 'Обычный текст',
         }
       },
       languageOptions: {
         de: 'Немецкий',
         en: 'Английский',
-        zh: 'Китайский'
+        zh: 'Китайский',
       },
       strategies: {
         legacy: {
-          label: 'По длине',
-          tooltip: 'Игнорирует структуру и разбивает рекурсивно по числу символов и разделителям — оригинальное поведение. Используйте, если стратегии с учётом структуры работают некорректно.'
+          tooltip: 'Игнорирует структуру и разбивает рекурсивно по числу символов и разделителям — оригинальное поведение. Используйте, если стратегии с учётом структуры работают некорректно.',
         },
         heuristic: {
-          label: 'По структуре',
-          tooltip: 'Разбивает по обнаруженным структурным признакам: разрывы страниц, нумерованные разделы, многоязычные маркеры глав (DE/EN/ZH), заголовки в верхнем регистре. Идеально для PDF без заголовков Markdown.'
+          tooltip: 'Разбивает по обнаруженным структурным признакам: разрывы страниц, нумерованные разделы, многоязычные маркеры глав (DE/EN/ZH), заголовки в верхнем регистре. Идеально для PDF без заголовков Markdown.',
         },
         heading: {
-          label: 'По заголовкам',
-          tooltip: 'Разбивает по границам заголовков Markdown (#, ##, ###); каждый фрагмент получает свой путь заголовков. Подходит для хорошо структурированного Markdown.'
+          tooltip: 'Разбивает по границам заголовков Markdown (#, ##, ###); каждый фрагмент получает свой путь заголовков. Подходит для хорошо структурированного Markdown.',
         },
         auto: {
-          label: 'Автоматически',
-          tooltip: 'Профилировщик документа сам выбирает между «По заголовкам», «По структуре» и «По длине» разбиением для каждой загрузки.'
+          tooltip: 'Профилировщик документа сам выбирает между «По заголовкам», «По структуре» и «По длине» разбиением для каждой загрузки.',
         }
       },
       separators: {
@@ -3915,34 +3447,18 @@ export default {
         questionCn: 'Вопросительный знак (？)',
         semicolonCn: 'Китайская точка с запятой (；)',
         semicolonEn: 'Точка с запятой (;)',
-        space: 'Пробел ( )'
+        space: 'Пробел ( )',
       }
-    },
-    models: {
-      title: 'Конфигурация моделей',
-      description: 'Выберите подходящие AI-модели для базы знаний',
-      llmLabel: 'LLM модель',
-      llmDesc: 'Большая языковая модель для диалогов и вопросов-ответов',
-      llmPlaceholder: 'Выберите LLM модель',
-      embeddingLabel: 'Модель встраивания',
-      embeddingDesc: 'Модель встраивания для векторизации текста',
-      embeddingPlaceholder: 'Выберите модель встраивания',
-      embeddingLocked: 'В базе знаний уже есть файлы. Модель встраивания нельзя изменить',
-      embeddingOptional: '(необязательно)',
-      embeddingWikiOptionalDesc: 'Необязательно. Если задано, используется для сопоставления по сходству при классификации каталога Wiki, чтобы новые страницы лучше повторно использовали существующие папки; иначе классификация выполняется по полному дереву каталога.'
     },
     faqExport: {
       exportButton: 'Экспорт',
       exportCSV: 'Экспорт CSV',
       exportJSON: 'Экспорт JSON',
       exportSuccess: 'Экспорт успешен',
-      exportFailed: 'Ошибка экспорта'
+      exportFailed: 'Ошибка экспорта',
     },
     faqImport: {
-      title: 'Пакетный импорт FAQ',
       modeLabel: 'Режим импорта',
-      appendMode: 'Добавить',
-      replaceMode: 'Заменить существующие записи',
       fileLabel: 'Выберите файл',
       fileTip: 'Поддерживаются JSON / CSV / Excel. Заголовки CSV/Excel: 标签(必填), 问题(必填), 相似问题(选填-多个用##分隔), 反例问题(选填-多个用##分隔), 机器人回答(必填-多个用##分隔), 是否全部回复(选填-默认FALSE), 是否停用(选填-默认FALSE), 是否禁止被推荐(选填-默认False 可被推荐). Также поддерживаются старый заголовок «分类» и формат: standard_question, answers, similar_questions, negative_questions',
       clickToUpload: 'Нажмите для загрузки файла',
@@ -3959,110 +3475,18 @@ export default {
       downloadExample: 'Скачать пример',
       downloadExampleJSON: 'Скачать пример JSON',
       downloadExampleCSV: 'Скачать пример CSV',
-      downloadExampleExcel: 'Скачать пример Excel'
-    },
-    faq: {
-      title: 'Настройки FAQ',
-      subtitle: 'Управление записями FAQ с пакетным импортом, редактированием и тестированием поиска',
-      description: 'Определите стратегию индексации и общие правила для FAQ-базы знаний',
-      indexModeLabel: 'Режим индексации',
-      indexModeDescription: 'Только вопросы дают более высокую точность, вопросы+ответы повышают полноту выдачи.',
-      questionIndexModeLabel: 'Режим индексации вопросов',
-      questionIndexModeDescription: 'Объединенная: стандартные и похожие вопросы индексируются вместе. Раздельная: каждый вопрос индексируется независимо для более точного поиска, но требует больше места.',
-      entryGuide: 'Каждый FAQ включает основной вопрос, похожие вопросы, негативные примеры и несколько ответов. Управляйте ими в деталях FAQ-базы.',
-      tagDesc: 'Выберите теги для записей FAQ',
-      tagPlaceholder: 'Выберите теги',
-      standardQuestion: 'Основной вопрос',
-      standardQuestionDesc: 'Set the standard phrasing of the question — this is the most common way users ask it.',
-      answers: 'Ответы',
-      answersDesc: 'Provide complete and accurate answer content. Multiple answers can be added to cover different scenarios.',
-      similarQuestions: 'Похожие вопросы',
-      similarQuestionsDesc: 'Add questions with the same meaning but different phrasing to help the system better match user queries.',
-      negativeQuestions: 'Негативные примеры',
-      negativeQuestionsDesc: 'Add questions that should not match this answer, to exclude false positives.',
-      editorCreate: 'Создать FAQ запись',
-      editorEdit: 'Редактировать FAQ запись',
-      answerPlaceholder: 'Введите содержимое ответа, поддерживается многострочный текст, нажмите Ctrl+Enter или нажмите кнопку для добавления',
-      similarPlaceholder: 'Введите похожий вопрос и нажмите значок плюса для добавления',
-      negativePlaceholder: 'Введите негативный пример и нажмите значок плюса для добавления',
-      answerRequired: 'Добавьте хотя бы один ответ',
-      emptyTitle: 'Нет записей FAQ',
-      emptyDesc: 'Нажмите "Создать FAQ запись" выше, чтобы начать',
-      searchPlaceholder: 'Поиск стандартных вопросов...',
-      searchTest: 'Тест поиска',
-      createGroup: 'New',
-      searchTestTitle: 'Тест поиска FAQ',
-      queryLabel: 'Запрос',
-      queryPlaceholder: 'Введите вопрос для поиска',
-      vectorThresholdDesc: 'Диапазон 0-1, по умолчанию 0.7',
-      matchCountLabel: 'Количество результатов',
-      matchCountDesc: 'Диапазон 1-50, по умолчанию 10',
-      searchButton: 'Начать поиск',
-      searching: 'Поиск...',
-      searchResults: 'Результаты поиска',
-      noResults: 'Совпадающих записей FAQ не найдено',
-      matchedQuestion: 'Совпавший вопрос',
-      matchTypeEmbedding: 'Векторное совпадение',
-      matchTypeKeywords: 'Совпадение ключевых слов',
-      similarityThresholdLabel: 'Порог сходства',
-      statusEnabled: 'Включено',
-      statusDisabled: 'Выключено',
-      statusEnableSuccess: 'Запись FAQ включена',
-      statusDisableSuccess: 'Запись FAQ отключена',
-      statusUpdateFailed: 'Не удалось обновить статус',
-      recommended: 'Рекомендовать',
-      recommendedEnabled: 'Рекомендация включена',
-      recommendedDisabled: 'Рекомендация отключена',
-      recommendedDisableSuccess: 'Рекомендация записи FAQ отключена',
-      recommendedUpdateFailed: 'Не удалось обновить статус рекомендации',
-      batchUpdateTag: 'Пакетная установка тегов',
-      batchUpdateTagTip: 'Установить теги для {count} выбранных записей',
-      batchEnable: 'Включить выбранные',
-      batchDisable: 'Отключить выбранные',
-      batchDelete: 'Удалить выбранные',
-      confirmBatchDelete: 'Удалить выбранные записи FAQ ({count})? Это действие нельзя отменить.',
-      batchDeleteSuccess: 'Удалено записей FAQ: {count}',
-      modes: {
-        questionOnly: 'Только вопросы',
-        questionAnswer: 'Вопрос + ответ',
-        combined: 'Объединенная',
-        separate: 'Раздельная'
-      }
+      downloadExampleExcel: 'Скачать пример Excel',
     },
     document: {
-      title: 'Управление документами',
-      subtitle: 'Загружайте файлы кликом или перетаскиванием — поддерживается автоматический разбор разных форматов и умное разбиение на фрагменты для быстрого поиска'
-    },
-    messages: {
-      loadModelsFailed: 'Не удалось загрузить список моделей',
-      loadDataFailed: 'Не удалось загрузить данные базы знаний',
-      notFound: 'База знаний не найдена',
-      nameRequired: 'Пожалуйста, введите название базы знаний',
-      summaryRequired: 'Пожалуйста, выберите модель суммаризации',
-      multimodalInvalid: 'Проверка мультимодальной конфигурации не удалась',
-      createSuccess: 'База знаний успешно создана',
-      createFailed: 'Не удалось создать базу знаний',
-      missingId: 'Отсутствует ID базы знаний',
-      buildDataFailed: 'Не удалось сформировать данные для отправки',
-      updateSuccess: 'Настройки сохранены',
-      indexModeRequired: 'Выберите режим индексации для FAQ базы знаний',
-      storageChangeConfirm: 'В базе знаний уже есть файлы. Смена хранилища может сделать старые файлы недоступными. Продолжить?'
-    },
-    share: {
-      description: 'Share the knowledge base with spaces so members can access and use it',
-      hintTitle: 'Sharing notes',
-      addShare: 'Share',
-      unshareConfirm: 'Are you sure you want to unshare from "{name}"?',
-      tip1: 'After sharing, space members will access this knowledge base based on the assigned permissions',
-      tip2: 'Editable permission allows members to modify content; Read-only permission only allows retrieval and Q&A'
+      subtitle: 'Загружайте файлы кликом или перетаскиванием — поддерживается автоматический разбор разных форматов и умное разбиение на фрагменты для быстрого поиска',
     },
     buttons: {
-      create: 'Создать базу знаний',
       save: 'Сохранить настройки',
-      saveAndClose: 'Сохранить и закрыть',
+    },
+    footer: {
+      instantEffect: 'Изменения на этой странице применяются сразу, сохранять не нужно',
     },
     postCreateHint: {
-      title: 'База знаний создана',
       footer: 'Продолжите настройку, настройте совместное использование и источники данных, затем нажмите «Сохранить и закрыть».',
       followUpDesc: 'Настройте источники данных слева или опубликуйте базу в пространствах через «Управление общим доступом»',
     },
@@ -4122,6 +3546,9 @@ export default {
       revisionDiffContent: 'Содержимое',
       revisionDiffEmpty: 'Нет различий в заголовке, резюме и содержимом с текущей версией',
       revisionLoadFailed: 'Не удалось загрузить историю версий',
+      revisionNotRetained: 'Снимок этой версии не сохранён или был очищен',
+      revisionNotRetainedRange: 'v{ver} · полное содержимое',
+      revisionNotRetainedHint: 'Снимок предыдущей версии (v{prev}) не сохранён — для версий до обновления снимки не записывались, а старые могли быть очищены. Показано полное содержимое v{ver} с нуля.',
       revertBtn: 'Откатить к этой версии',
       revertConfirm: 'Откатить к v{ver}? Текущее содержимое сначала будет сохранено в историю.',
       revertSuccess: 'Выполнен откат к v{ver}',
@@ -4130,9 +3557,75 @@ export default {
       editingBadge: 'Редактирование',
       pageActions: 'Действия со страницей',
       tabDocuments: 'Документы',
+      tabGallery: 'Галерея',
+      tabDocumentsTip: 'Загрузка исходных документов и управление ими',
+      tabWikiTip: 'Wiki-страницы, автоматически составленные из документов',
+      tabGalleryTip: 'Все изображения, извлечённые из документов',
+      viewTabs: 'Представления базы знаний',
+      gallery: {
+        allImages: 'Все изображения',
+        count: 'Изображений: {count}',
+        countFiltered: 'Найдено: {count}',
+        searchPlaceholder: 'Поиск по описанию или тексту на изображении',
+        filters: 'Фильтры',
+        clearFilters: 'Сбросить фильтры',
+        searchIn: 'Где искать',
+        searchInHint: 'Ключевые слова ищутся только в отмеченных полях',
+        attrSection: 'Атрибуты изображений',
+        attrHint: '«Скрыть» убирает изображения с этим значением; «Всегда показывать» оставляет их, даже если другое правило их скрывает',
+        verdictDefault: 'Любое',
+        verdictOff: 'Скрыть',
+        verdictOn: 'Всегда показывать',
+        keywordsPlaceholder: 'Ключевые слова через запятую',
+        noAttrs: 'Нет атрибутов для фильтрации',
+        sort: 'Сортировка',
+        sortField: 'Сортировать по',
+        sortOrder: 'Порядок',
+        orderAsc: 'По возрастанию',
+        orderDesc: 'По убыванию',
+        emptyHint: 'Изображения из документов появятся здесь после завершения разбора',
+        emptyFiltered: 'Нет изображений, подходящих под фильтры',
+        imageLoadError: 'Не удалось загрузить изображение',
+        noCaption: 'Нет описания',
+        noOcr: 'Текст не распознан',
+        caption: 'Описание',
+        ocr: 'Текст на изображении (OCR)',
+        attributes: 'Атрибуты',
+        source: 'Исходный документ',
+        dimensions: 'Размер',
+        openSource: 'Открыть исходный документ',
+        copy: 'Копировать',
+        zoomIn: 'Увеличить (+)',
+        zoomOut: 'Уменьшить (-)',
+        zoomReset: 'По размеру окна (0)',
+        actualSize: 'Исходный размер',
+        rotate: 'Повернуть (R)',
+        download: 'Скачать',
+        openOriginal: 'Открыть в новой вкладке',
+        toggleInfo: 'Сведения (I)',
+        viewerClose: 'Закрыть (Esc)',
+        prev: 'Назад (←)',
+        next: 'Вперёд (→)',
+        // Display names for the builtin attributes the gallery itself
+        // declares. Attributes contributed by other sources fall back to the
+        // pipeline's own wording (see the imageAttr namespace).
+        attr: {
+          builtin_caption: 'Описание',
+          builtin_caption_description: 'Описание изображения, сгенерированное моделью.',
+          builtin_ocr_text: 'OCR-текст',
+          builtin_ocr_text_description: 'Текст, извлечённый из изображения OCR.',
+          builtin_created_at: 'Время создания',
+          builtin_created_at_description: 'Когда был создан фрагмент исходного документа.',
+          builtin_updated_at: 'Время изменения',
+          builtin_updated_at_description: 'Когда фрагмент исходного документа был изменён последний раз.',
+          builtin_is_enabled: 'Состояние',
+          builtin_is_enabled_description: 'Участвует ли фрагмент исходного документа в поиске.',
+          builtin_is_enabled_value_true: 'Включено',
+          builtin_is_enabled_value_false: 'Отключено',
+        },
+      },
       tabGraph: 'Граф',
       tabGraphTip: 'Граф связей между Wiki-страницами (граф ссылок страниц). Это НЕ то же самое, что граф знаний на основе сущностей и отношений, настраиваемый в «Настройки БЗ → Граф знаний».',
-      searchPlaceholder: 'Поиск Wiki-страниц...',
       searchNoResults: 'Страницы не найдены',
       viewModeToggle: 'Переключить вид каталога',
       viewTree: 'Дерево',
@@ -4166,8 +3659,6 @@ export default {
       filterSynthesis: 'Синтез',
       filterComparison: 'Сравнения',
       legendFamiliar: 'Источники, которыми вы часто пользуетесь',
-      emptyTitle: 'Wiki-страниц пока нет',
-      emptyDesc: 'Загрузите документы с включённым Wiki для автоматической генерации страниц',
       selectPageHint: 'Выберите страницу слева для просмотра',
       version: 'v{ver}',
       aliases: 'Псевдонимы',
@@ -4176,7 +3667,6 @@ export default {
       graphEmpty: 'Загрузка графа...',
       fitView: 'По размеру экрана',
       indexTitle: 'Индекс',
-      loading: 'Загрузка…',
       loadMoreShort: 'Загрузить ещё',
       indexOverviewTag: 'Каталог',
       indexEmpty: 'Пока нет wiki-страниц. Сначала загрузите документы.',
@@ -4235,15 +3725,11 @@ export default {
       issueFixSingle: 'Исправить',
       fixStartError: 'Не удалось запустить помощник исправления',
       issueFixPromptSingle: 'Пожалуйста, исправьте проблему (ID: {id}) на странице [[{slug}]].',
-      issueFixPromptAutoStart: 'Пожалуйста, исправьте следующие проблемы на странице [[{slug}]]:'
+      issueFixPromptAutoStart: 'Пожалуйста, исправьте следующие проблемы на странице [[{slug}]]:',
     },
     indexing: {
-      title: 'Стратегия индексации',
-      description: 'Настройте конвейер обработки после загрузки документов. Каждый способ индексации можно включить или выключить независимо',
       searchTitle: 'RAG-поиск',
       searchDesc: 'Разбивает документы на чанки, векторизует и индексирует ключевые слова, поддерживая гибридный поиск',
-      wikiTitle: 'Wiki-база знаний',
-      wikiDesc: 'Автоматически создаёт взаимосвязанные Wiki-страницы и формирует структурированную систему знаний',
       graphTitle: 'Граф знаний',
       graphDesc: 'Извлекает сущности и связи, строит граф знаний и поддерживает поиск по графу',
       atLeastOne: 'Должна быть включена хотя бы одна стратегия индексации',
@@ -4252,10 +3738,9 @@ export default {
       rebuildConfirmTitle: 'Перестроить индекс',
       rebuildConfirmBody: 'Стратегия индексации изменена. Переобработать существующие {count} документов? Это может занять некоторое время.',
       rebuildSuccess: 'Задача перестроения отправлена, всего {count} документов',
-      rebuildSkip: 'Перестроение можно запустить вручную позже в источниках данных'
+      rebuildSkip: 'Перестроение можно запустить вручную позже в источниках данных',
     },
     wiki: {
-      title: 'Wiki настройки',
       synthesisModelLabel: 'Модель синтеза',
       synthesisModelPlaceholder: 'Выберите LLM модель для генерации Wiki',
       synthesisModelTip: 'Если не указано, используется модель суммаризации',
@@ -4272,76 +3757,45 @@ export default {
       granularityExhaustive: 'Полный',
       granularityFocusedHint: 'Извлекает только главные темы документа (например, резюме → человек и его проекты). Самый чистый результат, возможны пропуски.',
       granularityStandardHint: 'Главные темы плюс подробно обсуждаемые сущности/концепции. Пропускает упомянутые вскользь. Рекомендуемое значение.',
-      granularityExhaustiveHint: 'Извлекает все именованные сущности и концепции, включая мимоходом упомянутые технологии. Подходит для глоссария.'
+      granularityExhaustiveHint: 'Извлекает все именованные сущности и концепции, включая мимоходом упомянутые технологии. Подходит для глоссария.',
     },
     basic: {
-      title: 'Основная информация',
-      description: 'Укажите название и описание базы знаний',
       kbId: 'ID базы знаний',
       kbIdDesc: 'Используйте этот ID для указания базы знаний в API-интеграциях',
-      typeLabel: 'Тип базы знаний',
       typeDocument: 'Документальная',
       typeFAQ: 'FAQ (вопрос-ответ)',
       typeDescription: 'FAQ подходит для структурированных Q&A; документальный тип поддерживает загрузку файлов и разбиение; Wiki автоматически создает связанные страницы знаний через LLM.',
-      nameLabel: 'Название базы знаний',
-      namePlaceholder: 'Введите название базы знаний',
-      descriptionLabel: 'Описание базы знаний',
-      descriptionPlaceholder: 'Введите описание базы знаний (необязательно)'
-    },
-    errors: {
-      vectorStoreBindingInvalid: 'The selected vector store cannot be used. Choose a different store or use the system default.',
-      vectorStoreUnavailable: 'The selected vector store is currently unavailable. Check its connection configuration in Settings → Vector Stores.'
     },
     sidebar: {
-      basic: 'Основная информация',
       models: 'Конфигурация моделей',
       vectorStore: 'Vector Store',
       chunking: 'Настройки разбиения',
       storage: 'Storage Engine',
-      advanced: 'Дополнительные настройки',
       faq: 'FAQ настройки',
       graph: 'Граф знаний',
-      multimodal: 'Обработка изображений',
-      asr: 'Аудио',
       datasource: 'Источники данных',
       share: 'Sharing',
-      activity: 'История активности'
-    },
-    navGroups: {
-      basic: 'Основное',
-      processing: 'Индексация и разбор',
-      data: 'Хранение и данные',
-      integration: 'Публикация',
-      management: 'Управление и аудит'
+      activity: 'История активности',
     },
     activity: {
-      title: 'История действий',
-      description: 'Важные изменения и фоновые задачи этой базы знаний. Срок хранения соответствует политике аудита.',
       allOutcomes: 'Все результаты',
       allActions: 'Все действия',
-      refresh: 'Обновить',
-      retry: 'Повторить',
-      empty: 'Действий пока нет',
       emptyFiltered: 'Нет подходящих записей активности',
       clearFilters: 'Сбросить фильтры',
       loadingMore: 'Загрузка…',
-      end: 'Более ранних записей нет',
-      loadFailed: 'Не удалось загрузить историю',
-      systemActor: 'Система',
+      actorWithAPIKey: '{actor} · API Key · {name}',
+      actorAPIKey: 'API Key · {name}',
       knowledgeBase: 'База знаний',
       countItems: '{count} элем.',
       titleWithCount: '{title} и ещё {count}',
       importSummary: 'Успешно {success} / Ошибок {failed} / Пропущено {skipped}',
       detailValues: {
         user: 'Запущено пользоватем',
-        manual: 'Вручную',
         schedule: 'По расписанию',
         system: 'Система',
-        pending: 'Ожидает',
         completed: 'Завершено',
         partial: 'Частично завершено',
         canceled: 'Отменено',
-        failed: 'Ошибка',
         enqueue: 'Постановка в очередь',
         reuse_vectors: 'Повторное использование векторов',
         reparse: 'Повторный разбор',
@@ -4349,15 +3803,11 @@ export default {
         editor: 'Редактирование',
         admin: 'Управление',
         append: 'Добавление',
-        replace: 'Замена'
+        replace: 'Замена',
       },
       outcomes: {
         accepted: 'Принято',
-        success: 'Успешно',
-        failed: 'Ошибка',
-        partial: 'Частично',
-        canceled: 'Отменено',
-        denied: 'Отклонено'
+        denied: 'Отклонено',
       },
       actions: {
         'kb.created': 'База знаний создана',
@@ -4393,7 +3843,7 @@ export default {
         'wiki.content_changed': 'Содержимое Wiki обновлено',
         'faq.import_started': 'Импорт FAQ начат',
         'faq.import_completed': 'Импорт FAQ завершён',
-        'faq.import_failed': 'Ошибка импорта FAQ'
+        'faq.import_failed': 'Ошибка импорта FAQ',
       },
       detailFields: {
         task_id: 'ID задачи',
@@ -4404,12 +3854,10 @@ export default {
         sync_log_id: 'ID журнала синхронизации',
         mode: 'Режим',
         attempt: 'Попытка',
-        count: 'Количество',
         total: 'Всего',
         processed: 'Обработано',
-        failed: 'Ошибок',
         skipped: 'Пропущено',
-        failure_stage: 'Этап ошибки'
+        failure_stage: 'Этап ошибки',
       },
       targets: {
         knowledge_base: 'База знаний',
@@ -4419,34 +3867,18 @@ export default {
         data_source: 'Источник данных',
         knowledge_base_share: 'Общий доступ',
         knowledge_move: 'Перемещение',
-        wiki: 'Wiki'
+        wiki: 'Wiki',
       },
       drawer: {
         sectionSummary: 'Сводка',
         sectionIdentifiers: 'Идентификаторы',
         sectionTask: 'Информация о задаче',
-        targetChange: 'Детали изменения'
+        targetChange: 'Детали изменения',
       },
-      expanded: {
-        targetType: 'Тип объекта',
-        targetId: 'ID объекта',
-        actorId: 'ID инициатора',
-        details: 'Подробности'
-      },
-      columns: {
-        time: 'Время',
-        action: 'Действие',
-        target: 'Объект',
-        actor: 'Инициатор',
-        outcome: 'Результат'
-      }
     }
   },
   embedPublish: {
-    create: 'Новый канал встраивания',
     channelsTitle: 'Каналы встраивания',
-    disabled: 'Отключено',
-    empty: 'Каналов встраивания пока нет',
     allowedOrigins: 'Разрешённые домены',
     embedCode: 'Код встраивания',
     widgetCode: 'Скрипт виджета',
@@ -4464,10 +3896,7 @@ export default {
     copyChannelKeyTitle: 'Копировать ключ канала',
     revealKey: 'Показать ключ',
     hideKey: 'Скрыть ключ',
-    createTitle: 'Новый канал встраивания',
-    name: 'Название',
     nameDesc: 'Для админ-списков и идентификации канала',
-    namePlaceholder: 'напр. Поддержка на сайте',
     nameDefaultHint: 'По умолчанию «{agent} · Встраивание на сайт». Можно изменить; при пустом поле при сохранении используется имя по умолчанию.',
     defaultChannelName: 'Встраивание на сайт',
     defaultChannelNameWithAgent: '{agent} · Встраивание на сайт',
@@ -4476,7 +3905,7 @@ export default {
     welcomeMessageDesc: 'Показывается во встроенном чате до первого сообщения посетителя; оставьте пустым, чтобы скрыть',
     showSuggestedQuestions: 'Рекомендуемые вопросы',
     showSuggestedQuestionsDesc: 'Показывать быстрые вопросы до первого сообщения посетителя — из настроек агента и связанных баз знаний',
-    originsHint: 'Один полный origin в строке (напр. https://shop.example.com), минимум один; поддерживаются поддомены *.example.com',
+    originsHint: 'Укажите сайты, которым разрешено встраивание (A), а не адрес WeKnora (B). Один полный Origin на строку, например https://shop.example.com; минимум один. Поддерживается *.example.com.',
     originsRequired: 'Укажите хотя бы один разрешённый домен',
     originsInvalid: 'Неверный домен: {origin}',
     originsWildcardProd: 'В production запрещён wildcard \'*\'',
@@ -4498,15 +3927,12 @@ export default {
     createdWithToken: 'Канал создан — ключ канала показан ниже',
     created: 'Канал встраивания создан',
     updated: 'Канал встраивания обновлён',
-    saveFailed: 'Не удалось сохранить',
     deleted: 'Удалено',
-    copied: 'Код встраивания скопирован',
     loadError: 'Не удалось загрузить',
     missingChannel: 'Отсутствует канал встраивания или токен',
     invalidChannel: 'Недействительный канал встраивания',
     sessionFailed: 'Не удалось создать сессию чата, попробуйте позже',
     channelDisabled: 'Канал встраивания отключён. Включите в редакторе агента → Встраивание на веб-страницу',
-    loading: 'Загрузка...',
     tabIframe: 'iframe',
     tabWidget: 'Виджет',
     tabSecure: 'Безопасный режим',
@@ -4563,53 +3989,16 @@ export default {
     secureServerLabel: 'Пример server-side endpoint токена (токен публикации только на сервере)',
     tabServerNode: 'Node.js',
     tabServerGo: 'Go',
-    enabled: 'Включить канал',
-    deleteConfirm: 'Удалить этот канал? Развёрнутые фрагменты перестанут работать.',
     defaultLocale: 'Язык по умолчанию',
     defaultLocaleDesc: 'Язык интерфейса при открытии чата; пусто — браузер или setLocale() виджета.',
-    defaultLocaleBrowser: 'Браузер / хост'
+    defaultLocaleBrowser: 'Браузер / хост',
   },
   knowledgeList: {
-    create: 'Создать базу знаний',
-    subtitle: 'Управляйте и организуйте свои базы знаний, поддерживаются документные и FAQ-базы знаний',
     sharedToOrgs: 'Shared to {count} space(s)',
     uninitializedBanner: 'Некоторые базы знаний не инициализированы. Сначала настройте модели в разделе настроек, чтобы добавлять документы.',
-    uploadProgress: {
-      uploadingTitle: 'Загрузка документов папки в «{name}»',
-      detail: 'Готово {completed} из {total} файлов',
-      keepPageOpen: 'Пожалуйста, не закрывайте страницу, пока идет загрузка.',
-      completedTitle: 'Загрузка для «{name}» завершена',
-      completedDetail: 'Загружено {total} файлов. Обновляем список, чтобы показать статус разбора...',
-      refreshing: 'Обновляем список и статусы разбора...',
-      errorTip: 'Часть файлов загрузить не удалось. Проверьте уведомления.',
-      unknownKb: 'База знаний {id}'
-    },
     features: {
       knowledgeGraph: 'Граф знаний включен',
-      multimodal: 'Мультимодальность включена',
-      questionGeneration: 'Генерация вопросов включена',
-      wiki: 'Wiki'
-    },
-    detail: {
-      title: 'Shared Knowledge Base',
-      sourceType: 'Source',
-      sourceTypeKbShare: 'KB shared directly to this space',
-      sourceTypeAgent: 'Visible via shared agent',
-      sourceOrg: 'Space',
-      sourceFromAgent: 'Agent',
-      agentKbStrategy: 'Agent KB strategy',
-      agentKbStrategyAll: 'All knowledge bases',
-      agentKbStrategySelected: 'Selected knowledge bases',
-      agentKbStrategyNone: 'No knowledge bases',
-      sharedAt: 'Shared At',
-      myPermission: 'My Permission',
-      goToKb: 'Go to Knowledge Base'
-    },
-    messages: {
-      deleted: 'База знаний удалена',
-      deleteFailed: 'Не удалось удалить базу знаний',
-      duplicateSuccess: 'Дубликат базы знаний создан (без содержимого)',
-      duplicateFailed: 'Не удалось создать дубликат базы знаний'
+      wiki: 'Wiki',
     },
     sections: {
       pinned: 'Закреплённые',
@@ -4618,56 +4007,37 @@ export default {
       tenantReadonly: 'Рабочая область · Только просмотр',
       sharedByMe: 'Расшарено мной',
       sharedEditable: 'Доступно мне · Можно редактировать',
-      sharedReadonly: 'Доступно мне · Только просмотр'
+      sharedReadonly: 'Доступно мне · Только просмотр',
     },
     pin: {
-      pin: 'Закрепить',
-      unpin: 'Открепить',
+              pin: 'Закрепить',
+              unpin: 'Открепить',
       pinSuccess: 'Закреплено',
       unpinSuccess: 'Откреплено',
-      failed: 'Операция не удалась'
+      failed: 'Операция не удалась',
     },
     menu: {
       viewDetails: 'View Details',
-      duplicate: 'Duplicate'
+      duplicate: 'Duplicate',
     },
     delete: {
-      confirmTitle: 'Подтверждение удаления',
       confirmMessage: 'Удалить базу знаний «{name}»? Отменить действие будет невозможно.',
-      confirmButton: 'Удалить'
+      confirmButton: 'Удалить',
     },
-    empty: {
-      title: 'Базы знаний отсутствуют',
-      description: 'Нажмите «Создать базу знаний» в левом быстром действии, чтобы добавить первую базу.',
-      sharedTitle: 'No shared knowledge bases',
-      sharedDescription: 'You can join a shared space or request others to share knowledge bases with you',
-      favoritesTitle: 'No favorites yet',
-      favoritesDescription: 'Star a knowledge base from its card to add it here',
-      recentsTitle: 'Nothing here yet',
-      recentsDescription: 'Knowledge bases you recently opened will show up here'
-    }
   },
   createChat: {
-    title: 'Привет, я WeKnora — ваши знания всегда под рукой',
     engine: {
-      label: 'Движок',
       builtin: 'Встроенный ReAct',
       trpc: 'tRPC Agent',
-      experimental: 'Экспериментально'
+      experimental: 'Экспериментально',
     },
     newSessionTitle: 'Новая сессия',
-    messages: {
-      createFailed: 'Не удалось создать сессию',
-      createError: 'Не удалось создать сессию, попробуйте позже'
-    }
+    openProject: 'Выбрать проект',
+    clearProject: 'Снять привязку',
+    pickFailed: 'Не удалось открыть выбранный путь',
   },
   input: {
     addModel: 'Добавить модель',
-    placeholder: 'Задайте вопрос напрямую модели',
-    placeholderWithContext: 'Введите вопрос, ответ будет основан на выбранных выше базах знаний/файлах',
-    placeholderWebOnly: 'Введите вопрос, ответ будет основан на веб-поиске',
-    placeholderKbAndWeb: 'Введите вопрос, ответ будет основан на базе знаний и веб-поиске',
-    placeholderAgent: 'Спросить {name}',
     agentMode: 'Умный анализ',
     normalMode: 'Быстрый ответ',
     normalModeDesc: 'RAG-вопросы и ответы по базе знаний',
@@ -4700,90 +4070,60 @@ export default {
     modelLockedByAgent: 'Model selection is locked by the current agent',
     imageUploadDisabledByAgent: 'Image upload is not enabled for this agent',
     goToAgentSettings: 'Go to agent settings',
-    messages: {
-      enterContent: 'Сначала введите содержимое!',
-      replying: 'Ответ формируется, попробуйте позже!',
-      steerAttachmentPending: 'Вложение ещё загружается. Повторите попытку чуть позже.',
-      steerHasAttachments: 'К текущему ответу нельзя добавить вложения. Удалите их или отправьте после завершения.',
-      steerFailed: 'Не удалось добавить сообщение. Попробуйте ещё раз.',
-      steerPromoteFailed: 'Не удалось отправить сейчас. Попробуйте ещё раз.',
-      steerRemoveFailed: 'Не удалось удалить сообщение из очереди. Попробуйте ещё раз.',
-      steerAlreadyInjected: 'Это сообщение уже принято текущим ответом.',
-      steerFollowUpTimeout: 'Следующий ответ не начался вовремя. Отправьте сообщение ещё раз.',
-      steerNoActiveRun: 'Сейчас нет активного ответа. Отправьте сообщение напрямую.',
-      agentSwitchedOn: 'Переключено в Agent режим',
-      agentSwitchedOff: 'Переключено в обычный режим',
-      agentSelected: 'Selected agent "{name}"',
-      webSearchNotConfigured: 'Веб-поиск не настроен. Сначала выберите провайдера и настройте ключи в разделе настроек.',
-      webSearchEnabled: 'Веб-поиск включён',
-      webSearchDisabled: 'Веб-поиск выключен',
-      sessionMissing: 'ID сессии не существует',
-      messageMissing: 'Не удалось получить ID сообщения. Обновите страницу и попробуйте снова.',
-      stopSuccess: 'Генерация остановлена',
-      stopFailed: 'Не удалось остановить. Попробуйте ещё раз.'
-    },
     webSearch: {
       toggleOn: 'Включить веб-поиск',
       toggleOff: 'Выключить веб-поиск',
-      notConfigured: 'Веб-поиск не настроен'
+      notConfigured: 'Веб-поиск не настроен',
     }
   },
   manualEditor: {
-    description: 'Пишите знания в Markdown с предпросмотром в реальном времени',
     defaultTitlePrefix: 'Новый документ',
     noDocumentKnowledgeBases: 'Нет доступных баз знаний типа "документ". Пожалуйста, создайте одну сначала',
-    actions: {
-      cancel: 'Отмена',
-      saveDraft: 'Сохранить черновик',
-      publish: 'Опубликовать'
-    },
     loading: {
       content: 'Загрузка содержимого...',
-      preparing: 'Подготовка редактора...'
-    },
-    status: {
-      draftTag: 'Статус: Черновик',
-      publishedTag: 'Статус: Опубликовано',
-      lastUpdated: 'Последнее обновление: {time}'
+      preparing: 'Подготовка редактора...',
     },
     form: {
-      knowledgeBaseLabel: 'Целевая база знаний',
       knowledgeBasePlaceholder: 'Выберите базу знаний',
       titleLabel: 'Заголовок знания',
+      knowledgeBaseLabel: 'Целевая база знаний',
       titlePlaceholder: 'Введите заголовок',
-      contentPlaceholder: 'Поддерживается Markdown. Используйте # заголовки, списки, блоки кода и т.д.'
+      contentPlaceholder: 'Поддерживается Markdown. Используйте # заголовки, списки, блоки кода и т.д.',
     },
     success: {
       draftSaved: 'Черновик сохранён',
-      published: 'Знание опубликовано и начата индексация'
+      published: 'Знание опубликовано и начата индексация',
     },
     warning: {
       selectKnowledgeBase: 'Пожалуйста, выберите целевую базу знаний',
       enterTitle: 'Введите заголовок знания',
-      enterContent: 'Введите содержимое знания',
-      contentTooShort: 'Контент слишком короткий. Добавьте больше информации перед публикацией'
+      contentTooShort: 'Контент слишком короткий. Добавьте больше информации перед публикацией',
     },
     error: {
       fetchDetailFailed: 'Не удалось получить сведения о знании',
-      saveFailed: 'Не удалось сохранить, попробуйте позже'
+      saveFailed: 'Не удалось сохранить, попробуйте позже',
     },
     labels: {
-      currentKnowledgeBase: 'Текущая база знаний'
+      currentKnowledgeBase: 'Текущая база знаний',
     },
     section: {
-      basic: 'Основная информация',
-      content: 'Содержимое'
+      content: 'Содержимое',
     },
     title: {
       edit: 'Редактировать Markdown-знание',
-      create: 'Создать Markdown-знание'
+      create: 'Создать Markdown-знание',
     },
     preview: {
-      empty: 'Пока нет содержимого'
+      empty: 'Пока нет содержимого',
+    },
+    shortcuts: {
+      continueList: 'Продолжить список',
+      indent: 'Отступ / Shift+Tab — назад',
     },
     view: {
-      editLabel: 'Вернуться к редактированию',
-      previewLabel: 'Предпросмотр'
+      split: 'Разделить',
+      splitUnavailable: 'Расширьте панель или включите полный экран, чтобы разделить вид',
+      groupLabel: 'Вид редактора',
     },
     toolbar: {
       bold: 'Жирный',
@@ -4799,31 +4139,19 @@ export default {
       blockquote: 'Цитата',
       codeBlock: 'Блок кода',
       link: 'Вставить ссылку',
-      image: 'Вставить изображение',
       table: 'Вставить таблицу',
-      horizontalRule: 'Горизонтальная линия'
+      horizontalRule: 'Горизонтальная линия',
+      headingGroup: 'Заголовок',
+      insertGroup: 'Вставить',
     },
     table: {
       column1: 'Колонка 1',
       column2: 'Колонка 2',
-      cell: 'Содержимое'
+      cell: 'Содержимое',
     },
-    placeholders: {
-      heading: 'Заголовок {level}',
-      listItem: 'Элемент списка',
-      taskItem: 'Задача',
-      quote: 'Текст цитаты',
-      code: 'Содержимое кода',
-      linkText: 'Текст ссылки',
-      imageAlt: 'Описание',
-      bold: 'Жирный текст',
-      italic: 'Курсив',
-      strike: 'Зачеркнутый текст',
-      inlineCode: 'code'
-    }
   },
   file: {
-    upload: 'Загрузить файл'
+    upload: 'Загрузить файл',
   },
   mentionDetail: {
     readOnlyFromAgent: 'Только чтение (от агента)',
@@ -4834,37 +4162,24 @@ export default {
     mcpStale: 'Нужна повторная синхронизация',
     belongsToKb: 'База знаний: ',
     belongsToOrg: 'Пространство: ',
-    noCompatibleKbForAgent: 'Инструменты текущего агента не соответствуют возможностям ни одной базы знаний в области видимости — нечего упомянуть.'
+    noCompatibleKbForAgent: 'Инструменты текущего агента не соответствуют возможностям ни одной базы знаний в области видимости — нечего упомянуть.',
   },
   common: {
-    add: 'Добавить',
     me: 'Я',
     confirm: 'Подтвердить',
-    cancel: 'Отмена',
-    save: 'Сохранить',
-    delete: 'Удалить',
-    edit: 'Редактировать',
-    copy: 'Копировать',
-    copied: 'Скопировано',
-    copySuccess: 'Успешно скопировано',
-    default: 'По умолчанию',
-    create: 'Создать',
-    download: 'Скачать',
+    unsavedChanges: {
+      body: 'Если закрыть сейчас, изменения будут потеряны. Закрыть?',
+      discard: 'Отменить изменения',
+      keepEditing: 'Продолжить редактирование',
+    },
     refresh: 'Обновить',
-    loading: 'Загрузка...',
     noData: 'Нет данных',
     noMoreData: 'Весь контент загружен',
-    loadMore: 'Загрузить ещё',
-    error: 'Ошибка',
-    success: 'Успешно',
     failed: 'Ошибка',
     info: 'Информация',
     selectAll: 'Выбрать все',
     yes: 'Да',
     no: 'Нет',
-    close: 'Закрыть',
-    back: 'Назад',
-    next: 'Далее',
     finish: 'Завершить',
     all: 'Все',
     clear: 'Очистить',
@@ -4874,33 +4189,16 @@ export default {
     githubStarTip: 'Открыть репозиторий на GitHub — поставьте Star, если проект полезен',
     on: 'Вкл',
     off: 'Выкл',
-    confirmDelete: 'Подтвердить удаление',
-    createSuccess: 'Успешно создано',
-    deleteSuccess: 'Успешно удалено',
-    deleteFailed: 'Ошибка удаления',
     updateSuccess: 'Успешно обновлено',
     saveSuccess: 'Успешно сохранено',
-    saveFailed: 'Ошибка сохранения',
     operationFailed: 'Операция не выполнена',
     file: 'Файл',
     skill: 'Навыки',
-    knowledgeBase: 'База знаний',
     noResult: 'Нет результатов',
-    remove: 'Удалить',
-    avatar: 'Аватар',
     defaultUser: 'Пользователь',
-    copyFailed: 'Ошибка копирования',
-    retry: 'Повторить',
-    expand: 'Развернуть',
-    collapse: 'Свернуть'
+    collapse: 'Свернуть',
   },
   authStore: {
-    errors: {
-      parseUserFailed: 'Не удалось разобрать данные пользователя',
-      parseTenantFailed: 'Не удалось разобрать данные пространства',
-      parseKnowledgeBasesFailed: 'Не удалось разобрать список баз знаний',
-      parseCurrentKnowledgeBaseFailed: 'Не удалось разобрать текущую базу знаний'
-    }
   },
   auth: {
     login: 'Вход',
@@ -4926,7 +4224,6 @@ export default {
     firstTime: 'Впервые в WeKnora?',
     registerSuccess: 'Регистрация завершена. Войдите в систему',
     registerFailed: 'Ошибка регистрации',
-    subtitle: 'RAG, ReAct-агент и Wiki — корпоративный фреймворк знаний на основе больших моделей',
     registerSubtitle: 'Создайте аккаунт и начните работу с WeKnora',
     emailPlaceholder: 'Введите адрес электронной почты',
     passwordPlaceholder: 'Введите пароль',
@@ -4952,55 +4249,34 @@ export default {
     loginErrorRetry: 'Ошибка входа, пожалуйста, повторите попытку позже',
     registerError: 'Ошибка регистрации, пожалуйста, повторите попытку позже',
     workspaceOnboarding: {
-      title: 'Выберите рабочее пространство',
-      description: 'Создайте рабочее пространство, чтобы начать работу, или примите приглашение в уже существующее.',
-      create: 'Создать пространство',
       invitations: 'Посмотреть приглашения',
       loadingPolicy: 'Проверяем доступные способы присоединения…',
       policyLoadFailed: 'Не удалось загрузить разрешения пространства. Проверьте подключение и повторите попытку.',
-      retry: 'Повторить',
       inviteOnlyTitle: 'Ожидание приглашения в пространство',
       inviteOnlyDescription: 'Создание личных пространств отключено. Просмотрите и примите приглашение администратора.',
       inviteOnlyNotice: 'Этот аккаунт может присоединиться к существующему пространству только по приглашению',
       help: 'Вы можете создать рабочее пространство сейчас или вернуться позже, чтобы принять приглашение.',
-      inviteOnlyHelp: 'Нет приглашения? Сообщите администратору пространства свой регистрационный адрес электронной почты.'
+      inviteOnlyHelp: 'Нет приглашения? Сообщите администратору пространства свой регистрационный адрес электронной почты.',
     }
   },
   inviteRegister: {
     bannerTitle: 'You have been invited to join "{tenant}"',
     bannerHint: 'Fill in the details below to register. You will join the team automatically once registration completes.',
     bannerHintLogin: 'Log in to join this team automatically.',
-    loading: 'Verifying invitation link…',
     invalidTitle: 'Invitation link is invalid or revoked',
     invalidBody: 'Ask your inviter to send a new link, or sign in with an existing account.',
-    backToLogin: 'Back to login',
-    title: 'Complete registration',
-    subtitle: 'You\'ve been invited to join “{tenant}”',
-    email: 'Email',
-    emailPlaceholder: 'your{\'@\'}example.com',
     emailHint: 'Use any email address you control.',
-    emailInvalid: 'Please enter a valid email address',
-    username: 'Display name',
-    usernamePlaceholder: 'Enter your display name',
-    password: 'Set a password',
-    passwordPlaceholder: 'At least 6 characters',
-    confirmPassword: 'Confirm password',
     submit: 'Complete registration',
     submitting: 'Submitting…',
-    success: 'Registration successful — entering workspace…',
     joined: 'You have joined the team.',
-    failed: 'Registration failed; please try again later',
-    usernameRequired: 'Display name is required',
     passwordTooShort: 'Password must be at least 6 characters',
-    passwordMismatch: 'Passwords do not match'
+    passwordMismatch: 'Passwords do not match',
   },
   initialization: {
     skip: 'Пропустить',
-    next: 'Далее'
+    next: 'Далее',
   },
   graphSettings: {
-    title: 'Настройки графа знаний',
-    description: 'Настройте извлечение сущностей и отношений для автоматического построения графа знаний из текста (примечание: это не то же самое, что «граф ссылок страниц» внутри Wiki — там показаны связи между Wiki-страницами, а здесь строится граф сущностей и отношений на основе LLM)',
     enableLabel: 'Включить извлечение сущностей и отношений',
     enableDescription: 'Автоматически извлекать сущности и отношения из текста при включении',
     tagsLabel: 'Типы отношений',
@@ -5046,11 +4322,9 @@ export default {
     exampleLoaded: 'Пример загружен',
     exampleCleared: 'Пример очищен',
     disabledWarning: 'База данных графа знаний не включена, извлечение сущностей и отношений будет недоступно',
-    howToEnable: 'Как включить граф знаний?'
+    howToEnable: 'Как включить граф знаний?',
   },
   retrievalSettings: {
-    title: 'Настройки поиска',
-    description: 'Настройте глобальные параметры поиска, общие для поиска по знаниям и сообщениям',
     embeddingTopKLabel: 'Векторный поиск Top K',
     vectorThresholdLabel: 'Порог векторного сходства',
     keywordThresholdLabel: 'Порог совпадения ключевых слов',
@@ -5059,56 +4333,11 @@ export default {
     rerankModelLabel: 'Модель Rerank',
     rerankModelDescription: 'Выберите модель для повторного ранжирования результатов поиска',
     rerankModelRequired: 'Пожалуйста, выберите модель Rerank. Функция поиска требует эту модель для ранжирования результатов.',
-    toasts: {
-      saveSuccess: 'Конфигурация поиска сохранена',
-      saveFailed: 'Не удалось сохранить конфигурацию: {message}'
-    }
   },
   memorySettings: {
-    title: 'Моя память',
-    description: 'То, что ассистент помнит о вас между разговорами. Записи можно просматривать, изменять и удалять; удалённые больше не используются.',
     workspaceDisabled: 'Долговременная память отключена в этом рабочем пространстве. Переключатель начнёт действовать, когда её включит администратор.',
-    enableLabel: 'Использовать долговременную память',
-    enableDescription: 'При выключении ассистент не читает и не добавляет ваши записи. Существующие сохраняются и снова заработают после включения.',
     agentDisabledHint: 'Отдельный агент тоже может отключить долговременную память для себя. В разговоре с таким агентом ваши записи не читаются и не пополняются; на других агентов это не влияет.',
-    usage: {
-      title: 'Когда записи используются',
-      iconHint: 'Посмотреть, какие записи попадают в разговор',
-      intro: 'В разговор попадают только активные записи.',
-      rows: {
-        alwaysOn: {
-          label: 'Каждый ход',
-          text: 'Сведения о вас, предпочтения и то, что вы попросили запомнить'
-        },
-        situational: {
-          label: 'По теме',
-          text: 'Факты и текущие задачи'
-        },
-        interest: {
-          label: 'Обычные темы',
-          text: 'Долгосрочные интересы, не обязательно каждый ход'
-        },
-        tracking: {
-          label: 'Сначала наблюдение',
-          text: 'Повторяющиеся темы сначала считаются и становятся долгосрочным интересом только после порога'
-        },
-        documents: {
-          label: 'Привычные источники',
-          text: 'Документы, из которых часто берутся ответы; поиск слегка отдаёт им приоритет'
-        },
-        pending: {
-          label: 'После подтверждения',
-          text: 'Предположения, ждущие вашего решения'
-        },
-        inactive: {
-          label: 'Не используются',
-          text: 'Заменённые и архивные записи'
-        }
-      }
-    },
-    listTitle: 'Записи памяти',
     listCount: 'Всего: {count}',
-    statusActive: 'Активна',
     statusSuperseded: 'Заменена',
     statusArchived: 'В архиве',
     statusPending: 'Требует подтверждения',
@@ -5164,56 +4393,40 @@ export default {
     consolidateTooSoon: 'Разбор только что выполнялся. Повторите чуть позже.',
     consolidateModelUnavailable: 'Модель недоступна, поэтому ничего не изменено — чтобы не объединить лишнего',
     consolidateFailed: 'Не удалось навести порядок',
-    clear: 'Очистить всё',
     clearConfirm: 'Все ваши записи, темы под наблюдением и привычные источники будут удалены безвозвратно. Продолжить?',
-    deleteConfirm: 'Удалить эту запись безвозвратно?',
-    add: 'Добавить',
     addPlaceholder: 'Одним предложением опишите, что ассистенту стоит запомнить',
-    addTitle: 'Добавить запись',
     addKindLabel: 'Тип',
     addContentLabel: 'Содержание',
     emptyTitle: 'Записей пока нет',
     emptyDescription: 'Скажите в разговоре «запомни: …» или добавьте запись выше.',
     kinds: {
-      profile: 'О вас',
       preference: 'Предпочтение',
       fact: 'Факт',
       task: 'Текущая задача',
-      interest: 'Долгосрочный интерес'
+      interest: 'Долгосрочный интерес',
     },
     kindHints: {
-      profile: 'Включается в каждый следующий ход',
-      preference: 'Включается в каждый следующий ход',
-      fact: 'Используется, только если вопрос связан',
-      task: 'Используется, только если вопрос связан',
-      interest: 'Помогает понять, о чём вы обычно спрашиваете; не обязательно цитируется каждый ход'
+      interest: 'Помогает понять, о чём вы обычно спрашиваете; не обязательно цитируется каждый ход',
     },
     origins: {
       explicit: 'По вашей просьбе',
       extracted: 'Извлечено',
-      manual: 'Добавлено вручную'
+      manual: 'Добавлено вручную',
     },
-    toasts: {
-      enabled: 'Долговременная память включена',
-      disabled: 'Долговременная память выключена',
-      added: 'Добавлено',
-      updated: 'Обновлено',
-      deleted: 'Удалено',
-      cleared: 'Удалено записей: {count}',
-      saveFailed: 'Не удалось выполнить: {message}'
-    }
   },
   envVarSettings: {
-    title: 'Ключи песочницы',
-    description: 'Личные ключи для навыков и песочниц, а не системные или деплой-настройки WeKnora.',
+    host: {
+      helpAria: 'Справка по переменным среды',
+      introRuntimeBody: 'Подставляются, когда навык выполняется на этом компьютере. Значение можно передать и прямо в диалоге. После сохранения открытый текст больше не показывается.',
+      sandboxTitle: 'Всегда передавать на этом компьютере',
+      sandboxHint: 'Добавляется только к командам на этом компьютере. Оставьте пустым, если не нужно. Значение можно передать и в диалоге.',
+      nameInvalid: 'Это имя нельзя использовать. Зарезервированные имена (например PATH или начинающиеся с WEKNORA_) отклоняются.',
+    },
     helpAria: 'Справка по ключам песочницы',
     introPersonalTitle: 'Только ваши',
     introPersonalBody: 'Подставляются только в ваши диалоги и запуски. Другие участники их не видят, и их значения не заменяют ваши.',
     introRuntimeTitle: 'Передаются в момент запуска',
     introRuntimeBody: 'Подставляются, когда навык выполняется или когда команда идёт в этой песочнице. Их также можно передать прямо в разговоре. Сохранённые значения больше не показываются.',
-    loading: 'Загрузка…',
-    loadFailed: 'Не удалось загрузить ключи песочницы.',
-    retry: 'Повторить',
     noConfigTitle: 'Песочница не настроена',
     noConfigDescription: 'В этом рабочем пространстве пока нет песочницы, поэтому задавать ключи не для чего.',
     sandboxTitle: 'Всегда передаются в выбранной песочнице',
@@ -5234,7 +4447,6 @@ export default {
     setValue: 'Задать',
     replaceValue: 'Заменить',
     addRow: 'Добавить',
-    namePlaceholder: 'VARIABLE_NAME',
     nameRule: 'Только заглавные латинские буквы, цифры и подчёркивания; первым символом должна быть буква или подчёркивание.',
     nameInvalid: 'Это имя использовать нельзя. Имена, зарезервированные песочницей, например PATH или начинающиеся с WEKNORA_, не принимаются.',
     nameDuplicate: 'Переменная с таким именем здесь уже есть.',
@@ -5243,24 +4455,12 @@ export default {
     valueRequired: 'Перед сохранением введите значение.',
     valueTooLong: 'Значение не может превышать {max} байт.',
     tooManyValues: 'Здесь можно сохранить не более {max} переменных.',
-    save: 'Сохранить',
-    saveSuccess: 'Сохранено. Значение сохранено и больше не будет показано.',
-    saveFailed: 'Не удалось сохранить значение.',
-    delete: 'Удалить',
-    deleteConfirm: 'Удалить {name}? Она больше не будет передаваться в то, что вы запускаете в этой песочнице.',
-    deleteSuccess: 'Переменная удалена.',
-    clear: 'Удалить моё значение',
-    clearConfirm: 'Удалить ваше значение для {name}? После этого снова применится значение рабочего пространства, если оно задано.',
     clearSuccess: 'Ваше значение удалено.',
-    updatedAt: 'Вы задали это {time}'
+    updatedAt: 'Вы задали это {time}',
   },
   memoryWorkspaceSettings: {
-    title: 'Долговременная память',
-    description: 'Позволяет ассистенту помнить между разговорами то, что говорят участники: кто они, как предпочитают работать, устойчивые факты и текущие задачи.',
     introTitle: 'По умолчанию выключена, включать нужно вручную',
     introDescription: 'Долговременная память сохраняет сказанное участниками, поэтому она не включается сама. После включения у каждого участника своё изолированное пространство памяти, которое он может просматривать, изменять, удалять или полностью отключить в разделе «Моя память». Активные сведения о вас и предпочтения включаются в каждый следующий ход; факты и текущие задачи вспоминаются, только если вопрос с ними связан.',
-    enableLabel: 'Включить долговременную память в этом пространстве',
-    enableDescription: 'При выключении ни один разговор в этом пространстве не читает и не пишет память.',
     writeModeLabel: 'Как записывается память',
     writeModeDescription: 'Определяет, что именно запоминается.',
     writeModeExplicit: 'Только по просьбе',
@@ -5281,78 +4481,41 @@ export default {
     conditioningDescription: 'Память участвует в переписывании запроса и ранжировании документов, а не только добавляется в промпт ответа.',
     interestThresholdLabel: 'Сколько вопросов до долгосрочного интереса',
     interestThresholdDescription: 'Тема сохраняется только после стольких повторений. Значение 1 сохраняет каждый случайный вопрос и обычно слишком шумно.',
-    instructionsLabel: 'Свои правила извлечения',
     instructionsDescription: 'Правила рабочего пространства, добавляемые к промпту извлечения, для политик, которые продукт не может угадать — например «никогда не записывать имена клиентов».',
     instructionsPlaceholder: 'По одному правилу в строке, например: не записывать имена клиентов',
     maxItemsLabel: 'Лимит записей на участника',
     maxItemsDescription: 'При превышении наименее важные и давно не использованные записи уходят в архив и остаются видны в разделе «Моя память».',
-    toasts: {
-      saveSuccess: 'Настройки долговременной памяти сохранены',
-      saveFailed: 'Не удалось сохранить: {message}'
-    }
   },
   chatHistorySettings: {
-    title: 'Управление сообщениями',
-    description: 'Настройте базу знаний истории чата для автоматической индексации сообщений и семантического поиска',
-    enableLabel: 'Включить индексацию сообщений',
-    enableDescription: 'При включении новые сообщения будут автоматически индексироваться в базу знаний для векторного поиска',
-    embeddingModelLabel: 'Модель Embedding',
-    embeddingModelDescription: 'Выберите модель встраивания для векторизации сообщений чата',
     embeddingModelLocked: 'Сообщения уже индексированы; модель встраивания нельзя изменить (требуется очистка индексных данных)',
     statsTitle: 'Статистика индексации',
     statsIndexedMessages: 'Проиндексированные сообщения',
     statsNotConfigured: 'Индексация сообщений не настроена',
     statsNotConfiguredDesc: 'Включите и выберите модель Embedding для автоматической индексации сообщений',
-    toasts: {
-      saveSuccess: 'Конфигурация управления сообщениями сохранена',
-      saveFailed: 'Не удалось сохранить конфигурацию: {message}'
-    }
   },
   vectorStoreSettings: {
-    title: 'Движок векторной базы данных',
-    description: 'Регистрация и управление экземплярами векторных баз данных для поиска по базе знаний.',
-    basicSection: 'Основное',
     storesTitle: 'Векторные базы данных',
     addStore: 'Добавить базу данных',
     editStore: 'Редактировать базу данных',
-    deleteConfirm: 'Вы уверены, что хотите удалить эту векторную базу данных?',
-    emptyDesc: 'Векторные базы данных не настроены. Нажмите "Добавить базу данных", чтобы начать.',
     engineTypeLabel: 'Тип движка',
-    nameLabel: 'Название',
-    namePlaceholder: 'например, my-vector-store',
     connectionInfo: 'Информация о подключении',
     advancedIndexConfig: 'Расширенные настройки',
     envTag: 'DEFAULT',
-    testConnection: 'Тест подключения',
     testing: 'Тестирование...',
     immutableNotice: 'Тип движка, подключение и настройки индекса нельзя изменить после создания.\nДля изменения удалите и создайте заново.',
     insecureSkipVerifyWarning: 'Отключение проверки сертификата TLS делает соединение уязвимым для атак «человек посередине». Используйте только для dev-кластеров с самоподписанными сертификатами — никогда в продакшене.',
-    toasts: {
-      storeCreated: 'Векторная база данных создана',
-      storeUpdated: 'Векторная база данных обновлена',
-      storeDeleted: 'Векторная база данных удалена',
-      testSuccess: 'Тест подключения успешен',
-      testFailed: 'Тест подключения не удался',
-      duplicateName: 'Векторная база данных с таким именем уже существует',
-      errorGeneric: 'Произошла ошибка. Попробуйте снова.'
-    },
     validation: {
-      nameRequired: 'Название обязательно',
       engineTypeRequired: 'Тип движка обязателен',
       fieldRequired: '{field} обязательно',
-      indexNamePattern: 'Должно начинаться с буквы. Допускаются только буквы, цифры, подчёркивание и дефис (макс. 128)'
+      indexNamePattern: 'Должно начинаться с буквы. Допускаются только буквы, цифры, подчёркивание и дефис (макс. 128)',
     }
   },
   webSearchSettings: {
-    title: 'Настройки веб-поиска',
-    description: 'Настройте веб-поиск, чтобы ответы могли включать актуальную информацию из интернета.',
-    basicSection: 'Основное',
     credentialsSection: 'Подключение',
     optionsSection: 'Опции',
     providersTitle: 'Поисковые провайдеры',
     addProvider: 'Добавить провайдер',
     editProvider: 'Редактировать провайдер',
-    deleteConfirm: 'Вы уверены, что хотите удалить этот провайдер?',
     providerNameLabel: 'Название',
     providerNamePlaceholder: 'Напр., Продакшн Bing Поиск',
     providerTypeLabel: 'Тип провайдера',
@@ -5360,8 +4523,6 @@ export default {
     providerDescPlaceholder: 'Опционально, например: для тестовой среды',
     engineIdLabel: 'ID движка',
     setAsDefault: 'Установить по умолчанию',
-    testConnection: 'Проверить соединение',
-    testing: 'Тестирование...',
     viewDocs: 'Документация для получения ключа',
     noProvidersDesc: 'Добавьте провайдера веб-поиска, чтобы позволить вашим агентам получать информацию из Интернета в реальном времени.',
     setAsDefaultDesc: 'Этот провайдер будет использоваться по умолчанию, если агент не укажет свой',
@@ -5373,13 +4534,6 @@ export default {
     baseUrlLabel: 'URL экземпляра',
     baseUrlPlaceholder: 'https://searxng.example.com',
     apiKeyPlaceholder: 'Введите API-ключ',
-    toasts: {
-      providerCreated: 'Поисковый провайдер создан',
-      providerUpdated: 'Поисковый провайдер обновлён',
-      providerDeleted: 'Поисковый провайдер удалён',
-      testSuccess: 'Подключение успешно',
-      testFailed: 'Подключение не удалось'
-    }
   },
   settings: {
     modelManagement: 'Управление моделями',
@@ -5389,410 +4543,31 @@ export default {
     vectorStoreEngine: 'Движок векторной БД',
     parserEngine: 'Движок парсинга',
     storageEngine: 'Движок хранения',
-    sandbox: {
-      title: 'Настройка песочницы',
-      description: 'Настройка изолированных сред для скриптов навыков. Каждый агент выбирает одну конфигурацию.',
-      pageHintTitle: 'Что такое песочница?',
-      pageHint: 'Песочница — изолированная среда, в которой выполняются скрипты навыков агента. В пространстве можно создать несколько конфигураций (Docker, E2B, CubeSandbox); каждый агент выбирает одну. Навыки устанавливаются на странице «Управление навыками» в образ выбранной конфигурации. Пока конфигурация не выбрана, скрипты не выполняются.',
-      editorDescription: 'Configure a workspace runtime. Docker, CubeSandbox, and E2B use the same management flow.',
-      stepConnection: 'Connect',
-      stepTemplate: 'Template',
-      stepRuntime: 'Runtime',
-      stepSkills: 'Skills',
-      stepSkillsLocked: 'Skills are installed into this config\'s image. Save the config first, then come back to this step.',
-      setupProgress: 'Sandbox setup progress',
-      stepDescriptions: {
-        connection: 'Configure the backend and verify the connection before loading templates.',
-        template: 'Choose a ready template returned by the connected cluster.',
-        runtime: 'Configure execution settings, environment variables, and when skill image updates apply, then save.',
-        skills: 'Install skills into this config\'s sandbox image. Once the config is saved you can come back any time.',
-      },
-      back: 'Back',
-      connectAndContinue: 'Connect and continue',
-      loading: 'Loading sandbox configuration...',
-      loadFailed: 'Failed to load sandbox configuration',
-      backend: 'Песочница',
-      backendType: 'Тип песочницы',
-      backendTypePlaceholder: 'Выберите тип песочницы',
-      scriptPolicyLabel: 'Разрешить выполнение скриптов навыков в песочницах',
-      scriptPolicyDesc: 'Если выключено, агенты этого пространства смогут только читать содержимое навыков. Уже запущенные удалённые песочницы освободятся после завершения их сессий.',
-      backendDescriptions: {
-        cube: 'Self-hosted MicroVM cluster for private or on-premises deployments',
-        e2b: 'Managed MicroVM service or an E2B-compatible deployment',
-        docker: 'Держит долгоживущий контейнер на каждую сессию на этом хосте WeKnora; скрипты и файлы остаются в том же контейнере',
-      },
-      dockerDisabledAlert: 'Песочница Docker на этом развёртывании не включена',
-      dockerDisabledHint: 'Локальный docker.sock равносилен root на хосте. Для частной одноузловой установки системный администратор может включить это в «Настройки → Системные настройки → Сетевая безопасность».',
-      dockerDisabledCard: 'Песочница Docker отключена на этом развёртывании; эта конфигурация больше не создаёт контейнеры',
-      dockerHostRisk: 'Пустое значение или unix:// использует демон Docker на машине WeKnora — это равносильно root на этой машине. Только для частной одноузловой установки. Если несколько пространств делят один хост, используйте Cube или E2B. Удалённый tcp:// требует каталог TLS-сертификатов.',
-      addConfig: 'Добавить песочницу',
-      viewClusterGuide: 'Cluster setup guide',
-      configName: 'Config name',
-      configNamePlaceholder: 'e.g. Production E2B',
-      configNameRequired: 'Please enter a config name',
-      configDescription: 'Description',
-      configDescriptionPlaceholder: 'Optional, helps tell several configs of the same type apart',
-      createTitle: 'Добавить песочницу',
-      editTitle: 'Изменить песочницу',
-      sectionBasic: 'Basic information',
-      sectionConnection: 'Cluster connection',
-      sectionRuntimeEnvironment: 'Runtime environment',
-      sectionTemplate: 'Runtime template',
-      sectionRuntime: 'Execution settings',
-      sectionNetwork: 'Network policy',
-      sectionEnvironment: 'Environment variables',
-      networkHint: 'Controls outbound networking for every sandbox using this configuration. Changes affect only newly created sandboxes; existing sandboxes keep their policy until reclaimed.',
-      egressDefault: 'Default egress',
-      egressAllowAll: 'Allow public network (default)',
-      egressDenyAll: 'Deny by default',
-      egressPrecedence: 'Evaluation order: allow, deny, then the default. Allow rules take precedence over deny rules.',
-      allowOut: 'Allowed destinations',
-      allowOutPlaceholder: 'Domain / IP / CIDR, for example *.example.com',
-      allowOutHelp: 'Supports IPv4, CIDR, domains, and single-label wildcards such as *.example.com (which do not match the root domain).',
-      denyOut: 'Denied destinations',
-      denyOutPlaceholder: 'IP / CIDR only, for example 169.254.169.254/32',
-      denyOutHelp: 'Deny rules match destination IP only, so domains are not supported.',
-      domainAllowNeedsDenyAll: 'When allowed destinations contain a domain, also choose “Deny by default” or add 0.0.0.0/0 to denied destinations; otherwise the allowlist is ineffective.',
-      cubeL7Rules: 'HTTP access rules (L7)',
-      cubeL7RulesHelp: 'Every rule requires host or sni; the network layer derives allowed targets only from those fields. Fields are AND-ed and methods are OR-ed. Applies only to HTTP 80 / HTTPS 443. Rules are first-match-wins from top to bottom.',
-      e2bHostRules: 'Host request transforms',
-      e2bHostRulesHelp: 'Inject headers by host. A rule does not authorize egress; its host must also appear in allowed destinations.',
-      ruleUntitled: 'Untitled rule',
-      expandRule: 'Expand rule',
-      collapseRule: 'Collapse rule',
-      moveRuleUp: 'Move rule up',
-      moveRuleDown: 'Move rule down',
-      ruleName: 'Rule name',
-      ruleScheme: 'Scheme',
-      ruleSni: 'SNI',
-      ruleHost: 'Host',
-      ruleMethods: 'HTTP methods',
-      rulePath: 'Path',
-      ruleAction: 'Action',
-      ruleAllow: 'Allow',
-      ruleDeny: 'Deny',
-      ruleAudit: 'Audit level',
-      ruleInject: 'Inject headers',
-      headerName: 'Header name',
-      headerValue: 'Header value',
-      addTarget: 'Add destination',
-      addRule: 'Add rule',
-      addHeader: 'Add header',
-      removeRule: 'Remove rule',
-      noConfigs: 'Песочниц пока нет. Агенты без конфигурации пространства не выполняют скрипты навыков.',
-      identityFieldHint: 'While this config owns sandboxes, these cannot be changed: backend type, API endpoint, API key, sandbox domain, proxy endpoint.',
-      connectionLockedBySkills: 'В этой песочнице уже установлены навыки. Смена подключения, учётных данных или DNS меняет среду снимка, а DNS применяется только после пересборки шаблона. Создайте новую песочницу.',
-      connectionLockedByInFlight: 'Навык ещё устанавливается или удаляется. Подключение, учётные данные и DNS нельзя менять, пока это не закончится.',
-      viewSandboxes: 'Запущенные экземпляры',
-      inventoryTitle: 'Запущенные экземпляры',
-      inventoryDrawerDesc: 'Песочницы, которые всё ещё занимает эта конфигурация, а также затронутые сессии и агенты.',
-      inventoryFailed: 'Failed to load sandbox usage',
-      sandboxCount: 'Sandboxes',
-      sandboxCountUnknown: 'Unknown (backend unreachable)',
-      inventoryUnverifiableHint: 'The backend is unreachable, so the sandbox count is unknown — that is not the same as none.',
-      inventorySessions: 'Сессии',
-      inventorySessionKind: 'Чат',
-      inventoryEmpty: 'Нет занимающих сессий',
-      inventoryAgentsTitle: 'Связанные агенты',
-      inventoryUntitledSession: 'Сессия без названия',
-      sandboxesStillLive: 'This config still owns {count} running or paused sandbox(es), so identity fields cannot be changed yet.',
-      blockedHint: 'End or delete those sessions (deleting a session destroys its sandbox), or create a second config and point the agents at it.',
-      unverifiableBlocked: 'The backend cannot be reached to verify whether sandboxes remain, so the stored credentials will not be overwritten.',
-      unverifiableSaveHint: 'Restore connectivity first; if the backend is gone for good, create a second config and point the agents at it.',
-      affectedSessions: '{count} session(s) affected.',
-      affectedAgents: 'Agents using this config: {names}',
-      confirmDelete: 'Удалить песочницу «{name}»?',
-      confirmDeleteWithAgents: 'Удалить песочницу «{name}»? {agents}При следующем выполнении навыка они завершатся ошибкой.',
-      deleteFailed: 'Failed to delete',
-      deleted: 'Deleted',
-      forceDeleteTitle: 'Sandbox usage cannot be verified',
-      forceDeleteConfirm: 'The backend cannot be reached to verify whether sandboxes remain. If it is gone for good you can force-delete this config; if it is only temporarily unreachable, forcing it leaves any remaining sandboxes with nobody to reclaim them. Force delete anyway?',
-      forceDelete: 'Force delete',
-      disableScripts: 'Disable sandbox execution',
-      enableScripts: 'Enable sandbox execution',
-      disableScriptsConfirm:
-        'All agents in this workspace — will no longer run skill scripts in a sandbox. They can still read skill content. Existing remote sandboxes are not destroyed automatically; end or delete the related sessions to release them. Continue?',
-      scriptsDisabled: 'Sandbox execution disabled for this workspace',
-      scriptsEnabled: 'Sandbox execution restored for this workspace',
-      policySaveFailed: 'Failed to update sandbox execution policy',
-      legacyConfig: 'Deprecated',
-      namedBackendHint: 'Workspace configuration is the only runtime source. Agents without one cannot execute skill scripts.',
-      weknoraTemplateTitle: 'WeKnora standard template',
-      weknoraDockerImage: 'WeKnora standard image',
-      weknoraDockerImageHint: 'Each session gets its own long-lived container. Scripts, shell commands and files all share it until the session ends or the idle timeout reclaims it.',
-      weknoraTemplateOverview: 'WeKnora provides the standard runtime. Templates are discovered after connecting and the standard one is created when missing.',
-      weknoraTemplateDescription: 'Includes the Python, Node.js, CLI tools, workspace path, and non-root execution user expected by WeKnora skills.',
-      recommendedTag: 'Recommended',
-      templateNotConfigured: 'Template not configured',
-      cardTemplateConfigured: 'Шаблон настроен',
-      cardCredentialMissing: 'Нет API-ключа',
-      cardTimeout: 'Таймаут {sec} с',
-      cardTtl: 'Время жизни песочницы {sec} с',
-      cardVolumeMounted: 'Том подключён',
-      cardEnvVars: 'Переменных окружения: {count}',
-      cardPrivateEndpoints: 'Разрешён доступ к частной сети',
-      imageNotConfigured: 'Image not configured',
-      templateApplied: 'Applied',
-      refreshTemplates: 'Refresh templates',
-      templateSelectHelp: 'Templates are loaded from this cluster. The saved configuration stores the ID automatically.',
-      templateSelectPlaceholder: 'Connect to the cluster to load templates',
-      templateLoadHint: 'Введите подключение к кластеру и обновите список. Если стандартного шаблона WeKnora нет, нажмите «Создать»; после смены DNS или образа — «Удалить и пересобрать».',
-      templateLoadFailed: 'Failed to load templates',
-      standardTemplateProvisioning: 'The WeKnora standard template is being created. Refresh shortly to see its status.',
-      standardTemplateReplaced: 'Предыдущий стандартный шаблон удалён, начата пересборка. Дождитесь готовности.',
-      templateNotReady: 'The selected template is not ready. Refresh and wait for the build to finish.',
-      connectionPassed: 'Connection verified. Templates below are loaded from this cluster.',
-      connectionPassedTitle: 'Cluster connected',
-      templateStepHint: 'На этом шаге только перечисляются шаблоны, уже есть в кластере; ничего не создаётся автоматически. Если стандартного шаблона нет, нажмите «Создать стандартный шаблон WeKnora»; после смены DNS или образа — «Удалить и пересобрать». Продолжить можно, когда шаблон готов.',
-      loadingTemplates: 'Loading templates from the cluster...',
-      templateBuildingHint: 'Стандартный шаблон собирается. Список обновится автоматически.',
-      templateUntaggedHint: 'Сборки завершены, но ни одна не имеет тега default, поэтому при создании песочницы шаблон не находится. Удалите его в E2B и обновите список — WeKnora пересоберёт шаблон.',
-      templateFailedReason: 'Сборка не удалась: {reason}',
-      noTemplates: 'No templates were returned by this cluster.',
-      weknoraStandardTemplate: 'Стандартный шаблон WeKnora',
-      createStandardTemplate: 'Создать',
-      createStandardTemplateHint: 'Собирается с текущими настройками подключения, включая DNS. После их изменения пересоберите шаблон на карточке.',
-      replaceStandardTemplate: 'Пересобрать',
-      replaceStandardTemplateConfirm: 'Стандартный шаблон WeKnora будет собран заново с текущими настройками, включая DNS. Предыдущий готовый шаблон не удаляется, пока замена не станет готовой к запуску.',
-      templateLockedBySkills: 'В этой песочнице уже установлены навыки. Среда навыков привязана к текущему снимку, поэтому шаблон нельзя сменить или пересобрать. Создайте новую песочницу и установите навыки с нового шаблона.',
-      templateLockedByInFlight: 'Навык ещё устанавливается или удаляется. Шаблон нельзя сменить или пересобрать, пока это не закончится.',
-      templateUnnamed: 'Шаблон без имени',
-      templateFieldImage: 'Образ',
-      templateFieldVersion: 'Версия',
-      templateFieldId: 'ID',
-      templateFieldCreated: 'Создан',
-      templateFieldInstance: 'Тип инстанса',
-      templateFieldNetwork: 'Сеть',
-      templateFieldInternet: 'Доступ в интернет',
-      templateInternetOn: 'Вкл.',
-      templateInternetOff: 'Выкл.',
-      templateReadyHint: 'Template “{name}” is ready and selected.',
-      templateProvisioningHint: 'A template is still being built. The status refreshes automatically.',
-      templateStatuses: {
-        ready: 'Ready',
-        building: 'Building',
-        untagged: 'Нет тега default',
-        failed: 'Failed',
-        unknown: 'Unknown',
-      },
-      allowPrivateEndpoints: 'Allow private cluster endpoints',
-      allowPrivateEndpointsHint: 'Use for self-hosted private control planes. Link-local and cloud metadata addresses remain blocked.',
-      howToBuildTemplate: 'Sandbox cluster setup and template guide',
-      noEnvVars: 'No additional environment variables.',
-      fieldRequired: 'Required',
-      cubeApiKeyOptional: 'Optional — leave empty for an unauthenticated self-hosted CubeSandbox',
-      cubeApiKeyWhere: 'Как включить аутентификацию в собственном кластере',
-      cubeDnsServers: 'DNS-серверы',
-      cubeDnsServersHelp: 'Необязательно. IP nameserver, которые записываются в стандартный шаблон WeKnora. Пустое значение оставляет значение кластера по умолчанию (обычно 119.29.29.29). Если UDP/53 до публичных резолверов недоступен, укажите достижимые адреса из /etc/resolv.conf хоста Cube, исключая 10/8, 172.16/12 и 192.168/16. Чтобы изменение вступило в силу, на карточке шаблона нажмите «Пересобрать».',
-      cubeDnsServersPlaceholder: 'например 8.8.8.8, Enter чтобы добавить',
-      e2bApiKeyHelp: 'Создайте ключ на странице API Keys в консоли E2B; обычно он начинается с e2b_.',
-      e2bApiKeyWhere: 'Получить API-ключ в консоли E2B',
-      apiKeyPlaceholder: 'Вставьте API-ключ',
-      secretConfigured: 'Ключ настроен (повторно не показывается); введите новое значение для ротации',
-      secretKeepHint: 'Настроено — оставьте пустым, чтобы не менять',
-      e2bApiUrlOptional: 'Optional — the SDK default is used when empty',
-      e2bDomainOptional: 'Optional — the SDK default is used when empty',
-      e2bProxyUrlOptional: 'Data-plane gateway of a self-hosted E2B-compatible cluster. Leave empty to reach sandboxes through the sandbox domain, as E2B Cloud expects.',
-      backends: {
-        disabled: 'Disabled',
-        local: 'Local process',
-        docker: 'Docker',
-        cube: 'CubeSandbox',
-        e2b: 'E2B',
-      },
-      apiUrl: 'API endpoint',
-      proxyUrl: 'Proxy endpoint',
-      sandboxDomain: 'Sandbox domain',
-      apiKey: 'API key',
-      templateId: 'Template ID',
-      httpTimeout: 'HTTP timeout (s)',
-      httpTimeoutHelp: 'Сколько ждать ответа от управляющего API бэкенда, прежде чем считать эндпоинт недоступным. Пусто — 30 секунд.',
-      sandboxTtl: 'Sandbox TTL (s)',
-      sandboxTtlHelp: 'Через сколько песочница будет приостановлена',
-      dockerImage: 'Docker image',
-      dockerHost: 'Docker daemon endpoint',
-      dockerHostHelp: 'Empty follows the local docker CLI (DOCKER_HOST or the current docker context), so you do not have to type /var/run/docker.sock. For a remote daemon use tcp://host:2376, fill in the TLS certificate directory, and turn on "allow private endpoints" for RFC1918 addresses.',
-      dockerTlsCertPath: 'TLS certificate directory',
-      dockerTlsCertPathHelp: 'Directory on the WeKnora host holding ca.pem, cert.pem and key.pem. Required for a remote daemon; certificates are mounted by the deployment, never stored here.',
-      dockerIdleTtl: 'Idle reclaim (seconds)',
-      dockerIdleTtlHelp: 'The Docker daemon has no idle timeout of its own. A container that runs no command for this long is reclaimed by WeKnora and rebuilt when the session continues. Empty means 1800 seconds.',
-      dockerCpuLimit: 'CPU cores',
-      dockerCpuLimitHelp: 'CPU cores available to one sandbox; 0 uses the built-in default.',
-      dockerMemoryLimit: 'Memory limit (MB)',
-      dockerMemoryLimitHelp: 'Memory limit in MB for one sandbox; 0 uses the built-in default.',
-      dockerPidsLimit: 'Process limit',
-      dockerPidsLimitHelp: 'Maximum processes one sandbox can create; 0 uses the built-in default.',
-      dockerNetworkMode: 'Network mode',
-      dockerNetworkModeHelp: 'Defaults to bridge, which skills need to install packages. Choose none for no egress at all. Docker filters by network only; per-domain rules are not possible here.',
-      dockerNetworkBridge: 'bridge (egress allowed)',
-      dockerNetworkNone: 'none (no egress)',
-      defaultTimeout: 'Execution timeout (s)',
-      defaultTimeoutHelp: 'Максимальное время одного запуска скрипта навыка; по истечении он прерывается. Пусто — 60 секунд.',
-      terminalIdleDisconnect: 'Отключение простоя терминала (с)',
-      terminalIdleDisconnectHelp: 'После открытия терминала соединение закрывается, если столько времени нет ввода с клавиатуры и вывода PTY, чтобы песочница могла приостановиться по TTL. Пусто — 900 секунд; минимум 60 секунд, максимум 24 часа.',
-      envVars: 'Environment variables',
-      envKey: 'Name',
-      envValue: 'Value',
-      envVarsHint: 'Injected into every sandbox created from this config. Values are encrypted at rest but visible to scripts inside the sandbox.\nInjected only when a sandbox is created; to inject on each run, add them on the Sandbox secrets page.',
-      addRow: 'Add variable',
-      removeRow: 'Remove',
-      save: 'Save',
-      saveAndContinue: 'Сохранить и продолжить',
-      saved: 'Saved. Applies to new sessions.',
-      saveFailed: 'Failed to save',
-      testConnection: 'Test connection',
-      deepCheck: 'Full verification',
-      recheck: 'Проверить снова',
-      deepCheckIntro: 'Полная проверка создаёт временную песочницу, запускает скрипт, проверяет исходящую сеть и удаляет её.',
-      deepCheckConfirm: 'Full verification runs a throwaway script. Remote backends also create and destroy a real sandbox and may consume a small amount of sandbox time. Continue?',
-      checkPassed: 'All checks passed',
-      checkFailed: 'Some checks failed',
-      checkScopeConnection: 'Проверена только плоскость управления: эндпоинт отвечает, ключ действителен. Запустится ли скрипт на самом деле — пока не проверено.',
-      checkScopeFull: 'Эндпоинт, ключ, шаблон, выполнение внутри песочницы и исходящая сеть проверены по-настоящему.',
-      checkScopePolicyRestricted: 'Исходящий доступ ограничен политикой, поэтому исходящая сеть не зондировалась. Эндпоинт, ключ, шаблон и выполнение внутри песочницы проверены.',
-      checkPendingHint: '{names} можно подтвердить только полной проверкой: она создаёт временную песочницу, запускает один скрипт и удаляет её.',
-      skipReasons: {
-        needs_deep_check: 'Нужна полная проверка',
-        control_plane_unreachable: 'Пропущено: плоскость управления недоступна',
-        sandbox_not_created: 'Пропущено: песочница не создана',
-        sandbox_exec_failed: 'Пропущено: выполнение в песочнице не удалось',
-        egress_restricted_by_policy: 'Ограничено сетевой политикой (эта конфигурация по умолчанию запрещает исходящий трафик)',
-      },
-      checks: {
-        client_build: 'Client construction',
-        api_url_reachable: 'Endpoint reachability',
-        credential_valid: 'Credential validity',
-        template_exists: 'Template existence',
-        sandbox_exec: 'In-sandbox execution',
-        egress_available: 'Outbound network',
-      },
-      manageSkills: 'Управление навыками',
-      cardSkillsNone: 'Навыки ещё не установлены',
-      cardSkillsMore: '+{count}',
-      skillInstallerModel: 'Installer model',
-      skillInstallerModelHint: 'Used by the built-in installer agent. Choose a chat model that supports tool calls.',
-      skillInstallerModelRequired: 'Select an installer model first',
-      skillInstallerModelSaveFailed: 'Failed to save the installer model',
-      skillRollout: 'Как вступает в силу новый образ навыка',
-      skillRolloutHint: 'Установка или удаление навыка собирает новый образ. Здесь задаётся, переключать ли на него уже открытые сессии.',
-      skillRolloutNextTurn: 'Пересоздать песочницу открытых сессий на следующем ходе диалога',
-      skillRolloutNewSession: 'Оставить открытые сессии на текущей песочнице; новый образ только у новых сессий',
-      skillRolloutSaveFailed: 'Не удалось сохранить способ применения',
-      skillInstallGroup: 'Установить навык',
-      skillInstalledGroup: 'Установленные',
-      skillUploadClick: 'Нажмите, чтобы загрузить zip',
-      skillUploadDrag: 'или перетащите файл сюда',
-      skillUploadHint: 'Установка записывает навык в текущий образ и создаёт новый снимок. Это может занять несколько минут. Текущий ход диалога не прерывается; открытые сессии пересоздадут песочницу при следующем сообщении, и тогда черновики рабочей области сессии будут очищены.',
-      skillUploadHintNewSession: 'Установка записывает навык в текущий образ и создаёт новый снимок. Это может занять несколько минут. Уже открытые сессии продолжают использовать текущую песочницу до своего завершения; этот навык появится только у новых сессий.',
-      skillSourceSection: 'Установить из источника',
-      skillSourceSectionHint: 'Вставьте ссылку ClawHub, GitHub или SkillHub, либо {\'@\'}owner/slug. Архив не может превышать {size} МБ.',
-      skillUploadSection: 'Загрузить локальный пакет',
-      skillUploadSectionHint: 'Перетащите zip с файлом SKILL.md ниже или нажмите, чтобы выбрать файл. Архив не может превышать {size} МБ.',
-      skillSourcePlaceholder: 'ClawHub: {\'@\'}owner/slug. GitHub/SkillHub: вставьте полный URL',
-      skillSourceInstall: 'Установить',
-      skillInstallOr: 'или',
-      skillSourceFailed: 'Не удалось установить навык из реестра',
-      skillUploadFailed: 'Failed to upload the skill',
-      skillBundleTooLarge: 'Архив навыка не может превышать {size} МБ.',
-      skillBundleTooManyFiles: 'В каталоге навыка не может быть больше {count} файлов.',
-      skillBundleTooManyZipEntries: 'В архиве не может быть больше {count} записей.',
-      skillUploading: 'Uploading {percent}%',
-      skillUploadAccepted: 'Skill install started',
-      skillStatusInstalling: 'Installing',
-      skillStatusReady: 'Ready',
-      skillStatusFailed: 'Failed',
-      skillStatusRemoving: 'Removing',
-      skillStatusLabel: 'Status',
-      skillDisableHint: 'Disable = the skill is invisible to the agent, files stay in the image. Changes take effect on the session\'s next execution.',
-      skillDeleteHint: 'Удаление убирает каталог навыка из образа и создаёт новый снимок. Текущий ход диалога не прерывается; открытые сессии пересоздадут песочницу при следующем сообщении, и тогда черновики рабочей области сессии будут очищены.',
-      skillDeleteHintNewSession: 'Удаление убирает каталог навыка из образа и создаёт новый снимок. Уже открытые сессии продолжают использовать текущую песочницу до своего завершения; этот навык исчезнет только у новых сессий.',
-      skillRemoveInProgress: 'Удаление',
-      skillRemoveWaiting: 'Удаление из образа началось. Ожидание хода выполнения…',
-      skillRemoveDone: '«{name}» удалён из этой песочницы. Навык остаётся в каталоге, его можно установить снова.',
-      skillRemoveStage: {
-        accepted: 'Запрос на удаление принят',
-        sandbox_ready: 'Открывается служебная песочница',
-        removed: 'Файлы удалены, создаётся новый образ',
-        done: 'Удаление завершено',
-        failed: 'Не удалось удалить',
-      },
-      imageInfoTitle: 'Current image',
-      imageInfoSnapshot: 'Snapshot ID',
-      imageInfoGeneration: 'Version',
-      imageInfoBuiltAt: 'Built at',
-      imageInfoBaseTemplate: 'Base template',
-      imageInfoRuntimeTemplate: 'Шаблон среды',
-      imageInfoUsingBase: 'Навыки ещё не установлены. Сессии запускаются с выбранного шаблона среды.',
-      imageInfoEmpty: 'Using the base template',
-      imageInfoUnset: 'Не задано',
-      skillTranscript: 'Смотреть ход установки',
-      skillTranscriptLive: 'Ход установки',
-      skillTranscriptLiveHint: 'Идёт установка — нажмите, чтобы смотреть',
-      skillTranscriptTitle: 'Ход установки',
-      skillTranscriptHide: 'Hide install run',
-      skillGuidance: {
-        placeholder: 'Добавьте указания по установке: нужные CLI, документацию или ограничения среды',
-        send: 'Отправить указания',
-        retry: 'Переустановить с указаниями',
-        pending: 'Ожидает обработки',
-        injected: 'Передано агенту',
-        unprocessed: 'Не обработано: добавьте при переустановке',
-        unavailable: 'На этом этапе ввод недоступен. После завершения можно переустановить с указаниями.',
-        failed: 'Не удалось отправить указания. Текст сохранён; повторите попытку.',
-      },
-      skillTranscriptEmpty: 'This install left no transcript.',
-      skillTranscriptWaiting: 'Install has started. Waiting for the process log…',
-      skillFiles: 'Просмотреть файлы',
-      skillFilesTitle: 'Файлы',
-      skillFilesEmpty: 'У этого навыка пока нет файлов для просмотра.',
-      skillFilesLoadFailed: 'Не удалось загрузить файлы навыка',
-      skillFilesFileLoadFailed: 'Не удалось прочитать этот файл',
-      skillFilesBinary: 'Это двоичный файл, его нельзя просмотреть.',
-      skillFilesTruncated: 'Файл слишком большой, показана только начальная часть.',
-      skillFilesSelectHint: 'Выберите файл слева, чтобы просмотреть содержимое',
-      skillFilesPreview: 'Просмотр',
-      skillFilesSource: 'Исходник',
-      skillLoadFailed: 'Failed to load skills',
-      skillToggleFailed: 'Failed to update the skill',
-      skillDeleteAccepted: 'Skill removal started',
-      skillRetry: 'Переустановить',
-      skillRetryHint: 'Повторить с сохранённым пакетом — загружать заново не нужно',
-      skillRetryAccepted: 'Переустановка запущена',
-      skillRetryFailed: 'Не удалось запустить переустановку',
-      skillStop: 'Остановить установку',
-      skillStopHint: 'Прервать установку, затем повторить или удалить',
-      skillStopAccepted: 'Остановлено',
-      skillStopFailed: 'Не удалось остановить',
-      skillEmpty: 'Навыки ещё не установлены. Вставьте URL реестра или загрузите zip.',
-      skillVersion: 'Version',
-      skillVersionEmpty: 'Not specified',
-      skillError: 'Error',
-      skillEnabled: 'Skill enabled',
-      skillDisabled: 'Skill disabled',
-      skillEnv: {
-        toggle: 'Переменные окружения',
-        toggleHide: 'Скрыть переменные окружения',
-        none: 'Этот навык не объявил переменных окружения.',
-        workspaceTitle: 'Значения для всего рабочего пространства',
-        workspaceHint: 'Каждый участник, не задавший своё значение, использует значение отсюда. Своё значение участник задаёт в настройках, раздел «Ключи песочницы».',
-        required: 'Обязательно',
-        isSet: 'Задано',
-        notSet: 'Не задано',
-        placeholderSet: 'Сохранено, введите новое значение для замены',
-        placeholderUnset: 'Введите значение',
-        save: 'Сохранить',
-        saveSuccess: 'Значения рабочего пространства сохранены',
-        saveFailed: 'Не удалось сохранить значения рабочего пространства.',
-        clear: 'Очистить',
-        clearConfirm: 'Очистить значение рабочего пространства для {name}? Объявление останется. У участников без своего значения его не будет.',
-        clearSuccess: 'Значение рабочего пространства очищено.',
-        valueTooLong: 'Значение не может превышать {max} байт.'
-      },
-    },
     skills: {
-      title: 'Управление навыками',
-      description: 'Навыки живут в каталоге пространства. Их можно только зарегистрировать или установить в одну или несколько песочниц. Агент включает только навыки, которые готовы в выбранной песочнице.',
       helpTooltip: 'Навык из каталога можно не устанавливать никуда. Скрипты запускаются только после установки в образ песочницы агента. Образы Docker, Cube и E2B несовместимы — устанавливайте отдельно в каждую песочницу.',
+      hostTarget: 'Этот компьютер',
+      host: {
+        helpTooltip: 'Навык в каталоге можно не устанавливать. Скрипты запускаются только после установки на этот компьютер.',
+        emptyDesc: 'Навыков пока нет. После добавления их можно установить на этот компьютер.',
+        addStepInstallDesc: 'Проверьте результат разбора и выберите модель установки. Навык будет установлен на этот компьютер.',
+        installToSandbox: 'Установить на этот компьютер',
+        installToSandboxDesc: 'Зависимости готовятся на этом компьютере. После готовности агент сможет пользоваться навыком.',
+        installDrawerDesc: 'Установить «{name}» на этот компьютер.',
+        noInstalls: 'Не установлен на этот компьютер',
+        installedOnName: 'Установлен на этот компьютер',
+        manageDrawerDesc: 'На этом компьютере можно включать навык, менять переменные и удалять установку.',
+        manageUninstall: 'Удалить с этого компьютера',
+        manageUninstallConfirm: 'Удалить «{name}» с этого компьютера?',
+        deleteCatalogConfirm: 'Удалить «{name}» из каталога? Сначала снимите установку с этого компьютера.',
+        deleteCatalogBlocked: 'Сначала снимите этот навык с этого компьютера.',
+        upgradeDrawerDesc: 'Обновить «{name}» до версии из каталога. До окончания используется текущая версия, а при ошибке она остаётся.',
+        disableHint: 'Пока навык выключен, агенты его не видят. Файлы остаются на этом компьютере. Изменение вступит в силу при следующем запуске.',
+        removeDone: '«{name}» удалён с этого компьютера. В каталоге он остаётся, его можно установить снова.',
+        removeWaiting: 'Удаление начато. Ожидание хода…',
+        removeSandboxReady: 'Подготовка локального каталога',
+        removeRemoved: 'Файлы удалены',
+        envWorkspaceHint: 'Участники без собственного значения используют это. Личное значение задаётся в «Настройки → Переменные среды».',
+      },
       goSandboxSettings: 'Настроить песочницы',
       noConfigsDesc: 'Песочницы ещё нет. Для установки навыков нужен образ.',
       addSkill: 'Добавить навык',
@@ -5806,7 +4581,6 @@ export default {
       addRegisteredAs: 'Зарегистрирован как «{name}»',
       addFileSelected: 'Выбран {name}',
       addClearFile: 'Очистить',
-      emptyDesc: 'Навыков ещё нет. Добавьте навык, затем установите его в одну или несколько песочниц.',
       emptyNoSandboxHint: 'Песочницы нет. Скрипты навыков не запустятся, пока навык не установлен в образ.',
       installSkill: 'Добавить навык',
       installDrawerDesc: 'Установка в образ «{name}».',
@@ -5830,193 +4604,57 @@ export default {
       deleteCatalog: 'Удалить из каталога',
       deleteCatalogConfirm: 'Удалить «{name}» из каталога? Сначала снимите установку со всех песочниц.',
       deleteCatalogBlocked: 'Сначала снимите этот навык со всех песочниц.',
-      deleteSuccess: 'Удалено из каталога',
       registerAccepted: 'Добавлено в каталог',
       installAccepted: 'Установка начата',
       installPartial: 'Установка начата на части песочниц. {failed} не удалось запустить.',
       installOutdated: 'Отличается от каталога',
-      loadFailed: 'Не удалось загрузить',
+      upgrade: 'Обновить',
+      upgradeCount: 'Обновить ({count})',
+      upgradeTitle: 'Обновление навыка',
+      upgradeDrawerDesc: 'Обновить «{name}» в выбранных песочницах до версии из каталога. До завершения обновления песочница продолжает использовать текущую версию, а неудачное обновление её не затрагивает.',
+      upgradeAvailable: 'Доступно обновление',
+      upgradeFromTo: 'Обновление {from} → {to}',
+      upgradeAccepted: 'Обновление начато',
+      noSandboxToUpgrade: 'Нет песочниц для обновления.',
+      upgradeRowTitle: 'Доступна новая версия',
+      upgradeRowHint: 'В этой песочнице версия отличается от каталога. Она продолжает работать до завершения обновления, а неудачное обновление её не затрагивает.',
+      upgradeRowHintVersions: 'В этой песочнице {from}, в каталоге {to}. {from} продолжает работать до завершения обновления, а неудачное обновление её не затрагивает.',
+      upgradeRowHintFailed: 'Установка в этой песочнице не удалась, а каталог уже содержит другую версию. Обновление установит версию из каталога.',
+      upgradeRowHintFailedVersions: 'Установка {from} в этой песочнице не удалась, а в каталоге {to}. Обновление установит {to}.',
+      servedWhileUpgrading: 'Обновляется; работает {version}',
+      servedWhileUpgradingPlain: 'Обновляется; работает предыдущая версия',
+      servedAfterFailure: 'Обновление не удалось; работает {version}',
+      servedAfterFailurePlain: 'Обновление не удалось; работает предыдущая версия',
     },
     mcpService: 'Сервис MCP',
     versionInfo: 'Информация о версии',
     taskQueue: 'Очереди задач',
     tenantInfo: 'Информация о пространстве',
     workspaceSettings: 'Настройки пространства',
-    system: 'Настройки системы',
-    storage: {
-      title: 'Хранилище',
-      description: 'Настройте хранение документов и изображений. Здесь задаются параметры хранилищ; в базе знаний выбирается только тип хранилища.',
-      basicSection: 'Основное',
-      modeSection: 'Режим развёртывания',
-      credentialsSection: 'Учётные данные',
-      bucketSection: 'Bucket',
-      useSslDesc: 'Подключаться к MinIO по HTTPS',
-      loading: 'Загрузка...',
-      retry: 'Повторить',
-      defaultEngine: 'Хранилище по умолчанию',
-      defaultEngineDesc: 'Хранилище по умолчанию при создании новых баз знаний',
-      engineLocal: 'Локальное',
-      engineCos: 'Tencent Cloud COS',
-      engineTos: 'Volcengine TOS',
-      engineOss: 'Alibaba Cloud OSS',
-      localTitle: 'Локальное хранилище',
-      localDesc: 'Хранение файлов в локальной файловой системе сервера. Подходит только для однонодового развёртывания.',
-      available: 'Доступно',
-      needsConfig: 'Требует настройки',
-      configurable: 'Настраиваемое',
-      pathPrefix: 'Префикс пути (необязательно)',
-      pathPrefixPlaceholder: 'напр. weknora/images',
-      prefixPlaceholder: 'напр. weknora',
-      bucketName: 'Имя бакета',
-      bucketPlaceholder: 'Имя бакета',
-      minioDesc: 'S3-совместимое самостоятельно размещаемое объектное хранилище для внутренних сетей и частного облака.',
-      minioDocker: 'Docker-развёртывание',
-      minioRemote: 'Удалённый MinIO',
-      minioDockerDetected: 'Обнаружены переменные окружения MinIO из Docker. Информация о подключении предоставляется через переменные окружения.',
-      minioDockerNotDetected: 'Переменные окружения MinIO (MINIO_ENDPOINT и др.) не обнаружены. Проверьте конфигурацию Docker Compose.',
-      minioRemoteHint: 'Подключение к удалённому MinIO. Требуется ручной ввод параметров подключения.',
-      cosTitle: 'Tencent Cloud COS',
-      cosDesc: 'Объектное хранилище Tencent Cloud для публичного облака с поддержкой CDN-ускорения.',
-      cosSecretIdPlaceholder: 'Tencent Cloud API SecretId',
-      cosSecretKeyPlaceholder: 'Tencent Cloud API SecretKey',
-      cosAppIdPlaceholder: 'Tencent Cloud Account AppID',
-      tosTitle: 'Volcengine TOS',
-      tosDesc: 'Объектное хранилище Volcengine (TOS) для публичного облака.',
-      tosAccessKeyPlaceholder: 'Volcengine Access Key',
-      tosSecretKeyPlaceholder: 'Volcengine Secret Key',
-      s3Title: 'AWS S3',
-      s3Desc: 'AWS S3 и совместимые сервисы объектного хранилища для публичного облака.',
-      s3AccessKeyPlaceholder: 'AWS Access Key',
-      s3SecretKeyPlaceholder: 'AWS Secret Key',
-      s3DefaultCredentialsHint: 'Оставьте оба ключа пустыми, чтобы использовать стандартную цепочку учётных данных AWS (IAM role, IRSA / web identity, переменные среды или общий профиль).',
-      s3EndpointPlaceholder: 'Необязательно; оставьте пустым для регионального endpoint AWS',
-      ks3Title: 'Kingsoft Cloud KS3',
-      ks3Desc: 'Объектное хранилище Kingsoft Cloud (KS3), подходит для публичного облака.',
-      ks3AccessKeyPlaceholder: 'Kingsoft Cloud Access Key',
-      ks3SecretKeyPlaceholder: 'Kingsoft Cloud Secret Key',
-      ks3EndpointPlaceholder: 'e.g. ks3-cn-beijing.ksyuncs.com',
-      ks3RegionPlaceholder: 'e.g. BEIJING',
-      engineKs3: 'Kingsoft Cloud KS3',
-      obsTitle: 'Huawei Cloud OBS',
-      obsDesc: 'Объектное хранилище Huawei Cloud (OBS), подходит для публичного облака.',
-      obsAccessKeyPlaceholder: 'Huawei Cloud Access Key',
-      obsSecretKeyPlaceholder: 'Huawei Cloud Secret Key',
-      obsEndpointPlaceholder: 'e.g. obs.cn-north-4.myhuaweicloud.com',
-      obsRegionPlaceholder: 'e.g. cn-north-4',
-      engineObs: 'Huawei Cloud OBS',
-      ossTitle: 'Alibaba Cloud OSS',
-      ossDesc: 'Объектное хранилище Alibaba Cloud (OSS), подходит для публичного облака.',
-      ossAccessKeyPlaceholder: 'Alibaba Cloud Access Key',
-      ossSecretKeyPlaceholder: 'Alibaba Cloud Secret Key',
-      console: 'Консоль',
-      docs: 'Документация',
-      testConnection: 'Тест подключения',
-      loadFailed: 'Ошибка загрузки',
-      saveSuccess: 'Сохранено',
-      saveFailed: 'Ошибка сохранения',
-      unknownError: 'Неизвестная ошибка',
-      requestFailed: 'Ошибка запроса'
-    },
     storageBackend: {
-      description: 'Управляйте экземплярами хранилища для файлов и изображений; можно настроить несколько экземпляров одного типа.',
-      empty: 'Экземпляры хранилища ещё не настроены',
-      defaultTag: 'По умолчанию',
-      add: 'Добавить экземпляр хранилища',
-      editTitle: 'Изменить экземпляр хранилища',
-      createTitle: 'Добавить экземпляр хранилища',
       editSubtitle: 'Измените настройки подключения этого экземпляра хранилища.',
       createSubtitle: 'Добавьте новый экземпляр хранилища для файлов и изображений.',
-      basicSection: 'Основная информация',
-      nameLabel: 'Название',
-      namePlaceholder: 'напр. Production COS, Archive COS',
-      providerLabel: 'Тип хранилища',
-      modeLabel: 'Режим развёртывания',
       modeRemote: 'Удалённый экземпляр',
       modeEnv: 'Переменные окружения',
       connectionSection: 'Настройки подключения',
       optionalPlaceholder: 'Необязательно',
       advancedSection: 'Дополнительные параметры',
       pathPrefixLabel: 'Префикс пути',
-      useSslDesc: 'Доступ к MinIO по HTTPS',
       forcePathStyleDesc: 'Использовать path style',
       useTempBucketDesc: 'Использовать временный бакет',
       tempBucketLabel: 'Временный бакет',
       tempBucketPlaceholder: 'Необязательно, для временных файлов',
       tempRegionLabel: 'Регион временного бакета',
       tempRegionPlaceholder: 'Оставьте пустым, чтобы использовать основной регион',
-      testConnection: 'Проверить подключение',
-      localStorage: 'Локальное хранилище',
       setDefault: 'Сделать по умолчанию',
-      edit: 'Изменить',
-      delete: 'Удалить',
-      testSuccess: 'Подключение успешно',
-      testFailed: 'Не удалось подключиться',
-      nameRequired: 'Введите название',
-      saveSuccess: 'Успешно сохранено',
-      saveFailed: 'Не удалось сохранить',
       defaultUpdated: 'Хранилище по умолчанию обновлено',
       deleteTitle: 'Удалить экземпляр хранилища',
-      deleteConfirm: 'Вы уверены, что хотите удалить «{name}»?',
-      deleted: 'Удалено',
-      deleteFailed: 'Не удалось удалить'
-    },
-    parser: {
-      title: 'Парсер',
-      description: 'Состояние и конфигурация парсеров документов. Настройки здесь приоритетнее переменных окружения сервера. Оставьте пустым для значений по умолчанию.',
-      supportedFileTypes: 'Поддерживаемые форматы',
-      statusSection: 'Статус',
-      configSection: 'Конфигурация',
-      featuresLabel: 'Опции',
-      loading: 'Загрузка...',
-      retry: 'Повторить',
-      noEngineDetected: 'Парсеры не обнаружены. Убедитесь, что сервис DocReader работает.',
-      disconnected: 'Отключено',
-      connected: 'Подключено',
-      available: 'Доступен',
-      unavailable: 'Недоступен',
-      builtinDesc: 'Встроенный парсер DocReader (docx/pdf/xlsx и другие сложные форматы)',
-      currentAddr: 'Текущий',
-      envVarHint: 'Для изменения установите переменные DOCREADER_ADDR и DOCREADER_TRANSPORT (grpc/http), затем перезапустите сервис.',
-      selfHostedEndpoint: 'Собственная конечная точка',
-      formulaRecognition: 'Распознавание формул',
-      tableRecognition: 'Распознавание таблиц',
-      parseMethodLabel: 'Метод разбора PDF',
-      parseMethodAuto: 'Автоопределение (рекомендуется)',
-      parseMethodOCR: 'Принудительное OCR',
-      parseMethodText: 'Только извлечение текста',
-      parseMethodHint: 'Автоматический режим использует OCR для сканов и извлекает исходный текст из цифровых PDF.',
-      sealRecognition: 'Распознавание печатей',
-      chartRecognition: 'Распознавание диаграмм',
-      language: 'Язык',
-      testConnection: 'Проверить с текущими параметрами',
-      docs: 'Документация',
-      loadFailed: 'Не удалось загрузить список парсеров',
-      ensureDocreaderConnected: 'Убедитесь, что сервис DocReader настроен через переменные окружения и подключён',
-      checkDoneStatusUpdated: 'Проверка выполнена. Статус выше обновлён.',
-      checkSuccess: 'Тест подключения пройден успешно',
-      checkFailed: 'Проверка не пройдена',
-      saveSuccess: 'Сохранено',
-      saveFailed: 'Ошибка сохранения',
-      mineruEndpointPlaceholder: 'напр. https://your-mineru.example.com',
-      defaultPipeline: 'Pipeline по умолчанию',
-      languagePlaceholder: 'напр. ch, en, ja (по умолчанию ch)',
-      mineruCloudApiKeyPlaceholder: 'MinerU Cloud API Key',
-      vlmLabel: 'vlm (визуальная языковая модель)',
-      mineruHtmlLabel: 'MinerU-HTML (HTML парсинг)',
-      serverUrl: 'Server URL',
-      vlmServerUrlPlaceholder: 'e.g. http://your-vllm-server:8000',
-      vlmServerUrlHint: 'Required when Backend is vlm-http-client or hybrid-http-client',
-      paddleocrVlEndpointPlaceholder: 'напр. http://your-paddleocr-vl:8080',
-      paddleocrVlEndpointHint: 'Адрес полного сервиса PaddleOCR-VL (pipeline); суффикс /layout-parsing не требуется',
-      paddleocrVlCloudTokenPlaceholder: 'Токен PaddleOCR-VL AI Studio'
+      deleteFailed: 'Не удалось удалить',
     },
     weknoraCloud: {
-      title: 'WeKnora Cloud',
-      description: 'Настройте учётные данные APPID и APPSECRET для WeKnora Cloud. Данные используются для модельных сервисов и движка парсинга документов.',
       viewDocs: 'Документация',
       unconfigured: 'Учётные данные не настроены. Заполните APPID и APPSECRET.',
       configured: 'Учётные данные настроены, статус в норме.',
-      expired: 'Учётные данные WeKnora Cloud истекли',
       expiredDefault: 'Ключ шифрования изменился после перезапуска. Сохранённые данные не могут быть расшифрованы. Введите данные заново.',
       reconfigure: 'Перенастроить',
       appIdLabel: 'APPID',
@@ -6030,8 +4668,6 @@ export default {
       usageTitle: 'Инструкция',
       usageSteps: '1. Сохраните APPID и APPSECRET\n2. Добавьте chat, embedding, rerank и vlm в разделе «Облачные модели» ниже\n3. Парсинг: Настройки БЗ → Движок парсинга → WeKnora Cloud',
       fillRequired: 'Заполните APPID и APPSECRET',
-      saveSuccess: 'Учётные данные сохранены',
-      saveFailed: 'Не удалось сохранить данные',
       credentialConfigured: 'Учётные данные WeKnoraCloud настроены.',
       credentialExpired: 'Данные истекли. Перенастройте.',
       credentialUnconfigured: 'Учётные данные WeKnoraCloud не настроены. Заполните APPID и APPSECRET.',
@@ -6044,13 +4680,9 @@ export default {
       addModelsFailed: 'Не удалось добавить модели',
       addModelsEmbeddingFailed: 'Тест подключения Embedding не пройден; не удалось определить размерность вектора',
       addModelsDisplayName: {
-        chat: 'WeKnoraCloud Chat',
-        embedding: 'WeKnoraCloud Embedding',
-        rerank: 'WeKnoraCloud ReRank',
-        vllm: 'WeKnoraCloud Vision'
+        vllm: 'WeKnoraCloud Vision',
       },
       modelsSection: {
-        title: 'Облачные модели',
         descReady: 'Зарегистрируйте четыре стандартные модели WeKnora Cloud для чата, поиска, реранкинга и зрения.',
         descPending: 'Сначала сохраните учётные данные выше, затем добавьте модели здесь.',
         statusAdded: 'Добавлена',
@@ -6060,39 +4692,24 @@ export default {
         addAllConfirm: 'Подтвердить',
         confirmAddOne: 'Добавить модель {type} «{name}»?',
         confirmAddAll: 'Добавить все {count} отсутствующих облачных моделей сразу?',
-        allReady: 'Все четыре облачные модели готовы'
+        allReady: 'Все четыре облачные модели готовы',
       }
     },
     roleDenied: {
-      title: 'Недостаточно прав',
-      desc: 'Ваша роль не позволяет открыть этот раздел настроек. Обратитесь к администратору пространства, чтобы запросить нужную роль.'
+      desc: 'Ваша роль не позволяет открыть этот раздел настроек. Обратитесь к администратору пространства, чтобы запросить нужную роль.',
     },
     capabilityUnavailable: 'Эта функция не поддерживается в текущем развёртывании. Выполнен переход на доступную страницу.',
-    navGroups: {
-      account: 'Аккаунт',
-      workspace: 'Пространство',
-      modelsRuntime: 'Модели',
-      dataExtensions: 'Данные и расширения',
-      systemAdministration: 'Системное администрирование',
-      platform: 'Платформа'
-    }
   },
   agent: {
     taskLabel: 'Задача:',
-    think: 'Размышление',
-    copy: 'Копировать',
     addToKnowledgeBase: 'Добавить в базу знаний',
     artifactDrawer: {
       buttonTitle: 'Просмотреть файлы, сгенерированные в этом ответе',
-      title: 'Сгенерированные файлы',
-      empty: 'В этом раунде не создано файлов для скачивания.',
-      preview: 'Предпросмотр',
       previewBack: 'Назад к списку',
       collecting: 'Сохранение сгенерированных файлов…',
-      download: 'Скачать',
-      downloadFailed: 'Не удалось скачать, повторите попытку.',
       inlinePreviewHint: 'Нажмите для просмотра',
       inlineMissing: 'Файл недоступен',
+      inlineDeleted: 'Файл удалён',
     },
     updatePlan: 'Обновить план',
     webSearchFound: 'Найдено <strong>{count}</strong> результатов веб‑поиска',
@@ -6105,23 +4722,16 @@ export default {
     contextCompacted: 'Контекст сжат',
     contextCompactedSummary: '{before} → {after} токенов',
     contextCompactedDegraded: 'Сводка недоступна, сохранена исходная запись',
-    title: 'Agents',
-    subtitle: 'Configure and manage your agents to customize conversation behavior and capabilities',
     createAgent: 'Create Agent',
-    builtin: 'Built-in',
-    disabled: 'Disabled',
     disable: 'Disable',
     enable: 'Enable',
-    noDescription: 'No description',
     selectAgent: 'Select Agent',
     noAgents: 'No agents',
     manageAgents: 'Manage',
     builtinAgents: 'Built-in Agents',
     customAgents: 'Custom Agents',
     selector: {
-      title: 'Select Agent',
       current: 'Current',
-      goToSettings: 'Settings',
       sharedLabel: 'Shared',
       notReadyHint: 'Still needs: {items}',
       notReadyStatus: 'Setup needed',
@@ -6134,230 +4744,41 @@ export default {
       capabilityDisabled: 'Off',
       capabilitySupported: 'Supported',
       capabilityUnsupported: 'Unsupported',
-      capabilityUnconfigured: 'Not set'
-    },
-    editor: {
-      createTitle: 'Create Agent',
-      editTitle: 'Edit Agent',
-      buttons: {
-        create: 'Создать агента',
-        saveAndClose: 'Сохранить и закрыть',
-      },
-      postCreateHint: {
-        title: 'Агент создан',
-        footer: 'Продолжите настройку, настройте совместное использование и публикацию, затем нажмите «Сохранить и закрыть».',
-        integrationDesc: 'Перейдите в раздел интеграций, чтобы настроить каналы IM, веб-встраивания и другие каналы публикации',
-      },
-      basicInfo: 'Basic Info',
-      basicInfoDesc: 'Настройка имени, описания и режима работы агента',
-      promptsConfig: 'Промпты',
-      promptsConfigDesc: 'Настройка системных, контекстных, intent/rewrite/fallback промптов',
-      modelConfig: 'Model Config',
-      modelConfigDesc: 'Модель чата, вспомогательные модели (ReRank) и параметры генерации',
-      toolsConfig: 'Tools',
-      toolsConfigDesc: 'Configure tools available to the Agent',
-      knowledgeConfig: 'Knowledge Base',
-      knowledgeConfigDesc: 'Настройка области баз знаний и стратегии FAQ для агента',
-      webSearchConfig: 'Web Search',
-      webSearchConfigDesc: 'Configure web search capabilities for the agent',
-      agentId: 'Agent ID',
-      agentIdDesc: 'Use this ID to target the agent in API integrations',
-      name: 'Name',
-      namePlaceholder: 'Enter agent name',
-      nameRequired: 'Agent name is required',
-      systemPromptRequired: 'System prompt is required',
-      modelRequired: 'Please select a model',
-      queryMissingInRewrite: 'Rewrite user prompt must contain {\'{{\'}query{\'}}\'} placeholder',
-      queryMissingInFallback: 'Fallback prompt must contain {\'{{\'}query{\'}}\'} placeholder',
-      description: 'Description',
-      descriptionPlaceholder: 'Enter agent description',
-      normalDesc: 'Quick response, direct answers',
-      agentDesc: 'Multi-step thinking, deep analysis for complex questions',
-      model: 'Model',
-      modelPlaceholder: 'Select Model',
-      systemPrompt: 'System Prompt',
-      systemPromptPlaceholder: 'Custom system prompt to define agent behavior and role (use {\'{{\'}web_search_status{\'}}\'} placeholder for dynamic web search behavior)',
-      contextTemplateRequired: 'Context template is required',
-      temperature: 'Temperature',
-      thinking: 'Thinking Mode',
-      citationEnabled: 'Показывать ссылки на источники',
-      citationEnabledDesc: 'Показывать источники базы знаний и веб-страниц в итоговом ответе; поиск продолжает работать и при отключении',
-      mode: 'Running Mode',
-      webSearch: 'Web Search',
-      webSearchProvider: 'Поисковый движок',
-      webSearchProviderPlaceholder: 'Использовать поисковый движок по умолчанию',
-      webSearchMaxResults: 'Max Search Results',
-      webFetchEnabled: 'Автоматически загружать содержимое страниц',
-      webFetchTopN: 'Количество загружаемых страниц',
-      knowledgeBases: 'Knowledge Bases',
-      allKnowledgeBases: 'All Knowledge Bases',
-      selectedKnowledgeBases: 'Selected Knowledge Bases',
-      noKnowledgeBase: 'No Knowledge Base',
-      selectKnowledgeBases: 'Select Knowledge Bases',
-      selectKnowledgeBasesDesc: 'Select knowledge bases to associate (including collaborative ones)',
-      myKnowledgeBases: 'My Knowledge Bases',
-      sharedKnowledgeBases: 'Collaborative Knowledge Bases',
-      retrieveKBOnlyWhenMentioned: 'Retrieve Only When Mentioned',
-      retrieveKBOnlyWhenMentionedDesc: 'Off: auto-retrieve configured KBs; On: retrieve only when user {\'@\'} mentions',
-      rerankModel: 'ReRank Model',
-      rerankModelDesc: 'Used to rerank knowledge base retrieval results for better accuracy',
-      rerankModelPlaceholder: 'Select ReRank Model',
-      rerankModelOptionalHint: 'В текущей области нет RAG-базы знаний, поэтому поле необязательное. Если RAG-база будет добавлена позже, будет использоваться модель ReRank по умолчанию для пространства; всё же рекомендуется настроить её явно.',
-      maxIterations: 'Max Iterations',
-      maxIterationsLimit: 'Лимит',
-      maxIterationsUnlimited: 'Без ограничения',
-      allowedTools: 'Allowed Tools',
-      multiTurn: 'Multi-turn Conversation',
-      historyTurns: 'History Turns',
-      retainRetrievalHistory: 'Сохранять результаты поиска',
-      memoryEnabled: 'Долговременная память',
-      retrievalStrategy: 'Retrieval Strategy',
-      embeddingTopK: 'Embedding Top K',
-      keywordThreshold: 'Keyword Threshold',
-      vectorThreshold: 'Vector Threshold',
-      rerankTopK: 'Rerank Top K',
-      rerankThreshold: 'Rerank Threshold',
-      conversationSettings: 'Conversation',
-      contextTemplate: 'Context Template',
-      contextTemplatePlaceholder: 'Custom context template...',
-      enableQueryExpansion: 'Query Expansion',
-      enableRewrite: 'Query Rewrite',
-      queryUnderstandModel: 'Модель понимания запроса',
-      queryUnderstandModelPlaceholder: 'Оставьте пустым, чтобы использовать основную модель чата',
-      rewritePromptSystem: 'Rewrite System Prompt',
-      rewritePromptSystemPlaceholder: 'Leave empty to use default prompt',
-      rewritePromptUser: 'Rewrite User Prompt',
-      rewritePromptUserPlaceholder: 'Leave empty to use default prompt',
-      maxCompletionTokens: 'Max Completion Tokens',
-      maxCompletionTokensDefault: 'По умолчанию',
-      maxCompletionTokensCustom: 'Своё',
-      fallbackStrategy: 'Fallback Strategy',
-      fallbackResponse: 'Fixed Response',
-      fallbackResponsePlaceholder: 'Sorry, I cannot answer this question.',
-      fallbackPrompt: 'Fallback Prompt',
-      fallbackPromptPlaceholder: 'Leave empty to use default prompt',
-      skillsConfig: 'Навыки',
-      skillsConfigDesc: 'Сначала выберите песочницу, затем навыки из списка ниже. Неустановленные навыки показывают «Установить» и их нельзя отметить до установки.',
-      skillsSelection: 'Список навыков',
-      skillsSelectionDesc: 'Здесь все навыки каталога пространства. Установленные в эту песочницу можно использовать сразу; остальные сначала нужно установить.',
-      skillsAll: 'Все',
-      skillsSelected: 'Выбранные',
-      skillsNone: 'Отключено',
-      selectSkills: 'Выбрать навыки',
-      selectSkillsDesc: 'Отметьте навыки для этого агента. Неустановленные выбрать нельзя — сначала нажмите «Установить» справа.',
-      skillsAllListHint: '«Все» включает только навыки, уже установленные в этой песочнице. Неустановленные не попадут в список, пока вы их не установите.',
-      skillsGroupAvailable: 'Доступны',
-      skillsGroupUnavailable: 'Недоступны',
-      noSkillsAvailable: 'В каталоге пространства ещё нет навыков.',
-      skillsNeedSandbox: 'Сначала выберите песочницу.',
-      goSandboxSettings: 'Управление песочницами',
-      goSkillSettings: 'Управление навыками',
-      installToThisSandbox: 'Установить в эту песочницу',
-      installShort: 'Установить',
-      viewInstallProgress: 'Смотреть ход',
-      skillNotInstalled: 'Не установлен',
-      skillNotReady: 'Ещё не готов',
-      skillDisabledOnSandbox: 'Отключён в этой песочнице',
-      sandboxBackend: 'Песочница',
-      sandboxBackendDefault: 'Не использовать',
-      sandboxBackendHint: 'Без выбора скрипты навыков не запускаются.',
-      sandboxBackendMissing: 'Конфигурация удалена',
-      sandboxNoConfigs: 'В этом пространстве ещё нет песочницы, поэтому скрипты навыков не выполняются.',
-      skillsInfoTitle: 'Как связаны Skills и песочница?',
-      skillsInfoContent: 'Skills — это предустановленные модули знаний, скрипты которых выполняются в выбранной песочнице. Список берётся из установленных там навыков. После создания песочницы сессии вложения, артефакты и удаление остаются привязаны к той конфигурации — изменение песочницы влияет только на последующие сессии.'
-    },
-    messages: {
-      created: 'Agent created successfully',
-      updated: 'Agent updated successfully',
-      deleted: 'Agent deleted',
-      deleteFailed: 'Delete failed',
-      saveFailed: 'Save failed',
-      copied: 'Agent copied successfully',
-      copyFailed: 'Copy failed',
-      disabled: 'Agent disabled',
-      enabled: 'Agent enabled'
-    },
-    delete: {
-      confirmTitle: 'Delete Agent',
-      confirmMessage: 'Are you sure you want to delete agent "{name}"? This action cannot be undone.',
-      confirmButton: 'Confirm Delete'
+      capabilityUnconfigured: 'Not set',
     },
     shareScope: {
-      title: 'Share Scope',
-      desc: 'Space members have read-only access to this agent and will use it according to your current configuration; your changes to the agent will sync to shared spaces. To allow space members to edit knowledge base content, share the knowledge base to the space.',
-      knowledgeBase: 'Knowledge bases',
+      skillSecretsWarning: 'This agent uses skills. When space members use it, the skills run in this workspace\'s sandbox with the environment variables admins configured for them (such as API keys), and members can have the agent reveal those values. Share it only if that is acceptable.',
       chatModel: 'Chat model',
-      rerankModel: 'Rerank model',
-      webSearch: 'Web search',
       mcp: 'MCP services',
       kbAll: 'All knowledge bases',
       kbSelected: '{count} selected',
       kbNone: 'None',
       modelConfigured: 'Configured',
       modelNotSet: 'Not set',
-      enabled: 'On',
-      disabled: 'Off',
       mcpAll: 'All services',
       mcpSelected: '{count} selected',
-      mcpNone: 'None'
-    },
-    detail: {
-      title: 'Agent Details',
-      useInChat: 'Use in Chat'
-    },
-    empty: {
-      title: 'No Custom Agents',
-      description: 'Click the button in the top right to create your first agent',
-      sharedTitle: 'No shared agents yet',
-      sharedDescription: 'You can join a space or ask others to share agents with you',
-      favoritesTitle: 'No favorites yet',
-      favoritesDescription: 'Star an agent from its card to add it here',
-      recentsTitle: 'Nothing here yet',
-      recentsDescription: 'Agents you recently used will show up here'
-    },
-    sections: {
-      builtin: 'Встроенные',
-      mine: 'Созданные мной',
-      tenantOthers: 'Рабочая область · Другие участники',
-      tenantReadonly: 'Рабочая область · Только просмотр',
-      sharedByMe: 'Расшарено мной',
-      sharedEditable: 'Доступно мне · Можно редактировать',
-      sharedReadonly: 'Доступно мне · Только просмотр'
-    },
-    tabs: {
-      sharedToMe: 'Shared to Me'
-    },
-    features: {
-      webSearch: 'Web Search Enabled',
-      knowledgeBase: 'Knowledge Base Linked',
-      mcp: 'MCP Services Enabled',
-      multiTurn: 'Multi-turn Conversation'
+      mcpNone: 'None',
     },
     mode: {
-      normal: 'Quick Answer',
-      agent: 'Smart Reasoning'
+      agent: 'Smart Reasoning',
     },
     type: {
-      normal: 'Quick Answer',
-      agent: 'Smart Reasoning'
+      agent: 'Smart Reasoning',
     },
-    capabilities: {
-      kbCount: '{count} knowledge base(s) specified',
-      kbAll: 'Access to all knowledge bases',
-      mcpEnabled: 'MCP services enabled',
-      multiTurn: 'Multi-turn conversation'
-    }
   },
   knowledgeStages: {
-    title: 'Конвейер обработки',
     root: 'Обработка знаний',
     attempt: 'Попытка {n}',
-    retry: 'Повторить парсинг',
-    refresh: 'Refresh now',
-    copy: 'Copy',
+    notRun: 'Не выполнялся',
+    stageFailed: 'Этап «{stage}» завершился с ошибкой',
+    copyError: 'Скопировать детали ошибки',
+    stat: {
+      duration: 'Длительность',
+      attempt: 'Попытка',
+      tasks: 'Фоновые задачи',
+      tasksValue: 'выполняется {running} · с ошибкой {failed} · готово {completed}',
+    },
     copyDetails: 'Скопировать детали',
-    copied: 'Скопировано в буфер обмена',
-    close: 'Close',
     live: 'LIVE',
     liveTooltip: 'Parsing in progress — auto-refreshes every 2s',
     autoRefreshOn: 'Auto-refreshing',
@@ -6367,75 +4788,42 @@ export default {
     collapseBranch: 'Collapse children',
     rowSelectHint: 'Click to view details; use the arrow to expand or collapse children',
     resizeDrawer: 'Drag to resize panel width',
-    justNow: 'just now',
     secondsAgo: '{n}s ago',
-    minutesAgo: '{n}m ago',
     noActivity: 'Нет активности парсинга',
     totalDuration: 'Всего: {d}',
-    total: 'Всего {d}',
     errorCode: {
-      UNKNOWN_SUGGESTION: 'Проверьте логи приложения для подробностей.'
-    },
-    status: {
-      pending: 'Ожидание',
-      running: 'Выполняется',
-      finalizing: 'Оптимизация',
-      done: 'Готово',
-      failed: 'Ошибка',
-      skipped: 'Пропущено',
-      cancelled: 'Отменено'
+      DOCREADER_UNAVAILABLE: "Сервис обработки документов недоступен",
+      DOCREADER_UNAVAILABLE_SUGGESTION: "Не удалось подключиться к DocReader или соединение прервано. Проверьте состояние сервиса, повторные перезапуски и сеть. Повторите попытку после восстановления; загружать файл заново не нужно.",
+      DOCREADER_TIMEOUT: "Превышено время обработки документа",
+      DOCREADER_TIMEOUT_SUGGESTION: "Проверьте состояние и нагрузку DocReader перед повторной попыткой. При необходимости разделите большой файл.",
+      DOCREADER_PARSE_FAILED: "Ошибка обработки документа",
+      DOCREADER_PARSE_FAILED_SUGGESTION: "Проверьте формат файла и попросите администратора изучить журналы DocReader для этой попытки.",
+      TASK_STALLED: 'Остановлено из-за отсутствия прогресса',
+      TASK_STALLED_SUGGESTION: 'Обработка не продвигалась дольше порога, и в очереди не осталось задач, поэтому она помечена как ошибочная. Нажмите «Повторить»; если это повторяется, проверьте сервис, от которого зависит этап (разбор документов, модель или векторное хранилище).',
+      UNKNOWN_SUGGESTION: 'Проверьте логи приложения для подробностей.',
     },
     stage: {
       docreader: 'Парсинг документа',
-      chunking: 'Разбиение',
-      embedding: 'Векторизация',
-      multimodal: 'Мультимодальное распознавание',
-      postprocess: 'Постобработка'
-    },
-    detail: {
-      started: 'Начало',
-      finished: 'Окончание',
-      duration: 'Длительность',
-      offset: 'Offset',
-      timing: 'Timing',
-      identity: 'Identity',
-      stageBreakdown: 'Stage breakdown',
-      stageOrder: 'Stage order',
-      childCount: 'Child spans',
-      kind: 'Kind',
-      status: 'Status',
-      name: 'Name',
-      input: 'Вход',
-      output: 'Выход',
-      metadata: 'Метаданные',
-      traceMetadata: 'Trace metadata',
-      metadataHint: 'Auxiliary fields for observability (e.g. Langfuse trace ID). Stage/subspan payloads live under Input and Output.',
-      metadataEmpty: 'This span has no metadata. Use Input/Output for stage payloads; trace-level fields appear in Overview when Langfuse is connected.',
-      error: 'Ошибка',
-      empty: 'No data',
-      inProgress: 'In progress',
-      elapsed: 'Elapsed',
-      placeholderHint: 'This stage has no detailed span record; only the inferred state is shown.',
-      showJson: 'Показать JSON',
-      hideJson: 'Скрыть JSON',
-      includingChildren: 'incl. children'
+      postprocess: 'Постобработка',
     },
     tab: {
       overview: 'Overview',
-      raw: 'Raw JSON'
+      raw: 'Raw JSON',
+    },
+    stall: {
+      hintAtStage: 'Обработка остановилась на этапе «{stage}». Можно подождать или остановить разбор и пересобрать документ. Если прогресса так и не будет, документ будет автоматически помечен как ошибочный.',
+      queuedTitle: 'Нет прогресса {minutes} мин.; задачи ещё ждут в очереди',
+      queuedHint: 'Задачи этого документа ещё в очереди, обычно из-за накопившихся задач. Обработка продолжится сама, обычно ничего делать не нужно.',
     },
     head: {
+      lastProgress: 'Последний прогресс',
       stagesDone: 'Main stages',
       stagesProgress: 'Current stage',
-      postprocessTasks: 'Postprocess: {running} running / {failed} failed / {completed} completed',
-      completedWithActiveTrace: 'Processing completed, but {n} trace task(s) remain active',
-      attempt: 'Attempt',
-      updated: 'Updated'
+      updated: 'Updated',
     },
     processConfig: {
-      title: 'Конфигурация обработки',
       kbDefault: 'Используются настройки базы знаний по умолчанию',
-      graph: 'Граф знаний'
+      graph: 'Граф знаний',
     }
   },
   uploadConfirm: {
@@ -6444,7 +4832,6 @@ export default {
     generateSummary: "Создавать сводки документов",
     generateSummaryHint: "Включено по умолчанию. При отключении создание сводок пропускается, а разбор, индексация и другие этапы выполняются согласно настройкам.",
 
-    title: 'Подтверждение загрузки',
     parseConfig: 'Настройки разбора',
     configNav: 'Навигация по настройкам разбора',
     navParserDefault: 'По умолчанию',
@@ -6460,11 +4847,7 @@ export default {
     notSet: 'Не задано',
     summaryNoTags: 'Не задано',
     summaryTagsCount: 'Тегов: {count}',
-    confirm: 'Загрузить и обработать',
-    cancel: 'Отмена',
     tabTags: 'Теги документов',
-    tagsDescription: 'Выберите один или несколько тегов для всех документов в этой партии',
-    tagsPlaceholder: 'Выберите теги (можно несколько)',
     tagsEmpty: 'В этой базе знаний пока нет тегов. Их можно создать после загрузки.',
     tagsLoadFailed: 'Не удалось загрузить теги. Их можно назначить позже в списке документов.',
     noItems: 'Добавьте хотя бы один файл или URL',
@@ -6494,32 +4877,41 @@ export default {
     reparseHint: 'Используются настройки прошлой обработки; их можно изменить здесь',
     manualCharCount: '{count} символов',
     pdfForceScanned: {
-      label: 'Разбор PDF как сканированного документа',
-      description: 'Подходит для PDF с веб-печати, сканов и документов с большим числом изображений. Каждая страница будет отрендерена в изображение и обработана через OCR/VLM. Может увеличить время обработки и расходы на модели.'
+      description: 'Подходит для PDF с веб-печати, сканов и документов с большим числом изображений. Каждая страница будет отрендерена в изображение и обработана через OCR/VLM. Может увеличить время обработки и расходы на модели.',
     }
   },
   knowledgeBase: {
-    title: 'База знаний',
+    tagAddAction: 'Добавить теги',
+    documentCount: 'Документов: {count}',
+    filters: 'Фильтры',
+    clearFilters: 'Сбросить фильтры',
+
     fileContent: 'Содержимое файла',
-    name: 'Название',
-    description: 'Описание',
-    settings: 'Настройки',
+    sort: {
+      updatedTime: 'Время обновления',
+      updatedTimeDescription: 'Сортировка по времени последнего изменения файла.',
+      createdTime: 'Время загрузки/создания',
+      createdTimeDescription: 'По умолчанию. Просматривайте самые новые или самые ранние материалы.',
+      fileName: 'Имя файла',
+      fileNameDescription: 'Быстро находите файл, имя которого вам известно.',
+      recentlyUpdated: 'Недавно обновлённые',
+      earliestUpdated: 'Обновлённые раньше',
+      newestCreated: 'Сначала новые',
+      earliestCreated: 'Сначала старые',
+      nameAscending: 'A–Z',
+      nameDescending: 'Z–A',
+    },
     tagUpdateSuccess: 'Тег успешно обновлен',
     tagEditDialogHeading: 'Редактировать теги',
-    tagEditSearch: 'Поиск тегов...',
-    tagEditSelectedSection: 'Выбранные',
-    tagEditAvailableSection: 'Доступные',
-    tagEditNoSelected: 'Ничего не выбрано',
     folderTree: {
-      title: 'Папки',
+      totalDocuments: 'Всего документов: {count}',
+      countHint: 'В этой папке: {direct}, с подпапками: {total}',
+      filteredCount: 'Найдено документов: {count}',
       rootRow: 'Корень',
       rootRowTip: 'Корневая папка базы знаний; документы без подпапки находятся здесь',
       folderCardCount: 'Документов: {count}',
       searchingSubtree: '(с вложенными папками)',
       emptyFolder: 'В этой папке пока нет документов',
-      emptySearch: 'Подходящих документов нет',
-      collapse: 'Свернуть папки',
-      expand: 'Развернуть папки',
       collapseFolder: 'Свернуть эту папку',
       expandFolder: 'Развернуть эту папку',
       rename: 'Переименовать',
@@ -6529,7 +4921,6 @@ export default {
       renameInvalid: 'Папку нельзя переместить внутрь себя',
     },
     moveToFolder: {
-      action: 'Переместить в папку',
       newFolder: 'Новая вложенная папка',
       newFolderPlaceholder: 'Название новой папки',
       newFolderHint: 'Enter — создать и переместить',
@@ -6538,9 +4929,6 @@ export default {
       newFolderAddUnder: 'Создать подкаталог в «{folder}»',
       newFolderHintRoot: 'Будет создана в корне',
       newFolderHintUnder: 'Будет создана внутри «{folder}»',
-      success: 'Перемещено документов: {count}',
-      failed: 'Не удалось переместить документы',
-      duplicate: 'Такая папка уже существует',
     },
     tagFilterTitle: 'Фильтр по тегу',
     tagFilterPlaceholder: 'Теги',
@@ -6551,10 +4939,13 @@ export default {
     tagManageListSection: 'Список тегов',
     tagManageDocCount: '{count} документов',
     tagManageFaqCount: '{count} записей FAQ',
+    tagPickerSelected: 'Выбранные',
+    tagPickerUnselected: 'Не выбранные',
     tagSelectedCount: 'Выбрано: {count}',
-    tagNewPlaceholder: 'Название нового тега, Enter для добавления',
+    tagPickerSearch: "Найти или создать тег",
+    tagPickerInUse: "Тег используется. Сначала удалите его связи с документами.",
+    tagPickerDeleteConfirm: "Удалить тег «{name}»?",
     untagged: 'Без тега',
-    tagClearAction: 'Очистить выбор',
     tagCreateAction: 'Создать тег',
     tagSearchPlaceholder: 'Введите название тега',
     tagNamePlaceholder: 'Введите название тега',
@@ -6569,13 +4960,6 @@ export default {
     tagLabel: 'Тег',
     tagPlaceholder: 'Выберите теги',
     noTags: 'Нет тегов',
-    uploadSuccess: 'Файл успешно загружен!',
-    uploadFailed: 'Ошибка загрузки файла!',
-    fileExists: 'Файл уже существует',
-    uploadAllSuccess: 'Успешно загружено {count} файлов!',
-    uploadPartialSuccess: 'Загрузка завершена: успешно {success}, ошибка {fail}',
-    uploadAllFailed: 'Все файлы не удалось загрузить',
-    uploadingFolder: 'Загрузка {total} файлов из папки...',
     videosFilteredNoVLM: 'Пропущено {count} видеофайлов (загрузка видео не поддерживается)',
     unsupportedTypesHint: 'Некоторые типы документов ({types}) не имеют доступного парсера и не могут быть обработаны',
     goToParserSettings: 'Настроить',
@@ -6594,8 +4978,6 @@ export default {
     typeManual: 'Вручную',
     typeFile: 'Файл',
     channelLabel: 'Канал источника',
-    channelWeb: 'Веб',
-    channelApi: 'API',
     channelBrowserExtension: 'Расширение браузера',
     channelWechat: 'WeChat',
     channelWecom: 'WeCom',
@@ -6604,8 +4986,8 @@ export default {
     channelLarkDrive: 'Lark Drive',
     channelDingtalk: 'DingTalk',
     channelSlack: 'Slack',
-    channelIm: 'IM канал',
     channelNotion: 'Notion',
+    channelConfluence: 'Confluence',
     channelYuque: 'Yuque',
     channelGitLab: 'GitLab',
     channelIma: 'Tencent IMA',
@@ -6618,8 +5000,6 @@ export default {
     documentContent: 'Содержимое документа',
     importTime: 'Время импорта',
     createTime: 'Время создания',
-    createdAt: 'Создано',
-    updatedAt: 'Обновлено',
     clickToViewFull: 'Нажмите для полного просмотра',
     characters: 'символов',
     segment: 'Фрагмент',
@@ -6645,7 +5025,6 @@ export default {
     metadataKeyDuplicate: 'Поле метаданных {key} повторяется',
     metadataNumberRequired: 'Поле метаданных {key} должно быть числом',
     regenerateSummary: 'Пересоздать сводку',
-    generateSummary: 'Создать сводку',
     noDocumentSummary: 'Нет сводки документа',
     summaryRefreshed: 'Сводка обновлена',
     summaryRefreshQueued: 'Обновление сводки поставлено в очередь и обновится автоматически после завершения',
@@ -6681,7 +5060,6 @@ export default {
     goToStorageSettings: 'Перейти к настройкам',
     getInfoFailed: 'Не удалось получить информацию о базе знаний, загрузка файла невозможна',
     missingId: 'Отсутствует ID базы знаний',
-    deleteFailed: 'Не удалось удалить. Пожалуйста, попробуйте позже!',
     uploadTime: 'Время загрузки',
     newSession: 'Новый диалог',
     editDocument: 'Редактировать документ',
@@ -6696,7 +5074,6 @@ export default {
     cancelParseFailed: 'Не удалось остановить, попробуйте позже',
     draft: 'Черновик',
     draftTip: 'Временно сохранён, не участвует в поиске',
-    untitledDocument: 'Документ без названия',
     deleteDocument: 'Удалить документ',
     moveDocument: 'Переместить в...',
     moveToKnowledgeBase: 'Переместить в базу знаний',
@@ -6714,10 +5091,8 @@ export default {
     parsingFailed: 'Парсинг не удался',
     parsingInProgress: 'Парсинг...',
     generatingSummary: 'Генерация резюме...',
-    documentSummary: 'Резюме',
     detailSectionMeta: 'Основная информация',
     confirmDeleteDocument: 'Подтвердить удаление документа "{fileName}", после удаления восстановление невозможно',
-    confirmDelete: 'Подтвердить удаление',
     viewModeGrid: 'Сетка',
     viewModeList: 'Список',
     viewModeToggle: 'Переключить вид',
@@ -6728,7 +5103,6 @@ export default {
     columnStatus: 'Статус',
     columnUpdatedAt: 'Обновлено',
     columnActions: 'Действия',
-    selectAll: 'Выбрать все',
     selectedCount: 'Выбрано: {count}',
     clearSelection: 'Снять выделение',
     batchDelete: 'Удалить выбранные',
@@ -6751,9 +5125,6 @@ export default {
     batchTag: 'Пакетная метка',
     batchTagDialogHeading: 'Пакетное назначение меток',
     batchTagSubtitle: 'Установить метки для {count} выбранных документов (заменит существующие метки)',
-    batchTagSelectedSection: 'Выбранные',
-    batchTagAvailableSection: 'Доступные',
-    batchTagNoSelected: 'Ничего не выбрано',
     batchTagSuccess: 'Метки применены к {count} документам',
     batchTagFailed: 'Ошибка пакетного назначения меток',
     confirmBatchReparseDocument: 'Пересобрать {count} выбранных документов? Существующее содержимое будет удалено, и каждый документ будет обработан заново.',
@@ -6764,15 +5135,17 @@ export default {
     statusCompleted: 'Завершено',
     statusProcessing: 'Обработка',
     statusFinalizing: 'Оптимизация',
+    statusStalled: 'Возможно, завис',
+    stalledHint: 'Нет прогресса {minutes} мин.; обработка могла зависнуть. Откройте трассировку, чтобы увидеть, где она остановилась, или остановите разбор и пересоберите документ.',
+    statusQueued: 'В очереди',
+    queuedHint: 'Нет прогресса {minutes} мин., но задачи документа ещё ждут в очереди — обычно из-за накопившихся задач. Обработка продолжится сама.',
     statusFailed: 'Ошибка',
     statusCancelled: 'Отменено',
     statusDraft: 'Черновик',
-    noDescription: 'Нет описания',
     emptyKnowledgeDragDrop: 'База знаний пуста, перетащите файлы для загрузки',
     pdfDocFormat: 'Файлы pdf, doc формата, не более 10 МБ',
     textMarkdownFormat: 'Файлы text, markdown формата, не более 200 КБ',
     dragFileNotText: 'Пожалуйста, перетащите файлы, а не текст или ссылки',
-    searchPlaceholder: 'Поиск по базам знаний...',
     docSearchPlaceholder: 'Поиск документов...',
     fileTypeFilter: 'Тип файла',
     allFileTypes: 'Все типы',
@@ -6795,38 +5168,23 @@ export default {
     sourceManual: 'Создан вручную',
     updatedTimeFrom: 'С',
     updatedTimeTo: 'По',
-    noMatch: 'Совпадающих баз знаний не найдено',
     noKnowledge: 'Нет доступных баз знаний',
     loadingFailed: 'Не удалось загрузить базы знаний',
     operationNotSupportedForType: 'Эта операция не поддерживается для текущего типа базы знаний',
     allFilesSkippedNoEngine: 'Все выбранные файлы были пропущены из-за отсутствия парсера',
     filesSkippedNoEngine: '{count} файл(ов) пропущено из-за отсутствия парсера',
-    allUploadSuccess: 'Все файлы загружены ({count})',
-    partialUploadSuccess: 'Частичная загрузка (успешно: {success}, ошибки: {fail})',
-    allUploadFailed: 'Все файлы не удалось загрузить ({count})',
-    deleteSuccess: 'Знание удалено!',
     chunkLoadFailed: 'Не удалось загрузить фрагменты',
     infoCard: {
-      tooltip: 'Просмотр информации о базе знаний',
-      title: 'Информация о базе знаний',
-      basic: 'Основное',
       access: 'Доступ',
       binding: 'Привязка хранилища',
-      capabilities: 'Возможности',
       stats: 'Статистика',
       type: 'Тип',
-      createdAt: 'Создано',
       source: 'Источник',
-      sharedTo: 'Общий доступ',
-      enabled: 'Включено',
-      vectorStore: 'Векторное хранилище',
       fileStorage: 'Файловое хранилище',
       documentCount: 'Документы',
       faqCount: 'FAQ',
-      supportedFileTypes: 'Допустимые форматы',
-      chunking: 'Разделение',
       parentShort: 'родитель',
-      childShort: 'потомок'
+      childShort: 'потомок',
     },
     accessInfo: {
       myRole: 'Моя роль',
@@ -6836,277 +5194,83 @@ export default {
       permissionEditor: 'Редактирование документов и тегов',
       permissionViewer: 'Только просмотр',
       fromOrg: 'Из пространства',
-      sharedAt: 'Дата общего доступа',
-      lastUpdated: 'Последнее обновление'
+      lastUpdated: 'Последнее обновление',
     }
   },
   resourceOrigin: {
     mine: 'Мои',
     mineTooltip: 'Создано вами',
-    tenant: 'Рабочая область',
     tenantTooltip: 'Создано другим участником рабочей области',
     tenantTooltipWithCreator: 'Создано {creator}',
     space: 'Пространство',
     spaceTooltip: 'Через пространство "{space}"',
     spaceTooltipWithTenant: 'Через пространство "{space}" · от {tenant}',
     shared: 'Внешнее',
-    sharedTooltip: 'Доступ из внешнего пространства через общее пространство'
+    sharedTooltip: 'Доступ из внешнего пространства через общее пространство',
   },
   listSpaceSidebar: {
-    all: 'Все',
     workspace: 'Рабочая область',
     spaces: 'Доступно мне',
     favorites: 'Избранное',
-    recents: 'Недавние'
+    recents: 'Недавние',
   },
   batchManage: {
-    selectAll: 'Выбрать все',
-    cancel: 'Отмена',
-    delete: 'Удалить диалоги',
-    deleteConfirmTitle: 'Удалить диалоги',
-    deleteConfirmBody: 'Вы уверены, что хотите удалить выбранные {count} диалог(ов)? Это действие необратимо.',
     deleteAllConfirmBody: 'Вы уверены, что хотите удалить все диалоги? Это действие необратимо.',
-    deleteSuccess: 'Успешно удалено',
-    deleteFailed: 'Ошибка удаления, попробуйте позже'
+    deleteFailed: 'Ошибка удаления, попробуйте позже',
   },
   contextualGuide: {
     stepOf: '{current} / {total}',
-    skip: 'Пропустить',
     prev: 'Назад',
-    next: 'Далее',
     done: 'Понятно',
     interactHint: 'Нажмите на выделенную область, чтобы продолжить',
-    chat: {
-      steps: {
-        done: {
-          title: 'Можно исследовать',
-          desc: 'Задайте вопрос по загруженным документам и посмотрите ответы со ссылками на источники.'
-        },
-        send: {
-          title: 'Отправить, чтобы начать чат',
-          desc: 'После отправки создаётся новая сессия. ИИ отвечает на основе базы знаний и показывает цитаты.'
-        },
-        input: {
-          title: 'Введите вопрос',
-          desc: 'Опишите, что хотите узнать, или нажмите на рекомендуемый вопрос выше.'
-        },
-        kb: {
-          title: 'Выберите область знаний',
-          desc: 'Нажмите {\'@\'}, чтобы выбрать одну или несколько баз знаний или файлов. Иначе используются настройки текущего агента.'
-        }
-      }
-    },
     kbDetail: {
-      steps: {
-        done: {
-          title: 'Готово после индексации',
-          desc: 'После обработки документов укажите эту базу через {\'@\'} в чате и получайте ответы со ссылками на источники.'
-        },
-        upload: {
-          title: 'Добавить документы',
-          desc: 'Здесь можно загрузить файлы или папки, импортировать URL или создать материал онлайн.'
-        },
-        intro: {
-          title: 'База знаний пуста',
-          desc: 'Добавьте первый материал, чтобы искать по нему и общаться в чате. Поддерживаемые файлы можно перетащить мышью.'
-        }
-      }
     },
     agentCreate: {
-      steps: {
-        submit: {
-          title: 'Сохранить агента',
-          desc: 'Нажмите выделенную кнопку подтверждения. Затем выберите этого агента в чате.'
-        },
-        navTools: {
-          title: 'Инструменты и MCP (необязательно)',
-          desc: 'В режиме умного рассуждения включите встроенные инструменты и MCP для поиска, кода и др.'
-        },
-        multimodal: {
-          title: 'Включить загрузку вложений',
-          desc: 'Настройте загрузку изображений и аудио, а также правила разбора вложений; при загрузке изображений выберите VLM ниже.'
-        },
-        navMultimodal: {
-          title: 'Загрузка вложений (необязательно)',
-          desc: 'Позволяет отправлять изображения, документы и аудио в чате; для понимания изображений нужна VLM в настройках.'
-        },
-        navWebsearch: {
-          title: 'Веб-поиск (необязательно)',
-          desc: 'Разрешить агенту вызывать внешний поиск для актуальной информации.'
-        },
-        knowledge: {
-          title: 'Область знаний',
-          desc: '«Все» — универсальный помощник; «Выбранные» — домен; «Нет» — только модель или веб-поиск.'
-        },
-        navKnowledge: {
-          title: 'Связать базы знаний',
-          desc: 'Определите, к каким знаниям агент может обращаться. По умолчанию — все базы.'
-        },
-        model: {
-          title: 'Выбор модели',
-          desc: 'Выберите из настроенных моделей чата или сначала добавьте в системных настройках.'
-        },
-        navModel: {
-          title: 'Привязать модель чата',
-          desc: 'Каждому агенту нужна модель KnowledgeQA как движок рассуждений.'
-        },
-        name: {
-          title: 'Название и описание',
-          desc: 'Укажите узнаваемое имя. В режиме умного рассуждения может подставиться значение по умолчанию.'
-        },
-        agentType: {
-          title: 'Выберите тип агента',
-          desc: 'Пресеты подставляют системный промпт, рекомендуемые инструменты и область знаний (например, построение Wiki, анализ данных). При смене типа обновляются имя и описание.'
-        },
-        mode: {
-          title: 'Выберите режим работы',
-          desc: '«Быстрый ответ» для простого Q&A; «Умное рассуждение» — инструменты и многошаговое мышление для сложных задач.'
-        }
-      }
     },
     agentList: {
-      steps: {
-        create: {
-          title: 'Создайте агента',
-          desc: 'Агенты объединяют модели, базы знаний, инструменты и промпты в переиспользуемых помощников. Нажмите выделенную кнопку «Создать агента».'
-        }
-      }
     },
     kbCreate: {
-      steps: {
-        submit: {
-          title: 'Создать базу знаний',
-          desc: 'Нажмите «Понятно», чтобы завершить руководство без создания базы знаний. Когда будете готовы, введите название, проверьте тип и модели, затем нажмите «Создать».'
-        },
-        faq: {
-          title: 'Индексация FAQ',
-          desc: 'Выберите режим индексации пар вопрос–ответ. Записи FAQ можно добавить после создания.'
-        },
-        multimodalVllm: {
-          title: 'Выберите модель VLM',
-          desc: 'Для мультимодальности нужна VLM. Если список пуст, добавьте модель в настройках.'
-        },
-        multimodalToggle: {
-          title: 'Включить мультимодальный разбор',
-          desc: 'При включении загрузки с изображениями обрабатываются VLM для лучшего поиска.'
-        },
-        navMultimodal: {
-          title: 'Мультимодальность / изображения (необязательно)',
-          desc: 'Включите, если в документах много диаграмм, сканов или изображений, требующих визуального понимания.'
-        },
-        storage: {
-          title: 'Хранилище (необязательно)',
-          desc: 'Где хранятся исходные файлы (локально или объектное хранилище). Обычно достаточно значения пространства.'
-        },
-        chunking: {
-          title: 'Разбиение (необязательно)',
-          desc: 'Как документ делится на фрагменты для поиска. Размеры по умолчанию подобраны для RAG.'
-        },
-        parser: {
-          title: 'Парсер (необязательно)',
-          desc: 'Как разбираются PDF и Office. По умолчанию подходит в большинстве случаев; меняйте при необходимости OCR.'
-        },
-        embedding: {
-          title: 'Модель Embedding',
-          desc: 'Преобразует текст в векторы для семантического поиска. Работает с векторным/ключевым индексом выше.'
-        },
-        llm: {
-          title: 'Модель чата / сводки',
-          desc: 'Для сводок и ответов. Если список пуст, через выпадающий список откройте настройки и добавьте модель.'
-        },
-        navModels: {
-          title: 'Модели (обязательно)',
-          desc: 'Каждой базе нужна модель чата; для поиска также нужен Embedding. Откройте «Конфигурация моделей» слева.'
-        },
-        indexing: {
-          title: 'Возможности индексации',
-          desc: 'По умолчанию включены векторный и ключевой поиск. Можно включить Wiki или граф знаний. Оставьте хотя бы один режим поиска.'
-        },
-        name: {
-          title: 'Введите название',
-          desc: 'Например «Руководство продукта» или «FAQ поддержки». Описание необязательно.'
-        },
-        type: {
-          title: 'Выберите тип',
-          desc: 'Для PDF, Word и похожих файлов — база документов. Для пар вопрос–ответ — база FAQ. Тип после создания изменить нельзя.'
-        }
-      }
     },
     tenantModels: {
       needChatModelFirst: 'Перед созданием агента добавьте модель чата (KnowledgeQA).',
       stepsAgent: {
         done: {
-          title: 'Затем создайте агента',
-          desc: 'После сохранения закройте настройки и нажмите «Создать агента». Мастер охватит режим, базы знаний и загрузку вложений.'
+          desc: 'После сохранения закройте настройки и нажмите «Создать агента». Мастер охватит режим, базы знаний и загрузку вложений.',
         },
         addModel: {
-          title: 'Добавить модель чата',
-          desc: 'Нажмите «Добавить модель» и настройте тип KnowledgeQA.'
+          desc: 'Нажмите «Добавить модель» и настройте тип KnowledgeQA.',
         },
         intro: {
-          title: 'Сначала настройте модель чата',
-          desc: 'Для создания агента нужна хотя бы одна модель KnowledgeQA. Добавьте её в системных настройках (Embedding нужен только для баз знаний).'
+          desc: 'Для создания агента нужна хотя бы одна модель KnowledgeQA. Добавьте её в системных настройках (Embedding нужен только для баз знаний).',
         }
       },
-      steps: {
-        done: {
-          title: 'Затем продолжите',
-          desc: 'После сохранения моделей закройте настройки и нажмите «Новая база знаний». Мастер проведёт через тип, индексацию и привязку моделей.'
-        },
-        addModel: {
-          title: 'Добавить модели',
-          desc: 'Нажмите «Добавить модель» и настройте типы KnowledgeQA (чат) и Embedding. В Lite можно загрузить локальные модели через Ollama.'
-        },
-        intro: {
-          title: 'Сначала настройте модели',
-          desc: 'Для документной базы нужна модель чата (сводки и ответы) и модель Embedding (векторный поиск). Добавьте их в системных настройках.'
-        }
-      }
     },
     kbList: {
-      steps: {
-        create: {
-          title: 'Создайте первую базу знаний',
-          desc: 'В базах знаний хранятся документы и FAQ. Нажмите выделенную кнопку «Новая база знаний» ниже — мы проведём вас по форме.'
-        }
-      }
     }
   },
   newUserGuide: {
-    stepOf: '{current} / {total}',
-    skip: 'Пропустить',
-    prev: 'Назад',
-    next: 'Далее',
-    done: 'Готово',
     reopen: 'Обучение',
     steps: {
       done: {
-        title: 'Всё готово',
-        desc: 'Теперь вы знаете основы — начните создавать своего помощника на основе знаний! Вернуться к обучению можно кнопкой помощи рядом с именем в этом меню.'
+        desc: 'Теперь вы знаете основы — начните создавать своего помощника на основе знаний! Вернуться к обучению можно кнопкой помощи рядом с именем в этом меню.',
       },
       models: {
-        title: 'Настройте модели',
-        desc: 'Ключевой шаг: добавьте модели чата, эмбеддингов и другие в управлении моделями, чтобы базы знаний и чат работали. Нажмите «Добавить модель», чтобы начать.'
+        desc: 'Ключевой шаг: добавьте модели чата, эмбеддингов и другие в управлении моделями, чтобы базы знаний и чат работали. Нажмите «Добавить модель», чтобы начать.',
       },
       settings: {
-        title: 'Аккаунт и настройки',
-        desc: 'Откройте это меню, чтобы управлять аккаунтом, участниками и системными настройками. Обучение можно снова открыть кнопкой помощи рядом с именем вверху меню.'
+        desc: 'Откройте это меню, чтобы управлять аккаунтом, участниками и системными настройками. Обучение можно снова открыть кнопкой помощи рядом с именем вверху меню.',
       },
       agents: {
-        title: 'Создавайте собственных агентов',
-        desc: 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентов, закрепляя свою экспертизу.'
+        desc: 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентов, закрепляя свою экспертизу.',
       },
       chat: {
-        title: 'Начните чат с ИИ',
-        desc: 'Задавайте вопросы на основе вашей базы знаний и получайте точные ответы со ссылками на источники. Нажмите здесь, чтобы начать новый чат.'
+        desc: 'Задавайте вопросы на основе вашей базы знаний и получайте точные ответы со ссылками на источники. Нажмите здесь, чтобы начать новый чат.',
       },
       knowledge: {
-        title: 'Создайте базу знаний',
-        desc: 'С этого всё начинается: загружайте документы, веб-страницы или FAQ, и WeKnora автоматически разберёт и проиндексирует их. Нажмите здесь, чтобы открыть базы знаний.'
+        desc: 'С этого всё начинается: загружайте документы, веб-страницы или FAQ, и WeKnora автоматически разберёт и проиндексирует их. Нажмите здесь, чтобы открыть базы знаний.',
       },
       welcome: {
-        title: 'Добро пожаловать в WeKnora',
-        desc: 'Несколько простых шагов познакомят вас с базами знаний, чатом и агентами. Нажмите «Далее», чтобы начать.'
+        desc: 'Несколько простых шагов познакомят вас с базами знаний, чатом и агентами. Нажмите «Далее», чтобы начать.',
       }
     }
   },
@@ -7114,39 +5278,55 @@ export default {
     moreActions: 'Другие действия с диалогом',
     toggleSandboxPanel: 'Терминал песочницы',
     copySessionId: 'Копировать ID сессии',
-    copyLink: 'Копировать ссылку на диалог',
     copyMarkdown: 'Копировать как Markdown',
     openNewWindow: 'Открыть в новом окне',
     deleteSession: 'Удалить диалог',
     renamePlaceholder: 'Введите название диалога',
     unpinSuccess: 'Диалог откреплён',
+    temporaryWorkspace: 'Временная рабочая область',
     sessionIdCopied: 'ID сессии скопирован',
     linkCopied: 'Ссылка на диалог скопирована',
-    copyFailed: 'Не удалось скопировать. Проверьте разрешение браузера на доступ к буферу обмена.',
     markdownCopied: 'Весь диалог скопирован как Markdown',
     markdownCopyFailed: 'Не удалось скопировать Markdown. Повторите попытку.',
     clearConfirmTitle: 'Очистить сообщения диалога',
     clearConfirmBody: 'Очистить все сообщения? Диалог останется, но это действие нельзя отменить.',
-    deleteConfirmTitle: 'Удалить диалог',
-    deleteConfirmBody: 'Удалить этот диалог? Это действие нельзя отменить.',
-    deleteSuccess: 'Диалог удалён',
     markdown: {
       sessionId: 'ID сессии',
       exportedAt: 'Время экспорта',
       user: 'Пользователь',
       assistant: 'Ассистент',
       attachments: 'Вложения',
-      references: 'Источники'
+      references: 'Источники',
+    }
+  },
+  artifactLibrary: {
+    typeFilter: 'Фильтр по типу',
+    categories: {
+      spreadsheet: 'Таблицы',
+      presentation: 'Презентации',
+      web: 'Веб-страницы',
+      data: 'Данные',
+    },
+    groups: {
+      last7Days: 'Последние 7 дней',
+      last30Days: 'Последние 30 дней',
+      earlier: 'Ранее',
+    },
+    total: 'Файлов: {count}',
+    versions: 'Версий: {count}',
+    deleteTitle: 'Удалить этот файл?',
+    deleteConfirmVersions: 'Все версии файла «{name}» ({count}) и их содержимое будут удалены безвозвратно. Отменить нельзя.',
+    downloadFailed: 'Не удалось скачать файл. Повторите попытку позже',
+    openSession: 'Открыть диалог',
+    noMatches: {
+      description: 'Попробуйте другое ключевое слово или тип файла',
     }
   },
   menu: {
     sessionInProgress: 'Диалог выполняется',
-    knowledgeBase: 'База знаний',
     agents: 'Агенты',
+    artifacts: 'Артефакты',
     organizations: 'Общие пространства',
-    newChat: 'Новый диалог',
-    settings: 'Настройки системы',
-    logout: 'Выход',
     clearMessages: 'Очистить сообщения',
     clearMessagesSuccess: 'Сообщения очищены',
     clearMessagesFailed: 'Не удалось очистить сообщения, попробуйте позже',
@@ -7154,17 +5334,28 @@ export default {
     renameSessionSuccess: 'Название обновлено',
     renameSessionFailed: 'Не удалось обновить название, попробуйте позже',
     batchManage: 'Пакетное управление',
-    newSession: 'Новый диалог',
-    pin: 'Закрепить',
     unpin: 'Открепить',
     pinFailed: 'Не удалось закрепить, попробуйте позже',
     unpinFailed: 'Не удалось открепить, попробуйте позже',
-    search: 'Поиск',
     collapseSidebar: 'Свернуть боковую панель',
     expandSidebar: 'Развернуть боковую панель',
     logoutSuccess: 'Вы вышли из системы',
     myChats: 'Мои чаты',
     apiChats: 'Сессии API',
-    noSessions: 'Пока нет диалогов'
+    noSessions: 'Пока нет диалогов',
+  },
+  // Тексты для наблюдаемых атрибутов изображения, с ключом по имени атрибута.
+  // Точки в имени атрибута экранируются подчёркиванием (contain.text → contain_text):
+  // vue-i18n разбирает ключ по точкам, поэтому литеральный ключ 'contain.text'
+  // никогда не найдётся. Атрибут без перевода отображается описанием из реестра.
+  imageAttr: {
+    contain_text: {
+      values: {
+        sparse: { label: 'Немного текста', description: 'несколько слов —— логотип, дорожный знак, одна надпись' },
+        block: { label: 'Блок текста', description: 'блок основного текста —— скриншот, таблица, страница документа' }
+      }
+    },
+    contain_data_visual: {
+    }
   }
 }

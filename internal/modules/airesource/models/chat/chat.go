@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	modelruntime "github.com/Tencent/WeKnora/internal/modules/airesource/models/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/api"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -49,9 +51,40 @@ type ChatOptions struct {
 	// markers; empty/short is the default 5-minute cache; long requests 1h/24h
 	// where the provider accepts it.
 	CacheRetention CacheRetention `json:"-"`
+	// ReasoningEffort selects the thinking intensity (protocol-neutral); the
+	// raw stored string form rides in Reasoning. Reasoning() resolves both.
+	ReasoningEffort api.ReasoningEffort `json:"-"`
+}
+
+// Reasoning resolves the effective thinking level: the structured field wins,
+// then the raw stored string, then the legacy Thinking boolean.
+func (o *ChatOptions) Reasoning() (api.ReasoningEffort, bool) {
+	if o == nil {
+		return "", false
+	}
+	if level, ok := api.ParseReasoningEffort(string(o.ReasoningEffort)); ok && level != "" {
+		return level, true
+	}
+	if o.Thinking != nil {
+		if *o.Thinking {
+			return api.ReasoningAuto, true
+		}
+		return api.ReasoningOff, true
+	}
+	return "", false
+}
+
+// ThinkingRequested reports whether the caller asked for thinking to be on.
+func (o *ChatOptions) ThinkingRequested() bool {
+	level, ok := o.Reasoning()
+	return ok && level.Enabled()
 }
 
 // MessageContentPart represents a part of multi-content message
+// SanitizeReasoningEffort is re-exported for callers that build ChatOptions
+// from stored strings (agent config, session SummaryConfig).
+var SanitizeReasoningEffort = api.SanitizeReasoningEffort
+
 type MessageContentPart struct {
 	Type     string    `json:"type"`                // "text" or "image_url"
 	Text     string    `json:"text,omitempty"`      // For type="text"
@@ -89,6 +122,14 @@ type Message struct {
 	// 把 assistant 的 reasoning_content 原样回传，否则会以 400 拒绝请求；其他不要求的供应商
 	// 会忽略未知字段，无副作用。
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// ReasoningSignature / ReasoningMetadata are the provider artifacts that
+	// must accompany ReasoningContent on replay (Anthropic signatures,
+	// OpenAI Responses encrypted reasoning items).
+	// TurnID is the stored assistant message whose turn this history message
+	// belongs to (api/types.go semantics); engine-internal, off the wire.
+	TurnID              string              `json:"-"`
+	ReasoningSignature string              `json:"reasoning_signature,omitempty"`
+	ReasoningMetadata  types.ProviderMetadata `json:"reasoning_metadata,omitempty"`
 	// Kind is engine-internal bookkeeping. `json:"-"` keeps it off the wire:
 	// providers reject unknown message fields on some endpoints, and this one
 	// means nothing to them anyway.
@@ -195,4 +236,19 @@ func NewRemoteChat(config *ChatConfig) (Chat, error) {
 		return NewAnthropicChat(config)
 	}
 	return NewRemoteAPIChat(config)
+}
+
+// Resolve looks the configuration up in the catalog. It is exposed so the
+// handler layer can report the effective protocol and capabilities.
+func Resolve(config *ChatConfig) (*modelruntime.Resolved, error) {
+	if config == nil {
+		return nil, fmt.Errorf("chat config is nil")
+	}
+	return modelruntime.Resolve(modelruntime.Ref{
+		Provider:  config.Provider,
+		Model:     config.ModelName,
+		BaseURL:   config.BaseURL,
+		ModelType: types.ModelTypeKnowledgeQA,
+		Extra:     config.ExtraConfig,
+	})
 }

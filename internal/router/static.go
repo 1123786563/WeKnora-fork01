@@ -54,6 +54,8 @@ func serveFrontendStatic(r *gin.Engine) {
 				return
 			}
 		}
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+		c.Header("Content-Security-Policy", "frame-ancestors 'self'")
 		fullPath := filepath.Join(absDir, path)
 		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
 			setFrontendCacheHeaders(c.Writer, path)

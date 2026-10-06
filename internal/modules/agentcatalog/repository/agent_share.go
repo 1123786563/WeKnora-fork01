@@ -88,6 +88,16 @@ func (r *agentShareRepository) DeleteByOrganizationID(ctx context.Context, orgID
 	return r.db.WithContext(ctx).Where("organization_id = ?", orgID).Delete(&types.AgentShare{}).Error
 }
 
+// DeleteByOrganizationAndSourceTenant soft deletes the shares a tenant made
+// into an organization (e.g. when the tenant leaves or is removed from it).
+func (r *agentShareRepository) DeleteByOrganizationAndSourceTenant(
+	ctx context.Context, orgID string, sourceTenantID uint64,
+) error {
+	return r.db.WithContext(ctx).
+		Where("organization_id = ? AND source_tenant_id = ?", orgID, sourceTenantID).
+		Delete(&types.AgentShare{}).Error
+}
+
 // ListByAgent lists all share records for an agent
 func (r *agentShareRepository) ListByAgent(ctx context.Context, agentID string) ([]*types.AgentShare, error) {
 	var shares []*types.AgentShare

@@ -519,6 +519,10 @@ func semanticTestBudget(reserve func(context.Context, semanticCapability) (domai
 	return b
 }
 
+func (g *semanticGatewayModels) CopyModel(ctx context.Context, sourceID, displayName string) (*types.Model, error) {
+	return nil, errors.New("not implemented in test fake")
+}
+
 // #87 AC3: a rates resolver that answers a version other than the one the
 // capability pinned must fail closed at the reserve boundary — before any
 // hold, dispatch marker, credential resolution, or model call. The store is

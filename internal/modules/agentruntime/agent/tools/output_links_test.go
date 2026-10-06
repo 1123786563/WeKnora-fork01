@@ -18,17 +18,16 @@ type outputLinkExecutor struct {
 	before, after []sandbox.RemoteDirEntry
 	listError     error
 	listed        int
+	layout        sandbox.WorkspaceLayout
 }
 
-func (f *outputLinkExecutor) ListSessionFiles(_ context.Context, sessionID, dir string) ([]sandbox.RemoteDirEntry, error) {
-	f.listed++
-	if f.listError != nil {
-		return nil, f.listError
+func (f *outputLinkExecutor) SessionWorkspaceLayout(
+	_ context.Context, _ string,
+) (sandbox.WorkspaceLayout, error) {
+	if f.layout.HasRoot() {
+		return f.layout, nil
 	}
-	if f.calls == 0 {
-		return f.before, nil
-	}
-	return f.after, nil
+	return sandbox.RemoteWorkspaceLayout(), nil
 }
 
 type combinedOutputExecutor struct {
@@ -82,6 +81,19 @@ func TestShellOutputLinksPreferCombinedExecution(t *testing.T) {
 		})
 	}
 }
+
+func (f *outputLinkExecutor) ListSessionFiles(_ context.Context, sessionID, dir string) ([]sandbox.RemoteDirEntry, error) {
+	f.listed++
+	if f.listError != nil {
+		return nil, f.listError
+	}
+	if f.calls == 0 {
+		return f.before, nil
+	}
+	return f.after, nil
+}
+
+
 
 func TestShellOutputLinksUseChangedFilesAndDoNotReplay(t *testing.T) {
 	t.Setenv("WEKNORA_SKILL_OUTPUT_DIR", "/workspace/output")
@@ -186,7 +198,51 @@ func TestOutputLinksEscapeNamesAndStayInsideOutputDirectory(t *testing.T) {
 		"/workspace/output/../../tmp/task/previews/page-1.png",
 	)
 	require.Equal(t, []string{"sandbox:report%20%5B1%5D%28final%29.pdf"}, links)
-	require.Equal(t, []string{"sandbox:比赛信息.pptx"}, sandboxOutputLinks("/workspace/output/比赛信息.pptx"))
+	require.Equal(t, []string{"sandbox:比赛信息.pptx"}, sandboxOutputLinksIn("/workspace/output", "/workspace/output/比赛信息.pptx"))
+}
+
+func TestChangedOutputLinksUseLayoutOutputDir(t *testing.T) {
+	before := map[string]sandbox.RemoteDirEntry{}
+	after := map[string]sandbox.RemoteDirEntry{
+		"/Users/dev/My Project/report.pdf": {
+			Path: "/Users/dev/My Project/report.pdf",
+			Type: sandbox.RemoteEntryFile,
+		},
+		"/workspace/output/remote.txt": {
+			Path: "/workspace/output/remote.txt",
+			Type: sandbox.RemoteEntryFile,
+		},
+	}
+	require.Empty(t, changedOutputLinks(layoutOutputDir(hostLayout()), before, after))
+}
+
+func TestShellOutputLinksSkipHostWhenThereIsNoOutputDir(t *testing.T) {
+	executor := &combinedOutputExecutor{
+		outputLinkExecutor: outputLinkExecutor{layout: hostLayout()},
+		snapshot: &sandbox.ShellOutputSnapshot{
+			After: []sandbox.RemoteDirEntry{
+				{Path: "/Users/dev/My Project/deck.pptx", Type: sandbox.RemoteEntryFile},
+				{Path: "/workspace/output/ignored.txt", Type: sandbox.RemoteEntryFile},
+			},
+		},
+	}
+	result, err := NewShellExecTool(executor, nil).Execute(
+		shellExecTestContext(), json.RawMessage(`{"command":"python3 generate.py"}`))
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.Empty(t, result.OutputFiles)
+	require.Empty(t, executor.outputDir)
+}
+
+func TestWriteSandboxFileHostLayoutDoesNotEmitOutputLinks(t *testing.T) {
+	sink := &layoutFileSink{layout: hostLayout()}
+	result, err := NewWriteSandboxFileTool(sink, 0).Execute(
+		sandboxFileTestContext(),
+		mustWriteSandboxArgs("/Users/dev/My Project/report.html", "<html></html>"),
+	)
+	require.NoError(t, err)
+	require.True(t, result.Success, result.Error)
+	require.Empty(t, result.OutputFiles)
 }
 
 func TestFileMutationToolsReturnDirectHTMLDeliverables(t *testing.T) {

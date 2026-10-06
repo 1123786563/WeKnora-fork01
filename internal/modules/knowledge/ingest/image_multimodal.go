@@ -754,3 +754,12 @@ func (s *ImageMultimodalService) enqueueKnowledgePostProcessTask(ctx context.Con
 		logger.Infof(ctx, "[ImageMultimodal] Enqueued post process task for %s", payload.KnowledgeID)
 	}
 }
+
+// buildVLMOCRPrompt selects the OCR prompt variant for the document source
+// (upstream: scanned PDFs get the page-aware variant).
+func buildVLMOCRPrompt(sourceType string, _ types.VLMConfig) string {
+	if sourceType == "scanned_pdf" {
+		return VlmOCRScannedPDFPrompt
+	}
+	return VlmOCRPrompt
+}

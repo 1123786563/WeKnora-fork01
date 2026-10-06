@@ -130,6 +130,14 @@ func RecordKBActivity(
 	for key, value := range details {
 		activityDetails[key] = value
 	}
+	if id, name, ok := kbActivityAPIKey(ctx); ok {
+		if _, exists := activityDetails["api_key_id"]; !exists && id > 0 {
+			activityDetails["api_key_id"] = id
+		}
+		if _, exists := activityDetails["api_key_name"]; !exists && name != "" {
+			activityDetails["api_key_name"] = name
+		}
+	}
 	if task, ok := ctx.Value(kbActivityTaskContextKey{}).(kbActivityTaskMetadata); ok {
 		if task.TaskID != "" {
 			if _, exists := activityDetails["task_id"]; !exists {
@@ -203,4 +211,15 @@ func RecordWikiContentActivity(
 	RecordKBActivity(ctx, audit, tenantID, kbID, types.AuditActionWikiContentChanged,
 		"wiki", kbID, types.AuditOutcomeSuccess,
 		map[string]any{"count": count, "actions": actions})
+}
+
+// kbActivityAPIKey reports the acting API key, if any, for activity attribution.
+func kbActivityAPIKey(ctx context.Context) (uint64, string, bool) {
+	if key, ok := types.AuditAPIKeyFromContext(ctx); ok {
+		return key.ID, key.Name, true
+	}
+	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && (scope.KeyID > 0 || scope.Name != "") {
+		return scope.KeyID, scope.Name, true
+	}
+	return 0, "", false
 }

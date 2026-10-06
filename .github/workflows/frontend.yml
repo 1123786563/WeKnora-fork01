@@ -20,6 +20,7 @@ on:
       - "scripts/run-gates.mjs"
       - "scripts/run-with-node-gte26.mjs"
       - ".dockerignore"
+      - "scripts/test_embed_nginx.py"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
@@ -36,6 +37,7 @@ on:
       - "scripts/run-gates.mjs"
       - "scripts/run-with-node-gte26.mjs"
       - ".dockerignore"
+      - "scripts/test_embed_nginx.py"
       - ".github/workflows/frontend.yml"
   workflow_dispatch:
 
@@ -96,6 +98,9 @@ jobs:
             --build-arg VITE_FRONTEND_COMMIT="${GITHUB_SHA::7}" \
             -t weknora-ui:ci \
             .
+
+      - name: Test embed and MCP proxy routes
+        run: python3 scripts/test_embed_nginx.py weknora-ui:ci
 
   react-workspace:
     name: React shared, Web, Embed, and Desktop checks

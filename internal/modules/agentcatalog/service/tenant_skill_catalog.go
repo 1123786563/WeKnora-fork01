@@ -642,3 +642,22 @@ func (s *TenantSkillService) catalogBundleArchive(
 	return nil, apperrors.NewBadRequestError(
 		"the archive of this skill is no longer stored; add it again from the original bundle")
 }
+
+// SkillServedInfo tells the console that a previous version of a skill keeps
+// running while the row describes an install that has not replaced it.
+type SkillServedInfo struct {
+	Version string `json:"version,omitempty"`
+}
+
+// ServedInfoOf reports the previous version a row is still serving, or nil
+// when the row itself is what runs or nothing does.
+func ServedInfoOf(row *types.TenantSkillEntity) *SkillServedInfo {
+	if row == nil || row.Status == types.SkillStatusReady {
+		return nil
+	}
+	view := row.ServedView()
+	if view == nil {
+		return nil
+	}
+	return &SkillServedInfo{Version: view.Version}
+}

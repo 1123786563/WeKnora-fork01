@@ -18,6 +18,14 @@ export function GetAPILanBaseURL() {
   return window['go']['main']['App']['GetAPILanBaseURL']();
 }
 
+export function GetApprovalMode() {
+  return window['go']['main']['App']['GetApprovalMode']();
+}
+
+export function GetAutoSetupToken() {
+  return window['go']['main']['App']['GetAutoSetupToken']();
+}
+
 export function GetDesktopHTTPBindPublicSetting() {
   return window['go']['main']['App']['GetDesktopHTTPBindPublicSetting']();
 }
@@ -48,6 +56,20 @@ export function GetPaseoURL() {
 
 export function GetPaseoAllowedOrigins() {
   return window['go']['main']['App']['GetPaseoAllowedOrigins']();
+export function GetProjectDirs() {
+  return window['go']['main']['App']['GetProjectDirs']();
+}
+
+export function PickProjectDir() {
+  return window['go']['main']['App']['PickProjectDir']();
+}
+
+export function RemoveProjectDir(arg1) {
+  return window['go']['main']['App']['RemoveProjectDir'](arg1);
+}
+
+export function SetApprovalMode(arg1) {
+  return window['go']['main']['App']['SetApprovalMode'](arg1);
 }
 
 export function SetDesktopHTTPBindPublicSetting(arg1) {

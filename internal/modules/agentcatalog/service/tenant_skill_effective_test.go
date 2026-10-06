@@ -305,3 +305,12 @@ func TestEffectiveTenantSkillsToleratesMissingDependencies(t *testing.T) {
 	require.Empty(t, EffectiveTenantSkills(context.Background(), nil, fx.skills, 7, "cfg-1"))
 	require.Empty(t, EffectiveTenantSkills(context.Background(), fx.configs, nil, 7, "cfg-1"))
 }
+
+type listerFunc func(context.Context, uint64, string) ([]*types.TenantSkillEntity, error)
+
+func (f listerFunc) ListSkillsByConfig(
+	ctx context.Context, tenantID uint64, configID string,
+) ([]*types.TenantSkillEntity, error) {
+	return f(ctx, tenantID, configID)
+}
+

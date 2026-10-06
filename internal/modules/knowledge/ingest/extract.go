@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -533,6 +534,17 @@ func (s *DataTableSummaryService) Handle(ctx context.Context, t *asynq.Task) err
 
 	logger.Infof(ctx, "Processing table extraction for knowledge: %s", payload.KnowledgeID)
 
+	_, err := s.knowledgeService.GetRepository().GetKnowledgeByID(ctx, payload.TenantID, payload.KnowledgeID)
+	if isKnowledgeNotFound(err) {
+		logger.Infof(ctx, "Skipping orphaned table summary task: knowledge %s not found in tenant %d",
+			payload.KnowledgeID, payload.TenantID)
+		return nil
+	}
+	if err != nil {
+		logger.Errorf(ctx, "failed to get knowledge: %v", err)
+		return err
+	}
+
 	// 2. 准备所有必需的资源（知识、模型、引擎等）
 	resources, err := s.prepareResources(ctx, payload)
 	if err != nil {
@@ -724,7 +736,9 @@ func (s *DataTableSummaryService) processTableData(ctx context.Context, resource
 		}
 		customInstructions = s.resolveProcessConfigFn(resources.knowledgeBase, processOverrides).ChunkingConfig.TableMetadataInstructions
 	}
-	tableDescription, err := s.generateTableDescription(ctx, resources.chatModel, tableSchema.TableName,
+	// The stored summary is later shown to the model by data_schema, so it
+	// must name the model-facing table, never the physical knowledge-ID table.
+	tableDescription, err := s.generateTableDescription(ctx, resources.chatModel, dataAnalysisTableName,
 		schemaDesc, sampleDesc, customInstructions)
 	if err != nil {
 		logger.Errorf(ctx, "failed to generate table description: %v", err)
@@ -732,7 +746,7 @@ func (s *DataTableSummaryService) processTableData(ctx context.Context, resource
 	}
 	logger.Debugf(ctx, "table describe of knowledge %s: %s", resources.Knowledge.ID, tableDescription)
 
-	columnDescription, err := s.generateColumnDescriptions(ctx, resources.chatModel, tableSchema.TableName,
+	columnDescription, err := s.generateColumnDescriptions(ctx, resources.chatModel, dataAnalysisTableName,
 		schemaDesc, sampleDesc, customInstructions)
 	if err != nil {
 		logger.Errorf(ctx, "failed to generate column descriptions: %v", err)
@@ -897,8 +911,41 @@ func (s *DataTableSummaryService) generateTableDescription(ctx context.Context, 
 	if err != nil {
 		return "", fmt.Errorf("failed to generate table description: %w", err)
 	}
+	if _, err := validateSummaryOutput(response); err != nil {
+		return "", fmt.Errorf("failed to generate table description: %w", err)
+	}
 
 	return fmt.Sprintf("# Table Summary\n\nTable name: %s\n\n%s", tableName, response.Content), nil
+}
+
+// dataAnalysisTableName mirrors tools.DataAnalysisTableName; importing the
+// tools package here would close an import cycle (tools reaches this package
+// via the chunk ingest shim).
+const dataAnalysisTableName = "dataset"
+
+// isKnowledgeNotFound matches the repository sentinel by text: importing the
+// repository package here would close an import cycle (repository imports this
+// package via the chunk ingest shim).
+func isKnowledgeNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "knowledge not found")
+}
+
+// errEmptySummaryOutput marks a summary model response with no user-visible
+// text; Asynq retries the task instead of persisting description="".
+var errEmptySummaryOutput = errors.New("summary model returned empty output")
+
+// validateSummaryOutput rejects successful model responses that contain no
+// user-visible text. Treating whitespace-only output as an error lets Asynq
+// retry the summary task instead of persisting description="" as completed.
+func validateSummaryOutput(response *types.ChatResponse) (string, error) {
+	if response == nil {
+		return "", errEmptySummaryOutput
+	}
+	content := strings.TrimSpace(response.Content)
+	if content == "" {
+		return "", errEmptySummaryOutput
+	}
+	return content, nil
 }
 
 // generateColumnDescriptions generates descriptions for each column in batch
@@ -920,6 +967,9 @@ func (s *DataTableSummaryService) generateColumnDescriptions(ctx context.Context
 		Thinking:    &thinking,
 	})
 	if err != nil {
+		return "", fmt.Errorf("failed to generate column descriptions: %w", err)
+	}
+	if _, err := validateSummaryOutput(response); err != nil {
 		return "", fmt.Errorf("failed to generate column descriptions: %w", err)
 	}
 

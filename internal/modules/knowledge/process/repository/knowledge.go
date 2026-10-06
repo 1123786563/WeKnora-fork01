@@ -75,6 +75,41 @@ func (r *knowledgeRepository) GetKnowledgeByID(
 	return &knowledge, nil
 }
 
+// ListKnowledgeProfileRows streams the profile columns of a KB's completed,
+// enabled knowledge for the KB profile page.
+func (r *knowledgeRepository) ListKnowledgeProfileRows(
+	ctx context.Context, tenantID uint64, kbID string,
+) ([]*types.KnowledgeProfileRow, error) {
+	var rows []*types.KnowledgeProfileRow
+	err := r.db.WithContext(ctx).Model(&types.Knowledge{}).
+		Select("id", "title", "file_name", "file_type", "folder_path", "created_at", "profile").
+		Where("tenant_id = ? AND knowledge_base_id = ?", tenantID, kbID).
+		Where("parse_status IN ?", []string{types.ParseStatusCompleted, types.ParseStatusFinalizing}).
+		Where("enable_status = ?", "enabled").
+		Order("created_at ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// GetKnowledgeBatchByIDOnly loads knowledge rows by id without tenant scoping
+// or preloads — the batch reparse admission path only needs existence and the
+// parse-relevant columns.
+func (r *knowledgeRepository) GetKnowledgeBatchByIDOnly(
+	ctx context.Context, ids []string,
+) ([]*types.Knowledge, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var knowledge []*types.Knowledge
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&knowledge).Error; err != nil {
+		return nil, err
+	}
+	return knowledge, nil
+}
+
 // GetKnowledgeByIDOnly returns knowledge by ID without tenant filter (for permission resolution).
 func (r *knowledgeRepository) GetKnowledgeByIDOnly(ctx context.Context, id string) (*types.Knowledge, error) {
 	var knowledge types.Knowledge

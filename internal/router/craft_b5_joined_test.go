@@ -96,11 +96,11 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	access := service.NewCraftAccessService(db)
 	versions := repository.NewCraftVersionStore(db)
 	files := &craftB5FileService{data: []byte("<!doctype html><title>pinned-b5</title>")}
-	sessionsRepo := repository.NewSessionRepository(db)
 	sessionSvc := service.NewSessionService(
-		&config.Config{}, sessionsRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, struct{ interfaces.FeedbackRepository }{}, access,
+		&config.Config{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, service.HostSandboxManager{}, nil, nil, nil,
+		struct{ interfaces.FeedbackRepository }{}, access,
 	)
+
 	runs := service.NewAgentRunService(repository.NewAgentRunStore(db))
 	craftSvc, err := service.NewCraftSessionService(service.CraftSessionConfig{
 		DB: db, Sessions: sessionSvc, Store: repository.NewCraftStore(db), Versions: versions,
@@ -167,9 +167,7 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	authorizer := g.ensureAPIKeyAuthorizer()
 	v1 := r.Group("/api/v1")
 	v1.Use(authorizer.Middleware())
-	registerSessionRoutes(v1, RouterParams{SessionHandler: session.NewHandler(
-		sessionSvc, nil, nil, nil, &config.Config{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-	), CraftFeatureRoutes: features}, g)
+	registerSessionRoutes(v1, RouterParams{SessionHandler: session.NewHandler(sessionSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), CraftFeatureRoutes: features}, g)
 
 	request := func(method, path, user, apiKey, body string) *httptest.ResponseRecorder {
 		t.Helper()

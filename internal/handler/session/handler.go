@@ -19,6 +19,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // Handler handles all HTTP requests related to conversation sessions
@@ -63,6 +64,12 @@ type Handler struct {
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
+	desktopService  *service.SandboxDesktopService
+	desktopTickets  service.SandboxDesktopTicketStore
+	desktopLast     service.SandboxDesktopLastStore
+	// redis backs the distributed desktop slot. Nil in Lite mode, where the
+	// in-process limiter is the correct degradation.
+	redis           *redis.Client
 	agentRunService *service.AgentRunService
 	// craftTombstoner starts the craft resource teardown of a session being
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
@@ -75,6 +82,10 @@ type Handler struct {
 	// browserSkill is the local-browser gateway (A13). Nil-safe by design:
 	// every browserskill.go handler treats the nil manager as disabled.
 	browserSkill *browserskill.Manager
+	// rewindService powers /sessions/:id/rewind (upstream).
+	rewindService *service.SessionRewindService
+	// approvedProjectDirs lists the host-sandbox project dirs (upstream).
+	approvedProjectDirs HostProjectDirsLoader
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
 	usageRecorder           interfaces.UsageRecorderService
@@ -200,16 +211,14 @@ func NewHandler(
 	imageResolver *docparser.ImageResolver,
 	temporaryDocuments interfaces.TemporaryDocumentService,
 	artifactCollector *service.ArtifactCollector,
+	workspaceCheckpointer *service.WorkspaceCheckpointer,
+	sandboxIDLookup SandboxIDLookup,
 	memoryService interfaces.MemoryService,
 	// forkService branches a session at a chosen user or assistant message.
 	// May be nil in deployments where fork is not wired; ForkSession checks.
 	// Concrete-typed parameter so dig can inject it; the field keeps the
 	// narrow interface for stub-based tests.
 	forkService *service.SessionForkService,
-	// workspaceCheckpointer + sandboxIDLookup back the per-turn git checkpoint
-	// hook (A11 phase 3); both may be nil on sandbox-less deployments.
-	workspaceCheckpointer *service.WorkspaceCheckpointer,
-	sandboxIDLookup SandboxIDLookup,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
@@ -222,6 +231,12 @@ func NewHandler(
 	// (SP13 Task 4). Concrete-typed parameter so dig can inject it; the
 	// field keeps the narrow interface for stub-based tests.
 	queryHistoryExport *service.QueryHistoryExportService,
+	desktopService *service.SandboxDesktopService,
+	desktopTickets service.SandboxDesktopTicketStore,
+	desktopLast service.SandboxDesktopLastStore,
+	rdb *redis.Client,
+	rewindService *service.SessionRewindService,
+	approvedProjectDirs HostProjectDirsLoader,
 ) *Handler {
 	return &Handler{
 		sessionService:        sessionService,
@@ -250,6 +265,12 @@ func NewHandler(
 		browserSkill:          browserSkill,
 		usageRecorder:         usageRecorder,
 		queryHistoryExport:    queryHistoryExport,
+		desktopService:        desktopService,
+		desktopTickets:        desktopTickets,
+		desktopLast:           desktopLast,
+		redis:                 rdb,
+		rewindService:         rewindService,
+		approvedProjectDirs:   approvedProjectDirs,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,
@@ -298,6 +319,12 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		tenantID,
 	)
 
+	hostDir, ok := bindHostWorkspaceDir(request.ProjectDir, h.approvedDirs())
+	if !ok {
+		_ = c.Error(errors.NewBadRequestError("project_dir is not an approved project directory"))
+		return
+	}
+
 	// Create session object with base properties
 	engine, parseErr := types.ParseAgentEngine(string(request.EngineType))
 	if parseErr != nil {
@@ -305,10 +332,11 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		return
 	}
 	createdSession := &types.Session{
-		TenantID:    tenantID.(uint64),
-		Title:       request.Title,
-		Description: types.SanitizeClientSessionDescription(request.Description, ""),
-		EngineType:  string(engine),
+		TenantID:         tenantID.(uint64),
+		Title:            request.Title,
+		Description:      types.SanitizeClientSessionDescription(request.Description, ""),
+		EngineType:       string(engine),
+		HostWorkspaceDir: hostDir,
 	}
 	// Attach the calling user as the session owner when available.
 	// API-key callers scope sessions per external user when configured;
@@ -815,6 +843,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 	h.browserSkill.Forget(browserSkillScope(ctx), sanitizedIDs)
 
+	h.browserSkill.Forget(browserSkillScope(ctx), sanitizedIDs)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Sessions deleted successfully",

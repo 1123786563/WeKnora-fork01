@@ -121,7 +121,7 @@ func (f *agentSecurityE2EFiles) SaveBytes(context.Context, []byte, uint64, strin
 func newAgentSecurityE2EEngine(t *testing.T, db *gorm.DB, qa *agentSecurityE2EQASessions, files *agentSecurityE2EFiles) (*gin.Engine, *appservice.AgentSecurityService) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := appservice.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := appservice.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	security := appservice.NewAgentSecurityService(repository.NewAgentSecurityStore(db), repository.NewAgentRunStore(db))
 	security.SetAgentVersionService(versions)

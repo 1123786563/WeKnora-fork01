@@ -173,10 +173,11 @@ func resolveExecutionRecovery(
 	if pinner == nil {
 		return nil, errors.New("session sandbox pinner is unavailable")
 	}
-	configID, err := pinner.Read(ctx, sessionID)
+	pin, err := pinner.Read(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
+	configID := pin.ConfigID
 	if configID == "" && resource.Ref.ConfigID != "" {
 		configID = resource.Ref.ConfigID
 	}

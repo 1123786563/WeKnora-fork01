@@ -15,8 +15,8 @@ type stubPinReader struct {
 	err      error
 }
 
-func (s stubPinReader) Read(context.Context, string) (string, error) {
-	return s.configID, s.err
+func (s stubPinReader) Read(context.Context, string) (SandboxPin, error) {
+	return SandboxPin{ConfigID: s.configID}, s.err
 }
 
 type stubTenantSandboxResolver struct {

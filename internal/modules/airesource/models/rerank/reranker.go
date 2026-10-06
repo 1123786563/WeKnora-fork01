@@ -22,6 +22,25 @@ type Reranker interface {
 	GetModelID() string
 }
 
+// PassageLimiter is the optional interface a Reranker implements to document
+// per-document and per-request passage ceilings. Truncation is a documented
+// contract: a caller that silently cuts passages changes relevance rankings,
+// so the protocol layer refuses to truncate on its own.
+type PassageLimiter interface {
+	// MaxPassageRunes returns the longest document, in runes, one request
+	// can carry beside query. 0 means no documented limit.
+	MaxPassageRunes(query string) int
+}
+
+// MaxPassageRunes reports r's passage limit for query, or 0 when r documents
+// none.
+func MaxPassageRunes(r Reranker, query string) int {
+	if limiter, ok := r.(PassageLimiter); ok {
+		return limiter.MaxPassageRunes(query)
+	}
+	return 0
+}
+
 type RankResult struct {
 	Index          int          `json:"index"`
 	Document       DocumentInfo `json:"document"`

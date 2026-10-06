@@ -2,7 +2,18 @@ package types
 
 import (
 	"context"
+	"strings"
 )
+
+// UploadOnlyQuestion is the question asked on the user's behalf when a message
+// carries an image or file but no text. The stored user message keeps its
+// empty text; only model input uses this question.
+func UploadOnlyQuestion(locale string) string {
+	if strings.HasPrefix(locale, "zh") {
+		return "请根据我上传的内容回答。"
+	}
+	return "Please answer based on what I uploaded."
+}
 
 // SteerMessageContent adds delivery context only to model input. The persisted
 // user message and the UI always retain the user's original text.
@@ -39,35 +50,53 @@ type SteerSink interface {
 	) string
 }
 
+// QuestionOrigin names the knowledge source a suggested question was
+// generated from. The client sends it with the question the user picked so
+// the agent searches that source before answering; it is a hint inside the
+// turn's resolved scope, never a scope change.
+type QuestionOrigin struct {
+	KnowledgeBaseID string `json:"knowledge_base_id"`
+	KnowledgeID     string `json:"knowledge_id,omitempty"`
+}
+
 // QARequest consolidates all parameters for KnowledgeQA and AgentQA service calls,
 // replacing the previous 14-parameter method signatures.
 // EventBus is passed separately to avoid circular dependency with the event package.
 type QARequest struct {
-	Session             *Session     // The conversation session
-	Query               string       // User query text
-	AssistantMessageID  string       // Pre-created assistant message ID
-	SummaryModelID      string       // Optional model override; empty = use agent/KB default
-	CustomAgent         *CustomAgent // Optional custom agent for config override
-	SharedAgentReadOnly bool         // True only when access came from an agent share; source-workspace writes are forbidden
-	KnowledgeBaseIDs    []string     // Knowledge base IDs to search (from request + @mentions)
-	KnowledgeIDs        []string     // Specific knowledge (file) IDs to search
-	TagScopes           []TagScope   // Tag-constrained KB scopes from @mentions
-	MCPServiceIDs       []string     // Per-request MCP service IDs from @mentions
-	SkillNames          []string     // Per-request skill names from @mentions
-	ImageURLs           []string     // Image URLs for multimodal input
-	ImageDescription    string       // VLM-generated image description (fallback for non-vision models)
-	UserMessageID       string       // Created user message ID
-	WebSearchEnabled    bool         // Whether web search is enabled for this request
-	QuotedContext       string       // Quoted message content from IM quote-reply (appended at LLM prompt stage, not used for retrieval)
+	Session             *Session           // The conversation session
+	Query               string             // User query text
+	AssistantMessageID  string             // Pre-created assistant message ID
+	SummaryModelID      string             // Optional model override; empty = use agent/KB default
+	ReasoningEffort     string             // Optional per-request override; empty = use agent default
+	CustomAgent         *CustomAgent       // Optional custom agent for config override
+	SharedAgentReadOnly bool               // True only when access came from an agent share; source-workspace writes are forbidden
+	KnowledgeBaseIDs    []string           // Knowledge base IDs to search (from request + @mentions)
+	KnowledgeIDs        []string           // Specific knowledge (file) IDs to search
+	TagScopes           []TagScope         // Tag-constrained KB scopes from @mentions
+	MCPServiceIDs       []string           // Per-request MCP service IDs from @mentions
+	SkillNames          []string           // Per-request skill names from @mentions
+	ImageURLs           []string           // Image URLs for multimodal input
+	ImageDescription    string             // VLM-generated image description (fallback for non-vision models)
+	UserMessageID       string             // Created user message ID
+	LocalBrowserEnabled bool               // Explicit browser source preference for this request
+	WebSearchEnabled    bool               // Whether web search is enabled for this request
+	QuotedContext       string             // Quoted message content from IM quote-reply (appended at LLM prompt stage, not used for retrieval)
+	Attachments         MessageAttachments // File attachments (processed and ready for prompt injection)
 	// ReasoningMode is an explicit reasoning request (T15): "rules" or "model".
 	// Empty means ordinary retrieval QA. When the deployment has no semantic
 	// reasoning wired into the QA path the turn must end as reasoning-incomplete
 	// with a retry entry — never masquerade retrieval as reasoning (ADR-0002).
-	ReasoningMode string
-	Attachments   MessageAttachments // File attachments (processed and ready for prompt injection)
+	ReasoningMode  string
+	QuestionOrigin *QuestionOrigin // Source of a picked suggested question; a retrieval hint only
 	// SteerSink, when set, enables mid-run message injection for this run:
 	// the engine drains user-appended messages at every round boundary and
 	// persists accepted ones through this sink. A structural interface so
 	// neither package imports the other; handler-owned, nil for IM/embed.
 	SteerSink SteerSink
+	// TurnLeaseHeld reports that the caller already took the session's
+	// send-side turn lease (and already rejected the send if a rewind holds
+	// the session) before persisting this turn's messages. HTTP send does;
+	// IM/MCP, which call the QA services directly, do not and leave this
+	// false so the service takes the lease itself.
+	TurnLeaseHeld bool
 }

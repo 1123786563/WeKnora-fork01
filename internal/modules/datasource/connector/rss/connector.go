@@ -263,7 +263,11 @@ func (c *Connector) walk(
 
 			resolved := c.resolveItem(ctx, cli, feed, item, feedURL, itemID, feedContent)
 			newCursor.FeedItems[feedURL][itemID] = resolved.fingerprint
-			newCursor.FeedSignals[feedURL][itemID] = feedSig
+			// Keep fallback deduplication, but retry failed full-text extraction on
+			// the next sync even when the feed entry itself has not changed.
+			if !resolved.articleFailed {
+				newCursor.FeedSignals[feedURL][itemID] = feedSig
+			}
 
 			if incremental && prevItems != nil && prevItems[itemID] == resolved.fingerprint {
 				skipped++
@@ -362,8 +366,9 @@ func (c *Connector) FetchByExternalID(
 }
 
 type resolvedFeedItem struct {
-	item        types.FetchedItem
-	fingerprint string
+	item          types.FetchedItem
+	fingerprint   string
+	articleFailed bool
 }
 
 // resolveItem assembles a FetchedItem for a single feed entry, resolving the
@@ -380,6 +385,7 @@ func (c *Connector) resolveItem(
 
 	// Prefer full article text; fall back to feed-provided content on failure.
 	contentHTML := feedContent
+	articleFailed := false
 	if strings.TrimSpace(item.Link) != "" {
 		if articleHTML, articleTitle, err := cli.extractArticle(ctx, item.Link); err == nil {
 			contentHTML = articleHTML
@@ -387,6 +393,7 @@ func (c *Connector) resolveItem(
 				title = articleTitle
 			}
 		} else {
+			articleFailed = true
 			logger.Warnf(ctx, "[RSS] full-text fetch failed for %s (using feed content): %v", item.Link, err)
 		}
 	}
@@ -407,7 +414,8 @@ func (c *Connector) resolveItem(
 	}
 
 	return resolvedFeedItem{
-		fingerprint: contentFingerprint(content),
+		fingerprint:   contentFingerprint(content),
+		articleFailed: articleFailed,
 		item: types.FetchedItem{
 			ExternalID:       itemExternalID(feedURL, itemID),
 			Title:            title,

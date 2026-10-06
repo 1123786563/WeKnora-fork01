@@ -177,7 +177,7 @@ func (s *subagentService) InstallForAgent(
 
 	if !subagentConfigured(agent.Config.Subagents, def.Slug) {
 		agent.Config.Subagents = append(copySlugs(agent.Config.Subagents), def.Slug)
-		if updated, err := s.agents.UpdateAgent(ctx, agent); err != nil {
+		if updated, err := s.agents.UpdateAgent(ctx, agent, nil); err != nil {
 			return nil, fmt.Errorf("subagents: install %q on agent %s: update agent: %w", def.Slug, agentID, err)
 		} else if updated != nil {
 			agent = updated
@@ -210,7 +210,7 @@ func (s *subagentService) RemoveFromAgent(ctx context.Context, agentID, slug str
 	}
 	if removed {
 		agent.Config.Subagents = kept
-		if _, err := s.agents.UpdateAgent(ctx, agent); err != nil {
+		if _, err := s.agents.UpdateAgent(ctx, agent, nil); err != nil {
 			return nil, fmt.Errorf("subagents: remove %q from agent %s: update agent: %w", slug, agentID, err)
 		}
 	}

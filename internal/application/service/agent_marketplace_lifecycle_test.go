@@ -20,7 +20,7 @@ func newLifecycleServiceForTest(t *testing.T) (*AgentMarketplaceLifecycleService
 	t.Helper()
 	db := openAgentVersionServiceTestDB(t)
 	adoptions := repository.NewAgentAdoptionRepository(db)
-	customAgents := NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	return NewAgentMarketplaceLifecycleService(adoptions, repository.NewAgentMarketplaceRepository(db)),
 		NewAgentAdoptionService(adoptions, customAgents, versions),

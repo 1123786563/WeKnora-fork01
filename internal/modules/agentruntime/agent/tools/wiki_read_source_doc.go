@@ -66,10 +66,10 @@ If neither query nor range is provided, it returns the beginning of the document
 	return tool
 }
 
-// enrichChunkImageInfo populates chunk.ImageInfo for a batch of parent text
+// wikiEnrichChunkImageInfo populates chunk.ImageInfo for a batch of parent text
 // chunks by looking up their image_ocr / image_caption children. Chunks that
 // already have a non-empty ImageInfo are left untouched.
-func enrichChunkImageInfo(
+func wikiEnrichChunkImageInfo(
 	ctx context.Context,
 	chunkRepo interfaces.ChunkRepository,
 	tenantID uint64,
@@ -101,7 +101,7 @@ func enrichChunkImageInfo(
 	}
 }
 
-func enrichChunkContent(c *types.Chunk) string {
+func wikiEnrichChunkContent(c *types.Chunk) string {
 	content := c.Content
 	if c.ImageInfo != "" {
 		var imgInfos []types.ImageInfo
@@ -235,11 +235,11 @@ func (t *wikiReadSourceDocTool) Execute(ctx context.Context, args json.RawMessag
 		// Parent text chunks don't carry image_info themselves (see
 		// image_multimodal.go); without this the source-doc reader would
 		// silently drop OCR text and captions for image-heavy documents.
-		enrichChunkImageInfo(ctx, t.chunkService.GetRepository(), knowledge.TenantID, chunks)
+		wikiEnrichChunkImageInfo(ctx, t.chunkService.GetRepository(), knowledge.TenantID, chunks)
 
 		for _, c := range chunks {
 			chunkNum := c.ChunkIndex + 1
-			chunkContent := enrichChunkContent(c)
+			chunkContent := wikiEnrichChunkContent(c)
 
 			if hasRange {
 				if chunkNum < params.StartChunkIndex {
@@ -268,7 +268,7 @@ func (t *wikiReadSourceDocTool) Execute(ctx context.Context, args json.RawMessag
 				if re != nil {
 					// Output previous chunk for context
 					if prevChunk != nil && !outputtedIndices[prevChunk.ChunkIndex] {
-						prevContent := enrichChunkContent(prevChunk)
+						prevContent := wikiEnrichChunkContent(prevChunk)
 						fmt.Fprintf(&chunksOutput, "<chunk index=\"%d\" type=\"context_before\">\n%s\n</chunk>\n", prevChunk.ChunkIndex+1, prevContent)
 						appendFormattedChunk(prevChunk, prevContent)
 						outputtedIndices[prevChunk.ChunkIndex] = true

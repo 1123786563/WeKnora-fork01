@@ -135,6 +135,7 @@ func newTenantSandboxResolver(
 	loader sandbox.TenantSandboxConfigLoader,
 	store sandbox.SessionSandboxBindingStore,
 	sessionRepo interfaces.SessionRepository,
+	bootstrapper sandbox.SessionBootstrapper,
 ) sandbox.TenantSandboxResolver {
 	ctx := context.Background()
 	if store == nil {
@@ -147,6 +148,7 @@ func newTenantSandboxResolver(
 		Loader:          loader,
 		Store:           store,
 		Checker:         sessionExistenceCheckerFor(sessionRepo),
+		Bootstrapper:    bootstrapper,
 		SharedTransport: sandbox.NewGuardedTransport(),
 	})
 	if err != nil {

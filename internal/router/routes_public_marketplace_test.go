@@ -51,7 +51,7 @@ func newPublicMarketplaceTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (2, 'pub-adopter-admin', 'admin', 'active')`).Error)
 
 	marketRepo := repository.NewAgentMarketplaceRepository(db)
-	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := service.NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := service.NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	market := service.NewAgentMarketplaceService(versions, marketplaceHTTPResolver{}, marketRepo, t.TempDir())
 	adoptionsRepo := repository.NewAgentAdoptionRepository(db)
@@ -68,7 +68,7 @@ func newPublicMarketplaceTestApp(t *testing.T) (*gin.Engine, *rbacGuards, *gorm.
 	publicHandler := handler.NewPublicMarketplaceHandler(public)
 	lifecycleHandler := handler.NewAgentMarketplaceLifecycleHandler(service.NewAgentMarketplaceLifecycleService(adoptionsRepo, repository.NewAgentMarketplaceRepository(db)))
 	securityHandler := handler.NewAgentSecurityHandler(security)
-	agentListHandler := handler.NewCustomAgentHandler(customAgents, nil, repository.NewTenantDisabledSharedAgentRepository(db), nil, nil)
+	agentListHandler := handler.NewCustomAgentHandler(customAgents, nil, repository.NewTenantDisabledSharedAgentRepository(db), nil, nil, service.HostSandboxManager{})
 
 	enabled := true
 	g := &rbacGuards{cfg: &config.Config{Tenant: &config.TenantConfig{EnableRBAC: &enabled}}, agentCreator: func(c *gin.Context) (string, error) {

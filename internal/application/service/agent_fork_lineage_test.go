@@ -107,7 +107,7 @@ func seedLineageSource(t *testing.T, db *gorm.DB, suffix, licenseID, systemPromp
 
 func newLineageMarketplaceService(t *testing.T, db *gorm.DB) *AgentMarketplaceService {
 	t.Helper()
-	customAgents := NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil)
+	customAgents := NewCustomAgentService(repository.NewCustomAgentRepository(db), nil, nil, nil, nil, nil, nil, nil)
 	versions := NewAgentVersionService(customAgents, repository.NewAgentVersionRepository(db))
 	return NewAgentMarketplaceService(versions, marketplaceResolverFake{}, repository.NewAgentMarketplaceRepository(db), t.TempDir())
 }
