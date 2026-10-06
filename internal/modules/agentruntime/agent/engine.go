@@ -206,7 +206,11 @@ func (e *AgentEngine) buildSystemPrompt(ctx context.Context) string {
 	for _, section := range sections {
 		logger.Debugf(ctx, "[Agent][Prompt] section=%s bytes=%d", section.Name, len(section.Content))
 	}
-	return renderSystemPromptSections(sections)
+	// The persona segment rides in front of whichever template was resolved,
+	// joined after placeholder resolution, mirroring
+	// BuildSystemPromptWithOptions so the builtin engine and the trpc
+	// verbatim-system-message path stay byte-identical.
+	return PrependPersonaSegment(e.personaSegment, renderSystemPromptSections(sections))
 }
 
 // SetMemoryPrompt supplies the long-term memory envelope for this run. Empty
