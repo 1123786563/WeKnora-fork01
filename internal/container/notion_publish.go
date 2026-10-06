@@ -8,12 +8,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/handler"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/plan"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/publish"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 
