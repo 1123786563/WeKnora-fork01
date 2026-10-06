@@ -188,3 +188,16 @@ test('http(s) markdown images render as sanitized img like the Vue embed face', 
   const evil = renderEmbedChatMarkdown('![x](javascript:alert(1))', []);
   assert.doesNotMatch(evil, /<img[^>]*src="javascript:/);
 });
+
+// #3962 (shared bug fix, Vue↔React parity) — CJK technical writing uses `~`
+// as a range separator; marked's default single-tilde GFM del swallowed the
+// span between two ranges into <del> (eating the tildes before the sanitizer
+// ever ran). The embed chain must keep every single `~` literal; only
+// `~~text~~` is strikethrough input.
+test('#3962 CJK range tildes stay literal in embed answers', () => {
+  const html = renderEmbedChatMarkdown('水温 50~60°，运行时段 8:00~12:00，规模 50,000~100,000 m³/d');
+  assert.match(html, /50~60°/);
+  assert.match(html, /8:00~12:00/);
+  assert.match(html, /50,000~100,000/);
+  assert.doesNotMatch(html, /<del/);
+});

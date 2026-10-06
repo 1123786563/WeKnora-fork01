@@ -13,6 +13,7 @@
  */
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { applyMarkdownOptions } from '../shared/markdownOptions.ts';
 
 /** Vue WikiBrowser.vue: /\[\[([^\]]+)\]\]/g → wiki-content-link anchors. */
 const WIKI_LINK_PATTERN = /\[\[([^\]]+)\]\]/g;
@@ -146,6 +147,10 @@ export type WikiMarkdownOptions = {
 /** Vue WikiBrowser.vue `renderMarkdown()` — wiki-links → marked → sanitize. */
 export function renderWikiMarkdown(content: string, options: WikiMarkdownOptions): string {
   if (!content) return '';
+  // Shared wiki/chat marked config (#3962): single `~` stays literal for CJK
+  // range notation; only `~~text~~` renders <del>. Same config as the Vue
+  // face (frontend/src/utils/markdownOptions.ts).
+  applyMarkdownOptions(marked);
   const preprocessed = content.replace(WIKI_LINK_PATTERN, (_match: string, inner: string) => {
     const pipeIdx = inner.indexOf('|');
     const slug = pipeIdx > 0 ? inner.substring(0, pipeIdx).trim() : inner.trim();

@@ -800,6 +800,7 @@ import { marked } from 'marked'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import { hydrateProtectedFileImages, sanitizeMarkdownHTML } from '@/utils/security'
+import { applyMarkdownOptions } from '@/utils/markdownOptions'
 import type { ProtectedFileAccessContext } from '@/utils/protectedFileAccess'
 import picturePreview from '@/components/picture-preview.vue'
 import WikiFolderActions from './WikiFolderActions.vue'
@@ -1523,6 +1524,11 @@ watch(graphDrawerContent, async () => {
 })
 
 function renderMarkdown(content: string): string {
+  // Shared chat/wiki marked config (#3962): single `~` stays literal for CJK
+  // range notation (2020~2035、50~60°、50,000~100,000 m³/d、8:00~12:00);
+  // only `~~text~~` renders <del>. Same config as chatMarkdownRenderer.
+  applyMarkdownOptions(marked)
+
   // Pre-process wiki links [[slug|name]] to custom HTML tags
   let preprocessed = content.replace(/\[\[([^\]]+)\]\]/g, (_, inner: string) => {
     const pipeIdx = inner.indexOf('|')
