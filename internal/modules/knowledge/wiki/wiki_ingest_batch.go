@@ -1348,7 +1348,17 @@ func (s *wikiIngestService) mapOneDocument(
 	// was in flight, we must NOT proceed to LLM extraction — doing so would
 	// create wiki pages whose source_refs point at a ghost knowledge ID,
 	// permanently unreachable via wiki_read_source_doc.
-	if s.isKnowledgeGone(ctx, payload.KnowledgeBaseID, knowledgeID) {
+	gone, goneErr := s.isKnowledgeGone(ctx, payload.KnowledgeBaseID, knowledgeID)
+	if goneErr != nil {
+		// Existence unknown (lookup cancelled / deadline / DB failure): this
+		// is NOT a deletion. Returning the error routes the op into
+		// failedOps so its durable pending row keeps the retry budget —
+		// treating it as "deleted" would (nil,nil,nil)-skip the doc and let
+		// the batch trim the row without ever generating its pages (#3714).
+		s.tracker().FailSpan(ctx, wikiSpan, "SOURCE_LOOKUP_FAILED", goneErr.Error(), goneErr)
+		return nil, nil, goneErr
+	}
+	if gone {
 		logger.Infof(ctx, "wiki ingest: knowledge %s has been deleted, skip map", knowledgeID)
 		s.tracker().SkipSpan(ctx, wikiSpan, "knowledge_deleted")
 		return nil, nil, nil
@@ -1884,7 +1894,15 @@ func (s *wikiIngestService) reduceSlugUpdates(
 	// knowledge no longer exists so we don't resurrect a ghost source_ref.
 	// Retract updates are kept — they actively remove refs, which is what we
 	// want when the doc is gone.
-	updates = s.filterLiveUpdates(ctx, kbID, updates)
+	updates, filterErr := s.filterLiveUpdates(ctx, kbID, updates)
+	if filterErr != nil {
+		// Source liveness unknown (cancelled / deadline / DB failure): fail
+		// the slug so the egReduce caller records its knowledge ids as
+		// unapplied and the batch re-queues them — reporting a successful
+		// no-op here would let the trim phase delete the pending rows
+		// without their contributions ever landing (#3714).
+		return false, "", false, filterErr
+	}
 	if len(updates) == 0 {
 		return false, "", false, nil
 	}
@@ -2275,10 +2293,18 @@ func (s *wikiIngestService) reduceSlugUpdates(
 		// the existing refs; addition rounds append the newly-cited chunks
 		// on top of what was already there, deduplicated.
 		page.ChunkRefs = mergeChunkRefs(page.ChunkRefs, additions)
+		writeCtx := ctx
+		if len(retracts) > 0 {
+			// A retract round legitimately shortens the page (source doc
+			// deleted => its segment must go). The exit-level row-drop
+			// guard (#3792) cannot see hasRetractions, so this caller marks
+			// the write as an intentional shrink.
+			writeCtx = withWikiShrinkAllowed(ctx)
+		}
 		if exists {
-			_, err = s.wikiService.UpdatePage(ctx, page)
+			_, err = s.wikiService.UpdatePage(writeCtx, page)
 		} else {
-			_, err = s.wikiService.CreatePage(ctx, page)
+			_, err = s.wikiService.CreatePage(writeCtx, page)
 		}
 		return true, affectedType, additionFailed, err
 	}
