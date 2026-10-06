@@ -3,8 +3,8 @@ package handler
 import (
 	"context"
 
+	acatsvc "github.com/Tencent/WeKnora/internal/application/service"
 	acathandler "github.com/Tencent/WeKnora/internal/modules/agentcatalog/handler"
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

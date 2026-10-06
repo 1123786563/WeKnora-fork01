@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -30,6 +30,7 @@ func ResolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares ac
 	}
 	return 0, apperrors.NewForbiddenError("无权访问该知识库")
 }
+
 // kbWritableIDs returns the target KBs the caller may modify: those of its own
 // workspace, and those shared to it with at least editor permission (capped by
 // the caller's tenant role). A read grant — a viewer share or a shared agent's

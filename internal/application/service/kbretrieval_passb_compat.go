@@ -10,8 +10,8 @@ package service
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

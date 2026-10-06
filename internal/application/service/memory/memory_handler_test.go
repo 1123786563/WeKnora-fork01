@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
+	agentmemory "github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func (memoryFailureService) UpdateItem(context.Context, string, string, int) (*t
 func TestMemoryConsistencyHTTPFailures(t *testing.T) {
 	router := gin.New()
 	router.Use(middleware.ErrorHandler())
-	handler := memory.NewMemoryHandler(memoryFailureService{})
+	handler := agentmemory.NewMemoryHandler(memoryFailureService{})
 	router.POST("/memory/items/:id/confirm", handler.ConfirmItem)
 	router.PUT("/memory/items/:id", handler.UpdateItem)
 	for _, tc := range []struct {

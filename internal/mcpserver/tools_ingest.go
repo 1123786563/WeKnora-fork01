@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/mark3labs/mcp-go/mcp"
 )

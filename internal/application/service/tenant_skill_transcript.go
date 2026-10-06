@@ -1,7 +1,3 @@
-// Pass B 25b 过渡占位残差（IB2 删除）：本文件内容已随租户 Skill service 面
-// 迁往 internal/modules/agentcatalog/service/tenant_skill_transcript.go。
-// 保留占位以满足 manifest legacy_files 存在性核验（tools/modulemove）；
-// 本节点在此路径不留任何业务声明。remove_at: ib2。
 package service
 
 import (
@@ -14,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -42,6 +37,10 @@ type installTranscript struct {
 
 	sessionID          string
 	assistantMessageID string
+
+	// sanitize carries the tool-result presentation helpers, injected from
+	// HostAdapters by the caller of newInstallTranscript.
+	sanitize transcriptSanitizer
 
 	mu      sync.Mutex
 	message *types.Message
@@ -89,6 +88,7 @@ func newInstallTranscript(
 	messages interfaces.MessageRepository,
 	sessionID, assistantMessageID string,
 	onActivity func(steps int, lastCmd string),
+	sanitize transcriptSanitizer,
 ) *installTranscript {
 	return &installTranscript{
 		ctx:                ctx,
@@ -97,6 +97,7 @@ func newInstallTranscript(
 		messages:           messages,
 		sessionID:          sessionID,
 		assistantMessageID: assistantMessageID,
+		sanitize:           sanitize,
 		starts:             map[string]time.Time{},
 		onActivity:         onActivity,
 	}
@@ -318,7 +319,7 @@ func (tr *installTranscript) onToolResult(_ context.Context, evt event.Event) er
 	// for internal failures (onError), matching the chat path. Failure is
 	// carried by success=false in the metadata.
 	responseType := types.ResponseTypeToolResult
-	content := agenttools.StreamContentForToolResult(data.ToolName, data.Success, data.Error, data.Data)
+	content := tr.sanitize.streamContentForToolResult(data.ToolName, data.Success, data.Error, data.Data)
 	if !data.Success && content == "" && data.Error != "" {
 		content = data.Error
 	}
@@ -330,7 +331,7 @@ func (tr *installTranscript) onToolResult(_ context.Context, evt event.Event) er
 		"duration_ms":  durationMs,
 		"tool_call_id": data.ToolCallID,
 	}
-	for k, v := range agenttools.SanitizeToolResultForClient(data.ToolName, &types.ToolResult{
+	for k, v := range tr.sanitize.sanitizeToolResultForClient(data.ToolName, &types.ToolResult{
 		Success: data.Success,
 		Output:  data.Output,
 		Error:   data.Error,
@@ -405,7 +406,7 @@ func (tr *installTranscript) onComplete(_ context.Context, evt event.Event) erro
 		msg.IsCompleted = true
 		msg.AgentDurationMs = data.TotalDurationMs
 		if steps, ok := data.AgentSteps.([]types.AgentStep); ok {
-			msg.AgentSteps = agenttools.SanitizeAgentStepsForStorage(steps)
+			msg.AgentSteps = tr.sanitize.sanitizeAgentStepsForStorage(steps)
 		}
 	}
 	// The engine may finish without ever streaming an answer chunk (it stops

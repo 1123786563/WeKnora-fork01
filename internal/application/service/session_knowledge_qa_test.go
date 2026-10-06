@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
+	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/modelcontext"

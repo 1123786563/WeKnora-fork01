@@ -3,8 +3,8 @@ package wiki
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )

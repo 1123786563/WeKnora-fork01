@@ -10,11 +10,11 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )

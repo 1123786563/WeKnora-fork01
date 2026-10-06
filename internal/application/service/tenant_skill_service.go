@@ -2,120 +2,130 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/robfig/cron/v3"
+	"golang.org/x/sync/singleflight"
 
-	"github.com/Tencent/WeKnora/internal/agent/skills"
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	acrepo "github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/common/redislock"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
-// ServedInfoOf forwards the agentcatalog helper for the host handler.
-var ServedInfoOf = acatsvc.ServedInfoOf
-
-// —— Pass B 25b 过渡残差（b2-ac-skills 产出；IB2 按 brief 删除；禁止新增业务逻辑）——
-// remove_at: ib2
-
-func init() { // 替代随迁走的 env_declare.go init()（计划 §4.4-1），行为等价
-	acatsvc.RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())
-	// 25b 补充接缝（计划 §4.4-1 同类先例）：adapters-free 的 ParseSkillBundle
-	// 入口（25a/25c 禁改测试与本包消费方经此调用）需要 SKILL.md 解析能力。
-	acatsvc.RegisterBundleParsers(parseSkillManifest, skills.UnmarshalSkillFrontmatter)
-}
-
-// parseSkillManifest 1:1 包装 skills.ParseSkillFile 的 4 字段消费面。
-func parseSkillManifest(content string) (acatsvc.SkillManifestView, error) {
-	skill, err := skills.ParseSkillFile(content)
-	if err != nil {
-		return acatsvc.SkillManifestView{}, err
-	}
-	return acatsvc.SkillManifestView{Name: skill.Name, Description: skill.Description,
-		Instructions: skill.Instructions, FrontmatterRepaired: skill.FrontmatterRepaired}, nil
-}
-
-// 类型别名：保 container.go / session.go / agent_service.go / user_env.go /
-// tenant_sandbox_config.go(svc) / skill_market_service.go / tenant_skill_market_service.go /
-// handler/sandbox_skill.go 编译（计划 §2.5 清单）。installedSkillLister 保留旧未导出名，
-// expert_skills.go:36,43 零改动（计划 §2.5）。
-type (
-	TenantSkillService        = acatsvc.TenantSkillService
-	SkillBundle               = acatsvc.SkillBundle
-	SkillBundleParseOptions   = acatsvc.SkillBundleParseOptions
-	SkillFileEntry            = acatsvc.SkillFileEntry
-	SkillFileContent          = acatsvc.SkillFileContent
-	SkillCatalogView          = acatsvc.SkillCatalogView
-	SkillCatalogInstallView   = acatsvc.SkillCatalogInstallView
-	CatalogInstallResult      = acatsvc.CatalogInstallResult
-	SkillAdminUpdate          = acatsvc.SkillAdminUpdate
-	SkillServedInfo           = acatsvc.SkillServedInfo
-	SkillProgress             = acatsvc.SkillProgress
-	SkillInstallGuidance      = acatsvc.SkillInstallGuidance
-	SkillInstallGuidanceState = acatsvc.SkillInstallGuidanceState
-	installedSkillLister      = acatsvc.InstalledSkillLister
-)
-
-// keyedMutex/newKeyedMutex：25c 市场服务文件（skill_market_service.go 等，禁改）
-// 在宿主包内的锁消费（计划 §2.5 未列消费点）。Go 不可对非本包类型定义小写方法，
-// 故用嵌入包装补历史 lock 方法，实现仍单一存在于新包（acatsvc.KeyedMutex）。
-type keyedMutex struct {
-	acatsvc.KeyedMutex
-}
-
-func newKeyedMutex() *keyedMutex { return &keyedMutex{KeyedMutex: *acatsvc.NewKeyedMutex()} }
-
-func (k *keyedMutex) lock(ctx context.Context, key string) (func(), error) {
-	return k.Lock(ctx, key)
-}
-
-// skillSnapshotLister：tenant_sandbox_config.go:1125（execution，禁改）的类型
-// 断言消费（计划 §2.5 未列消费点）；新包同名接口导出后此处保旧名。
-type skillSnapshotLister = acatsvc.SkillSnapshotLister
-
-// archiveMatchesSHA / zipSkillFiles / maxSkillBundleTotalBytes：
-// agent_service.go:685,779,783（agent runtime 面属主，禁改）与
-// skill_market_service.go:259（25c，禁改）的转发（计划 §2.5 未列消费点）。
-func archiveMatchesSHA(archive []byte, want string) bool {
-	return acatsvc.ArchiveMatchesSHA(archive, want)
-}
-
-func zipSkillFiles(files map[string][]byte) ([]byte, error) {
-	return acatsvc.ZipSkillFiles(files)
-}
-
-const maxSkillBundleTotalBytes = acatsvc.MaxSkillBundleTotalBytes
-
-// MaxEnvValueBytes / MaxUserEnvVarsPerScope：user_env.go:388-407（execution，
-// 禁改）的常量消费（计划 §2.5 未列消费点）。
+// skillImageLockLease bounds how long one install/remove may hold the config
+// lock without renewing. Installs run for minutes, so the lease is renewed by
+// redislock rather than being set long.
 const (
-	MaxEnvValueBytes       = acatsvc.MaxEnvValueBytes
-	MaxUserEnvVarsPerScope = acatsvc.MaxUserEnvVarsPerScope
+	skillImageLockLease = 30 * time.Second
+	skillImageLockRenew = 10 * time.Second
+
+	// skillInstallStuckTTL is how long a run may go without a heartbeat
+	// before the reaper treats it as abandoned. It is a silence budget, not
+	// a duration budget: a legitimate install that spends two hours in the
+	// agent keeps beating and is left alone.
+	skillInstallStuckTTL = 60 * time.Minute
+
+	// skillInstallHeartbeatInterval is how often a running install stamps
+	// InstallingSince to say its process is still alive. Everything that has
+	// to tell "still working" from "died" reads that timestamp.
+	skillInstallHeartbeatInterval = 30 * time.Second
+
+	// skillInstallInFlightSkip is how much heartbeat silence makes a second
+	// upload of the same archive stop deferring to the run that owns the row.
+	// It is a multiple of the heartbeat so a slow install is never mistaken
+	// for a dead one, and short enough that a re-upload recovers a dead
+	// process in minutes instead of waiting for skillInstallStuckTTL.
+	skillInstallInFlightSkip = 3 * time.Minute
+
+	// skillSnapshotRetention is how long a superseded snapshot stays on the
+	// provider after the pointer has moved before prune even tries. Paused
+	// session sandboxes can pin the template past this window; prune retries
+	// on Conflict. A config that sets a longer sandbox TTL extends this via
+	// snapshotRetentionFor.
+	skillSnapshotRetention = 24 * time.Hour
+
+	// skillSnapshotTTLMargin is added on top of a config's own sandbox TTL
+	// so an in-flight create that resolved the previous pointer still has
+	// a template to boot from.
+	skillSnapshotTTLMargin = time.Hour
 )
 
-func ParseSkillBundle(archive []byte) (*SkillBundle, error) { return acatsvc.ParseSkillBundle(archive) }
+// TenantSkillService owns the skill image lifecycle for sandbox configs.
+type TenantSkillService struct {
+	skills    acrepo.TenantSkillRepository
+	configs   repository.TenantSandboxConfigRepository
+	resolver  interfaces.StorageBackendResolver
+	sandboxes sandbox.TenantSandboxResolver
+	// adapters承接旧宿主包内仍留驻的 conversation/execution 能力与
+	// agent 运行时模块工具面（见 host_adapters.go）；由构造器装配。
+	adapters HostAdapters
+	agents   interfaces.AgentService
+	// installerAgents reads the stored installer record. It is a separate
+	// dependency from agents because GetAgentByID lives on the custom agent
+	// service, not on interfaces.AgentService.
+	installerAgents installerAgentSource
+	sessions        interfaces.SessionService
+	models          interfaces.ModelService
+	redis           *redis.Client
 
-// ErrSkillBundleInvalid / ErrSkillSourceInvalid：handler/sandbox_skill.go:175
-// （禁改）的哨兵错误消费（计划 §2.5 未列消费点）；引用同一错误值，identity 等价。
-var (
-	ErrSkillBundleInvalid = acatsvc.ErrSkillBundleInvalid
-	ErrSkillSourceInvalid = acatsvc.ErrSkillSourceInvalid
-)
+	// streams and messages are the two halves of an install transcript: the
+	// replayable event log the console tails, and the durable rows it falls
+	// back to once the log's TTL has passed.
+	streams  interfaces.StreamManager
+	messages interfaces.MessageRepository
 
-func ParseSkillBundleWithOptions(archive []byte, opts SkillBundleParseOptions) (*SkillBundle, error) {
-	return acatsvc.ParseSkillBundleWithOptions(archive, opts)
+	now func() time.Time
+
+	// sourceHTTP pulls remote skill archives. Nil means the package SSRF-safe
+	// default; tests inject httptest clients.
+	sourceHTTP *http.Client
+
+	// cleanupTimeout bounds one piece of compensating work. Injectable so a
+	// test can let an install outlast it, which every real install does.
+	cleanupTimeout time.Duration
+
+	// snapshotRetention is how long a superseded snapshot is kept on the
+	// provider. Injectable so a prune test can age a row without waiting a day.
+	snapshotRetention time.Duration
+
+	// installHeartbeat is how often a running install restamps its liveness.
+	// Injectable so a test can observe a beat without waiting half a minute.
+	installHeartbeat time.Duration
+
+	// localLocks serialises installs when Redis is absent. It only guards this
+	// process; multi-replica deployments require Redis for cross-process safety.
+	localLocks *keyedMutex
+
+	// bundleCache keeps recently downloaded skill zips so the admin file
+	// browser (list + N reads) does not hit object storage on every click.
+	bundleCache *skillBundleArchiveCache
+	bundleLoad  singleflight.Group
+
+	cron    *cron.Cron
+	cronMu  sync.Mutex
+	started bool
+
+	// runCancels lets StopSkill abort the goroutine that holds this skill's
+	// install. The map is per-process: a restart or another replica has
+	// nothing to cancel, and StopSkill then only rewrites the stuck row.
+	runCancelMu sync.Mutex
+	runCancels  map[string]*skillRunCancel
 }
 
-// NewTenantSkillService：旧 12 参签名原样保留（container.go:566 零改动）；
-// sandboxPolicy 吸收进 ResolveConfigManager 闭包；计划 §4.4 的 agent 运行时
-// 能力位在此绑真源。
+// NewTenantSkillService wires the repositories and runtimes the install and
+// remove flows share. Redis may be nil; the local lock then serialises one
+// process only.
 func NewTenantSkillService(
-	skillsRepo repository.TenantSkillRepository,
+	skillsRepo acrepo.TenantSkillRepository,
 	configsRepo repository.TenantSandboxConfigRepository,
 	resolver interfaces.StorageBackendResolver,
 	sandboxes sandbox.TenantSandboxResolver,
-	sandboxPolicy WorkspaceSandboxPolicy,
 	agents interfaces.AgentService,
 	customAgents interfaces.CustomAgentService,
 	sessions interfaces.SessionService,
@@ -123,42 +133,114 @@ func NewTenantSkillService(
 	redisClient *redis.Client,
 	streams interfaces.StreamManager,
 	messages interfaces.MessageRepository,
+	adapters HostAdapters,
 ) *TenantSkillService {
-	return acatsvc.NewTenantSkillService(skillsRepo, configsRepo, resolver, sandboxes,
-		agents, customAgents, sessions, models, redisClient, streams, messages,
-		acatsvc.HostAdapters{
-			ResolveConfigManager: func(ctx context.Context, tenantID uint64, configID string) (sandbox.Manager, error) {
-				return resolveTenantSandboxForConfig(ctx, sandboxes, nil, tenantID, configID, sandboxPolicy)
-			},
-			InstallShellExecutor:     sessionSandboxInstallShellExecutor,
-			SessionUserID:            nil, // nil → 新包缺省 types.SessionOwnerIDFromContext（与 session.go:26 等价）
-			SkillManifestParser:      parseSkillManifest,
-			FrontmatterVersionParser: skills.UnmarshalSkillFrontmatter,
-			InstallerToolNames: func() [3]string {
-				return [3]string{agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile}
-			},
-			OnDemandInstallerPath:        skills.IsOnDemandInstallerPath,
-			StreamContentForToolResult:   agenttools.StreamContentForToolResult, // 与工具名常量同包（agent/tools），单一 import
-			SanitizeToolResultForClient:  agenttools.SanitizeToolResultForClient,
-			SanitizeAgentStepsForStorage: agenttools.SanitizeAgentStepsForStorage,
-			UniqueNonEmptyStrings:        uniqueNonEmptyStrings, // conversation 真源（session_knowledge_qa.go:638，同包捕获）
-		})
+	if err := adapters.validate(); err != nil {
+		panic(err.Error())
+	}
+	return &TenantSkillService{
+		skills:            skillsRepo,
+		configs:           configsRepo,
+		resolver:          resolver,
+		sandboxes:         sandboxes,
+		adapters:          adapters,
+		agents:            agents,
+		installerAgents:   customAgents,
+		sessions:          sessions,
+		models:            models,
+		redis:             redisClient,
+		streams:           streams,
+		messages:          messages,
+		now:               time.Now,
+		cleanupTimeout:    installCleanupTimeout,
+		snapshotRetention: skillSnapshotRetention,
+		installHeartbeat:  skillInstallHeartbeatInterval,
+		localLocks:        newKeyedMutex(),
+		runCancels:        map[string]*skillRunCancel{},
+		bundleCache:       newSkillBundleArchiveCache(),
+		cron: cron.New(cron.WithSeconds(), cron.WithChain(
+			cron.Recover(cron.DefaultLogger),
+		)),
+	}
 }
 
-// —— execution→agentcatalog 4 符号收口（DAG required_contracts）：旧名 1:1 委托导出名 ——
-// 调用方 tenant_sandbox_config.go:1134,1135,1137 / user_env.go:275,381 本节点零改动；
-// IB2 改指 acatsvc 导出名后删除。
-
-func skillSnapshotNamePrefix(tenantID uint64, configID string) string {
-	return acatsvc.SkillSnapshotNamePrefix(tenantID, configID)
+// withConfigLock serialises every mutation of one config's skill image.
+//
+// This is not defensive locking: a new snapshot is the OLD snapshot plus this
+// run's changes, and the config holds exactly one pointer. Two concurrent
+// installs would each snapshot a base that lacks the other's work, and whoever
+// wrote the pointer last would silently discard the other install.
+//
+// With Redis this is a 30s renewable lease, so every replica of the same
+// workspace contends on one key. Without Redis it is a process-local mutex
+// and two replicas can write the pointer independently.
+func (s *TenantSkillService) withConfigLock(
+	ctx context.Context, tenantID uint64, configID string, fn func(context.Context) error,
+) error {
+	return s.withSkillLock(ctx, skillImageLockKey(tenantID, configID), fn)
 }
 
-func snapshotsNotFromOtherConfig(listed []sandbox.RemoteSnapshotRef, prefix string) []sandbox.RemoteSnapshotRef {
-	return acatsvc.SnapshotsNotFromOtherConfig(listed, prefix)
+func (s *TenantSkillService) withSkillLock(ctx context.Context, key string, fn func(context.Context) error) error {
+	if s.redis == nil {
+		release, err := s.localLocks.Lock(ctx, key)
+		if err != nil {
+			return err
+		}
+		defer release()
+		return fn(ctx)
+	}
+	return redislock.WithRenewableLock(
+		ctx, s.redis, key, skillImageLockLease, skillImageLockRenew, fn,
+	)
 }
 
-func matchSnapshotByName(listed []sandbox.RemoteSnapshotRef, plannedName string) string {
-	return acatsvc.MatchSnapshotByName(listed, plannedName)
+func skillImageLockKey(tenantID uint64, configID string) string {
+	return fmt.Sprintf("weknora-skill-image-lock:%d:%s", tenantID, configID)
 }
 
-func validateUserEnvName(name string) error { return acatsvc.ValidateUserEnvName(name) }
+// clock is this service's time source. Tests inject one; a service built
+// without NewTenantSkillService still gets a working default.
+func (s *TenantSkillService) clock() func() time.Time {
+	if s != nil && s.now != nil {
+		return s.now
+	}
+	return time.Now
+}
+
+// KeyedMutex is the exported view of the no-Redis fallback lock. The host-path
+// residual aliases it back to the historical unexported name for the market
+// service files that stay behind (计划 §2.5 未列的消费点，installedSkillLister
+// 同一先例)；IB2 收口后评估收敛回未导出。
+type KeyedMutex = keyedMutex
+
+// NewKeyedMutex is NewTenantSkillService's internal constructor, exported only
+// for the same residual alias. Prefer NewTenantSkillService.
+func NewKeyedMutex() *KeyedMutex { return newKeyedMutex() }
+
+// keyedMutex is the no-Redis fallback for withConfigLock.
+type keyedMutex struct {
+	mu sync.Mutex
+	m  map[string]chan struct{}
+}
+
+func newKeyedMutex() *keyedMutex { return &keyedMutex{m: map[string]chan struct{}{}} }
+
+func (k *keyedMutex) Lock(ctx context.Context, key string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	k.mu.Lock()
+	entry, ok := k.m[key]
+	if !ok {
+		entry = make(chan struct{}, 1)
+		k.m[key] = entry
+	}
+	k.mu.Unlock()
+	select {
+	case entry <- struct{}{}:
+		return func() { <-entry }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}

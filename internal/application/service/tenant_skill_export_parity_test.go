@@ -3,13 +3,13 @@ package service
 import (
 	"testing"
 
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/stretchr/testify/require"
 )
 
 // tenant_skill_export_parity_test.go —— Pass B 25b 导出化差分装置（计划 §T3/§7.2）。
 // 逐例锚定：宿主旧名（残差转发）与新包导出名行为完全一致。remove_at: ib2。
+// 真身归位本包后两侧均为同包符号（旧名经 tenant_skill_passb_host_shims.go 转发）。
 
 func TestParitySkillSnapshotNamePrefix(t *testing.T) {
 	cases := []struct {
@@ -26,11 +26,11 @@ func TestParitySkillSnapshotNamePrefix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t,
-				acatsvc.SkillSnapshotNamePrefix(tc.tenantID, tc.configID),
+				SkillSnapshotNamePrefix(tc.tenantID, tc.configID),
 				skillSnapshotNamePrefix(tc.tenantID, tc.configID))
 			require.Equal(t,
 				"weknora-sk-t"+itoaDecimal(tc.tenantID)+"-"+compactForParity(tc.configID),
-				acatsvc.SkillSnapshotNamePrefix(tc.tenantID, tc.configID),
+				SkillSnapshotNamePrefix(tc.tenantID, tc.configID),
 				"weknora-sk-t<tenant>-<compact config id> 命名是 Cube/E2B/Docker 跨账号 listing 的外部契约锚点")
 		})
 	}
@@ -78,7 +78,7 @@ func TestParitySnapshotsNotFromOtherConfig(t *testing.T) {
 	}
 	for _, prefix := range prefixes {
 		require.Equal(t,
-			acatsvc.SnapshotsNotFromOtherConfig(listed, prefix),
+			SnapshotsNotFromOtherConfig(listed, prefix),
 			snapshotsNotFromOtherConfig(listed, prefix),
 			"prefix %q", prefix)
 	}
@@ -97,7 +97,7 @@ func TestParityMatchSnapshotByName(t *testing.T) {
 	}
 	for _, name := range names {
 		require.Equal(t,
-			acatsvc.MatchSnapshotByName(listed, name),
+			MatchSnapshotByName(listed, name),
 			matchSnapshotByName(listed, name),
 			"planned name %q", name)
 	}
@@ -119,7 +119,7 @@ func TestParityValidateUserEnvName(t *testing.T) {
 	}
 	for _, name := range cases {
 		errOld := validateUserEnvName(name)
-		errNew := acatsvc.ValidateUserEnvName(name)
+		errNew := ValidateUserEnvName(name)
 		if errOld == nil {
 			require.NoError(t, errNew, "name %q", name)
 		} else {

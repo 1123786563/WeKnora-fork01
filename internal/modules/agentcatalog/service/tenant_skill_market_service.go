@@ -19,9 +19,10 @@ import (
 
 	"github.com/google/uuid"
 
+	acrepo "github.com/Tencent/WeKnora/internal/application/repository"
+	acatsvc "github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
-	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -38,7 +39,7 @@ type TenantSkillMarketCatalogStore interface {
 // TenantSkillMarketInstaller is the install half: the existing catalog
 // install pipeline. *TenantSkillService satisfies it; tests fake it.
 type TenantSkillMarketInstaller interface {
-	InstallCatalogToConfigs(ctx context.Context, tenantID uint64, catalogID string, configIDs []string) (*CatalogInstallResult, error)
+	InstallCatalogToConfigs(ctx context.Context, tenantID uint64, catalogID string, configIDs []string) (*acatsvc.CatalogInstallResult, error)
 }
 
 // TenantSkillMarketService implements interfaces.TenantSkillMarketService.

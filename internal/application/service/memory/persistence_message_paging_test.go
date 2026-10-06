@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
+	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
@@ -57,7 +57,7 @@ func TestMemoryConsistencyRealMessagePaging(t *testing.T) {
 		Enabled: true, WriteMode: types.MemoryWriteAuto, EmbeddingModelID: "embed-1",
 	}}}
 	msgRepo := repository.NewMessageRepository(db)
-	_ = memory.NewMemoryService(memory.NewMemoryRepository(db), tr, msgRepo, nil, nil, nil)
+	_ = memory.NewMemoryService(repository.NewMemoryRepository(db), tr, msgRepo, nil, nil, nil)
 
 	tenantID := uint64(1)
 	ctx := context.WithValue(t.Context(), types.TenantIDContextKey, tenantID)

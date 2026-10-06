@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/datasource/service"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

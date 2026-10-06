@@ -7,8 +7,7 @@ import (
 	"sync"
 
 	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
-	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
-	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	acrepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -21,18 +20,12 @@ import (
 // （见文件尾标注小节），删除期限按其独立注释执行。
 
 // validSkillMD：agent_service_skill_bundle_test.go 消费的 SKILL.md fixture
-// （与 agentcatalog/service/tenant_skill_bundle_test.go 同源副本，仅测试数据）。
-const validSkillMD = `---
-name: pdf-tools
-description: Extract text from PDF files
----
-
-Use scripts/extract.py to pull text out of a PDF.
-`
+// —— Pass B 25b 曾在本地保留同源副本；真身 tenant_skill_bundle_test.go
+// 归位本包后共享其定义，此处不再重复声明（remove_at: ib2）。
 
 // skillArchiveSHA256 转发新包导出名（转发，无逻辑）。
 func skillArchiveSHA256(archive []byte) string {
-	return acatsvc.SkillArchiveSHA256(archive)
+	return SkillArchiveSHA256(archive)
 }
 
 // installerAgentConfig 保迁移前 3 参形状。第 4 参取 agent/tools 三个 install-mode
@@ -40,7 +33,7 @@ func skillArchiveSHA256(archive []byte) string {
 // 语义等价（旧实现用同一常量元组，现由 HostAdapters.InstallerToolNames 承载），
 // 依据见 agentcatalog/service/tenant_skill_install.go 的 InstallerAgentConfig 注释。
 func installerAgentConfig(defaults *types.CustomAgent, configID, skillDir string) *types.AgentConfig {
-	return acatsvc.InstallerAgentConfig(defaults, configID, skillDir, []string{
+	return InstallerAgentConfig(defaults, configID, skillDir, []string{
 		agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile,
 	})
 }

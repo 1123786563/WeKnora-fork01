@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/models/vlm"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

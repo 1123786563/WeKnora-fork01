@@ -12,8 +12,8 @@ import (
 	"encoding/json"
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
+	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/models/chat"
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

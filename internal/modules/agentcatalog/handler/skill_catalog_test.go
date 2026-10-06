@@ -13,9 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	"github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

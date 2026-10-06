@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	agentcatalogservice "github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	agentcatalogservice "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"

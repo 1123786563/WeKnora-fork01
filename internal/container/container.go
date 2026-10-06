@@ -41,8 +41,22 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
+	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
+	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v8"
+	milvusRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/milvus"
+	neo4jRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/neo4j"
+	openSearchRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/opensearch"
+	postgresRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/postgres"
+	qdrantRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/qdrant"
+	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/sqlite"
+	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
+	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
+	"github.com/Tencent/WeKnora/internal/application/service/memory"
+	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/database"
@@ -79,7 +93,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
+	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/career"
@@ -89,7 +103,6 @@ import (
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/usage"
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	queryadapters "github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/adapters"
 	queryports "github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/ports"
@@ -100,18 +113,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
-	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
-	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
-	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
-	milvusRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/milvus"
-	neo4jRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/neo4j"
-	openSearchRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/opensearch"
-	postgresRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/postgres"
-	qdrantRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/qdrant"
-	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
-	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
-	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
 	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
@@ -1082,7 +1083,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		published repository.PublishedSkillRepository,
 		users interfaces.UserRepository,
 	) *handler.TenantSkillMarketHandler {
-		marketSvc := service.NewTenantSkillMarketService(published, skillsRepo, tenantSkills, users)
+		marketSvc := acatsvc.NewTenantSkillMarketService(published, skillsRepo, tenantSkills, users)
 		return handler.NewTenantSkillMarketHandler(marketSvc)
 	}))
 	// Tenant-internal expert market API (M4): publishing an agent exports an

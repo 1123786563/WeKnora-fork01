@@ -4,9 +4,9 @@ import (
 	stderrors "errors"
 	"net/http"
 
+	agentcatalogservice "github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
-	agentcatalogservice "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"

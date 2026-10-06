@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 )

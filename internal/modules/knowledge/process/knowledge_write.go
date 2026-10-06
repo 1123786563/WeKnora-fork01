@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

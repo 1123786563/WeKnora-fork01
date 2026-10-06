@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
@@ -22,7 +23,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/filetransport"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/types"

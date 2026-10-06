@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/assets"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
@@ -28,7 +29,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/providers"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/Tencent/WeKnora/internal/utils"

@@ -479,4 +479,3 @@ func TestInstallTranscriptProjectsOutputWithoutCompletingTool(t *testing.T) {
 	}))
 	require.Len(t, streams.events, 1)
 }
-

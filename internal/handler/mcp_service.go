@@ -9,12 +9,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	mcpsecurity "github.com/Tencent/WeKnora/internal/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"

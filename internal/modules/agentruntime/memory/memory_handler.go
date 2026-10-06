@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	memorysvc "github.com/Tencent/WeKnora/internal/application/service/memory"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -447,18 +448,15 @@ func (h *MemoryHandler) Consolidate(c *gin.Context) {
 // belonging to someone else produce the same 404 on purpose.
 func (h *MemoryHandler) fail(c *gin.Context, err error, message string) {
 	switch {
-	case errors.Is(err, ErrNoMemoryScope):
+	case errors.Is(err, memorysvc.ErrNoMemoryScope):
 		c.Error(apperrors.NewUnauthorizedError("no principal in request"))
-	case errors.Is(err, ErrItemNotFound):
+	case errors.Is(err, memorysvc.ErrItemNotFound):
 		c.Error(apperrors.NewNotFoundError("memory not found"))
 	case errors.Is(err, types.ErrMemoryConflict):
 		c.Error(apperrors.NewConflictError(err.Error()))
-	case errors.Is(err, ErrSensitiveContent):
+	case errors.Is(err, memorysvc.ErrSensitiveContent):
 		c.Error(apperrors.NewBadRequestError(err.Error()))
-	case errors.Is(err, ErrMemoryDisabled):
-	case errors.Is(err, ErrSensitiveContent):
-		c.Error(apperrors.NewBadRequestError(err.Error()))
-	case errors.Is(err, ErrMemoryDisabled):
+	case errors.Is(err, memorysvc.ErrMemoryDisabled):
 		c.Error(apperrors.NewBadRequestError("memory is disabled"))
 	default:
 		logger.ErrorWithFields(c.Request.Context(), err, nil)

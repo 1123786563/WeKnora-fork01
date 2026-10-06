@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
+	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

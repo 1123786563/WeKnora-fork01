@@ -15,9 +15,9 @@ package handler
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	processhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/process/handler"
-	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"

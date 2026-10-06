@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
+	acrepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
