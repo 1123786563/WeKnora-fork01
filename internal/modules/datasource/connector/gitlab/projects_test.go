@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -78,6 +79,72 @@ func TestProjectsRejectsIncompleteList(t *testing.T) {
 			require.Equal(t, []string{"1", "2"}, recordedProjectPages(requests))
 		})
 	}
+}
+
+func TestProjectsFollowsGitLabPagination(t *testing.T) {
+	server, requests := projectListServer(t, map[string]projectListPage{
+		"1": {body: projectListJSON(t, 1, 1), next: "2"},
+		"2": {body: projectListJSON(t, 2, 1)},
+	})
+	c, err := newClient(server.URL, "test-token")
+	require.NoError(t, err)
+
+	projects, err := c.projects(context.Background())
+	require.NoError(t, err)
+	require.Len(t, projects, 2)
+	require.Equal(t, int64(2), projects[1].ID)
+	require.Equal(t, []string{"1", "2"}, recordedProjectPages(requests))
+}
+
+// TestProjectsRejectsRepeatedNextPage pins that a server which keeps echoing
+// the same non-empty X-Next-Page fails projects() after one repeated hop
+// instead of refetching the same page until the context expires.
+func TestProjectsRejectsRepeatedNextPage(t *testing.T) {
+	server, requests := projectListServer(t, map[string]projectListPage{
+		"1": {body: projectListJSON(t, 1, 1), next: "2"},
+		"2": {body: projectListJSON(t, 2, 1), next: "2"},
+	})
+	c, err := newClient(server.URL, "test-token")
+	require.NoError(t, err)
+
+	projects, err := c.projects(context.Background())
+	require.Error(t, err)
+	require.Nil(t, projects, "do not return a partial list as a successful result")
+	require.Contains(t, err.Error(), "no progress")
+	require.Equal(t, []string{"1", "2"}, recordedProjectPages(requests))
+}
+
+// TestProjectsRejectsPaginationPastHopLimit pins that a listing whose pages
+// never run out (every response points at a fresh page) is cut off at
+// maxPaginationHops rather than followed indefinitely.
+func TestProjectsRejectsPaginationPastHopLimit(t *testing.T) {
+	allowLocalGitLabServer(t)
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/projects" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page < 1 {
+			http.Error(w, "unexpected page", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+		_, _ = fmt.Fprint(w, projectListJSON(t, page, 1))
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := newClient(server.URL, "test-token")
+	require.NoError(t, err)
+
+	projects, err := c.projects(context.Background())
+	require.Error(t, err)
+	require.Nil(t, projects, "do not return a partial list as a successful result")
+	require.Contains(t, err.Error(), fmt.Sprintf("exceeded %d pages", maxPaginationHops))
+	require.LessOrEqual(t, requests, maxPaginationHops, "pagination must stop at the hop limit")
 }
 
 type projectListPage struct {
