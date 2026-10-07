@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -41,7 +42,7 @@ func TestMemoryConsistencyPostgres(t *testing.T) {
 	// 000153_memory_consistency is already applied by the helper above; the
 	// upstream 000274 re-introduction was a content-identical twin removed in
 	// the fork/upstream merge, so there is no second migration to replay.
-	repo := NewMemoryRepository(db)
+	repo := repository.NewMemoryRepository(db)
 	ctx := context.Background()
 	scope := interfaces.MemoryScope{TenantID: 7, SubjectID: "alice"}
 	_, err = repo.EnsureSubject(ctx, scope)

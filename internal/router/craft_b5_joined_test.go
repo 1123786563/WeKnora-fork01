@@ -96,8 +96,11 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	access := service.NewCraftAccessService(db)
 	versions := repository.NewCraftVersionStore(db)
 	files := &craftB5FileService{data: []byte("<!doctype html><title>pinned-b5</title>")}
+	// sessionsRepo 还原：重构前版本（13c656301）在此构造 db 真源 repo 并作
+	// 第 2 参传入；上游合并把该实参吞成 nil，直接 Session 读路径随即空指针。
+	sessionsRepo := repository.NewSessionRepository(db)
 	sessionSvc := service.NewSessionService(
-		&config.Config{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, service.HostSandboxManager{}, nil, nil, nil,
+		&config.Config{}, sessionsRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, service.HostSandboxManager{}, nil, nil, nil,
 		struct{ interfaces.FeedbackRepository }{}, access,
 	)
 

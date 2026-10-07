@@ -529,7 +529,9 @@ func TestResolveAndStoreSharedMHTMLContract(t *testing.T) {
 		Images          []contractImage `json:"images"`
 	}
 
-	contractPath := filepath.Join("..", "..", "..", "..", "testdata", "mhtml", "titled-image-contract.json")
+	// 仓库根 testdata/mhtml：docparser 现位于 internal/infrastructure/docparser
+	//（3 级深），目录重构前旧位置为 4 级深，层级随迁。
+	contractPath := filepath.Join("..", "..", "..", "testdata", "mhtml", "titled-image-contract.json")
 	raw, err := os.ReadFile(contractPath)
 	if err != nil {
 		t.Fatal(err)

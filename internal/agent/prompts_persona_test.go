@@ -19,7 +19,7 @@ import (
 // rather than a stub.
 func personaPromptTestConfig(t *testing.T) *config.Config {
 	t.Helper()
-	data, err := os.ReadFile("../../../../config/prompt_templates/agent_system_prompt.yaml")
+	data, err := os.ReadFile("../../config/prompt_templates/agent_system_prompt.yaml")
 	require.NoError(t, err)
 	var file struct {
 		Templates []config.PromptTemplate `yaml:"templates"`

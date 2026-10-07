@@ -283,9 +283,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// middleware). The ticket is minted by an authenticated POST.
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 	RegisterSandboxDesktopRoutes(r, params.SessionHandler)
-	r.GET("/api/v1/local-browser/extension", params.SessionHandler.BrowserSkillExtension)
-	r.POST("/api/v1/local-browser/extension/authorize", params.SessionHandler.BrowserSkillAuthorize)
-	r.POST("/api/v1/local-browser/internal", params.SessionHandler.BrowserSkillInternal)
+	// local-browser 三条路由经下方 RegisterLocalBrowserRoutes 统一挂载；
+	// 此处曾有的内联三行系上游同步（a3c7be10ca）与 fork helper 双写，
+	// gin 重复注册即 panic，目录重构合并后暴露，故删内联留 helper。
 
 	// Workbench artifact grant download: credential-free by design. The HMAC
 	// grant (tenant/owner/run/resource/version/expiry) is the authorization fact,
@@ -452,9 +452,8 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)
 		RegisterSandboxConfigRoutes(v1, params.SandboxConfigHandler, params.SandboxSkillHandler, rbacGuards)
 		RegisterMyEnvVarRoutes(v1, params.MeEnvVarHandler)
-		v1.GET("/me/browser", params.SessionHandler.BrowserSkillAccount)
-		v1.GET("/me/browser/extension", params.SessionHandler.BrowserSkillDownload)
-		v1.POST("/me/browser", params.SessionHandler.BrowserSkillAccount)
+		// /me/browser 三条路由经上方 RegisterMyBrowserRoutes 统一挂载；
+		// 此处内联三行系上游同步（a3c7be10ca）与 fork helper 双写，删内联留 helper。
 		RegisterEvaluationRoutes(v1, params.EvaluationHandler, rbacGuards)
 		RegisterInitializationRoutes(v1, params.InitializationHandler, rbacGuards)
 		params.SystemHandler.BindDeploymentCapabilities(deploymentCapabilitiesFromRouter(params))

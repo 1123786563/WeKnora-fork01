@@ -29,8 +29,8 @@ func loadWireFixture(t *testing.T) wireFixture {
 	if !ok {
 		t.Fatal("resolve wire fixture path")
 	}
-	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "..",
-		"tests", "native-agent", "wire-v1.json")) //nolint:lll // 深层相对路径拼接，Pass A 搬迁深度修复
+	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..",
+		"tests", "native-agent", "wire-v1.json")) //nolint:lll // 深层相对路径拼接，搬迁深度随目录重构重算
 	if err != nil {
 		t.Fatalf("read wire fixture: %v", err)
 	}

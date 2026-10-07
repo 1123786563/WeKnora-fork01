@@ -82,6 +82,12 @@ func NewDataSourceService(
 		tenantRepo:        tenantRepo,
 		tagService:        tagService,
 		audit:             audit,
+		// knowledgeCleanup 接线（目录重构回归修复）：迁移前宿主垫片
+		// NewDataSourceService（datasource_passb_compat.go）构造后立即
+		// SetKnowledgeCleanup(withKnowledgeCleanup)，purge worker 经此走
+		// knowledgeCleanupScope 豁免路径；坍缩垫片时该接线丢失，purge 落到
+		// requireKBWrite 即被拒（1002 无权修改该知识库）。同包直赋等价恢复。
+		knowledgeCleanup: withKnowledgeCleanup,
 	}
 }
 

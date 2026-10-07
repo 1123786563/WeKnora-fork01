@@ -74,7 +74,9 @@ func (s *fakeSubagentAgentService) UpdateAgent(_ context.Context, agent *types.C
 // library (the subagents package's testdata tree) and in-memory fakes.
 func newSubagentServiceForTest(t *testing.T) (interfaces.SubagentService, *fakeSubagentRepo, *fakeSubagentAgentService) {
 	t.Helper()
-	catalog, err := subagents.ScanSubagents("../../modules/agentruntime/agent/subagents/testdata/subagents")
+	// subagents 包已随目录重构迁至 internal/agent/subagents（原
+	// internal/modules/agentruntime/agent/subagents），testdata 相对路径随迁。
+	catalog, err := subagents.ScanSubagents("../../agent/subagents/testdata/subagents")
 	if err != nil {
 		t.Fatal(err)
 	}

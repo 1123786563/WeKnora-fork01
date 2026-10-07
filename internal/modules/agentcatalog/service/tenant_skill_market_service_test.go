@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	acatsvc "github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -120,7 +121,7 @@ func (f *fakeTenantCatalogStore) ListSkillsByTenant(_ context.Context, tenantID 
 type fakeTenantInstaller struct {
 	mu     sync.Mutex
 	calls  []tenantInstallCall
-	answer func(call tenantInstallCall) (*CatalogInstallResult, error)
+	answer func(call tenantInstallCall) (*acatsvc.CatalogInstallResult, error)
 }
 
 type tenantInstallCall struct {
@@ -131,7 +132,7 @@ type tenantInstallCall struct {
 
 func (f *fakeTenantInstaller) InstallCatalogToConfigs(
 	_ context.Context, tenantID uint64, catalogID string, configIDs []string,
-) (*CatalogInstallResult, error) {
+) (*acatsvc.CatalogInstallResult, error) {
 	call := tenantInstallCall{tenantID: tenantID, catalogID: catalogID, configIDs: append([]string(nil), configIDs...)}
 	f.mu.Lock()
 	f.calls = append(f.calls, call)
@@ -144,7 +145,7 @@ func (f *fakeTenantInstaller) InstallCatalogToConfigs(
 	for _, id := range configIDs {
 		installs[id] = "skill-for-" + id
 	}
-	return &CatalogInstallResult{Installs: installs}, nil
+	return &acatsvc.CatalogInstallResult{Installs: installs}, nil
 }
 
 // fakePublisherNames is the GetUsersByIDs seam (interfaces.UserRepository).
@@ -431,8 +432,8 @@ func TestTenantMarketInstallMapsPartialFailures(t *testing.T) {
 	store := &fakeTenantCatalogStore{catalogs: map[uint64]map[string]*types.TenantSkillCatalogEntity{
 		7: {"cat-a": tenantCatalog(7, "cat-a", "pdf-extract")},
 	}}
-	installer := &fakeTenantInstaller{answer: func(call tenantInstallCall) (*CatalogInstallResult, error) {
-		return &CatalogInstallResult{
+	installer := &fakeTenantInstaller{answer: func(call tenantInstallCall) (*acatsvc.CatalogInstallResult, error) {
+		return &acatsvc.CatalogInstallResult{
 			Installs: map[string]string{"cfg-1": "sk-1"},
 			Errors:   map[string]string{"cfg-2": apperrors.NewBadRequestError("missing config").Error()},
 		}, nil

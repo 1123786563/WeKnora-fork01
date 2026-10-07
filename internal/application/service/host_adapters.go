@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Tencent/WeKnora/internal/agent/skills"
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -110,6 +112,35 @@ func (a HostAdapters) skillManifestParser(content string) (SkillManifestView, er
 		return SkillManifestView{}, errors.New("HostAdapters.SkillManifestParser is not wired")
 	}
 	return a.SkillManifestParser(content)
+}
+
+// NewProductionHostAdapters 绑定生产真源的全量适配位（目录重构回归修复）。
+// 重构前本包存在旧 12 参 NewTenantSkillService 包装器，内部按同一绑定构造
+// HostAdapters 后委托 agentcatalog 真身；重构把真身随迁本包并坍缩包装器时，
+// 这段装配逻辑丢失，container 的 dig 图随即缺 service.HostAdapters provider。
+// 本工厂逐位恢复旧包装器绑定（resolveTenantSandboxForConfig / 
+// sessionSandboxInstallShellExecutor / parseSkillManifest / uniqueNonEmptyStrings
+// 均为本包未导出真源），供 internal/container 装配消费。
+func NewProductionHostAdapters(
+	sandboxes sandbox.TenantSandboxResolver,
+	sandboxPolicy WorkspaceSandboxPolicy,
+) HostAdapters {
+	return HostAdapters{
+		ResolveConfigManager: func(ctx context.Context, tenantID uint64, configID string) (sandbox.Manager, error) {
+			return resolveTenantSandboxForConfig(ctx, sandboxes, nil, tenantID, configID, sandboxPolicy)
+		},
+		InstallShellExecutor:     sessionSandboxInstallShellExecutor,
+		SkillManifestParser:      parseSkillManifest,
+		FrontmatterVersionParser: skills.UnmarshalSkillFrontmatter,
+		InstallerToolNames: func() [3]string {
+			return [3]string{agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile}
+		},
+		OnDemandInstallerPath:        skills.IsOnDemandInstallerPath,
+		StreamContentForToolResult:   agenttools.StreamContentForToolResult,
+		SanitizeToolResultForClient:  agenttools.SanitizeToolResultForClient,
+		SanitizeAgentStepsForStorage: agenttools.SanitizeAgentStepsForStorage,
+		UniqueNonEmptyStrings:        uniqueNonEmptyStrings,
+	}
 }
 
 func (a HostAdapters) frontmatterVersionParser(frontmatter string, dest any) (bool, error) {

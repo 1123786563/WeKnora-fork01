@@ -625,7 +625,7 @@ func (f *installFixture) catalogRefFor(t *testing.T, catalogID string) string {
 	return cat.BundleRef
 }
 
-// HostSandboxManager is the zero-value host sandbox plumbing used in tests.
-type HostSandboxManager struct{}
+// HostSandboxManager 的测试侧占位声明已移除：目录重构后生产侧
+// tenant_sandbox_resolve.go 重新声明了同名类型，测试直接复用其零值。
 
 type discard = struct{}

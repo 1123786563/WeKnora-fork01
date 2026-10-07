@@ -7,7 +7,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/sandbox"
-	"github.com/Tencent/WeKnora/internal/types"
 )
 
 // testInstallShellExecutor 与宿主 sessionSandboxInstallShellExecutor 同构：
@@ -19,15 +18,16 @@ func testInstallShellExecutor(mgr sandbox.Manager) sandbox.SessionInstallShellEx
 	return nil
 }
 
-// ctxWithTenant 原为宿主测试包共享 helper（knowledgebase_pr3_test.go），新包
-// 测试二进制不可见，此处按同一定义补齐。
-func ctxWithTenant(tenantID uint64) context.Context {
-	return context.WithValue(context.Background(), types.TenantIDContextKey, tenantID)
-}
+// 目录重构回归修复（restructure/upstream-align-round2）：本文件自
+// internal/modules/agentcatalog/service/ 随 tenant-skill 测试面迁回宿主包
+// （HostAdapters / SkillManifestView 真身已在本包 host_adapters.go）。
+// ctxWithTenant 原补齐副本随之删除——本包 knowledgebase_pr3_test.go 的
+// 同名 helper 重新同包可见。
 
-// 本文件是新包测试二进制的宿主能力装载（计划 §4.4-2）：新包测试不链接宿主
-// 残差、其 init 注册通道不运行，因此注入名与 SKILL.md 解析能力在测试二进制
-// 内显式注册（与生产同一 agentruntime 真源，guard 对 _test.go 豁免）。
+// 本文件是测试二进制的宿主能力装载（计划 §4.4-2）：注入名与 SKILL.md
+// 解析能力在测试二进制内显式注册（与生产同一 agentruntime 真源，guard 对
+// _test.go 豁免）。生产侧 tenant_skill_passb_host_shims.go 的 init() 已注册
+// 等价函数；RegisterBundleParsers 为幂等重赋值，双注册无害。
 
 func init() {
 	RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())

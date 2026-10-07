@@ -701,6 +701,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Debugf(ctx, "[Container] Registering session service...")
 	must(container.Provide(service.NewSessionService))
+	// HostAdapters 的生产装配位（目录重构回归修复）：重构前旧 12 参
+	// NewTenantSkillService 包装器内部绑定这些真源，坍缩包装器后由本工厂
+	// 承接，否则 dig 图缺 service.HostAdapters（TenantSkillService 构造失败）。
+	must(container.Provide(service.NewProductionHostAdapters))
 	must(container.Provide(service.NewTenantSkillService))
 	// The member-facing half of env vars is its own service because its
 	// authority is different in kind: it derives the identity from the context

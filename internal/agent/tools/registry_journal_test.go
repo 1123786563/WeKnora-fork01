@@ -35,7 +35,7 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	require.NoError(t, db.Exec(`CREATE TABLE sessions (id TEXT, tenant_id INTEGER, user_id TEXT, deleted_at DATETIME);
 		INSERT INTO sessions VALUES ('s1',1,'u1',NULL);`).Error)
-	migration, err := os.ReadFile("../../../../../migrations/sqlite/000014_agent_runs.up.sql")
+	migration, err := os.ReadFile("../../../migrations/sqlite/000014_agent_runs.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
 	// The production store reads the post-rebuild agent_runs shape; the
@@ -44,7 +44,7 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN driver VARCHAR(16) NOT NULL DEFAULT 'platform'").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN target_id VARCHAR(512) NOT NULL DEFAULT ''").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN budget_ref VARCHAR(512) NOT NULL DEFAULT ''").Error)
-	versions, err := os.ReadFile("../../../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
+	versions, err := os.ReadFile("../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(versions)).Error)
 	// store.Claim admission now serialises against RunView effect intents
@@ -58,7 +58,7 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 		"000172_craft_run_view_effect_intent.up.sql",
 		"000177_craft_run_view_effect_request_digest.up.sql",
 	} {
-		body, err := os.ReadFile("../../../../../migrations/sqlite/" + m)
+		body, err := os.ReadFile("../../../migrations/sqlite/" + m)
 		require.NoError(t, err)
 		require.NoError(t, db.Exec(string(body)).Error)
 	}
