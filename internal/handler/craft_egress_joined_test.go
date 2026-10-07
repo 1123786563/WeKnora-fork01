@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,45 +12,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// brokenBodyTransport performs the real round trip and then loses the response
-// body after a prefix — exactly the unknown-outcome window the protocol must
-// survive without double charging.
-type brokenBodyTransport struct {
+// lostResponseTransport performs the real round trip and then reports the
+// response as lost: the gateway finished its side (journal resolved, usage
+// recorded) while the adapter observes only a transport error. Under the
+// pinned egress policy (OCR R2 F28) a torn 2xx body is a definitive outcome,
+// so the unknown-outcome window the protocol must survive without double
+// charging is the connection that drops after the physical send: no status,
+// no body, no proof.
+type lostResponseTransport struct {
 	inner    http.RoundTripper
 	failNext bool
 }
 
-func (t *brokenBodyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *lostResponseTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.inner.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
 	if t.failNext {
 		t.failNext = false
-		resp.Body = &prefixBrokenBody{inner: resp.Body}
+		_ = resp.Body.Close()
+		return nil, errors.New("connection lost after send")
 	}
 	return resp, nil
 }
-
-type prefixBrokenBody struct {
-	inner io.ReadCloser
-	done  bool
-}
-
-func (b *prefixBrokenBody) Read(p []byte) (int, error) {
-	if b.done {
-		return 0, errors.New("response stream lost mid-body")
-	}
-	b.done = true
-	// Deliver a strict prefix without EOF so the reader must come back and
-	// then hit the lost-stream error.
-	if len(p) > 4 {
-		p = p[:4]
-	}
-	return b.inner.Read(p)
-}
-
-func (b *prefixBrokenBody) Close() error { return b.inner.Close() }
 
 // TestCraftEgressAdapterJoinedWithRealGateway proves the runtime-side
 // producer against the production gateway contract: the adapter-minted
@@ -97,10 +81,12 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 	require.Equal(t, "Bearer sk-platform-managed", env.upstreamAuth(), "the gateway injected the managed upstream credential")
 
 	// Unknown outcome: the gateway finishes its side, the adapter loses the
-	// response stream. The retry must reuse the SAME identity, and the real
-	// gateway must refuse a second physical send with 409.
+	// connection after the send (torn 2xx bodies are definitive under the
+	// pinned egress policy, so the unknown window is a transport-level loss).
+	// The retry must reuse the SAME identity, and the real gateway must refuse
+	// a second physical send with 409.
 	unknownBody := `{"model":"m1","messages":[{"role":"user","content":"unknown window"}]}`
-	transport := &brokenBodyTransport{inner: http.DefaultTransport, failNext: true}
+	transport := &lostResponseTransport{inner: http.DefaultTransport, failNext: true}
 	adapter2, err := craftegress.NewCraftEgressAdapter(craftegress.CraftEgressAdapterConfig{
 		GatewayBaseURL: gatewayServer.URL + "/craft/model-gateway",
 		Credential:     credential,
@@ -117,7 +103,7 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 		return rec
 	}
 	lost := post2(unknownBody)
-	require.Equal(t, http.StatusBadGateway, lost.Code, "a lost gateway response is an explicit unknown")
+	require.Equal(t, http.StatusBadGateway, lost.Code, "a lost gateway connection is an explicit unknown")
 	parkedID := lost.Header().Get("X-Craft-Activity-ID")
 	require.NotEmpty(t, parkedID)
 	retry := post2(unknownBody)

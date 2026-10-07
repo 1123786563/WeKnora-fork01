@@ -90,7 +90,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/mcpserver"
-	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/models/api"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
@@ -1596,7 +1596,7 @@ func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, pr
 	return workbenchservice.NewNotificationDeliveryWorkerWithHealth(store, provider, "mobile-notification-delivery", devices, health, "mobile")
 }
 
-// registerChatLocalImageResolver wires the chat package's LocalImageResolver
+// registerChatLocalImageResolver wires the api package's LocalImageResolver
 // hook. Stored local:// URLs are relative to the resolved storage base dir and
 // do NOT encode the owning tenant's configured PathPrefix, so resolving them to
 // disk bytes requires rebuilding the FileService from that tenant's storage
@@ -1607,7 +1607,7 @@ func registerChatLocalImageResolver(
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
 ) {
-	chat.LocalImageResolver = func(storageURL string) ([]byte, bool) {
+	api.LocalImageResolver = func(storageURL string) ([]byte, bool) {
 		// The object storage clients bound connection setup but leave the
 		// transfer to this context, so give it a deadline: a chat turn must
 		// not hang on one image whose download stalls.

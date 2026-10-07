@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/models/api"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/assert"
@@ -362,13 +363,19 @@ func TestSanitizeMessages_DoesNotModifyInput(t *testing.T) {
 // request construction with every image URL and text part on the wire, in
 // both streaming and non-streaming form.
 func TestSanitizeMessages_OpenAIRequestCarriesMergedParts(t *testing.T) {
-	client, err := chat.NewRemoteAPIChat(&chat.ChatConfig{
+	client, err := chat.NewRemoteChat(&chat.ChatConfig{
 		Source:    types.ModelSourceRemote,
+		Provider:  "generic",
 		ModelName: "test-model",
 		ModelID:   "test-model",
 		APIKey:    "test-key",
+		BaseURL:   "https://example.com/v1",
 	})
 	require.NoError(t, err)
+	builder, ok := client.(interface {
+		BuildRequestBody(messages []api.Message, opts *api.Options, stream bool) (map[string]any, error)
+	})
+	require.True(t, ok, "protocol client does not expose BuildRequestBody")
 
 	sanitized := SanitizeMessages([]chat.Message{
 		{Role: "system", Content: "system"},
@@ -381,10 +388,12 @@ func TestSanitizeMessages_OpenAIRequestCarriesMergedParts(t *testing.T) {
 	require.Len(t, sanitized, 5)
 
 	for _, stream := range []bool{false, true} {
-		req := client.BuildChatCompletionRequest(sanitized, nil, stream)
-		assert.Equal(t, stream, req.Stream)
+		built, err := builder.BuildRequestBody(sanitized, nil, stream)
+		require.NoError(t, err)
+		_, wireStream := built["stream"]
+		assert.Equal(t, stream, wireStream)
 
-		data, err := json.Marshal(req)
+		data, err := json.Marshal(built)
 		require.NoError(t, err)
 
 		var body struct {

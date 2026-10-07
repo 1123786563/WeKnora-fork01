@@ -2,10 +2,7 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,45 +10,16 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/golang-migrate/migrate/v4"
-	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
-// openCraftScheduledServiceDB applies the real SQLite migrations (000099_
-// craft_scheduled included) into an isolated temp database, following
-// openCraftUsageServiceDB.
+// openCraftScheduledServiceDB opens a clone of the once-migrated SQLite
+// template (000099_craft_scheduled included) into an isolated temp database,
+// following openCraftUsageServiceDB.
 func openCraftScheduledServiceDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	dbPath := filepath.Join(t.TempDir(), "craft-scheduled.db")
-	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000"
-
-	sqlDB, err := sql.Open("sqlite3", dsn)
-	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
-	require.NoError(t, err)
-	migrator, err := migrate.NewWithDatabaseInstance(
-		"file:"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
-	require.NoError(t, err)
-	require.NoError(t, migrator.Up())
-	_, _ = migrator.Close()
-
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		conn, e := db.DB()
-		if e == nil {
-			_ = conn.Close()
-		}
-	})
-	return db
+	return cloneMigratedSQLiteDB(t, "craft-scheduled.db")
 }
 
 // newCraftScheduledFixture wires the real repository behind the service with

@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http/httptest"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,36 +23,15 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/Tencent/WeKnora/internal/utils"
-	"github.com/golang-migrate/migrate/v4"
-	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	sdkmcp "github.com/mark3labs/mcp-go/mcp"
 	sdkserver "github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func openDurableRunTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	dbPath := filepath.Join(t.TempDir(), "durable-runs.db")
-	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000"
-	sqlDB, err := sql.Open("sqlite3", dsn)
-	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
-	require.NoError(t, err)
-	migrator, err := migrate.NewWithDatabaseInstance(
-		"file:"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
-	)
-	require.NoError(t, err)
-	require.NoError(t, migrator.Up())
-	_, _ = migrator.Close()
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
+	db := cloneMigratedSQLiteDB(t, "durable-runs.db")
 	require.NoError(t, db.Exec(
 		"INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test')").Error)
 	require.NoError(t, db.Exec(

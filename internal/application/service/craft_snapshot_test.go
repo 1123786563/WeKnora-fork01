@@ -3,13 +3,10 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -19,13 +16,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/golang-migrate/migrate/v4"
-	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
-	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 // -----------------------------------------------------------------------------
@@ -193,25 +185,10 @@ func (f *fakeSnapshotSource) appendFakeRound(prompt, answer string) {
 }
 
 // openSnapshotServiceDB mirrors the craft session service harness (the
-// migrations now include 000046_craft_snapshots).
+// migrated template includes 000046_craft_snapshots).
 func openSnapshotServiceDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	dbPath := filepath.Join(t.TempDir(), "craft-snapshots.db")
-	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000"
-	sqlDB, err := sql.Open("sqlite3", dsn)
-	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
-	require.NoError(t, err)
-	migrator, err := migrate.NewWithDatabaseInstance(
-		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
-	require.NoError(t, err)
-	require.NoError(t, migrator.Up())
-	_, _ = migrator.Close()
-	db, err := gorm.Open(gormsqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
+	db := cloneMigratedSQLiteDB(t, "craft-snapshots.db")
 	require.NoError(t, db.Exec(
 		`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test')`).Error)
 	require.NoError(t, db.Exec(
