@@ -2,13 +2,13 @@
 //
 // D1：FAQ 域五文件 + handler/faq.go 已迁入 internal/modules/knowledge/faq
 // （K3.2）。本文件在宿主 *knowledgeService 上保留全部 FAQ 面方法，逐条一行
-// 委托到 faq.Service：
+// 委托到 Service：
 //
 //	(a) interfaces.KnowledgeService 冻结接口 FAQ 面 15 方法（计划 §4 表 14 +
 //	    编译器枚举补齐的 UpdateLastFAQImportResultDisplayStatus，报告登记）；
 //	(b) 宿主他 owner（K2 knowledgebase_access.go:42、K4 knowledge_clone_move.go
 //	    :700/:855/:885）调用的 4 个未导出方法；
-//	(c) faqSvc()：以 knowledgeService 实际字段构造 faq.Service，并把 faq 侧
+//	(c) faqSvc()：以 knowledgeService 实际字段构造 Service，并把 faq 侧
 //	    seam 接到宿主现行符号（与迁移前同包直引完全相同的目标实现）。
 //
 // 行为零变化：seam 闭包捕获本 receiver；memFAQProgress/memFAQRunningImport
@@ -21,17 +21,16 @@ import (
 	"context"
 
 	"github.com/Tencent/WeKnora/internal/models/embedding"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/hibiken/asynq"
 )
 
-// ---- (c) faqSvc：faq.Service 构造 + seam 接线 ----
+// ---- (c) faqSvc：Service 构造 + seam 接线 ----
 
-// faqSvc 构造 faq.Service。每次调用重建（knowledgeService 结构体不可改，
+// faqSvc 构造 Service。每次调用重建（knowledgeService 结构体不可改，
 // 无缓存字段位）；两个内存回落表以指针共享保证状态连续。
-func (s *knowledgeService) faqSvc() *faq.Service {
-	return faq.NewService(faq.Deps{
+func (s *knowledgeService) faqSvc() *Service {
+	return NewService(Deps{
 		Repo:                s.repo,
 		ChunkRepo:           s.chunkRepo,
 		ChunkService:        s.chunkService,
@@ -49,7 +48,7 @@ func (s *knowledgeService) faqSvc() *faq.Service {
 		Ownership:           s.ownership,
 		MemFAQProgress:      &s.memFAQProgress,
 		MemFAQRunningImport: &s.memFAQRunningImport,
-		Seams: faq.Seams{
+		Seams: FAQSeams{
 			RecordKBActivity:             recordKBActivity,
 			KBActivityTrigger:            kbActivityTrigger,
 			WithKBActivityTask:           withKBActivityTask,
@@ -57,7 +56,7 @@ func (s *knowledgeService) faqSvc() *faq.Service {
 			ResolveKBReadTenant: func(
 				ctx context.Context,
 				kb *types.KnowledgeBase,
-				shares faq.KBShareLookup,
+				shares KBShareLookup,
 			) (uint64, error) {
 				return resolveKBReadTenant(ctx, kb, shares)
 			},
@@ -166,7 +165,7 @@ func (s *knowledgeService) buildFAQStatusSyncPlan(
 	srcTenantID, dstTenantID uint64,
 	matched []types.FAQChunkSyncPair,
 	resolveTag func(srcTagID string) string,
-) (*faq.FAQStatusSyncPlan, error) {
+) (*FAQStatusSyncPlan, error) {
 	return s.faqSvc().BuildFAQStatusSyncPlan(ctx, srcTenantID, dstTenantID, matched, resolveTag)
 }
 

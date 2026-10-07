@@ -23,21 +23,21 @@ import (
 type WikiPageHandler struct {
 	wikiService   interfaces.WikiPageService
 	kbService     interfaces.KnowledgeBaseService
-	lintService   *wiki.WikiLintService
+	lintService   *service.WikiLintService
 	auditService  interfaces.AuditLogService
 	memoryService interfaces.MemoryService
 	// recordWikiContentActivity 在 Pass B (23-knowledge-wikifaq W0) 曾是对
 	// 宿主 K2 符号 service.RecordWikiContentActivity 的构造注入 seam；
 	// order 60 迁回后由构造体内部固定接线（字段保留以维持零值构造时
 	// manual activity projection 关闭的 best-effort 语义）。
-	recordWikiContentActivity wiki.RecordWikiContentActivityFn
+	recordWikiContentActivity service.RecordWikiContentActivityFn
 }
 
 // NewWikiPageHandler creates a new wiki page handler
 func NewWikiPageHandler(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
-	lintService *wiki.WikiLintService,
+	lintService *service.WikiLintService,
 	auditService interfaces.AuditLogService,
 	memoryService interfaces.MemoryService,
 ) *WikiPageHandler {
@@ -323,9 +323,9 @@ func (h *WikiPageHandler) MovePage(c *gin.Context) {
 // writeWikiFolderError maps folder/page service errors to HTTP status codes.
 func writeWikiFolderError(c *gin.Context, err error) {
 	switch {
-	case stderrors.Is(err, wiki.ErrWikiFolderNotFound), stderrors.Is(err, wiki.ErrWikiPageNotFound):
+	case stderrors.Is(err, service.ErrWikiFolderNotFound), stderrors.Is(err, service.ErrWikiPageNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case stderrors.Is(err, wiki.ErrWikiFolderConflict), stderrors.Is(err, wiki.ErrWikiFolderNotEmpty):
+	case stderrors.Is(err, service.ErrWikiFolderConflict), stderrors.Is(err, service.ErrWikiFolderNotEmpty):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -477,7 +477,7 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 
 	page, err := h.wikiService.GetPageBySlug(c.Request.Context(), kbID, slug)
 	if err != nil {
-		if stderrors.Is(err, wiki.ErrWikiPageNotFound) {
+		if stderrors.Is(err, service.ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -530,7 +530,7 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 
 	existing, err := h.wikiService.GetPageBySlug(ctx, kbID, slug)
 	if err != nil {
-		if stderrors.Is(err, wiki.ErrWikiPageNotFound) {
+		if stderrors.Is(err, service.ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -579,9 +579,9 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 	updated, err := h.wikiService.UpdatePage(ctx, &page)
 	if err != nil {
 		switch {
-		case stderrors.Is(err, wiki.ErrWikiPageNotFound):
+		case stderrors.Is(err, service.ErrWikiPageNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
-		case stderrors.Is(err, wiki.ErrWikiPageConflict):
+		case stderrors.Is(err, service.ErrWikiPageConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "Wiki page was modified by someone else"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -637,7 +637,7 @@ func (h *WikiPageHandler) ListRevisions(c *gin.Context) {
 		}
 		rev, err := h.wikiService.GetRevision(ctx, kbID, slug, version)
 		if err != nil {
-			if stderrors.Is(err, wiki.ErrWikiPageNotFound) {
+			if stderrors.Is(err, service.ErrWikiPageNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page revision not found"})
 				return
 			}
@@ -662,7 +662,7 @@ func (h *WikiPageHandler) ListRevisions(c *gin.Context) {
 
 	resp, err := h.wikiService.ListRevisions(ctx, kbID, slug, limit, offset)
 	if err != nil {
-		if stderrors.Is(err, wiki.ErrWikiPageNotFound) {
+		if stderrors.Is(err, service.ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -715,11 +715,11 @@ func (h *WikiPageHandler) RevertPage(c *gin.Context) {
 	updated, err := h.wikiService.RevertPageToVersion(ctx, kbID, slug, req.Version)
 	if err != nil {
 		switch {
-		case stderrors.Is(err, wiki.ErrWikiPageNotFound):
+		case stderrors.Is(err, service.ErrWikiPageNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page or revision not found"})
-		case stderrors.Is(err, wiki.ErrWikiPageConflict):
+		case stderrors.Is(err, service.ErrWikiPageConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "Wiki page was modified by someone else"})
-		case stderrors.Is(err, wiki.ErrWikiRevertToCurrentVersion):
+		case stderrors.Is(err, service.ErrWikiRevertToCurrentVersion):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -759,7 +759,7 @@ func (h *WikiPageHandler) DeletePage(c *gin.Context) {
 	page, _ := h.wikiService.GetPageBySlug(ctx, kbID, slug)
 
 	if err := h.wikiService.DeletePage(ctx, kbID, slug); err != nil {
-		if stderrors.Is(err, wiki.ErrWikiPageNotFound) {
+		if stderrors.Is(err, service.ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}

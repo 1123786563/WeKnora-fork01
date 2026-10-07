@@ -446,12 +446,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return s
 	}))
 	must(container.Provide(service.NewSpanTracker))
-	must(container.Provide(service.NewChunkService))
+	must(container.Provide(service.NewChunkServiceDI))
 	must(container.Provide(service.NewKnowledgeTagService))
 	must(container.Provide(embedding.NewBatchEmbedder))
 	must(container.Provide(service.NewModelService))
 	must(container.Provide(service.NewDatasetService))
-	must(container.Provide(service.NewEvaluationService))
+	must(container.Provide(service.NewEvaluationServiceDI))
 	must(container.Provide(service.NewUserService))
 	must(container.Decorate(func(s interfaces.TenantService, i interfaces.SemanticScopeInvalidator) interfaces.TenantService {
 		s.(interface {
@@ -481,9 +481,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWeKnoraCloudService))
 
 	// Extract services - register individual extracters with names
-	must(container.Provide(service.NewChunkExtractService, dig.Name("chunkExtractor")))
-	must(container.Provide(service.NewDataTableSummaryService, dig.Name("dataTableSummary")))
-	must(container.Provide(service.NewImageMultimodalService, dig.Name("imageMultimodal")))
+	must(container.Provide(service.NewChunkExtractServiceDI, dig.Name("chunkExtractor")))
+	must(container.Provide(service.NewDataTableSummaryServiceDI, dig.Name("dataTableSummary")))
+	must(container.Provide(service.NewImageMultimodalServiceDI, dig.Name("imageMultimodal")))
 	must(container.Provide(service.NewKnowledgePostProcessService, dig.Name("knowledgePostProcess")))
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 	must(container.Provide(service.NewKnowledgeBaseProfileService))

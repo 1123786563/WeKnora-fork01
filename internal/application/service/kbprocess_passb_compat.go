@@ -18,7 +18,6 @@ import (
 	"context"
 
 	"github.com/Tencent/WeKnora/internal/config"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/process"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
@@ -27,12 +26,12 @@ import (
 // writeResourceIDs 委托 process.WriteResourceIDs（knowledge_write.go:17 原定义，
 // K4.2 导出；K1 adapter hostKnowledgeWriteGuard 与推迟件消费面保护）。
 func writeResourceIDs(ids []string) ([]string, error) {
-	return process.WriteResourceIDs(ids)
+	return WriteResourceIDs(ids)
 }
 
 // writeExecutionTenant 委托 process.WriteExecutionTenant（knowledge_write.go:32 原定义）。
 func writeExecutionTenant(ctx context.Context) (uint64, error) {
-	return process.WriteExecutionTenant(ctx)
+	return WriteExecutionTenant(ctx)
 }
 
 // knowledgeWriteKB 委托 process.KnowledgeWriteKB（knowledge_write.go:42 原定义）；
@@ -41,20 +40,20 @@ func writeExecutionTenant(ctx context.Context) (uint64, error) {
 // GetKnowledgeBaseByID），接口到接口隐式转换，语义不变。
 func knowledgeWriteKB(
 	ctx context.Context,
-	lookup process.KnowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	knowledge *types.Knowledge,
 ) (*types.KnowledgeBase, error) {
-	return process.KnowledgeWriteKB(ctx, lookup, knowledge)
+	return KnowledgeWriteKB(ctx, lookup, knowledge)
 }
 
 // loadKnowledgeWrite 委托 process.LoadKnowledgeWrite（knowledge_write.go:60 原定义）。
 func loadKnowledgeWrite(
 	ctx context.Context,
 	repo interfaces.KnowledgeRepository,
-	lookup process.KnowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	id string,
 ) (*types.Knowledge, *types.KnowledgeBase, error) {
-	return process.LoadKnowledgeWrite(ctx, repo, lookup, id)
+	return LoadKnowledgeWrite(ctx, repo, lookup, id)
 }
 
 // loadKnowledgeWriteBatch 委托 process.LoadKnowledgeWriteBatch
@@ -62,28 +61,28 @@ func loadKnowledgeWrite(
 func loadKnowledgeWriteBatch(
 	ctx context.Context,
 	repo interfaces.KnowledgeRepository,
-	lookup process.KnowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	ids []string,
 ) ([]*types.Knowledge, error) {
-	return process.LoadKnowledgeWriteBatch(ctx, repo, lookup, ids)
+	return LoadKnowledgeWriteBatch(ctx, repo, lookup, ids)
 }
 
 // buildKnowledgeIndexContent 委托 process.BuildKnowledgeIndexContent
 // （knowledge_index_content.go:12 原定义；留守 knowledge_index_content_test.go
 // 消费面保护，兼作 compat 委托等价差分锚点）。
 func buildKnowledgeIndexContent(knowledge *types.Knowledge, content string) string {
-	return process.BuildKnowledgeIndexContent(knowledge, content)
+	return BuildKnowledgeIndexContent(knowledge, content)
 }
 
 // documentProcessTaskOptions 委托 process.DocumentProcessTaskOptions
 // （knowledge_task_options.go:11 原定义；推迟件 knowledge_create/clone_move 消费面保护）。
 func documentProcessTaskOptions(cfg *config.Config, extra ...asynq.Option) []asynq.Option {
-	return process.DocumentProcessTaskOptions(cfg, extra...)
+	return DocumentProcessTaskOptions(cfg, extra...)
 }
 
 // knowledgePostProcessTaskOptions 委托 process.KnowledgePostProcessTaskOptions
 // （knowledge_task_options.go:21 原定义；chunk_ingest_shim.go:204 与推迟件
 // knowledge_process.go 消费面保护）。
 func knowledgePostProcessTaskOptions() []asynq.Option {
-	return process.KnowledgePostProcessTaskOptions()
+	return KnowledgePostProcessTaskOptions()
 }

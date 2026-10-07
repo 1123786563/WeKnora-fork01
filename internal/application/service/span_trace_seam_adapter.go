@@ -14,20 +14,19 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // spanTraceSeamAdapter 把宿主 SpanTracker（knowledge_span_tracker.go:85）投影为
-// ingest.SpanTraceSeam；*Span 句柄经 any 不透明传递（ingest 不得 import 宿主，
+// SpanTraceSeam；*Span 句柄经 any 不透明传递（ingest 不得 import 宿主，
 // service→ingest→service import 环实测裁决，plan §6.3）。
 type spanTraceSeamAdapter struct {
 	tr SpanTracker
 }
 
 // NewSpanTraceSeamAdapter 返回四方法纯转发适配器。
-func NewSpanTraceSeamAdapter(tr SpanTracker) ingest.SpanTraceSeam {
+func NewSpanTraceSeamAdapter(tr SpanTracker) SpanTraceSeam {
 	return spanTraceSeamAdapter{tr: tr}
 }
 
@@ -76,14 +75,14 @@ func (a spanTraceSeamAdapter) FailSpan(ctx context.Context, span any, code, mess
 }
 
 // EnqueueSummaryRefreshProvider 返回捕获 tracker 的 summary 刷新入队闭包；
-// kbReader 参数类型 ingest.KBByIDLookup 与宿主 summaryKnowledgeBaseReader
+// kbReader 参数类型 KBByIDLookup 与宿主 summaryKnowledgeBaseReader
 // 结构等价（单方法 GetKnowledgeBaseByID），Go 结构化接口直接传递。
-func EnqueueSummaryRefreshProvider(tr SpanTracker) func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, ingest.KBByIDLookup, *types.Knowledge) error {
+func EnqueueSummaryRefreshProvider(tr SpanTracker) func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, KBByIDLookup, *types.Knowledge) error {
 	return func(
 		ctx context.Context,
 		repo interfaces.KnowledgeRepository,
 		taskEnqueuer interfaces.TaskEnqueuer,
-		kbReader ingest.KBByIDLookup,
+		kbReader KBByIDLookup,
 		knowledge *types.Knowledge,
 	) error {
 		return enqueueSummaryRefresh(ctx, repo, taskEnqueuer, kbReader, tr, knowledge)
@@ -91,12 +90,12 @@ func EnqueueSummaryRefreshProvider(tr SpanTracker) func(context.Context, interfa
 }
 
 // hostKnowledgeWriteGuard 以宿主 knowledge_write.go 包级函数（K4 属主）实现
-// ingest.KnowledgeWriteGuard，方法名一一对应，纯转发零复制。
+// KnowledgeWriteGuard，方法名一一对应，纯转发零复制。
 type hostKnowledgeWriteGuard struct{}
 
 // KnowledgeWriteGuardProvider 返回宿主写授权 seam 实现；K4 搬迁
 // knowledge_write.go 后指到其导出包装（plan §6.3 接线义务）。
-func KnowledgeWriteGuardProvider() ingest.KnowledgeWriteGuard {
+func KnowledgeWriteGuardProvider() KnowledgeWriteGuard {
 	return hostKnowledgeWriteGuard{}
 }
 
@@ -109,13 +108,13 @@ func (hostKnowledgeWriteGuard) WriteExecutionTenant(ctx context.Context) (uint64
 }
 
 func (hostKnowledgeWriteGuard) LoadKnowledgeWrite(
-	ctx context.Context, repo interfaces.KnowledgeRepository, lookup ingest.KBByIDLookup, id string,
+	ctx context.Context, repo interfaces.KnowledgeRepository, lookup KBByIDLookup, id string,
 ) (*types.Knowledge, *types.KnowledgeBase, error) {
 	return loadKnowledgeWrite(ctx, repo, lookup, id)
 }
 
 func (hostKnowledgeWriteGuard) LoadKnowledgeWriteBatch(
-	ctx context.Context, repo interfaces.KnowledgeRepository, lookup ingest.KBByIDLookup, ids []string,
+	ctx context.Context, repo interfaces.KnowledgeRepository, lookup KBByIDLookup, ids []string,
 ) ([]*types.Knowledge, error) {
 	return loadKnowledgeWriteBatch(ctx, repo, lookup, ids)
 }
@@ -128,7 +127,7 @@ func BuildKnowledgeIndexContentProvider() func(knowledge *types.Knowledge, conte
 }
 
 // AttemptSupersededProvider 返回捕获 tracker 的 attempt 超前判定闭包（K1.3，
-// plan §6.3 接线义务：ingest.NewChunkExtractService 消费）；nil tracker 按
+// plan §6.3 接线义务：NewChunkExtractService 消费）；nil tracker 按
 // noopSpanTracker 语义（LatestAttempt→0）恒 false，与原 tracker() 回退一致。
 func AttemptSupersededProvider(tr SpanTracker) func(context.Context, string, int) bool {
 	return func(ctx context.Context, knowledgeID string, attempt int) bool {
@@ -141,16 +140,16 @@ func AttemptSupersededProvider(tr SpanTracker) func(context.Context, string, int
 
 // KnowledgeWriteKBProvider 返回宿主 knowledgeWriteKB（knowledge_write.go:42，
 // K4 属主）的适配闭包（K1.3 增量 seam）：宿主参数类型 knowledgeBaseWriteLookup
-// 与 ingest.KBByIDLookup 结构等价（单方法 GetKnowledgeBaseByID），接口到接口
+// 与 KBByIDLookup 结构等价（单方法 GetKnowledgeBaseByID），接口到接口
 // 直接赋值，零逻辑复制。
-func KnowledgeWriteKBProvider() func(context.Context, ingest.KBByIDLookup, *types.Knowledge) (*types.KnowledgeBase, error) {
-	return func(ctx context.Context, lookup ingest.KBByIDLookup, knowledge *types.Knowledge) (*types.KnowledgeBase, error) {
+func KnowledgeWriteKBProvider() func(context.Context, KBByIDLookup, *types.Knowledge) (*types.KnowledgeBase, error) {
+	return func(ctx context.Context, lookup KBByIDLookup, knowledge *types.Knowledge) (*types.KnowledgeBase, error) {
 		return knowledgeWriteKB(ctx, lookup, knowledge)
 	}
 }
 
 // dataAnalysisToolSeam 把 agentruntime/agent/tools 的 DuckDB 分析工具投影为
-// ingest.DataAnalysisToolSeam（K1.3 增量 seam）：ingest 直连 tools 与宿主 R1-8
+// DataAnalysisToolSeam（K1.3 增量 seam）：ingest 直连 tools 与宿主 R1-8
 // shim 构成 repository→ingest→tools→repository import 环（tools 侧
 // wiki_route_resolver.go 消费 repository.ErrWikiPageNotFound，且
 // service/knowledge.go:38 钉住 repository→ingest），消费侧 seam 化破环。
@@ -159,9 +158,9 @@ type dataAnalysisToolSeam struct {
 	tool *tools.DataAnalysisTool
 }
 
-// DataAnalysisToolSeamFactory 返回 ingest.DataAnalysisToolFactory 的宿主实现
+// DataAnalysisToolSeamFactory 返回 DataAnalysisToolFactory 的宿主实现
 // （K1.3 增量 seam）。
-func DataAnalysisToolSeamFactory() ingest.DataAnalysisToolFactory {
+func DataAnalysisToolSeamFactory() DataAnalysisToolFactory {
 	return func(
 		knowledgeBaseService interfaces.KnowledgeBaseService,
 		knowledgeService interfaces.KnowledgeService,
@@ -170,19 +169,19 @@ func DataAnalysisToolSeamFactory() ingest.DataAnalysisToolFactory {
 		db *sql.DB,
 		sessionID string,
 		storageResolver interfaces.StorageBackendResolver,
-	) ingest.DataAnalysisToolSeam {
+	) DataAnalysisToolSeam {
 		return dataAnalysisToolSeam{
 			tool: tools.NewDataAnalysisTool(knowledgeBaseService, knowledgeService, tenantService, fileService, db, sessionID, storageResolver),
 		}
 	}
 }
 
-func (s dataAnalysisToolSeam) LoadFromKnowledge(ctx context.Context, knowledge *types.Knowledge) (*ingest.TableSchemaSummary, error) {
+func (s dataAnalysisToolSeam) LoadFromKnowledge(ctx context.Context, knowledge *types.Knowledge) (*TableSchemaSummary, error) {
 	schema, err := s.tool.LoadFromKnowledge(ctx, knowledge)
 	if err != nil {
 		return nil, err
 	}
-	return &ingest.TableSchemaSummary{
+	return &TableSchemaSummary{
 		TableName:   schema.TableName,
 		ColumnCount: len(schema.Columns),
 		RowCount:    schema.RowCount,
@@ -204,17 +203,17 @@ func (s dataAnalysisToolSeam) Cleanup(ctx context.Context) {
 }
 
 // graphExtractorSeam 把 conversation/chat_pipeline.Extractor 投影为
-// ingest.GraphExtractorSeam（K1.3 增量 seam：chat_pipeline 自身 data_analysis.go
+// GraphExtractorSeam（K1.3 增量 seam：chat_pipeline 自身 data_analysis.go
 // 经 agentruntime/agent/tools 传递依赖 repository，与宿主 R1-8 shim 构成
 // import 环，消费侧 seam 化破环），纯转发零逻辑复制。
 type graphExtractorSeam struct {
 	extractor chatpipeline.Extractor
 }
 
-// GraphExtractorSeamFactory 返回 ingest.GraphExtractorFactory 的宿主实现
+// GraphExtractorSeamFactory 返回 GraphExtractorFactory 的宿主实现
 // （K1.3 增量 seam）。
-func GraphExtractorSeamFactory() ingest.GraphExtractorFactory {
-	return func(chatModel chat.Chat, template *types.PromptTemplateStructured) ingest.GraphExtractorSeam {
+func GraphExtractorSeamFactory() GraphExtractorFactory {
+	return func(chatModel chat.Chat, template *types.PromptTemplateStructured) GraphExtractorSeam {
 		return graphExtractorSeam{extractor: chatpipeline.NewExtractor(chatModel, template)}
 	}
 }

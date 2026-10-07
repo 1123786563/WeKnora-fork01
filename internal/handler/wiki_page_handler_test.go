@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -21,7 +22,7 @@ func newWikiLinkTitlesTestHandler(t *testing.T) (*WikiPageHandler, interfaces.Wi
 	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
 
 	repo := wiki.NewWikiPageRepository(db)
-	svc := wiki.NewWikiPageService(repo, nil, nil, nil, nil, wiki.Seams{}, nil)
+	svc := service.NewWikiPageService(repo, nil, nil, nil, nil, service.Seams{}, nil)
 	return NewWikiPageHandler(svc, nil, nil, nil, nil), repo
 }
 
@@ -98,7 +99,7 @@ func TestWikiPageDetailResponseLookupFailureDegradesToSlug(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}))
 	repo := wiki.NewWikiPageRepository(db)
-	svc := wiki.NewWikiPageService(repo, nil, nil, nil, nil, wiki.Seams{}, nil)
+	svc := service.NewWikiPageService(repo, nil, nil, nil, nil, service.Seams{}, nil)
 	handler := NewWikiPageHandler(svc, nil, nil, nil, nil)
 
 	page := &types.WikiPage{

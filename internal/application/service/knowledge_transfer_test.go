@@ -463,8 +463,8 @@ func TestTableSummaryCleanupDoesNotFollowMovedDocument(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.db.Model(&types.Knowledge{}).Where("id = ?", "doc").Update("knowledge_base_id", "other").Error)
 	worker := &DataTableSummaryService{knowledgeService: f.svc, chunkService: f.chunks}
-	worker.cleanupOnFailure(
-		f.ctx, &extractionResources{knowledge: row}, []*types.Chunk{chunk}, errors.New("index failed"),
+	worker.CleanupOnFailure(
+		f.ctx, &ExtractionResources{Knowledge: row}, []*types.Chunk{chunk}, errors.New("index failed"),
 	)
 	f.requireNoWrites(t)
 	current, err := f.repo.GetKnowledgeByID(f.ctx, 7, "doc")

@@ -1,10 +1,10 @@
 // Pass B (23-knowledge-wikifaq) K3.1 宿主侧真实 seam 特征化测试。
 //
 // TestRepairContentLinks 原位于 service/wiki_page_test.go:176-228（package
-// service，同包直引 resolveDeadSlug）。K3.1 迁移后该用例断言的模糊匹配
-// 行为仍由宿主 K2 符号 resolveDeadSlug（slug_fuzzy.go，ib2 前未迁出）提供，
-// 故按 20 计划 §6.1 R2 的生产接线形态在宿主侧以真实 seam 驱动 wiki 包
-// 实现——与 W2 构造兼容层同一函数目标，断言逐字保持不变。
+// service，同包直引 resolveDeadSlug）。wiki 域随上游对齐 round 2 归位本包后，
+// 该用例直接驱动本包实现（seams 仍按 W2 生产接线形态构造），断言逐字保持
+// 不变。仓库实现仍经 internal/modules/knowledge/wiki 的 wikiPageRepository
+// （Mimosa 拦截未随迁），故以 wiki.NewWikiPageRepository 构造仓储注入。
 package service
 
 import (
@@ -28,7 +28,7 @@ func TestRepairContentLinks(t *testing.T) {
 
 	ctx := context.Background()
 	repo := wiki.NewWikiPageRepository(db)
-	svc := wiki.NewWikiPageService(repo, nil, nil, nil, nil, wikiK3Seams(), nil)
+	svc := NewWikiPageService(repo, nil, nil, nil, nil, wikiK3Seams(), nil)
 	const kbID = "kb-repair"
 	now := time.Now()
 

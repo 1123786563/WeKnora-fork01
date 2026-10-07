@@ -114,15 +114,14 @@ var ErrSemanticModelPricingUnavailable = kbretrieval.ErrSemanticModelPricingUnav
 // ib2 集成屏障直连后随本文件一并删除。---
 
 func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
-	return kbretrieval.KBReadPermissions(ctx, shares)
+	return KBReadPermissions(ctx, shares)
 }
 
-func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
-	return kbretrieval.ResolveKBReadTenant(ctx, kb, shares)
-}
+// resolveKBReadTenant 真源已随 knowledgebase_access.go 归位本包
+//（本文件历史转发副本已删除，宿主调用面为同名符号）。
 
 func requireKBWrite(ctx context.Context, kb *types.KnowledgeBase) (context.Context, error) {
-	return kbretrieval.RequireKBWrite(ctx, kb)
+	return RequireKBWrite(ctx, kb)
 }
 
 func withKBWriteTenantInfo(
@@ -130,17 +129,10 @@ func withKBWriteTenantInfo(
 	kb *types.KnowledgeBase,
 	tenants interfaces.TenantRepository,
 ) (context.Context, error) {
-	return kbretrieval.WithKBWriteTenantInfo(ctx, kb, tenants)
+	return WithKBWriteTenantInfo(ctx, kb, tenants)
 }
 
-func resolveDeadSlug(
-	deadSlug string,
-	displayText string,
-	liveSlugs map[string]struct{},
-	titleToSlug map[string]string,
-) (string, bool) {
-	return kbretrieval.ResolveDeadSlug(deadSlug, displayText, liveSlugs, titleToSlug)
-}
+// resolveDeadSlug 真源已随 slug_fuzzy.go 归位本包（本文件历史转发副本已删除）。
 
 // --- K2.5 追加（22-knowledge-retrieval.md §5.1 活动族 + §7.3 KB 活动审计流差分锚点）：
 // kb_activity.go 已物理迁移至 internal/modules/knowledge/retrieval/app。以下一行委托
@@ -150,19 +142,19 @@ func resolveDeadSlug(
 // 零改动编译；ib2 集成屏障直连后随本文件一并删除。---
 
 func withKBActivityTask(ctx context.Context, taskID, trigger string) context.Context {
-	return kbretrieval.WithKBActivityTask(ctx, taskID, trigger)
+	return WithKBActivityTask(ctx, taskID, trigger)
 }
 
 func kbActivityTrigger(ctx context.Context) string {
-	return kbretrieval.KBActivityTrigger(ctx)
+	return KBActivityTrigger(ctx)
 }
 
 func kbActivityAppendSampleTitles(details map[string]any, titles ...string) {
-	kbretrieval.KBActivityAppendSampleTitles(details, titles...)
+	KBActivityAppendSampleTitles(details, titles...)
 }
 
 func withKBActivitySuppressed(ctx context.Context) context.Context {
-	return kbretrieval.WithKBActivitySuppressed(ctx)
+	return WithKBActivitySuppressed(ctx)
 }
 
 func recordKBActivity(
@@ -176,16 +168,15 @@ func recordKBActivity(
 	outcome types.AuditOutcome,
 	details map[string]any,
 ) {
-	kbretrieval.RecordKBActivity(ctx, audit, tenantID, kbID, action, targetType, targetID, outcome, details)
+	RecordKBActivity(ctx, audit, tenantID, kbID, action, targetType, targetID, outcome, details)
 }
 
-// RecordWikiContentActivity 已导出符号留 var 别名（b1「2 var」先例；
-// 消费方 wiki_ingest_batch.go、handler/wiki_page.go:401 零改动）。
-var RecordWikiContentActivity = kbretrieval.RecordWikiContentActivity
+// RecordWikiContentActivity 真源已随 kb_activity.go 归位本包（本文件历史
+// var 别名已删除）。
 
 // auditScopeKnowledgeBase 原未导出常量，宿主特征化测试 kb_activity_test.go:130
 // 锚定 ScopeType；经落位包导出 AuditScopeKnowledgeBase 别名保单一事实源。
-const auditScopeKnowledgeBase = kbretrieval.AuditScopeKnowledgeBase
+const auditScopeKnowledgeBase = AuditScopeKnowledgeBase
 
 // writableFAQKnowledgeBase 方法再归置（§5.2 行 3 / Ruling 2026-09-25-DEFERRED-FILE-SPLIT）：
 // 原定义于 knowledgebase_access.go:38-51，接收者类型 knowledgeService 定义于
