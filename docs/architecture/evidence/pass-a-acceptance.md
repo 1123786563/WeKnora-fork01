@@ -9,7 +9,7 @@
 |---|---|---|
 | 16 模块均有所有者、README、module.go、代码地图、迁移台账 | ✅ | internal/modules/<id>/{README.md,module.go,legacy/README.md} ×16（F1 35ee7e088 起，各 A 任务维护）；归属 docs/architecture/backend-modules.yaml |
 | 所有服务端生产文件与测试都有目标模块归属 | ✅ | F1 覆盖恒等式：manifests 并集 + platform/bootstrap 残留（moves/README.md）= F0 库存 128 包；F0 已审 |
-| 天然成块代码物理归位，剩余 legacy 有精确清单 | ✅ | 14 个 A 任务搬迁：A1 5 包/65 文件、A2 7/116、A3 12/97、A4 10/99、A5 3/142、A6 12/188、A7 0（真空）、A8 5/25、A9 18/142、A10 1/47、A11 20/371、A12 4/36、A13 1/47、A14 1/13；legacy_files 358 条全部带 passb_task（manifests；IB2 集成合并树实测——基线 396 经 K 面（−9+4−3+1−2+1）、datasource（−1）、appconnector（−6）演进，变更登记见 §6） |
+| 天然成块代码物理归位，剩余 legacy 有精确清单 | ✅ | 14 个 A 任务搬迁：A1 5 包/65 文件、A2 7/116、A3 12/97、A4 10/99、A5 3/142、A6 12/188、A7 0（真空）、A8 5/25、A9 18/142、A10 1/47、A11 20/371、A12 4/36、A13 1/47、A14 1/13；legacy_files 341 条全部带 passb_task（manifests；IB2 集成合并树实测——基线 396 经 K 面（−9+4−3+1−2+1）、datasource（−1）、appconnector（−6）、上游布局回归收尾（−11，2026-10-07，R2.5 删 11 条文件已删的 shim/compat legacy 行）演进，变更登记见 §6；matrix 实测 352→341，agentruntime/insights 较本表旧冻结值另有预存 −3/−3 漂移） |
 | router/container/Worker 按模块注册且无重复 | ✅ | architectureguard 唯一注册检查 0 violations；composition 全部指向 internal/modules/*（各 IA 证据） |
 | 新业务代码不再进入旧横向业务目录 | ✅ | F2 legacy guard（service/repository/handler 三目录 + manifest 允许集）0 violations |
 | 所有 Integration Barrier 构建/测试/守护/Review 不劣于基线 | ✅ | IA1 118 ok（+2 在册 unstable）/IA2 119 ok/IA3 119 ok/IA4 119 ok 全绿；四份 barrier review 均 Approved |
@@ -29,7 +29,7 @@
 ## 3. Pass A 期间新增的治理资产
 
 - `tools/modulemove`（严格 manifest 校验 + 已集成搬迁语义）与 `tools/architectureguard`（资产发现/唯一注册/跨模块禁导入/legacy 新文件拒绝），Make 目标 `verify-module-moves`、`check-backend-architecture`。
-- guard 精确路径 import 例外共 **142 条**在册（a1:4 / a2:6 / a3:77 含 IA3 集成 1 条 / a4:18 = Pass A 105 条；另 Pass B K1-K4 搬迁显形 26 条 exc-0106..0131，登记见 §6；Pass B 25b 迁移新增 8 条，IB2 集成撞号裁定重编号 exc-0132..0139，见 §4；Pass B datasource 搬迁显形 3 条，IB2 集成撞号裁定重编号 exc-0140..0142），全部绑定 Pass B 任务（B-appconnector/B-airesource/B-channels/B-execution/B-knowledge/B-conversation/B-agentruntime/B-workbench/B-craft/B-agentcatalog），无通配。
+- guard 精确路径 import 例外共 **13 条**在册（原 Pass A 105 条 + Pass B K1-K4/25b/datasource 显形 37 条经 R2.2-R2.4 收敛至 130 条；上游布局回归收尾 R2.5，2026-10-07：117 条 ledger 行因 importer 已随 internal/agent、internal/models、internal/application、internal/handler 等归位移出 internal/modules 判定面或 import 已改写而悬空删除，130→13；guard 源同批另删 4 条 guard-only 悬空边，check.go 141→20），全部绑定 Pass B 任务（B-appconnector/B-workbench/B-knowledge），无通配。
 - 冻结契约：docs/architecture/frozen-entrypoints-batch-a2.md（A9–A14 消费面）。
 - Pass B 简报：docs/architecture/passb/（knowledge×4、conversation×2、agentruntime×4、workbench/craft/insights 各 1 + manifests 内 alias_obligations/legacy_files 义务）。
 

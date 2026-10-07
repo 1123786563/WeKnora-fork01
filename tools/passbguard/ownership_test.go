@@ -328,10 +328,14 @@ func TestRealRepoOwnershipMatrixFreezesAllLegacy(t *testing.T) {
 	// Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP（B2-AC.2，2026-09-23）——6 行已迁
 	// handler 删除后仅余 shim 行 app_connector.go。IB2 集成合并树实测 total=358
 	//（matrix == manifests 三方一致）。
+	// R2.5 上游布局回归收尾（2026-10-07）：删 11 条文件已删的 shim/compat 行
+	//（agentcatalog −1 / agentruntime −2 / datasource −3 归零 / knowledge −5），
+	// 并对齐分支实测预存漂移（agentruntime 45→40、insights 6→3，本表旧值自
+	// IB2 后未随行删除同步）；matrix 实测 352→341。
 	wantPerModule := map[string]int{
 		"identity": 27, "airesource": 33, "commercial": 8, "execution": 21,
-		"knowledge": 53, "agentcatalog": 55, "datasource": 3, "appconnector": 1,
-		"agentruntime": 45, "conversation": 44, "channels": 7, "insights": 6,
+		"knowledge": 48, "agentcatalog": 54, "appconnector": 1,
+		"agentruntime": 40, "conversation": 44, "channels": 7, "insights": 3,
 		"workbench": 19, "craft": 30, "system": 5, "policy": 1,
 	}
 	gotPerModule := map[string]int{}

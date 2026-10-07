@@ -149,12 +149,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/repository/datasource_passb_compat.go
-    module: datasource
-    plan: 26-datasource
-    destination: internal/modules/datasource/repository
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/embed_channel.go
     module: channels
     plan: 36-channels
@@ -261,12 +255,6 @@ legacy_files:
     module: agentruntime
     plan: 33-agentruntime-engine
     destination: internal/modules/agentruntime/repository
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/repository/agentruntime_memory_passb_compat.go
-    module: agentruntime
-    plan: 31-agentruntime-memory
-    destination: internal/modules/agentruntime/memory
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/message.go
@@ -759,12 +747,6 @@ legacy_files:
     module: agentcatalog
     plan: 25-agentcatalog-program
     destination: internal/modules/agentcatalog/service
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/datasource_passb_compat.go
-    module: datasource
-    plan: 26-datasource
-    destination: internal/modules/datasource/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/embed_channel.go
@@ -1295,12 +1277,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/tenant_skill_market_service.go
-    module: agentcatalog
-    plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/tenant_skill_progress.go
     module: agentcatalog
     plan: 25-agentcatalog-program
@@ -1499,12 +1475,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/datasource_passb_compat.go
-    module: datasource
-    plan: 26-datasource
-    destination: internal/modules/datasource/handler
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/deployment_capabilities.go
     module: system
     plan: 42-system-policy
@@ -1613,12 +1583,6 @@ legacy_files:
     destination: internal/modules/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/agentruntime_memory_passb_compat.go
-    module: agentruntime
-    plan: 31-agentruntime-memory
-    destination: internal/modules/agentruntime/memory
-    integration_owner: ib3
-    delete_barrier: ib3
   - path: internal/handler/message.go
     module: conversation
     plan: 35-conversation-program
@@ -2065,19 +2029,7 @@ legacy_files:
     destination: internal/modules/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/chunk_ingest_shim.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/kbprocess_passb_compat.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/kbprocess_passb_compat.go
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
@@ -2123,28 +2075,10 @@ legacy_files:
     destination: internal/modules/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/faq_k3_compat.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
     destination: internal/modules/knowledge/retrieval/app/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/session/wiki_fixer_scope_compat.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/wiki_page_k3_compat.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
 aliases:

@@ -178,21 +178,9 @@ legacy_files:
     reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（哨兵/EscapeLikePattern 单一定义物理留驻 + NewWikiPageRepository 转发）；删除点 ib2
     navigation_label: Wiki k3 repo compat (application/repository)
     passb_task: B-knowledge
-  - path: internal/handler/wiki_page_k3_compat.go
-    reason: Pass B 23-knowledge-wikifaq 宿主过渡 wrapper（routes/container 形参不变；rbac_lookups.go:105/:183 兼容义务见文件头）；删除点 ib2
-    navigation_label: Wiki page k3 compat (handler)
-    passb_task: B-knowledge
-  - path: internal/handler/session/wiki_fixer_scope_compat.go
-    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（B0.3 去方法化 *Handler 方法薄委托，保 qa.go:205 编译）；删除点 ib2
-    navigation_label: Wiki fixer scope k3 compat (handler/session)
-    passb_task: B-knowledge
   - path: internal/application/service/knowledge_faq_k3_delegate.go
     reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（冻结接口 FAQ 面 15 方法 + 4 未导出方法一行委托 + faqSvc() seam 接线，保 K2/K4/路由 worker 编译）；删除点 ib2
     navigation_label: Knowledge faq k3 delegate (application/service)
-    passb_task: B-knowledge
-  - path: internal/handler/faq_k3_compat.go
-    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（FAQHandler 类型别名 + NewFAQHandler 转发 + helper seam 接线，保 routes_knowledge.go:143 与 container.go:725 编译）；删除点 ib2
-    navigation_label: Faq k3 compat (handler)
     passb_task: B-knowledge
   # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
   # 宿主侧兼容物成对补行；终态=ib2 同 commit 随文件删行，非迁移目标）----
@@ -208,17 +196,9 @@ legacy_files:
     reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
     navigation_label: Span trace seam adapter (application/service)
     passb_task: B-knowledge
-  - path: internal/handler/chunk_ingest_shim.go
-    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
-    navigation_label: Chunk ingest shim (handler)
-    passb_task: B-knowledge
   - path: internal/application/service/kbprocess_passb_compat.go
     reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
     navigation_label: Knowledge process host compat (application/service)
-    passb_task: B-knowledge
-  - path: internal/handler/kbprocess_passb_compat.go
-    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
-    navigation_label: Knowledge process host compat (handler)
     passb_task: B-knowledge
 owned_files:
   move_sources:

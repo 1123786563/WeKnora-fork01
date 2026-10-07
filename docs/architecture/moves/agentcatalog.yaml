@@ -186,10 +186,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Tenant skill install (application/service)
     passb_task: B-agentcatalog
-  - path: internal/application/service/tenant_skill_market_service.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Tenant skill market service (application/service)
-    passb_task: B-agentcatalog
   - path: internal/application/service/tenant_skill_progress.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Tenant skill progress (application/service)

@@ -191,183 +191,158 @@ import _ "github.com/Tencent/WeKnora/internal/modules/othermod"
 	}
 }
 
-func TestRunImportExceptionCoversBatchA2AiresourceChat(t *testing.T) {
-	// batch A2：models/chat 搬入 airesource 后，usage.go 对 commercial 根包的
-	// 预存横向耦合显形。命中豁免的精确 file→package 对放行；同包相邻文件
+// R2.5（上游布局回归收尾，2026-10-07）：原 batch A2/A3 时代登记的多条例外随
+// importer 文件移出 internal/modules 判定面删除（见 check.go importExceptions
+// R2.5 注记）。以下用例的语义意图不变——例外精确压制 + 未列文件/未列包照常
+// 报告——夹具改锚定删后仍存活的在册条目。
+func TestRunImportExceptionCoversKnowledgeRetrievalCommercialRoot(t *testing.T) {
+	// K2.3 搬迁显形（exc-0112）：knowledge/retrieval/app 的 semantic 面消费
+	// commercial 根包。命中豁免的精确 file→package 对放行；同包相邻文件
 	// 不在豁免范围，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/airesource/models/chat/usage.go": `package chat
+		"internal/modules/knowledge/retrieval/app/semantic_model_capability.go": `package app
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/modules/airesource/models/chat/usage_neighbor.go": `package chat
+		"internal/modules/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
 	})
 
-	rep, err := Run(root, []ManifestView{{Module: "airesource"}})
+	rep, err := Run(root, []ManifestView{{Module: "knowledge"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import", "chat/usage.go") {
-		t.Fatalf("batch A2 命中豁免的 usage.go→commercial 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	if hasCheck(rep.Diagnostics, "forbidden-import", "semantic_model_capability.go") {
+		t.Fatalf("K2.3 命中豁免的 semantic_model_capability.go→commercial 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
-	if !hasCheck(rep.Diagnostics, "forbidden-import", "usage_neighbor.go") {
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "semantic_capability_neighbor.go") {
 		t.Fatalf("未列入豁免的相邻文件必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
 
-func TestRunImportExceptionCoversBatchA2ChannelsAndExecution(t *testing.T) {
-	// batch A2：channels/im 与 execution/sandbox 对 airesource/policy 的预存
-	// 横向耦合显形。命中豁免的精确对放行；同一文件指向未列包的导入
-	// （service.go→policy/ipclass 不在清单）仍须报告。
+func TestRunImportExceptionCoversAppconnectorOcRecoveryMixedImports(t *testing.T) {
+	// 同一文件的成对在册豁免（exc-0060/0061）：oc_recovery.go 对 commercial
+	// 根包与 commercial/service/commercial 内部包的导入均放行；同文件指向
+	// 未列包（execution 模块根不在清单）仍须报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/channels/im/service.go": `package im
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
-	_ "github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
-	_ "github.com/Tencent/WeKnora/internal/modules/policy/ratelimit"
-	_ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/execution"
 )
-`,
-		"internal/modules/channels/im/yunzhijia/url.go": `package yunzhijia
-
-import _ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
-`,
-		"internal/modules/execution/sandbox/url_guard.go": `package sandbox
-
-import _ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
 `,
 	})
 
-	mods := []ManifestView{{Module: "channels"}, {Module: "execution"}}
+	rep, err := Run(root, []ManifestView{{Module: "appconnector"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "commercial") {
+		t.Fatalf("命中豁免的 oc_recovery.go 两条 commercial 导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import",
+		`oc_recovery.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/modules/execution"`) {
+		t.Fatalf("未列入豁免的 oc_recovery.go→execution 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunImportExceptionCoversCodedeliveryAndWorkbench(t *testing.T) {
+	// guard-only 存活边（无 ledger 行、两侧均未删）：codedelivery 消费
+	// appconnector 根包/内部包（×2 在册）与 workbench 命令队列消费
+	// agentruntime 模块根（在册）放行；同文件指向未列包
+	// （codedelivery/service.go→agentruntime/agent 不在清单）仍须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/codedelivery/service.go": `package codedelivery
+
+import (
+	_ "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+)
+`,
+		"internal/modules/workbench/service/workbench/command_queue_next.go": `package workbench
+
+import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+`,
+	})
+
+	mods := []ManifestView{{Module: "codedelivery"}, {Module: "workbench"}}
 	rep, err := Run(root, mods)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import", "airesource/mcp") ||
-		hasCheck(rep.Diagnostics, "forbidden-import", "airesource/storageurl") ||
-		hasCheck(rep.Diagnostics, "forbidden-import", "policy/ratelimit") {
-		t.Fatalf("batch A2 命中豁免的 service.go 导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	if hasCheck(rep.Diagnostics, "forbidden-import", "appconnector") {
+		t.Fatalf("在册的 codedelivery→appconnector 两条导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import", "yunzhijia/url.go") ||
-		hasCheck(rep.Diagnostics, "forbidden-import", "url_guard.go") {
-		t.Fatalf("batch A2 命中豁免的 url.go/url_guard.go→ipclass 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	if hasCheck(rep.Diagnostics, "forbidden-import", "command_queue_next.go") {
+		t.Fatalf("在册的 command_queue_next.go→agentruntime 模块根导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`service.go 导入了模块 policy 的内部包 "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"`) {
-		t.Fatalf("未列入豁免的 service.go→policy/ipclass 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+		`service.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"`) {
+		t.Fatalf("未列入豁免的 service.go→agentruntime/agent 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
 
-func TestRunImportExceptionCoversBatchA3KnowledgeAndAgentruntime(t *testing.T) {
-	// batch A3：knowledge/agentruntime 搬入模块目录后，预存横向耦合显形。
-	// 命中豁免的精确 file→package 对放行；同文件指向未列包的导入
-	// （composite.go→policy/access 不在清单）仍须照常报告。
+func TestRunImportExceptionCoversWorkbenchRemoteUsagePairs(t *testing.T) {
+	// 同一文件两条在册对（exc-0103/0104）：remote_usage.go 消费 commercial
+	// 根包与 commercial/repository/commercial 内部包均放行；未列入清单的
+	// 相邻文件必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/knowledge/retriever/composite.go": `package retriever
+		"internal/modules/workbench/service/workbench/remote_usage.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
-	_ "github.com/Tencent/WeKnora/internal/modules/policy/access"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 )
 `,
-		"internal/modules/agentruntime/agent/engine.go": `package agent
+		"internal/modules/workbench/service/workbench/remote_usage_neighbor.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
 	})
 
-	mods := []ManifestView{{Module: "knowledge"}, {Module: "agentruntime"}}
-	rep, err := Run(root, mods)
+	rep, err := Run(root, []ManifestView{{Module: "workbench"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import",
-		`composite.go 导入了模块 airesource 的内部包`+
-			` "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"`) {
-		t.Fatalf("batch A3 命中豁免的 composite.go→embedding 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	if hasCheck(rep.Diagnostics, "forbidden-import", "remote_usage.go") {
+		t.Fatalf("在册的 remote_usage.go 两对导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import",
-		`engine.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"`) {
-		t.Fatalf("batch A3 命中豁免的 engine.go→chat 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
-	}
-	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`composite.go 导入了模块 policy 的内部包 "github.com/Tencent/WeKnora/internal/modules/policy/access"`) {
-		t.Fatalf("未列入豁免的 composite.go→policy/access 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "remote_usage_neighbor.go") {
+		t.Fatalf("未列入豁免的相邻文件必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
 
-func TestRunImportExceptionCoversBatchA3ConversationChatPipeline(t *testing.T) {
-	// batch A3：conversation 搬入模块目录后，chat_pipeline 对 airesource/knowledge
-	// 的预存横向耦合显形。命中豁免的精确对放行；未列入清单的相邻文件
-	// 必须照常报告。
-	root := t.TempDir()
-	writeTree(t, root, map[string]string{
-		"internal/modules/conversation/chat_pipeline/common.go": `package chat_pipeline
-
-import (
-	_ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	_ "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
-)
-`,
-		"internal/modules/conversation/chat_pipeline/neighbor.go": `package chat_pipeline
-
-import _ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-`,
-	})
-
-	rep, err := Run(root, []ManifestView{{Module: "conversation"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasCheck(rep.Diagnostics, "forbidden-import", "common.go") {
-		t.Fatalf("batch A3 命中豁免的 common.go 两对导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
-	}
-	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`neighbor.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"`) {
-		t.Fatalf("未列入豁免的 neighbor.go 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
-	}
-}
-
-func TestRunImportExceptionCoversBatchA4WorkbenchAgentruntimeCraft(t *testing.T) {
-	// batch A4：workbench/agentruntime/craft 搬入模块目录后，预存横向耦合显形。
-	// 命中豁免的精确 file→package 对放行（含 workbench→commercial 根包与
-	// commercial/repository 内部包两种形态、agentruntime→craft、craft→agentruntime）。
+func TestRunImportExceptionCoversBatchA4Workbench(t *testing.T) {
+	// batch A4 搬迁显形的预存横向耦合：命中豁免的精确 file→package 对放行
+	// （workbench→commercial 根包、commercial/repository 内部包与 execution
+	// 模块根三种形态；R2.5 后 agentruntime/agent/runtime 家族已随上游布局
+	// 归位删除，不再列入）。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
 		"internal/modules/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	_ "github.com/Tencent/WeKnora/internal/modules/execution"
 )
 `,
-		"internal/modules/agentruntime/agent/opencode/executor.go": `package opencode
-
-import _ "github.com/Tencent/WeKnora/internal/modules/craft"
-`,
-		"internal/modules/craft/contracts.go": `package craft
-
-import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-`,
 	})
 
-	mods := []ManifestView{{Module: "workbench"}, {Module: "agentruntime"}, {Module: "craft"}}
-	rep, err := Run(root, mods)
+	rep, err := Run(root, []ManifestView{{Module: "workbench"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCheck(rep.Diagnostics, "forbidden-import", "admission.go") ||
-		hasCheck(rep.Diagnostics, "forbidden-import", "executor.go") ||
-		hasCheck(rep.Diagnostics, "forbidden-import", "contracts.go") {
+	if hasCheck(rep.Diagnostics, "forbidden-import", "admission.go") {
 		t.Fatalf("batch A4 命中豁免的精确对不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
@@ -381,7 +356,7 @@ func TestRunImportExceptionBatchA4DoesNotCoverUnlistedPairs(t *testing.T) {
 		"internal/modules/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 )
 `,
@@ -396,8 +371,8 @@ import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approva
 		t.Fatal(err)
 	}
 	if hasCheck(rep.Diagnostics, "forbidden-import",
-		`admission.go 导入了模块 agentruntime 的内部包 `+
-			`"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"`) {
+		`admission.go 导入了模块 commercial 的内部包 `+
+			`"github.com/Tencent/WeKnora/internal/modules/commercial"`) {
 		t.Fatalf("batch A4 命中豁免的精确对 admission.go 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",

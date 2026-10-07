@@ -6,18 +6,7 @@ move_packages:
 alias_obligations:
   []
 legacy_files:
-  - path: internal/application/repository/datasource_passb_compat.go
-    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
-    navigation_label: Datasource host compat (application/repository)
-    passb_task: B-datasource
-  - path: internal/application/service/datasource_passb_compat.go
-    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
-    navigation_label: Datasource host compat (application/service)
-    passb_task: B-datasource
-  - path: internal/handler/datasource_passb_compat.go
-    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
-    navigation_label: Datasource host compat (handler)
-    passb_task: B-datasource
+  []
 owned_files:
   move_sources:
     []
@@ -28,7 +17,6 @@ owned_files:
   - internal/container
   - internal/handler
   module_files:
-    - internal/modules/datasource/README.md
     - internal/modules/datasource/module.go
     - internal/modules/datasource/legacy/README.md
 test_commands:
