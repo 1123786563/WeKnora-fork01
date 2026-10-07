@@ -287,27 +287,13 @@ var ConnectorMetadataRegistry = map[string]ConnectorMetadata{
 	// metadata entries were removed until their connectors are implemented
 	// (they surfaced fake options in the edit-mode type dropdown). The
 	// types.ConnectorType* constants stay for future registrations.
+	// (The web_crawler/slack entries were re-introduced by the layout moves
+	// and are removed again: no connector implementation registers them.)
 	types.ConnectorTypeDingTalk: {
 		Type:         types.ConnectorTypeDingTalk,
 		Name:         "DingTalk (钉钉)",
 		Description:  "Sync online documents from DingTalk knowledge bases",
 		Priority:     7,
-		AuthType:     "oauth2",
-		Capabilities: []string{"incremental", "deletion_sync"},
-	},
-	types.ConnectorTypeWebCrawler: {
-		Type:         types.ConnectorTypeWebCrawler,
-		Name:         "Web Crawler (Sitemap)",
-		Description:  "Crawl websites via Sitemap.xml",
-		Priority:     9,
-		AuthType:     "none",
-		Capabilities: []string{},
-	},
-	types.ConnectorTypeSlack: {
-		Type:         types.ConnectorTypeSlack,
-		Name:         "Slack",
-		Description:  "Sync channel messages and files from Slack",
-		Priority:     10,
 		AuthType:     "oauth2",
 		Capabilities: []string{"incremental", "deletion_sync"},
 	},

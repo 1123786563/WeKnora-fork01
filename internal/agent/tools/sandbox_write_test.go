@@ -145,33 +145,13 @@ func TestWriteSandboxFileRefusesDirectoryPaths(t *testing.T) {
 	assert.Zero(t, sink.calls)
 }
 
-func TestSandboxWriteAppendAndEditTemporaryFiles(t *testing.T) {
-	sink := &fakeSandboxFileSink{}
-	writer := NewWriteSandboxFileTool(sink, 0)
-	for _, tc := range []struct{ mode, content string }{
-		{"overwrite", "hello"},
-		{"append", " world"},
-	} {
-		args, err := json.Marshal(WriteSandboxFileInput{
-			Path: "../tmp/task/check.txt", Content: tc.content, Mode: tc.mode,
-		})
-		require.NoError(t, err)
-		result, err := writer.Execute(sandboxFileTestContext(), args)
-		require.NoError(t, err)
-		require.True(t, result.Success, result.Error)
-		require.Equal(t, "/tmp/task/check.txt", sink.path)
-		require.Equal(t, "/", result.Data["root"])
-		require.Empty(t, result.OutputFiles, "temporary files are not downloadable artifacts")
-	}
-	require.Equal(t, "hello world", string(sink.files["/tmp/task/check.txt"]))
-	editor := &fakeSandboxFileEditor{files: sink.files}
-	result, err := NewEditSandboxFileTool(editor).Execute(sandboxFileTestContext(),
-		json.RawMessage(`{"path":"/tmp/task/check.txt","edits":[{"old_string":"world","new_string":"sandbox"}]}`))
-	require.NoError(t, err)
-	require.True(t, result.Success, result.Error)
-	require.Equal(t, "hello sandbox", string(editor.files["/tmp/task/check.txt"]))
-	require.Empty(t, result.OutputFiles)
-}
+// TestSandboxWriteAppendAndEditTemporaryFiles was removed: it asserted the
+// pre-B8 semantics (../tmp/task writes allowed as "temporary files") and
+// contradicts TestSandboxWriteAndEditRejectTemporaryFiles below, which pins
+// the upstream-aligned scope the production tool enforces (writes stay under
+// /workspace). The stale pair was left behind when 273effc70 recreated this
+// file from upstream.
+
 func TestSandboxWriteAndEditRejectTemporaryFiles(t *testing.T) {
 	sink := &fakeSandboxFileSink{}
 	writer := NewWriteSandboxFileTool(sink, 0)

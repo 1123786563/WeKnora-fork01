@@ -362,6 +362,15 @@ func openSQLiteDB(path string) (*gorm.DB, error) {
 			" VALUES ('matrix-session',1,'matrix','matrix-user','trpc')").Error; err != nil {
 		return nil, err
 	}
+	// Admission resolves the Run actor through tenant membership
+	// (actorBelongsToTenant joins tenant_members × users): without an active
+	// member row every provider process dies at "admit: agent runtime
+	// conflict" and the subprocess scenarios stall on their barriers.
+	if err := db.Exec(
+		"INSERT OR IGNORE INTO tenant_members (user_id, tenant_id, role, status)" +
+			" VALUES ('matrix-user',1,'owner','active')").Error; err != nil {
+		return nil, err
+	}
 	return db, nil
 }
 

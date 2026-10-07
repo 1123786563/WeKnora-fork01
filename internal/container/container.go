@@ -538,9 +538,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewPublicMarketplaceHandler))
 	must(container.Provide(service.NewUserResourceFavoriteService))
-	must(container.Provide(service.NewWikiPageService))
-	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
-	must(container.Provide(service.NewWikiLintService))
+	// wiki 三构造器经 wiki_k3_ctor_compat.go 的 DI 适配器装配（保持旧签名，
+	// Seams 由适配器就地供给——服务归位 service 包后新签名带 Seams 参数）。
+	must(container.Provide(service.NewWikiPageServiceDI))
+	must(container.Provide(service.NewWikiIngestServiceDI, dig.Name("wikiIngest")))
+	must(container.Provide(service.NewWikiLintServiceDI))
 	must(container.Provide(service.NewEmbedChannelService))
 	must(container.Provide(service.NewMCPEndpointService))
 	must(container.Provide(mcpserver.NewServer))

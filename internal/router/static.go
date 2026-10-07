@@ -46,9 +46,11 @@ func serveFrontendStatic(r *gin.Engine) {
 		// React's isolated Embed entry is published as web/embed.html. Keep
 		// channel deep links separate from the main SPA fallback so Lite has
 		// the same entrypoint boundary as the nginx frontend image.
+		// No setFrontendCacheHeaders here (upstream parity): the embed entry
+		// must keep the middleware's "no-store" — the channel CSP is minted
+		// per request, a revalidate-cached entry would pin a stale policy.
 		if strings.HasPrefix(path, "/embed/") {
 			if _, err := os.Stat(embedIndexPath); err == nil {
-				setFrontendCacheHeaders(c.Writer, "/embed.html")
 				c.File(embedIndexPath)
 				c.Abort()
 				return

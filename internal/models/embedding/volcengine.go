@@ -171,21 +171,28 @@ func (e *VolcengineEmbedder) doRequestWithRetry(ctx context.Context, jsonData []
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
-		if err != nil {
-			logger.GetLogger(ctx).Errorf("VolcengineEmbedder failed to create request: %v", err)
+		// NOTE: keep assigning to the outer err — a loop-local `:=` shadows
+		// it and the post-loop `return nil, err` would hand the caller a
+		// (nil, nil) result after the retries are exhausted (nil-resp
+		// dereference in BatchEmbed).
+		req, reqErr := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
+		if reqErr != nil {
+			err = reqErr
+			logger.GetLogger(ctx).Errorf("VolcengineEmbedder failed to create request: %v", reqErr)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+e.apiKey)
 		secutils.ApplyCustomHeaders(req, e.customHeaders)
 
-		resp, err = e.httpClient.Do(req)
-		if err == nil {
+		var doErr error
+		resp, doErr = e.httpClient.Do(req)
+		if doErr == nil {
 			return resp, nil
 		}
+		err = doErr
 
-		logger.GetLogger(ctx).Errorf("VolcengineEmbedder request failed (attempt %d/%d): %v", i+1, e.maxRetries+1, err)
+		logger.GetLogger(ctx).Errorf("VolcengineEmbedder request failed (attempt %d/%d): %v", i+1, e.maxRetries+1, doErr)
 	}
 
 	return nil, err

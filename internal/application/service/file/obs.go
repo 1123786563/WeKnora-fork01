@@ -57,7 +57,10 @@ func obsS3Options(endpoint, region, accessKey, secretAccessKey string) s3.Option
 		// trailing checksum negotiation; align with the S3 driver (s3.go).
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
 		UsePathStyle:               obsUsePathStyle(endpoint),
-		HTTPClient:                 utils.NewSSRFSafeHTTPClient(utils.DefaultSSRFSafeHTTPClientConfig()),
+		// Align with the other object storage SDKs (#3306): the SSRF-safe
+		// client without the whole-request timeout, transfer bounded on the
+		// transport instead (upstream parity).
+		HTTPClient:                 objectStorageHTTPClient(),
 	}
 }
 

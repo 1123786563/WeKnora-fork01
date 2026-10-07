@@ -39,6 +39,25 @@ func checkpointDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agentrunti
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN driver VARCHAR(16) NOT NULL DEFAULT 'platform'").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN target_id VARCHAR(512) NOT NULL DEFAULT ''").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN budget_ref VARCHAR(512) NOT NULL DEFAULT ''").Error)
+	// store.Claim admission now serialises against RunView effect intents
+	// (rejectSessionRunViewEffectSlotTransfer joins agent_runs with
+	// craft_run_view_effect_intents), so the journal schema needs the craft
+	// chain too (same fixture pattern as internal/agent/tools/registry_journal_test.go):
+	// 000163 is the charge journal referenced by the same admission path,
+	// 000164 creates craft_run_views, 000172 the intent table, 000177 rebuilds
+	// it with the request_digest column.
+	craftCharge, err := os.ReadFile("../../../migrations/sqlite/000163_craft_charge_start_journal.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(craftCharge)).Error)
+	craftViews, err := os.ReadFile("../../../migrations/sqlite/000164_craft_run_views.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(craftViews)).Error)
+	craftIntents, err := os.ReadFile("../../../migrations/sqlite/000172_craft_run_view_effect_intent.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(craftIntents)).Error)
+	craftDigest, err := os.ReadFile("../../../migrations/sqlite/000177_craft_run_view_effect_request_digest.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(craftDigest)).Error)
 	for _, run := range []struct{ id, session string }{{"r1", "s1"}, {"r2", "s2"}} {
 		require.NoError(t, db.Exec(`INSERT INTO agent_runs
 			(tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,snapshot,deadline)

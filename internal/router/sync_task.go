@@ -55,12 +55,17 @@ func (e *SyncTaskExecutor) Register(pattern string, handler bootstrap.TaskHandle
 
 // RegisterHandler registers a handler for a given task type pattern.
 //
-// Compatibility wrapper that delegates to Register and ignores the error,
-// kept only until old fire-and-forget callers are migrated to the
-// error-returning contract. No existing caller registers the same pattern
-// twice, so behavior is unchanged.
+// Upstream parity: the plain map assignment (last registration wins). The
+// bootstrap.TaskHandlerRegistry duplicate detection lives in Register; this
+// fire-and-forget entry point must stay an overwrite — asynq's ServeMux
+// HandleFunc is one too, and tests re-register a pattern to swap in a
+// done-signalling handler (sync_task_options_test.go). Routing it through
+// the first-wins Register silently ignored the second registration and
+// stalled the swap.
 func (e *SyncTaskExecutor) RegisterHandler(pattern string, handler func(context.Context, *asynq.Task) error) {
-	_ = e.Register(pattern, handler)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.handlers[pattern] = handler
 }
 
 // SetFinalFailureHook installs the callback run after a task's last failed

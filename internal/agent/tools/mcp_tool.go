@@ -282,7 +282,12 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 	if meta != nil && meta.ApprovalCtx != nil {
 		callCtx, callCancel := context.WithTimeout(meta.ApprovalCtx, t.callToolTimeout(meta.ExecTimeout))
 		defer callCancel()
-		ctx = callCtx
+		// The re-derived window must keep the durable dispatch state: the
+		// post-approval path re-attached the exec meta above, so this branch
+		// is NOT skipped there, and a bare callCtx would make
+		// BeforeToolDispatch a no-op — the journal would never mark the call
+		// "dispatching" before the external request (registry_journal_test).
+		ctx = agentruntime.CarryToolDispatch(ctx, callCtx)
 	}
 
 	connectAndCall := func(callCtx context.Context) (*mcp.CallToolResult, error) {

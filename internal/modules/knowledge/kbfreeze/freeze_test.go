@@ -143,10 +143,12 @@ func TestKnowledgeSharedTypesHaveNoShadowDefinitions(t *testing.T) {
 
 // TestFrozenCapabilityPortInterfacesUnchanged 强制 B0 冻结的六个 capability-port
 // 接口签名零漂移（contracts.yaml knowledge 契约区，stability: frozen）：
-// ChunkService 18 方法与 KnowledgeTagService 7 方法为集合精确断言（reflect
+// ChunkService 19 方法与 KnowledgeTagService 7 方法为集合精确断言（reflect
 // NumMethod 含内嵌接口提升方法，两接口实测无内嵌）；其余四端口锚点方法存在。
 func TestFrozenCapabilityPortInterfacesUnchanged(t *testing.T) {
-	// knowledge.chunk-service（contracts.yaml:1576；internal/types/interfaces/chunk.go:142-185）
+	// knowledge.chunk-service（contracts.yaml:1591；internal/types/interfaces/chunk.go:142-190）
+	// 2026-09 #3694 image gallery 增补 ListImagesByKnowledgeBaseID（只读扩展，
+	// 实现于 service/chunk.go:229，消费方 handler/knowledge.go:1253）。
 	assertExactMethodSet(t, "knowledge.chunk-service",
 		reflect.TypeOf((*interfaces.ChunkService)(nil)).Elem(), []string{
 			"CreateChunks", "GetChunkByID", "GetChunkByIDOnly",
@@ -156,6 +158,7 @@ func TestFrozenCapabilityPortInterfacesUnchanged(t *testing.T) {
 			"ListChunkByParentID", "GetRepository",
 			"DeleteGeneratedQuestion", "UpdateDocumentChunk", "ListChunkRevisions",
 			"RevertDocumentChunk", "UpsertGeneratedQuestion",
+			"ListImagesByKnowledgeBaseID",
 		})
 
 	// knowledge.tag-service（contracts.yaml:1843；internal/types/interfaces/tag.go:11-31）
