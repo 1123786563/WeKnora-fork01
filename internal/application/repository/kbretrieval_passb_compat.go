@@ -29,7 +29,5 @@ var NewSemanticControlRepository = kbretrieval.NewSemanticControlRepository
 
 var NewSemanticModelInvocationStore = kbretrieval.NewSemanticModelInvocationStore
 
-var NewKnowledgeTagRepository = kbretrieval.NewKnowledgeTagRepository
-
 // ErrSemanticModelPolicyNotFound 哨兵别名（service/semantic_model_policy_test.go 引用面）。
 var ErrSemanticModelPolicyNotFound = kbretrieval.ErrSemanticModelPolicyNotFound

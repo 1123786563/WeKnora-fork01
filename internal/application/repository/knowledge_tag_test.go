@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
-const knowledgeTagTestDDL = `
+// setupKnowledgeTagTestDB provisions the minimal knowledges / knowledge_tags /
+// knowledge_tag_relations / chunks schema the tag helpers read or write.
+// The DDL is passed as a literal (no runtime input) so it stays explicit.
+func setupKnowledgeTagTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := setupKnowledgeTestDB(t)
+	require.NoError(t, db.Exec(`
 CREATE TABLE IF NOT EXISTS knowledges (
     profile TEXT,
     id VARCHAR(36) PRIMARY KEY,
@@ -47,12 +52,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     tag_id VARCHAR(36),
     deleted_at DATETIME
 );
-`
-
-func setupKnowledgeTagTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db := setupKnowledgeTestDB(t)
-	require.NoError(t, db.Exec(knowledgeTagTestDDL).Error)
+`).Error)
 	return db
 }
 
@@ -218,7 +218,7 @@ func TestApplyKnowledgeListFilter_TagIDsOrSemantics(t *testing.T) {
 func TestBatchCountReferences_ScopedToKnowledgeBase(t *testing.T) {
 	db := setupKnowledgeTagTestDB(t)
 	knowledgeRepo := &knowledgeRepository{db: db}
-	tagRepo := kbretrieval.NewKnowledgeTagRepository(db)
+	tagRepo := NewKnowledgeTagRepository(db)
 	ctx := context.Background()
 
 	kb1 := uuid.New().String()
