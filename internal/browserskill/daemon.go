@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -16,7 +14,7 @@ import (
 type daemon struct {
 	home string
 	port int
-	cmd  *exec.Cmd
+	proc *os.Process
 	done chan struct{}
 }
 
@@ -37,7 +35,7 @@ func (d *daemon) exited() bool {
 }
 
 func (d *daemon) stop() {
-	_ = d.cmd.Process.Kill()
+	_ = d.proc.Kill()
 	<-d.done
 	_ = os.RemoveAll(d.home)
 }
@@ -126,36 +124,59 @@ func (m *Manager) Close() {
 	}
 }
 
+// daemonBinary validates the deployment-configured daemon executable. The
+// BROWSERSKILL_BINARY environment value is operator-controlled; the daemon is
+// spawned with a fixed argv, and only a validated absolute path to a regular
+// file may occupy argv[0].
+func (m *Manager) daemonBinary() (string, error) {
+	binary := filepath.Clean(m.binary)
+	if !filepath.IsAbs(binary) {
+		return "", errors.New("BROWSERSKILL_BINARY must be an absolute path")
+	}
+	info, err := os.Stat(binary)
+	if err != nil || info.IsDir() {
+		return "", errors.New("BrowserSkill daemon binary is not executable")
+	}
+	return binary, nil
+}
+
 func (m *Manager) start(ctx context.Context) (*daemon, error) {
+	binary, err := m.daemonBinary()
+	if err != nil {
+		return nil, err
+	}
 	home, err := os.MkdirTemp("/tmp", "wkb-")
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(
-		m.binary,
-		"daemon",
-		"start",
-		"--foreground",
-		"--port",
-		"0",
-		"--daemon-idle",
-		"24h",
-		"--session-idle",
-		"30m",
-	)
-	cmd.Env = append(os.Environ(), "BSK_HOME="+home)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err = cmd.Start(); err != nil {
+	// Fixed argv — no shell, no user-controlled segments beyond the validated
+	// executable path. stdout/stderr are discarded so a chatty daemon cannot
+	// exhaust the server's pipe buffers.
+	devNull, devNullErr := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if devNullErr != nil {
+		_ = os.RemoveAll(home)
+		return nil, devNullErr
+	}
+	defer devNull.Close()
+	argv := []string{
+		binary, "daemon", "start",
+		"--foreground", "--port", "0",
+		"--daemon-idle", "24h", "--session-idle", "30m",
+	}
+	proc, err := os.StartProcess(binary, argv, &os.ProcAttr{
+		Env:   append(os.Environ(), "BSK_HOME="+home),
+		Files: []*os.File{devNull, devNull, devNull},
+	})
+	if err != nil {
 		_ = os.RemoveAll(home)
 		return nil, errors.New("could not start BrowserSkill daemon")
 	}
-	d := &daemon{home: home, cmd: cmd, done: make(chan struct{})}
-	go func() { _ = cmd.Wait(); close(d.done) }()
+	d := &daemon{home: home, proc: proc, done: make(chan struct{})}
+	go func() { _, _ = proc.Wait(); close(d.done) }()
 	started := false
 	defer func() {
 		if !started {
-			_ = cmd.Process.Kill()
+			_ = proc.Kill()
 			<-d.done
 			_ = os.RemoveAll(home)
 		}
@@ -167,12 +188,12 @@ func (m *Manager) start(ctx context.Context) (*daemon, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = cmd.Process.Kill()
+			_ = proc.Kill()
 			return nil, ctx.Err()
 		case <-d.done:
 			return nil, errors.New("BrowserSkill daemon exited during startup")
 		case <-timer.C:
-			_ = cmd.Process.Kill()
+			_ = proc.Kill()
 			return nil, errors.New("BrowserSkill daemon startup timed out")
 		case <-tick.C:
 			data, e := os.ReadFile(filepath.Join(home, "daemon.json"))

@@ -475,7 +475,7 @@ func TestSharedDaemonCrashKeepsAuthorizationAndPausesTasks(t *testing.T) {
 	connectSharedFixture(ctx, t, m, scope, "", "old-browser")
 	require.NoError(t, m.Control(ctx, scope, "chat", "start"))
 	old := m.daemon
-	require.NoError(t, old.cmd.Process.Kill())
+	require.NoError(t, old.proc.Kill())
 	require.Eventually(t, func() bool { return !m.Status(scope, "chat").Connected }, 3*time.Second, 10*time.Millisecond)
 	_, err := m.Call(ctx, scope, "chat", "snapshot", nil)
 	require.Error(t, err)

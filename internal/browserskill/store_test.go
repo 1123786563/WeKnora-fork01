@@ -2,7 +2,6 @@ package browserskill
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,11 +24,10 @@ func testStore(t *testing.T) *Store {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	// Real DDL lives at fork's 000076; the upstream re-introduction was
-	// no-op'd (content-identical) and renumbered to 000202 in the merge.
-	migration, err := os.ReadFile("../../migrations/sqlite/000076_browser_authorization.up.sql")
-	require.NoError(t, err)
-	require.NoError(t, db.Exec(string(migration)).Error)
+	// The record structs carry the same schema as
+	// migrations/sqlite/000076_browser_authorization.up.sql (upstream sqlite
+	// 000014); AutoMigrate keeps the test DDL declarative.
+	require.NoError(t, db.AutoMigrate(&DeviceRecord{}, &PairingRecord{}, &TaskRecord{}))
 	return &Store{db: db}
 }
 

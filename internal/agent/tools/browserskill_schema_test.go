@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"strings"
 
 	"github.com/stretchr/testify/require"
