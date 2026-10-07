@@ -18,9 +18,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// captureNotionLogs redirects the global logger for the duration of one test
-// so warnings emitted by the connector can be asserted on.
-func captureNotionLogs(t *testing.T) *bytes.Buffer {
+// captureNotionSyncLogs redirects the global logger for the duration of one
+// test so warnings emitted by the connector can be asserted on. It is the
+// fork-side twin of captureNotionLogs (query_windowing_test.go), which the
+// upstream #3845 tests own.
+func captureNotionSyncLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
 	logger.SetOutput(buf)
@@ -96,7 +98,7 @@ func TestBlocksTruncated(t *testing.T) {
 // naming the page is emitted.
 func TestGetBlockChildrenAllWarnsOnTruncation(t *testing.T) {
 	ts := paginatedBlocksServer(t, "big-page", 11, 100) // 1100 blocks available
-	logs := captureNotionLogs(t)
+	logs := captureNotionSyncLogs(t)
 
 	client := mustTestClient(t, "test-token", ts.URL)
 	blocks, err := client.GetBlockChildrenAll(context.Background(), "big-page")
@@ -115,7 +117,7 @@ func TestGetBlockChildrenAllWarnsOnTruncation(t *testing.T) {
 // with no next page is a complete fetch, not a truncation.
 func TestGetBlockChildrenAllExactCapDoesNotWarn(t *testing.T) {
 	ts := paginatedBlocksServer(t, "big-page", 10, 100) // exactly 1000 blocks
-	logs := captureNotionLogs(t)
+	logs := captureNotionSyncLogs(t)
 
 	client := mustTestClient(t, "test-token", ts.URL)
 	blocks, err := client.GetBlockChildrenAll(context.Background(), "big-page")

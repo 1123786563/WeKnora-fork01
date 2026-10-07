@@ -148,9 +148,8 @@ func TestBatchUpdateChunkTagIDKeepsUpdatingAfterStatementFailure(t *testing.T) {
 }
 
 // Matching no row is not an error -- the index copy may legitimately lag behind
-// the authoritative chunks table, matching the postgres engine -- but it used
-// to be completely invisible, so both batch updates warn with the table and the
-// chunk they were meant for.
+// the authoritative chunks table -- but it used to be completely invisible, so
+// both batch updates warn with the table and the chunk they were meant for.
 func TestBatchUpdateChunkWarnsWhenStatementMatchesNoRow(t *testing.T) {
 	testCases := []struct {
 		name   string

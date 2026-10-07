@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,13 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lostResponseTransport performs the real round trip and then reports the
-// response as lost: the gateway finished its side (journal resolved, usage
-// recorded) while the adapter observes only a transport error. Under the
-// pinned egress policy (OCR R2 F28) a torn 2xx body is a definitive outcome,
-// so the unknown-outcome window the protocol must survive without double
-// charging is the connection that drops after the physical send: no status,
-// no body, no proof.
+// lostResponseTransport performs the real round trip — the gateway finishes
+// its side and the physical call is durably attributed — and then loses the
+// response before the adapter can observe even the status line. This is the
+// unknown-outcome window under every adapter ruling: no status, no envelope,
+// nothing to classify, so the identity stays parked and the same-fingerprint
+// retry reuses it against the gateway's fail-closed 409 without a second
+// physical send.
 type lostResponseTransport struct {
 	inner    http.RoundTripper
 	failNext bool
@@ -32,16 +33,62 @@ func (t *lostResponseTransport) RoundTrip(req *http.Request) (*http.Response, er
 	if t.failNext {
 		t.failNext = false
 		_ = resp.Body.Close()
-		return nil, errors.New("connection lost after send")
+		return nil, errors.New("connection lost after the gateway finished its side")
 	}
 	return resp, nil
 }
 
+// brokenBodyTransport performs the real round trip and then truncates the
+// response body after a prefix. Per the craft-107 OCR R2 F28 ruling
+// (docs/plans/2026-09-28-craft-107-ocr-r2-egress-report.md) a torn 2xx whose
+// status line arrived intact is a TERMINAL outcome: the journal resolves the
+// attempt, and the retry legitimately mints a new identity for a new physical
+// send. A torn 5xx/409 stays parked by the status-only fallback, so the
+// double-billing protection covers the windows that are actually unknown.
+type brokenBodyTransport struct {
+	inner    http.RoundTripper
+	failNext bool
+}
+
+func (t *brokenBodyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.inner.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	if t.failNext {
+		t.failNext = false
+		resp.Body = &prefixBrokenBody{inner: resp.Body}
+	}
+	return resp, nil
+}
+
+type prefixBrokenBody struct {
+	inner io.ReadCloser
+	done  bool
+}
+
+func (b *prefixBrokenBody) Read(p []byte) (int, error) {
+	if b.done {
+		return 0, errors.New("response stream lost mid-body")
+	}
+	b.done = true
+	// Deliver a strict prefix without EOF so the reader must come back and
+	// then hit the lost-stream error.
+	if len(p) > 4 {
+		p = p[:4]
+	}
+	return b.inner.Read(p)
+}
+
+func (b *prefixBrokenBody) Close() error { return b.inner.Close() }
+
 // TestCraftEgressAdapterJoinedWithRealGateway proves the runtime-side
 // producer against the production gateway contract: the adapter-minted
 // X-Craft-Activity-ID is accepted by the real Forward path, an unknown
-// outcome reuses the identity and the gateway answers 409 fail-closed, and
-// exactly one physical upstream call plus one usage record exist afterwards.
+// outcome (response lost before any status is observable) reuses the identity
+// and the gateway answers 409 fail-closed with exactly one physical upstream
+// call and one usage record for the window, while a terminally-resolved torn
+// 2xx retry (F28 ruling) mints a new identity for its own physical send.
 func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 	env := newCraftGatewayTestEnv(t)
 	credential, _ := issueCredentialOn(t, env, craftGatewayIssueBody)
@@ -80,18 +127,17 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 	require.Len(t, recorded, 1, "one physical call is durably attributed")
 	require.Equal(t, "Bearer sk-platform-managed", env.upstreamAuth(), "the gateway injected the managed upstream credential")
 
-	// Unknown outcome: the gateway finishes its side, the adapter loses the
-	// connection after the send (torn 2xx bodies are definitive under the
-	// pinned egress policy, so the unknown window is a transport-level loss).
-	// The retry must reuse the SAME identity, and the real gateway must refuse
-	// a second physical send with 409.
+	// Unknown outcome: the gateway finishes its side (the round trip really
+	// completes and the usage fact is durably recorded), and the adapter then
+	// loses the response before any status is observable. The retry must
+	// reuse the SAME identity, and the real gateway must refuse a second
+	// physical send with 409.
 	unknownBody := `{"model":"m1","messages":[{"role":"user","content":"unknown window"}]}`
-	transport := &lostResponseTransport{inner: http.DefaultTransport, failNext: true}
 	adapter2, err := craftegress.NewCraftEgressAdapter(craftegress.CraftEgressAdapterConfig{
 		GatewayBaseURL: gatewayServer.URL + "/craft/model-gateway",
 		Credential:     credential,
 		JournalPath:    filepath.Join(t.TempDir(), "attempts2.jsonl"),
-		Transport:      transport,
+		Transport:      &lostResponseTransport{inner: http.DefaultTransport, failNext: true},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, adapter2.Close()) }()
@@ -103,7 +149,7 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 		return rec
 	}
 	lost := post2(unknownBody)
-	require.Equal(t, http.StatusBadGateway, lost.Code, "a lost gateway connection is an explicit unknown")
+	require.Equal(t, http.StatusBadGateway, lost.Code, "a lost gateway response is an explicit unknown")
 	parkedID := lost.Header().Get("X-Craft-Activity-ID")
 	require.NotEmpty(t, parkedID)
 	retry := post2(unknownBody)
@@ -111,16 +157,45 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 	require.Equal(t, parkedID, retry.Header().Get("X-Craft-Activity-ID"), "the parked identity is reused, never re-minted")
 	require.Len(t, env.recorder.recorded(), 2, "exactly two physical calls total: one happy, one unknown-window")
 
+	// Terminally-resolved torn 2xx (F28 ruling): the gateway's 200 arrives
+	// but the body tears mid-stream. The intact status line resolves the
+	// attempt terminally, so the same-fingerprint retry is a NEW physical
+	// send with a NEW identity — not a reuse of the resolved one.
+	tornBody := `{"model":"m1","messages":[{"role":"user","content":"torn window"}]}`
+	adapter3, err := craftegress.NewCraftEgressAdapter(craftegress.CraftEgressAdapterConfig{
+		GatewayBaseURL: gatewayServer.URL + "/craft/model-gateway",
+		Credential:     credential,
+		JournalPath:    filepath.Join(t.TempDir(), "attempts3.jsonl"),
+		Transport:      &brokenBodyTransport{inner: http.DefaultTransport, failNext: true},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, adapter3.Close()) }()
+	post3 := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		adapter3.ServeHTTP(rec, req)
+		return rec
+	}
+	torn := post3(tornBody)
+	require.Equal(t, http.StatusBadGateway, torn.Code, "a torn gateway body is surfaced as an explicit incomplete response")
+	tornID := torn.Header().Get("X-Craft-Activity-ID")
+	require.NotEmpty(t, tornID)
+	tornRetry := post3(tornBody)
+	require.Equal(t, http.StatusOK, tornRetry.Code, "a terminally-resolved torn 2xx retry is a new physical send: %s", tornRetry.Body.String())
+	require.NotEqual(t, tornID, tornRetry.Header().Get("X-Craft-Activity-ID"), "a terminal outcome never reuses the resolved identity")
+	require.Len(t, env.recorder.recorded(), 4, "four physical calls total: happy, unknown-window, torn send, torn retry")
+
 	// A deliberately new logical attempt after a RESOLVED one mints a new
 	// identity and succeeds through the real gateway again.
 	next := post(chatBody)
 	require.Equal(t, http.StatusOK, next.Code, next.Body.String())
 	require.NotEqual(t, happy.Header().Get("X-Craft-Activity-ID"), next.Header().Get("X-Craft-Activity-ID"),
 		"a resolved activity followed by a new send must mint a new identity")
-	require.Len(t, env.recorder.recorded(), 3, "three durable attributions for three physical sends")
+	require.Len(t, env.recorder.recorded(), 5, "five durable attributions for five physical sends")
 
 	// Minted identities satisfy the gateway charset contract end to end.
-	for _, id := range []string{happy.Header().Get("X-Craft-Activity-ID"), parkedID, next.Header().Get("X-Craft-Activity-ID")} {
+	for _, id := range []string{happy.Header().Get("X-Craft-Activity-ID"), parkedID, tornID, next.Header().Get("X-Craft-Activity-ID")} {
 		require.NotEmpty(t, id)
 		require.LessOrEqual(t, len(id), 128)
 		for _, r := range id {

@@ -657,8 +657,9 @@ func TestKeywordsRetrieveAllCollectionsFailed(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, results)
-	require.Contains(t, err.Error(), "all 2 milvus collections")
-	require.Contains(t, err.Error(), "vectors_768")
+	// Upstream #3847 wording: the error names the matched-collection count and
+	// wraps the last per-collection failure.
+	require.Contains(t, err.Error(), "all 2 matched collections")
 	require.Contains(t, err.Error(), "milvus unavailable")
 	require.Equal(t, []string{"vectors_768", "vectors_1536"}, searched)
 }

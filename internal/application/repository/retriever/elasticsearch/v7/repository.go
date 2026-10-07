@@ -322,8 +322,7 @@ func (e *elasticsearchRepository) BatchSave(ctx context.Context,
 	defer resp.Body.Close()
 
 	// Process bulk response
-	err = e.processBulkResponse(ctx, resp, len(embeddingList))
-	if err != nil {
+	if err := e.processBulkResponse(ctx, resp); err != nil {
 		return err
 	}
 
@@ -368,9 +367,21 @@ func (e *elasticsearchRepository) prepareBulkRequestBody(ctx context.Context,
 	return body, processedCount, nil
 }
 
-// processBulkResponse processes the response from a bulk indexing operation
+// bulkResponseItem is one entry of an Elasticsearch _bulk response. Only the
+// fields needed to report a failure are decoded.
+type bulkResponseItem struct {
+	ID    string `json:"_id"`
+	Error *struct {
+		Type   string `json:"type"`
+		Reason string `json:"reason"`
+	} `json:"error"`
+}
+
+// processBulkResponse turns a bulk response into an error when Elasticsearch
+// rejected individual documents. A bulk request that the server accepted
+// always answers HTTP 200, so the per-item errors are the only failure signal.
 func (e *elasticsearchRepository) processBulkResponse(ctx context.Context,
-	resp *esapi.Response, totalDocuments int,
+	resp *esapi.Response,
 ) error {
 	log := logger.GetLogger(ctx)
 
@@ -380,63 +391,56 @@ func (e *elasticsearchRepository) processBulkResponse(ctx context.Context,
 		return fmt.Errorf("failed to index documents: %s", resp.String())
 	}
 
-	// Parse bulk response to check for individual document errors
-	var bulkResponse map[string]interface{}
+	// Parse bulk response to check for individual document errors. A body that
+	// cannot be decoded leaves the outcome unknown, so it is an error too.
+	var bulkResponse struct {
+		Errors bool                          `json:"errors"`
+		Items  []map[string]bulkResponseItem `json:"items"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&bulkResponse); err != nil {
-		log.Warnf("[ElasticsearchV7] Could not parse bulk response: %v", err)
+		log.Errorf("[ElasticsearchV7] Could not parse bulk response: %v", err)
+		return fmt.Errorf("failed to parse bulk response: %w", err)
+	}
+
+	// Check for errors in individual operations
+	if !bulkResponse.Errors {
 		return nil
 	}
-
-	// Check for errors in individual operations. HTTP 200 with errors=true
-	// means ES rejected some documents individually: they never enter the
-	// index and are not retried, so this must fail the call instead of only
-	// logging a warning (which produced a fake "vectorization complete").
-	if hasErrors, ok := bulkResponse["errors"].(bool); ok && hasErrors {
-		errorCount, firstError := e.countBulkErrors(ctx, bulkResponse)
-		if errorCount > 0 {
-			log.Errorf("[ElasticsearchV7] %d/%d documents failed to index, first error: %s",
-				errorCount, totalDocuments, firstError)
-			return fmt.Errorf("bulk save partially failed: %d/%d documents rejected by Elasticsearch, first error: %s",
-				errorCount, totalDocuments, firstError)
-		}
-		log.Warn("[ElasticsearchV7] Bulk response reported errors=true but no failed items were found")
-	}
-
-	return nil
+	return e.bulkItemsError(ctx, bulkResponse.Items)
 }
 
-// countBulkErrors counts failed operations in a bulk response and returns the
-// count together with a description of the first failure. Only failed
-// operations carry an "error" object under items[].<op>.
-func (e *elasticsearchRepository) countBulkErrors(ctx context.Context,
-	bulkResponse map[string]interface{},
-) (int, string) {
+// bulkErrorSummaryLimit caps how many per-item failures are described in the
+// returned error; the reported count always covers every failed item.
+const bulkErrorSummaryLimit = 5
+
+// bulkItemsError aggregates per-item bulk failures into a single error. Each
+// described item carries its document _id and the bounded error.type;
+// error.reason is deliberately excluded because it can embed document content.
+func (e *elasticsearchRepository) bulkItemsError(ctx context.Context,
+	items []map[string]bulkResponseItem,
+) error {
 	log := logger.GetLogger(ctx)
 
-	errorCount := 0
-	firstError := ""
-	if items, ok := bulkResponse["items"].([]interface{}); ok {
-		for _, item := range items {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
+	msgs := make([]string, 0, bulkErrorSummaryLimit)
+	failed := 0
+	for _, item := range items {
+		for op, detail := range item {
+			if detail.Error == nil {
 				continue
 			}
-			for op, result := range itemMap {
-				operationResult, ok := result.(map[string]interface{})
-				if !ok || operationResult["error"] == nil {
-					continue
-				}
-				errorCount++
-				detail := fmt.Sprintf("op=%s id=%v error=%v", op, operationResult["_id"], operationResult["error"])
-				log.Errorf("[ElasticsearchV7] Item error: %s", detail)
-				if firstError == "" {
-					firstError = detail
-				}
+			failed++
+			log.Debugf("[ElasticsearchV7] Bulk item failed: op=%s id=%s type=%s",
+				op, detail.ID, detail.Error.Type)
+			if len(msgs) < bulkErrorSummaryLimit {
+				msgs = append(msgs, fmt.Sprintf("[%s %s] %s", op, detail.ID, detail.Error.Type))
 			}
 		}
 	}
-
-	return errorCount, firstError
+	if failed == 0 {
+		return fmt.Errorf("elasticsearch v7: bulk reported errors without per-item failure detail")
+	}
+	return fmt.Errorf("elasticsearch v7: bulk partial failure (%d/%d documents failed, first %d: %s)",
+		failed, len(items), len(msgs), strings.Join(msgs, "; "))
 }
 
 // DeleteByChunkIDList Delete indices by chunk ID list

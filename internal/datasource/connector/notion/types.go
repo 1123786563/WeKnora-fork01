@@ -68,6 +68,11 @@ type notionPage struct {
 	// Only present on data_source objects (API 2025-09-03+). For example, if a database
 	// is inside a page, this will be {type: "page_id", page_id: "..."}.
 	DatabaseParent *notionParent `json:"database_parent,omitempty"`
+
+	// CreatedTime is the vendor's immutable creation timestamp for a row
+	// (created_time). Data source queries sort and window by it, so unlike
+	// LastEditedTime it never moves when the row is edited.
+	CreatedTime time.Time `json:"created_time"`
 }
 
 // Parent type constants for notionParent.Type
@@ -263,6 +268,17 @@ type attachment struct {
 
 // --- Pagination ---
 
+// notionRequestStatus is the vendor's completeness marker on a paginated response.
+// Notion sets Type to "incomplete" when it capped the returned set for a vendor-side
+// reason — for example IncompleteReason "query_result_limit_reached" once a data
+// source query reaches the 10,000-row per-query limit — and still reports
+// has_more=false, so a capped page is otherwise indistinguishable from the last one.
+// See https://developers.notion.com/guides/data-apis/query-large-data-sources
+type notionRequestStatus struct {
+	Type             string `json:"type"`              // "complete" | "incomplete"
+	IncompleteReason string `json:"incomplete_reason"` // set when Type is "incomplete"
+}
+
 // paginatedResponse is the common response wrapper for paginated Notion API responses.
 type paginatedResponse struct {
 	Object        string               `json:"object"` // "list"
@@ -272,25 +288,9 @@ type paginatedResponse struct {
 	RequestStatus *notionRequestStatus `json:"request_status,omitempty"`
 }
 
-// notionRequestStatus mirrors the request_status envelope Notion attaches to
-// paginated responses. type == "incomplete" means the vendor dropped results
-// (e.g. incomplete_reason "query_result_limit_reached" when a query exceeds the
-// vendor's result row limit). Crucially, has_more is still false at the limit,
-// so without this field a truncated read is indistinguishable from a complete
-// one — every page must be checked (the signal can precede the last page).
-type notionRequestStatus struct {
-	Type             string `json:"type"` // "complete" | "incomplete"
-	IncompleteReason string `json:"incomplete_reason,omitempty"`
-}
-
-// request_status.type values.
-const (
-	requestStatusComplete   = "complete"
-	requestStatusIncomplete = "incomplete"
-)
-
-// truncated reports whether the vendor marked this response as incomplete,
-// i.e. the results are an arbitrary subset of the source data.
-func (r *paginatedResponse) truncated() bool {
-	return r.RequestStatus != nil && r.RequestStatus.Type == requestStatusIncomplete
+// isIncomplete reports whether the vendor marked this page as cut short.
+// It must be checked on every page, not only the last one: the marker can show up
+// before pagination stops.
+func (r *paginatedResponse) isIncomplete() bool {
+	return r.RequestStatus != nil && r.RequestStatus.Type == "incomplete"
 }
