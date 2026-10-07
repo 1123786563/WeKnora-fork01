@@ -25,7 +25,7 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, session_id]
     - id: agentrun.run.attention_required
       version: 1
-      producer: internal/modules/agentruntime/agent/approval/gate.go:RequestAndWait
+      producer: internal/agent/approval/gate.go:RequestAndWait
       meaning: 运行停靠等待用户注意（approval_requested/run_waiting：MCP 审批、MCP OAuth、开放连接器动作）
       ordering: per-run seq 单调递增；同一 run 同时至多一个未决等待
       replay: source-query
@@ -69,7 +69,7 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, reason]
     - id: agentrun.tool.result
       version: 1
-      producer: internal/modules/agentruntime/agent/trpc/engine.go:emitRunEvent
+      producer: internal/agent/trpc/engine.go:emitRunEvent
       meaning: 一次工具调用结果已落账（tool_dispatched/tool_result 进入 run 事件流与 durable tool journal）
       ordering: per-run seq 单调递增；同一 call_id 结果恰一条
       replay: source-query
@@ -80,7 +80,7 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, tool_call_id]
     - id: agentrun.approval.resolved
       version: 1
-      producer: internal/modules/agentruntime/agent/approval/gate.go:Resolve
+      producer: internal/agent/approval/gate.go:Resolve
       meaning: 一次人工审批等待已被裁决（Decision 落定并唤醒等待中的运行；retention 保护 approval.* 族）
       ordering: per-pending 恰一次有效裁决；重复裁决被拒（ErrAlreadyResolved）
       replay: source-query
@@ -98,18 +98,18 @@ events:
       replay: source-query
       transport: in_process
       consumers:
-        - internal/modules/channels/im/service.go
+        - internal/im/service.go
         - internal/application/service/session.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, message_id]
     - id: conversation.turn.appended
       version: 1
-      producer: internal/modules/agentruntime/agent/finalize.go:emitCompletionEvent
+      producer: internal/agent/finalize.go:emitCompletionEvent
       meaning: 一轮问答已完成（EventAgentComplete：最终答案就绪、assistant 消息标记完成）
       ordering: per-session 轮次单调；每轮恰一条完成事实
       replay: source-query
       transport: in_process
       consumers:
-        - internal/modules/channels/im/service.go
+        - internal/im/service.go
         - internal/application/service/tenant_skill_transcript.go
         - internal/handler/session/qa.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, request_id]
@@ -156,7 +156,7 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id, failure_reason]
     - id: knowledge.index.completed
       version: 1
-      producer: internal/modules/knowledge/ingest/chunk_service.go:CreateChunks  # IB2 回写批：K1 迁移后路径
+      producer: internal/application/service/chunk.go:CreateChunks  # IB2 回写批：K1 迁移后路径
       meaning: 知识分块索引完成（chunk 连同向量写入，文档进入可检索状态 ChunkStatusIndexed）
       ordering: per-knowledge 分批写入序；检索仅在 indexed 状态可见
       replay: source-query
@@ -314,11 +314,11 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, intent_id, failure_reason]
     - id: channel.delivery.completed
       version: 1
-      producer: internal/modules/channels/im/service.go:sendStreamReply
+      producer: internal/im/service.go:sendStreamReply
       meaning: IM 渠道消息投递完成（流式回复送达渠道适配器）
       ordering: per-session 回复序单调
       replay: source-query
       transport: in_process
       consumers:
-        - internal/modules/channels/im/adapter.go
+        - internal/im/adapter.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, channel_id, session_id]

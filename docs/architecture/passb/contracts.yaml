@@ -40,17 +40,16 @@ contracts:
         - internal/handler/organization.go
         - internal/handler/persona.go
         - internal/handler/session/handler.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
+        - internal/im/service.go
       characterization_tests:
         - internal/application/service/embed_channel_public_config_test.go
         - internal/application/service/expert_service_test.go
         - internal/application/service/subagent_service_test.go
-        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
+        - internal/application/service/tenant_skill_install_test.go
         - internal/handler/custom_agent_api_key_scope_test.go
         - internal/handler/persona_test.go
         - internal/handler/rbac_lookups_test.go
-        - internal/modules/channels/im/service_agent_test.go
+        - internal/im/service_agent_test.go
       items: []
     - id: agentcatalog.facade
       owner: agentcatalog
@@ -157,9 +156,9 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/agentcatalog/service/tenant_skill_install.go
+        - internal/application/service/tenant_skill_install.go
       characterization_tests:
-        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
+        - internal/application/service/tenant_skill_install_test.go
       items: []
     - id: agentruntime.agent-service
       owner: agentruntime
@@ -171,9 +170,8 @@ contracts:
         - internal/application/service/agent_service.go
         - internal/application/service/session.go
         - internal/application/service/tenant_skill_service.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
       characterization_tests:
-        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
+        - internal/application/service/tenant_skill_install_test.go
       items: []
     - id: agentruntime.facade
       owner: agentruntime
@@ -226,25 +224,24 @@ contracts:
         - internal/application/service/session.go
         - internal/handler/memory.go
         - internal/handler/session/handler.go
-        - internal/modules/knowledge/wiki/wiki_page_handler.go
-        - internal/modules/agentruntime/agent/tools/search_memory.go
-        - internal/modules/agentruntime/memory/service.go
-        - internal/modules/conversation/chat_pipeline/memory_affinity.go
-        - internal/modules/conversation/chat_pipeline/memory_recall.go
-        - internal/modules/conversation/chat_pipeline/query_understand.go
+        - internal/handler/wiki_page.go
+        - internal/agent/tools/search_memory.go
+        - internal/application/service/memory/service.go
+        - internal/application/service/chat_pipeline/memory_affinity.go
+        - internal/application/service/chat_pipeline/memory_recall.go
+        - internal/application/service/chat_pipeline/query_understand.go
         - internal/router/sync_task.go
         - internal/router/task.go
-        - internal/handler/wiki_page_k3_compat.go
       characterization_tests:
         - internal/application/service/agent_memory_tool_test.go
         - internal/handler/memory_consistency_test.go
-        - internal/modules/agentruntime/agent/tools/search_memory_test.go
-        - internal/modules/conversation/chat_pipeline/memory_recall_test.go
+        - internal/agent/tools/search_memory_test.go
+        - internal/application/service/chat_pipeline/memory_recall_test.go
       items: []
     - id: agentruntime.native-wire-admission
       owner: agentruntime
       kind: wire-protocol
-      symbol: internal/modules/agentruntime/agent/nativecontract/contracts.go:Admission
+      symbol: internal/agent/nativecontract/contracts.go:Admission
       signature: struct { Scope Scope; Run RunIdentity; Session session.Key; Config ConfigBinding; Funding FundingBinding; Input model.Message; InputHash string; Deadline time.Time }
       stability: frozen
       consumers:
@@ -255,7 +252,7 @@ contracts:
     - id: agentruntime.native-wire-run-record
       owner: agentruntime
       kind: wire-protocol
-      symbol: internal/modules/agentruntime/agent/nativecontract/contracts.go:RunRecord
+      symbol: internal/agent/nativecontract/contracts.go:RunRecord
       signature: struct { Admission Admission; Status RunStatus; Wait WaitKind; Revision int64; Fence Fence }
       stability: frozen
       consumers:
@@ -353,11 +350,11 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/knowledge/ingest/chunk_service.go
+        - internal/application/service/chunk.go
         - internal/application/service/craft_session.go
         - internal/application/service/evaluation.go
-        - internal/modules/knowledge/ingest/extract.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_auto_tag.go
         - internal/application/service/knowledgebase.go
@@ -370,7 +367,7 @@ contracts:
         - internal/application/service/tag.go
         - internal/application/service/temporary_document.go
         - internal/application/service/tenant_skill_service.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
+        - internal/application/service/wiki_ingest.go
         - internal/container/container.go
         - internal/container/craft_model_gateway.go
         - internal/handler/initialization.go
@@ -379,19 +376,18 @@ contracts:
         - internal/handler/model_credentials.go
         - internal/handler/session/attachment_processor.go
         - internal/handler/session/handler.go
-        - internal/modules/agentruntime/memory/service.go
-        - internal/modules/conversation/chat_pipeline/chat_completion.go
-        - internal/modules/conversation/chat_pipeline/chat_completion_stream.go
-        - internal/modules/conversation/chat_pipeline/common.go
-        - internal/modules/conversation/chat_pipeline/data_analysis.go
-        - internal/modules/conversation/chat_pipeline/extract_entity.go
-        - internal/modules/conversation/chat_pipeline/query_understand.go
-        - internal/modules/conversation/chat_pipeline/rerank.go
+        - internal/application/service/memory/service.go
+        - internal/application/service/chat_pipeline/chat_completion.go
+        - internal/application/service/chat_pipeline/chat_completion_stream.go
+        - internal/application/service/chat_pipeline/common.go
+        - internal/application/service/chat_pipeline/data_analysis.go
+        - internal/application/service/chat_pipeline/extract_entity.go
+        - internal/application/service/chat_pipeline/query_understand.go
+        - internal/application/service/chat_pipeline/rerank.go
         - internal/router/router.go
         - internal/application/service/chunk_ingest_shim.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
-        - internal/modules/knowledge/faq/service.go
+        - internal/application/service/faq_service.go
       characterization_tests:
         - internal/application/service/agent_run_graph_test.go
         - internal/application/service/craft_session_test.go
@@ -403,8 +399,8 @@ contracts:
         - internal/handler/initialization_model_tenant_test.go
         - internal/handler/mcp_usage_instructions_test.go
         - internal/handler/session/craft_test.go
-        - internal/modules/agentruntime/memory/stubs_test.go
-        - internal/modules/conversation/chat_pipeline/chat_completion_stream_test.go
+        - internal/application/service/memory/stubs_test.go
+        - internal/application/service/chat_pipeline/chat_completion_stream_test.go
       items: []
     - id: airesource.resource-catalog
       owner: airesource
@@ -416,7 +412,7 @@ contracts:
         - internal/application/service/agent_web_pages.go
         - internal/application/service/artifact_collector.go
         - internal/application/service/file/resource_catalog.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_delete.go
         - internal/application/service/knowledgebase.go
@@ -459,9 +455,9 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/knowledge/ingest/extract.go
+        - internal/application/service/extract.go
         - internal/application/service/file/resolve_tenant.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledgebase.go
         - internal/application/service/storagebackend.go
@@ -473,17 +469,16 @@ contracts:
         - internal/handler/message.go
         - internal/handler/session/artifact_download.go
         - internal/handler/session/handler.go
-        - internal/modules/agentruntime/agent/tools/data_analysis.go
-        - internal/modules/airesource/storageurl/request.go
-        - internal/modules/airesource/storageurl/resolver.go
-        - internal/modules/channels/im/service.go
+        - internal/agent/tools/data_analysis.go
+        - internal/storageurl/request.go
+        - internal/storageurl/resolver.go
+        - internal/im/service.go
         - internal/router/files.go
         - internal/router/router.go
         - internal/router/routes_agent.go
         - internal/application/service/chunk_ingest_shim.go
         - internal/application/service/span_trace_seam_adapter.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
-        - internal/modules/knowledge/ingest/seams.go
+        - internal/application/service/ingest_seams.go
       characterization_tests:
         - internal/application/service/agent_web_pages_test.go
         - internal/container/artifact_preview_wiring_test.go
@@ -512,7 +507,7 @@ contracts:
         - internal/application/service/vectorstore.go
         - internal/container/container.go
       characterization_tests:
-        - internal/modules/knowledge/retriever/registry_test.go
+        - internal/application/service/retriever/registry_test.go
       items: []
     - id: airesource.vector-store-service
       owner: airesource
@@ -536,12 +531,12 @@ contracts:
       consumers:
         - internal/application/service/agent_service.go
         - internal/application/service/web_search.go
-        - internal/modules/agentruntime/agent/tools/web_search.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/agent/tools/web_search.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
       characterization_tests:
-        - internal/modules/agentruntime/agent/tools/web_search_test.go
-        - internal/modules/conversation/chat_pipeline/search_error_test.go
+        - internal/agent/tools/web_search_test.go
+        - internal/application/service/chat_pipeline/search_error_test.go
       items: []
     - id: airesource.weknora-cloud-service
       owner: airesource
@@ -720,7 +715,7 @@ contracts:
         - internal/application/service/craft_budget.go
         - internal/application/service/craft_usage.go
         - internal/modules/knowledge/retrieval/app/semantic_model_policy.go
-        - internal/modules/agentruntime/agent/commercial_adapter.go
+        - internal/agent/commercial_adapter.go
         - internal/modules/commercial/execution.go
         - internal/modules/workbench/service/workbench/remote_usage.go
       characterization_tests:
@@ -803,7 +798,7 @@ contracts:
         - internal/application/service/usage_recorder.go
         - internal/container/container.go
         - internal/handler/session/handler.go
-        - internal/modules/channels/im/service.go
+        - internal/im/service.go
       characterization_tests:
         - internal/handler/session/qa_usage_record_test.go
       items: []
@@ -905,12 +900,12 @@ contracts:
         - internal/handler/message.go
         - internal/handler/session/handler.go
         - internal/handler/session/steer.go
-        - internal/modules/agentruntime/agent/tools/search_conversations.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/conversation/chat_pipeline/common.go
-        - internal/modules/conversation/chat_pipeline/into_chat_message.go
-        - internal/modules/conversation/chat_pipeline/load_history.go
-        - internal/modules/conversation/chat_pipeline/query_understand.go
+        - internal/agent/tools/search_conversations.go
+        - internal/im/service.go
+        - internal/application/service/chat_pipeline/common.go
+        - internal/application/service/chat_pipeline/into_chat_message.go
+        - internal/application/service/chat_pipeline/load_history.go
+        - internal/application/service/chat_pipeline/query_understand.go
         - internal/router/files.go
         - internal/router/router.go
       characterization_tests:
@@ -921,7 +916,7 @@ contracts:
         - internal/handler/session/steer_live_run_test.go
         - internal/handler/session/temporary_attachment_persist_test.go
         - internal/handler/session/workbench_artifacts_test.go
-        - internal/modules/channels/im/full_output_test.go
+        - internal/im/full_output_test.go
       items: []
     - id: conversation.query-history-export
       owner: conversation
@@ -975,12 +970,11 @@ contracts:
         - internal/handler/embed_channel.go
         - internal/handler/session/artifact_download.go
         - internal/handler/session/handler.go
-        - internal/modules/channels/im/cmd_search.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/im/cmd_search.go
+        - internal/im/service.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
         - internal/router/router.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
       characterization_tests:
         - internal/application/service/craft_session_test.go
         - internal/application/service/craft_usage_view_test.go
@@ -1003,8 +997,8 @@ contracts:
         - internal/handler/session/share_test.go
         - internal/handler/session/steer_durable_test.go
         - internal/handler/session/steer_live_run_test.go
-        - internal/modules/channels/im/full_output_test.go
-        - internal/modules/channels/im/qa_exit_test.go
+        - internal/im/full_output_test.go
+        - internal/im/qa_exit_test.go
       items: []
     - id: conversation.stream-manager
       owner: conversation
@@ -1020,19 +1014,18 @@ contracts:
         - internal/handler/session/agent_stream_handler.go
         - internal/handler/session/handler.go
         - internal/handler/session/steer.go
-        - internal/modules/channels/im/service.go
+        - internal/im/service.go
         - internal/modules/workbench/service/workbench/interaction.go
         - internal/stream/factory.go
         - internal/stream/memory_manager.go
         - internal/stream/redis_manager.go
-        - internal/modules/agentcatalog/service/tenant_skill_service.go
-        - internal/modules/agentcatalog/service/tenant_skill_transcript.go
+        - internal/application/service/tenant_skill_transcript.go
       characterization_tests:
-        - internal/modules/agentcatalog/service/tenant_skill_steer_test.go
+        - internal/application/service/tenant_skill_steer_test.go
         - internal/handler/session/artifact_completion_test.go
         - internal/handler/session/steer_delivery_test.go
         - internal/handler/session/steer_live_run_test.go
-        - internal/modules/channels/im/full_output_test.go
+        - internal/im/full_output_test.go
         - internal/stream/redis_live_run_test.go
       items: []
     - id: conversation.temporary-document-service
@@ -1291,8 +1284,8 @@ contracts:
       consumers:
         - internal/application/service/audit_log.go
         - internal/application/service/audit_log_retention.go
-        - internal/modules/datasource/service/datasource_service.go
-        - internal/modules/knowledge/retrieval/app/kb_activity.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/kb_activity.go
         - internal/application/service/kbshare.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledgebase.go
@@ -1300,21 +1293,19 @@ contracts:
         - internal/application/service/tag.go
         - internal/application/service/tenant_invitation.go
         - internal/application/service/tenant_member.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
+        - internal/application/service/wiki_ingest.go
         - internal/container/audit_sink.go
         - internal/container/container.go
         - internal/container/engine_factory.go
         - internal/handler/audit_log.go
         - internal/handler/system.go
-        - internal/modules/knowledge/wiki/wiki_page_handler.go
+        - internal/handler/wiki_page.go
         - internal/middleware/audit_provider.go
         - internal/router/router.go
-        - internal/application/service/datasource_passb_compat.go
         - internal/application/service/kbretrieval_passb_compat.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/handler/wiki_page_k3_compat.go
-        - internal/modules/knowledge/faq/service.go
-        - internal/modules/knowledge/wiki/seams.go
+        - internal/application/service/faq_service.go
+        - internal/application/service/wiki_seams.go
       characterization_tests:
         - internal/application/service/audit_log_retention_test.go
         - internal/application/service/datasource_purge_test.go
@@ -1460,7 +1451,7 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/knowledge/ingest/extract.go
+        - internal/application/service/extract.go
         - internal/application/service/knowledge.go
         - internal/application/service/message.go
         - internal/application/service/model.go
@@ -1481,17 +1472,17 @@ contracts:
         - internal/middleware/auth.go
         - internal/middleware/embed_auth.go
         - internal/middleware/ws_auth.go
-        - internal/modules/agentruntime/agent/tools/data_analysis.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/conversation/chat_pipeline/data_analysis.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/agent/tools/data_analysis.go
+        - internal/im/service.go
+        - internal/application/service/chat_pipeline/data_analysis.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
         - internal/router/files.go
         - internal/router/router.go
         - internal/router/routes_agent.go
         - internal/application/service/chunk_ingest_shim.go
         - internal/application/service/span_trace_seam_adapter.go
-        - internal/modules/knowledge/ingest/seams.go
+        - internal/application/service/ingest_seams.go
       characterization_tests:
         - internal/application/service/tenant_deletion_test.go
         - internal/application/service/user_provisioning_test.go
@@ -1502,7 +1493,7 @@ contracts:
         - internal/handler/tenant_invitation_accept_by_token_test.go
         - internal/handler/tenant_self_service_policy_test.go
         - internal/middleware/embed_auth_test.go
-        - internal/modules/conversation/chat_pipeline/search_error_test.go
+        - internal/application/service/chat_pipeline/search_error_test.go
         - internal/router/router_files_test.go
         - internal/router/router_presigned_test.go
       items: []
@@ -1605,28 +1596,27 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/knowledge/ingest/chunk_service.go
+        - internal/application/service/chunk.go
         - internal/application/service/embed_channel.go
-        - internal/modules/knowledge/ingest/extract.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_auto_tag.go
         - internal/application/service/knowledge_post_process.go
         - internal/application/service/session.go
-        - internal/modules/knowledge/ingest/chunk_handler.go
-        - internal/modules/agentruntime/agent/tools/get_document_info.go
-        - internal/modules/agentruntime/agent/tools/knowledge_search.go
-        - internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
-        - internal/modules/agentruntime/agent/tools/scope_authorization.go
-        - internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
-        - internal/modules/conversation/chat_pipeline/merge.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/handler/chunk.go
+        - internal/agent/tools/get_document_info.go
+        - internal/agent/tools/knowledge_search.go
+        - internal/agent/tools/list_knowledge_chunks.go
+        - internal/agent/tools/scope_authorization.go
+        - internal/agent/tools/wiki_read_source_doc.go
+        - internal/application/service/chat_pipeline/merge.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
         - internal/router/rbac.go
         - internal/router/router.go
         - internal/application/service/chunk_ingest_shim.go
-        - internal/handler/chunk_ingest_shim.go
-        - internal/modules/knowledge/faq/service.go
+        - internal/application/service/faq_service.go
       characterization_tests:
         - internal/application/service/embed_channel_chunk_test.go
         - internal/application/service/knowledge_auto_tag_test.go
@@ -1635,7 +1625,7 @@ contracts:
         - internal/application/service/knowledge_write_access_test.go
         - internal/handler/knowledge_mutation_admission_test.go
         - internal/handler/rbac_lookups_test.go
-        - internal/modules/agentruntime/agent/tools/scope_authorization_test.go
+        - internal/agent/tools/scope_authorization_test.go
       items: []
     - id: knowledge.facade
       owner: knowledge
@@ -1660,10 +1650,10 @@ contracts:
       consumers:
         - internal/application/service/agent_service.go
         - internal/application/service/custom_agent.go
-        - internal/modules/datasource/service/datasource_service.go
+        - internal/application/service/datasource_service.go
         - internal/application/service/evaluation.go
-        - internal/modules/knowledge/ingest/extract.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_auto_tag.go
         - internal/application/service/knowledge_post_process.go
@@ -1674,13 +1664,13 @@ contracts:
         - internal/application/service/tag.go
         - internal/application/service/web_search.go
         - internal/application/service/web_search_state.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
-        - internal/modules/knowledge/wiki/wiki_lint.go
-        - internal/modules/knowledge/wiki/wiki_page.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
+        - internal/application/service/wiki_page.go
         - internal/container/container.go
-        - internal/modules/datasource/handler/datasource.go
-        - internal/modules/datasource/handler/datasource_credentials.go
-        - internal/modules/knowledge/faq/faq_handler.go
+        - internal/handler/datasource.go
+        - internal/handler/datasource_credentials.go
+        - internal/handler/faq.go
         - internal/handler/initialization.go
         - internal/handler/knowledge.go
         - internal/handler/knowledgebase.go
@@ -1688,17 +1678,17 @@ contracts:
         - internal/handler/rbac_lookups.go
         - internal/handler/session/handler.go
         - internal/handler/tenant.go
-        - internal/modules/knowledge/wiki/wiki_page_handler.go
-        - internal/modules/agentruntime/agent/tools/data_analysis.go
-        - internal/modules/agentruntime/agent/tools/knowledge_search.go
-        - internal/modules/agentruntime/agent/tools/query_knowledge_graph.go
-        - internal/modules/channels/im/cmd_info.go
-        - internal/modules/channels/im/cmd_search.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/conversation/chat_pipeline/data_analysis.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
-        - internal/modules/conversation/chat_pipeline/wiki_boost.go
+        - internal/handler/wiki_page.go
+        - internal/agent/tools/data_analysis.go
+        - internal/agent/tools/knowledge_search.go
+        - internal/agent/tools/query_knowledge_graph.go
+        - internal/im/cmd_info.go
+        - internal/im/cmd_search.go
+        - internal/im/service.go
+        - internal/application/service/chat_pipeline/data_analysis.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
+        - internal/application/service/chat_pipeline/wiki_boost.go
         - internal/router/files.go
         - internal/router/rbac.go
         - internal/router/router.go
@@ -1706,21 +1696,18 @@ contracts:
         - internal/router/task.go
         - internal/types/interfaces/web_search.go
         - internal/application/service/chunk_ingest_shim.go
-        - internal/application/service/datasource_passb_compat.go
         - internal/application/service/span_trace_seam_adapter.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/handler/faq_k3_compat.go
-        - internal/handler/wiki_page_k3_compat.go
-        - internal/modules/knowledge/faq/service.go
-        - internal/modules/knowledge/ingest/seams.go
+        - internal/application/service/faq_service.go
+        - internal/application/service/ingest_seams.go
         - internal/modules/knowledge/module.go
       characterization_tests:
         - internal/application/service/agent_service_test.go
         - internal/application/service/custom_agent_suggestion_scope_test.go
         - internal/application/service/datasource_purge_test.go
-        - internal/modules/datasource/service/datasource_service_test.go
+        - internal/application/service/datasource_service_test.go
         - internal/application/service/document_write_access_test.go
-        - internal/modules/knowledge/ingest/image_multimodal_orphan_test.go
+        - internal/application/service/image_multimodal_orphan_test.go
         - internal/application/service/knowledge_auto_tag_test.go
         - internal/application/service/knowledge_batch_reparse_test.go
         - internal/application/service/knowledge_caller_scope_test.go
@@ -1731,9 +1718,9 @@ contracts:
         - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
         - internal/application/service/knowledge_write_access_test.go
         - internal/application/service/session_tag_targets_test.go
-        - internal/modules/knowledge/wiki/wiki_deleted_kb_guard_test.go
-        - internal/modules/knowledge/wiki/wiki_folder_prune_finalize_test.go
-        - internal/modules/datasource/handler/datasource_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+        - internal/handler/datasource_test.go
         - internal/handler/knowledge_download_test.go
         - internal/handler/knowledge_folder_test.go
         - internal/handler/knowledge_move_gate_test.go
@@ -1745,7 +1732,7 @@ contracts:
         - internal/handler/knowledgebase_pr5_list_test.go
         - internal/handler/rbac_lookups_test.go
         - internal/handler/shared_agent_access_test.go
-        - internal/modules/conversation/chat_pipeline/search_error_test.go
+        - internal/application/service/chat_pipeline/search_error_test.go
       items: []
     - id: knowledge.lifecycle
       owner: knowledge
@@ -1767,9 +1754,9 @@ contracts:
       stability: frozen
       consumers:
         - internal/container/engine_factory.go
-        - internal/modules/knowledge/retriever/composite.go
-        - internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go
-        - internal/modules/knowledge/retriever/registry.go
+        - internal/application/service/retriever/composite.go
+        - internal/application/service/retriever/keywords_vector_hybrid_indexer.go
+        - internal/application/service/retriever/registry.go
         - internal/types/interfaces/vectorstore.go
       characterization_tests:
         - internal/application/service/knowledge_process_parent_child_test.go
@@ -1779,9 +1766,9 @@ contracts:
         - internal/application/service/knowledgebase_search_fanout_test.go
         - internal/application/service/knowledgebase_task_cancel_test.go
         - internal/application/service/vectorstore_test.go
-        - internal/modules/knowledge/retriever/factory_test.go
-        - internal/modules/knowledge/retriever/registry_rehydrate_test.go
-        - internal/modules/knowledge/retriever/registry_test.go
+        - internal/application/service/retriever/factory_test.go
+        - internal/application/service/retriever/registry_rehydrate_test.go
+        - internal/application/service/retriever/registry_test.go
       items: []
     - id: knowledge.routes
       owner: knowledge
@@ -1814,43 +1801,42 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/modules/datasource/service/datasource_service.go
+        - internal/application/service/datasource_service.go
         - internal/application/service/evaluation.go
-        - internal/modules/knowledge/ingest/extract.go
+        - internal/application/service/extract.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_delete_plan.go
         - internal/application/service/message.go
         - internal/application/service/session.go
         - internal/application/service/web_search.go
         - internal/application/service/web_search_state.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
-        - internal/modules/knowledge/wiki/wiki_lint.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
         - internal/container/container.go
-        - internal/modules/knowledge/ingest/chunk_handler.go
-        - internal/modules/knowledge/faq/faq_handler.go
+        - internal/handler/chunk.go
+        - internal/handler/faq.go
         - internal/handler/initialization.go
         - internal/handler/knowledge.go
         - internal/handler/knowledgebase.go
         - internal/handler/rbac_lookups.go
         - internal/handler/system.go
-        - internal/modules/agentruntime/agent/tools/data_analysis.go
-        - internal/modules/agentruntime/agent/tools/data_schema.go
-        - internal/modules/agentruntime/agent/tools/get_document_info.go
-        - internal/modules/agentruntime/agent/tools/knowledge_search.go
-        - internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
-        - internal/modules/agentruntime/agent/tools/query_knowledge_graph.go
-        - internal/modules/agentruntime/agent/tools/scope_authorization.go
-        - internal/modules/agentruntime/agent/tools/wiki_flag_issue.go
-        - internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
-        - internal/modules/agentruntime/agent/tools/wiki_replace_text.go
-        - internal/modules/agentruntime/agent/tools/wiki_route_resolver.go
-        - internal/modules/agentruntime/agent/tools/wiki_tools.go
-        - internal/modules/agentruntime/agent/tools/wiki_write_page.go
-        - internal/modules/channels/im/service.go
-        - internal/modules/conversation/chat_pipeline/data_analysis.go
-        - internal/modules/conversation/chat_pipeline/extract_entity.go
-        - internal/modules/conversation/chat_pipeline/search.go
-        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/agent/tools/data_analysis.go
+        - internal/agent/tools/data_schema.go
+        - internal/agent/tools/get_document_info.go
+        - internal/agent/tools/knowledge_search.go
+        - internal/agent/tools/list_knowledge_chunks.go
+        - internal/agent/tools/query_knowledge_graph.go
+        - internal/agent/tools/scope_authorization.go
+        - internal/agent/tools/wiki_flag_issue.go
+        - internal/agent/tools/wiki_read_source_doc.go
+        - internal/agent/tools/wiki_replace_text.go
+        - internal/agent/tools/wiki_tools.go
+        - internal/agent/tools/wiki_write_page.go
+        - internal/im/service.go
+        - internal/application/service/chat_pipeline/data_analysis.go
+        - internal/application/service/chat_pipeline/extract_entity.go
+        - internal/application/service/chat_pipeline/search.go
+        - internal/application/service/chat_pipeline/search_parallel.go
         - internal/router/files.go
         - internal/router/rbac.go
         - internal/router/router.go
@@ -1858,20 +1844,17 @@ contracts:
         - internal/router/task.go
         - internal/types/interfaces/web_search.go
         - internal/application/service/chunk_ingest_shim.go
-        - internal/application/service/datasource_passb_compat.go
         - internal/application/service/span_trace_seam_adapter.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/handler/chunk_ingest_shim.go
-        - internal/handler/faq_k3_compat.go
-        - internal/modules/knowledge/ingest/seams.go
+        - internal/application/service/ingest_seams.go
         - internal/modules/knowledge/module.go
       characterization_tests:
         - internal/application/service/agent_service_test.go
         - internal/application/service/datasource_purge_test.go
-        - internal/modules/datasource/service/datasource_sweep_wiring_test.go
+        - internal/application/service/datasource_sweep_wiring_test.go
         - internal/application/service/session_tag_targets_test.go
         - internal/handler/document_write_scope_test.go
-        - internal/modules/knowledge/faq/faq_enabled_filter_test.go
+        - internal/handler/faq_enabled_filter_test.go
         - internal/handler/kb_access_test.go
         - internal/handler/knowledge_download_test.go
         - internal/handler/knowledge_folder_test.go
@@ -1881,7 +1864,7 @@ contracts:
         - internal/handler/knowledge_transfer_test.go
         - internal/handler/rbac_lookups_test.go
         - internal/handler/shared_agent_access_test.go
-        - internal/modules/agentruntime/agent/tools/scope_authorization_test.go
+        - internal/agent/tools/scope_authorization_test.go
         - internal/router/task_processing_scope_test.go
       items: []
     - id: knowledge.tag-service
@@ -1891,19 +1874,18 @@ contracts:
       signature: interface { ListTags(ctx context.Context, kbID string, page *types.Pagination, keyword string) (*types.PageResult, error); CreateTag(ctx context.Context, kbID string, name string, color string, sortOrder int) (*types.KnowledgeTag, error); UpdateTag(ctx context.Context, id string, name *string, color *string, sortOrder *int) (*types.KnowledgeTag, error); DeleteTag(ctx context.Context, id string, force bool, contentOnly bool, excludeIDs []string) error; FindOrCreateTagByName(ctx context.Context, kbID string, name string) (*types.KnowledgeTag, error); DeleteOrphanTagByName(ctx context.Context, kbID string, name string) error; ProcessIndexDelete(ctx context.Context, t *asynq.Task) error }
       stability: frozen
       consumers:
-        - internal/modules/datasource/service/datasource_service.go
+        - internal/application/service/datasource_service.go
         - internal/application/service/knowledge.go
         - internal/application/service/tag.go
-        - internal/modules/knowledge/retrieval/app/handler/tag.go
+        - internal/handler/tag.go
         - internal/router/sync_task.go
         - internal/router/task.go
-        - internal/application/service/datasource_passb_compat.go
         - internal/container/container.go
-        - internal/modules/knowledge/faq/service.go
+        - internal/application/service/faq_service.go
         - internal/modules/knowledge/module.go
       characterization_tests:
-        - internal/modules/datasource/service/datasource_service_test.go
-        - internal/modules/knowledge/retrieval/app/handler/tag_delete_test.go
+        - internal/application/service/datasource_service_test.go
+        - internal/handler/tag_delete_test.go
       items: []
     - id: knowledge.wiki-page-service
       owner: knowledge
@@ -1914,31 +1896,30 @@ contracts:
       consumers:
         - internal/application/service/agent_service.go
         - internal/application/service/knowledge.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
-        - internal/modules/knowledge/wiki/wiki_lint.go
-        - internal/modules/knowledge/wiki/wiki_page.go
-        - internal/modules/knowledge/wiki/wiki_page_handler.go
-        - internal/modules/agentruntime/agent/tools/wiki_delete_page.go
-        - internal/modules/agentruntime/agent/tools/wiki_flag_issue.go
-        - internal/modules/agentruntime/agent/tools/wiki_link_mutation.go
-        - internal/modules/agentruntime/agent/tools/wiki_read_issue.go
-        - internal/modules/agentruntime/agent/tools/wiki_rename_page.go
-        - internal/modules/agentruntime/agent/tools/wiki_replace_text.go
-        - internal/modules/agentruntime/agent/tools/wiki_route_resolver.go
-        - internal/modules/agentruntime/agent/tools/wiki_tools.go
-        - internal/modules/agentruntime/agent/tools/wiki_update_issue.go
-        - internal/modules/agentruntime/agent/tools/wiki_write_page.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
+        - internal/application/service/wiki_page.go
+        - internal/handler/wiki_page.go
+        - internal/agent/tools/wiki_delete_page.go
+        - internal/agent/tools/wiki_flag_issue.go
+        - internal/agent/tools/wiki_link_mutation.go
+        - internal/agent/tools/wiki_read_issue.go
+        - internal/agent/tools/wiki_rename_page.go
+        - internal/agent/tools/wiki_replace_text.go
+        - internal/agent/tools/wiki_route_resolver.go
+        - internal/agent/tools/wiki_tools.go
+        - internal/agent/tools/wiki_update_issue.go
+        - internal/agent/tools/wiki_write_page.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/handler/wiki_page_k3_compat.go
       characterization_tests:
         - internal/application/service/knowledge_move_wiki_test.go
-        - internal/modules/knowledge/wiki/wiki_folder_prune_finalize_test.go
-        - internal/modules/knowledge/wiki/wiki_ingest_dedup_test.go
-        - internal/modules/knowledge/wiki/wiki_page_revision_test.go
-        - internal/modules/agentruntime/agent/tools/wiki_link_mutation_test.go
-        - internal/modules/agentruntime/agent/tools/wiki_replace_text_test.go
-        - internal/modules/agentruntime/agent/tools/wiki_tools_test.go
-        - internal/modules/agentruntime/agent/tools/wiki_write_page_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+        - internal/application/service/wiki_ingest_dedup_test.go
+        - internal/application/service/wiki_page_revision_test.go
+        - internal/agent/tools/wiki_link_mutation_test.go
+        - internal/agent/tools/wiki_replace_text_test.go
+        - internal/agent/tools/wiki_tools_test.go
+        - internal/agent/tools/wiki_write_page_test.go
       items: []
     - id: knowledge.workers
       owner: knowledge
@@ -2137,10 +2118,10 @@ contracts:
       signature: interface { Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) }
       stability: frozen
       consumers:
-        - internal/modules/knowledge/ingest/chunk_service.go
-        - internal/modules/datasource/service/datasource_service.go
-        - internal/modules/knowledge/ingest/extract.go
-        - internal/modules/knowledge/ingest/image_multimodal.go
+        - internal/application/service/chunk.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_post_process.go
         - internal/application/service/knowledge_summary_refresh.go
@@ -2148,26 +2129,25 @@ contracts:
         - internal/application/service/query_history_export.go
         - internal/application/service/tag.go
         - internal/application/service/temporary_document.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
+        - internal/application/service/wiki_ingest.go
         - internal/container/container.go
         - internal/container/recover_pending_wiki_tasks.go
         - internal/handler/knowledge.go
         - internal/handler/knowledgebase.go
-        - internal/modules/agentruntime/memory/service.go
-        - internal/modules/datasource/scheduler.go
+        - internal/application/service/memory/service.go
+        - internal/datasource/scheduler.go
         - internal/application/service/chunk_ingest_shim.go
-        - internal/application/service/datasource_passb_compat.go
         - internal/application/service/span_trace_seam_adapter.go
         - internal/application/service/wiki_k3_compat.go
         - internal/application/service/wiki_k3_ctor_compat.go
-        - internal/modules/knowledge/faq/service.go
-        - internal/modules/knowledge/ingest/seams.go
+        - internal/application/service/faq_service.go
+        - internal/application/service/ingest_seams.go
       characterization_tests:
-        - internal/modules/knowledge/ingest/image_multimodal_orphan_test.go
+        - internal/application/service/image_multimodal_orphan_test.go
         - internal/application/service/knowledge_auto_tag_test.go
         - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
-        - internal/modules/knowledge/wiki/wiki_deleted_kb_guard_test.go
-        - internal/modules/knowledge/wiki/wiki_folder_prune_finalize_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
       items: []
     - id: workbench.task-inspector
       owner: workbench
@@ -2176,7 +2156,7 @@ contracts:
       signature: interface { CancelTasksForKnowledge(ctx context.Context, knowledgeID string) (deleted int, cancelled int, err error); HasQueuedTasksForKnowledge(ctx context.Context, knowledgeID string) (bool, error); QueueStats(ctx context.Context) (stats []types.QueueStat, supported bool, err error); WorkerServerStats(ctx context.Context) (stats []types.WorkerServerStat, supported bool, err error) }
       stability: frozen
       consumers:
-        - internal/modules/datasource/service/datasource_service.go
+        - internal/application/service/datasource_service.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_housekeeping.go
         - internal/application/service/knowledgebase.go
@@ -2184,7 +2164,7 @@ contracts:
         - internal/handler/system.go
         - internal/router/task_inspector.go
       characterization_tests:
-        - internal/modules/datasource/service/datasource_cancel_enqueue_test.go
+        - internal/application/service/datasource_cancel_enqueue_test.go
         - internal/application/service/knowledge_housekeeping_test.go
         - internal/application/service/knowledgebase_task_cancel_test.go
       items: []
@@ -2199,16 +2179,16 @@ contracts:
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_post_process.go
         - internal/application/service/knowledgebase.go
-        - internal/modules/knowledge/wiki/wiki_ingest.go
-        - internal/modules/knowledge/wiki/wiki_page.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_page.go
         - internal/application/service/wiki_k3_compat.go
         - internal/application/service/wiki_k3_ctor_compat.go
       characterization_tests:
         - internal/application/service/knowledge_move_wiki_test.go
         - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
         - internal/application/service/knowledgebase_task_cancel_test.go
-        - internal/modules/knowledge/wiki/wiki_deleted_kb_guard_test.go
-        - internal/modules/knowledge/wiki/wiki_folder_prune_finalize_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
       items: []
     - id: workbench.workers
       owner: workbench
