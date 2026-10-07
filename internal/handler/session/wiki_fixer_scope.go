@@ -1,4 +1,4 @@
-package wiki
+package session
 
 import (
 	"context"
@@ -18,8 +18,10 @@ type wikiFixerKBLookup interface {
 type wikiFixerKBSharePermission = access.KBShareLookup
 
 // ResolveBuiltinWikiFixerTenantScope keeps shared-KB wiki-fixer runs on the
-// source tenant. Exported by Pass B 23-knowledge-wikifaq (B0.3 Step 3
-// 去方法化裁定)；原先定义于 internal/handler/session/wiki_fixer_scope.go。
+// source tenant. The package-level form (with injected lookup/share ports)
+// was introduced by Pass B 23-knowledge-wikifaq (B0.3 Step 3 去方法化)；
+// order 60 handler 批迁回 session 包后保留该形态供 wiki_fixer_scope_test
+// 注入 stub 白盒验证，conversation 属主方法经下方方法转发复用同一实现。
 func ResolveBuiltinWikiFixerTenantScope(
 	ctx context.Context,
 	agent *types.CustomAgent,
@@ -83,4 +85,25 @@ func ResolveBuiltinWikiFixerTenantScope(
 	scopedAgent.Config.VLMModelID = ""
 	logger.Infof(ctx, "wiki fixer: using shared KB source tenant %d for KB %s", kb.TenantID, secutils.SanitizeForLog(kb.ID))
 	return &scopedAgent, kb.TenantID
+}
+
+// resolveWikiFixerTenantScope binds the package-level implementation to the
+// conversation Handler's own KB services（qa.go 属主调用面；方法形态还原自
+// Pass B 前的原定义 internal/handler/session/wiki_fixer_scope.go:18）。
+func (h *Handler) resolveWikiFixerTenantScope(
+	ctx context.Context,
+	agent *types.CustomAgent,
+	currentTenantID uint64,
+	callerTenantRole types.TenantRole,
+	kbIDs []string,
+) (*types.CustomAgent, uint64) {
+	return ResolveBuiltinWikiFixerTenantScope(
+		ctx,
+		agent,
+		currentTenantID,
+		callerTenantRole,
+		kbIDs,
+		h.knowledgebaseService,
+		h.kbShareService,
+	)
 }

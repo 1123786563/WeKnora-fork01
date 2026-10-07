@@ -30,6 +30,7 @@ import (
 const oidcNonceCookieName = "weknora_oidc_nonce"
 const oidcNonceCookieMaxAge = 600
 const mobileOIDCRedirectURI = "weknora://oidc"
+
 var liteSetupToken string
 
 // SetLiteSetupToken is called by the native desktop host before serving requests.

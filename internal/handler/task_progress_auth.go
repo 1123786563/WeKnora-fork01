@@ -8,10 +8,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
-// RequireTaskProgressTenant ensures async task progress endpoints only
+// requireTaskProgressTenant ensures async task progress endpoints only
 // return data for tasks created under the caller's tenant. Cross-tenant
 // probes are hidden as not-found to avoid confirming task existence.
-func RequireTaskProgressTenant(ctx context.Context, taskID string) error {
+func requireTaskProgressTenant(ctx context.Context, taskID string) error {
 	taskTenantID, err := utils.TaskTenantID(taskID)
 	if err != nil {
 		return apperrors.NewBadRequestError("invalid task ID")

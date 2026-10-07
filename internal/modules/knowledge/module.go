@@ -37,10 +37,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/Tencent/WeKnora/internal/bootstrap"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
+	"github.com/Tencent/WeKnora/internal/handler"
 	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -66,11 +64,11 @@ type Dependencies struct {
 	// RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes）+
 	// serveKBScopedFiles 文件服务面（非 handler 供给，无字段）；ib2/补迁窗后
 	// 增补字段——装配面扩展，非契约变更）。
-	Chunk               *ingest.ChunkHandler                  // RegisterChunkRoutes（routes_knowledge.go:28）
-	ChunkerDebug        gin.HandlerFunc                       // RegisterChunkerDebugRoutes（:18）；生产值 ingest.PreviewChunking（chunker_debug.go:123）
-	WikiPage            *wiki.WikiPageHandler                 // RegisterWikiPageRoutes（:309）
-	FAQ                 *faq.FAQHandler                       // RegisterFAQRoutes（:143）
-	Tag                 *kbhandler.TagHandler                 // RegisterKnowledgeTagRoutes（:279）
+	Chunk               *handler.ChunkHandler                 // RegisterChunkRoutes（routes_knowledge.go:28）
+	ChunkerDebug        gin.HandlerFunc                       // RegisterChunkerDebugRoutes（:18）；生产值 handler.PreviewChunking（chunker_debug.go:123）
+	WikiPage            *handler.WikiPageHandler              // RegisterWikiPageRoutes（:309）
+	FAQ                 *handler.FAQHandler                   // RegisterFAQRoutes（:143）
+	Tag                 *handler.TagHandler                   // RegisterKnowledgeTagRoutes（:279）
 	SemanticModelPolicy *kbhandler.SemanticModelPolicyHandler // RegisterSemanticModelPolicyRoutes（:254）
 	SemanticInternal    *kbhandler.SemanticInternalHandler    // RegisterSemanticInternalRoutes（routes_infra.go:14）
 
@@ -197,11 +195,11 @@ func (m *Module) RegisterWorkers(redis, lite *bootstrap.WorkerRegistry) error {
 // HandlerSet 是 knowledge 11 组路由注册（§7.1）的模块侧 handler 供给
 // （已落位 7 组；字段与 Dependencies 对应段一一对应）。
 type HandlerSet struct {
-	Chunk               *ingest.ChunkHandler
+	Chunk               *handler.ChunkHandler
 	ChunkerDebug        gin.HandlerFunc
-	WikiPage            *wiki.WikiPageHandler
-	FAQ                 *faq.FAQHandler
-	Tag                 *kbhandler.TagHandler
+	WikiPage            *handler.WikiPageHandler
+	FAQ                 *handler.FAQHandler
+	Tag                 *handler.TagHandler
 	SemanticModelPolicy *kbhandler.SemanticModelPolicyHandler
 	SemanticInternal    *kbhandler.SemanticInternalHandler
 }

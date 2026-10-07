@@ -15,12 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// maxListPageSize mirrors the host handler pagination cap
-// (internal/handler/list_pagination.go:15) that this file consumed in-package
-// before the Pass B migration (26-datasource). Declared locally so the module
-// handler package is self-contained; keep in sync with the host constant until
-// the ib2 consolidation decides the shared-pagination owner.
-const maxListPageSize = 100
+// maxListPageSize：order 60 handler 批迁回后恢复同包直引宿主分页上限
+// （internal/handler/list_pagination.go；Pass B 26-datasource 时期的本地
+// 镜像 const 已随批删除，值恒等 100）。
 
 // DataSourceHandler handles HTTP requests for data source management
 type DataSourceHandler struct {

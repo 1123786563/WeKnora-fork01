@@ -2,7 +2,7 @@
 // that runs the adaptive chunker on supplied text without touching the DB
 // or generating embeddings. Used by the KB editor's debug panel so users
 // can experiment with chunking parameters before committing to a re-index.
-package ingest
+package handler
 
 import (
 	"context"

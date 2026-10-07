@@ -86,7 +86,7 @@ type CreateKnowledgeQARequest struct {
 	// Source channel: "web", "api", "im", etc.
 	Channel string `json:"channel"`
 	// Explicit reasoning request: "rules" | "model" (T15)
-	ReasoningMode string `json:"reasoning_mode,omitempty"`
+	ReasoningMode         string                       `json:"reasoning_mode,omitempty"`
 	SuggestionAttribution *types.SuggestionAttribution `json:"suggestion_attribution,omitempty"`
 	// QuestionOrigin is the knowledge source of a picked suggested question.
 	QuestionOrigin *types.QuestionOrigin `json:"question_origin,omitempty"`

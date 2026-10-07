@@ -1,13 +1,11 @@
-// faq_enabled_filter_test.go 迁自 internal/handler/faq_enabled_filter_test.go
-// （Pass B 23-knowledge-wikifaq K3.2，白盒字面量 &FAQHandler{knowledgeService:…}
-// 随 faq.go 同迁——迁移前 T0 宿主运行 3 用例 PASS，迁移后同用例双跑等价）。
+// faq_enabled_filter_test.go 随 Pass B 23-knowledge-wikifaq K3.2 物理迁出，
+// order 60 handler 批随 faq.go 一并迁回上游布局。白盒字面量
+// &FAQHandler{knowledgeService:…} 的构造形态保持不变。
 //
-// 迁移适配（计划外、等价保持）：原第三用例经 middleware.ErrorHandler 断言
-// HTTP 400；faq 包测试 import middleware 会构成测试期 import 环
-// （middleware→service→faq），故改为在错误边界断言 AppError.HTTPCode==400
+// （历史迁移适配，等价保持）：第三用例经在错误边界断言 AppError.HTTPCode==400
 // ——ErrorHandler 对 AppError 原样渲染 HTTPCode（error_handler.go:22），
-// 可观察契约等价。
-package faq
+// 可观察契约与 HTTP 断言等价。
+package handler
 
 import (
 	"context"

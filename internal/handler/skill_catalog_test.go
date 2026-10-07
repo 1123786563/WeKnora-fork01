@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,16 +18,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// oversizedSkillSourceJSON mirrors the host test fixture
-// (internal/handler/upload_limit_test.go:153); the module test binary cannot
-// reference host test files, and the cap constant it overflows is this
-// package's skillSourceJSONMaxBytes (same name and 64 << 10 value).
-func oversizedSkillSourceJSON(extra int) []byte {
-	if extra < 1 {
-		extra = 1
-	}
-	return []byte(`{"source":"` + strings.Repeat("x", skillSourceJSONMaxBytes+extra) + `"}`)
-}
+// oversizedSkillSourceJSON：迁回同包后直接使用宿主测试夹具
+// （internal/handler/upload_limit_test.go），本地镜像副本已删除
+// （Pass B 25b 时期的模块测试二进制无法引用宿主测试文件的约束已随批解除）。
 
 type fakeSkillCatalog struct {
 	list         []service.SkillCatalogView

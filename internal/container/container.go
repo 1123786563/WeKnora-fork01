@@ -110,8 +110,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
 	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
@@ -954,10 +952,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewSemanticModelPolicyHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
-	// IB2（K5 Brief (f)）：模块直构造并存供给——knowledge 门面 Dependencies
-	// 收 *ingest.ChunkHandler 模块实例；路由/rbac 面继续用宿主 wrapper
-	//（完整切换依赖 identity 去方法化前置，见 routes_knowledge.go IB2 裁定注）。
-	must(container.Provide(ingest.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
 	must(container.Provide(handler.NewTagHandler))
 	// Session fork (A11) + pinned session sandbox (A17): the runner, ID
@@ -1109,9 +1103,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// Data source handler
 	must(container.Provide(handler.NewDataSourceHandler))
-	// Wiki page handler（wrapper 构造器内已直构造 wiki.NewWikiPageHandler 模块实例
-	// 并内嵌导出——门面 Dependencies 经 wrapper.WikiPageHandler 取模块实例；IB2 裁定：
-	// wrapper 保留（rbac_lookups.go:105/:183 方法依赖 wrapper 类型，identity 去方法化前置未就绪）。
+	// Wiki page handler（真身 handler.NewWikiPageHandler 构造；
+	// 门面 Dependencies.WikiPage 直收真身实例。rbac_lookups.go 的
+	// KBCreatorLookupFromKBPath 方法定义在真身类型上，字段面零改动）。
 	must(container.Provide(handler.NewWikiPageHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
@@ -3598,11 +3592,11 @@ type knowledgeModuleParams struct {
 	KnowledgeAutoTag     interfaces.TaskHandler `name:"knowledgeAutoTag"`
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 
-	Chunk               *ingest.ChunkHandler
+	Chunk               *handler.ChunkHandler
 	ChunkHost           *handler.ChunkHandler
 	WikiPageHost        *handler.WikiPageHandler
-	FAQ                 *faq.FAQHandler
-	Tag                 *kbhandler.TagHandler
+	FAQ                 *handler.FAQHandler
+	Tag                 *handler.TagHandler
 	SemanticModelPolicy *kbhandler.SemanticModelPolicyHandler
 	SemanticInternal    *kbhandler.SemanticInternalHandler
 
@@ -3611,8 +3605,8 @@ type knowledgeModuleParams struct {
 }
 
 // newKnowledgeModule 构造 knowledge 模块门面（K5.1 已实装五操作）。ChunkerDebug
-// 生产值 = ingest.PreviewChunking（K1 §6.3 R1）；PendingWikiRecovery = 原
-// recoverPendingWikiTasks 等价闭包（K5 Brief (c)）。
+// 生产值 = handler.PreviewChunking（order 60 handler 批随真身迁回）；PendingWikiRecovery
+// = 原 recoverPendingWikiTasks 等价闭包（K5 Brief (c)）。
 func newKnowledgeModule(p knowledgeModuleParams) (*knowledge.Module, error) {
 	return knowledge.NewModule(knowledge.Dependencies{
 		KnowledgeService:     p.KnowledgeService,
@@ -3625,8 +3619,8 @@ func newKnowledgeModule(p knowledgeModuleParams) (*knowledge.Module, error) {
 		KnowledgeAutoTag:     p.KnowledgeAutoTag,
 		WikiIngest:           p.WikiIngest,
 		Chunk:                p.Chunk,
-		ChunkerDebug:         ingest.PreviewChunking,
-		WikiPage:             p.WikiPageHost.WikiPageHandler,
+		ChunkerDebug:         handler.PreviewChunking,
+		WikiPage:             p.WikiPageHost,
 		FAQ:                  p.FAQ,
 		Tag:                  p.Tag,
 		SemanticModelPolicy:  p.SemanticModelPolicy,

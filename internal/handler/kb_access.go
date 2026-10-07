@@ -13,25 +13,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ResolvedKBAccess reuses only a grant for this caller and this resource. A
+// resolvedKBAccess reuses only a grant for this caller and this resource. A
 // Viewer grant cannot satisfy an Editor check after the tenant context switches.
-func ResolvedKBAccess(c *gin.Context, kbID string, required types.OrgMemberRole) (*access.KBAccess, bool) {
+func resolvedKBAccess(c *gin.Context, kbID string, required types.OrgMemberRole) (*access.KBAccess, bool) {
 	grant, ok := middleware.KBAccessFromContext(c)
 	return grant, ok && grant.KnowledgeBase != nil && grant.KnowledgeBase.ID == kbID &&
 		grant.Caller == middleware.KBAccessRequest(c).Caller &&
 		access.HasKBGrant(grant.WithGrant(c.Request.Context()), kbID, grant.EffectiveTenantID, required)
 }
 
-// ResolveHandlerKBAccess is also used by body/query-based endpoints that cannot
+// resolveHandlerKBAccess is also used by body/query-based endpoints that cannot
 // resolve a single KB in route middleware. It always enforces access, preserving
 // the handler checks even when the middleware's RBAC rollout flag is disabled.
-func ResolveHandlerKBAccess(c *gin.Context, kbID string, kbService middleware.KBLookup,
+func resolveHandlerKBAccess(c *gin.Context, kbID string, kbService middleware.KBLookup,
 	shares interfaces.KBShareService, agents interfaces.AgentShareService,
 ) (*access.KBAccess, error) {
-	return ResolveHandlerKBAccessFor(c, kbID, kbService, shares, agents, types.OrgRoleViewer)
+	return resolveHandlerKBAccessFor(c, kbID, kbService, shares, agents, types.OrgRoleViewer)
 }
 
-func ResolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware.KBLookup,
+func resolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware.KBLookup,
 	shares interfaces.KBShareService, agents interfaces.AgentShareService, required types.OrgMemberRole,
 ) (*access.KBAccess, error) {
 	ctx := c.Request.Context()
@@ -45,7 +45,7 @@ func ResolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware
 	if err := types.AuthorizeTenantAPIKeyKnowledgeBases(ctx, kbID); err != nil {
 		return nil, err
 	}
-	if grant, ok := ResolvedKBAccess(c, kbID, required); ok {
+	if grant, ok := resolvedKBAccess(c, kbID, required); ok {
 		return grant, nil
 	}
 	kb, err := kbService.GetKnowledgeBaseByID(ctx, kbID)
@@ -62,10 +62,10 @@ func ResolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware
 		// execution tenant until the handler performs its resource operation.
 		c.Request = c.Request.WithContext(grant.WithGrant(ctx))
 	}
-	return grant, KBAccessHTTPError(err)
+	return grant, kbAccessHTTPError(err)
 }
 
-func KBAccessHTTPError(err error) error {
+func kbAccessHTTPError(err error) error {
 	switch {
 	case stderrors.Is(err, access.ErrUnauthorized):
 		return apperrors.NewUnauthorizedError("Unauthorized")

@@ -11,10 +11,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/Tencent/WeKnora/internal/bootstrap"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/faq"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
+	"github.com/Tencent/WeKnora/internal/handler"
 	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -58,11 +56,11 @@ func fullDependencies(recovery func(ctx context.Context)) Dependencies {
 		KnowledgePostProcess: stubTaskHandler{},
 		KnowledgeAutoTag:     stubTaskHandler{},
 		WikiIngest:           stubTaskHandler{},
-		Chunk:                &ingest.ChunkHandler{},
+		Chunk:                &handler.ChunkHandler{},
 		ChunkerDebug:         func(c *gin.Context) {},
-		WikiPage:             &wiki.WikiPageHandler{},
-		FAQ:                  &faq.FAQHandler{},
-		Tag:                  &kbhandler.TagHandler{},
+		WikiPage:             &handler.WikiPageHandler{},
+		FAQ:                  &handler.FAQHandler{},
+		Tag:                  &handler.TagHandler{},
 		SemanticModelPolicy:  &kbhandler.SemanticModelPolicyHandler{},
 		SemanticInternal:     &kbhandler.SemanticInternalHandler{},
 		PendingWikiRecovery:  recovery,
