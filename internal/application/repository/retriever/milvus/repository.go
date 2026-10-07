@@ -827,38 +827,34 @@ func (m *milvusRepository) KeywordsRetrieve(ctx context.Context,
 	}
 
 	var allResults []*types.IndexWithScore
-
-	// Count per-collection failures (keeping the first one) so a total outage
-	// can be told apart from "no content matched": swallowing every failure and
-	// returning empty results would make callers answer "no relevant content"
-	// for a store that never answered the query (#3835).
-	searched := 0
-	failed := 0
-	var firstFailure error
-	recordFailure := func(collectionName string, err error) {
-		failed++
-		if firstFailure == nil {
-			firstFailure = fmt.Errorf("%s: %w", collectionName, err)
-		}
-	}
+	// A batch where every matching collection failed must not be reported as
+	// "no matches": the caller cannot tell a genuine zero-hit search apart from
+	// a search that never ran. Count both sides and fail loudly when the search
+	// produced nothing but errors.
+	matchedCollections := 0
+	failedCollections := 0
+	var lastFailedErr error
 
 	// Search in all matching collections
 	for _, collectionName := range collections {
 		if !matchesDimensionCollection(collectionName, m.collectionBaseName) {
 			continue
 		}
-		searched++
+		matchedCollections++
+
 		collectionMode, modeErr := m.collectionAnalyzerMode(ctx, collectionName)
 		if modeErr != nil {
+			failedCollections++
+			lastFailedErr = modeErr
 			log.Errorf("[Milvus] Failed to inspect collection %s analyzer mode: %v", collectionName, modeErr)
-			recordFailure(collectionName, modeErr)
 			continue
 		}
 
 		expr, paramsMap, err := m.getBaseFilterForQuery(params)
 		if err != nil {
+			failedCollections++
+			lastFailedErr = err
 			log.Errorf("[Milvus] Failed to build base filter: %v", err)
-			recordFailure(collectionName, err)
 			continue
 		}
 		searchOpt := client.NewSearchOption(collectionName, params.TopK, []entity.Vector{entity.Text(params.Query)})
@@ -881,35 +877,37 @@ func (m *milvusRepository) KeywordsRetrieve(ctx context.Context,
 		searchOpt.WithOutputFields("*")
 		resultSet, err := m.client.Search(ctx, searchOpt)
 		if err != nil {
-			log.Errorf("[Milvus] Keywords search failed: %v", err)
-			recordFailure(collectionName, err)
+			failedCollections++
+			lastFailedErr = err
+			log.Errorf("[Milvus] Keywords search failed in %s: %v", collectionName, err)
 			continue
 		}
 		sets, scores, err := convertResultSet(resultSet)
 		if err != nil {
-			log.Errorf("[Milvus] Failed to convert result set: %v", err)
-			recordFailure(collectionName, err)
+			failedCollections++
+			lastFailedErr = err
+			log.Errorf("[Milvus] Failed to convert result set of %s: %v", collectionName, err)
 			continue
 		}
 		results, scoreErr := buildMilvusIndexResults(sets, scores, types.MatchTypeKeywords)
 		if scoreErr != nil {
-			log.Errorf("[Milvus] Failed to attach keyword scores: %v", scoreErr)
-			recordFailure(collectionName, scoreErr)
+			failedCollections++
+			lastFailedErr = scoreErr
+			log.Errorf("[Milvus] Failed to attach keyword scores for %s: %v", collectionName, scoreErr)
 			continue
 		}
 		allResults = append(allResults, results...)
 	}
 
-	// Every attempted collection failing means the retrieval never ran; return
-	// the failure so callers take the real error path instead of reading empty
-	// results as "the library has no such content" (#3835). This mirrors
-	// VectorRetrieve, which fails loudly when its single collection errors.
-	if failed > 0 && failed == searched {
-		log.Errorf("[Milvus] Keywords search failed in all %d collections", searched)
-		return nil, fmt.Errorf("keywords search failed in all %d milvus collections, first failure: %w", searched, firstFailure)
-	}
-	if failed > 0 {
-		log.Warnf("[Milvus] Keywords search failed in %d of %d collections, returning results from the healthy ones", failed, searched)
+	// Every collection that matched the base name failed, so this call produced
+	// no evidence at all about the knowledge base. Surface the failure instead
+	// of letting callers treat it as "no relevant content".
+	if matchedCollections > 0 && failedCollections == matchedCollections {
+		return nil, fmt.Errorf(
+			"milvus keyword search failed in all %d matched collections: %w",
+			matchedCollections,
+			lastFailedErr,
+		)
 	}
 
 	// Searches across multiple collections return one score-sorted page per
@@ -937,13 +935,52 @@ func (m *milvusRepository) KeywordsRetrieve(ctx context.Context,
 		allResults = allResults[:params.TopK]
 	}
 
-	if len(allResults) == 0 {
-		log.Warnf("[Milvus] No keyword matches found for query: %s", params.Query)
-	} else {
-		log.Infof("[Milvus] Keywords retrieval found %d results", len(allResults))
+	// Some matched collections answered and others did not: these results are
+	// real but incomplete. Carry the failure on the result set
+	// (RetrieveResult.Error) instead of returning it as the call's error, which
+	// would discard the partial evidence. CompositeRetrieveEngine turns it into
+	// an error alongside the results so the gap stays visible upstream.
+	var partialErr error
+	if failedCollections > 0 && failedCollections < matchedCollections {
+		partialErr = fmt.Errorf(
+			"milvus keyword search failed in %d of %d matched collections: %w",
+			failedCollections, matchedCollections, lastFailedErr,
+		)
 	}
 
-	return buildRetrieveResult(allResults, types.KeywordsRetrieverType), nil
+	switch {
+	case matchedCollections == 0:
+		// No collection carries this base name, so nothing was searched. This
+		// must not read as a search that ran and legitimately hit nothing.
+		log.Warnf(
+			"[Milvus] No collection matched base name %s among %d listed; keyword search did not run",
+			m.collectionBaseName, len(collections),
+		)
+	case partialErr != nil:
+		log.Warnf(
+			"[Milvus] Keywords search failed in %d of %d matched collections; results are incomplete: %v",
+			failedCollections, matchedCollections, lastFailedErr,
+		)
+		if len(allResults) > 0 {
+			log.Infof("[Milvus] Keywords retrieval found %d results", len(allResults))
+			break
+		}
+		// Partial failure with zero hits: the remaining collections did answer,
+		// so this is a real zero-hit outcome, but it must not read as if the
+		// search had succeeded everywhere.
+		log.Warnf(
+			"[Milvus] Keywords search returned no matches in the %d collections that answered",
+			matchedCollections-failedCollections,
+		)
+	case len(allResults) > 0:
+		log.Infof("[Milvus] Keywords retrieval found %d results", len(allResults))
+	default:
+		log.Warnf("[Milvus] No keyword matches found for query: %s", params.Query)
+	}
+
+	retrieved := buildRetrieveResult(allResults, types.KeywordsRetrieverType)
+	retrieved[0].Error = partialErr
+	return retrieved, nil
 }
 
 // CopyIndices copies index data from source knowledge base to target knowledge base
@@ -976,49 +1013,37 @@ func (m *milvusRepository) CopyIndices(ctx context.Context,
 		return err
 	}
 
-	// Walk the mapping itself instead of paging the source collection with
-	// offset windows. Query result order is not part of the Milvus API
-	// contract, and copying perturbs it — target rows are written to the same
-	// collection, which changes segment merge order — so an offset window can
-	// skip or re-read rows and the "short page means done" exit silently drops
-	// the remaining vectors. Batched chunk_id predicates keep the read bounded
-	// without depending on result order. A batch of chunk ids is not limited to
-	// one row per id: QA chunks share a chunk_id across their main and question
-	// rows, so no row limit is applied either.
+	// Read the rows the mapping names, in batches of source chunk IDs. The
+	// mapping is the set of chunks this copy has to move, so a predicate over it
+	// makes every read self-contained.
+	//
+	// The offset window this replaces was a cursor into a result order Milvus
+	// never promised to keep between requests: results are merged segment by
+	// segment, and this copy writes into the collection it reads from, so a
+	// window that moves on skips the rows left behind it and re-copies the ones
+	// it slides back over. Every request still succeeds, which is why the copy
+	// reported success on an incomplete target. A mapping predicate has no
+	// cursor that can drift.
 	sourceChunkIDs := slices.Sorted(maps.Keys(sourceToTargetChunkIDMap))
-
 	const chunkBatchSize = 64
 	totalCopied := 0
-	for batchStart := 0; batchStart < len(sourceChunkIDs); batchStart += chunkBatchSize {
-		batchEnd := min(batchStart+chunkBatchSize, len(sourceChunkIDs))
-		batch := sourceChunkIDs[batchStart:batchEnd]
-
+	for chunkBatch := range slices.Chunk(sourceChunkIDs, chunkBatchSize) {
 		sourceEmbeddings, _, err := m.searchByFilter(ctx, collectionName, &universalFilterCondition{
 			Operator: operatorAnd,
 			Value: []*universalFilterCondition{
-				{
-					Field:    fieldKnowledgeBaseID,
-					Operator: operatorEqual,
-					Value:    sourceKnowledgeBaseID,
-				},
-				{
-					Field:    fieldChunkID,
-					Operator: operatorIn,
-					Value:    batch,
-				},
+				{Field: fieldKnowledgeBaseID, Operator: operatorEqual, Value: sourceKnowledgeBaseID},
+				{Field: fieldChunkID, Operator: operatorIn, Value: chunkBatch},
 			},
 		}, nil, nil)
 		if err != nil {
 			log.Errorf("[Milvus] Failed to query source points: %v", err)
 			return err
 		}
-		foundChunkIDs := make(map[string]bool, len(sourceEmbeddings))
 		targetEmbeddings := make([]*MilvusVectorEmbedding, 0, len(sourceEmbeddings))
 		for _, sourceEmbedding := range sourceEmbeddings {
 			sourceChunkID := sourceEmbedding.ChunkID
 			sourceKnowledgeID := sourceEmbedding.KnowledgeID
 			originalSourceID := sourceEmbedding.SourceID
-			foundChunkIDs[sourceChunkID] = true
 
 			targetChunkID, ok := sourceToTargetChunkIDMap[sourceChunkID]
 			if !ok {
@@ -1053,13 +1078,6 @@ func (m *milvusRepository) CopyIndices(ctx context.Context,
 				IsEnabled:       sourceEmbedding.IsEnabled,
 			}
 			targetEmbeddings = append(targetEmbeddings, targetEmbedding)
-		}
-		// Source chunks whose rows never appear (already deleted, or lagging
-		// visibility) are skipped; the copy keeps going with the rest.
-		for _, chunkID := range batch {
-			if !foundChunkIDs[chunkID] {
-				log.Warnf("[Milvus] No source rows found for chunk %s, skipping", chunkID)
-			}
 		}
 		if len(targetEmbeddings) > 0 {
 			opts := createUpsert(collectionName, targetEmbeddings, collectionMode == collectionAnalyzerMulti)

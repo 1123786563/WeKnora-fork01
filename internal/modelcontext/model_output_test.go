@@ -20,9 +20,14 @@ func TestAnnotateGraphResultMarksTruncation(t *testing.T) {
 		"relations_total":   42,
 		"relations_omitted": 12,
 	})
-	want := `<graph_truncated relations_shown="30" relations_total="42" />`
+	// The merged graphTruncationNote (upstream #3885 shape, fork keys) emits a
+	// rich marker: attributes first, then the narrowing hint as text content.
+	want := `<graph_truncated relations_shown="30" relations_total="42">`
 	if !strings.Contains(got, want) {
 		t.Fatalf("missing %q in %q", want, got)
+	}
+	if !strings.Contains(got, "</graph_truncated>") {
+		t.Fatalf("marker must close after its hint text: %q", got)
 	}
 	if !strings.HasSuffix(got, "</retrieval>") {
 		t.Fatalf("marker must stay inside the retrieval: %q", got)

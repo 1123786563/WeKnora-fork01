@@ -60,7 +60,10 @@ func TestBatchSaveSurfacesPerItemErrors(t *testing.T) {
 	require.Error(t, err, "a 200 bulk response with errors=true must not report success")
 	assert.Contains(t, err.Error(), "1/2")
 	assert.Contains(t, err.Error(), "mapper_parsing_exception")
-	assert.Contains(t, err.Error(), "failed to parse field [embedding]")
+	// Upstream #3842 excludes error.reason from surfaced messages because it
+	// can embed document content; only the bounded error.type travels.
+	assert.Contains(t, err.Error(), "doc-2")
+	assert.NotContains(t, err.Error(), "failed to parse field [embedding]")
 }
 
 func TestBatchSaveSucceedsWithoutItemErrors(t *testing.T) {
@@ -72,10 +75,13 @@ func TestBatchSaveSucceedsWithoutItemErrors(t *testing.T) {
 	require.NoError(t, repo.BatchSave(context.Background(), batchSaveDocs(), nil))
 }
 
-// errors=true without a concrete failed item keeps the tolerant warn-only
-// path: the error is only returned when individual failures are confirmed.
+// errors=true without a concrete failed item leaves the outcome unknown, so
+// upstream #3842 reports it as an error instead of tolerating it silently.
 func TestBatchSaveToleratesErrorsFlagWithoutFailedItems(t *testing.T) {
 	repo := newBatchSaveRepository(t, `{"took":5,"errors":true,"items":[]}`)
 
-	require.NoError(t, repo.BatchSave(context.Background(), batchSaveDocs(), nil))
+	err := repo.BatchSave(context.Background(), batchSaveDocs(), nil)
+
+	require.Error(t, err, "errors=true with no item detail is an unknown outcome, not success")
+	assert.Contains(t, err.Error(), "without per-item failure detail")
 }

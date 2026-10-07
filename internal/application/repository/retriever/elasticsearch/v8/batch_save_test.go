@@ -56,7 +56,10 @@ func TestBatchSaveSurfacesPerItemErrors(t *testing.T) {
 	require.Error(t, err, "a 200 bulk response with errors=true must not report success")
 	assert.Contains(t, err.Error(), "1/2")
 	assert.Contains(t, err.Error(), "mapper_parsing_exception")
-	assert.Contains(t, err.Error(), "failed to parse field [embedding]")
+	// Upstream #3842 excludes error.reason from surfaced messages because it
+	// can embed document content; only the bounded error.type travels.
+	assert.Contains(t, err.Error(), "doc-2")
+	assert.NotContains(t, err.Error(), "failed to parse field [embedding]")
 }
 
 func TestBatchSaveSucceedsWithoutItemErrors(t *testing.T) {
@@ -76,5 +79,5 @@ func TestBatchSaveFailsOnErrorsWithoutItemDetail(t *testing.T) {
 	err := repo.BatchSave(context.Background(), batchSaveDocs(), nil)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "errors=true")
+	assert.Contains(t, err.Error(), "without per-item failure detail")
 }

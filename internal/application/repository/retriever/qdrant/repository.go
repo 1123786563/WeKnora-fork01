@@ -759,14 +759,13 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 
 	var allResults []*types.IndexWithScore
 	limit := uint32(params.TopK)
-
-	// Count per-collection failures (keeping the first one) so a total outage
-	// can be told apart from "no content matched": swallowing every failure and
-	// returning empty results would make callers answer "no relevant content"
-	// for a store that never answered the query (#3835).
-	searched := 0
-	failed := 0
-	var firstFailure error
+	// A batch where every matching collection failed must not be reported as
+	// "no matches": the caller cannot tell a genuine zero-hit search apart from
+	// a search that never ran. Count both sides and fail loudly when the search
+	// produced nothing but errors.
+	matchedCollections := 0
+	failedCollections := 0
+	var lastFailedErr error
 
 	log.Debugf("[Qdrant] Found %d collections, base name: %s", len(collections), q.collectionBaseName)
 
@@ -783,8 +782,7 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 			log.Debugf("[Qdrant] Skipping collection %s (doesn't match base name %s)", collectionName, q.collectionBaseName)
 			continue
 		}
-
-		searched++
+		matchedCollections++
 
 		filter := q.getBaseFilter(params)
 
@@ -810,11 +808,9 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 			WithPayload:    qdrant.NewWithPayload(true),
 		})
 		if err != nil {
+			failedCollections++
+			lastFailedErr = err
 			log.Warnf("[Qdrant] Keywords search failed in %s: %v", collectionName, err)
-			failed++
-			if firstFailure == nil {
-				firstFailure = fmt.Errorf("%s: %w", collectionName, err)
-			}
 			continue
 		}
 
@@ -840,16 +836,15 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 		}
 	}
 
-	// Every attempted collection failing means the retrieval never ran; return
-	// the failure so callers take the real error path instead of reading empty
-	// results as "the library has no such content" (#3835). This mirrors
-	// VectorRetrieve, which fails loudly when its single collection errors.
-	if failed > 0 && failed == searched {
-		log.Errorf("[Qdrant] Keywords search failed in all %d collections", searched)
-		return nil, fmt.Errorf("keywords search failed in all %d qdrant collections, first failure: %w", searched, firstFailure)
-	}
-	if failed > 0 {
-		log.Warnf("[Qdrant] Keywords search failed in %d of %d collections, returning results from the healthy ones", failed, searched)
+	// Every collection that matched the base name failed, so this call produced
+	// no evidence at all about the knowledge base. Surface the failure instead
+	// of letting callers treat it as "no relevant content".
+	if matchedCollections > 0 && failedCollections == matchedCollections {
+		return nil, fmt.Errorf(
+			"qdrant keyword search failed in all %d matched collections: %w",
+			matchedCollections,
+			lastFailedErr,
+		)
 	}
 
 	// Limit results to topK
@@ -857,13 +852,52 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 		allResults = allResults[:params.TopK]
 	}
 
-	if len(allResults) == 0 {
-		log.Warnf("[Qdrant] No keyword matches found for query: %s", params.Query)
-	} else {
-		log.Infof("[Qdrant] Keywords retrieval found %d results", len(allResults))
+	// Some matched collections answered and others did not: these results are
+	// real but incomplete. Carry the failure on the result set
+	// (RetrieveResult.Error) instead of returning it as the call's error, which
+	// would discard the partial evidence. CompositeRetrieveEngine turns it into
+	// an error alongside the results so the gap stays visible upstream.
+	var partialErr error
+	if failedCollections > 0 && failedCollections < matchedCollections {
+		partialErr = fmt.Errorf(
+			"qdrant keyword search failed in %d of %d matched collections: %w",
+			failedCollections, matchedCollections, lastFailedErr,
+		)
 	}
 
-	return buildRetrieveResult(allResults, types.KeywordsRetrieverType), nil
+	switch {
+	case matchedCollections == 0:
+		// No collection carries this base name, so nothing was searched. This
+		// must not read as a search that ran and legitimately hit nothing.
+		log.Warnf(
+			"[Qdrant] No collection matched base name %s among %d listed; keyword search did not run",
+			q.collectionBaseName, len(collections),
+		)
+	case partialErr != nil:
+		log.Warnf(
+			"[Qdrant] Keywords search failed in %d of %d matched collections; results are incomplete: %v",
+			failedCollections, matchedCollections, lastFailedErr,
+		)
+		if len(allResults) > 0 {
+			log.Infof("[Qdrant] Keywords retrieval found %d results", len(allResults))
+			break
+		}
+		// Partial failure with zero hits: the remaining collections did answer,
+		// so this is a real zero-hit outcome, but it must not read as if the
+		// search had succeeded everywhere.
+		log.Warnf(
+			"[Qdrant] Keywords search returned no matches in the %d collections that answered",
+			matchedCollections-failedCollections,
+		)
+	case len(allResults) > 0:
+		log.Infof("[Qdrant] Keywords retrieval found %d results", len(allResults))
+	default:
+		log.Warnf("[Qdrant] No keyword matches found for query: %s", params.Query)
+	}
+
+	retrieved := buildRetrieveResult(allResults, types.KeywordsRetrieverType)
+	retrieved[0].Error = partialErr
+	return retrieved, nil
 }
 
 // maxCopyIndicesPages bounds CopyIndices' scroll pagination so a server that
