@@ -59,8 +59,8 @@ func openToolBindingDB(t *testing.T) *gorm.DB {
 	// definition tables the catalog chain reads, 000044 the tool binding
 	// table under test.
 	for _, migration := range []string{
-		"../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql",
-		"../../../../../migrations/sqlite/000044_open_connector_tool_bindings.up.sql",
+		"../../../../migrations/sqlite/000041_open_connector_bindings.up.sql",
+		"../../../../migrations/sqlite/000044_open_connector_tool_bindings.up.sql",
 	} {
 		raw, err := os.ReadFile(migration)
 		if err != nil {

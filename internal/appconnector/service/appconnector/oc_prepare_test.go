@@ -45,9 +45,9 @@ func newPrepareOCFixture(t *testing.T) (*OCPreparer, *appconnectorrepo.OCStore, 
 	if err := db.AutoMigrate(&appconnectorrepo.AppVersion{}, &appconnectorrepo.InstallationRow{}, &appconnectorrepo.ConnectionRow{}); err != nil {
 		t.Fatal(err)
 	}
-	prepareOCExecMigration(t, db, "../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
-	prepareOCExecMigration(t, db, "../../../../../migrations/sqlite/000039_app_actions.up.sql")
-	prepareOCExecMigration(t, db, "../../../../../migrations/sqlite/000042_open_connector_actions.up.sql")
+	prepareOCExecMigration(t, db, "../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	prepareOCExecMigration(t, db, "../../../../migrations/sqlite/000039_app_actions.up.sql")
+	prepareOCExecMigration(t, db, "../../../../migrations/sqlite/000042_open_connector_actions.up.sql")
 	oc := appconnectorrepo.NewOCStore(db)
 	inst := appconnectorrepo.NewInstallationStore(db)
 	catalog := NewOCCatalog(oc, oc, inst, inst)
