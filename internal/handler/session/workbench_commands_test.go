@@ -14,8 +14,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 
-	"github.com/Tencent/WeKnora/internal/modules/workbench"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	"github.com/Tencent/WeKnora/internal/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"

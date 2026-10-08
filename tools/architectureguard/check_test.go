@@ -107,7 +107,7 @@ func TestRunImportExceptionSuppressesExactPair(t *testing.T) {
 	writeTree(t, root, map[string]string{
 		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 `,
 	})
 
@@ -126,7 +126,7 @@ func TestRunImportExceptionDoesNotCoverOtherFiles(t *testing.T) {
 	writeTree(t, root, map[string]string{
 		"internal/appconnector/service/appconnector/other_file.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 `,
 	})
 
@@ -166,11 +166,11 @@ func TestRunImportExceptionCoversCommercialRootImports(t *testing.T) {
 	writeTree(t, root, map[string]string{
 		"internal/appconnector/adapter.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial"
 `,
 		"internal/appconnector/service/appconnector/action.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial"
 `,
 		"internal/appconnector/other_root.go": `package appconnector
 
@@ -203,11 +203,11 @@ func TestRunImportExceptionCoversKnowledgeRetrievalCommercialRoot(t *testing.T) 
 	writeTree(t, root, map[string]string{
 		"internal/knowledge/retrieval/app/semantic_model_capability.go": `package app
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial"
 `,
 		"internal/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial"
 `,
 	})
 
@@ -232,8 +232,8 @@ func TestRunImportExceptionCoversAppconnectorOcRecoveryMixedImports(t *testing.T
 		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 	_ "github.com/Tencent/WeKnora/internal/execution"
 )
 `,
@@ -267,7 +267,7 @@ import (
 	_ "github.com/Tencent/WeKnora/internal/agentruntime/agent"
 )
 `,
-		"internal/modules/workbench/service/workbench/command_queue_next.go": `package workbench
+		"internal/workbench/service/workbench/command_queue_next.go": `package workbench
 
 import _ "github.com/Tencent/WeKnora/internal/agentruntime"
 `,
@@ -296,16 +296,16 @@ func TestRunImportExceptionCoversWorkbenchRemoteUsagePairs(t *testing.T) {
 	// 相邻文件必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/workbench/service/workbench/remote_usage.go": `package workbench
+		"internal/workbench/service/workbench/remote_usage.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
 )
 `,
-		"internal/modules/workbench/service/workbench/remote_usage_neighbor.go": `package workbench
+		"internal/workbench/service/workbench/remote_usage_neighbor.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+import _ "github.com/Tencent/WeKnora/internal/commercial"
 `,
 	})
 
@@ -328,11 +328,11 @@ func TestRunImportExceptionCoversBatchA4Workbench(t *testing.T) {
 	// 归位删除，不再列入）。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/workbench/service/workbench/admission.go": `package workbench
+		"internal/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
 	_ "github.com/Tencent/WeKnora/internal/execution"
 )
 `,
@@ -353,14 +353,14 @@ func TestRunImportExceptionBatchA4DoesNotCoverUnlistedPairs(t *testing.T) {
 	// 仍须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/workbench/service/workbench/admission.go": `package workbench
+		"internal/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial"
+	_ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 )
 `,
-		"internal/modules/workbench/service/workbench/neighbor.go": `package workbench
+		"internal/workbench/service/workbench/neighbor.go": `package workbench
 
 import _ "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"
 `,
@@ -372,12 +372,12 @@ import _ "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"
 	}
 	if hasCheck(rep.Diagnostics, "forbidden-import",
 		`admission.go 导入了模块 commercial 的内部包 `+
-			`"github.com/Tencent/WeKnora/internal/modules/commercial"`) {
+			`"github.com/Tencent/WeKnora/internal/commercial"`) {
 		t.Fatalf("batch A4 命中豁免的精确对 admission.go 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
 		`admission.go 导入了模块 commercial 的内部包 `+
-			`"github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"`) {
+			`"github.com/Tencent/WeKnora/internal/commercial/service/commercial"`) {
 		t.Fatalf("未列入豁免的 admission.go 指向 commercial/service 的导入必须照常报告:\n%s",
 			joinChecks(rep.Diagnostics))
 	}

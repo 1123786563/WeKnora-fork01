@@ -9,7 +9,7 @@ import (
 
 	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/google/uuid"
 )
 

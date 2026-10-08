@@ -23,8 +23,8 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

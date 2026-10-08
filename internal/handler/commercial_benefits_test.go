@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/sqlite"

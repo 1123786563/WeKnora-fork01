@@ -88,7 +88,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/career_export.go`, `internal/modules/career/rendering.go`, `internal/modules/career/application.go`, `internal/modules/career/career_export_test.go`, `internal/modules/career/rendering_test.go`, `internal/modules/workbench/service/workbench/application_task_removal.go`, relevant Workbench tests, and a narrow container/wiring adapter only if required by the chosen lifecycle seam.
+**Files:** `internal/career/career_export.go`, `internal/career/rendering.go`, `internal/career/application.go`, `internal/career/career_export_test.go`, `internal/career/rendering_test.go`, `internal/workbench/service/workbench/application_task_removal.go`, relevant Workbench tests, and a narrow container/wiring adapter only if required by the chosen lifecycle seam.
 
 **Consumes / produces:** Existing `CareerOffice.DeleteCareer(ctx, request) (CareerDeletionReceipt, error)`, export object-store `Delete(ctx, key) error`, `EnsureCareerApplicationTask` linker, and the deletion receipt’s `deleted` terminal state. Define one explicit deletion fence/coordination seam before coding; all application/task linking and export publication must either finish before the final deletion sweep or observe the fenced/deleted profile and refuse to create new private projections.
 
@@ -98,7 +98,7 @@
 - [x] Run the three regressions and record the current leak/race failures.
 - [x] Implement the smallest profile-owned deletion fence or equivalent serialized lifecycle contract; enumerate all export rows regardless of `revoked` status; remove late-created objects before removing their locators; repeat/serialize Workbench projection removal before writing the terminal receipt.
 - [x] Ensure failed physical deletion or a still-running writer prevents `deleted` from being returned; retain retryability/idempotency for cleanup.
-- [x] Run `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container` and `git diff --check`; expected: all deletion races leave no files/rows and a retry completes safely.
+- [x] Run `go test -count=1 ./internal/career ./internal/workbench/service/workbench ./internal/container` and `git diff --check`; expected: all deletion races leave no files/rows and a retry completes safely.
 - [x] Commit only owned paths and report BASE/HEAD plus race evidence.
 
 **Acceptance:** After a successful deletion receipt, no Career export bytes (including revoked versions), Career rows, Workbench sessions/runs/application mappings, or reachable receipts remain for the captured owner scope; concurrent writes either complete before cleanup or fail without creating orphaned data.
@@ -109,7 +109,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/career_export.go`, `internal/modules/career/career_export_test.go`.
+**Files:** `internal/career/career_export.go`, `internal/career/career_export_test.go`.
 
 **Consumes / produces:** `CareerDeletionBoundary(ctx) (CareerDeletionBoundaryView, error)` and the deletion archive’s existing `CareerExportPreparation` item. Preserve the `PreparationReceipt` body, sources, and submitted-version anchor currently stored in `preparationRecord.ReceiptBody`.
 
@@ -118,7 +118,7 @@
 - [x] Change archive fixture to include a non-empty preparation body, sources and version anchor; assert the exported archive preserves them.
 - [x] Add an injected count-query error test and assert the boundary returns the error instead of a successful zero count.
 - [x] Run tests RED, propagate query errors, and serialize the complete preparation receipt into the archive using the existing decoder/validation contract.
-- [x] Run `go test -count=1 ./internal/modules/career -run 'TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders|TestCareerDeletionBoundary'` and `git diff --check`; expected: payload retained and DB error fails closed.
+- [x] Run `go test -count=1 ./internal/career -run 'TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders|TestCareerDeletionBoundary'` and `git diff --check`; expected: payload retained and DB error fails closed.
 - [x] Commit only owned paths and report evidence.
 
 **Acceptance:** Export-before-delete preserves every preparation fact promised by the boundary; unavailable counts are reported as unavailable/error, never as absence.
@@ -129,7 +129,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/search_rule.go`, `handler.go`, focused handler/service tests, and `internal/router/routes_career.go` only if explicit route registration is required.
+**Files:** `internal/career/search_rule.go`, `handler.go`, focused handler/service tests, and `internal/router/routes_career.go` only if explicit route registration is required.
 
 **Consumes / produces:** Add authenticated paginated `GET /api/v1/career/rules?cursor=<opaque>` returning `{ "rules": RuleSummary[], "nextCursor": string | null }`; each bounded page contains at most 50 summaries. Each summary has `ruleId`, `query`, `intervalMinutes`, `status`, `revision`, `nextDueAt` (timestamp for enabled; `null` for paused/disabled), `estimate`, `createdAt`, and `updatedAt`; empty scope returns `{ "rules": [], "nextCursor": null }`; sort `updated_at DESC, id ASC`. Do not load per-rule run/todo history to build summaries. Keep the existing multiple-rule policy. Before quota admission and starting an external search, establish a durable run claim transaction that locks/revalidates the current rule ID, enabled status, revision, and query and persists the period as started. The claim commit is the linearization point: a pause/edit committed first prevents external search; a pause/edit committed after the claim is an already-started operation and may finish. A process crash after the claim must recover the same deterministic request ID through SearchOnce and must not strand a started run.
 
@@ -138,7 +138,7 @@
 - [x] Add failing service tests where a pause/edit commits after due-row collection but before quota/search; assert no new charged search begins. Add list contract tests for scope isolation, empty response shape, sort order, exact summary fields, and authentication.
 - [x] Run RED tests and capture the stale-dispatch failure.
 - [x] Implement the pre-charge revalidation and list signature/handler; register the route and add contract tests without changing quota or multi-rule policy.
-- [x] Run `go test -count=1 ./internal/modules/career -run 'Rule|TriggerDue'` plus the route/handler contract test and `git diff --check`; report which checks started external I/O.
+- [x] Run `go test -count=1 ./internal/career -run 'Rule|TriggerDue'` plus the route/handler contract test and `git diff --check`; report which checks started external I/O.
 - [x] Commit only owned backend files and report exact behavior.
 
 **Acceptance:** A committed pause/edit prevents any later scheduled search from starting; the scoped list returns bounded summaries with the frozen response contract.
@@ -169,7 +169,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/search_rule.go`, its database models/schema migration files and search-rule tests. Migration numbering must use the integration's finally ruled migration sequence.
+**Files:** `internal/career/search_rule.go`, its database models/schema migration files and search-rule tests. Migration numbering must use the integration's finally ruled migration sequence.
 
 **Consumes / produces:** In one short database transaction, lock the current rule row, require the scanned ID, enabled status, revision and query to match, then persist a recoverable period claim before any external call. The claim commit is the operation's start point. After the claim, `SearchOnce` keeps its deterministic `rule:<id>:<period>` request ID; retries recover/replay that same operation after a crash. Pause/edit transactions serialize against the same rule row. Paginate summaries with a fixed maximum of 50 rows, an opaque owner-scoped cursor over `(updated_at DESC, id ASC)`, and `{rules,nextCursor}` response; never load run/todo histories. `nextDueAt` is nullable for paused/disabled rules and a valid time for enabled rules.
 
@@ -209,7 +209,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** Career persistence/model/migration and repository seams, `internal/modules/career` operation admission and deletion paths, focused Career tests, and narrow Workbench/storage adapters only if fencing tokens are required.
+**Files:** Career persistence/model/migration and repository seams, `internal/career` operation admission and deletion paths, focused Career tests, and narrow Workbench/storage adapters only if fencing tokens are required.
 
 **Consumes / produces:** The scope `(tenant_id, owner_user_id)`, existing request IDs for Career operations, `career_spaces` retained through deletion, Workbench `EnsureCareerApplicationTask`, export storage writes/removals, and due-rule dispatch claims. Use a durable per-scope lifecycle gate shared by independently constructed `Office` handlers and processes. Application linking, material publication and rule-period claims must be admitted by the gate before external Workbench/storage/search effects; rule period persistence and its lifecycle claim must commit atomically so deletion cannot slip between them. Keep database transactions short; never hold one across rendering, object storage, Workbench or search network calls.
 
@@ -311,7 +311,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/search_rule.go` and tests, lifecycle-gate integration at the rule claim transaction, `internal/database/career_migration_test.go`, and paired page-index migration files at SQLite 145 / versioned 224 (Task 13 owns SQLite 143 / versioned 222; Task 21 owns SQLite 144 / versioned 223). Do not renumber existing migration IDs.
+**Files:** `internal/career/search_rule.go` and tests, lifecycle-gate integration at the rule claim transaction, `internal/database/career_migration_test.go`, and paired page-index migration files at SQLite 145 / versioned 224 (Task 13 owns SQLite 143 / versioned 222; Task 21 owns SQLite 144 / versioned 223). Do not renumber existing migration IDs.
 
 **Consumes / produces:** Preserve the durable `started` run and same-request recovery from Task 11. Advance `last_period` and the next scheduled instant atomically with the rule-period claim; terminalization must write only run/todo results and may not change a later edit's `next_due_at`, revision or `updated_at`. Acquire rows in the same profile→rule lock order as `SetRule`; SQLite must establish a writer/CAS point on `(scope,rule,revision,status,last_period,next_due_at)` and fail/re-read on busy/stale outcomes. Create the lifecycle claim in that same transaction, and keep it until durable run terminalization; deletion then cannot race a newly committed due search. Bound list reads to 50 summaries, select only summary columns, version the owner-bound cursor, and add index `(tenant_id,user_id,updated_at DESC,id ASC)` through migration 145/224.
 
@@ -320,7 +320,7 @@
 - [x] Add a controlled claim→enabled edit→run completion test; assert exact edited schedule/revision/updatedAt survive. Add lock-order/concurrent pause-vs-claim test and deletion-vs-rule-claim test using two Office instances/shared DB. Add query-plan or schema assertion for the keyset index and reject unknown cursor versions.
 - [x] Preserve existing production usage evidence: `usageReservationRecord` is unique by `(tenant,user,requestId)`, `admitSearchUsage` returns success for an existing reserved/settled request, and `TestDuplicateRequestDoesNotDoubleReserveOrCharge` asserts two admissions for one request retain one unit. Finding F3 from `/tmp/issue140-r2-task11-review.md` is ruled out for the production gate by this evidence; no new gate architecture is needed for it.
 - [x] Run tests RED, then move period/schedule advancement into the claim transaction; ensure both PostgreSQL lock order and SQLite conditional write serialize with `SetRule`; use the transaction-scoped deletion-gate claim. Make terminalization update only run/todos. Add page index migration 145/224 and versioned cursor/summary-only query.
-- [x] Run `go test -count=1 ./internal/modules/career`, `go test -count=1 ./internal/database` including migration 143/144/145 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
+- [x] Run `go test -count=1 ./internal/career`, `go test -count=1 ./internal/database` including migration 143/144/145 up/down, route contract tests and `git diff --check`; use configured PostgreSQL concurrency/migration tests if available, otherwise state limitation.
 - [x] Commit only owned backend/schema files and report race timelines, lock order, lifecycle-claim ordering, index migration and quota-idempotency ruling.
 
 **Acceptance:** A committed edit is never overwritten by a running period; pause/edit and dispatch claim share a deadlock-safe linearization order across PostgreSQL and SQLite; deletion is ordered against rule dispatch; list pagination is indexed, summary-only and cursor-versioned. Existing quota idempotency remains covered by the current ledger test.
@@ -381,7 +381,7 @@
 - [x] Add a two-Office resume-upload/deletion interleaving paused before `SaveBytes` or catalog binding; assert deletion waits or upload is rejected before any external write.
 - [x] Reproduce all three findings against Task 13; introduce owner-token/attempt state, stable physical object-key contract, and upload lifecycle admission with crash/replay recovery.
 - [x] Append migration IDs only when required (next pair SQLite144/versioned223); test up/down and uniqueness while preserving 112–143 / 191–222.
-- [x] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
+- [x] Run focused lifecycle/export/upload tests, `go test -count=1 ./internal/career ./internal/workbench/service/workbench ./internal/container ./internal/database`, race tests for the cross-Office interleavings, and `git diff --check`; run configured Postgres tests if available, otherwise record the limitation.
 - [x] Commit owned backend/storage changes and report the three race timelines, object-key guarantees, migration IDs and exact verification evidence.
 
 **Acceptance:** A `deleted` receipt is issued only after every application/material/upload external effect admitted before deletion is terminal and all discoverable private object keys are removed. Duplicate retries cannot release another attempt's claim, and storage retries cannot orphan an untracked prior object.
@@ -392,7 +392,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/submission.go`, `progress.go`, their tests, and a Career migration pair only if a persisted link is required. Keep frontend files out of this task.
+**Files:** `internal/career/submission.go`, `progress.go`, their tests, and a Career migration pair only if a persisted link is required. Keep frontend files out of this task.
 
 **Consumes / produces:** `RecordSubmission` remains the only write path for actual submission confirmation and continues to bind channel, actual time, and exact material export/version/digest or explicit unknown version. In the same database transaction, persist or derive exactly one traceable `submitted` progress event linked to the submission ID. Idempotent request replay returns the original submission and does not duplicate the timeline event. Corrections remain append-only and must preserve the original submission linkage. `ApplicationProgress` projects the submitted stage from this authoritative event in deterministic order.
 
@@ -469,7 +469,7 @@
 
 **Role:** `implementer`; validator `backend_validator` and focused frontend validator; reviewer `reviewer`.
 
-**Files:** `internal/modules/career/progress.go`, `internal/modules/career/progress_test.go`, `apps/web/src/career/ProgressPage.tsx`, its tests, and only the API type file if a dedicated record input needs typing.
+**Files:** `internal/career/progress.go`, `internal/career/progress_test.go`, `apps/web/src/career/ProgressPage.tsx`, its tests, and only the API type file if a dedicated record input needs typing.
 
 **Consumes / produces:** Dedicated `RecordSubmission` contract already binds channel, actual submission time and material version/unknown marker. Generic `AppendProgressInput` accepts an event type and note only.
 

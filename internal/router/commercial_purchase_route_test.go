@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/handler"
-	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
-	commercialplatform "github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
-	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercialplatform "github.com/Tencent/WeKnora/internal/commercial/commercialplatform"
+	"github.com/Tencent/WeKnora/internal/commercial/payment"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 	"github.com/gin-gonic/gin"
 
 	"gorm.io/driver/sqlite"

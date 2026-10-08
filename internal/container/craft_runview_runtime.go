@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 )
 
 // ErrCraftRunViewRuntimeUnresolved means runtime creation or recovery cannot

@@ -22,20 +22,20 @@ ok  github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform      7
 ok  github.com/Tencent/WeKnora/internal/infrastructure/openmeter                0.087s
 ```
 
-manifest 首条命令 `go test ./internal/modules/commercial/... -count=1` pre-move 仅有
+manifest 首条命令 `go test ./internal/commercial/... -count=1` pre-move 仅有
 模块骨架（no test files）。已知 flaky（agentruntime 域）未出现。
 
 ## 3. 搬迁（from → to，git mv 纯重命名，commit `638ced419`）
 
 | from | to | 文件数 |
 |---|---|---|
-| internal/application/repository/commercial | internal/modules/commercial/repository/commercial | 28 |
-| internal/application/service/commercial | internal/modules/commercial/service/commercial | 23 |
-| internal/commercial | internal/modules/commercial | 42 |
-| internal/infrastructure/commercialplatform | internal/modules/commercial/commercialplatform | 11 |
-| internal/infrastructure/openmeter | internal/modules/commercial/openmeter | 2 |
-| internal/payment | internal/modules/commercial/payment | 8 |
-| internal/usage | internal/modules/commercial/usage | 2 |
+| internal/application/repository/commercial | internal/commercial/repository/commercial | 28 |
+| internal/application/service/commercial | internal/commercial/service/commercial | 23 |
+| internal/commercial | internal/commercial | 42 |
+| internal/infrastructure/commercialplatform | internal/commercial/commercialplatform | 11 |
+| internal/infrastructure/openmeter | internal/commercial/openmeter | 2 |
+| internal/payment | internal/commercial/payment | 8 |
+| internal/usage | internal/commercial/usage | 2 |
 | **合计** | | **116** |
 
 move commit：`git diff --cached --stat` = `116 files changed, 0 insertions(+), 0 deletions(-)`；
@@ -50,7 +50,7 @@ status 中无非 R 条目（全部纯 rename，含 1 个非 Go 资产
   application/service{,/appconnector,/workbench}、container（非 container.go 两文件）、
   craft、handler、models/chat、router 测试文件、modules/commercial 内部互引）。
 - 新增 7 个零逻辑别名包（每包单文件 `alias.go`，头注释
-  `// Pass A compatibility alias for internal/modules/commercial/... — zero logic. Deleted by Pass B task B-commercial.`）：
+  `// Pass A compatibility alias for internal/commercial/... — zero logic. Deleted by Pass B task B-commercial.`）：
 
 | 旧路径 | 别名面（type = / var =） |
 |---|---|
@@ -90,18 +90,18 @@ $ git status --short | grep -E 'internal/router/router\.go|internal/router/task\
 ## 6. 验证（post-move）
 
 - `go build ./...` — 通过（exit 0，仅既存 darwin 链接 duplicate-libraries 警告）。
-- `go vet` 于 internal/modules/commercial/...、7 个旧路径别名包、container、router、
+- `go vet` 于 internal/commercial/...、7 个旧路径别名包、container、router、
   handler — 无发现。
 - manifest 测试命令（-count=1，全部 ok）：
 
 ```
-ok  …/internal/modules/commercial                        0.042s
-ok  …/internal/modules/commercial/commercialplatform    70.090s
-ok  …/internal/modules/commercial/openmeter              0.053s
-ok  …/internal/modules/commercial/payment                3.333s
-ok  …/internal/modules/commercial/repository/commercial  0.105s
-ok  …/internal/modules/commercial/service/commercial     0.366s
-ok  …/internal/modules/commercial/usage                  0.027s
+ok  …/internal/commercial                        0.042s
+ok  …/internal/commercial/commercialplatform    70.090s
+ok  …/internal/commercial/openmeter              0.053s
+ok  …/internal/commercial/payment                3.333s
+ok  …/internal/commercial/repository/commercial  0.105s
+ok  …/internal/commercial/service/commercial     0.366s
+ok  …/internal/commercial/usage                  0.027s
 ```
 
 - 直接消费方测试（全部 ok）：internal/agent/...（含 opencode 16.9s、recoverytest）、

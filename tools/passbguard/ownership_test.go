@@ -113,7 +113,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 				g.Legacy = append(g.Legacy, LegacyOwnership{
 					Path:   "internal/application/repository/widget.go",
 					Module: "workbench", Plan: "40-workbench",
-					Destination:   "internal/modules/workbench/repository",
+					Destination:   "internal/workbench/repository",
 					DeleteBarrier: "ib4",
 				})
 			},
@@ -165,7 +165,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 				g.Exceptions = append(g.Exceptions, Exception{
 					ID:   "exc-0002",
 					From: "internal/agentruntime/agent/ghost.go",
-					To:   "github.com/Tencent/WeKnora/internal/modules/commercial",
+					To:   "github.com/Tencent/WeKnora/internal/commercial",
 					Plan: "33-agentruntime-engine", RemoveAt: "ib3", Reason: "invented",
 				})
 			},

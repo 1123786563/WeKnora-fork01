@@ -8,16 +8,16 @@
 
 | from（旧导入路径） | to（新导入路径） | 文件数 |
 |---|---|---|
-| `internal/application/service/workbench` | `internal/modules/workbench/service/workbench` | 22 |
-| `internal/notification` | `internal/modules/workbench/notification` | 4 |
-| `internal/voice` | `internal/modules/workbench/voice` | 3 |
-| `internal/workbench` | `internal/modules/workbench`（并入模块根，与 module.go 骨架同包） | 7 |
+| `internal/application/service/workbench` | `internal/workbench/service/workbench` | 22 |
+| `internal/notification` | `internal/workbench/notification` | 4 |
+| `internal/voice` | `internal/workbench/voice` | 3 |
+| `internal/workbench` | `internal/workbench`（并入模块根，与 module.go 骨架同包） | 7 |
 
 共 36 个文件（含全部 `_test.go` 17 个），无非 Go 文件。move commit 为纯 rename
 （`git diff --summary` 36/36 `rename`：30×100%、5×99%、1×97%；低于 100% 的 6 个
 文件全是 import 行/测试相对路径修复所致，逐项见 evidence §4）。包名不变：
 `workbench` / `notification` / `voice`。四个包之间在搬迁后**无**互相导入遗留
-（service/workbench 经 `internal/modules/workbench` 别名前路径引用 contracts 的两处
+（service/workbench 经 `internal/workbench` 别名前路径引用 contracts 的两处
 已在 repair commit 修复为新路径）。
 
 ## 2. 旧路径别名（alias_obligations，4 处，与 manifest 一一对应）
@@ -27,10 +27,10 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件（覆盖符号） | 存活原因（不可修复引用方） |
 |---|---|---|---|
-| `internal/application/service/workbench` | `internal/modules/workbench/service/workbench` | `alias.go`（10：`NotificationProvider`、`NotificationDeliveryWorker` 类型别名；`NewNotificationProjector`、`NewNotificationWorker`、`NewRemoteUsageServiceWithDB`、`NewPushNotificationProvider`、`NewHTTPNotificationProvider`、`NewNotificationDeliveryWorkerWithHealth`、`NewGormInteractionStore`、`NewInteractionServiceWithApproval` var 转发） | `container.go:39`（禁改）+ `internal/agentruntime/agent/engine_test.go:11`（frozen batch-a3 模块，消费 `NewGormInteractionStore`、`NewInteractionServiceWithApproval` 两符号） |
-| `internal/notification` | `internal/modules/workbench/notification` | `alias.go`（1：`NewExpoProvider`） | `container.go:106`（禁改） |
-| `internal/voice` | `internal/modules/workbench/voice` | `alias.go`（2：`Config` 类型别名、`NewManagedProvider` var） | `container.go:113`（禁改） |
-| `internal/workbench` | `internal/modules/workbench` | `alias.go`（**0 符号**，纯文档 stub） | 无 —— 所有引用方（application/repository、handler/session、service/workbench 自身）均在 manifest `owned_files.importers` 内，已全部修复 |
+| `internal/application/service/workbench` | `internal/workbench/service/workbench` | `alias.go`（10：`NotificationProvider`、`NotificationDeliveryWorker` 类型别名；`NewNotificationProjector`、`NewNotificationWorker`、`NewRemoteUsageServiceWithDB`、`NewPushNotificationProvider`、`NewHTTPNotificationProvider`、`NewNotificationDeliveryWorkerWithHealth`、`NewGormInteractionStore`、`NewInteractionServiceWithApproval` var 转发） | `container.go:39`（禁改）+ `internal/agentruntime/agent/engine_test.go:11`（frozen batch-a3 模块，消费 `NewGormInteractionStore`、`NewInteractionServiceWithApproval` 两符号） |
+| `internal/notification` | `internal/workbench/notification` | `alias.go`（1：`NewExpoProvider`） | `container.go:106`（禁改） |
+| `internal/voice` | `internal/workbench/voice` | `alias.go`（2：`Config` 类型别名、`NewManagedProvider` var） | `container.go:113`（禁改） |
+| `internal/workbench` | `internal/workbench` | `alias.go`（**0 符号**，纯文档 stub） | 无 —— 所有引用方（application/repository、handler/session、service/workbench 自身）均在 manifest `owned_files.importers` 内，已全部修复 |
 
 **覆盖面说明（沿 A5 "Forbidden files only" 先例收窄）**：别名只转发禁改文件与
 frozen 模块的实际引用面。`internal/workbench` 无任何不可修复引用方，故为满足
@@ -44,9 +44,9 @@ import 改动。若 IA4 需要全量符号别名，可用 `go/types` 枚举搬�
 
 | 文件:行 | 现内容 | 切换为 |
 |---|---|---|
-| `internal/container/container.go:39` | `workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"` | `"github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"` |
-| `internal/container/container.go:106` | `pushnotification "github.com/Tencent/WeKnora/internal/notification"` | `"github.com/Tencent/WeKnora/internal/modules/workbench/notification"` |
-| `internal/container/container.go:113` | `"github.com/Tencent/WeKnora/internal/voice"` | `"github.com/Tencent/WeKnora/internal/modules/workbench/voice"` |
+| `internal/container/container.go:39` | `workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"` | `"github.com/Tencent/WeKnora/internal/workbench/service/workbench"` |
+| `internal/container/container.go:106` | `pushnotification "github.com/Tencent/WeKnora/internal/notification"` | `"github.com/Tencent/WeKnora/internal/workbench/notification"` |
+| `internal/container/container.go:113` | `"github.com/Tencent/WeKnora/internal/voice"` | `"github.com/Tencent/WeKnora/internal/workbench/voice"` |
 
 `internal/router/router.go`、`internal/router/task.go`、`internal/router/sync_task.go`
 经 grep 确认**零**旧路径引用（router.go:233-235 的 workbench artifact grant 下载挂载

@@ -18,9 +18,9 @@
 
 ## Commands and results
 
-- `go test ./internal/modules/career -run 'TestDueRulePauseCommittedAfterScanPreventsClaimAndSearch|TestDueRuleClaimBeforePauseFinishesSameRequest|TestListRulesUsesStableBoundedOwnerScopedPages' -count=1` — RED before implementation: stale candidate reached quota; no started claim existed before quota; list method was missing.
-- `go test ./internal/modules/career -run 'TestDueRule|TestSecondStale|TestStartedRule|TestListRules|TestCareerRuleHTTPContract|TestSetRule|TestRuleTrigger|TestRuleBudget|TestRuleIncomplete' -count=1` — passed.
-- `go test -count=1 ./internal/modules/career` — passed.
+- `go test ./internal/career -run 'TestDueRulePauseCommittedAfterScanPreventsClaimAndSearch|TestDueRuleClaimBeforePauseFinishesSameRequest|TestListRulesUsesStableBoundedOwnerScopedPages' -count=1` — RED before implementation: stale candidate reached quota; no started claim existed before quota; list method was missing.
+- `go test ./internal/career -run 'TestDueRule|TestSecondStale|TestStartedRule|TestListRules|TestCareerRuleHTTPContract|TestSetRule|TestRuleTrigger|TestRuleBudget|TestRuleIncomplete' -count=1` — passed.
+- `go test -count=1 ./internal/career` — passed.
 - `go test -count=1 ./internal/database -run TestSearchRuleMigrationUpAndDown` — passed.
 - `go test -count=1 ./internal/router -run TestCareerSearchRuleRoutesAreRegistered` — passed.
 - `git diff --check` — passed.
@@ -29,9 +29,9 @@ Postgres migration integration was not run; the repository's search-rule migrati
 
 ## Changed files
 
-- `internal/modules/career/search_rule.go`
-- `internal/modules/career/search_rule_test.go`
-- `internal/modules/career/handler.go`
-- `internal/modules/career/handler_test.go`
+- `internal/career/search_rule.go`
+- `internal/career/search_rule_test.go`
+- `internal/career/handler.go`
+- `internal/career/handler_test.go`
 - `internal/router/routes_career.go`
 - `internal/router/routes_career_test.go`

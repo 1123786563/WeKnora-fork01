@@ -9,6 +9,6 @@ legacy_files:
   - path: internal/application/service/alpha_chat.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/service
+    destination: internal/workbench/service
     integration_owner: ""
     delete_barrier: ib4

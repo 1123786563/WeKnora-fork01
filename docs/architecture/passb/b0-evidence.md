@@ -52,7 +52,7 @@ pass-b readiness: legacy=396 aliases=99 exceptions=105 contracts=125 events=29 o
 | `go build ./...` | 0 | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（链接器既有告警，非错误） |
 | `go test ./internal/... -count=1 -timeout=25m` | 0 | 119 包 ok，0 FAIL（终树复跑） |
 | `golangci-lint run --new-from-rev=b1a3d6dd8 ./...`（节点基线口径） | 0 | **0 issues** |
-| `golangci-lint run --new-from-rev=78f18915f ./...`（计划字面 rev） | 1 | 1 issue：`internal/modules/commercial/repository/commercial/benefits.go:105 QF1008`（§5.4，先于节点基线、非 b0 文件） |
+| `golangci-lint run --new-from-rev=78f18915f ./...`（计划字面 rev） | 1 | 1 issue：`internal/commercial/repository/commercial/benefits.go:105 QF1008`（§5.4，先于节点基线、非 b0 文件） |
 | `git diff --check 78f18915f...HEAD` | 2 | 2 处 `packages/design-tokens/src/tdesign-theme.css` 尾随空白（ff7380052，前端 parity 流，先于节点基线）；framework doc EOF 空行已由 B0.6 修复（修复随本提交入库后此 finding 消失） |
 | `git diff --check b1a3d6dd8...HEAD`（节点基线口径） | 0 | 零 finding |
 | `git diff 78f18915f...HEAD -- cmd/desktop docreader client` | 0 | 输出为空（禁改范围零触碰） |
@@ -92,7 +92,7 @@ CLI 行为测试（`tools/passbguard/main_test.go`，RED→GREEN）：成功路�
 1. **105 条跨模块 import 例外**：全部在 exception-ledger.yaml 登记删除属主与期限（ib1=2/ib2=8/ib3=80/ib4=15）；对应模块边界收紧改走公开门面后由属主计划删除，guard 源与台账两侧漂移由 F1 机器校验拦截。
 2. **99 条 alias 义务**：ownership-matrix.yaml 逐条登记删除属主（ib1=22/ib2=35/ib3=32/ib4=10）。
 3. **Pass A 台账在册债务**（pass-a-acceptance.md §4）：13 条 agentruntime moved 文件 lint 债 → B-agentruntime；A2 payment `TestProvidersFromEnvRejectsPartialAlipay` map 序断言 → B-commercial。
-4. **benefits.go QF1008（staticcheck）**：`internal/modules/commercial/repository/commercial/benefits.go:105`（`s.db.Dialector.Name()` 可去嵌入字段选择子）。由 `b69b6980e`（EnsureSchema 方言修复，2026-09-22，先于节点基线 b1a3d6dd8 合入 main）引入；该文件属 commercial 模块（B1-CM 契约区），b0 无写权限，仅登记——建议 B1-CM 顺带清偿。节点基线口径 lint（--new-from-rev=b1a3d6dd8）为 0 issues，本项不阻塞 b0。
+4. **benefits.go QF1008（staticcheck）**：`internal/commercial/repository/commercial/benefits.go:105`（`s.db.Dialector.Name()` 可去嵌入字段选择子）。由 `b69b6980e`（EnsureSchema 方言修复，2026-09-22，先于节点基线 b1a3d6dd8 合入 main）引入；该文件属 commercial 模块（B1-CM 契约区），b0 无写权限，仅登记——建议 B1-CM 顺带清偿。节点基线口径 lint（--new-from-rev=b1a3d6dd8）为 0 issues，本项不阻塞 b0。
 5. **B0.6 lint 清偿**：B0.1–B0.5 引入的 50 条 passbguard 告警（lll×45、errcheck×3、gofumpt×1、QF1001×1）已随 B0.6 全部清零（字符串内容逐字节保持，仅换行/拼接/格式化调整；QF1001 为 De Morgan 等价变换）；`tools/passbguard/testdata/contractrepo/**` fixture 不参与构建与 lint。
 6. **前端 parity 流遗留**：`packages/design-tokens/src/tdesign-theme.css` 两处尾随空白（ff7380052）——非本节点文件，登记归属前端 parity 流；节点基线口径 `git diff --check` 零 finding。
 7. **passbguard 形态**：目录为 package main（`go run ./tools/passbguard -root .` 要求），不可被其他 Go 包 import；校验能力唯一消费口是 `make check-passb-readiness`（B0.1 包注释即冻结此演进）。

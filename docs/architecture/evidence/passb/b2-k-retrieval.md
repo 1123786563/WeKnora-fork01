@@ -12,10 +12,10 @@
 
 | id | importer | imported | plan | remove_at |
 |---|---|---|---|---|
-| exc-0106 | `internal/knowledge/retrieval/app/semantic_model_capability.go` | `github.com/Tencent/WeKnora/internal/modules/commercial` | 22-knowledge-retrieval | ib2 |
-| exc-0107 | `internal/knowledge/retrieval/app/semantic_model_policy.go` | `github.com/Tencent/WeKnora/internal/modules/commercial` | 22-knowledge-retrieval | ib2 |
+| exc-0106 | `internal/knowledge/retrieval/app/semantic_model_capability.go` | `github.com/Tencent/WeKnora/internal/commercial` | 22-knowledge-retrieval | ib2 |
+| exc-0107 | `internal/knowledge/retrieval/app/semantic_model_policy.go` | `github.com/Tencent/WeKnora/internal/commercial` | 22-knowledge-retrieval | ib2 |
 
-- **根因**：两文件在宿主 `internal/application/service` 时即 import commercial 域类型（`domain.Credits`/`FundingBYOK`/`PriceVersionRates`/`ValidateFunding`/`UsageFact`/`ChargeForCall` 等，semantic_model_capability.go:13、semantic_model_policy.go:11 base 实测）；迁入模块树后该既有横向 import 显形为 module→module，触发 architectureguard forbidden-import（诊断输出在案：两条 `forbidden-import … internal/modules/commercial`，guard 退出码 1）。
+- **根因**：两文件在宿主 `internal/application/service` 时即 import commercial 域类型（`domain.Credits`/`FundingBYOK`/`PriceVersionRates`/`ValidateFunding`/`UsageFact`/`ChargeForCall` 等，semantic_model_capability.go:13、semantic_model_policy.go:11 base 实测）；迁入模块树后该既有横向 import 显形为 module→module，触发 architectureguard forbidden-import（诊断输出在案：两条 `forbidden-import … internal/commercial`，guard 退出码 1）。
 - **PassBTask 取值偏差说明**：计划 §5.6 模板写 `PassBTask=K2.7`，但 `tools/passbguard/check.go:83-93` `PassBTaskModule` 映射表仅含模块级 id（`B-knowledge` 等），`K2.7` 无映射将在 barrier `make check-passb-readiness` 触发 `exception-task-module` 诊断（check.go:240-247 判定逻辑直读）。本登记沿用 105 条既有条目的模块级 `B-knowledge`，并同步 ledger `plan: 22-knowledge-retrieval`（KnownModules 校验通过，check.go:61 映射 knowledge/ib2）。**此偏差已在 K2.3 报告登记，请协调者/评审确认，K2.7 执行时沿用同口径。**
 - **登记位置**：`tools/architectureguard/check.go` importExceptions 尾部（数据行，非逻辑）；`docs/architecture/passb/exception-ledger.yaml` exc-0106/0107 + 头部计数注释 105→107。
 - **提交**：独立 commit（与 K2.3 搬迁 commit 分离，满足 Ruling「独立 commit」与 conventions §4 提交隔离）。
@@ -50,8 +50,8 @@
 | `internal/knowledge/retrieval/app/graph.go:16` | `internal/airesource/models/chat` | exc-0109 |
 | `internal/knowledge/retrieval/app/graph.go:17` | `internal/airesource/models/utils` | exc-0110 |
 | `internal/knowledge/retrieval/app/knowledgebase_access.go:7` | `internal/policy/access` | exc-0108 |
-| `internal/knowledge/retrieval/app/semantic_model_capability.go:13` | `internal/modules/commercial` | exc-0106 |
-| `internal/knowledge/retrieval/app/semantic_model_policy.go:10` | `internal/modules/commercial` | exc-0107 |
+| `internal/knowledge/retrieval/app/semantic_model_capability.go:13` | `internal/commercial` | exc-0106 |
+| `internal/knowledge/retrieval/app/semantic_model_policy.go:10` | `internal/commercial` | exc-0107 |
 
 - **测试文件不计**：`app/semantic_model_capability_test.go:10`、`app/semantic_model_policy_test.go:9` 亦 import commercial，但 architectureguard 判定面跳过 `_test.go`（check.go:1224/:1284 实读），无需豁免。
 - **种子表「多退」**（推迟件未迁移，行保留宿主、豁免待 ib2 迁移时按 Ruling 登记；宿主在 horizontalDirs 内不触发 forbidden-import）：`service/knowledgebase.go:15/:17/:18`（datasource、policy/access、policy/storageallowlist）、`service/kbshare.go:10`（policy/access）、`service/knowledgebase_search.go:9`（airesource/models/embedding）。另：种子表 `tag_access.go` 行经实测 grep **无任何跨模块 import**（种子表「其余执行时 grep」预期内），多列即退。

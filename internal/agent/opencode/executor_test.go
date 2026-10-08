@@ -13,7 +13,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 )
 
 // runtimeFake is an httptest OpenCode runtime speaking the locked 1.18.4

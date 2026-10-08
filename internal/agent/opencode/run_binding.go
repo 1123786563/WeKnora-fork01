@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 )
 
 // RunSessionBinding is a server-resolved OpenCode session bound to the

@@ -25,7 +25,7 @@
 
 ### 1.2 `isUniqueViolation` 族收口登记（conventions §7.1）
 
-- 本节点在 `internal/agentcatalog/repository/agent_marketplace.go` 落地**第 4 份副本**（函数体逐字复制 `voice_session.go:289-300`；`gorm.ErrDuplicatedKey` + `UNIQUE constraint failed`/`duplicate key value`/`23505` 三标记）。全仓四份 = `voice_session.go:289`（40-workbench 留宿）、`internal/application/service/resource.go:358`（11-airesource）、`internal/modules/commercial/repository/commercial/planversion.go:323`（12-commercial 模块本地）、本副本。
+- 本节点在 `internal/agentcatalog/repository/agent_marketplace.go` 落地**第 4 份副本**（函数体逐字复制 `voice_session.go:289-300`；`gorm.ErrDuplicatedKey` + `UNIQUE constraint failed`/`duplicate key value`/`23505` 三标记）。全仓四份 = `voice_session.go:289`（40-workbench 留宿）、`internal/application/service/resource.go:358`（11-airesource）、`internal/commercial/repository/commercial/planversion.go:323`（12-commercial 模块本地）、本副本。
 - 防漂移锚：`internal/agentcatalog/repository/is_unique_violation_parity_test.go`（8 子用例表驱动，`remove_at: ib2`）。
 - **IB2 收口义务**：族收口为单一实现（建议收口位由协调者裁定，候选：共享 errors/util 包或最早属主导出）；收口后**同窗删除**本副本 + parity 测试。收口前四副本语义漂移风险由各处既有测试与 parity 表双向锚定。
 

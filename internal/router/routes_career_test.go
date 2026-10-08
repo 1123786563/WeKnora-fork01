@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/career"
+	"github.com/Tencent/WeKnora/internal/career"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"

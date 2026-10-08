@@ -69,8 +69,8 @@ go test ./internal/container/... -run Craft -count=1
   ok  github.com/Tencent/WeKnora/internal/container          35.668s
   ok  github.com/Tencent/WeKnora/internal/container/bootsmoke 4.540s [no tests to run]
 
-go test ./internal/modules/craft/... -run 'Release|Web' -count=1
-  ok  github.com/Tencent/WeKnora/internal/modules/craft      0.323s
+go test ./internal/craft/... -run 'Release|Web' -count=1
+  ok  github.com/Tencent/WeKnora/internal/craft      0.323s
 ```
 
 （含 `TestCraftWebToolchainPinsMatchShippedFiles`：真实文件字节 ↔ toolchain.lock.json ↔ runtime-config.json 三方机器校验。）

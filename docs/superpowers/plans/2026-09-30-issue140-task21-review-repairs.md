@@ -35,7 +35,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Owned files:** `internal/application/service/file/{cos,tos,oss,obs}.go` and focused provider tests; `internal/modules/career/{handler.go,upload.go,profile_intake.go}` and focused upload/lifecycle tests. No migration is expected. If code inspection proves a schema change is necessary, stop and report the proposed append-only migration pair before changing files; existing IDs remain fixed.
+**Owned files:** `internal/application/service/file/{cos,tos,oss,obs}.go` and focused provider tests; `internal/career/{handler.go,upload.go,profile_intake.go}` and focused upload/lifecycle tests. No migration is expected. If code inspection proves a schema change is necessary, stop and report the proposed append-only migration pair before changing files; existing IDs remain fixed.
 
 **Consumes / produces:** Existing `FileService.SaveBytes(ctx, data, tenantID, fileName, temp) (resourceRef, error)`. Career filenames `career_source_<sourceID><ext>` and `career_export_<stable-id>.<ext>` are stable caller identities. Every configured adapter must map these names to one deterministic tenant-scoped object path for retries, while retaining legacy unique naming for unrelated uploads and temporary exports. `CareerOffice.ClaimUpload` remains the mutating owner claim; guard-busy handling must use a read-only lookup or return busy without changing rows. Upload terminal failure may release its lifecycle token only after a durable reference plus completed compensation, or after proving no write occurred; unknown outcomes remain unresolved and deletion stays busy.
 
@@ -49,7 +49,7 @@
 - [ ] Implement deterministic Career key mapping in the remaining configured providers, matching the already-supported local/S3/MinIO naming contract and preserving non-Career behavior.
 - [ ] Change upload state transitions so physical-write uncertainty cannot clear the durable lifecycle claim; persist returned resource references before later catalog operations, and clear claims only after durable reconciliation or verified compensation.
 - [ ] Replace the mutating duplicate fallback with a read-only pending-upload lookup; if no matching pending source exists, return the existing busy/processing response without inserting or updating a row.
-- [ ] Run focused provider and Career tests, `go test -count=1 ./internal/modules/career ./internal/application/service/file ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, targeted Career race tests, and `git diff --check`. Run configured PostgreSQL tests if available; otherwise record the limitation.
+- [ ] Run focused provider and Career tests, `go test -count=1 ./internal/career ./internal/application/service/file ./internal/workbench/service/workbench ./internal/container ./internal/database`, targeted Career race tests, and `git diff --check`. Run configured PostgreSQL tests if available; otherwise record the limitation.
 - [ ] Commit Task26 and append exact verification evidence to `/tmp/issue140-r2-task21-report.md`.
 
 **Acceptance:** T21-1, T21-2, and T21-3 are all addressed with deterministic regression evidence. No configured storage backend can orphan a Career object due to retry identity; uncertain uploads remain deletion-blocking until reconciled or removed; a busy duplicate performs no mutation.

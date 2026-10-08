@@ -98,7 +98,7 @@ legacy_files:
   - path: internal/application/repository/artifact_version.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/audit_log.go
@@ -110,37 +110,37 @@ legacy_files:
   - path: internal/application/repository/craft_preview_check.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_snapshot.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_version.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_workspace.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/custom_agent.go
@@ -278,19 +278,19 @@ legacy_files:
   - path: internal/application/repository/mobile_device.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/mobile_notification.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/mobile_notification_provider.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/model.go
@@ -302,7 +302,7 @@ legacy_files:
   - path: internal/application/repository/model_usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/repository
+    destination: internal/commercial/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/native_commit.go
@@ -488,7 +488,7 @@ legacy_files:
   - path: internal/application/repository/user_usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/repository
+    destination: internal/commercial/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/vectorstore.go
@@ -500,7 +500,7 @@ legacy_files:
   - path: internal/application/repository/voice_session.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/web_search_provider.go
@@ -512,13 +512,13 @@ legacy_files:
   - path: internal/application/repository/workbench_list.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/workbench_request.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/agent_browser_preferences.go
@@ -638,109 +638,109 @@ legacy_files:
   - path: internal/application/service/craft_artifacts.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_budget.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_control.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_decision_delivery.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_delegate.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_inputs.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_interaction_store.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_knowledge.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_knowledge_tool.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_lifecycle.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_preview.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_recovery.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_session.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_snapshot.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_usage_view.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_workspace.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/custom_agent.go
@@ -1094,7 +1094,7 @@ legacy_files:
   - path: internal/application/service/semantic_model_budget.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/service
+    destination: internal/commercial/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/session.go
@@ -1340,7 +1340,7 @@ legacy_files:
   - path: internal/application/service/usage_recorder.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/service
+    destination: internal/commercial/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user.go
@@ -1430,7 +1430,7 @@ legacy_files:
   - path: internal/handler/artifact_preview.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/audit_log.go
@@ -1454,19 +1454,19 @@ legacy_files:
   - path: internal/handler/commercial.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/commercial_task_budget.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/craft_model_gateway.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/custom_agent.go
@@ -1598,13 +1598,13 @@ legacy_files:
   - path: internal/handler/mobile_device.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/mobile_voice.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/model.go
@@ -1628,7 +1628,7 @@ legacy_files:
   - path: internal/handler/payment_callbacks.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/persona.go
@@ -1676,13 +1676,13 @@ legacy_files:
   - path: internal/handler/session/artifact_download.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/artifact_reference.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/attachment_processor.go
@@ -1700,31 +1700,31 @@ legacy_files:
   - path: internal/handler/session/craft.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_interaction.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_preview.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/fork.go
@@ -1832,43 +1832,43 @@ legacy_files:
   - path: internal/handler/session/workbench_artifacts.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_commands.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_inbox.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_list.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_overview.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_read.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_start.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/shared_agent_access.go
@@ -1964,7 +1964,7 @@ legacy_files:
   - path: internal/handler/usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/user_resource_favorite.go

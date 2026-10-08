@@ -42,8 +42,8 @@ import (
 
 	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/commercial"
-	commsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	"github.com/Tencent/WeKnora/internal/commercial"
+	commsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 )
 
 var (

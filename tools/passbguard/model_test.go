@@ -58,7 +58,7 @@ aliases:
 	tplExceptionLedger = `exceptions:
   - id: exc-0001
     from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -371,7 +371,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: workbench
     kind: route-set
-    symbol: internal/modules/workbench/routes.go
+    symbol: internal/workbench/routes.go
     signature: ""
     stability: frozen
 `,
@@ -536,7 +536,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			body: `exceptions:
   - id: exc-0001
     from: ""
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -549,7 +549,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			body: `exceptions:
   - id: exc-0001
     from: internal/appconnector/adapter.txt
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -575,7 +575,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			body: `exceptions:
   - id: exc-0001
     from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib0
     reason: fixture reason
@@ -588,13 +588,13 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			body: `exceptions:
   - id: exc-0001
     from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
   - id: exc-0001
     from: internal/appconnector/action.go
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -614,7 +614,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/service
+    destination: internal/workbench/service
     integration_owner: ""
     delete_barrier: ib4
 `,

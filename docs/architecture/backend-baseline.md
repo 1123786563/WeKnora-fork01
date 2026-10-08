@@ -117,7 +117,7 @@ that touch `internal/agent/opencode` and `internal/application/repository` agent
 |---|---|---|
 | internal/agent/opencode (package) | `panic: test timed out after 25m0s`; goroutines stuck 24m on `net/http` persistConn read/write loops | unstable blocker (hang) |
 | internal/application/repository TestAgentRunDecisionConcurrentOnlyOneRevision | `agent_run_decisions_test.go:90: Not equal: expected: 2, actual: 1` (concurrent ApplyDecision idempotent-replay returns ErrConflict) | unstable blocker (concurrency flake) |
-| internal/modules/commercial/payment TestProvidersFromEnvRejectsPartialAlipay | `providers_env_test.go:82: partial alipay config must name the missing variable, got: alipay channel partially configured: WEKNORA_ALIPAY_PUBLIC_KEY_PATH missing; ...` | pre-existing latent flake (non-deterministic assertion) |
+| internal/commercial/payment TestProvidersFromEnvRejectsPartialAlipay | `providers_env_test.go:82: partial alipay config must name the missing variable, got: alipay channel partially configured: WEKNORA_ALIPAY_PUBLIC_KEY_PATH missing; ...` | pre-existing latent flake (non-deterministic assertion) |
 | internal/agentruntime/agent/recoverytest TestCrashMatrixSQLite/unknown_result_user_retry | `matrix_test.go:125: resume provider after "unknown_result_user_retry": exit status 1` (run did not complete after retry, status=waiting_user) | pre-existing load-sensitive flake |
 
 Payment partial-alipay entry (registered 2026-09-21, surfaced during the IA1 full-suite run

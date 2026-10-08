@@ -85,8 +85,8 @@
 - Modify: `internal/codedelivery/service_dispatch_test.go`
 - Modify: `internal/codedelivery/service_gitlab_test.go`
 - Modify: `internal/codedelivery/service_prepare_test.go`
-- Modify: `internal/modules/workbench/service/workbench/command_queue_next.go`
-- Modify: `internal/modules/workbench/service/workbench/command_queue_next_test.go`
+- Modify: `internal/workbench/service/workbench/command_queue_next.go`
+- Modify: `internal/workbench/service/workbench/command_queue_next_test.go`
 - Modify: `internal/agentruntime/module.go`
 - Modify: `internal/agentruntime/agent/runtime/contracts.go`
 - Modify: `internal/container/code_delivery.go`
@@ -101,10 +101,10 @@
 - Workbench command queue consumes `internal/agentruntime` root sentinels and retains existing output/status mapping; it must not import `agentruntime/agent/runtime`.
 
 - [ ] Add contract tests proving adapter mapping preserves action/connection identity, dispatch result state, unknown vs not-started errors, and owner-scoped run session identity; add `errors.Is` tests proving the root/runtime sentinels are identical and the queue keeps its not-found/conflict mapping.
-- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/modules/workbench/...` and record the current Architecture Guard import findings before code changes.
+- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/workbench/...` and record the current Architecture Guard import findings before code changes.
 - [ ] Move only the values/interfaces required by codedelivery behind its own contracts; implement concrete appconnector adapters in the composition root. Do not expose appconnector repository or service implementations through a new façade.
 - [ ] Replace agentruntime internal error imports with a stable module-root error contract or a workbench-owned mapping while retaining `errors.Is` behavior and HTTP/API result mapping.
-- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/modules/workbench/...` and `git diff --check`. Expected: package tests pass and these source paths no longer produce `forbidden-import` diagnostics.
+- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/workbench/...` and `git diff --check`. Expected: package tests pass and these source paths no longer produce `forbidden-import` diagnostics.
 - [ ] Commit `refactor(modules): keep delivery dependencies behind public contracts` and report exact BASE/HEAD and outputs.
 
 **Acceptance:** Target module packages pass; `codedelivery` and `workbench` production files have no cross-module internal imports; adapter contracts preserve all dispatch/run semantics and error identity.

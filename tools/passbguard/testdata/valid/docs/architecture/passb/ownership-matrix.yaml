@@ -3,7 +3,7 @@ legacy_files:
   - path: internal/application/service/zeta_widget.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/service
+    destination: internal/workbench/service
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/alpha_chat.go

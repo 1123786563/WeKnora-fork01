@@ -270,7 +270,7 @@ func checkRulings(g *Governance, rulings map[string]PlanID, platform []string) [
 //     （排除子串误报），之后若紧跟 `:数字` 则该出现是 :line 消费方引用
 //     （如 `agent_run_graph.go:22`），不算认领；
 //  2. basename 回退——同上边界约束，且出现位置前驱为 '/'（即属于更长路径
-//     的一部分，如 internal/modules/workbench/types.go 之于 ruled
+//     的一部分，如 internal/workbench/types.go 之于 ruled
 //     internal/handler/session/types.go）不得计为裸 basename 认领。
 func briefClaimsPath(text, path string) bool {
 	if matchIndependentToken(text, path) {

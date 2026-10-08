@@ -36,7 +36,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/container"
 	"github.com/Tencent/WeKnora/internal/logger"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/runtime"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

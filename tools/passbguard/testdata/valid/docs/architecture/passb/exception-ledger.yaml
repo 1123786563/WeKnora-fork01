@@ -2,7 +2,7 @@
 exceptions:
   - id: exc-0001
     from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/modules/commercial
+    to: github.com/Tencent/WeKnora/internal/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: "fixture: appconnector 消费 commercial 根包（Pass A 例外样本）"

@@ -177,10 +177,10 @@ Pass A 集成 `b0ef8895a` 已物理删除并切装配）。本节点不重建、
 $ grep -n 'modules/commercial' internal/appconnector/adapter.go \
     internal/appconnector/service/appconnector/action.go \
     internal/appconnector/service/appconnector/oc_recovery.go
-adapter.go:9:            ".../internal/modules/commercial"                      （exc-0058）
-service/appconnector/action.go:12:      ".../internal/modules/commercial"       （exc-0059）
-service/appconnector/oc_recovery.go:45: ".../internal/modules/commercial"       （exc-0060）
-service/appconnector/oc_recovery.go:46: commsvc ".../internal/modules/commercial/service/commercial" （exc-0061）
+adapter.go:9:            ".../internal/commercial"                      （exc-0058）
+service/appconnector/action.go:12:      ".../internal/commercial"       （exc-0059）
+service/appconnector/oc_recovery.go:45: ".../internal/commercial"       （exc-0060）
+service/appconnector/oc_recovery.go:46: commsvc ".../internal/commercial/service/commercial" （exc-0061）
 ```
 
 ledger 四行在位（`.worktrees/passb-int/docs/architecture/passb/exception-ledger.yaml`

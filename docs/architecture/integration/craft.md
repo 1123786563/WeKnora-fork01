@@ -9,13 +9,13 @@ hooks 58）。
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/craft` | `internal/modules/craft` |
+| `internal/craft` | `internal/craft` |
 
 单包搬迁（41 个 `.go` = 21 非测试 + 20 测试，含 6 个 testdata 文件，共 47 个 rename），
 move commit 为纯 rename（47/47 相似度 100%，0 insertions / 0 deletions）。
 目标目录原有的 F1 骨架（`module.go`、`README.md`、`legacy/README.md`）与搬入包同为
 `package craft`，合并为同一包，无冲突。包内唯一外部依赖是
-`internal/agentruntime/agent/runtime` 与 `internal/modules/commercial`（均为既冻结的
+`internal/agentruntime/agent/runtime` 与 `internal/commercial`（均为既冻结的
 模块路径，搬迁前后零变化）。
 
 ## 2. 旧路径别名（alias_obligations，1 处）
@@ -54,10 +54,10 @@ Pass A 结束时（本分支 HEAD `e389562a0`），禁改共享文件中引用�
 
 **给集成者的操作（IA4 切换）**：
 1. 在 `internal/container/container.go:42` 把导入改为
-   `"github.com/Tencent/WeKnora/internal/modules/craft"`（import 行唯一改动，包名
+   `"github.com/Tencent/WeKnora/internal/craft"`（import 行唯一改动，包名
    qualifier `craft` 不变，`container.go` 其余行零改动）；
 2. `go build ./...` 通过后，删除 `internal/craft/` 整个目录（此刻已无任何 importer）；
-3. 回归：`go build ./...` + `go test ./internal/modules/craft/... -count=1` +
+3. 回归：`go build ./...` + `go test ./internal/craft/... -count=1` +
    `go test ./internal/container/... ./internal/application/service/... ./internal/application/repository/... ./internal/handler/... ./internal/handler/session/... -count=1`；
 4. `go run ./tools/architectureguard`：§8 的 4 条 forbidden-import 诊断按 IA4 例外/切换
    方案处置（不得为过 guard 回退本搬迁）；路由 633 / redis 23+lite 23 / hooks 58 不得变化。
@@ -108,7 +108,7 @@ container.go 内，:681/:682 位于 craft_interaction.go、:686/:689 位于 craf
 
 ## 7. 配置键（模块读取）
 
-**无自有 env/配置键**：`internal/modules/craft` 非测试代码零 `os.Getenv`/`os.LookupEnv`、
+**无自有 env/配置键**：`internal/craft` 非测试代码零 `os.Getenv`/`os.LookupEnv`、
 零 `config.` 引用（已 grep 验证）。依赖（sandbox、commercial、agentruntime runtime）全部经
 接口注入；container 侧装配读取的配置属装配层，不属于本模块。
 
@@ -118,12 +118,12 @@ architectureguard 在本分支报 **4 条新** forbidden-import 诊断（IA3 基
 旧 platform 路径变成模块内部路径，暴露出**先于本次改造**的跨模块耦合；完整输出存档
 `/tmp/a13-guard.log`）：
 
-1. `internal/agentruntime/agent/opencode/executor.go` 导入 `internal/modules/craft`
+1. `internal/agentruntime/agent/opencode/executor.go` 导入 `internal/craft`
    （搬迁前导入 `internal/craft`，耦合预存；A13 仅按 manifest importers 做了 import 行修复，
    文件属 agentruntime 领地）
-2. `internal/agentruntime/agent/opencode/normalizer.go` 导入 `internal/modules/craft`（同上）
-3. `internal/agentruntime/agent/tools/craft_delegate.go` 导入 `internal/modules/craft`（同上）
-4. `internal/modules/craft/contracts.go` 导入 `internal/agentruntime/agent/runtime`
+2. `internal/agentruntime/agent/opencode/normalizer.go` 导入 `internal/craft`（同上）
+3. `internal/agentruntime/agent/tools/craft_delegate.go` 导入 `internal/craft`（同上）
+4. `internal/craft/contracts.go` 导入 `internal/agentruntime/agent/runtime`
    （耦合预存：搬迁前 `internal/craft/contracts.go` 即导入同一模块路径；此前 importer
    `internal/craft` 不在模块目录下故不触发；搬迁后 importer 变为模块内部路径而显形——
    IA3 例外登记表按精确 importer 文件路径匹配，需 IA4 增补/迁移对应条目）
@@ -135,7 +135,7 @@ architectureguard 在本分支报 **4 条新** forbidden-import 诊断（IA3 基
 ## 9. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/craft/... -count=1`（manifest test_commands）
+- `go test ./internal/craft/... -count=1`（manifest test_commands）
 - `go test ./internal/container/... ./internal/application/service/... ./internal/application/repository/... ./internal/handler/... ./internal/handler/session/... ./internal/agentruntime/agent/tools/... -count=1`（直接消费方回归；opencode 全套按 F0 §2.5 已知不稳定处理，可用 `-run Craft` 定点）
 - `go run ./tools/modulemove verify --module craft`
 - `go run ./tools/architectureguard`（路由 633 / redis 23+lite 23 / hooks 58 不得变化；

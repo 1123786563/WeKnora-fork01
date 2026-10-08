@@ -25,7 +25,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 )
 
 // TestAvailableToolDefinitionsContractSnapshot freezes the full UI tool catalog.

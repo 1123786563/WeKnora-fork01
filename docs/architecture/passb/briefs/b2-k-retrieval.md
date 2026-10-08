@@ -99,7 +99,7 @@ router 侧测试引用两处亦经别名解析：`internal/router/router_api_key
 
 | # | 文件 | 解除编排（ib2 窗口） |
 |---|---|---|
-| 1 | `internal/application/service/semantic_model.go`（+`semantic_model_test.go`） | plan §3.3 原编排：ib2 把本文件与 `semantic_model_budget.go`（12-commercial）同批切割——commercial 侧落位 `internal/modules/commercial/service` 并导出窄端口（budget ops 接口 + `SemanticBudgetFailure`），gateway 形参改端口，集成工程师改 container.go:1059-1069 一处；随后按 K2.4 同法迁移（含 manifest 行删除） |
+| 1 | `internal/application/service/semantic_model.go`（+`semantic_model_test.go`） | plan §3.3 原编排：ib2 把本文件与 `semantic_model_budget.go`（12-commercial）同批切割——commercial 侧落位 `internal/commercial/service` 并导出窄端口（budget ops 接口 + `SemanticBudgetFailure`），gateway 形参改端口，集成工程师改 container.go:1059-1069 一处；随后按 K2.4 同法迁移（含 manifest 行删除） |
 | 2 | `internal/handler/knowledgebase.go`（+7 测试 + rbac_lookups.go 联动） | plan §3.3 原编排：ib2 先对 rbac_lookups.go 两方法去方法化（`KBCreatorLookup`/`KBCreatorLookupFromKbIDParam` :34/:49 改包级函数，router 形参同步），再按 K2.6 同法迁移 |
 | 3-10 | `service/knowledgebase.go`、`knowledgebase_search.go`、`_fanout`、`_faq`、`_fusion`、`_results`、`_shared`、`_storegroup`（**勘误：K2.4 报告 §3 表列 7 漏计 `_shared`，实际 8 文件**；`git ls-files` 实证） | 解除条件：K4 迁移 knowledge_delete.go（消除 collectImageURLs/knowledgeResourceOwners/deleteExtractedImages 白盒耦合）+ kb_activity/kbshare 同包家族已就位（前者已完成）+ 他属主宿主白盒测试（craft×2、resource_review、datasource_delete_sqlite、semantic_scope_mutation 等）随各属主处置；随后按 K2.4 同法补迁（含 5 对跨模块 import 豁免按 Ruling 登记：knowledgebase.go:15/:17/:18、kbshare.go:10、knowledgebase_search.go:9） |
 | 11 | `service/kbshare.go` | 解除条件：identity 导出 `ErrOrgNotFound`/`ErrTenantNotInOrg`/`ErrInvalidRole` 哨兵端口（或 ib2 裁定直连改写）；届时导出 `ApplyTenantRoleCap`（§2 顺延义务） |

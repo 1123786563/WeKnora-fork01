@@ -6,7 +6,7 @@
 
 ## Scope（scope）
 
-模块门面已就位：`internal/modules/workbench/module.go`（零逻辑骨架，契约
+模块门面已就位：`internal/workbench/module.go`（零逻辑骨架，契约
 `NewModule/RegisterRoutes/RegisterWorkers/Start/Stop`）+ 4 个业务包
 （`service/workbench` 22 文件、`notification` 4、`voice` 3、模块根 contracts 7，
 Pass A A12 整包搬迁）。B-workbench 的义务是**横向包拆分 + 别名清退**：
@@ -30,7 +30,7 @@ Pass A A12 整包搬迁）。B-workbench 的义务是**横向包拆分 + 别名�
 ## Goal（goal）
 
 把 Task/Timeline/Inbox/Artifact/通知/移动投影的 service/repository/handler 面拆进
-`internal/modules/workbench/`，使模块门面（module.go 契约）可以接管
+`internal/workbench/`，使模块门面（module.go 契约）可以接管
 `router.go:366-374` 的 8 个注册入口与 2 个 container.Invoke 挂点
 （`registerArtifactVersionHTTPHandlers`、`registerArtifactPreviewHTTPHandlers`），
 workbench 成为不依赖横向包的自洽纵向切片。
@@ -41,10 +41,10 @@ workbench 成为不依赖横向包的自洽纵向切片。
    revision/lease 语义、artifact HMAC grant（tenant/session/message/index/expiry，
    constant-time 校验）、W26 不可变版本下载 fail-closed 挂载、W27 隔离预览票据
    （主 origin 签发 / 隔离 origin 兑换）、通知投递 revalidate-before-send 均不得改变；
-   回归必测 `go test ./internal/modules/workbench/... -count=1` + handler/session、
+   回归必测 `go test ./internal/workbench/... -count=1` + handler/session、
    repository 直接消费方套件。
 2. **frozen Task/Timeline/Artifact contracts 不改签名**：`internal/workbench`（现
-   `internal/modules/workbench` 模块根）的 contracts.go 是跨模块消费的冻结契约
+   `internal/workbench` 模块根）的 contracts.go 是跨模块消费的冻结契约
    （application/repository、handler/session 消费），拆分只增不破。
 3. **注册点为禁改文件**：路由调用点 `internal/router/router.go:366-374`、grant 挂载
    `router.go:233-235`、hooks Invoke `internal/container/container.go:671/676`——

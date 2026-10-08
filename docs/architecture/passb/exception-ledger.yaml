@@ -37,66 +37,66 @@
 exceptions:
   - id: exc-0058
     from: internal/appconnector/adapter.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0059
     from: internal/appconnector/service/appconnector/action.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0060
     from: internal/appconnector/service/appconnector/oc_recovery.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0061
     from: internal/appconnector/service/appconnector/oc_recovery.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，oc_recovery 直接消费 commercial service），Pass A 不改边界"
   - id: exc-0093
-    from: internal/modules/workbench/service/workbench/admission.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    from: internal/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0094
-    from: internal/modules/workbench/service/workbench/admission.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+    from: internal/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0095
-    from: internal/modules/workbench/service/workbench/admission.go
+    from: internal/workbench/service/workbench/admission.go
     to: "github.com/Tencent/WeKnora/internal/execution"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0101
-    from: internal/modules/workbench/service/workbench/remote_dispatch.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    from: internal/workbench/service/workbench/remote_dispatch.go
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0103
-    from: internal/modules/workbench/service/workbench/remote_usage.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    from: internal/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0104
-    from: internal/modules/workbench/service/workbench/remote_usage.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+    from: internal/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0105
-    from: internal/modules/workbench/service/workbench/remote_usage.go
+    from: internal/workbench/service/workbench/remote_usage.go
     to: "github.com/Tencent/WeKnora/internal/execution"
     plan: 40-workbench
     remove_at: ib4
@@ -105,13 +105,13 @@ exceptions:
   # 0112..0116，原分支内 ID 0106..0110，映射见 merge commit 与 K4.0 报告）----
   - id: exc-0112
     from: internal/knowledge/retrieval/app/semantic_model_capability.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 22-knowledge-retrieval
     remove_at: ib2
     reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"
   - id: exc-0113
     from: internal/knowledge/retrieval/app/semantic_model_policy.go
-    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    to: "github.com/Tencent/WeKnora/internal/commercial"
     plan: 22-knowledge-retrieval
     remove_at: ib2
     reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"

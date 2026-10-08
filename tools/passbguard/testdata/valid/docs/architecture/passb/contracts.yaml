@@ -9,7 +9,7 @@ contracts:
     consumers:
       - internal/insights/service/scan.go
     characterization_tests:
-      - internal/modules/workbench/service/task_test.go
+      - internal/workbench/service/task_test.go
   - id: conversation-route-set
     owner: conversation
     kind: route-set

@@ -16,7 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"go.uber.org/dig"
 )

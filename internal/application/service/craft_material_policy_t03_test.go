@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/stretchr/testify/require"
 )
 

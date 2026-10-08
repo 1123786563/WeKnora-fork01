@@ -84,7 +84,7 @@ container.go 其余部分零 diff（行号未漂移：hooks 仍在 :439/:604/:61
 
 ```
 forbidden-import: internal/airesource/models/chat/usage.go 导入了模块 commercial 的
-内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
+内部包 "github.com/Tencent/WeKnora/internal/commercial"（跨模块只能经模块根公共门面）
 ```
 
 核实：该 import 在搬迁前即存在（`git show 03032f890:internal/models/chat/usage.go` 第 9 行

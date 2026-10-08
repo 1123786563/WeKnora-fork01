@@ -11,7 +11,7 @@
 ## 当前架构证据
 
 - 后端按 `internal/modules/<domain>` 组织；模块迁移和所有权记录在 `docs/architecture/moves/*.yaml`。容器与 HTTP 路由由现有装配层集中注册。
-- `internal/modules/workbench` 已提供模块骨架、HTTP handlers、工作台执行和 artifact 接口；Career 申请应通过既有 Task/Workbench 能力，而不再引入第二套任务运行时。
+- `internal/workbench` 已提供模块骨架、HTTP handlers、工作台执行和 artifact 接口；Career 申请应通过既有 Task/Workbench 能力，而不再引入第二套任务运行时。
 - Web 采用 feature 目录与当前 TDesign 页面，路由在现有 Web shell 装配；不能依赖旧分支的 `apps/web/src/career` 页面样式和平台封装。
 - 小程序以 `features`、`subpackages`、共享 services 和 Taro 原生组件为边界；不能恢复旧的 `apps/miniprogram/src/career` 页面树。
 - `packages/career-core/testdata/wire-fixtures.json` 已存在；实现阶段需先检查其消费者和所有者，再决定扩展现有合同或建立正式 package API，不可把 testdata 文件误当成运行时合同。

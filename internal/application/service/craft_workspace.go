@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent/opencode"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 )
 

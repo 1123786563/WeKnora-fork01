@@ -3,7 +3,7 @@ module: craft
 description: 开发工作区、会话/运行、Interaction、Snapshot、Artifact Version/Preview、用量、Scheduled Task（§5.7/§5.18）
 move_packages:
   - from: internal/craft
-    to: internal/modules/craft
+    to: internal/craft
 alias_obligations:
   - old_import_path: internal/craft
     passb_task: B-craft
@@ -167,7 +167,7 @@ owned_files:
   move_sources:
   - internal/craft
   move_targets:
-    - internal/modules/craft
+    - internal/craft
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/craft
   importers:
@@ -179,11 +179,11 @@ owned_files:
   - internal/handler
   - internal/handler/session
   module_files:
-    - internal/modules/craft/README.md
-    - internal/modules/craft/module.go
-    - internal/modules/craft/legacy/README.md
+    - internal/craft/README.md
+    - internal/craft/module.go
+    - internal/craft/legacy/README.md
 test_commands:
-  - go test ./internal/modules/craft/... -count=1
+  - go test ./internal/craft/... -count=1
 integration_points:
   routes:
   - RegisterCraftExportRoutes — internal/handler/session/artifact_download.go:795

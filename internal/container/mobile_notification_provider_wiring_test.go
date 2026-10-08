@@ -27,8 +27,8 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	pushnotification "github.com/Tencent/WeKnora/internal/workbench/notification"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/stretchr/testify/require"
 )
 

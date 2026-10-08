@@ -5,8 +5,8 @@ import (
 	"io"
 	"net/http"
 
-	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	domain "github.com/Tencent/WeKnora/internal/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/career"
+	"github.com/Tencent/WeKnora/internal/career"
 	"github.com/gin-gonic/gin"
 )
 

@@ -16,7 +16,7 @@ import (
 	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
 	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

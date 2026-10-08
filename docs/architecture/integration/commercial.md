@@ -7,19 +7,19 @@ Integrator（IA1）对接摘要。事实源：`docs/architecture/moves/commercia
 
 | 旧导入路径（别名仍在） | 新导入路径 | 包名 | 内容 |
 |---|---|---|---|
-| `internal/commercial` | `internal/modules/commercial` | `commercial` | 领域模型：套餐/订单/订阅/预算/配额/结算/履约/rollout/报价 |
-| `internal/application/repository/commercial` | `internal/modules/commercial/repository/commercial` | `commercial` | 商业仓储（GORM）：账号、权益、计费账号、预算、订单、outbox、plan version、退款、订阅、usage facts |
-| `internal/application/service/commercial` | `internal/modules/commercial/service/commercial` | `commercial` | 应用服务：benefits/billing account/plan version/order/fulfillment/recovery/refund/settlement/execution gate/quota guard |
-| `internal/infrastructure/commercialplatform` | `internal/modules/commercial/commercialplatform` | `commercialplatform` | Lago 商业平台适配（provider=`lago`；未配置 env 为合法 blocked-env） |
-| `internal/infrastructure/openmeter` | `internal/modules/commercial/openmeter` | `openmeter` | OpenMeter 网关（legacy 计量网关， removal 属 #105，不在本模块） |
-| `internal/payment` | `internal/modules/commercial/payment` | `payment` | 支付渠道适配：alipay / wechat（`ProvidersFromEnv`） |
-| `internal/usage` | `internal/modules/commercial/usage` | `usage` | 计价：`ModelRates` / `RatesFromEnv`（WEKNORA_USAGE_RATES） |
+| `internal/commercial` | `internal/commercial` | `commercial` | 领域模型：套餐/订单/订阅/预算/配额/结算/履约/rollout/报价 |
+| `internal/application/repository/commercial` | `internal/commercial/repository/commercial` | `commercial` | 商业仓储（GORM）：账号、权益、计费账号、预算、订单、outbox、plan version、退款、订阅、usage facts |
+| `internal/application/service/commercial` | `internal/commercial/service/commercial` | `commercial` | 应用服务：benefits/billing account/plan version/order/fulfillment/recovery/refund/settlement/execution gate/quota guard |
+| `internal/infrastructure/commercialplatform` | `internal/commercial/commercialplatform` | `commercialplatform` | Lago 商业平台适配（provider=`lago`；未配置 env 为合法 blocked-env） |
+| `internal/infrastructure/openmeter` | `internal/commercial/openmeter` | `openmeter` | OpenMeter 网关（legacy 计量网关， removal 属 #105，不在本模块） |
+| `internal/payment` | `internal/commercial/payment` | `payment` | 支付渠道适配：alipay / wechat（`ProvidersFromEnv`） |
+| `internal/usage` | `internal/commercial/usage` | `usage` | 计价：`ModelRates` / `RatesFromEnv`（WEKNORA_USAGE_RATES） |
 
-模块骨架文件（F 任务预置，非本次搬迁）：`internal/modules/commercial/{README.md,module.go,legacy/README.md}`。
+模块骨架文件（F 任务预置，非本次搬迁）：`internal/commercial/{README.md,module.go,legacy/README.md}`。
 
 ## Billing / Payment providers
 
-- 商业平台 seam：`domain.CommercialPlatform`（`internal/modules/commercial/platform.go:221`）；
+- 商业平台 seam：`domain.CommercialPlatform`（`internal/commercial/platform.go:221`）；
   生产实现 `commercialplatform.NewPlatformFromEnv()`（config.go:62，provider=`lago`）。
 - 支付渠道：`payment.ProvidersFromEnv()` → `map[string]payment.Provider`；空 map 合法
   （blocked-env，checkout 显式报未配置）；部分配置的渠道导致构造失败 = 启动失败。
@@ -77,13 +77,13 @@ Pass A 在全部 7 条旧路径留下零逻辑别名包，禁改文件保持旧�
 
 | 行 | 现状（旧路径） | 切换为 |
 |---|---|---|
-| 41 | `repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"` | `…/internal/modules/commercial/repository/commercial` |
-| 56 | `commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"` | `…/internal/modules/commercial/service/commercial` |
-| 62 | `domain "github.com/Tencent/WeKnora/internal/commercial"` | `…/internal/modules/commercial` |
-| 92 | `commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"` | `…/internal/modules/commercial/commercialplatform` |
-| 94 | `ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"` | `…/internal/modules/commercial/openmeter` |
-| 103 | `"github.com/Tencent/WeKnora/internal/payment"` | `…/internal/modules/commercial/payment` |
-| 111 | `"github.com/Tencent/WeKnora/internal/usage"` | `…/internal/modules/commercial/usage` |
+| 41 | `repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"` | `…/internal/commercial/repository/commercial` |
+| 56 | `commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"` | `…/internal/commercial/service/commercial` |
+| 62 | `domain "github.com/Tencent/WeKnora/internal/commercial"` | `…/internal/commercial` |
+| 92 | `commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"` | `…/internal/commercial/commercialplatform` |
+| 94 | `ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"` | `…/internal/commercial/openmeter` |
+| 103 | `"github.com/Tencent/WeKnora/internal/payment"` | `…/internal/commercial/payment` |
+| 111 | `"github.com/Tencent/WeKnora/internal/usage"` | `…/internal/commercial/usage` |
 
 `internal/router/router.go` / `task.go` / `sync_task.go`、`go.mod`、`go.sum`、`migrations/`：
 **零处**旧路径引用，无需动作。

@@ -32,7 +32,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Owned files:** `internal/modules/career/profile_intake.go`, focused `upload_test.go` / `handler_test.go`, and a test-only DB fault-injection helper if required. Do not change provider or migration files.
+**Owned files:** `internal/career/profile_intake.go`, focused `upload_test.go` / `handler_test.go`, and a test-only DB fault-injection helper if required. Do not change provider or migration files.
 
 **Consumes / produces:** Normal transaction and fallback lookup must share the same predicate: `ready` is terminal; `failed` is terminal except `ResourceRef == "" && ErrorCategory == "interrupted"`, which remains retryable. On failed retry transaction for that legacy case, return the transaction error or typed busy/unknown result with `terminal=false`; never tell Handler to resolve its lifecycle claim.
 

@@ -34,7 +34,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Owned files:** `internal/modules/career/{profile_intake.go,handler.go,upload_test.go,handler_test.go}` and focused `internal/application/service/file` provider tests or narrowly scoped test seams. No migration files.
+**Owned files:** `internal/career/{profile_intake.go,handler.go,upload_test.go,handler_test.go}` and focused `internal/application/service/file` provider tests or narrowly scoped test seams. No migration files.
 
 **Consumes / produces:** `FailStaleUploads` processes lease-expired sources under the existing Office transaction. For a processing row with empty `ResourceRef`, the prior storage outcome is unknown; it must remain retryable/unresolved, not become terminal `failed` with a releasable lifecycle claim. `ClaimUpload` on the exact same request after lease expiry must reacquire ownership and replay `SaveBytes`; deterministic path `career_source_<sourceID><ext>` returns the same provider object key. If a ref is already durable, existing stale cleanup and compensation remain unchanged.
 
@@ -46,7 +46,7 @@
 - [ ] Run all new tests RED against commit 79425 and save output in `/tmp/issue140-task26-review-repairs-r2-report.md`.
 - [ ] Change stale processing finalization so an empty-ref unknown storage outcome retains an expired/retryable processing claim; ensure it is not returned as a releasable stale resource. Keep any known-ref stale cleanup behavior unchanged.
 - [ ] Implement adapter-level key test seams without changing production storage contracts or unrelated object naming.
-- [ ] Run the full stale/replay/deletion sequence, provider adapter tests, `go test -count=1 ./internal/modules/career ./internal/application/service/file ./internal/modules/workbench/service/workbench ./internal/container ./internal/database`, relevant race tests, migration uniqueness checks, and `git diff --check`. Record PostgreSQL/cloud service unavailability if applicable.
+- [ ] Run the full stale/replay/deletion sequence, provider adapter tests, `go test -count=1 ./internal/career ./internal/application/service/file ./internal/workbench/service/workbench ./internal/container ./internal/database`, relevant race tests, migration uniqueness checks, and `git diff --check`. Record PostgreSQL/cloud service unavailability if applicable.
 - [ ] Commit the repair and append exact commands/results to `/tmp/issue140-r2-task21-report.md`.
 
 **Acceptance:** F1 is closed: after an accepted write with lost response, stale maintenance and same-request replay cannot remove the only deletion barrier; retry reconciles the identical physical key and a deleted receipt is impossible until the private object is referenced and removed. Each configured provider's SaveBytes adapter path has direct deterministic-key regression coverage.

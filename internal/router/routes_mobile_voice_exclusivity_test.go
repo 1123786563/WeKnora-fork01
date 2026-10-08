@@ -7,7 +7,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
-	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
+	"github.com/Tencent/WeKnora/internal/workbench/voice"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

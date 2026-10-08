@@ -57,7 +57,7 @@
 
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
-**Owned files:** `internal/modules/career/model_input.go` and its focused tests only.
+**Owned files:** `internal/career/model_input.go` and its focused tests only.
 
 **Consumes / produces:** Existing `BuildModelInput` safe allowlist and career facts with user-confirmation provenance. Add exact key `internship.company` to the approved company/experience input mapping without changing which source statuses are trusted.
 

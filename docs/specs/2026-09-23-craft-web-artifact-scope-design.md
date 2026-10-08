@@ -35,7 +35,7 @@
 
 - `packages/views/src/craft/assistant-runtime.tsx` 已接入真实 `@assistant-ui/react`，需在此基础上验收完整工作台，而非重建对话层。
 - `internal/application/service/temporary_document.go` 当前有文件扩展名白名单并拒绝已知可执行文件；这与“任意扩展名作为只读材料”尚不一致。需设计独立的 Craft 任意文件接收与内容识别边界，并保留明确的大小、数量和资源限制。
-- `internal/modules/craft/input.go` 当前限制每文件 20 MiB、每轮 20 个文件和总计 100 MiB；首版沿用此产品配额，归档文件解包后的资源限制需在实施规格中进一步确定。
+- `internal/craft/input.go` 当前限制每文件 20 MiB、每轮 20 个文件和总计 100 MiB；首版沿用此产品配额，归档文件解包后的资源限制需在实施规格中进一步确定。
 - Docker 沙箱默认 `bridge` 模式允许出站连接；离线构建及无网络预览需要显式配置和验证。预置依赖的升级与模板版本也需确定。
 - Craft 现有 `@weknora/ui` 使用须服从已批准的 TDesign React 迁移目标。
 

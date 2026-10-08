@@ -4,7 +4,7 @@ import (
 	"context"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/workbench"
+	"github.com/Tencent/WeKnora/internal/workbench"
 )
 
 // TerminalLogEventType is the product event type that carries one chunk of

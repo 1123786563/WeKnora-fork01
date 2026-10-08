@@ -2,7 +2,7 @@
 
 - 分支 / worktree：`bm-passa-a12` / `.worktrees/bm-passa-a12`
 - base：`8fbc030a8`（= 集成线 "refactor: integrate pass-a core modules"，IA3 放行）
-- move commit：`61e9fa0e7` — `refactor(workbench): move packages to internal/modules/workbench`
+- move commit：`61e9fa0e7` — `refactor(workbench): move packages to internal/workbench`
 - repair commit：`808e8d422` — `refactor(workbench): repair imports and add pass-a aliases`
 - docs commit：见本文件所在提交
 - 环境：postgres :5432 / redis :6379（共享本地服务，未动容器）；Go 1.26.3
@@ -22,7 +22,7 @@ $ go build ./...                          # exit 0（仅既有 cmd ld duplicate-
 
 | 命令 | 结果 |
 |---|---|
-| `go test ./internal/modules/workbench/... -count=1`（manifest test_commands，逐字） | exit 0（骨架包 no test files） |
+| `go test ./internal/workbench/... -count=1`（manifest test_commands，逐字） | exit 0（骨架包 no test files） |
 | `go test ./internal/workbench/... ./internal/notification/... ./internal/voice/... ./internal/application/service/workbench/... -count=1` | 4/4 包 ok（workbench 0.411s、notification 1.277s、voice 1.474s、service/workbench 12.172s），FAIL 0 |
 | 直接消费方（targeted）：handler/session `-run 'TestWorkbench\|TestArtifact\|TestMobileWorkbench'`；handler `-run 'TestMobileVoice\|TestVoice'`；router `-run 'TestMobileVoice\|TestWorkbench\|TestArtifact'`；repository `-run 'TestAgentRunSnapshot\|TestExecutionObservation\|TestWorkbench'`；agentruntime/agent 全包 | 全部 ok（1.759s / 1.176s / 1.979s / 8.405s / 1.185s），FAIL 0 |
 
@@ -32,7 +32,7 @@ $ go build ./...                          # exit 0（仅既有 cmd ld duplicate-
 |---|---|
 | `go run ./tools/modulemove verify --module workbench` | `modulemove: OK (workbench)` |
 | `go run ./tools/modulemove verify --all` | `modulemove: OK (16 manifests verified)` |
-| `go test ./internal/modules/workbench/... -count=1`（manifest test_commands） | 4/4 包 ok（模块根 0.375s、notification 1.298s、service/workbench 22.736s、voice 0.539s），FAIL 0 |
+| `go test ./internal/workbench/... -count=1`（manifest test_commands） | 4/4 包 ok（模块根 0.375s、notification 1.298s、service/workbench 22.736s、voice 0.539s），FAIL 0 |
 | 别名包 ×4 `go test ./internal/application/service/workbench/... ./internal/notification/... ./internal/voice/... ./internal/workbench/...` | 4× `[no test files]`（编译通过） |
 | 直接消费方全包：handler/session、handler、router、application/service、container、agentruntime/agent `-count=1` | 6/6 ok（26.730s / 1.617s / 3.622s / 100.174s / 5.624s / 3.172s），FAIL 0 |
 | `go test ./internal/application/repository/ -count=1`（全包） | ok 131.376s，FAIL 0（含 TestAgentRunDecisionConcurrentOnlyOneRevision，本轮通过） |
@@ -58,10 +58,10 @@ $ git diff --summary 61e9fa0e7~1..61e9fa0e7 | grep -c '^R100\|^ rename'
   纯 rename。
 - 全范围（base `8fbc030a8..HEAD`）rename 检出 36/36：30×`(100%)`、5×`(99%)`、
   1×`(97%)`。低于 100% 的 6 个文件（全部为 repair commit 所需的披露改动）：
-  - `internal/modules/workbench/service/workbench/interaction.go`（99%）、
+  - `internal/workbench/service/workbench/interaction.go`（99%）、
     `interaction_test.go`（99%）：import 行随路径改名重排（gofmt 排序，函数体零改动）；
   - `notification_delivery.go`（99%）、`notification_delivery_test.go`（99%）：
-    1 条 import 路径行（`internal/notification` → `internal/modules/workbench/notification`）；
+    1 条 import 路径行（`internal/notification` → `internal/workbench/notification`）；
   - `admission_concurrency_test.go`（99%）：sqlite migrations fixture 相对深度修复
     `../../../../` → `../../../../../`（目录加深 2 级、变浅 1 级，净 +1）；
   - `crosslang_mx003_test.go`（97%）：fixture 相对深度修复
@@ -87,7 +87,7 @@ $ git diff --stat 8fbc030a8..HEAD -- internal/router/router.go internal/router/t
 `owned_files.importers`（含 `internal/router` 内**非禁改**的
 `routes_mobile_voice_test.go`）+ 2 个搬迁文件自引用修复 + 4 个新建 alias.go。
 
-Sibling 领地（craft=internal/modules/craft、insights=internal/insights 相关路径）
+Sibling 领地（craft=internal/craft、insights=internal/insights 相关路径）
 零 diff；frozen 模块 internal/modules/{knowledge,conversation,agentruntime} 零 diff
 （agentruntime/agent/engine_test.go 未触碰，由 service/workbench 别名继续解析）。
 
@@ -112,20 +112,20 @@ Sibling 领地（craft=internal/modules/craft、insights=internal/insights 相�
 ## 7. Guard 新增发现（交 IA4，未处置）
 
 ```
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/notification.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/notification_worker.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_dispatch.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_dispatch.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/admission.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/commercial"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/admission.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/notification.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/notification_worker.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_dispatch.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_dispatch.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/commercial"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_usage.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/commercial"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/workbench/service/workbench/remote_usage.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
 ```
 
 逐条核验：14 条的 import 行在 base `8fbc030a8` 的旧路径同名文件中**逐字符相同**
