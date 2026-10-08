@@ -3,12 +3,12 @@
 > 交付节点：`b2-ac-definition`（分支 `codex/passb-b2-ac-definition`，代码终点 `bd9e0f8e9`，证据终点 `5d543c49d`，本 Brief 为其后续纯文档提交）。
 > 受理 barrier：**IB2**（`ownership-matrix.yaml` agentcatalog 行 `integration_owner: ib2`、`delete_barrier: ib2`）。
 > 依据：计划 `docs/plans/passb/25a-agent-definition-version.md`（v3）§2.1/§2.3/§4-②/§4-③/§7；`conventions.md` §7（package-private 耦合处理）、§3（集成工程师独占文件）、framework:103（barrier 只从已评审 Brief 切换共享装配）。
-> 性质：本文件是**装配变更申请**——①§ 的消费方切换/shim 删除与②§ 的导出/去方法化/搬迁均由集成工程师在 IB2 串行执行；实施者不写 `internal/router/**`、`internal/container/container.go`、`internal/modules/agentcatalog/module.go`（conventions §3）。
+> 性质：本文件是**装配变更申请**——①§ 的消费方切换/shim 删除与②§ 的导出/去方法化/搬迁均由集成工程师在 IB2 串行执行；实施者不写 `internal/router/**`、`internal/container/container.go`、`internal/agentcatalog/module.go`（conventions §3）。
 > 所有行号除特别注明外为节点分支 HEAD `5d543c49d` 实测（grep/sed 实跑，见报告 `docs/plans/passb/reports/b2-ac-definition.md`）。
 
 ## 0. 交付摘要（本节点已落地，非申请项）
 
-- 批次 1 共 7 个生产文件已物理搬入 `internal/modules/agentcatalog/{repository,service,handler}`，内容 1:1（仅 package 行与 import 路径差异）；原路径重写为薄 shim（7 个，§①表 A 逐符号别名/转发，零业务语句，文件头带过渡注释）。
+- 批次 1 共 7 个生产文件已物理搬入 `internal/agentcatalog/{repository,service,handler}`，内容 1:1（仅 package 行与 import 路径差异）；原路径重写为薄 shim（7 个，§①表 A 逐符号别名/转发，零业务语句，文件头带过渡注释）。
 - 测试：3 份既有测试随迁（`git diff -M --summary` 实证 `rename (100%)`：`subagent_test.go`、`agent_share_source_test.go`、`tenant_subagent_test.go`）+ 4 份特征化新测试（repo/service/handler favorite 面，conventions §1.4 授权）。
 - 门禁全绿：DAG 四条 gates + 通用门禁，计数 `total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`modulemove: OK (16 manifests verified)`（evidence `docs/architecture/evidence/passb/b2-ac-definition.md` §1.3/§2.1）。
 - 批次 2 的 15 个文件**留宿**（推迟非缩水，物理约束同 10-identity §3.2 / 13-execution:65 先例），②§ 逐文件登记。
@@ -35,7 +35,7 @@ shim 间无相互依赖；模块包文件不 import 任何 shim（`module/handle
 **第一波（无推迟件依赖，切换后即可删 shim）**：S4、S5、S6、S3、S7。
 - S4：`container.go:307` 改 `agentcatalogrepository.NewUserResourceFavoriteRepository`（或按容器既有 import 别名风格）→ 删 `internal/application/repository/user_resource_favorite.go`。
 - S5：`container.go:430` 改模块 service 构造器 → 删 `internal/application/service/user_resource_favorite.go`（两个哨兵转发随之消失；宿主侧 `errors.Is` 链经模块同名 var 实体保持）。
-- S6：`router.go:104`、`routes_agent.go:61`、`container.go:800` 改引 `internal/modules/agentcatalog/handler` → 删 `internal/handler/user_resource_favorite.go`。
+- S6：`router.go:104`、`routes_agent.go:61`、`container.go:800` 改引 `internal/agentcatalog/handler` → 删 `internal/handler/user_resource_favorite.go`。
 - S3：`container.go:306` → 删 `internal/application/repository/tenant_disabled_shared_agent.go`。
 - S7：`router.go:103`/`:399`、`routes_subagent.go:26`、`routes_subagent_test.go:29`（零值字面量改 `&agentcataloghandler.SubagentHandler{}`）、`container.go:796`/`:798` → 删 `internal/handler/subagent.go`。
 
@@ -116,6 +116,6 @@ DAG pair 2（agentcatalog→conversation，10 调用点 7 符号；定义 `inter
 
 ## ④ 计数零漂移声明
 
-- 节点代码终点（`bd9e0f8e9`）T4 实测（evidence §2.1，命令原文与退出码在案）：`make check-backend-architecture` → `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`OK (0 violations)`；`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`go test -count=1 ./internal/modules/agentcatalog/...` 三包 ok。
+- 节点代码终点（`bd9e0f8e9`）T4 实测（evidence §2.1，命令原文与退出码在案）：`make check-backend-architecture` → `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`OK (0 violations)`；`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`go test -count=1 ./internal/agentcatalog/...` 三包 ok。
 - 计数口径为 conventions §8 三方一致（guard 实测 == 台账 == manifests 发现），基线 `633 / 23+23 / 58 / 537` 零漂移。
 - 本 Brief 与实施报告为纯文档提交，零代码改动；T5 会话末在最终 HEAD 复跑四条 gates 复核（见报告 §3）。

@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/codedelivery/repository/codedelivery"
 )
 

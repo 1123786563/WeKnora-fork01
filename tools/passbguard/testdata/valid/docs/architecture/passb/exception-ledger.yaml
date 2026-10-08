@@ -1,7 +1,7 @@
 # 合法例外 fixture：from=导入方文件仓库相对路径，to=被导入包完整 import 路径。
 exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2

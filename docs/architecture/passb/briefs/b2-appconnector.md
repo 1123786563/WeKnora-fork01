@@ -1,6 +1,6 @@
 # Integration Brief — b2-appconnector（交付 IB2 的装配变更申请）
 
-> 节点：`b2-appconnector`（Pass B 27 计划：7 legacy handlers 迁入 `internal/modules/appconnector/handler` + 过渡 shim + 差分证据 + 别名/例外核销登记）。
+> 节点：`b2-appconnector`（Pass B 27 计划：7 legacy handlers 迁入 `internal/appconnector/handler` + 过渡 shim + 差分证据 + 别名/例外核销登记）。
 > 分支：`codex/passb-b2-appconnector`；节点分叉点（base）`8c45a8815`（ib1 登记提交）；
 > 本 Brief 定稿于节点 HEAD（T4 提交，见报告提交序列）。
 > 证据源：`docs/architecture/evidence/passb/b2-appconnector.md`（差分 §2、别名/例外 §3、计数 §5、Ruling §4）；
@@ -37,7 +37,7 @@ IB2 完成 §2 调用点切换后**同窗删除本文件**（连同 moves/appcon
 
 | 处 | 位置 | 写入者 |
 |---|---|---|
-| 模块原件 | `internal/modules/appconnector/handler/app_connector.go`（helpers）+ `handler_helpers.go` 的 `ErrMissingTenantScope` 副本 | 本节点 |
+| 模块原件 | `internal/appconnector/handler/app_connector.go`（helpers）+ `handler_helpers.go` 的 `ErrMissingTenantScope` 副本 | 本节点 |
 | 宿主 shim 副本 | `internal/handler/app_connector.go:54-69` | 本节点 |
 | 12-commercial 副本 | 宿主 `internal/handler/commercial.go:34`（`ErrMissingTenantScope` 原件）+ 其 `handler_helpers.go` 宿主副本；未来 `modules/commercial/handler` 副本归 12-commercial 计划 §4.5 | 12-commercial（B2-CM） |
 
@@ -49,7 +49,7 @@ IB2 完成 §2 调用点切换后**同窗删除本文件**（连同 moves/appcon
 
 **解除提案（供 IB2 裁定执行方式）**：
 
-1. **appconnector 侧消费方端口**（Spec §4.2「接口优先定义在使用方模块」）：在 `internal/modules/appconnector` 定义 `ExecutionGate` 同形接口（方法集按 action.go:163 字段实际消费面）与本模块 `BudgetRequest`/`UsageFact` 值类型；adapter.go/action.go/oc_recovery.go 改依赖端口，import commercial 全部消除。此改造属**新串行契约任务**（需 commercial 侧类型适配器在装配处桥接），不在本节点范围（27 计划 §10 声明）。
+1. **appconnector 侧消费方端口**（Spec §4.2「接口优先定义在使用方模块」）：在 `internal/appconnector` 定义 `ExecutionGate` 同形接口（方法集按 action.go:163 字段实际消费面）与本模块 `BudgetRequest`/`UsageFact` 值类型；adapter.go/action.go/oc_recovery.go 改依赖端口，import commercial 全部消除。此改造属**新串行契约任务**（需 commercial 侧类型适配器在装配处桥接），不在本节点范围（27 计划 §10 声明）。
 2. **commercial 适配器落点**：宿主装配层 `internal/container`（IB2 在装配处提供 `commercial.ExecutionGate` → appconnector 端口的适配器），或裁定 commercial 门面落地后由其提供适配实现。
 3. **IB2 裁定选项**：(a) 按提案列入 IB2 串行适配清单（本节点请求此选项，remove_at=ib2 到期）；(b) 裁定改期（更新 remove_at，走 conventions §8 基线变更登记）；(c) 升级串行契约任务（framework:26）。若 (b)/(c)，请 IB2 在 exception-ledger 回写状态并在 DAG notes 登记。
 
@@ -67,7 +67,7 @@ ownership-matrix :2463-2543 的 5 条 alias 行（`internal/appconnector`、`int
 
 ## 7. 契约回写申请（barrier 独占，本节点不写）
 
-- `appconnector.facade`：characterization/consumers 如需登记新 handler 包路径（`internal/modules/appconnector/handler`，7 生产文件 + 3 测试文件 + helpers），由 IB2 按 contracts.yaml 回写规则处理。门面实现归 IB2（13-execution §2 先例），本节点未写 `module.go`（零变化）。
+- `appconnector.facade`：characterization/consumers 如需登记新 handler 包路径（`internal/appconnector/handler`，7 生产文件 + 3 测试文件 + helpers），由 IB2 按 contracts.yaml 回写规则处理。门面实现归 IB2（13-execution §2 先例），本节点未写 `module.go`（零变化）。
 - `appconnector.routes`：consumers 注释路径（routes_app_connectors.go 经 shim 引模块类型）——17 条注册面零变化（evidence §5.2：router/container/bootstrap 零出现；`make check-backend-architecture` 633/23+23/58/16 与基线逐字一致），由 IB2 复核回写。
 - `appconnector.lifecycle`：5 挂点（container.go :980/:983/:986/:989/:994，含 `startOCRecoveryRunner` @ open_connector.go:683）注册面零变化，同上复核。
 - workers：空集契约不受影响（本节点零 worker 改动）。

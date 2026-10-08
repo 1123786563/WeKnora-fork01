@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
 )
 

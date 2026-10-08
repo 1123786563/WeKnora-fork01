@@ -44,7 +44,7 @@ forbidden_shared_files:           # router/container/全局 worker 注册/go.mod
 1. **目标路径**：默认 `to = internal/modules/<module>/<原包叶子名>`；当包叶子名等于模块 id
    且该包是顶层包（`internal/<id>`）时，`to = internal/modules/<module>`（模块根）；
    非顶层的同名叶子（如 `internal/application/service/appconnector`）保留父级层：
-   `internal/modules/appconnector/service/appconnector`。子包随最长已拥有祖先包整体搬移，
+   `internal/appconnector/service/appconnector`。子包随最长已拥有祖先包整体搬移，
    保持相对结构（如 `internal/agent/approval` → `internal/agentruntime/agent/approval`）。
    若无已拥有祖先包、但某祖先目录本身不是 Go 包且其下全部仓库包都属于本模块，
    则以该目录为搬移树根保留结构（`internal/application/repository/retriever/*` →

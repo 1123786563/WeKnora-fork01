@@ -14,7 +14,7 @@ import (
 
 // Characterization tests for the user resource favorite repository,
 // anchored on the legacy host-package implementation before the Pass B (25a)
-// move to internal/modules/agentcatalog/repository.
+// move to internal/agentcatalog/repository.
 
 func newFavoriteTestRepo(t *testing.T) (interfaces.UserResourceFavoriteRepository, *gorm.DB) {
 	t.Helper()

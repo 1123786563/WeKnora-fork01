@@ -17,8 +17,8 @@ contracts:
         - internal/application/service/agent_version.go
         - internal/container/container.go
         - internal/handler/agent_version.go
-        - internal/modules/agentcatalog/handler/agent_marketplace.go
-        - internal/modules/agentcatalog/service/agent_marketplace.go
+        - internal/agentcatalog/handler/agent_marketplace.go
+        - internal/agentcatalog/service/agent_marketplace.go
       characterization_tests:
         - internal/application/service/agent_version_test.go
       items: []
@@ -54,7 +54,7 @@ contracts:
     - id: agentcatalog.facade
       owner: agentcatalog
       kind: module-construction
-      symbol: internal/modules/agentcatalog/module.go
+      symbol: internal/agentcatalog/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -84,8 +84,8 @@ contracts:
       stability: frozen
       consumers:
         - internal/container/container.go
-        - internal/modules/agentcatalog/handler/agent_marketplace.go
-        - internal/modules/agentcatalog/service/agent_marketplace.go
+        - internal/agentcatalog/handler/agent_marketplace.go
+        - internal/agentcatalog/service/agent_marketplace.go
       characterization_tests: []
       items: []
     - id: agentcatalog.routes
@@ -136,7 +136,7 @@ contracts:
       stability: frozen
       consumers:
         - internal/handler/tenant_skill_market.go
-        - internal/modules/agentcatalog/service/tenant_skill_market_service.go
+        - internal/agentcatalog/service/tenant_skill_market_service.go
       characterization_tests: []
       items: []
     - id: agentcatalog.workers
@@ -283,7 +283,7 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/subagent_service.go
-        - internal/modules/agentcatalog/handler/subagent.go
+        - internal/agentcatalog/handler/subagent.go
       characterization_tests:
         - internal/application/service/subagent_service_test.go
       items: []
@@ -561,7 +561,7 @@ contracts:
     - id: appconnector.facade
       owner: appconnector
       kind: module-construction
-      symbol: internal/modules/appconnector/module.go
+      symbol: internal/appconnector/module.go
       signature: façade
       stability: frozen
       consumers: []

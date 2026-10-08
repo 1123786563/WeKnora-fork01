@@ -3,9 +3,9 @@ package container
 import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/handler"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/publish"
-	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/appconnector/publish"
+	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 

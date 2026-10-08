@@ -28,11 +28,11 @@ import (
 	"sync"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector"
-	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	"github.com/Tencent/WeKnora/internal/appconnector/connectorcontrol"
+	"github.com/Tencent/WeKnora/internal/appconnector/openconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 
 	"github.com/Tencent/WeKnora/internal/config"

@@ -36,25 +36,25 @@
 #（check.go importExceptions 141→20，见该处 R2.5 注记）。
 exceptions:
   - id: exc-0058
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: "github.com/Tencent/WeKnora/internal/modules/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0059
-    from: internal/modules/appconnector/service/appconnector/action.go
+    from: internal/appconnector/service/appconnector/action.go
     to: "github.com/Tencent/WeKnora/internal/modules/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0060
-    from: internal/modules/appconnector/service/appconnector/oc_recovery.go
+    from: internal/appconnector/service/appconnector/oc_recovery.go
     to: "github.com/Tencent/WeKnora/internal/modules/commercial"
     plan: 27-appconnector
     remove_at: ib2
     reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
   - id: exc-0061
-    from: internal/modules/appconnector/service/appconnector/oc_recovery.go
+    from: internal/appconnector/service/appconnector/oc_recovery.go
     to: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
     plan: 27-appconnector
     remove_at: ib2

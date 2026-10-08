@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
 )
 
 // —— 统一 Delivery seam 的代码平台中立词汇（T24 #54）——

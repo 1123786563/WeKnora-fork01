@@ -15,8 +15,8 @@ integrate pass-a batch a1"）。Manifest：`docs/architecture/moves/agentcatalog
 ## 2. 基线测试（manifest test_commands 全量，仅 1 条）
 
 ```
-go test ./internal/modules/agentcatalog/... -count=1
-?   	github.com/Tencent/WeKnora/internal/modules/agentcatalog	[no test files]
+go test ./internal/agentcatalog/... -count=1
+?   	github.com/Tencent/WeKnora/internal/agentcatalog	[no test files]
 EXIT=0
 ```
 
@@ -44,7 +44,7 @@ EXIT=0
 
 - `go build ./...` → exit 0（仅 cmd/server、cmd/desktop 既有 ld "duplicate libraries"
   链接警告，与本任务无关）
-- `go vet ./internal/modules/agentcatalog/...` → exit 0
+- `go vet ./internal/agentcatalog/...` → exit 0
 - `go run ./tools/architectureguard` → `literal=564 apiKeyRoute=69 handle=0 total=633 |
   redis=23 lite=23 | hooks=58 | modules=16`，`OK (0 violations)` —— 与基线完全一致，
   **无新增禁改违例、无需记录暴露耦合**

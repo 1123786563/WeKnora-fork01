@@ -7,7 +7,7 @@ import (
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 
 	"gorm.io/gorm"
 )

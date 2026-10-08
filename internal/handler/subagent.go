@@ -1,11 +1,11 @@
 package handler
 
 import (
-	agentcataloghandler "github.com/Tencent/WeKnora/internal/modules/agentcatalog/handler"
+	agentcataloghandler "github.com/Tencent/WeKnora/internal/agentcatalog/handler"
 )
 
 // Pass B (25a) transitional shim — the implementation moved to
-// internal/modules/agentcatalog/handler/subagent.go. Consumers are switched
+// internal/agentcatalog/handler/subagent.go. Consumers are switched
 // to the module package by IB2, after which this file is deleted
 // (12-commercial §5.4 pattern; transition deviation registered per
 // conventions §1.5 / framework:29).

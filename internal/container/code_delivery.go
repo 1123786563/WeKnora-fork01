@@ -9,8 +9,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/handler/session"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/codedelivery"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/codedelivery/repository/codedelivery"
 	"github.com/Tencent/WeKnora/internal/sandbox"

@@ -3,15 +3,15 @@ module: appconnector
 description: 应用目录、安装、OAuth、连接、授权、动作、同步、Open Connector（§5.10/§5.18）
 move_packages:
   - from: internal/appconnector
-    to: internal/modules/appconnector
+    to: internal/appconnector
   - from: internal/appconnector/openconnector
-    to: internal/modules/appconnector/openconnector
+    to: internal/appconnector/openconnector
   - from: internal/application/repository/appconnector
-    to: internal/modules/appconnector/repository/appconnector
+    to: internal/appconnector/repository/appconnector
   - from: internal/application/service/appconnector
-    to: internal/modules/appconnector/service/appconnector
+    to: internal/appconnector/service/appconnector
   - from: internal/connectorcontrol
-    to: internal/modules/appconnector/connectorcontrol
+    to: internal/appconnector/connectorcontrol
 alias_obligations:
   - old_import_path: internal/appconnector
     passb_task: B-appconnector
@@ -96,11 +96,11 @@ owned_files:
   - internal/application/service/appconnector
   - internal/connectorcontrol
   move_targets:
-    - internal/modules/appconnector
-    - internal/modules/appconnector/openconnector
-    - internal/modules/appconnector/repository/appconnector
-    - internal/modules/appconnector/service/appconnector
-    - internal/modules/appconnector/connectorcontrol
+    - internal/appconnector
+    - internal/appconnector/openconnector
+    - internal/appconnector/repository/appconnector
+    - internal/appconnector/service/appconnector
+    - internal/appconnector/connectorcontrol
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/appconnector
     - internal/appconnector/openconnector
@@ -118,11 +118,11 @@ owned_files:
   - internal/container
   - internal/handler
   module_files:
-    - internal/modules/appconnector/README.md
-    - internal/modules/appconnector/module.go
-    - internal/modules/appconnector/legacy/README.md
+    - internal/appconnector/README.md
+    - internal/appconnector/module.go
+    - internal/appconnector/legacy/README.md
 test_commands:
-  - go test ./internal/modules/appconnector/... -count=1
+  - go test ./internal/appconnector/... -count=1
 integration_points:
   routes:
   - RegisterAppNotionPublishRoutes — internal/router/routes_app_notion_publish.go:20

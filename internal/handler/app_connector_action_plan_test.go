@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

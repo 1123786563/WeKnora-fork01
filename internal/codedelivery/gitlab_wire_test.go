@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
 )
 

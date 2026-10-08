@@ -14,7 +14,7 @@ import (
 	"net/url"
 	"strings"
 
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 )
 
 // GitLabAPIBaseURL is the reviewed production endpoint (gitlab.com SaaS).

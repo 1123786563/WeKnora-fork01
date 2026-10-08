@@ -11,7 +11,7 @@ import (
 
 // Characterization tests for the user resource favorite service, anchored on
 // the legacy host-package implementation before the Pass B (25a) move to
-// internal/modules/agentcatalog/service.
+// internal/agentcatalog/service.
 
 type fakeFavoriteRepo struct {
 	listCalls   []string

@@ -1955,7 +1955,7 @@
 - **计划路径**：`docs/plans/passb/25b-skill-catalog-install.md`
 - **前置**：ib1（done/approved ✓）
 - **恢复语义**（沿既有先例）：复用已完成任务 **25b.1**（`task_status['25b.1']=done`，**不重置、不重跑**）；节点剩余待办 = 25b.2–25b.5（pending）
-- **worktree**：b2-ac-skills 实施分支 `.worktrees/passb-b2-ac-skills`（HEAD `406ed1c6a` `test(passb): passb b2-ac-skills 特征化基线`——25b.1 成果在分支，近期提交含 `8592f2aac` 审校修复；本会话 git status 核验**工作树含 1 个 untracked 目录** `internal/modules/agentcatalog/repository/`——25b.2 实施在途迹象，如实留痕）；DAG/台账所在 `.worktrees/passb-int`（HEAD `e586552d1f`）
+- **worktree**：b2-ac-skills 实施分支 `.worktrees/passb-b2-ac-skills`（HEAD `406ed1c6a` `test(passb): passb b2-ac-skills 特征化基线`——25b.1 成果在分支，近期提交含 `8592f2aac` 审校修复；本会话 git status 核验**工作树含 1 个 untracked 目录** `internal/agentcatalog/repository/`——25b.2 实施在途迹象，如实留痕）；DAG/台账所在 `.worktrees/passb-int`（HEAD `e586552d1f`）
 - **base SHA**：`8c45a8815`（未动）；**head SHA**：null（未回填——节点分支评审通过时回填）
 - **测试证据路径**：25b.1 任务级证据以分支提交 `406ed1c6a`（特征化基线）与其任务报告为准（本轮指令未附证据路径，未新增）
 - **审查结论**：pending（节点级未进入审查轮）；OCR 报告路径：无
@@ -2093,7 +2093,7 @@
 - **前置**：T1（done，01:54 恢复条目复用在案）
 - **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，本会话 git 核验 HEAD `57ef2990e`、**工作树已干净**——01:54 条目登记的 3 处未提交修改已随 T2 提交化）
 - **BASE → HEAD**：`9f330903b` → **`57ef2990e`**（1 commit：`refactor(agentcatalog): move agent-share/subagent/favorite repositories to module`，12 files +671/−416）
-- **实施要点**（T2-report.md §0–§4 转录）：批次 1 四文件（agent_share/tenant_subagent/tenant_disabled_shared_agent/user_resource_favorite）迁入 `internal/modules/agentcatalog/repository/`（与 BASE 逐字节一致）；2 随迁测试 rename 100%；4 宿主 shim 与计划 §4-③ 逐符号一致（哨兵 var 转发语义不变、type alias 兼容）；计划外补 2 特征化测试文件（§5 授权）——中断残留接续场景下逐项重新核验后接受（§0）
+- **实施要点**（T2-report.md §0–§4 转录）：批次 1 四文件（agent_share/tenant_subagent/tenant_disabled_shared_agent/user_resource_favorite）迁入 `internal/agentcatalog/repository/`（与 BASE 逐字节一致）；2 随迁测试 rename 100%；4 宿主 shim 与计划 §4-③ 逐符号一致（哨兵 var 转发语义不变、type alias 兼容）；计划外补 2 特征化测试文件（§5 授权）——中断残留接续场景下逐项重新核验后接受（§0）
 - **测试证据**（报告 §1 所载，本台账转录；全部实跑含退出码）：`go build ./...` 0；四包测试全 ok（模块 repository 15 用例全 PASS 含随迁 7 用例与 T1 基线同名同果、宿主 repository/service/handler 全包 ok）；新增 8 特征化用例宿主侧（BASE legacy 代码）补证 8/8 PASS（detached worktree 方法，§1.4）；**两处执行偏差如实登记**：①四包单命令因 10 分钟硬上限拆 3 次串行（同参数非替代）；②特征化测试时序偏差（中断会话先搬迁、本会话补跑宿主侧，证据等效性依据逐字节一致+双跑 PASS）——供审查者裁定
 - **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/T2-report.md`（13,280 字节，02:19 生成，本会话已读全文）；`T2-review-pkg.md`（在案）
 - **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告路径尚未产出，由后续条目回填）
@@ -2109,7 +2109,7 @@
 
 - **节点/任务**：b2-ac-skills · 25b.2 —— T2 repository 层搬迁 + 残差（计划 `docs/plans/passb/25b-skill-catalog-install.md` §6 T2）
 - **前置**：25b.1（done，01:55 恢复条目复用在案）
-- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，本会话 git 核验 HEAD `97b037ccf`、**工作树已干净**——01:55 条目登记的 untracked 目录 `internal/modules/agentcatalog/repository/` 已处置：与旧路径文件 diff 逐字节一致确认复用后提交化）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，本会话 git 核验 HEAD `97b037ccf`、**工作树已干净**——01:55 条目登记的 untracked 目录 `internal/agentcatalog/repository/` 已处置：与旧路径文件 diff 逐字节一致确认复用后提交化）
 - **BASE → HEAD**：`406ed1c6a` → **`97b037ccf`**（1 commit：`refactor(agentcatalog): move tenant skill repository into module`，恰 3 files：tenant_skill.go +491 搬迁 / tenant_skill_test.go rename 100%（475 行 19 测试函数）/ 宿主残差重写 491→22 行（type alias + 1:1 转发，`remove_at: ib2`））
 - **测试证据**（25b.2-report.md §1 所载，本台账转录；全部实跑含退出码）：TDD RED 侧 `go test ./internal/application/repository` ok 130.538s（搬迁前锚定）；GREEN 侧 `go build ./...` 0、新包 19/19 PASS（`ok 0.314s`）、`go vet` 双包干净、消费方全量 `./internal/application/service` ok 101.929s 零回归、残差包自身 ok、`make check-backend-architecture` 633/23+23/58 一致、`make verify-module-moves` 16 manifests OK；diff 差集为空（禁改清单零触碰）
 - **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-skills/25b.2-report.md`（9,350 字节，02:19 生成，本会话已读全文）；`25b.2-review-pkg.md`（log/diff 全文 + rename 证据，在案）
@@ -2328,7 +2328,7 @@
 - **前置**：B2-AC.1–B2-AC.3（done）
 - **worktree**：`.worktrees/passb-b2-appconnector`（`codex/passb-b2-appconnector`，本会话 git 核验 HEAD `6e8c84860`、工作树干净）
 - **BASE → HEAD**：`9003b687c` → **`6e8c84860`**（1 commit 纯 docs：`docs(passb): record b2-appconnector integration brief and node report`，2 files +189——Brief `docs/architecture/passb/briefs/b2-appconnector.md` 77 行（§1 shim 删除清单/§2 IB2 调用点切换表/§3 helper 三处副本收口申请/§4 exc-0058..0061 解除提案/§5 airesource 过渡依赖/§6 别名 5 行核销申请/§7 契约回写申请，七项齐备）+ 节点报告 `docs/plans/passb/reports/b2-appconnector.md` 112 行）
-- **测试证据**（B2-AC.4-report.md §2 所载，本台账转录；全部实跑含退出码）：**节点 4 gates 逐条实跑全绿**——`go build ./...` 0、`go test -count=1 ./internal/modules/appconnector/...` 6 包 ok、`make check-backend-architecture` 633/23+23/58 一致 OK、`make verify-module-moves` 16 manifests OK；节点级 diff（8c45a8815...HEAD）21 文件、禁改面零命中；shim 面 go doc 双跑签名一致、6 个零消费符号未进 shim；owned_files 差集核对非批准越权 0
+- **测试证据**（B2-AC.4-report.md §2 所载，本台账转录；全部实跑含退出码）：**节点 4 gates 逐条实跑全绿**——`go build ./...` 0、`go test -count=1 ./internal/appconnector/...` 6 包 ok、`make check-backend-architecture` 633/23+23/58 一致 OK、`make verify-module-moves` 16 manifests OK；节点级 diff（8c45a8815...HEAD）21 文件、禁改面零命中；shim 面 go doc 双跑签名一致、6 个零消费符号未进 shim；owned_files 差集核对非批准越权 0
 - **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-appconnector/B2-AC.4-report.md`（6,424 字节，03:19 生成，本会话已读全文）；`B2-AC.4-review-pkg.md`（在案）
 - **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告路径尚未产出，由后续条目回填）
 - **OCR 报告路径**：无（任务级 OCR 待运行）
@@ -2417,7 +2417,7 @@
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-appconnector/ocr-r1.txt`（本会话已读全文：1,296 字节、16 行、mtime 03:49；首行 "Review complete: 1 finding(s) across 11 selected item(s)."——**该路径再次被覆盖**（03:34 skip 版 → 03:49 实质版））
 - **结论计数**：confirmed=1 / rejected=0（调度指令口径；与报告 1 finding 一致）
 - **findings 清单**（报告全文转录，含建议 diff）：
-  1. `internal/modules/appconnector/handler/handler_helpers.go:13` [maintainability · low] —— 哨兵副本 ErrMissingTenantScope 与宿主 `internal/handler/commercial.go:34` 同名同消息但**身份不同**（两个 error 实例）。报告已验证当前全仓无任何 errors.Is/errors.As 身份比较（所有用法均为 .Error() 消息渲染），**故无现行缺陷**；但现有注释仅强调"消息逐字一致保证响应字节等价"，未警示反面：任何跨包身份比较（如未来宿主侧对模块路径返回错误做 errors.Is(err, handler.ErrMissingTenantScope)）将**静默返回 false**，可致 403 拒绝路径错误被误分类——12-commercial 搬迁（哨兵原件也将移动）期间尤其现实。建议在副本注释补显式警示（报告附 4 行建议 diff），防 IB2 收口前误用
+  1. `internal/appconnector/handler/handler_helpers.go:13` [maintainability · low] —— 哨兵副本 ErrMissingTenantScope 与宿主 `internal/handler/commercial.go:34` 同名同消息但**身份不同**（两个 error 实例）。报告已验证当前全仓无任何 errors.Is/errors.As 身份比较（所有用法均为 .Error() 消息渲染），**故无现行缺陷**；但现有注释仅强调"消息逐字一致保证响应字节等价"，未警示反面：任何跨包身份比较（如未来宿主侧对模块路径返回错误做 errors.Is(err, handler.ErrMissingTenantScope)）将**静默返回 false**，可致 403 拒绝路径错误被误分类——12-commercial 搬迁（哨兵原件也将移动）期间尤其现实。建议在副本注释补显式警示（报告附 4 行建议 diff），防 IB2 收口前误用
 - **审查结论**：OCR 本轮**未通过**——1/1 confirmed、0 rejected → `review_status` **pending → changes_requested**（沿 07:09/08:32/10:49/13:51/01:04 先例：confirmed>0 即落入 changes_requested，不因 severity 低豁免）
 - **修复轮次**：1（节点级首轮 confirmed，修复义务成立但尚未启动——分支 HEAD `6e8c84860` 无修复提交，本会话 `git log 6e8c84860..HEAD | wc -l` = 0）
 - **base/head SHA**：`8c45a8815` / null（未动）
@@ -2431,7 +2431,7 @@
 
 - **节点/轮次**：b2-appconnector 节点级审查（03:54 全量复扫 confirmed=1）唯一 confirmed finding 的处理结论（调度方下发修复工单；**非完成报告**——分支 HEAD 仍 `6e8c84860`，本会话 `git log 6e8c84860..HEAD | wc -l` = 0，工单未落分支）
 - **计划路径**：`docs/plans/passb/27-appconnector.md`
-- **工单**：`ocr-r1-handler_helpers-13-sentinel-identity-warning`（severity low，file=`.worktrees/passb-b2-appconnector/internal/modules/appconnector/handler/handler_helpers.go`）
+- **工单**：`ocr-r1-handler_helpers-13-sentinel-identity-warning`（severity low，file=`.worktrees/passb-b2-appconnector/internal/appconnector/handler/handler_helpers.go`）
 - **problem**：哨兵副本注释缺少身份比较警示（调度方裁定**属实，无现行缺陷，纯注释修复**）。逐项核实：(1) 模块副本 `handler_helpers.go:13` 与宿主原件 `internal/handler/commercial.go:34` 均为 `errors.New("missing_tenant_scope")`，同名同消息但为两个不同 error value；(2) 实跑全仓 grep `errors.Is`/`errors.As` 身份比较
 - **现状核实**（本会话在 passb-b2-appconnector@`6e8c84860` 实读，Mimosa PreToolUse hook 误拦 Bash 只读命令后改用 Read 工具完成）：(a) 副本 13 行文件在案——现有注释（:5-12）仅载明"消息逐字一致保证 403 响应字节等价"+ 收口裁定指针（Brief），**无身份比较警示**——problem 描述属实；(b) 宿主 `commercial.go:34` 同名哨兵在案；(c) 全仓 grep `ErrMissingTenantScope` × `errors.Is/As` 身份比较**零命中**（exit 1）、使用点 5 文件（宿主 app_connector/commercial_task_budget/commercial + 模块 handler_helpers/app_connector）——"无现行缺陷"论断成立
 - **验收标准**（acceptance 转录；**调度指令文本于「IB2 收口（do」处截断**，截断处按报告建议 diff 语义补全，完整原文以调度方为准）：(1) handler_helpers.go 中 `var ErrMissingTenantScope` 声明行上方注释显式补三句警示：本副本与宿主哨兵（现 `internal/handler/commercial.go:34`，未来 12-commercial 模块副本）是**不同的 error VALUE**，消息一致仅为保证 403 MISSING_TENANT_SCOPE 响应字节等价；跨包对两个哨兵做 errors.Is/errors.As 将**静默返回 false**；IB2 收口（合并副本为单一实现）前不得引入身份比较
@@ -2451,7 +2451,7 @@
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/ocr-r1.txt`（本会话已读全文：1,474 字节、17 行、mtime 03:52；首行 "Review complete: 2 finding(s) across 6 selected item(s)."——**该路径再次被覆盖**（00:14 skip 版 → 03:52 实质版））
 - **结论计数**：confirmed=2 / rejected=0（调度指令口径；与报告 2 findings 一致）
 - **findings 清单**（报告全文转录，均 low，报告自陈两条均系"随迁既有行为/静态产物，T3 零逻辑变更约束本轮不宜改动，建议登记 IB2"）：
-  1. `internal/modules/agentcatalog/handler/user_resource_favorite.go:84-87` [documentation · low] —— swagger 定义名漂移：AddFavoriteRequest 已随迁模块包但本 commit 未再生成 docs/，已提交的 docs/docs.go、swagger.json、swagger.yaml 仍以 `internal_handler.AddFavoriteRequest` 引用；静态字符串产物不影响编译与运行时 swagger UI 自洽，但下次 swag 再生成时定义名会切换为模块包前缀，存在源码-文档不一致窗口；建议登记到 IB2 清理 shim 时（或文档再生成轮次）统一刷新 swagger 产物
+  1. `internal/agentcatalog/handler/user_resource_favorite.go:84-87` [documentation · low] —— swagger 定义名漂移：AddFavoriteRequest 已随迁模块包但本 commit 未再生成 docs/，已提交的 docs/docs.go、swagger.json、swagger.yaml 仍以 `internal_handler.AddFavoriteRequest` 引用；静态字符串产物不影响编译与运行时 swagger UI 自洽，但下次 swag 再生成时定义名会切换为模块包前缀，存在源码-文档不一致窗口；建议登记到 IB2 清理 shim 时（或文档再生成轮次）统一刷新 swagger 产物
   2. 同文件 :74-76 [security · low] —— 兜底分支将底层 err.Error() 直接传入 NewInternalServerError 返回客户端，可能外泄 GORM/SQL 存储层内部细节（表名、约束名、驱动错误原文），与文件头哨兵注释"不映射泄漏 GORM internals"意图相悖（Add/Remove 同型分支 :112/:140）；属随迁既有行为，不构成阻塞；建议登记为 IB2 删除 shim 时统一加固项：响应改固定文案（如 "internal error"），原始 err 仅经 ErrorWithFields 落日志
 - **审查结论**：OCR 本轮**未通过**——2/2 confirmed、0 rejected → `review_status` **pending → changes_requested**（沿 07:09/08:32/10:49/13:51/01:04/03:54 先例：confirmed>0 即落入 changes_requested）
 - **修复轮次**：1（confirmed 成立但修复方式待裁定——两条均系报告自陈"登记 IB2 而非本轮修复"项；分支 HEAD `bd9e0f8e9` 无修复提交，本会话 `git log bd9e0f8e9..HEAD | wc -l` = 0）
@@ -2480,7 +2480,7 @@
 
 - **节点/轮次**：b2-ac-definition 节点级审查（03:57 实质审查 confirmed=2）两条 confirmed findings 的处理结论（调度方**确认**两条 finding 且均裁定本轮按 T3 零逻辑约束保持原样、**IB2 期执行**；非完成报告——分支 HEAD 仍 `bd9e0f8e9`，本会话 `git log bd9e0f8e9..HEAD | wc -l` = 0，工单未落分支）
 - **计划路径**：`docs/plans/passb/25a-agent-definition-version.md`
-- **工单 1：f1-swagger-definition-drift**（severity low，file=`internal/modules/agentcatalog/handler/user_resource_favorite.go`）——problem 确认：AddFavoriteRequest 已随迁模块包（worktree `bd9e0f8e9`，定义 :84-87），但本 commit 未再生成 docs（worktree 内 docs/docs.go:16472/:23635、docs/swagger.json:16465/:23628、docs/swagger.yam**l** 截断）。**验收标准**（acceptance 转录；指令于「引用自」处截断）：IB2 删除 shim 或文档再生成轮次中运行 swag init（或等效命令）刷新三产物：定义名与 `internal/modules/agentcatalog/handler` 包一致；`grep -r 'internal_handler.AddFavoriteRequest' docs/` 零命中；/user/favorites 相关 path 与 definition 引用自[洽]（截断处按语义补全）。**现状核实（本会话实测）**：docs 三产物 `internal_handler.AddFavoriteRequest` 各 **2 处**在案（grep -c 实测）✓
+- **工单 1：f1-swagger-definition-drift**（severity low，file=`internal/agentcatalog/handler/user_resource_favorite.go`）——problem 确认：AddFavoriteRequest 已随迁模块包（worktree `bd9e0f8e9`，定义 :84-87），但本 commit 未再生成 docs（worktree 内 docs/docs.go:16472/:23635、docs/swagger.json:16465/:23628、docs/swagger.yam**l** 截断）。**验收标准**（acceptance 转录；指令于「引用自」处截断）：IB2 删除 shim 或文档再生成轮次中运行 swag init（或等效命令）刷新三产物：定义名与 `internal/agentcatalog/handler` 包一致；`grep -r 'internal_handler.AddFavoriteRequest' docs/` 零命中；/user/favorites 相关 path 与 definition 引用自[洽]（截断处按语义补全）。**现状核实（本会话实测）**：docs 三产物 `internal_handler.AddFavoriteRequest` 各 **2 处**在案（grep -c 实测）✓
 - **工单 2：f2-internal-error-echo**（low，同文件）——problem 确认（随迁既有行为，本轮按 T3 零逻辑约束保持原样、非阻塞，判断正确）。泄漏链闭合实证：user_resource_favorite.go:74-75 兜底分支将 err.Error() 传入 NewInternalServerError，同型分支 :112（AddFavorite）/:140（RemoveFavorite）；internal/errors/errors.go:144-152 将 message 存入 AppError.Message；internal/[后续链路截断]。**验收标准**（acceptance 转录；指令于「NewInternalServerError(err」处截断）：IB2 删除 shim 时统一加固：三处兜底分支响应改固定文案（如 `apperrors.NewInternalServerError("internal error")`），原始 err 仅经 logger.ErrorWithFields 落日志；测试断言：mock service 返回非哨兵错误时响应体 message 为固定文案且不含底层错误原文、日志仍记录原始 err；grep 'NewInternalServerError(err…' 类调用[预期归零]（截断处按语义补全）。**现状核实（本会话实读 + grep）**：:74-75 兜底分支实读在案、:112/:140 同型 grep 全部命中 ✓
 - **审查结论**：`review_status=changes_requested` **维持不变**（工单登记不改变审查状态；两工单均为 IB2 期执行项、本轮无需代码修复——是否据此将 review_status 回 approved 走节点收口，归调度方显式指令）
 - **修复轮次**：1（两条 confirmed 的处置已落定为 IB2 期执行；本轮无代码修复义务）
@@ -2545,7 +2545,7 @@
 - **前置**：T1、T2、T3（done）
 - **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，本会话 git 核验 HEAD `5d543c49d`、工作树干净）
 - **BASE → HEAD**：`bd9e0f8e9` → **`5d543c49d`**（1 commit：`test(passb): b2-ac-definition parity evidence`，1 file +73——evidence `docs/architecture/evidence/passb/b2-ac-definition.md` §2 追加）
-- **测试证据**（T4-report.md §1 所载，本台账转录；全部实跑含退出码）：**DAG 四条 gates 逐条原文执行全绿**——`go build ./...` 0、`go test -count=1 ./internal/modules/agentcatalog/...` 三包 ok、`make check-backend-architecture` 633/23+23/58 零漂移 OK、`make verify-module-moves` 16 manifests OK；**等价双跑成立（28/28）**——13 个 T1 基线迁移用例逐名一一对应同名同果 + 15 个特征化用例与宿主侧锚定同名同果（3 个随迁测试 rename 100% 断言体逐字节同一）；高风险面推迟件 presence 核对（agentRequiresRerankModel/skillsForRun/shared_agent_access 3 符号/expert 3 符号）与计划 §4-② 逐条全命中；节点累计差集 22 文件（T3 报告曾记 21，系 T3 口径漏计 1 个纯 rename 项——已如实登记 evidence §2.4）与授权清单差集为空、禁改面零触碰
+- **测试证据**（T4-report.md §1 所载，本台账转录；全部实跑含退出码）：**DAG 四条 gates 逐条原文执行全绿**——`go build ./...` 0、`go test -count=1 ./internal/agentcatalog/...` 三包 ok、`make check-backend-architecture` 633/23+23/58 零漂移 OK、`make verify-module-moves` 16 manifests OK；**等价双跑成立（28/28）**——13 个 T1 基线迁移用例逐名一一对应同名同果 + 15 个特征化用例与宿主侧锚定同名同果（3 个随迁测试 rename 100% 断言体逐字节同一）；高风险面推迟件 presence 核对（agentRequiresRerankModel/skillsForRun/shared_agent_access 3 符号/expert 3 符号）与计划 §4-② 逐条全命中；节点累计差集 22 文件（T3 报告曾记 21，系 T3 口径漏计 1 个纯 rename 项——已如实登记 evidence §2.4）与授权清单差集为空、禁改面零触碰
 - **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/T4-report.md`（6,492 字节，04:15 生成，本会话已读全文）；`T4-review-pkg.md`（在案）
 - **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告路径尚未产出，由后续条目回填）
 - **OCR 报告路径**：无（任务级 OCR 待运行）
@@ -2625,8 +2625,8 @@
 ## 2026-09-24 · b2-ac-skills T3 修复 · contracts.yaml 越权改动回滚（审查 findings 修复）
 
 - **审查判定（critical，成立）**：T3 曾以「两裁定同系原则」自援修改 contracts.yaml（8 条 consumer/characterization_tests 路径同步 + 1 行顺序挪动），无协调者裁定背书，违反「只允许修改任务声明的文件」（计划 §1 范围外 / §2.6 本节点零改动 / §8(e) 回写归 IB2）。已整体回滚至 BASE=97b037ccf 原文（git checkout 97b037ccf -- docs/architecture/passb/contracts.yaml，diff 0 行）。
-- **回滚后门禁状态（实测）**：DAG 本节点四 gates 全绿——`go build ./...`=0、`go test ./internal/modules/agentcatalog/...`=ok、`make check-backend-architecture`=OK(0 violations)、`make verify-module-moves`=OK(16 manifests)。`make check-passb-readiness` 非 work 节点 gate（公约 §2 属 barrier 追加项），现红，10 条诊断即 **IB2 §8(e) 收口清单**：
-  - consumer-unrecorded（7）：agentcatalog.custom-agent-service / agentruntime.agent-engine / agentruntime.agent-service / airesource.model-service / airesource.storage-backend-resolver / conversation.session-service / conversation.stream-manager ×2 —— 新包 internal/modules/agentcatalog/service/ 下 tenant_skill_service.go / tenant_skill_install.go / tenant_skill_transcript.go 引用未登记；
+- **回滚后门禁状态（实测）**：DAG 本节点四 gates 全绿——`go build ./...`=0、`go test ./internal/agentcatalog/...`=ok、`make check-backend-architecture`=OK(0 violations)、`make verify-module-moves`=OK(16 manifests)。`make check-passb-readiness` 非 work 节点 gate（公约 §2 属 barrier 追加项），现红，10 条诊断即 **IB2 §8(e) 收口清单**：
+  - consumer-unrecorded（7）：agentcatalog.custom-agent-service / agentruntime.agent-engine / agentruntime.agent-service / airesource.model-service / airesource.storage-backend-resolver / conversation.session-service / conversation.stream-manager ×2 —— 新包 internal/agentcatalog/service/ 下 tenant_skill_service.go / tenant_skill_install.go / tenant_skill_transcript.go 引用未登记；
   - consumer-vanished（3）：agentruntime.agent-engine 指宿主 tenant_skill_install.go（占位）、conversation.stream-manager 指宿主 tenant_skill_transcript.go（占位）与宿主 tenant_skill_service.go（残差）不再引用。
   - **IB2 收口动作**：随残差/占位删除与装配切换，把上述 consumers/characterization_tests 路径改指新包文件（stream-manager 的宿主残差 service.go 行随残差删除一并移除）；修后 check-passb-readiness 应绿。清单已同步登记 evidence §5.4 与 Integration Brief 素材。
 
@@ -2711,7 +2711,7 @@
 - **计划路径**：`docs/plans/passb/25a-agent-definition-version.md`
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/ocr-r1.txt`（本会话已读全文：1,032 字节、12 行、mtime 05:28；首行 "Review complete: 1 finding(s) across 14 selected item(s)."——**该路径再次被覆盖**（05:14 skip 版 → 05:28 实质版））
 - **结论计数**：confirmed=1 / rejected=0（调度指令口径；与报告 1 finding 一致）
-- **findings 清单**（报告全文转录）：`internal/modules/agentcatalog/repository/agent_share.go:27-33` [bug · low] —— **核实登记（预存在逻辑，随搬迁逐字节保留，非本节点引入的回归）**：Create 为 check-then-act 模式——`Count(&count)` 的错误被忽略（查询失败时仍继续插入），且并发创建同一 (agent_id, source_tenant_id, organization_id) 共享存在竞态窗口。报告核实结果：PostgreSQL 方言在 `migrations/versioned/000012_organizations.up.sql:125` 有部分唯一索引 `idx_agent_shares_agent_org(agent_id, source_tenant_id, organization_id) WHERE deleted_at IS NULL` 兜底并发重复插入；但 sqlite 初始化迁移（`migrations/sqlite/000000_init.up.sql:673-676`）仅有普通索引、无唯一约束，sqlite 路径并发下可能落重复行。受本轮零逻辑变更约束不应修改，建议在 IB2 删 shim/收敛轮次一并评估：① Count 错误检查补齐；② sqlite init 唯一索引与 versioned 迁移对齐
+- **findings 清单**（报告全文转录）：`internal/agentcatalog/repository/agent_share.go:27-33` [bug · low] —— **核实登记（预存在逻辑，随搬迁逐字节保留，非本节点引入的回归）**：Create 为 check-then-act 模式——`Count(&count)` 的错误被忽略（查询失败时仍继续插入），且并发创建同一 (agent_id, source_tenant_id, organization_id) 共享存在竞态窗口。报告核实结果：PostgreSQL 方言在 `migrations/versioned/000012_organizations.up.sql:125` 有部分唯一索引 `idx_agent_shares_agent_org(agent_id, source_tenant_id, organization_id) WHERE deleted_at IS NULL` 兜底并发重复插入；但 sqlite 初始化迁移（`migrations/sqlite/000000_init.up.sql:673-676`）仅有普通索引、无唯一约束，sqlite 路径并发下可能落重复行。受本轮零逻辑变更约束不应修改，建议在 IB2 删 shim/收敛轮次一并评估：① Count 错误检查补齐；② sqlite init 唯一索引与 versioned 迁移对齐
 - **现状核实**（本会话在 passb-b2-ac-definition@`938087598` 实读）：agent_share.go:27-33 `Count(&count)` 返回值被忽略的 check-then-act 结构在案——problem 描述属实 ✓
 - **审查结论**：confirmed>0 → `review_status=changes_requested` **维持**（目标值已在位——03:57 实质审查 confirmed=2 所置，本轮无字节级改动，沿 11:43/12:15/12:37/01:04 先例形态）
 - **修复轮次**：1（不变——本轮 finding 系预存在逻辑且报告自陈 IB2 期评估，与 04:00 两条 low 同型处置口径，义务承接方 IB2；本节点无剩余代码修复义务）
@@ -2725,7 +2725,7 @@
 
 - **节点/轮次**：b2-ac-definition 节点级审查（05:33 全量复扫 confirmed=1）唯一 confirmed finding 的处理结论（调度方下发修复工单；**非完成报告**——分支 HEAD 仍 `938087598`，本会话 `git log 938087598..HEAD | wc -l` = 0，工单未落分支）
 - **计划路径**：`docs/plans/passb/25a-agent-definition-version.md`
-- **工单**：`f3-agent-share-create-race`（severity low，file=`internal/modules/agentcatalog/repository/agent_share.go`）
+- **工单**：`f3-agent-share-create-race`（severity low，file=`internal/agentcatalog/repository/agent_share.go`）
 - **problem**：核实成立（**预存在逻辑非本节点回归，建议 IB2 期执行**）。Create（:28-38）为 check-then-act：:30-33 链式 `Count(&count)` 返回值被丢弃（查询失败仍继续插入），:34 依 count 判重，:37 无条件插入——并发创建同一 (agent_id, source_tenant_id, organization_id) 存在竞态窗口。全链证据（调度方本会话实跑，worktree `938087598`）：① 逐字节核实：git show 8c45[…]（指令截断，如实保留）
 - **现状核实**（本会话在 passb-b2-ac-definition@`938087598` 实读）：agent_share.go:28-38 check-then-act 结构在案（:30-33 Count 链式调用丢弃返回值、:34 判重、:37 无条件 `Create(share)`）——problem 属实 ✓
 - **验收标准**（acceptance 转录；**指令于「先按 conventi」处截断**，完整原文以调度方为准）：本节点保持**零代码改动**（模块文件与 BASE 逐字节一致的 1:1 验收不被破坏）。执行义务：① 将本项**补登记进 `docs/architecture/passb/briefs/b2-ac-definition.md` 的 IB2 台账/执行单**（当前 Brief 未含此项，grep 实证）；② IB2 期为 agent_share.go Create 补 Count 错误检查——先按 conventi[ons §…截断]
@@ -2812,7 +2812,7 @@
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-skills/ocr-r1.txt`（本会话已读全文：1,709 字节、19 行、mtime 05:50；首行 "Review complete: 1 finding(s) across 39 selected item(s)."——**该路径再次被覆盖**（02:44 skip 版 → 05:50 实质版））
 - **结论计数**：confirmed=1 / rejected=0（调度指令口径；与报告 1 finding 一致）
 - **findings 清单**（报告全文转录，含建议 diff）：
-  1. `internal/modules/agentcatalog/service/tenant_skill_verify.py:102-103` **[bug · medium]** —— skill_script_path 将反斜杠归一为 "/" **引入纯搬迁之外的行为差**：Go 侧 bundle 键校验明确允许反斜杠（tenant_skill_bundle.go 的 validateSkillEntryName 只拒控制字符；inspectSkillZipPath 的 path.Clean 在 Linux 不处理 `\`；packSkillTar 与 verifySkillTree 均按字面名处理），文件名字面含 `\` 的合法 bundle（如 PowerShell Compress-Archive 产出的 `scripts\run.py` 条目）可完整通过上传、解包与树检查，旧实现 `os.path.join(root, relative)` 字面 join 也能打开；新实现归一后找 `root/scripts/run.py` 必然 OSError → entry 被记为不可修复 problem（exit 1）→ 安装被拒且误导性报 "cannot be read by the skill execution user"。**违背本轮"纯搬迁等价"约束**，且新分支在 tenant_skill_verify_python_test.go 中零覆盖、escape 分支同样无测试。建议与 Go 侧口径对齐：仅按 os.sep("/") 分割、保留 `\` 为字面字符（保留 ".." 段拒绝与绝对路径重锚定防御），或 Go 侧统一拒绝反斜杠键并补齐两侧测试（报告附建议 diff）
+  1. `internal/agentcatalog/service/tenant_skill_verify.py:102-103` **[bug · medium]** —— skill_script_path 将反斜杠归一为 "/" **引入纯搬迁之外的行为差**：Go 侧 bundle 键校验明确允许反斜杠（tenant_skill_bundle.go 的 validateSkillEntryName 只拒控制字符；inspectSkillZipPath 的 path.Clean 在 Linux 不处理 `\`；packSkillTar 与 verifySkillTree 均按字面名处理），文件名字面含 `\` 的合法 bundle（如 PowerShell Compress-Archive 产出的 `scripts\run.py` 条目）可完整通过上传、解包与树检查，旧实现 `os.path.join(root, relative)` 字面 join 也能打开；新实现归一后找 `root/scripts/run.py` 必然 OSError → entry 被记为不可修复 problem（exit 1）→ 安装被拒且误导性报 "cannot be read by the skill execution user"。**违背本轮"纯搬迁等价"约束**，且新分支在 tenant_skill_verify_python_test.go 中零覆盖、escape 分支同样无测试。建议与 Go 侧口径对齐：仅按 os.sep("/") 分割、保留 `\` 为字面字符（保留 ".." 段拒绝与绝对路径重锚定防御），或 Go 侧统一拒绝反斜杠键并补齐两侧测试（报告附建议 diff）
 - **审查结论**：OCR 本轮**未通过**——1/1 confirmed、0 rejected → `review_status` **pending → changes_requested**（沿 07:09/08:32/10:49/13:51/01:04/03:54/03:57 先例）——**B2 阶段首个 medium 级 finding**
 - **修复轮次**：1（confirmed 成立，修复尚未启动——分支 HEAD `190484452` 无修复提交，本会话 `git log 190484452..HEAD | wc -l` = 0）。finding 系 25b.3 搬迁随迁 embed 脚本的新分支行为差，属 25b.3 任务面
 - **base/head SHA**：`8c45a8815` / null（未动）
@@ -2961,7 +2961,7 @@
 - **指令**：25b.5 修复第 1/5 轮完成（仍有 blocking：false）——修复轮进度登记，**非 task 收口**（`task_status['25b.5']` 维持 pending，task done 待调度方指令）
 - **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，本会话 git 核验 HEAD `5ed64d324`、工作树干净）
 - **BASE → HEAD（任务产出）**：`4f8ff1de0` → **`5ed64d324`**（**2 commits**：`3df7b97c7` T5 主提交（3 文件 +154/−17 零生产代码——evidence §2 搬迁等价差分逐包表 + Brief `docs/architecture/passb/briefs/b2-ac-skills.md` 新建七部分（残差全删清单 20 生产 + 2 测试装置 / 六组调用点切换表 / container 四行接线 / routes_agent 切换 / contracts 回写 + check-passb-readiness 10 条 IB2 收口清单 / DAG 回写确认 2 项 / 例外台账口径）+ 节点报告核对清单 9 项全勾；`5ed64d324` 修复轮 R1/R2 时点化修正）
-- **节点 gates 四条全绿**（报告 §1.3 转录）：`go build ./...` 0、`go test ./internal/modules/agentcatalog/...` 三包 ok、`make check-backend-architecture` 633/23+23/58/16 不变、`make verify-module-moves` 16 manifests
+- **节点 gates 四条全绿**（报告 §1.3 转录）：`go build ./...` 0、`go test ./internal/agentcatalog/...` 三包 ok、`make check-backend-architecture` 633/23+23/58/16 不变、`make verify-module-moves` 16 manifests
 - **双跑差分成立**（报告 §1.1）：T1 基线 vs T5 终态逐命令一致（build/service 全量 75.289s ok/Skill 面 handler/router 一致）；reaper 面 **28 = 27 + 1 逐例 1:1 零 FAIL**（新包 27 例 + 宿主 wiki 面第 28 例非本面）——含 **evidence §1 命令 #8 引写语义勘误**：单引号 `\|` 为 Go regexp 字面竖线 no-op，基线 28 例日志实为纯竖线 OR 语义产出，探针实证并登记 evidence §2.2，基线与终态结论均按纯竖线语义复核成立
 - **修复轮 findings R1/R2 闭环**（报告 §6 转录；调度口径第 1/5 轮、报告自陈 R1/R2 编号）：**R1（critical）白名单差集非空却被判空**——实测 73 files 比报告枚举 72 多 1；**R2（important）报告命令输出不可复现**——终态 73/11137+/9372− vs 报告 72/11000+/9372−。根因：T5 会话在 docs 提交**前**（HEAD=`4f8ff1de0`）实测 72 文件写入报告、提交 Brief（HEAD→`3df7b97c7`）后未更新——**第 73 文件即 T5 主提交新建的 Brief**（计划 §1 白名单第 7 项「节点自身产出」），白名单**差集结论仍为空**、非未授权混入；但数字失实按 R1 从严修复。**修复**：报告时点化三值（4f8ff1de0=72/11000+/9372−；3df7b97c7=73/11137+/9372−；终态复测一致）+ 枚举修正 + 复测一致（`5ed64d324`）——**修复轮遗留：无，两条 findings 均闭环**
 - **白名单差集核对通过**（报告 §1.4）：73 文件逐类 = 20 生产搬迁 + 20 随迁测试（R 命中 80–100%；计划 §1 列 19 漏列 repository/tenant_skill_test.go，framework:29 义务覆盖，evidence §6 登记）+ 节点产出 6（含 Brief 即第 73 文件）+ 治理裁定登记 6——**未登记第三类文件为零**
@@ -3051,7 +3051,7 @@
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-skills/ocr-r1.txt`（本会话已读全文：2,323 字节、30 行、mtime 08:37；首行 "Review complete: 2 finding(s) across 45 selected item(s)."——**该路径再次被覆盖**（08:18 skip 版 → 08:37 实质版））
 - **结论计数**：confirmed=2 / rejected=0（调度指令口径；与报告 2 findings 一致）
 - **findings 清单**（报告全文转录，均 low，含建议 diff）：
-  1. `internal/modules/agentcatalog/service/tenant_skill_install.go:940-942` [documentation · low] —— installerModelID 注释与实际语义不符：注释声称 "the model value itself is fetched once, right where openInstallerRun needs it"，但已配置模型路径上 GetChatModel **实际被调用两次**（installerModelID 内部验证可用性一次 + openInstallerRun 按返回 modelID 取值一次）；旧 resolveInstallerModel 在该路径只解析一次；GetChatModel 每次调用重读模型行并经 chat.NewChat 构造新实例（`internal/application/service/model.go:591-629`），双重解析带来不必要的重复构造，且两次调用之间模型被删除/停用会让本可成功的安装失败（失败走 failSkill 正常补偿非数据损坏，故定 low）；建议至少修正注释如实描述"验证一次 + 取值一次"语义（报告附建议 diff）。**现状核实（本会话实读 :940-942）**：注释现文与报告引用逐字一致 ✓
+  1. `internal/agentcatalog/service/tenant_skill_install.go:940-942` [documentation · low] —— installerModelID 注释与实际语义不符：注释声称 "the model value itself is fetched once, right where openInstallerRun needs it"，但已配置模型路径上 GetChatModel **实际被调用两次**（installerModelID 内部验证可用性一次 + openInstallerRun 按返回 modelID 取值一次）；旧 resolveInstallerModel 在该路径只解析一次；GetChatModel 每次调用重读模型行并经 chat.NewChat 构造新实例（`internal/application/service/model.go:591-629`），双重解析带来不必要的重复构造，且两次调用之间模型被删除/停用会让本可成功的安装失败（失败走 failSkill 正常补偿非数据损坏，故定 low）；建议至少修正注释如实描述"验证一次 + 取值一次"语义（报告附建议 diff）。**现状核实（本会话实读 :940-942）**：注释现文与报告引用逐字一致 ✓
   2. `internal/application/service/tenant_skill_service.go:63` [maintainability · low] —— 残差 newKeyedMutex 通过 `*acatsvc.NewKeyedMutex()` **解引用拷贝**内含 sync.Mutex 与 map 的结构体值；当前源值系新建即弃、无运行期后果，但系 **go vet copylocks 反模式**（CI 对该包跑 go vet 即报），IB2 收口或后续改动若复用/仿照此写法会放大为真实的锁拷贝问题；建议改为嵌入指针消除拷贝且 lock 提升方法行为不变（报告附建议 diff）。**现状核实（本会话实读 :63）**：`func newKeyedMutex() *keyedMutex { return &keyedMutex{KeyedMutex: *acatsvc.NewKeyedMutex()} }` 解引用拷贝在案 ✓
 - **审查结论**：confirmed>0 → `review_status=changes_requested` **维持**（目标值已在位——05:56 全量复扫 confirmed=1 所置，本轮无字段级改动，沿 11:43/12:15/12:37/01:04/05:33 先例形态）
 - **修复轮次**：1（不变——本轮两条 low 的修复义务成立但尚未启动；分支 HEAD `5ed64d324` 无修复提交，本会话 `git log 5ed64d324..HEAD | wc -l` = 0）。两条均系 25b.3 搬迁产出面（(1) 模块侧注释、(2) 宿主残差），与节点五任务 done 并存
@@ -3065,9 +3065,9 @@
 
 - **节点/轮次**：b2-ac-skills 节点级审查（08:45 全量复扫 confirmed=2）两条 confirmed findings 的处理结论（调度方下发修复工单；**非完成报告**——分支 HEAD 仍 `5ed64d324`，本会话 `git log 5ed64d324..HEAD | wc -l` = 0，工单未落分支）
 - **计划路径**：`docs/plans/passb/25b-skill-catalog-install.md`
-- **工单 1：tenant_skill_install.go:940-942**（severity low，file=`internal/modules/agentcatalog/service/tenant_skill_install.go:938-942`）——problem：注释声称 configured 模型路径上 model value "fetched once, right where openInstallerRun needs it"，与实际不符：installerModelID 内部（**:951**）为验证可用性调用 GetChatModel 一次，openInstallerRun（**:857**）又按返回的 modelID 调用一次取值。已核实 GetChatModel（internal/application/service/model.g**o 截断**）。**现状核实（本会话实读）**：:942 注释 "fetched once" 失实 + :951 GetChatModel 验证调用 + :857 openInstallerRun GetChatModel 取值调用均在案——problem 属实 ✓
-- **工单 1 验收标准**（acceptance 转录；**指令于 internal/modules/agentcatalog/s 处截断**，截断处按惯例补全）：修改 :938-942 注释：如实描述 chat.Chat 仅在 openInstallerRun 构造、installerModelID 先探测 configured 模型可用性、故该路径解析模型两次（probe + fetch）。纯注释改动，零代码行为变化；go build ./... 绿；internal/modules/agentcatalog/s[ervice 测试全绿]
-- **工单 2：tenant_skill_service.go:63**（severity low，宿主残差文件）——problem：newKeyedMutex 经 `*acatsvc.NewKeyedMutex()` 解引用拷贝了含 sync.Mutex 与 map 的结构体（新包定义 `internal/modules/agentcatalog/service/tenant_skill_service.go:221-224`：mu sync.Mutex + m map[string]chan struct{}）。**finding 实质成立（语义锁值拷贝反模式 + 仿照放大风险），但其中一条论据经实验证伪需修正**——证伪的具体论据内容指令截断未见，待协调者补充。**现状核实（本会话实读）**：:59-63 残差定义与 :63 解引用拷贝在案——problem 属实 ✓
+- **工单 1：tenant_skill_install.go:940-942**（severity low，file=`internal/agentcatalog/service/tenant_skill_install.go:938-942`）——problem：注释声称 configured 模型路径上 model value "fetched once, right where openInstallerRun needs it"，与实际不符：installerModelID 内部（**:951**）为验证可用性调用 GetChatModel 一次，openInstallerRun（**:857**）又按返回的 modelID 调用一次取值。已核实 GetChatModel（internal/application/service/model.g**o 截断**）。**现状核实（本会话实读）**：:942 注释 "fetched once" 失实 + :951 GetChatModel 验证调用 + :857 openInstallerRun GetChatModel 取值调用均在案——problem 属实 ✓
+- **工单 1 验收标准**（acceptance 转录；**指令于 internal/agentcatalog/s 处截断**，截断处按惯例补全）：修改 :938-942 注释：如实描述 chat.Chat 仅在 openInstallerRun 构造、installerModelID 先探测 configured 模型可用性、故该路径解析模型两次（probe + fetch）。纯注释改动，零代码行为变化；go build ./... 绿；internal/agentcatalog/s[ervice 测试全绿]
+- **工单 2：tenant_skill_service.go:63**（severity low，宿主残差文件）——problem：newKeyedMutex 经 `*acatsvc.NewKeyedMutex()` 解引用拷贝了含 sync.Mutex 与 map 的结构体（新包定义 `internal/agentcatalog/service/tenant_skill_service.go:221-224`：mu sync.Mutex + m map[string]chan struct{}）。**finding 实质成立（语义锁值拷贝反模式 + 仿照放大风险），但其中一条论据经实验证伪需修正**——证伪的具体论据内容指令截断未见，待协调者补充。**现状核实（本会话实读）**：:59-63 残差定义与 :63 解引用拷贝在案——problem 属实 ✓
 - **工单 2 验收标准**（acceptance 转录；**指令于 skill_mar 处截断**，截断处按语义补全）：internal/application/service/tenant_skill_service.go:59-63：keyedMutex 改为嵌入 `*acatsvc.KeyedMutex`（`type keyedMutex struct { *acatsvc.KeyedMutex }`），newKeyedMutex 返回 `&keyedMutex{KeyedMutex: acatsvc.NewKeyedMutex()}`，不再解引用；lock 提升方法与全部消费点（skill_mar[ket 等]——含行为不变验证
 - **审查结论**：`review_status=changes_requested` **维持不变**（工单登记不改变审查状态；两工单未执行）
 - **修复轮次**：1（两条工单在案待执行——执行面：工单 1 纯注释（模块侧）、工单 2 残差文件小改（宿主侧），合计零行为变化）
@@ -3149,7 +3149,7 @@
 - **merge 25a**：**`ad53c2185`**（`codex/passb-b2-ac-definition` `938087598` → 本分支，零冲突）
 - **merge 25b**：**`c0ddf768a`**（`codex/passb-b2-ac-skills` `5ed64d324` → 本分支；唯一冲突 `docs/architecture/passb/execution-ledger.md` 纯追加型——b0 01:46 条目与 25b T3 两条目**全保留**，机械解决，无签名/注册/语义取舍）
 - **对齐后基线**：**`c0ddf768a`**（本节点 T2–T5 的 `PASSB_BASE_SHA`）
-- **对齐后门禁复跑（本会话实跑）**：`go build ./...`=0；`go test -count=1 ./internal/modules/agentcatalog/...` 三包 ok；宿主 repo/service/router 目标测试 ok（21/17/1 用例）；`make check-backend-architecture` `total=633 | redis=23 lite=23 | hooks=58 | modules=16`、0 violations 零漂移；`make verify-module-moves` `OK (16 manifests verified)`
+- **对齐后门禁复跑（本会话实跑）**：`go build ./...`=0；`go test -count=1 ./internal/agentcatalog/...` 三包 ok；宿主 repo/service/router 目标测试 ok（21/17/1 用例）；`make check-backend-architecture` `total=633 | redis=23 lite=23 | hooks=58 | modules=16`、0 violations 零漂移；`make verify-module-moves` `OK (16 manifests verified)`
 - **T1 基线表征 commit**：`e4753ae49`（39 用例 `-v` 旧实现基线 + FACADES 双跑留痕 → `docs/architecture/evidence/passb/b2-ac-market.md`）
 
 ## 2026-09-24 10:40 CST · b2-ac-market / T1 SDD 审查通过，进入任务级 OCR（task 维持 pending——本指令无 done 授权）
@@ -3978,7 +3978,7 @@
 - **计划路径**：`docs/plans/passb/25c-marketplace.md`
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-market/ocr-r1.txt`（本会话已读全文：613 字节、mtime 23:50；**实质审查完成态**——"Review complete: 0 finding(s) across 2 selected item(s)"，非 skip 态）
 - **结论计数**：confirmed=0 / rejected=0（调度指令口径；与报告一致）
-- **覆盖对应（本会话 git show 核验）**：2 selected items 与 `4f7e7650c` 的 2 个文件精确对应——`internal/handler/agent_marketplace.go`（-231 行宿主 shim 化）+ `internal/modules/agentcatalog/handler/agent_marketplace.go`（+232 行模块侧新文件）；与 23:55 条目刚登记的 `ocr_covered` 第 4 条 [8e7fe5810 → 4f7e7650c]（口径"审得 0 findings"）**同波互相印证**——覆盖登记与本结果条目闭环
+- **覆盖对应（本会话 git show 核验）**：2 selected items 与 `4f7e7650c` 的 2 个文件精确对应——`internal/handler/agent_marketplace.go`（-231 行宿主 shim 化）+ `internal/agentcatalog/handler/agent_marketplace.go`（+232 行模块侧新文件）；与 23:55 条目刚登记的 `ocr_covered` 第 4 条 [8e7fe5810 → 4f7e7650c]（口径"审得 0 findings"）**同波互相印证**——覆盖登记与本结果条目闭环
 - **报告附注**：LLM retry 摘要——11 请求中 2 次限流（HTTP 429）后重试成功（Review planning 与 Core review 各 1，各经 4-5 次重试）
 - **审查结论**：0 findings → 无新未关闭问题；`review_status=changes_requested` **维持**（在案 f1 skill_catalog.go package-comment 修复工单 11:19 登记未落分支——本轮 0 findings 系 4f7e7650c 区间审查，不涵盖也不关闭 f1 义务）；`status=in_progress` 维持
 - **修复轮次**：0（0 findings，不新增修复轮；在案待修 1 项 f1 维持）
@@ -4173,7 +4173,7 @@
 - **节点**：b2-ac-market —— 25c Marketplace（公共/租户 agent/skill/expert 市场）
 - **登记内容**：`ocr_covered` 追加第 5 条 `{base: "4f7e7650c403d34c1c90f83c294042535e424c94", head: "53646cb102ddf053d6c200f22b721e2280693a4a"}`（全 40 位 SHA，调度口径：**审得 0 findings**）——既有 4 条不变，现共 5 条
 - **去重核验（本会话 python3 json.load 实测）**：该 (base, head) 二元组与既有 4 条无一同对（`in` False）——**非重复指令，本次系真实追加**
-- **SHA 真实性核验**（本会话 `git rev-parse <sha>^{commit}` 双双命中 40 位全 SHA，实现 worktree）：`4f7e7650c`（09-24 23:25:42 handler 搬迁 = 第 4 条区间 head）与 `53646cb10`（09-25 00:19:30 "style(agentcatalog): gofmt import order in moved marketplace handler"——25c.4 复核+修复轮的修复提交，00:58 条目 SDD 登记所载）；区间含**恰 1 个提交**即 `53646cb10`，`git show --stat` 实测 **1 文件 1 行改动**（internal/modules/agentcatalog/handler/agent_marketplace.go，纯格式单行移动）
+- **SHA 真实性核验**（本会话 `git rev-parse <sha>^{commit}` 双双命中 40 位全 SHA，实现 worktree）：`4f7e7650c`（09-24 23:25:42 handler 搬迁 = 第 4 条区间 head）与 `53646cb10`（09-25 00:19:30 "style(agentcatalog): gofmt import order in moved marketplace handler"——25c.4 复核+修复轮的修复提交，00:58 条目 SDD 登记所载）；区间含**恰 1 个提交**即 `53646cb10`，`git show --stat` 实测 **1 文件 1 行改动**（internal/agentcatalog/handler/agent_marketplace.go，纯格式单行移动）
 - **口径衔接**：00:58 SDD 登记条目预告"增量区间 [4f7e7650c → 53646cb10] 待后续 OCR 指令登记"——本条即其落位；该区间系 gofmt 纯格式修复（零逻辑变更），"审得 0 findings"与其性质相容
 - **节点现状**（本会话 json.load 实测）：`status=in_progress`、`review_status=changes_requested`（f1 修复工单在案维持）、`task_status` 25c.1–25c.3 done / 25c.4–25c.5 pending——均未动
 - **本次 JSON 变更**（python 原子更新，断言全过）：`b2-ac-market.ocr_covered` 追加第 5 条（4 → 5，更新前全文档快照逐叶比对恰 1 处差异即该数组长度，新增项与指令逐字符一致）；`status`/`review_status`/`head_sha`=null/`task_status`/notes 及其余 32 节点均未动；写盘走同目录临时文件 + os.replace，`python3 json.load` 重载复验合法（33 节点分布：10 done + 4 in_progress + 19 pending）
@@ -4188,7 +4188,7 @@
 - **计划路径**：`docs/plans/passb/25c-marketplace.md`
 - **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-market/ocr-r1.txt`（本会话已读全文：mtime 01:10；**实质审查完成态**——"Review complete: 0 finding(s) across 1 selected item(s)"）
 - **结论计数**：confirmed=0 / rejected=0（调度指令口径；与报告一致）
-- **覆盖对应**：1 selected item = `internal/modules/agentcatalog/handler/agent_marketplace.go`（报告 Core review 唯一文件）——即 `53646cb10`（gofmt 修复单文件 1 行改动）的增量区间；与 01:11 条目刚登记的 `ocr_covered` 第 5 条 [4f7e7650c → 53646cb10]（口径"审得 0 findings"）**同波互相印证**
+- **覆盖对应**：1 selected item = `internal/agentcatalog/handler/agent_marketplace.go`（报告 Core review 唯一文件）——即 `53646cb10`（gofmt 修复单文件 1 行改动）的增量区间；与 01:11 条目刚登记的 `ocr_covered` 第 5 条 [4f7e7650c → 53646cb10]（口径"审得 0 findings"）**同波互相印证**
 - **报告附注**：LLM retry 摘要——3 请求中 1 次限流（HTTP 429）后重试成功（5 次重试后 succeeded）
 - **审查结论**：0 findings → 无新未关闭问题；`review_status=changes_requested` **维持**（在案 f1 修复工单 11:19 未落分支——本轮 0 findings 系增量区间审查，不涵盖也不关闭 f1 义务）；`status=in_progress` 维持
 - **修复轮次**：0（0 findings，不新增修复轮；在案待修 1 项 f1 维持）
@@ -6127,7 +6127,7 @@
 - **前置**：b2-ac-definition（done）+ b2-ac-skills（done）（本会话 `python3 json.load` 实测）——AC 面三节点就此全部 done
 - **worktree**：`.worktrees/passb-b2-ac-market`（分支 `codex/passb-b2-ac-market`，HEAD `8e0ce1a67`，本会话 `git rev-parse`/`git log`/`status --porcelain` 核验：树干净、自 01:34 起零新提交）
 - **base → head**：`null` → **`8e0ce1a670c5c584af6f9f4730df35e15a17ee36`**（指令短 SHA `8e0ce1a`，本会话 `git rev-parse` 解析为完整 40 位）
-- **门禁+OCR 通过**：调度指令口径（本管家未重跑门禁与 OCR，如实登记）——gates 四项全绿证据出处：`ocr-context.md` §4（14:41 版，转引 25c.5-report §2 命令 1-8：`go build ./...`=0 / `go test -count=1 ./internal/modules/agentcatalog/...` 全 ok / `make check-backend-architecture` total=633｜redis=23 lite=23｜hooks=58｜modules=16、0 violations / `make verify-module-moves` OK 16 manifests；ocr-context 自注"本背景会话未重跑 go 测试"）；本轮节点级 OCR 为**同区间重跑**（`ocr_tail_base=8e0ce1a67` 已由 14:19 提交钉尾、ocr_covered 第 6 条同区间 [53646cb10 → 8e0ce1a67]），重跑通过结论系调度方 14:44 指令口径——重跑输出未落盘新文件（本会话 `ls -lat` 实测 SDD 目录最新为 ocr-context.md @14:41，ocr-r1.txt @13:12 / ocr-r1-a2.txt @13:35 系 13:42 blocked 轮不完整产物），如后续落盘归调度方补登
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑门禁与 OCR，如实登记）——gates 四项全绿证据出处：`ocr-context.md` §4（14:41 版，转引 25c.5-report §2 命令 1-8：`go build ./...`=0 / `go test -count=1 ./internal/agentcatalog/...` 全 ok / `make check-backend-architecture` total=633｜redis=23 lite=23｜hooks=58｜modules=16、0 violations / `make verify-module-moves` OK 16 manifests；ocr-context 自注"本背景会话未重跑 go 测试"）；本轮节点级 OCR 为**同区间重跑**（`ocr_tail_base=8e0ce1a67` 已由 14:19 提交钉尾、ocr_covered 第 6 条同区间 [53646cb10 → 8e0ce1a67]），重跑通过结论系调度方 14:44 指令口径——重跑输出未落盘新文件（本会话 `ls -lat` 实测 SDD 目录最新为 ocr-context.md @14:41，ocr-r1.txt @13:12 / ocr-r1-a2.txt @13:35 系 13:42 blocked 轮不完整产物），如后续落盘归调度方补登
 - **审查结论**：`review_status` changes_requested → **approved**（指令口径"门禁+OCR 通过"→ 推断迁移，沿 b2-k-ingest 12:17 收口/b0 18:47 先例在此留痕；终态以调度方收口指令为准）。**f1 工单留痕（关键）**：`ocr-r1-f1-skill-catalog-package-comment`（low，internal/handler/skill_catalog.go:6-7）系 **25b 属主文件、工单已路由 25b/IB2**（ocr-context.md §6，14:41 版原文"review_status=changes_requested 由此维持"）——本节点 approved **不闭合该工单本体**，工单随 25b/IB2 属主存续；13:42 不完整轮 findings（tenant_skill*.go 等，报告自注"与被删除原实现一致、搬迁原样带入"，25b 搬迁 commit bded9ec9b/97b037ccf 带入）同路由 25b 属主与 IB2，不由本节点修
 - **OCR 报告路径**：ocr_covered **6 条不变**（最末 [53646cb10 → 8e0ce1a67]）——本轮重跑同区间不新增条目（沿 02:44 去重先例）；历轮产物：`ocr-r1.txt`（13:12，2 findings、46/74 items 失败）、`ocr-r1-a2.txt`（13:35，4 findings、52/74 失败）系 13:42 blocked 轮两次不完整尝试、`ocr-context.md`（14:41，本轮重跑背景 6,904 字节）
 - **测试证据路径**：T1/T2/T3 + 25c.3–25c.5 两套编号任务报告/审查包（`.superpowers/sdd/passb/b2-ac-market/`，本会话 ls 实测在位；T1↔25c.1 映射在案、T2/T3 对应关系未核验——沿 12:51 条目口径）+ 节点 worktree 内 evidence（12,285 字节 @01:27）/节点报告（16,503 字节 @01:31）——passb-int worktree 内 evidence_paths 三项目标路径不存在（合并后方在位）
@@ -7636,7 +7636,7 @@
 - **指令内容**：「计划审校第 1/4 轮：仍有 findings：[4 条 JSON 数组]」——desc 截断处（f1 止于「；grep」、f2 止于「intern」、f4 止于「type st」）以调度方原文为准
 - **findings 转录与工单登记**：
   - **pr1-f1（important）** file=`26-datasource.md §4.3（T3 Step 3）`——§4.3.1/§4.3.2 的 purge_test 重写按字面执行不可编译（**R0 遗留、R1 未修**，非本轮引入）：compat wrapper（§4.1(b)）与模块构造器均返回 interfaces.DataSourceService（datasource_service.go:65 实读），而 purge_test fixture 字段为具体类型 svc *DataSourceService（datasource_purge_test.go:116），且 PurgeDataSourceDocuments 仅定义在具体类型（datasource_service.go:857；grep[截断]
-  - **pr1-f2（important）** file=`26-datasource.md §2.1 appconnector 行 + §7 Brief (a)`——「internal/modules/appconnector/service/appconnector/sync_test.go | interfaces.DataSourceService（接口形态）…接口零改动，天然兼容」与事实不符（**R0 遗留、R1 未修**）：实测该文件消费具体类型与构造器——:102 newTestService 返回 *service.DataSourceService、:103 service.NewDataSourceService(…10 参…)、:105 .(*service.DataSourceService)，import 宿主 intern[截断]
+  - **pr1-f2（important）** file=`26-datasource.md §2.1 appconnector 行 + §7 Brief (a)`——「internal/appconnector/service/appconnector/sync_test.go | interfaces.DataSourceService（接口形态）…接口零改动，天然兼容」与事实不符（**R0 遗留、R1 未修**）：实测该文件消费具体类型与构造器——:102 newTestService 返回 *service.DataSourceService、:103 service.NewDataSourceService(…10 参…)、:105 .(*service.DataSourceService)，import 宿主 intern[截断]
   - **pr1-f3（minor）** file=`26-datasource.md §8 与 §2.6 末句`——内部矛盾：两处写「105（对齐后实值）→+3」，但 §2.6 自身说明 K 节点在对齐分支已增 exc-0106..0131，对齐后实值应为 131 而非 105；操作性指令自洽有护栏（§2.6「id 以 grep 实测顺延不硬编码」、T5 Step 3「对齐后实测值 X→X+3」），但标题性数字错误可能误导 conventions §8 计数基线登记——建议改「本分支现值 105，对齐后以实测 X 为基」
   - **pr1-f4（minor）** file=`26-datasource.md §4.2.3/§2.3/§2.1/§4.3.3`——残留行号/枚举小错（均不影响实质结论）：① §4.2.3「闭合 } :52」实为 :51（:52 空行）；② §2.3 retrieval/app 清单「semantic_*×5」实为 ×6（总数 14 正确，分项少计 1）；③ §2.1/§1 stub 定义坐标（newOwnedKBStub :30 正确，type st[截断]
 - **管家抽查（本会话实读）**：pr1-f1 三处坐标**全相符**（datasource_service.go:65=`) interfaces.DataSourceService {`、:857=`func (s *DataSourceService) PurgeDataSourceDocuments(…)`、datasource_purge_test.go:116=`svc *DataSourceService`）；pr1-f2 三行**全相符**（sync_test.go:102/:103/:105 逐行核对：具体类型返回 + NewDataSourceService 构造 + `).(*service.DataSourceService)` 断言）；pr1-f3 实质**相符**（本分支 exception-ledger grep 计 105 条、max exc-0105；K 分支 max **exc-0131** ✓——行数口径注明：finding 称「131 行」系数据条目数，管家 `grep -c 'exc-'` 计 **134**（含注释引用 3 行），计数方法差异如实登记，实质结论不受影响）；pr1-f4 之②与管家上轮 ls-tree 实测一致（semantic 族恰 6 文件：capability(+test)/policy(+test)/scope/scope_guard）；①③坐标未逐一复查，按调度口径登记

@@ -14,9 +14,9 @@ internal/application/service 拆分注记`）。IA1 在 batch A2 集成中**无�
 无。没有 `git mv`、没有新别名包、没有 import 路径修复；两次 refactor 提交不存在，
 本分支仅含文档提交。模块现有内容仍是 Pass A 骨架（commit 35ee7e088 引入）：
 
-- `internal/modules/agentcatalog/module.go` — 零逻辑门面骨架（`NewModule` /
+- `internal/agentcatalog/module.go` — 零逻辑门面骨架（`NewModule` /
   `RegisterRoutes` / `RegisterWorkers` / `Start` / `Stop` 契约注释，无实现无导入）
-- `internal/modules/agentcatalog/README.md`、`legacy/README.md`（legacy 索引，逐条镜像
+- `internal/agentcatalog/README.md`、`legacy/README.md`（legacy 索引，逐条镜像
   manifest legacy_files）
 
 ## 2. 边界裁定：internal/agent 子包不属于本模块（A7 → IA2 澄清）
@@ -75,7 +75,7 @@ agentruntime 的 move_sources）整体搬移，符合 moves/README.md 规则 1�
 ## 5. legacy_files（Pass B `B-agentcatalog` 的拆分清单，共 55 个非测试 .go）
 
 同目录 `_test.go` 随主题文件一并拆分（manifest 规则 3）；完整清单见
-`internal/modules/agentcatalog/legacy/README.md`（逐条镜像）。
+`internal/agentcatalog/legacy/README.md`（逐条镜像）。
 
 | 目录 | 文件数 | 主题 |
 |---|---|---|
@@ -118,14 +118,14 @@ Pass A 全程未改任何禁改文件（evidence §6）。当前 agentcatalog �
 导入路径。验收仅需：
 
 ```
-go test ./internal/modules/agentcatalog/... -count=1   # 骨架包，no test files，exit 0
+go test ./internal/agentcatalog/... -count=1   # 骨架包，no test files，exit 0
 go run ./tools/modulemove verify --module agentcatalog  # OK
 ```
 
 ### Pass B（B-agentcatalog）切换指引
 
 1. 按 §5 清单把 55 个 legacy 文件（连同同目录 `_test.go`）从横向包拆入
-   `internal/modules/agentcatalog/...`，填充 `module.go` 门面契约。
+   `internal/agentcatalog/...`，填充 `module.go` 门面契约。
 2. router.go:394-404 的 11 行委托改为模块 `RegisterRoutes`；container.go:702 的
    Invoke 改为模块 `Start`/`Stop`（TenantSkillReaper 语义不变）。
-3. 同步更新 `internal/modules/agentcatalog/legacy/README.md`（删除已拆条目）。
+3. 同步更新 `internal/agentcatalog/legacy/README.md`（删除已拆条目）。

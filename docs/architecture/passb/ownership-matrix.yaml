@@ -38,7 +38,7 @@ legacy_files:
   - path: internal/application/repository/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/agent_run.go
@@ -86,13 +86,13 @@ legacy_files:
   - path: internal/application/repository/agent_share.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/artifact_version.go
@@ -146,7 +146,7 @@ legacy_files:
   - path: internal/application/repository/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/embed_channel.go
@@ -182,7 +182,7 @@ legacy_files:
   - path: internal/application/repository/expert_install.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/feedback.go
@@ -374,13 +374,13 @@ legacy_files:
   - path: internal/application/repository/published_expert.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/published_skill.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/query_history_export.go
@@ -440,7 +440,7 @@ legacy_files:
   - path: internal/application/repository/tenant_disabled_shared_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/tenant_invitation.go
@@ -464,13 +464,13 @@ legacy_files:
   - path: internal/application/repository/tenant_skill.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/tenant_subagent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/user.go
@@ -482,7 +482,7 @@ legacy_files:
   - path: internal/application/repository/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/user_usage.go
@@ -524,7 +524,7 @@ legacy_files:
   - path: internal/application/service/agent_browser_preferences.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_capabilities.go
@@ -542,7 +542,7 @@ legacy_files:
   - path: internal/application/service/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_run_decisions.go
@@ -590,19 +590,19 @@ legacy_files:
   - path: internal/application/service/agent_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_share.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_web_pages.go
@@ -746,7 +746,7 @@ legacy_files:
   - path: internal/application/service/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/embed_channel.go
@@ -770,19 +770,19 @@ legacy_files:
   - path: internal/application/service/expert_market_source.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/expert_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/expert_skills.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/feedback.go
@@ -1148,7 +1148,7 @@ legacy_files:
   - path: internal/application/service/skill_market_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/storagebackend.go
@@ -1166,7 +1166,7 @@ legacy_files:
   - path: internal/application/service/subagent_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/system_setting.go
@@ -1208,7 +1208,7 @@ legacy_files:
   - path: internal/application/service/tenant_expert_market_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_invitation.go
@@ -1238,103 +1238,103 @@ legacy_files:
   - path: internal/application/service/tenant_skill_admin.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_bundle.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_catalog.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_effective.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_env_declare.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_files.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_install.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_progress.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_reaper.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_remove.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_runtime_verify.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_source.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_steer.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_stop.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_transcript.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_verify.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/usage_recorder.go
@@ -1364,7 +1364,7 @@ legacy_files:
   - path: internal/application/service/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/vectorstore.go
@@ -1412,19 +1412,19 @@ legacy_files:
   - path: internal/handler/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/app_connector.go
     module: appconnector
     plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
+    destination: internal/appconnector/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/artifact_preview.go
@@ -1472,7 +1472,7 @@ legacy_files:
   - path: internal/handler/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/deployment_capabilities.go
@@ -1502,7 +1502,7 @@ legacy_files:
   - path: internal/handler/expert.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/feedback.go
@@ -1634,7 +1634,7 @@ legacy_files:
   - path: internal/handler/persona.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/rbac_lookups.go
@@ -1874,25 +1874,25 @@ legacy_files:
   - path: internal/handler/shared_agent_access.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_catalog.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_handler.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/storage_allowlist.go
@@ -1910,7 +1910,7 @@ legacy_files:
   - path: internal/handler/subagent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/system.go
@@ -1928,7 +1928,7 @@ legacy_files:
   - path: internal/handler/tenant_expert_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/tenant_invitation.go
@@ -1958,7 +1958,7 @@ legacy_files:
   - path: internal/handler/tenant_skill_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/usage.go
@@ -1970,7 +1970,7 @@ legacy_files:
   - path: internal/handler/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/vectorstore.go

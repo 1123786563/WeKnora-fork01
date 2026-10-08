@@ -22,7 +22,7 @@
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | 0 | 仅 `cmd/desktop`、`cmd/server` 各一行 `ld: warning: ignoring duplicate libraries: '-lc++'`（既有现象，非错误） |
-| `go test -count=1 ./internal/application/repository ./internal/application/service ./internal/handler ./internal/modules/agentcatalog/...` | 0 | `ok ... internal/application/repository 489.119s`；`ok ... internal/application/service 344.838s`；`ok ... internal/handler 1.825s`；`? ... internal/modules/agentcatalog [no test files]` |
+| `go test -count=1 ./internal/application/repository ./internal/application/service ./internal/handler ./internal/agentcatalog/...` | 0 | `ok ... internal/application/repository 489.119s`；`ok ... internal/application/service 344.838s`；`ok ... internal/handler 1.825s`；`? ... internal/agentcatalog [no test files]` |
 | `make check-backend-architecture` | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`architectureguard: OK (0 violations)` |
 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
 
@@ -71,7 +71,7 @@
 | # | 命令 | 退出码 | 关键输出 |
 |---|---|---|---|
 | 1 | `go build ./...` | 0 | 仅 `cmd/desktop`、`cmd/server` 各一行 `ld: warning: ignoring duplicate libraries: '-lc++'`（§1.3 已记录的既有现象，非错误） |
-| 2 | `go test -count=1 ./internal/modules/agentcatalog/...` | 0 | `? ...internal/modules/agentcatalog [no test files]`；`ok ...agentcatalog/handler 1.479s`；`ok ...agentcatalog/repository 1.408s`；`ok ...agentcatalog/service 1.404s` |
+| 2 | `go test -count=1 ./internal/agentcatalog/...` | 0 | `? ...internal/agentcatalog [no test files]`；`ok ...agentcatalog/handler 1.479s`；`ok ...agentcatalog/repository 1.408s`；`ok ...agentcatalog/service 1.404s` |
 | 3 | `make check-backend-architecture` | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`architectureguard: OK (0 violations)` |
 | 4 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
 
@@ -88,7 +88,7 @@
 
 **新实现侧（T4 实跑）**：
 
-命令：`go test -count=1 -run 'TestGetShareByAgentIDAndSource|TestSubagent|TestFavorite' ./internal/modules/agentcatalog/... -v`
+命令：`go test -count=1 -run 'TestGetShareByAgentIDAndSource|TestSubagent|TestFavorite' ./internal/agentcatalog/... -v`
 
 退出码 0；`ok ...agentcatalog/handler 1.405s`、`ok ...agentcatalog/repository 0.618s`、`ok ...agentcatalog/service 1.316s`；28 用例全 PASS。
 
@@ -122,7 +122,7 @@
 ### 2.4 变更文件 vs owned_files 核对（计划 §6-T4 Step 3；conventions §1.2）
 
 - 节点累计：`git diff --name-only 02e7be617 | sort` = **22 文件**（实测），构成：7 宿主 shim 重写（§4-③ 行 1–7）+ 7 模块生产新文件（§2.2 批次 1 #1–#7）+ 3 随迁测试（`rename (100%)`）+ 4 特征化新测试（§5 授权按需补）+ 1 evidence 文档（§2.3 节点产出文档清单）。**与授权清单差集为空**。
-- 禁改面复核：`internal/router/**`、`internal/container/container.go`、`internal/bootstrap/**`、`internal/modules/agentcatalog/module.go`、治理 YAML 四份、`docs/architecture/moves/*.yaml`、`tools/**`、`go.mod`/`go.sum` 均不在差集清单（零触碰）。
+- 禁改面复核：`internal/router/**`、`internal/container/container.go`、`internal/bootstrap/**`、`internal/agentcatalog/module.go`、治理 YAML 四份、`docs/architecture/moves/*.yaml`、`tools/**`、`go.mod`/`go.sum` 均不在差集清单（零触碰）。
 - 任务级：T4 自身改动仅本 evidence 文件（`git diff --name-only bd9e0f8e9` 在提交前仅此一项）。
 - 注：T3 报告曾记节点累计 21 文件，实数为 22（其口径漏计 1 个纯 rename 项）；以本节实测 22 为准，构成核对结论不变。
 

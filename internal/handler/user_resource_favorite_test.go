@@ -19,7 +19,7 @@ import (
 
 // Characterization tests for the user resource favorite handler, anchored on
 // the legacy host-package implementation before the Pass B (25a) move to
-// internal/modules/agentcatalog/handler.
+// internal/agentcatalog/handler.
 
 type fakeFavoriteService struct {
 	listResult []*types.UserResourceFavorite

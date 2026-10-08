@@ -105,7 +105,7 @@ func TestRunImportExceptionSuppressesExactPair(t *testing.T) {
 	// §15：例外必须精确到 file→package 对。命中豁免的精确组合不得报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 `,
@@ -124,7 +124,7 @@ func TestRunImportExceptionDoesNotCoverOtherFiles(t *testing.T) {
 	// 同一 package、不同文件的 import 不在豁免范围内，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/appconnector/service/appconnector/other_file.go": `package appconnector
+		"internal/appconnector/service/appconnector/other_file.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 `,
@@ -143,7 +143,7 @@ func TestRunImportExceptionDoesNotCoverOtherPackages(t *testing.T) {
 	// 同一文件 import 其他模块的包不在豁免范围内，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/othermod/service/othermod"
 `,
@@ -164,15 +164,15 @@ func TestRunImportExceptionCoversCommercialRootImports(t *testing.T) {
 	// 导入不在豁免范围，仍须报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/appconnector/adapter.go": `package appconnector
+		"internal/appconnector/adapter.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/modules/appconnector/service/appconnector/action.go": `package appconnector
+		"internal/appconnector/service/appconnector/action.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/modules/appconnector/other_root.go": `package appconnector
+		"internal/appconnector/other_root.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/othermod"
 `,
@@ -229,7 +229,7 @@ func TestRunImportExceptionCoversAppconnectorOcRecoveryMixedImports(t *testing.T
 	// 未列包（execution 模块根不在清单）仍须报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import (
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -262,8 +262,8 @@ func TestRunImportExceptionCoversCodedeliveryAndWorkbench(t *testing.T) {
 		"internal/codedelivery/service.go": `package codedelivery
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	_ "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	_ "github.com/Tencent/WeKnora/internal/agentruntime/agent"
 )
 `,

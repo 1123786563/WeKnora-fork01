@@ -21,7 +21,7 @@
 | 8 | `internal/router/router.go:118-119` `RouterParams` 字段 `DataSourceHandler` / `DataSourceCredentialsHandler`（`*handler.*`） | 同上 | 字段类型切 `*dshandler.*` |
 | 9 | `internal/router/router.go:408` `RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)` | 同上 | 实参零改动（随 #7/#8 类型切换自然解析） |
 | 10 | `internal/router/router_api_key_capabilities_test.go:353` `RegisterDataSourceRoutes(v1, &handler.DataSourceHandler{}, &handler.DataSourceCredentialsHandler{}, g)` | 同上（test-only 零字段字面量） | `&dshandler.DataSourceHandler{}` / `&dshandler.DataSourceCredentialsHandler{}` |
-| 11 | **R2 补列（test-only 跨属主）**：`internal/modules/appconnector/service/appconnector/sync_test.go:14` import `service "…/internal/application/service"`、:102 `func newTestService(…) *service.DataSourceService`、:103-104 `service.NewDataSourceService(&fakeDSRepo{…}, logs, nil, nil, enq, nil, nil, nil, nil, nil)`（10 参）、:105 `.(*service.DataSourceService)` | 宿主 service compat wrapper + type 别名 | import 与全部引用切 `dsservice`（构造器签名逐参一致，fake 实参经接口形参不变）；**IB2 执行或移交 appconnector 侧处置——本节点零触碰（§2.1 行，conventions §1.3）** |
+| 11 | **R2 补列（test-only 跨属主）**：`internal/appconnector/service/appconnector/sync_test.go:14` import `service "…/internal/application/service"`、:102 `func newTestService(…) *service.DataSourceService`、:103-104 `service.NewDataSourceService(&fakeDSRepo{…}, logs, nil, nil, enq, nil, nil, nil, nil, nil)`（10 参）、:105 `.(*service.DataSourceService)` | 宿主 service compat wrapper + type 别名 | import 与全部引用切 `dsservice`（构造器签名逐参一致，fake 实参经接口形参不变）；**IB2 执行或移交 appconnector 侧处置——本节点零触碰（§2.1 行，conventions §1.3）** |
 
 **worker 面（零切换，仅核验）**：`task.go:295/:314`（asynq 栈 `mux.HandleFunc(types.TypeDataSource{Purge,Sync}, params.DataSourceService.Process{DataSourcePurge,Sync})`）、`sync_task.go:160-161`（Lite 栈 `params.Executor.RegisterHandler`）、`task_inspector.go:100`——全部经 `interfaces.DataSourceService` 接口方法值 + `internal/types` 常量解析，与 compat 无关，ib2 零改动。
 
@@ -54,7 +54,7 @@
 | id | from → to | ledger 行 | check.go 数据行 | 用途 |
 |---|---|---|---|---|
 | exc-0132 | → `internal/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
-| exc-0133 | → `internal/modules/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
+| exc-0133 | → `internal/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
 | exc-0134 | → `internal/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
 
 **收口前置与方向裁决（与 K 系列例外同批，ib2 一并裁决）**：

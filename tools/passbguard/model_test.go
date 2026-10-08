@@ -57,7 +57,7 @@ aliases:
 
 	tplExceptionLedger = `exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
@@ -548,7 +548,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.txt
+    from: internal/appconnector/adapter.txt
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
@@ -561,7 +561,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: "github.com/Tencent/WeKnora/internal/modules/*"
     plan: 27-appconnector
     remove_at: ib2
@@ -574,7 +574,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib0
@@ -587,13 +587,13 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/modules/appconnector/adapter.go
+    from: internal/appconnector/adapter.go
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
   - id: exc-0001
-    from: internal/modules/appconnector/action.go
+    from: internal/appconnector/action.go
     to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2

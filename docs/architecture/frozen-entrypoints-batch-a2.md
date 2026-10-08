@@ -11,7 +11,7 @@
 |---|---|
 | execution | `internal/execution`、`internal/execution/browserskill`、`internal/execution/sandbox` |
 | airesource | `internal/airesource`、`internal/airesource/mcp`、`internal/airesource/storageurl`、`internal/airesource/web_search`、`internal/airesource/models/asr`、`internal/airesource/models/chat`、`internal/airesource/models/embedding`、`internal/airesource/models/limiter`、`internal/airesource/models/provider`、`internal/airesource/models/rerank`、`internal/airesource/models/utils`、`internal/airesource/models/utils/ollama`、`internal/airesource/models/vlm` |
-| agentcatalog | `internal/modules/agentcatalog`（仅 `module.go` 零逻辑骨架 + `legacy/README.md`，无子包） |
+| agentcatalog | `internal/agentcatalog`（仅 `module.go` 零逻辑骨架 + `legacy/README.md`，无子包） |
 | policy | `internal/policy`、`internal/policy/access`、`internal/policy/embedpolicy`、`internal/policy/ipclass`、`internal/policy/ratelimit`、`internal/policy/storageallowlist` |
 
 四个模块根包（`module.go`）均为零逻辑骨架，仅以注释声明预期 façade（`NewModule` / `RegisterRoutes` / `RegisterWorkers` / `Start` / `Stop`），**当前无任何导出符号**；agentcatalog 亦无外部导入方（A11 为其首个消费者）。
@@ -93,10 +93,10 @@
 
 | # | 导入方文件 | 被导入包 | Pass B 任务 |
 |---|---|---|---|
-| 1 | `internal/modules/appconnector/service/appconnector/oc_recovery.go` | `modules/commercial/service/commercial` | B-appconnector |
-| 2 | `internal/modules/appconnector/adapter.go` | `modules/commercial` | B-appconnector |
-| 3 | `internal/modules/appconnector/service/appconnector/action.go` | `modules/commercial` | B-appconnector |
-| 4 | `internal/modules/appconnector/service/appconnector/oc_recovery.go` | `modules/commercial` | B-appconnector |
+| 1 | `internal/appconnector/service/appconnector/oc_recovery.go` | `modules/commercial/service/commercial` | B-appconnector |
+| 2 | `internal/appconnector/adapter.go` | `modules/commercial` | B-appconnector |
+| 3 | `internal/appconnector/service/appconnector/action.go` | `modules/commercial` | B-appconnector |
+| 4 | `internal/appconnector/service/appconnector/oc_recovery.go` | `modules/commercial` | B-appconnector |
 | 5 | `internal/airesource/models/chat/usage.go` | `modules/commercial` | B-airesource |
 | 6 | `internal/channels/im/service.go` | `modules/airesource/mcp` | B-channels |
 | 7 | `internal/channels/im/service.go` | `modules/airesource/storageurl` | B-channels |

@@ -6,7 +6,7 @@
 
 ## 0. 基线对齐（Ruling 2026-09-24-WAVE-DEP-BASELINE）
 
-派发基线 `dfcec6067`（= integration 头 `e586552d1` + 本计划 docs commit）**不含** 25a/25b 模块树（实跑：`internal/modules/agentcatalog/` 仅 B0 脚手架 3 文件；`git merge-base --is-ancestor` 实测 25a `938087598` 与 25b `5ed64d324` 均非 HEAD 祖先；两分支互不为祖先，merge-base `8c45a8815`——当时仓库不存在已含两者的 commit）。经协调者裁定 **Ruling 2026-09-24-WAVE-DEP-BASELINE（选项 A）**：在本节点分支按框架顺序做**基线对齐 merge**（非集成合并，不触碰 `codex/passb-integration`，IB2 正式职责不变）：
+派发基线 `dfcec6067`（= integration 头 `e586552d1` + 本计划 docs commit）**不含** 25a/25b 模块树（实跑：`internal/agentcatalog/` 仅 B0 脚手架 3 文件；`git merge-base --is-ancestor` 实测 25a `938087598` 与 25b `5ed64d324` 均非 HEAD 祖先；两分支互不为祖先，merge-base `8c45a8815`——当时仓库不存在已含两者的 commit）。经协调者裁定 **Ruling 2026-09-24-WAVE-DEP-BASELINE（选项 A）**：在本节点分支按框架顺序做**基线对齐 merge**（非集成合并，不触碰 `codex/passb-integration`，IB2 正式职责不变）：
 
 | 动作 | commit | 内容 |
 |---|---|---|
@@ -17,7 +17,7 @@
 
 ## 1. 前置门核验（T1 Step 2）
 
-- **门面存在性**：对齐后 `internal/modules/agentcatalog/service/tenant_skill_install.go` 与宿主残差 `internal/application/service/tenant_skill_service.go` 均在；别名行实测 `tenant_skill_service.go:48` = `CatalogInstallResult      = acatsvc.CatalogInstallResult`（gofmt 对齐多空格）。
+- **门面存在性**：对齐后 `internal/agentcatalog/service/tenant_skill_install.go` 与宿主残差 `internal/application/service/tenant_skill_service.go` 均在；别名行实测 `tenant_skill_service.go:48` = `CatalogInstallResult      = acatsvc.CatalogInstallResult`（gofmt 对齐多空格）。
 - **逐字命令链 vs 实况（如实记录）**：计划前置条件 2 的字面链 `grep -q "CatalogInstallResult = "` 输出 **FACADES-MISSING**——单空格模式不匹配 gofmt 对齐后的多空格排版，属字面模式过严，非门面缺失；空白容忍等价链 `grep -Eq "CatalogInstallResult[[:space:]]+="` 输出 **FACADES-OK**。语义判定：门面在位，前置门通过（两跑均留痕，T5 报告沿用本结论）。
 
 ## 2. 基线门禁（T1 Step 3，对齐基线 c0ddf768a 实跑，`-count=1`）
@@ -28,7 +28,7 @@
 | 2 | `go test -count=1 ./internal/application/repository -run 'TestAgentMarketplace\|TestExpertInstall\|TestPublishedExpertRepo\|TestPublishedSkillRepo'` | 0 | `ok ... 14.425s` |
 | 3 | `go test -count=1 ./internal/application/service -run 'TestAgentMarketplaceSubmit\|…\|TestTenantMarket'`（七段原式） | 0 | `ok ... 2.446s` |
 | 4 | `go test -count=1 ./internal/router -run 'TestTenantAgentMarketplaceLifecycleAndAuthorization'` | 0 | `ok ... 2.136s` |
-| 5 | `go test -count=1 ./internal/modules/agentcatalog/...` | 0 | 根 `[no test files]`；`handler ok 0.980s`、`repository ok 1.555s`、`service ok 7.126s`（25a/25b 随迁测试经对齐后全绿） |
+| 5 | `go test -count=1 ./internal/agentcatalog/...` | 0 | 根 `[no test files]`；`handler ok 0.980s`、`repository ok 1.555s`、`service ok 7.126s`（25a/25b 随迁测试经对齐后全绿） |
 | 6 | `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`（计数零漂移） |
 | 7 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
 
@@ -92,10 +92,10 @@
 
 | # | 命令 | 退出码 | 输出摘要 |
 |---|---|---|---|
-| 1 | `go test -count=1 -v ./internal/modules/agentcatalog/repository -run 'TestAgentMarketplace\|TestExpertInstall\|TestPublishedExpertRepo\|TestPublishedSkillRepo'` | 0 | 21 用例全 `--- PASS`（§3.1 同名清单），`ok 7.332s`（首轮 `9.866s`） |
-| 2 | `go test -count=1 -v ./internal/modules/agentcatalog/service -run 'TestAgentMarketplaceSubmit\|TestAgentMarketplaceReview\|TestAgentMarketplaceApproval\|TestAgentMarketplaceConcurrent\|TestAgentMarketplaceExclusive\|TestAgentMarketplaceCatalog\|TestTenantMarket'`（七段原式） | 0 | 17 用例全 `--- PASS`（§3.2 同名清单），`ok 1.478s` |
+| 1 | `go test -count=1 -v ./internal/agentcatalog/repository -run 'TestAgentMarketplace\|TestExpertInstall\|TestPublishedExpertRepo\|TestPublishedSkillRepo'` | 0 | 21 用例全 `--- PASS`（§3.1 同名清单），`ok 7.332s`（首轮 `9.866s`） |
+| 2 | `go test -count=1 -v ./internal/agentcatalog/service -run 'TestAgentMarketplaceSubmit\|TestAgentMarketplaceReview\|TestAgentMarketplaceApproval\|TestAgentMarketplaceConcurrent\|TestAgentMarketplaceExclusive\|TestAgentMarketplaceCatalog\|TestTenantMarket'`（七段原式） | 0 | 17 用例全 `--- PASS`（§3.2 同名清单），`ok 1.478s` |
 | 3 | `go test -count=1 -v ./internal/router -run 'TestTenantAgentMarketplaceLifecycleAndAuthorization'` | 0 | `--- PASS: TestTenantAgentMarketplaceLifecycleAndAuthorization (0.89s)`，`ok 2.657s` |
-| 4 | `go test -count=1 -v ./internal/modules/agentcatalog/repository -run 'TestIsUniqueViolationParity'` | 0 | 8/8 子用例全 PASS（nil/`gorm.ErrDuplicatedKey` 及 wrap/sqlite/postgres 消息/23505/无关错误/哨兵），`ok 1.010s` |
+| 4 | `go test -count=1 -v ./internal/agentcatalog/repository -run 'TestIsUniqueViolationParity'` | 0 | 8/8 子用例全 PASS（nil/`gorm.ErrDuplicatedKey` 及 wrap/sqlite/postgres 消息/23505/无关错误/哨兵），`ok 1.010s` |
 
 ### 4.2 逐用例比对结论
 
@@ -121,6 +121,6 @@
 | # | 命令 | 退出码 | 关键输出 |
 |---|---|---|---|
 | 1 | `go build ./...` | 0 | 仅 cmd/server、cmd/desktop 两条 `ld: warning: ignoring duplicate libraries: '-lc++'`（在案非错误） |
-| 2 | `go test -count=1 ./internal/modules/agentcatalog/...` | 0 | 根 `[no test files]`；handler `ok 1.781s`、repository `ok 11.508s`、service `ok 8.879s` |
+| 2 | `go test -count=1 ./internal/agentcatalog/...` | 0 | 根 `[no test files]`；handler `ok 1.781s`、repository `ok 11.508s`、service `ok 8.879s` |
 | 3 | `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`——计数零漂移 |
 | 4 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |

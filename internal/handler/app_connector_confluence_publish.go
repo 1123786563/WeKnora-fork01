@@ -4,10 +4,10 @@ import (
 	"errors"
 	"net/http"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/publish"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	"github.com/Tencent/WeKnora/internal/appconnector/publish"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

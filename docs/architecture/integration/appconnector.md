@@ -8,11 +8,11 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/appconnector` | `internal/modules/appconnector` |
-| `internal/appconnector/openconnector` | `internal/modules/appconnector/openconnector` |
-| `internal/application/repository/appconnector` | `internal/modules/appconnector/repository/appconnector` |
-| `internal/application/service/appconnector` | `internal/modules/appconnector/service/appconnector` |
-| `internal/connectorcontrol` | `internal/modules/appconnector/connectorcontrol` |
+| `internal/appconnector` | `internal/appconnector` |
+| `internal/appconnector/openconnector` | `internal/appconnector/openconnector` |
+| `internal/application/repository/appconnector` | `internal/appconnector/repository/appconnector` |
+| `internal/application/service/appconnector` | `internal/appconnector/service/appconnector` |
+| `internal/connectorcontrol` | `internal/appconnector/connectorcontrol` |
 
 共 65 个文件（含全部 `_test.go`），move commit 为纯 rename（65/65 相似度 100%）。
 
@@ -23,11 +23,11 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件 |
 |---|---|---|
-| `internal/appconnector` | `internal/modules/appconnector` | `alias.go`（141 符号） |
-| `internal/appconnector/openconnector` | `internal/modules/appconnector/openconnector` | `alias.go`（19 符号） |
-| `internal/application/repository/appconnector` | `internal/modules/appconnector/repository/appconnector` | `alias.go`（42 符号） |
-| `internal/application/service/appconnector` | `internal/modules/appconnector/service/appconnector` | `alias.go`（112 符号） |
-| `internal/connectorcontrol` | `internal/modules/appconnector/connectorcontrol` | `alias.go`（52 符号） |
+| `internal/appconnector` | `internal/appconnector` | `alias.go`（141 符号） |
+| `internal/appconnector/openconnector` | `internal/appconnector/openconnector` | `alias.go`（19 符号） |
+| `internal/application/repository/appconnector` | `internal/appconnector/repository/appconnector` | `alias.go`（42 符号） |
+| `internal/application/service/appconnector` | `internal/appconnector/service/appconnector` | `alias.go`（112 符号） |
+| `internal/connectorcontrol` | `internal/appconnector/connectorcontrol` | `alias.go`（52 符号） |
 
 别名面 = 搬迁包的全部导出符号（`go/types` 枚举生成），覆盖禁改文件的全部引用
 （已核对 `internal/container/container.go` 引用的 repoappconn.{InstallationStore, OCStore,
@@ -48,12 +48,12 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中引用旧导入路�
 
 **给集成者的操作**：
 1. 在 `internal/container/container.go:40` 把导入改为
-   `repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"`；
+   `repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"`；
 2. 在 `internal/container/container.go:54` 把导入改为
-   `appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"`；
+   `appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"`；
    仅改 import 行，qualifier 不变，`container.go` 其余行零改动。
 3. 改完后运行 `go build ./...` 通过，再删除第 2 节所列 5 个别名目录（连同 alias.go），
-   再次 `go build ./...` + `go test ./internal/modules/appconnector/... -count=1` 确认。
+   再次 `go build ./...` + `go test ./internal/appconnector/... -count=1` 确认。
    （其余 4 个别名目录当前无任何 importer，也可在集成时直接删除；仅
    `internal/application/{repository,service}/appconnector` 两个别名在步骤 1-2 之前必须保留。）
 
@@ -101,7 +101,7 @@ Pass B `B-appconnector` 拆出）；`internal/handler` 包内 7 个 legacy 文�
 ## 7. 配置键（模块读取）
 
 运行时（server 进程）：
-- `WEKNORA_OC_TRANSIENT_KEY` — `internal/modules/appconnector/service/appconnector/oc_connections.go:154`（const `TransientCipherEnvKey`）
+- `WEKNORA_OC_TRANSIENT_KEY` — `internal/appconnector/service/appconnector/oc_connections.go:154`（const `TransientCipherEnvKey`）
 - `WEKNORA_APP_OAUTH_<APP>_CLIENT_ID` / `WEKNORA_APP_OAUTH_<APP>_SECRET` — `internal/container/container.go:996` 附近（OAuth provider 注册，机制属 container，键归本模块域）
 
 伴生命令行工具 `cmd/connector-control`（out of F0 scope，仅 import 修复）：
@@ -111,7 +111,7 @@ Pass B `B-appconnector` 拆出）；`internal/handler` 包内 7 个 legacy 文�
 ## 8. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/appconnector/... -count=1`
+- `go test ./internal/appconnector/... -count=1`
 - `go test ./internal/container/... ./internal/handler/... ./internal/application/repository/... ./internal/application/service/... ./internal/agent/tools/... -count=1`
 - `go run ./tools/modulemove verify --module appconnector`
 - `go run ./tools/architectureguard`（基线：633 路由 / 23+23 worker / 58 hooks，不得变化）
