@@ -58,7 +58,7 @@
 ### 1.5 前置门复核（计划 §1.5 / §4-②#5）
 
 - 命令：`test -f internal/modules/commercial/repository/model_usage.go && echo EXPORT-LANDED || echo EXPORT-MISSING` → **`EXPORT-MISSING`**（退出码 0）。
-- 旁证：`ls internal/modules/execution/service` → `No such file or directory`。
+- 旁证：`ls internal/execution/service` → `No such file or directory`。
 - 结论：与计划 §1.5 预期一致（B1-CM/B1-EX 分支实施产出止于计划文档，无生产代码）。该门仅影响批次 2 推迟件 `repository/custom_agent.go`（§4-②#5），不阻塞批次 1；缺失时按 conventions §5 blocked 上报，不得自行实现导出。登记待 T5 Brief。
 
 ## 2. T4 门禁全套与等价证据（2026-09-24）

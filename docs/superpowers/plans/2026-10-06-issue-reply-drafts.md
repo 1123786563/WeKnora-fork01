@@ -805,7 +805,7 @@ Tests: the issue's reproduction CSV end-to-end now returns `paid` (the literal u
 ### #3806 BrowserSkill 跨轮会话复用失效：每轮扩展侧报 session not_found（中文）
 
 根因（两个独立来源叠加）：
-1. 代码级：无血缘合并把上游 09-23 会话保活修复（#3563 + PR296）困在 `internal/browserskill/` 死副本（全仓无 import 者），而实际接线的 `internal/modules/execution/browserskill/` 仍是 09-21 修复前快照——轮末还在发已退役的 `task_idle`，扩展回 `unknown_method`，keepOpen 路径报错，每轮丢会话（7/7 系统性）；另带两条已废弃的 `task_preview`/`task_focus` 通道；
+1. 代码级：无血缘合并把上游 09-23 会话保活修复（#3563 + PR296）困在 `internal/browserskill/` 死副本（全仓无 import 者），而实际接线的 `internal/execution/browserskill/` 仍是 09-21 修复前快照——轮末还在发已退役的 `task_idle`，扩展回 `unknown_method`，keepOpen 路径报错，每轮丢会话（7/7 系统性）；另带两条已废弃的 `task_preview`/`task_focus` 通道；
 2. 配置级：`--session-idle 30m` 使跨轮间隙超过 30 分钟的 retained 会话被原生 GC，是丢会话的另一独立来源。
 
 修法要点：

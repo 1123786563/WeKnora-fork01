@@ -138,10 +138,10 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			// 4b. 目标包落在别的模块树下。
 			name: "destination module mismatch",
 			mutG: func(g *Governance) {
-				g.Legacy[0].Destination = "internal/modules/conversation/service"
+				g.Legacy[0].Destination = "internal/conversation/service"
 			},
 			check: "legacy-destination",
-			want:  "internal/modules/conversation/service",
+			want:  "internal/conversation/service",
 		},
 		{
 			// 4c. 删除屏障早于属主计划阶段（B2 计划配 ib1）。

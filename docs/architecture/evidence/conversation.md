@@ -2,7 +2,7 @@
 
 - 分支 / worktree：`bm-passa-a10` / `.worktrees/bm-passa-a10`
 - base：`918f90000`（= 集成线 IA2 之后的 "docs: correct batch-a2 evidence figures from ia2 review"）
-- move commit：`f8d557c16` — `refactor(conversation): move packages to internal/modules/conversation`
+- move commit：`f8d557c16` — `refactor(conversation): move packages to internal/conversation`
 - repair commit：`a4a087780` — `refactor(conversation): repair imports and add pass-a aliases`
 - docs commit：见本文件所在提交
 - 环境：postgres :5432 / redis :6379（共享本地服务，未动容器）；未启动/停止任何容器
@@ -16,8 +16,8 @@ $ go run ./tools/architectureguard      # 基线
 architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16
 architectureguard: OK (0 violations)
 $ go build ./...                        # exit 0（仅既有 cmd/desktop、cmd/server ld duplicate-library warning）
-$ go test ./internal/modules/conversation/... -count=1   # manifest test_commands 逐字
-ok  github.com/Tencent/WeKnora/internal/modules/conversation  [no test files]
+$ go test ./internal/conversation/... -count=1   # manifest test_commands 逐字
+ok  github.com/Tencent/WeKnora/internal/conversation  [no test files]
 ```
 
 ## 2. 测试基线（pre-move，旧路径未动时）
@@ -36,10 +36,10 @@ TestAgentRunDecisionConcurrentOnlyOneRevision、payment TestProvidersFromEnvReje
 |---|---|
 | `go run ./tools/modulemove verify --module conversation` | `modulemove: OK (conversation)` |
 | `go run ./tools/modulemove verify --all` | `modulemove: OK (16 manifests verified)` |
-| `go test ./internal/modules/conversation/... -count=1`（manifest test_commands） | `ok internal/modules/conversation/chat_pipeline 1.799s`，FAIL 0 |
-| 直接消费方 + 流式/路由 characterisation：`go test ./internal/modules/conversation/... ./internal/application/service/... ./internal/handler/... ./internal/router/... -count=1 -timeout=25m`（manifest 未列 characterisation 命令，按规程跑等价存在项：handler/session 流式与会话路由 + 搬迁后 chat_pipeline 包测试均已含） | ok 11 / FAIL 0，exit 0 —— chat_pipeline 1.799s、application/service 215.656s、service/file 5.700s、service/memory 6.116s、service/metric 2.252s、service/retriever 2.182s、service/workbench 32.547s、handler 3.407s、handler/dto 2.622s、handler/session 39.391s、router 5.467s |
+| `go test ./internal/conversation/... -count=1`（manifest test_commands） | `ok internal/conversation/chat_pipeline 1.799s`，FAIL 0 |
+| 直接消费方 + 流式/路由 characterisation：`go test ./internal/conversation/... ./internal/application/service/... ./internal/handler/... ./internal/router/... -count=1 -timeout=25m`（manifest 未列 characterisation 命令，按规程跑等价存在项：handler/session 流式与会话路由 + 搬迁后 chat_pipeline 包测试均已含） | ok 11 / FAIL 0，exit 0 —— chat_pipeline 1.799s、application/service 215.656s、service/file 5.700s、service/memory 6.116s、service/metric 2.252s、service/retriever 2.182s、service/workbench 32.547s、handler 3.407s、handler/dto 2.622s、handler/session 39.391s、router 5.467s |
 | `go build ./...` | exit 0（仅既有的 cmd/desktop、cmd/server ld duplicate-library warning，与基线一致） |
-| `go vet ./internal/modules/conversation/... ./internal/application/service/chat_pipeline/... ./internal/handler/... ./internal/container/...` | exit 0，无输出 |
+| `go vet ./internal/conversation/... ./internal/application/service/chat_pipeline/... ./internal/handler/... ./internal/container/...` | exit 0，无输出 |
 | `go run ./tools/architectureguard` | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`（计数器与 F0 基线一致）+ **6 条新 forbidden-import 诊断**（见 §6；除诊断行外 guard exit 1，无其他类别发现） |
 
 ## 4. Rename 证据

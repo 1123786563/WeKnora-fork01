@@ -849,7 +849,7 @@ contracts:
     - id: conversation.facade
       owner: conversation
       kind: module-construction
-      symbol: internal/modules/conversation/module.go
+      symbol: internal/conversation/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1127,7 +1127,7 @@ contracts:
     - id: datasource.facade
       owner: datasource
       kind: module-construction
-      symbol: internal/modules/datasource/module.go
+      symbol: internal/datasource/connector/moauth/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1178,7 +1178,7 @@ contracts:
     - id: execution.facade
       owner: execution
       kind: module-construction
-      symbol: internal/modules/execution/module.go
+      symbol: internal/execution/module.go
       signature: façade
       stability: frozen
       consumers: []

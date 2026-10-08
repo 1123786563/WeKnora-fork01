@@ -293,7 +293,7 @@ domain/application 返回稳定领域错误，不构造 Gin 响应。transport �
 Query History 当前跨 router、session handler、service、repository、types、container 和 worker router，具备完整路由、权限、隐私策略、异步导出、持久化和测试链路，作为首个纵向切片。
 
 ```text
-internal/modules/conversation/queryhistory/
+internal/conversation/queryhistory/
   transport/http/
   application/
   domain/

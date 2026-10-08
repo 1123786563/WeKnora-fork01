@@ -114,37 +114,37 @@ var importExceptions = []importException{
 	// 存活边 + 7 条 guard-only 存活边（codedelivery→appconnector ×6、
 	// command_queue_next.go→agentruntime 模块根）。
 	{
-		ImporterFile: "internal/modules/codedelivery/code_platform.go",
+		ImporterFile: "internal/codedelivery/code_platform.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImporterFile: "internal/codedelivery/dispatcher.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImporterFile: "internal/codedelivery/dispatcher.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/modules/codedelivery/gitlab_client.go",
+		ImporterFile: "internal/codedelivery/gitlab_client.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImporterFile: "internal/codedelivery/service.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImporterFile: "internal/codedelivery/service.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
@@ -197,7 +197,7 @@ var importExceptions = []importException{
 	},
 	{
 		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/execution",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
@@ -225,7 +225,7 @@ var importExceptions = []importException{
 	},
 	{
 		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/execution",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",

@@ -77,21 +77,21 @@
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
 
 **Files:**
-- Modify: `internal/modules/codedelivery/code_platform.go`
-- Modify: `internal/modules/codedelivery/dispatcher.go`
-- Modify: `internal/modules/codedelivery/gitlab_client.go`
-- Modify: `internal/modules/codedelivery/service.go`
-- Modify: `internal/modules/codedelivery/gitlab_wire_test.go`
-- Modify: `internal/modules/codedelivery/service_dispatch_test.go`
-- Modify: `internal/modules/codedelivery/service_gitlab_test.go`
-- Modify: `internal/modules/codedelivery/service_prepare_test.go`
+- Modify: `internal/codedelivery/code_platform.go`
+- Modify: `internal/codedelivery/dispatcher.go`
+- Modify: `internal/codedelivery/gitlab_client.go`
+- Modify: `internal/codedelivery/service.go`
+- Modify: `internal/codedelivery/gitlab_wire_test.go`
+- Modify: `internal/codedelivery/service_dispatch_test.go`
+- Modify: `internal/codedelivery/service_gitlab_test.go`
+- Modify: `internal/codedelivery/service_prepare_test.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next_test.go`
 - Modify: `internal/agentruntime/module.go`
 - Modify: `internal/agentruntime/agent/runtime/contracts.go`
 - Modify: `internal/container/code_delivery.go`
-- Add: `internal/modules/codedelivery/contracts.go`
-- Add: `internal/modules/codedelivery/contracts_test.go`
+- Add: `internal/codedelivery/contracts.go`
+- Add: `internal/codedelivery/contracts_test.go`
 
 **Interfaces:**
 - `codedelivery` owns these narrow contracts: `ActionLifecycle` (`Prepare(ctx, appconnector.Action) (string,error)`, `Execute(ctx,string) error`, `ResolveUnknown(ctx,string) error`); `RunReader` returning `RunIdentity{SessionID string}`; `ProviderSource` returning `ProviderInstallation{AppID string}`; `ActionStoreSource.FindAction(ctx,id) (ActionRecord,error)` where `ActionRecord` carries exactly `ID, TenantID, ActorID, ConnectionID, AppVersion, Target, Risk, ArgsDigest, State, Fence, ArgsSnapshot, AuthVersion, DigestVersion, ProviderResult`; `CredentialResolver.Resolve(ctx,connectionID,expectedVersion) ([]byte,error)`; and `A02Guard.Check(ctx, appconnector.OCSubject, connectionID, expectedVersion) error`.
@@ -101,10 +101,10 @@
 - Workbench command queue consumes `internal/agentruntime` root sentinels and retains existing output/status mapping; it must not import `agentruntime/agent/runtime`.
 
 - [ ] Add contract tests proving adapter mapping preserves action/connection identity, dispatch result state, unknown vs not-started errors, and owner-scoped run session identity; add `errors.Is` tests proving the root/runtime sentinels are identical and the queue keeps its not-found/conflict mapping.
-- [ ] Run `go test -count=1 ./internal/modules/codedelivery/... ./internal/modules/workbench/...` and record the current Architecture Guard import findings before code changes.
+- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/modules/workbench/...` and record the current Architecture Guard import findings before code changes.
 - [ ] Move only the values/interfaces required by codedelivery behind its own contracts; implement concrete appconnector adapters in the composition root. Do not expose appconnector repository or service implementations through a new façade.
 - [ ] Replace agentruntime internal error imports with a stable module-root error contract or a workbench-owned mapping while retaining `errors.Is` behavior and HTTP/API result mapping.
-- [ ] Run `go test -count=1 ./internal/modules/codedelivery/... ./internal/modules/workbench/...` and `git diff --check`. Expected: package tests pass and these source paths no longer produce `forbidden-import` diagnostics.
+- [ ] Run `go test -count=1 ./internal/codedelivery/... ./internal/modules/workbench/...` and `git diff --check`. Expected: package tests pass and these source paths no longer produce `forbidden-import` diagnostics.
 - [ ] Commit `refactor(modules): keep delivery dependencies behind public contracts` and report exact BASE/HEAD and outputs.
 
 **Acceptance:** Target module packages pass; `codedelivery` and `workbench` production files have no cross-module internal imports; adapter contracts preserve all dispatch/run semantics and error identity.

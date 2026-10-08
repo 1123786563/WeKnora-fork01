@@ -8,9 +8,9 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/execution` | `internal/modules/execution`（并入模块根，与 module.go 骨架同包） |
-| `internal/sandbox` | `internal/modules/execution/sandbox` |
-| `internal/browserskill` | `internal/modules/execution/browserskill` |
+| `internal/execution` | `internal/execution`（并入模块根，与 module.go 骨架同包） |
+| `internal/sandbox` | `internal/execution/sandbox` |
+| `internal/browserskill` | `internal/execution/browserskill` |
 
 共 142 个文件（execution 17、sandbox 107、browserskill 18；含全部 `_test.go` 72 个与
 `execution/testdata/start-command.json` fixture）。move commit 为纯 rename
@@ -28,9 +28,9 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件（覆盖符号） |
 |---|---|---|
-| `internal/execution` | `internal/modules/execution` | `alias.go`（1：`NewRegistrationService`） |
-| `internal/sandbox` | `internal/modules/execution/sandbox` | `alias.go`（1：`ConfigureDockerResourceProtection`） |
-| `internal/browserskill` | `internal/modules/execution/browserskill` | `alias.go`（3：`Manager`、`NewManager`、`NewStore`） |
+| `internal/execution` | `internal/execution` | `alias.go`（1：`NewRegistrationService`） |
+| `internal/sandbox` | `internal/execution/sandbox` | `alias.go`（1：`ConfigureDockerResourceProtection`） |
+| `internal/browserskill` | `internal/execution/browserskill` | `alias.go`（3：`Manager`、`NewManager`、`NewStore`） |
 
 **覆盖面说明（与 A1 先例不同，刻意收窄）**：任务指令要求别名只服务禁改共享文件。
 本模块的唯一禁改引用方是 `internal/container/container.go`（`internal/router/router.go`、
@@ -44,9 +44,9 @@
 
 | 文件:行 | 现内容 | 切换为 |
 |---|---|---|
-| `internal/container/container.go:57` | `"github.com/Tencent/WeKnora/internal/browserskill"` | `"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"` |
-| `internal/container/container.go:63` | `"github.com/Tencent/WeKnora/internal/execution"` | `"github.com/Tencent/WeKnora/internal/modules/execution"` |
-| `internal/container/container.go:106` | `"github.com/Tencent/WeKnora/internal/sandbox"` | `"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"` |
+| `internal/container/container.go:57` | `"github.com/Tencent/WeKnora/internal/browserskill"` | `"github.com/Tencent/WeKnora/internal/execution/browserskill"` |
+| `internal/container/container.go:63` | `"github.com/Tencent/WeKnora/internal/execution"` | `"github.com/Tencent/WeKnora/internal/execution"` |
+| `internal/container/container.go:106` | `"github.com/Tencent/WeKnora/internal/sandbox"` | `"github.com/Tencent/WeKnora/internal/execution/sandbox"` |
 
 切换步骤（Pass B task **B-execution**，非 Pass A）：
 1. 修改上述 3 行 import 路径；
@@ -92,7 +92,7 @@ manifest `lifecycle_hooks: []`。`internal/container/container.go` 对本模块�
 ## 7. 外部依赖与配置键
 
 - **platform 依赖**：`internal/types`、`internal/logger`、`internal/tracing/langfuse`、`internal/common/redislock`。
-- **跨模块依赖（IA2 关注点）**：`internal/modules/execution/sandbox/url_guard.go` 导入
+- **跨模块依赖（IA2 关注点）**：`internal/execution/sandbox/url_guard.go` 导入
   `internal/ipclass`——该包归 **policy 模块**（`moves/policy.yaml`：`internal/ipclass` →
   `internal/policy/ipclass`，Pass A batch A2 的姊妹任务 A8 搬迁）。A8 搬迁后需
   同步修复本文件这一行 import（属 ipclass 的 importer 修复面，非本模块动作）。

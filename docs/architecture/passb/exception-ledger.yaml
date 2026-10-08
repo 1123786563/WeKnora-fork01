@@ -73,7 +73,7 @@ exceptions:
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0095
     from: internal/modules/workbench/service/workbench/admission.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution"
+    to: "github.com/Tencent/WeKnora/internal/execution"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
@@ -97,7 +97,7 @@ exceptions:
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
   - id: exc-0105
     from: internal/modules/workbench/service/workbench/remote_usage.go
-    to: "github.com/Tencent/WeKnora/internal/modules/execution"
+    to: "github.com/Tencent/WeKnora/internal/execution"
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"

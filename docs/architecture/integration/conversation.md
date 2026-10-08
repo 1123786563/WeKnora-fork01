@@ -8,7 +8,7 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/application/service/chat_pipeline` | `internal/modules/conversation/chat_pipeline` |
+| `internal/application/service/chat_pipeline` | `internal/conversation/chat_pipeline` |
 
 共 47 个文件（38 个非测试 `.go` + 9 个 `_test.go`），move commit 为纯 rename
 （47/47 相似度 100%，0 insertions/deletions，`git diff --summary` 全 R，零函数体改动、
@@ -24,7 +24,7 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件 |
 |---|---|---|
-| `internal/application/service/chat_pipeline` | `internal/modules/conversation/chat_pipeline` | `alias.go`（18 符号） |
+| `internal/application/service/chat_pipeline` | `internal/conversation/chat_pipeline` | `alias.go`（18 符号） |
 
 零逻辑 var 转发（无 type alias），文件头注明 `Deleted by Pass B task B-conversation`。
 **别名面收窄至禁改文件实际引用**：`NewEventManager` + 17 个 `NewPlugin*` 构造器
@@ -59,11 +59,11 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中与本模块相关�
 
 **给集成者的操作**：
 1. 在 `internal/container/container.go:52` 把导入改为
-   `chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"`
+   `chatpipeline "github.com/Tencent/WeKnora/internal/conversation/chat_pipeline"`
    （唯一改动行；qualifier `chatpipeline` 不变，其余行零改动）；
 2. `go build ./...` 通过后，删除 `internal/application/service/chat_pipeline/` 别名目录
    （连同 alias.go）——此刻已无任何 importer；
-3. 回归：`go test ./internal/modules/conversation/... -count=1` +
+3. 回归：`go test ./internal/conversation/... -count=1` +
    `go test ./internal/container/... ./internal/application/service/... ./internal/handler/... ./internal/router/... -count=1` +
    `go run ./tools/modulemove verify --module conversation` +
    `go run ./tools/architectureguard`（路由 633 / worker 23+23 / hooks 58 不得变化）。
@@ -124,12 +124,12 @@ architectureguard 在本分支报 **6 条新 forbidden-import** 诊断（搬迁�
 均为**先于本次改造**的耦合被搬迁暴露——同 6 个文件在旧路径
 `internal/application/service/chat_pipeline/` 下就有完全相同的 import 行）：
 
-1. `internal/modules/conversation/chat_pipeline/common.go` → `internal/airesource/models/chat`
-2. `internal/modules/conversation/chat_pipeline/data_analysis.go` → `internal/airesource/models/chat`
-3. `internal/modules/conversation/chat_pipeline/extract_entity.go` → `internal/airesource/models/chat`
-4. `internal/modules/conversation/chat_pipeline/query_understand.go` → `internal/airesource/models/chat`
-5. `internal/modules/conversation/chat_pipeline/references.go` → `internal/airesource/models/chat`
-6. `internal/modules/conversation/chat_pipeline/rerank.go` → `internal/airesource/models/rerank`
+1. `internal/conversation/chat_pipeline/common.go` → `internal/airesource/models/chat`
+2. `internal/conversation/chat_pipeline/data_analysis.go` → `internal/airesource/models/chat`
+3. `internal/conversation/chat_pipeline/extract_entity.go` → `internal/airesource/models/chat`
+4. `internal/conversation/chat_pipeline/query_understand.go` → `internal/airesource/models/chat`
+5. `internal/conversation/chat_pipeline/references.go` → `internal/airesource/models/chat`
+6. `internal/conversation/chat_pipeline/rerank.go` → `internal/airesource/models/rerank`
 
 张力点：这些 import 走的正是 batch-a2 冻结面**文档化的入口路径**
 （`frozen-entrypoints-batch-a2.md` §airesource 列出 `models/chat`、`models/rerank`，
@@ -141,7 +141,7 @@ architectureguard 在本分支报 **6 条新 forbidden-import** 诊断（搬迁�
 ## 9. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/conversation/... -count=1`（manifest test_commands）
+- `go test ./internal/conversation/... -count=1`（manifest test_commands）
 - `go test ./internal/application/service/... ./internal/handler/... ./internal/router/... ./internal/container/... -count=1`（直接消费方回归，含 session/message 流式与路由 characterisation）
 - `go run ./tools/modulemove verify --module conversation`
 - `go run ./tools/architectureguard`（633/23+23/58/16 不得变化；第 8 节 6 条诊断处置前允许存在，其余必须 0）

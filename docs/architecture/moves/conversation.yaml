@@ -3,7 +3,7 @@ module: conversation
 description: Session、Message、Chat pipeline、Feedback、分享、建议、Query History、临时文档（§5.3/§5.18）
 move_packages:
   - from: internal/application/service/chat_pipeline
-    to: internal/modules/conversation/chat_pipeline
+    to: internal/conversation/chat_pipeline
 alias_obligations:
   - old_import_path: internal/application/service/chat_pipeline
     passb_task: B-conversation
@@ -192,7 +192,7 @@ owned_files:
   move_sources:
   - internal/application/service/chat_pipeline
   move_targets:
-    - internal/modules/conversation/chat_pipeline
+    - internal/conversation/chat_pipeline
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/application/service/chat_pipeline
   importers:
@@ -200,11 +200,11 @@ owned_files:
   - internal/container
   - internal/handler
   module_files:
-    - internal/modules/conversation/README.md
-    - internal/modules/conversation/module.go
-    - internal/modules/conversation/legacy/README.md
+    - internal/conversation/README.md
+    - internal/conversation/module.go
+    - internal/conversation/legacy/README.md
 test_commands:
-  - go test ./internal/modules/conversation/... -count=1
+  - go test ./internal/conversation/... -count=1
 integration_points:
   routes:
   - RegisterMessageRoutes — internal/router/routes_chat.go:20

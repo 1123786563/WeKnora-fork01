@@ -9,7 +9,7 @@ Worktree：`.worktrees/bm-passa-a5`（分支 `bm-passa-a5`，基线 `03032f890` 
 | # | SHA | 主题 | 内容 |
 |---|---|---|---|
 | 0 | `03032f890` | refactor: integrate pass-a batch a1 | 基线（不属本任务） |
-| 1 | `6ad22241d` | refactor(execution): move packages to internal/modules/execution | 纯 rename：142 文件 `git mv`，0 insertions / 0 deletions |
+| 1 | `6ad22241d` | refactor(execution): move packages to internal/execution | 纯 rename：142 文件 `git mv`，0 insertions / 0 deletions |
 | 2 | `44c29f19a` | refactor(execution): repair imports and add pass-a aliases | 114 个 importer 文件 import 路径修复 + 3 个旧路径 alias.go + testdata 归位 + 触碰文件 gofmt |
 
 ## 2. Pre-move gate
@@ -30,14 +30,14 @@ ok  github.com/Tencent/WeKnora/internal/browserskill  0.437s
 
 ```
 git diff --summary 03032f890..6ad22241d   →  142 rename（100%），无其余类型
-  internal/browserskill → internal/modules/execution/browserskill   18 文件
-  internal/execution   → internal/modules/execution                17 文件
-  internal/sandbox     → internal/modules/execution/sandbox       107 文件
+  internal/browserskill → internal/execution/browserskill   18 文件
+  internal/execution   → internal/execution                17 文件
+  internal/sandbox     → internal/execution/sandbox       107 文件
   其中 _test.go 72、非测试 .go 69、testdata/start-command.json 1
 ```
 
 repair commit 内对 fixture 的二次 `git mv`：
-`rename internal/modules/execution/{ => testdata}/start-command.json (100%)`
+`rename internal/execution/{ => testdata}/start-command.json (100%)`
 ——修复 move commit 中 fixture 落在包根而非 `testdata/` 的失误，保持测试
 `os.ReadFile("testdata/start-command.json")` 相对深度不变（无内容编辑）。
 
@@ -45,7 +45,7 @@ repair commit 内对 fixture 的二次 `git mv`：
 
 `git diff HEAD -w` 证明：忽略空白后**全部**改动行均为 import 路径行（116 处），零函数体改动：
 
-- 114 个 importer 文件：`internal/{execution,sandbox,browserskill}` → `internal/modules/execution{/sandbox,/browserskill}`；
+- 114 个 importer 文件：`internal/{execution,sandbox,browserskill}` → `internal/execution{/sandbox,/browserskill}`；
 - 新增 3 个旧路径 alias 包（零逻辑，type alias + var 转发，头注 `Deleted by Pass B task B-execution`）；
 - gofmt 触碰文件（9 个）产生的**纯空白**重排（结构体字段注释对齐），`git diff -w` 下消失；
   仓库既有未格式化文件（如 `internal/agent/opencode/executor_test.go`）未被触碰。
@@ -56,7 +56,7 @@ repair commit 内对 fixture 的二次 `git mv`：
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| manifest test_commands | `go test ./internal/modules/execution/... -count=1` | ok execution 2.535s / browserskill 1.999s / sandbox 5.810s |
+| manifest test_commands | `go test ./internal/execution/... -count=1` | ok execution 2.535s / browserskill 1.999s / sandbox 5.810s |
 | 直接消费方 | `go test ./internal/agent/skills/... ./internal/agent/tools/... ./internal/container/... ./internal/router/... -count=1` | 全 ok |
 | 直接消费方 | `go test ./internal/handler/... -count=1` | ok handler 1.925s / dto / session 13.259s |
 | 直接消费方 | `go test ./internal/application/repository/... ./internal/application/service/workbench/... -count=1` | 全 ok |
@@ -74,7 +74,7 @@ repair commit 内对 fixture 的二次 `git mv`：
 
 ## 7. 遗留与 IA2 关注点
 
-1. `internal/modules/execution/sandbox/url_guard.go` 导入 `internal/ipclass`（policy 模块，
+1. `internal/execution/sandbox/url_guard.go` 导入 `internal/ipclass`（policy 模块，
    A8 搬迁至 `internal/policy/ipclass`）——A8 落地后需修复该一行 import，详见
    integration brief §7。
 2. 旧路径别名覆盖面刻意收窄为禁改文件引用面（5 符号）；如需全量导出符号别名，

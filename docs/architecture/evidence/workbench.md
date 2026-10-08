@@ -115,7 +115,7 @@ Sibling 领地（craft=internal/modules/craft、insights=internal/insights 相�
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/modules/execution"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/modules/workbench/service/workbench/admission.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/interaction.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/notification.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
@@ -125,7 +125,7 @@ architectureguard: forbidden-import: internal/modules/workbench/service/workbenc
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
 architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 commercial 的内部包 "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/modules/execution"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/modules/workbench/service/workbench/remote_usage.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"（跨模块只能经模块根公共门面）
 ```
 
 逐条核验：14 条的 import 行在 base `8fbc030a8` 的旧路径同名文件中**逐字符相同**

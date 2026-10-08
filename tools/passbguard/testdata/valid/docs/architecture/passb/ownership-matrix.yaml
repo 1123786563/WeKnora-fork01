@@ -9,7 +9,7 @@ legacy_files:
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 aliases:

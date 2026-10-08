@@ -271,7 +271,7 @@ func TestDiscoverSetConsumersRequiresDirectorySegment(t *testing.T) {
 // 条目必须同步演进为带注册位点后缀的形态（与 routes/lifecycle_hooks 条目同构），
 // 守卫随即从条目推导位点——只改代码不改 manifest 时，模块树内新注册位点会
 // 静默漏报（树内 enqueue 引用与注册位点无法用标识符引用区分，见
-// internal/modules/datasource/scheduler.go），而 router 旧注册删除后已登记
+// internal/datasource/connector/moauth/scheduler.go），而 router 旧注册删除后已登记
 // consumers 会批量假 vanished。
 //
 // OCR R2 追加锚定：裸名推导以 entryFileRE 首个匹配索引为单一事实源锚

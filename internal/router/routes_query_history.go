@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory"
 )
 
 // queryHistoryAdminRoutes is the module's route table, mirrored here only to

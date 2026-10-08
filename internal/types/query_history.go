@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory/domain"
 )
 
 // Query history visibility modes, stored on tenants.query_history_config.

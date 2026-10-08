@@ -64,7 +64,7 @@ grep -n "^func withKnowledgeCleanup" internal/application/service/knowledge_dele
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | 0 | 仅 2 条已知 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server，K5 同款无害告警） |
-| `go test -count=1 ./internal/modules/datasource/...` | 0 | 全 ok（datasource 根包 + connector/{dingtalk,feishu/{core,drive,wiki},gitlab,ima,moauth,notion,rss,yuque} 等） |
+| `go test -count=1 ./internal/datasource/connector/moauth/...` | 0 | 全 ok（datasource 根包 + connector/{dingtalk,feishu/{core,drive,wiki},gitlab,ima,moauth,notion,rss,yuque} 等） |
 | `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`；`architectureguard: OK (0 violations)` |
 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
 
@@ -97,7 +97,7 @@ grep -n "^func withKnowledgeCleanup" internal/application/service/knowledge_dele
 | ① | `go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourceH|TestDeleteDataSourceP|TestDeleteDataSourceW|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources|TestSetTaskInspector|TestPauseDataSource|TestManualSync|TestRefreshDataSourceCredential|TestProcessSync|TestIncrementAppDataSourceBindingAuthVersion|TestCursorAuthVersionStale|TestReindexItems|TestApplyFetchedItem|TestAllFetchedItemsFailedError|TestIngestItem|TestStream|TestSyncHeartbeat|TestCancelSyncLog|TestCheckpoint|TestCheckCancelRequested|TestPurgeWorker|TestProcessDataSourcePurge|TestDataSourceService|TestDataSourcePurgeQueueTopology|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v` | 0 | 85 | 85 | 0 | 0 |
 | ② | `go test -count=1 ./internal/application/repository/ -run 'TestDataSourceRepository|TestSyncLogRepository|TestSyncLogLifecycle' -v` | 0 | 10 | 10 | 0 | 0 |
 | ③ | `go test -count=1 ./internal/handler/ -run 'TestDataSource' -v` | 0 | 20（另 9 子测试，total RUN=29） | 20 | 0 | 0 |
-| ④ | `go test -count=1 ./internal/modules/datasource/...` | 0 | —（模块既有面基线） | 全 ok | 0 | — |
+| ④ | `go test -count=1 ./internal/datasource/connector/moauth/...` | 0 | —（模块既有面基线） | 全 ok | 0 | — |
 
 完整日志留档（本会话产物）：`/tmp/ds-baseline-service.log`、`/tmp/ds-baseline-repo.log`、`/tmp/ds-baseline-handler.log`；用例清单 `/tmp/ds-baseline-{service,repo,handler}-cases.txt` ×3（115 行）。
 
@@ -253,11 +253,11 @@ T1 基线 service 侧 85 顶层用例 → 迁移后 **模块包 73 + 宿主留�
 
 | 命令（原文） | 退出码 | 关键输出 |
 |---|---|---|
-| `go test -count=1 ./internal/modules/datasource/service/` | 0 | `ok ... 2.955s`；`-v` 顶层 RUN（不含 `/`）= **73**，`--- PASS` = 73 |
+| `go test -count=1 ./internal/datasource/connector/moauth/service/` | 0 | `ok ... 2.955s`；`-v` 顶层 RUN（不含 `/`）= **73**，`--- PASS` = 73 |
 | `go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge\|TestDeleteDataSourceWithoutPurge\|TestPurgeWorker\|TestProcessDataSourcePurge\|TestDataSourcePurgeQueueTopology\|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v`（计划 T3 Step 5 原命令） | 0 | 9/9 PASS（purge 留守 9 用例经 compat 装配运行，seam 接线等价性锚点） |
 | `go test -count=1 ./internal/application/service/ -run 'TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete\|TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails\|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources' -v` | 0 | 3/3 PASS（delete_sqlite 留守处置，见报告偏差登记） |
 | `go build ./...` | 0 | 仅链接器重复库警告（cmd/desktop、cmd/server 既有） |
-| `go vet ./internal/modules/datasource/...` | 0 | 无输出 |
+| `go vet ./internal/datasource/connector/moauth/...` | 0 | 无输出 |
 | `go vet ./internal/application/service/` | 0 | 无输出（含 K 属主留守测试 + Ruling 3 垫片编译） |
 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)`（service 行级收口成对） |
 | `make check-backend-architecture 2>&1 \| grep -c forbidden-import` | 1（guard 退出码） | 计数 **恰 3**（§2.3 三对：knowledge/retrieval/app、appconnector、policy/access——B2-DS.5 登记后归零；计划 T3 Step 5 预期窗口，非节点失败） |
@@ -266,7 +266,7 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 `TestDataSourceTagCreationReceivesOnlyItsTaskKBGrant`、`TestSharedFAQWriteLoadsOwnerTenantInfoWithoutReplacingCaller`、`TestReplaceKnowledgeFile*` ×14 全 PASS（垫片文件 `internal/application/service/datasource_shim_test.go`，Ruling ID 头注，remove_at=ib2）。
 宿主 service 全包 `go test -count=1 -timeout=20m ./internal/application/service/` → `ok 606.545s`（0 FAIL；默认 10m 超时不足以跑完 K 生态全量，属包固有耗时）。
 
-24 调用点改写对账（模块侧 `internal/modules/datasource/service/datasource_service.go` grep 实测）：`app.RecordKBActivity(` = 17、`app.WithKBActivityTask(` = 2、`app.KBActivityTrigger(` = 1、`app.WithKBActivitySuppressed(` = 3、`s.knowledgeCleanup(` = 1（seam 调用点）、旧符号残留（`recordKBActivity(\|withKBActivityTask(\|kbActivityTrigger(\|withKBActivitySuppressed(\|withKnowledgeCleanup(`）= **0**。
+24 调用点改写对账（模块侧 `internal/datasource/connector/moauth/service/datasource_service.go` grep 实测）：`app.RecordKBActivity(` = 17、`app.WithKBActivityTask(` = 2、`app.KBActivityTrigger(` = 1、`app.WithKBActivitySuppressed(` = 3、`s.knowledgeCleanup(` = 1（seam 调用点）、旧符号残留（`recordKBActivity(\|withKBActivityTask(\|kbActivityTrigger(\|withKBActivitySuppressed(\|withKnowledgeCleanup(`）= **0**。
 
 ### B2-DS.7 差分复跑比对（2026-09-27，HEAD=`52ae889a2` 树实跑；conventions §6 四要素=用例清单/双跑输出/比对结论/命令与退出码）
 
@@ -274,7 +274,7 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 
 | # | 面 | 命令（原文） | 退出码 | 顶层 RUN | 结果 |
 |---|---|---|---|---|---|
-| ① | 新实现（模块包：repository 10 + service 73 + handler 20 + 既有模块面） | `go test -count=1 ./internal/modules/datasource/... -v 2>&1 \| tee /tmp/ds-new.txt` | 0 | 483（其中迁移面 103 = repo 10 + service 73 + handler 20，其余为既有模块面/connector 等基线外用例） | 15 包全 `ok`，`--- FAIL`/`--- SKIP` = 0 |
+| ① | 新实现（模块包：repository 10 + service 73 + handler 20 + 既有模块面） | `go test -count=1 ./internal/datasource/connector/moauth/... -v 2>&1 \| tee /tmp/ds-new.txt` | 0 | 483（其中迁移面 103 = repo 10 + service 73 + handler 20，其余为既有模块面/connector 等基线外用例） | 15 包全 `ok`，`--- FAIL`/`--- SKIP` = 0 |
 | ② | 旧锚点（留守 purge_test，经 compat 装配运行同一实现，兼作 compat/seam 接线等价证据） | `go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge\|TestDeleteDataSourceWithoutPurge\|TestPurgeWorker\|TestProcessDataSourcePurge\|TestDataSourcePurgeQueueTopology\|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v 2>&1 \| tee /tmp/ds-old-anchor.txt` | 0 | 9 | 9/9 PASS，0 FAIL/SKIP |
 | ③ | delete_sqlite 留守补跑（**偏差面**：计划 T7 注释预期「service 76」迁移，B2-DS.3 实际 73+3 分裂——3 用例按 B2-DS.3 报告偏差登记留守宿主，命令模式沿 evidence §差分 B2-DS.3 节第 3 行） | `go test -count=1 ./internal/application/service/ -run 'TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete\|TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails\|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources' -v 2>&1 \| tee /tmp/ds-old-sqlite.txt` | 0 | 3 | 3/3 PASS |
 
@@ -324,7 +324,7 @@ diff /tmp/ds-baseline-115.txt /tmp/ds-now-115.txt                 # exit 0（ide
 | `go build ./...` | 0 | 仅既有链接器重复库警告（cmd/desktop、cmd/server） |
 | `gofmt -l tools/architectureguard/check.go` | 0 | 无输出（格式合规） |
 
-- **passbguard 前后对照（非本节点 gate，诚实登记）**：诊断行数 259→248。①**−12 治愈**：基线 12 条 `contract-consumer-module-import` 全部指向 `internal/modules/datasource/service/datasource_service.go`（6 契约 consumer × knowledge/retrieval/app + policy/access 两导入，stash 复跑实证 /tmp/passbguard-baseline-ccmi.txt），本登记使 `excepted[from→to]` 命中而全部消失；②**+1 新增**：`exception-task-module: guard PassBTask "B2-DS.5" has no module mapping`（3 行同 check+path+message 去重为 1；`PassBTaskModule` 映射（tools/passbguard/check.go:83-93）仅含 B0 建制的 9 个模块级 id，无 B2-DS.5/B-datasource——计划 T5 Step 1 原文指定 `PassBTask: "B2-DS.5"`，本节点无权改 passbguard 补映射；移交 IB2：barrier 在 PassBTaskModule 增 `"B2-DS.5": "datasource"` 行或裁定改用模块级 id，归入 Brief (c) 例外收口编排）。check-passb-readiness 本就因 K 谱系继承债务 exit 1（计划 §12 实测在案），本任务净减 11 条诊断。
+- **passbguard 前后对照（非本节点 gate，诚实登记）**：诊断行数 259→248。①**−12 治愈**：基线 12 条 `contract-consumer-module-import` 全部指向 `internal/datasource/connector/moauth/service/datasource_service.go`（6 契约 consumer × knowledge/retrieval/app + policy/access 两导入，stash 复跑实证 /tmp/passbguard-baseline-ccmi.txt），本登记使 `excepted[from→to]` 命中而全部消失；②**+1 新增**：`exception-task-module: guard PassBTask "B2-DS.5" has no module mapping`（3 行同 check+path+message 去重为 1；`PassBTaskModule` 映射（tools/passbguard/check.go:83-93）仅含 B0 建制的 9 个模块级 id，无 B2-DS.5/B-datasource——计划 T5 Step 1 原文指定 `PassBTask: "B2-DS.5"`，本节点无权改 passbguard 补映射；移交 IB2：barrier 在 PassBTaskModule 增 `"B2-DS.5": "datasource"` 行或裁定改用模块级 id，归入 Brief (c) 例外收口编排）。check-passb-readiness 本就因 K 谱系继承债务 exit 1（计划 §12 实测在案），本任务净减 11 条诊断。
 
 ### 三方一致复核（B2-DS.7，2026-09-27，HEAD=`52ae889a2` 树实跑；conventions §8 / F5 口径）
 

@@ -15,7 +15,7 @@ const (
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 aliases:
@@ -28,7 +28,7 @@ aliases:
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: frozen
     consumers: []
@@ -107,7 +107,7 @@ func TestLoadGovernanceAcceptsValidFixture(t *testing.T) {
 	// 字段完整落位。
 	require.Equal(t, "conversation", g.Legacy[0].Module)
 	require.Equal(t, PlanID("35-conversation-program"), g.Legacy[0].Plan)
-	require.Equal(t, "internal/modules/conversation/service", g.Legacy[0].Destination)
+	require.Equal(t, "internal/conversation/service", g.Legacy[0].Destination)
 	require.Equal(t, "ib3", g.Legacy[0].DeleteBarrier)
 
 	// contracts 按排序：conversation-route-set < workbench-task-port。
@@ -151,7 +151,7 @@ func TestLoadGovernanceNormalizesLeadingDotSlash(t *testing.T) {
   - path: ./internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -176,7 +176,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: /internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -189,7 +189,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/../../alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -202,7 +202,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal\application\service\alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -215,7 +215,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: ""
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -228,7 +228,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: ""
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -241,7 +241,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversations
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -254,7 +254,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: conversation
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -267,7 +267,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: someday
 `,
@@ -313,7 +313,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: magic-port
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: frozen
 `,
@@ -326,7 +326,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: nope
     kind: route-set
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: frozen
 `,
@@ -352,7 +352,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: ""
 `,
@@ -365,7 +365,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: frozen
   - id: conversation-route-set
@@ -608,7 +608,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ""
     delete_barrier: ib3
   - path: internal/application/service/alpha_chat.go

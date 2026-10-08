@@ -69,6 +69,6 @@
 
 ## (g) 例外台账（如实口径，替代计划 §9 撰写时点文本）
 
-- 本节点经 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（协调者授权，独立 commit 8978183b3）**新增 8 条**：`exc-0106..0113`（exception-ledger.yaml 105→113，`remove_at: ib2`，精确 file→package 豁免 `internal/modules/agentcatalog/**` → `internal/modules/execution/sandbox`；tools/architectureguard/check.go importExceptions `PassBTask: B-agentcatalog` 同步）。**IB2 随对端端口化删除该 8 条并同步 pass-a-acceptance.md 计数**（conventions §8 三方一致）。
+- 本节点经 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（协调者授权，独立 commit 8978183b3）**新增 8 条**：`exc-0106..0113`（exception-ledger.yaml 105→113，`remove_at: ib2`，精确 file→package 豁免 `internal/modules/agentcatalog/**` → `internal/execution/sandbox`；tools/architectureguard/check.go importExceptions `PassBTask: B-agentcatalog` 同步）。**IB2 随对端端口化删除该 8 条并同步 pass-a-acceptance.md 计数**（conventions §8 三方一致）。
 - 除上述裁定新增外：零删除、零通配、无其他 exc 提案（framework:38）。
 - 无新增长期别名：全部残差接缝（含 `RegisterReservedEnvNames`/`RegisterBundleParsers` 导出接缝）随 (a) 删除；`SkillHandler` 别名等由 IB2 装配切换取代（IB2 后本面不得仍有宿主包内 Skill 符号转发，计划 §9 禁止项）。

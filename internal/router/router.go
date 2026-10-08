@@ -21,7 +21,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/mcpserver"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/modules/career"
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 

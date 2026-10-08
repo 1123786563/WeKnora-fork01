@@ -14,7 +14,7 @@ import (
 	"time"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory/domain"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )

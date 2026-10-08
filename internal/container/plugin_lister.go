@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

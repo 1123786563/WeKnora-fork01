@@ -264,7 +264,7 @@ func (s *oauthServer) sweepExpiredLocked(now time.Time) {
 // validateClientName 校验动态注册的请求方显示名（OCR 二轮 F6）：拒绝
 // Cc 控制字符、Zl/Zp 分隔符与 Cf 格式字符（RLO/isolate/BOM/软连字符等
 // 可视觉重排或隐藏文本），豁免 U+200C/U+200D（复合 emoji 序列的必要
-// 组成，与 internal/modules/plugins 的 validateDescription 同款双重标准）；
+// 组成，与 internal/plugins 的 validateDescription 同款双重标准）；
 // Co 私用区有普通可见字形、按 validateDescription 先例保留合法。
 func validateClientName(name string) error {
 	for _, r := range name {

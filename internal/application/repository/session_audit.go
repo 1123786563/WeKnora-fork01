@@ -16,7 +16,7 @@ import (
 	stderrors "errors"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory/domain"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"

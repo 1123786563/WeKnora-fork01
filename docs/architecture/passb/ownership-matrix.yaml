@@ -158,25 +158,25 @@ legacy_files:
   - path: internal/application/repository/execution_cleanup.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_dispatch.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_observation.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_target.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/expert_install.go
@@ -188,7 +188,7 @@ legacy_files:
   - path: internal/application/repository/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/insights_passb_compat.go
@@ -260,13 +260,13 @@ legacy_files:
   - path: internal/application/repository/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/mobile_auth_exchange.go
@@ -386,7 +386,7 @@ legacy_files:
   - path: internal/application/repository/query_history_export.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/resource.go
@@ -404,7 +404,7 @@ legacy_files:
   - path: internal/application/repository/session.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/storagebackend.go
@@ -422,7 +422,7 @@ legacy_files:
   - path: internal/application/repository/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/tenant.go
@@ -458,7 +458,7 @@ legacy_files:
   - path: internal/application/repository/tenant_sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_skill.go
@@ -614,13 +614,13 @@ legacy_files:
   - path: internal/application/service/artifact_collector.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/artifact_collector_store.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/audit_log.go
@@ -788,13 +788,13 @@ legacy_files:
   - path: internal/application/service/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/fork_bootstrapper.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/insights_passb_compat.go
@@ -974,19 +974,19 @@ legacy_files:
   - path: internal/application/service/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message_artifact_versions.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/model.go
@@ -1046,19 +1046,19 @@ legacy_files:
   - path: internal/application/service/pinned_session_sandbox.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/query_history_export.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/query_history_policy.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/resource.go
@@ -1070,19 +1070,19 @@ legacy_files:
   - path: internal/application/service/sandbox_terminal_auth.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_service.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_ticket.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/semantic_model.go
@@ -1100,49 +1100,49 @@ legacy_files:
   - path: internal/application/service/session.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_agent_qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_attachment_staging.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_fork.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_knowledge_qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_qa_helpers.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_sandbox_pin.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_share.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/skill_market_service.go
@@ -1190,7 +1190,7 @@ legacy_files:
   - path: internal/application/service/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/tenant.go
@@ -1226,13 +1226,13 @@ legacy_files:
   - path: internal/application/service/tenant_sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_sandbox_resolve.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_skill_admin.go
@@ -1352,13 +1352,13 @@ legacy_files:
   - path: internal/application/service/user_env.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_env_resolver.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_resource_favorite.go
@@ -1406,7 +1406,7 @@ legacy_files:
   - path: internal/application/service/workspace_checkpointer.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/agent_marketplace.go
@@ -1490,13 +1490,13 @@ legacy_files:
   - path: internal/handler/execution_registration.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/execution_target.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/expert.go
@@ -1508,7 +1508,7 @@ legacy_files:
   - path: internal/handler/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/im.go
@@ -1580,19 +1580,19 @@ legacy_files:
   - path: internal/handler/me_env_var.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/mobile_device.go
@@ -1646,19 +1646,19 @@ legacy_files:
   - path: internal/handler/sandbox_check.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_skill.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/agent_run.go
@@ -1688,13 +1688,13 @@ legacy_files:
   - path: internal/handler/session/attachment_processor.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/browserskill.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/craft.go
@@ -1730,25 +1730,25 @@ legacy_files:
   - path: internal/handler/session/fork.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/handler.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/helpers.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/image_upload.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/native_archive.go
@@ -1760,73 +1760,73 @@ legacy_files:
   - path: internal/handler/session/qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/query_history_admin.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/quick_answer_timeline.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/resource_urls.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/sandbox_terminal_bridge.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/sandbox_terminal_ws.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/share.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/steer.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/stream.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/title.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/types.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/workbench_artifacts.go

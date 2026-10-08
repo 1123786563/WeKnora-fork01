@@ -14,7 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	domaincommercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/execution"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"

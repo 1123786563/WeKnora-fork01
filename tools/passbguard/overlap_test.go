@@ -108,7 +108,7 @@ func TestRulingOwnersDetectMissingWrongAndPlatformClaims(t *testing.T) {
 		bad.Legacy = append(bad.Legacy, LegacyOwnership{
 			Path:   "internal/handler/list_pagination.go",
 			Module: "conversation", Plan: "35-conversation-program",
-			Destination: "internal/modules/conversation/handler", DeleteBarrier: "ib3",
+			Destination: "internal/conversation/handler", DeleteBarrier: "ib3",
 		})
 		diags := checkRulings(bad, rulings, platform)
 		diag, ok := findDiag(diags, "ruling-platform-claimed")

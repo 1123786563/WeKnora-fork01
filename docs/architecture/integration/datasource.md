@@ -8,29 +8,29 @@ IA1 的交接说明：模块搬到了哪里、剩下哪些旧路径引用、IA1 
 
 | 旧导入路径 | 新导入路径 |
 |---|---|
-| `internal/datasource` | `internal/modules/datasource` |
-| `internal/datasource/connector/confluence` | `internal/modules/datasource/connector/confluence` |
-| `internal/datasource/connector/dingtalk` | `internal/modules/datasource/connector/dingtalk` |
-| `internal/datasource/connector/feishu/core` | `internal/modules/datasource/connector/feishu/core` |
-| `internal/datasource/connector/feishu/drive` | `internal/modules/datasource/connector/feishu/drive` |
-| `internal/datasource/connector/feishu/wiki` | `internal/modules/datasource/connector/feishu/wiki` |
-| `internal/datasource/connector/gitlab` | `internal/modules/datasource/connector/gitlab` |
-| `internal/datasource/connector/ima` | `internal/modules/datasource/connector/ima` |
-| `internal/datasource/connector/moauth` | `internal/modules/datasource/connector/moauth` |
-| `internal/datasource/connector/notion` | `internal/modules/datasource/connector/notion` |
-| `internal/datasource/connector/rss` | `internal/modules/datasource/connector/rss` |
-| `internal/datasource/connector/yuque` | `internal/modules/datasource/connector/yuque` |
+| `internal/datasource` | `internal/datasource/connector/moauth` |
+| `internal/datasource/connector/confluence` | `internal/datasource/connector/moauth/connector/confluence` |
+| `internal/datasource/connector/dingtalk` | `internal/datasource/connector/moauth/connector/dingtalk` |
+| `internal/datasource/connector/feishu/core` | `internal/datasource/connector/moauth/connector/feishu/core` |
+| `internal/datasource/connector/feishu/drive` | `internal/datasource/connector/moauth/connector/feishu/drive` |
+| `internal/datasource/connector/feishu/wiki` | `internal/datasource/connector/moauth/connector/feishu/wiki` |
+| `internal/datasource/connector/gitlab` | `internal/datasource/connector/moauth/connector/gitlab` |
+| `internal/datasource/connector/ima` | `internal/datasource/connector/moauth/connector/ima` |
+| `internal/datasource/connector/moauth` | `internal/datasource/connector/moauth` |
+| `internal/datasource/connector/notion` | `internal/datasource/connector/moauth/connector/notion` |
+| `internal/datasource/connector/rss` | `internal/datasource/connector/moauth/connector/rss` |
+| `internal/datasource/connector/yuque` | `internal/datasource/connector/moauth/connector/yuque` |
 
 包名（`package` 子句）全部不变；目录树内文件 100% 相似度纯改名（evidence 见
 `docs/architecture/evidence/datasource.md`）。原 `internal/datasource/README.md` 落位为
-`internal/modules/datasource/README.pkg.md`（模块骨架 `README.md` 已占用根名）；
+`internal/datasource/connector/moauth/README.pkg.md`（模块骨架 `README.md` 已占用根名）；
 `CONNECTOR_IMPLEMENTATION_GUIDE.md` 随树原样搬移。
 
 ## 2. 模块能力速览（IA1 装配需要的全部触点）
 
 ### 2.1 连接器注册表（connector registry）
 
-- `internal/modules/datasource`：`ConnectorRegistry` / `NewConnectorRegistry()`；
+- `internal/datasource/connector/moauth`：`ConnectorRegistry` / `NewConnectorRegistry()`；
   `registry.Register(connector)` 按 connector 名去重注册。
 - 连接器构造（`initConnectorRegistry`，internal/container/container.go:2310）：
   `wiki.NewConnector(core.RegionFeishu|core.RegionLark)`、
@@ -42,7 +42,7 @@ IA1 的交接说明：模块搬到了哪里、剩下哪些旧路径引用、IA1 
 
 ### 2.2 调度器（scheduler）
 
-- `internal/modules/datasource/scheduler.go`：`Scheduler` / `NewScheduler(...)` /
+- `internal/datasource/connector/moauth/scheduler.go`：`Scheduler` / `NewScheduler(...)` /
   `Start(ctx)` / `Stop()` / `AddOrUpdate(ds)` / `Remove(id)` / `EntryCount()` /
   `SetSyncGate(SyncGateFunc)`。
 - cron 触发 → `triggerSync` → 入队 `datasource:sync`：`asynq.Queue(types.QueueSync)`、
@@ -68,7 +68,7 @@ MaxRetry(5), Timeout(2h)）、删源级联 purge（QueueMaintenance, MaxRetry(3)
   inspector，service 内部退化为 sync-log 扫描。由 `injectDataSourceTaskInspector`
   （container.go:2366）在 `startDataSourceScheduler` 之前 Invoke（container.go:636）。
 - 凭据刷新：`datasource.ErrCredentialRefreshRejected`（原 internal/datasource/errors.go，
-  现 internal/modules/datasource/errors.go）；refresher 回调返回
+  现 internal/datasource/connector/moauth/errors.go）；refresher 回调返回
   `(updated, nextRefreshAt, err)`（application/service/datasource_service.go:627 附近）。
 - 重试语义=外部契约：`MaxRetry`/`Timeout`/TaskID 去重/cursor 续传（feishu drive
   `cursor_test.go` 等）一律不得在 Pass A/IA1 改动。
@@ -143,7 +143,7 @@ platform 回调基址）。模块无新增 config.go 键。
 
 ### IA1 切换步骤（机械操作）
 
-1. container.go:67-77 的 11 条 import 改为 `github.com/Tencent/WeKnora/internal/modules/datasource`
+1. container.go:67-77 的 11 条 import 改为 `github.com/Tencent/WeKnora/internal/datasource/connector/moauth`
    前缀，import 别名（`confluenceConnector` 等）保持不变（新包名与旧别名兼容，
    `core`/`drive`/`wiki` 无别名直接可用）。
 2. 标识符（§3 表中 632/2310/2311/2314-2348/2373 行）无需改动：别名包已提供同名
@@ -152,14 +152,14 @@ platform 回调基址）。模块无新增 config.go 键。
    `internal/datasource`（仅 `alias.go`）与 `internal/datasource/connector/{confluence,
    dingtalk,feishu/core,feishu/drive,feishu/wiki,gitlab,ima,moauth,notion,rss,yuque}`
    （各仅 `alias.go`；moauth 为最小包文件，无转发面）。
-4. 每删一步跑：`go build ./...` + `go test ./internal/modules/datasource/... -count=1`
+4. 每删一步跑：`go build ./...` + `go test ./internal/datasource/connector/moauth/... -count=1`
    + `go run ./tools/modulemove verify --all`（alias 1:1 校验在别名全删后才不再要求
    datasource 清单的旧路径）。
 
 ## 4. 验收命令（后搬迁路径）
 
-- `go test ./internal/modules/datasource/... -count=1`（manifest test_commands）
+- `go test ./internal/datasource/connector/moauth/... -count=1`（manifest test_commands）
 - 直接消费方：`go test ./internal/application/service/ ./internal/handler/ -count=1`
   （Pass A 用 `-run` 限定了 109 个 datasource 消费测试，见 evidence）
 - `go run ./tools/modulemove verify --module datasource`
-- `go build ./...`、`go vet ./internal/modules/datasource/...`（touched areas）
+- `go build ./...`、`go vet ./internal/datasource/connector/moauth/...`（touched areas）

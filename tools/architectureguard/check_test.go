@@ -234,7 +234,7 @@ func TestRunImportExceptionCoversAppconnectorOcRecoveryMixedImports(t *testing.T
 import (
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/execution"
+	_ "github.com/Tencent/WeKnora/internal/execution"
 )
 `,
 	})
@@ -247,7 +247,7 @@ import (
 		t.Fatalf("命中豁免的 oc_recovery.go 两条 commercial 导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`oc_recovery.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/modules/execution"`) {
+		`oc_recovery.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"`) {
 		t.Fatalf("未列入豁免的 oc_recovery.go→execution 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
@@ -259,7 +259,7 @@ func TestRunImportExceptionCoversCodedeliveryAndWorkbench(t *testing.T) {
 	// （codedelivery/service.go→agentruntime/agent 不在清单）仍须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/codedelivery/service.go": `package codedelivery
+		"internal/codedelivery/service.go": `package codedelivery
 
 import (
 	_ "github.com/Tencent/WeKnora/internal/modules/appconnector"
@@ -333,7 +333,7 @@ func TestRunImportExceptionCoversBatchA4Workbench(t *testing.T) {
 import (
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
 	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	_ "github.com/Tencent/WeKnora/internal/modules/execution"
+	_ "github.com/Tencent/WeKnora/internal/execution"
 )
 `,
 	})

@@ -23,7 +23,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/plugins"
 	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"

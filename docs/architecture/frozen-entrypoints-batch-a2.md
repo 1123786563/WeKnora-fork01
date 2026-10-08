@@ -9,7 +9,7 @@
 
 | 模块 | 包路径（省略前缀 `github.com/Tencent/WeKnora/`） |
 |---|---|
-| execution | `internal/modules/execution`、`internal/modules/execution/browserskill`、`internal/modules/execution/sandbox` |
+| execution | `internal/execution`、`internal/execution/browserskill`、`internal/execution/sandbox` |
 | airesource | `internal/airesource`、`internal/airesource/mcp`、`internal/airesource/storageurl`、`internal/airesource/web_search`、`internal/airesource/models/asr`、`internal/airesource/models/chat`、`internal/airesource/models/embedding`、`internal/airesource/models/limiter`、`internal/airesource/models/provider`、`internal/airesource/models/rerank`、`internal/airesource/models/utils`、`internal/airesource/models/utils/ollama`、`internal/airesource/models/vlm` |
 | agentcatalog | `internal/modules/agentcatalog`（仅 `module.go` 零逻辑骨架 + `legacy/README.md`，无子包） |
 | policy | `internal/policy`、`internal/policy/access`、`internal/policy/embedpolicy`、`internal/policy/ipclass`、`internal/policy/ratelimit`、`internal/policy/storageallowlist` |
@@ -18,7 +18,7 @@
 
 ## 2. 跨模块实际消费的公共面（HEAD 验证）
 
-### execution 根包（`internal/modules/execution`）
+### execution 根包（`internal/execution`）
 
 | 符号 | 用途 |
 |---|---|
@@ -30,7 +30,7 @@
 | `CleanupFacts`、`CanPurge` | 执行清理判定（repository 层消费） |
 | `AllowModelSettlement`、`CountExecutionStopUnconfirmed` | 用量结算策略与部署策略计数 |
 
-### execution/sandbox（`internal/modules/execution/sandbox`）
+### execution/sandbox（`internal/execution/sandbox`）
 
 | 符号族（load-bearing 成员） | 用途 |
 |---|---|
@@ -46,7 +46,7 @@
 | `ShellExecOptions`、`ShellOutputSnapshot`、`ExecuteResult`、`ShellQuote`、`WithCommandOutput`、`WithSessionFileOperation`、`ResolveWorkspacePath`、`IdentityOf`、`SandboxIdentity`、`BoundSandboxID`、`ConfigSandboxClient`、`ListConfigSandboxes`、`ReleaseConfigSandboxes` | shell 执行与文件操作辅助 |
 | `ErrNotFound`、`ErrTimeout`、`ErrSandboxPaused`、`ErrSandboxConfigIncomplete`、`ErrTerminalUnsupported`、`ErrUnsupportedSandboxType` | 错误哨兵 |
 
-### execution/browserskill（`internal/modules/execution/browserskill`）
+### execution/browserskill（`internal/execution/browserskill`）
 
 | 符号 | 用途 |
 |---|---|
@@ -102,6 +102,6 @@
 | 7 | `internal/channels/im/service.go` | `modules/airesource/storageurl` | B-channels |
 | 8 | `internal/channels/im/service.go` | `modules/policy/ratelimit` | B-channels |
 | 9 | `internal/channels/im/yunzhijia/url.go` | `modules/policy/ipclass` | B-channels |
-| 10 | `internal/modules/execution/sandbox/url_guard.go` | `modules/policy/ipclass` | B-execution |
+| 10 | `internal/execution/sandbox/url_guard.go` | `modules/policy/ipclass` | B-execution |
 
 第 1–4 条为 IA1 batch-a1 登记（appconnector→commercial）；第 5–10 条为 batch-a2 搬迁显形的预存横向互引。全部为**临时豁免**：对应 Pass B 任务落地时逐条删除，worker 不应复用或扩大这些耦合。

@@ -25,12 +25,12 @@
   `share.go`、`steer.go`、`stream.go`、`temporary_document.go`、`title.go`、`types.go`
   （注：`query_history_admin.go` 归 queryhistory 简报）
 
-已就位：`internal/modules/conversation/chat_pipeline`（Pass A A10 整包搬迁，
+已就位：`internal/conversation/chat_pipeline`（Pass A A10 整包搬迁，
 含 EventManager 与 17 插件）。
 
 ## Goal（goal）
 
-把上述文件从横向 host 包拆出，收进 `internal/modules/conversation/`（建议子包：
+把上述文件从横向 host 包拆出，收进 `internal/conversation/`（建议子包：
 `repository`、`service`、`handler` 或按领域再分），使 conversation 模块自持
 Session/Message/Feedback/分享/建议/临时文档的完整纵向切片；横向 host 包只留
 platform 本体（`list_pagination.go`、`upload_limit.go` 等）与其他模块尚未拆完的 legacy 文件。
@@ -57,7 +57,7 @@ helper（`internal/handler/list_pagination.go`、`upload_limit.go`，含 isReque
    - 附件 staging TTL/等待超时 env 键
      （`WEKNORA_CHAT_ATTACHMENT_TTL_HOURS` / `WEKNORA_CHAT_ATTACHMENT_WAIT_TIMEOUT_SEC`）语义；
    - Feedback 提交与 RBAC 分支（`config.Tenant.IsRBACEnforced`）。
-3. **收敛模块门面**：按 `internal/modules/conversation/module.go` 声明的装配契约填充
+3. **收敛模块门面**：按 `internal/conversation/module.go` 声明的装配契约填充
    `NewModule/RegisterRoutes/RegisterWorkers/Start/Stop`；路由仍挂
    routes_chat.go 的 5 个会话面入口（manifest integration_points.routes），
    临时文档 worker 与清理 hook 挂点不变（见 integration/conversation.md §5/§6）。

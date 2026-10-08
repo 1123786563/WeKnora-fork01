@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 	sdkmcp "github.com/mark3labs/mcp-go/mcp"
@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 下述 fixture 与 internal/modules/plugins/manifest_test.go 中的同名 fixture
+// 下述 fixture 与 internal/plugins/manifest_test.go 中的同名 fixture
 // 内容一致（跨包不可复用测试私有符号）；改动协议 fixture 时两处需同步。
 
 // pluginDeclaredNoArgSchema is the input schema the fixture manifest declares

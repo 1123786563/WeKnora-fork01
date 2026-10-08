@@ -96,8 +96,8 @@ DAG pair 2（agentcatalog→conversation，10 调用点 7 符号；定义 `inter
 
 ### ②.5 前置门汇总（缺失即 blocked 上报，禁止自行实现上游门面）
 
-1. B1-CM 导出 `internal/modules/commercial/repository/model_usage.go`——**当前 `EXPORT-MISSING`**（evidence §1.5 实测；旁证 `internal/modules/execution/service` 不存在）。阻塞台账 #5。
-2. B1-EX `internal/modules/execution/service`（`ResolveTenantSandboxForConfig`/handler 面导出）。阻塞台账 #7 及 25b 面调用点。
+1. B1-CM 导出 `internal/modules/commercial/repository/model_usage.go`——**当前 `EXPORT-MISSING`**（evidence §1.5 实测；旁证 `internal/execution/service` 不存在）。阻塞台账 #5。
+2. B1-EX `internal/execution/service`（`ResolveTenantSandboxForConfig`/handler 面导出）。阻塞台账 #7 及 25b 面调用点。
 
 ### ②.6 已裁定 IB2 期执行的既有 low findings（OCR R1，登记防漏）
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/execution"
+	"github.com/Tencent/WeKnora/internal/execution"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 )
 

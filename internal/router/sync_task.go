@@ -13,7 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware/asynqdl"
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/knowledge"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

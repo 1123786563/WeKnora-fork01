@@ -12,7 +12,7 @@
 | 1 | ib2 done | `python3 -c "import json;d=json.load(open('docs/plans/passb/execution-dag.json'));print([(n['id'],n['status'],n.get('head_sha','')) for n in d['nodes'] if n['id'] in ('ib2','b3-r-tools')])"`（在 `.worktrees/passb-int`） | `[('ib2','done','a2fbcf55eb7ba0dc73f9deecba00c5f2f45e634f'), ('b3-r-tools','in_progress',None)]` | 0 |
 | 2 | R0 复核（matrix plan=32 行数 = 0） | python3 逐行解析 `docs/architecture/passb/ownership-matrix.yaml` 统计 plan 含 `32-agentruntime-tools` 的行 | `plan=32 rows: 0 []` —— R2 无遗留文件迁入，与计划 §0.2 条 2 推论一致 | 0 |
 | 3 | 基线对齐 | `git merge-base --is-ancestor a2fbcf55e HEAD && echo PRECOND3_OK`（worktree） | `PRECOND3_OK`（ib2 收口提交 a2fbcf55e 是 HEAD 祖先；worktree HEAD=e2f7e866 = 派发 BASE） | 0 |
-| 4a | 门面现实核验（execution/airesource 骨架） | `head -30 internal/modules/execution/module.go` / `head -30 internal/airesource/module.go` | 两文件均为零逻辑注释骨架 + `package execution` / `package airesource` 声明，无任何 re-export | 0 |
+| 4a | 门面现实核验（execution/airesource 骨架） | `head -30 internal/execution/module.go` / `head -30 internal/airesource/module.go` | 两文件均为零逻辑注释骨架 + `package execution` / `package airesource` 声明，无任何 re-export | 0 |
 | 4b | 门面现实核验（knowledge 无 searchutil re-export） | `grep -c "searchutil" internal/knowledge/module.go` | 0（无 searchutil 符号 re-export） | 0（grep 无匹配按 `|| echo` 处理，实测输出 `no searchutil re-export`） |
 
 ### 1.2 T0 基线复跑（§0.2 条 5 四命令）

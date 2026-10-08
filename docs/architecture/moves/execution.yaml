@@ -3,11 +3,11 @@ module: execution
 description: Sandbox、Execution Target/Registration、Workspace Lease、Terminal、Browser Skill、环境变量、资源传输（§5.8/§5.18）
 move_packages:
   - from: internal/browserskill
-    to: internal/modules/execution/browserskill
+    to: internal/execution/browserskill
   - from: internal/execution
-    to: internal/modules/execution
+    to: internal/execution
   - from: internal/sandbox
-    to: internal/modules/execution/sandbox
+    to: internal/execution/sandbox
 alias_obligations:
   - old_import_path: internal/browserskill
     passb_task: B-execution
@@ -106,9 +106,9 @@ owned_files:
   - internal/execution
   - internal/sandbox
   move_targets:
-    - internal/modules/execution/browserskill
-    - internal/modules/execution
-    - internal/modules/execution/sandbox
+    - internal/execution/browserskill
+    - internal/execution
+    - internal/execution/sandbox
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/browserskill
     - internal/execution
@@ -124,11 +124,11 @@ owned_files:
   - internal/handler/session
   - internal/router
   module_files:
-    - internal/modules/execution/README.md
-    - internal/modules/execution/module.go
-    - internal/modules/execution/legacy/README.md
+    - internal/execution/README.md
+    - internal/execution/module.go
+    - internal/execution/legacy/README.md
 test_commands:
-  - go test ./internal/modules/execution/... -count=1
+  - go test ./internal/execution/... -count=1
 integration_points:
   routes:
   - RegisterMyEnvVarRoutes — internal/router/routes_auth_tenant.go:191

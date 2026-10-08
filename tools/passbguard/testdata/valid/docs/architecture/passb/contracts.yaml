@@ -13,7 +13,7 @@ contracts:
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/modules/conversation/routes.go
+    symbol: internal/conversation/routes.go
     signature: ""
     stability: frozen
     consumers: []
