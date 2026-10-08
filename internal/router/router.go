@@ -14,9 +14,12 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	agentcataloghandler "github.com/Tencent/WeKnora/internal/agentcatalog/handler"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
+	"github.com/Tencent/WeKnora/internal/insights/analytics"
+	kbhandler "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcpserver"
 	"github.com/Tencent/WeKnora/internal/middleware"
@@ -34,7 +37,7 @@ type RouterParams struct {
 
 	Config                     *config.Config
 	CraftFeatureRoutes         *session.CraftFeatureRoutes
-	SemanticInternalHandler    *handler.SemanticInternalHandler `optional:"true"`
+	SemanticInternalHandler    *kbhandler.SemanticInternalHandler `optional:"true"`
 	FileService                interfaces.FileService
 	UserService                interfaces.UserService
 	KBService                  interfaces.KnowledgeBaseService
@@ -47,7 +50,7 @@ type RouterParams struct {
 	KBShareService             interfaces.KBShareService
 	AgentShareService          interfaces.AgentShareService
 	KBHandler                  *handler.KnowledgeBaseHandler
-	SemanticModelPolicyHandler *handler.SemanticModelPolicyHandler
+	SemanticModelPolicyHandler *kbhandler.SemanticModelPolicyHandler
 	KnowledgeHandler           *handler.KnowledgeHandler
 	CareerHandler              *career.Handler `optional:"true"`
 	TenantHandler              *handler.TenantHandler
@@ -83,7 +86,7 @@ type RouterParams struct {
 	MobileDeviceHandler            *handler.MobileDeviceHandler            `optional:"true"`
 	MessageHandler                 *handler.MessageHandler
 	FeedbackHandler                *handler.FeedbackHandler
-	AnalyticsHandler               *handler.AnalyticsHandler
+	AnalyticsHandler               *analytics.AnalyticsHandler
 	UsageHandler                   *handler.UsageHandler
 	MessageSuggestionHandler       *handler.MessageSuggestionHandler
 	ModelHandler                   *handler.ModelHandler
@@ -117,7 +120,7 @@ type RouterParams struct {
 	PublicMarketplaceHandler       *handler.PublicMarketplaceHandler
 	PersonaHandler                 *handler.PersonaHandler
 	ExpertHandler                  *handler.ExpertHandler
-	SubagentHandler                *handler.SubagentHandler
+	SubagentHandler                *agentcataloghandler.SubagentHandler
 	UserFavoriteHandler            *handler.UserResourceFavoriteHandler
 	SkillHandler                   *handler.SkillHandler
 	// SkillMarketHandler serves the M4 SkillHub market routes (search /

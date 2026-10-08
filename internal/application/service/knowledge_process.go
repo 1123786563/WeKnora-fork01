@@ -1072,11 +1072,11 @@ func summaryTaskWillRetry(ctx context.Context) bool {
 // Extracted so the threshold gate can be unit-tested without standing up the
 // full ProcessSummaryGeneration dependency graph.
 func checkSufficientSummaryContent(ctx context.Context, knowledgeID, content string) error {
-	realTextLen := realTextRuneCount(content)
-	if realTextLen < minTextContentRunes {
+	realTextLen := RealTextRuneCount(content)
+	if realTextLen < MinTextContentRunes {
 		logger.GetLogger(ctx).Warnf(
 			"summary content check: knowledge %s has insufficient text after stripping image markup (real_text_runes=%d, min=%d); skipping LLM call",
-			knowledgeID, realTextLen, minTextContentRunes,
+			knowledgeID, realTextLen, MinTextContentRunes,
 		)
 		return errInsufficientSummaryContent
 	}
@@ -1171,7 +1171,7 @@ func (s *knowledgeService) getSummary(ctx context.Context,
 		// when the body is essentially empty. Text-heavy documents stay on the
 		// caption-only path to avoid OCR noise (page headers/footers/watermarks
 		// from many figures diluting the main topic).
-		if realTextRuneCount(chunkContents) < imageDominatedTextThreshold {
+		if RealTextRuneCount(chunkContents) < imageDominatedTextThreshold {
 			// Caption + OCR (no URL/original wrappers — those are pure noise
 			// for the summary LLM and have been observed to trigger the
 			// "image reference with no extracted text" refusal heuristic).
@@ -1478,7 +1478,7 @@ func (s *knowledgeService) ProcessSummaryGeneration(ctx context.Context, t *asyn
 	summaryMetadataVersion := string(knowledge.CustomMetadata)
 	handleRetryableSummaryFailure := func(generationErr error) error {
 		summaryErr = generationErr
-		summaryOut["error"] = previewText(generationErr.Error(), 500)
+		summaryOut["error"] = PreviewText(generationErr.Error(), 500)
 		summaryOut["error_type"] = fmt.Sprintf("%T", generationErr)
 
 		if summaryTaskWillRetry(ctx) {
@@ -1541,7 +1541,7 @@ func (s *knowledgeService) ProcessSummaryGeneration(ctx context.Context, t *asyn
 		// without forcing the operator to grep worker logs. We also capture
 		// the error type to disambiguate timeouts from upstream HTTP errors
 		// (deadline exceeded vs unexpected EOF vs 5xx, etc.).
-		summaryOut["error"] = previewText(err.Error(), 500)
+		summaryOut["error"] = PreviewText(err.Error(), 500)
 		summaryOut["error_type"] = fmt.Sprintf("%T", err)
 		// For the insufficient-content case (scanned PDF without OCR, etc.)
 		// we deliberately do NOT fall back to the first chunk's raw content,
@@ -1592,7 +1592,7 @@ func (s *knowledgeService) ProcessSummaryGeneration(ctx context.Context, t *asyn
 	// viewer can show "this is what the LLM produced" at a glance,
 	// without hopping to the knowledge-detail page. Capped to keep
 	// span rows compact.
-	summaryOut["summary_preview"] = previewText(summary, 240)
+	summaryOut["summary_preview"] = PreviewText(summary, 240)
 	if err := s.saveSummaryState(ctx, knowledge); err != nil {
 		logger.Errorf(ctx, "Failed to update knowledge description: %v", err)
 		summaryErr = err
@@ -2015,7 +2015,7 @@ func (s *knowledgeService) processQuestionGenerationForKnowledge(ctx context.Con
 		llmCallSuccess++
 		generatedQuestionsTotal += len(questions)
 		if sampleQuestion == "" && len(questions) > 0 {
-			sampleQuestion = previewText(questions[0], 200)
+			sampleQuestion = PreviewText(questions[0], 200)
 		}
 
 		// Update chunk metadata with unique IDs for each question
@@ -2353,7 +2353,7 @@ func (s *knowledgeService) processQuestionGenerationForChunks(ctx context.Contex
 		chunksProcessed++
 		generatedQuestionsTotal += len(questions)
 		if sampleQuestion == "" {
-			sampleQuestion = previewText(questions[0], 200)
+			sampleQuestion = PreviewText(questions[0], 200)
 		}
 
 		generatedQuestions := make([]types.GeneratedQuestion, len(questions))

@@ -101,7 +101,7 @@ func NewChunkExtractServiceDI(
 		graphEngine,
 		NewSpanTraceSeamAdapter(spanTracker),
 		AttemptSupersededProvider(spanTracker),
-		previewText,
+		PreviewText,
 		finalizeSubtaskDetached,
 		isFinalAsynqAttempt,
 		ResolveProcessConfig,
@@ -178,7 +178,7 @@ func NewImageMultimodalServiceDI(
 		NewSpanTraceSeamAdapter(spanTracker),
 		repository.ErrKnowledgeNotFound,
 		repository.ErrKnowledgeBaseNotFound,
-		previewText,
+		PreviewText,
 		ResolveProcessConfig,
 		knowledgePostProcessTaskOptions,
 	)

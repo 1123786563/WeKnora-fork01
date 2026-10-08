@@ -392,7 +392,7 @@ func (s *KnowledgeBaseProfileService) persistFailure(
 		failed = &copied
 	}
 	failed.Status = types.KnowledgeBaseProfileStatusFailed
-	failed.Error = previewText(cause.Error(), 300)
+	failed.Error = PreviewText(cause.Error(), 300)
 	failed.Stats = agg.Stats
 	if err := s.kbRepo.UpdateKnowledgeBaseGeneratedProfile(ctx, kb.ID, failed); err != nil {
 		logger.Warnf(ctx, "[KnowledgeBaseProfile] Failed to record generation failure for %s: %v", kb.ID, err)

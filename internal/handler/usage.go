@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/insights/analytics"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -86,7 +87,7 @@ func usagePageParams(c *gin.Context) (limit, offset int) {
 // a Viewer cannot read another user's buckets.
 // GET /api/v1/usage/me?start_time&end_time
 func (h *UsageHandler) MyUsage(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := analytics.ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -104,14 +105,14 @@ func (h *UsageHandler) MyUsage(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("usage query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analytics.Rows(data)})
 }
 
 // AllUsers returns the tenant-wide per-day x per-model x user buckets, paged
 // with the clamped limit/offset above. Rows carry user_id.
 // GET /api/v1/admin/usage/by-user?page&page_size&start_time&end_time
 func (h *UsageHandler) AllUsers(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := analytics.ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -125,7 +126,7 @@ func (h *UsageHandler) AllUsers(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("usage query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analytics.Rows(data)})
 }
 
 // Export streams the window's per-user totals as CSV (one row per user; the
@@ -135,7 +136,7 @@ func (h *UsageHandler) AllUsers(c *gin.Context) {
 // same header+BOM pattern as the FAQ export (BOM for Excel UTF-8 handling).
 // GET /api/v1/admin/usage/export?start_time&end_time
 func (h *UsageHandler) Export(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := analytics.ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}

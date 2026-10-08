@@ -7,11 +7,12 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
+	kbhandler "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 )
 
 // RegisterSemanticInternalRoutes must run before user JWT/API-key middleware.
 // The handler exclusively authenticates the configured semantic service.
-func RegisterSemanticInternalRoutes(r *gin.Engine, cfg *config.Config, h *handler.SemanticInternalHandler) {
+func RegisterSemanticInternalRoutes(r *gin.Engine, cfg *config.Config, h *kbhandler.SemanticInternalHandler) {
 	if cfg != nil && cfg.Semantic != nil && cfg.Semantic.Enabled && h != nil {
 		r.POST("/api/v1/internal/semantic/scopes/resolve", h.Resolve)
 	}

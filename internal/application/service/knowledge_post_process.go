@@ -273,7 +273,7 @@ func (s *KnowledgePostProcessService) Handle(ctx context.Context, task *asynq.Ta
 		// A previous delivery may have persisted the Wiki op but failed to
 		// enqueue its KB-scoped trigger. Retry only the trigger: appending a
 		// second pending op would duplicate durable work and its finalizer.
-		if err := enqueueWikiIngestTrigger(ctx, s.taskEnqueuer, payload.TenantID, payload.KnowledgeBaseID); err != nil {
+		if err := EnqueueWikiIngestTrigger(ctx, s.taskEnqueuer, payload.TenantID, payload.KnowledgeBaseID); err != nil {
 			s.tracker().FailSpan(ctx, postSpan, "WIKI_TRIGGER_ENQUEUE_FAILED", err.Error(), err)
 			return fmt.Errorf("retry wiki ingest trigger: %w", err)
 		}
@@ -322,7 +322,7 @@ func (s *KnowledgePostProcessService) Handle(ctx context.Context, task *asynq.Ta
 			if !ok {
 				return errors.New("wiki post-process requires atomic finalizing handoff")
 			}
-			pendingOp, buildErr := newWikiIngestPendingOp(
+			pendingOp, buildErr := NewWikiIngestPendingOp(
 				withAttempt(ctx, attempt), payload.TenantID, payload.KnowledgeBaseID, payload.KnowledgeID,
 			)
 			if buildErr != nil {
@@ -441,7 +441,7 @@ func (s *KnowledgePostProcessService) Handle(ctx context.Context, task *asynq.Ta
 	//    task retries only the trigger without double-accounting.
 	var wikiEnqueueErr error
 	if willSpawnWiki {
-		wikiEnqueueErr = enqueueWikiIngestTrigger(
+		wikiEnqueueErr = EnqueueWikiIngestTrigger(
 			ctx, s.taskEnqueuer, payload.TenantID, payload.KnowledgeBaseID,
 		)
 		if wikiEnqueueErr != nil {
@@ -737,5 +737,5 @@ func selectGraphChunks(chunks []*types.Chunk) []*types.Chunk {
 // markdown images and <image> wrappers are removed, i.e. whether graph
 // extraction (or question generation) can find entities in it.
 func chunkHasExtractableText(content string) bool {
-	return extractRealText(docparser.StripMarkdownImages(content)) != ""
+	return ExtractRealText(docparser.StripMarkdownImages(content)) != ""
 }

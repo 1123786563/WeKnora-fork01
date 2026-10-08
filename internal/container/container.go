@@ -87,6 +87,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
+	"github.com/Tencent/WeKnora/internal/insights/analytics"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/mcpserver"
@@ -94,6 +95,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	acathandler "github.com/Tencent/WeKnora/internal/agentcatalog/handler"
 	acatsvc "github.com/Tencent/WeKnora/internal/agentcatalog/service"
 	repoappconn "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
@@ -220,8 +222,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSemanticModelInvocationStore))
 	must(container.Provide(func(r *repository.SemanticControlRepository) interfaces.SemanticScopeInvalidator { return r }))
 	must(container.Provide(service.NewSemanticScopeService))
-	must(container.Provide(func(cfg *config.Config, s *service.SemanticScopeService) *handler.SemanticInternalHandler {
-		return handler.NewSemanticInternalHandler(cfg, s)
+	must(container.Provide(func(cfg *config.Config, s *service.SemanticScopeService) *kbhandler.SemanticInternalHandler {
+		return kbhandler.NewSemanticInternalHandler(cfg, s)
 	}))
 	must(container.Provide(repository.NewTenantInvitationRepository))
 	must(container.Provide(repository.NewAuditLogRepository))
@@ -955,7 +957,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Its nil immutable-rate resolver deliberately makes every invocation deny
 	// before model resolution; it is never a permissive production fallback.
 	must(container.Provide(newUnavailableSemanticModelGateway))
-	must(container.Provide(handler.NewSemanticModelPolicyHandler))
+	must(container.Provide(kbhandler.NewSemanticModelPolicyHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
@@ -971,7 +973,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewFeedbackHandler))
-	must(container.Provide(handler.NewAnalyticsHandler))
+	must(container.Provide(analytics.NewAnalyticsHandler))
 	must(container.Provide(handler.NewUsageHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
 	must(container.Provide(handler.NewModelHandler))
@@ -1045,9 +1047,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(
 		agents interfaces.CustomAgentService,
 		store repository.TenantSubagentRepository,
-	) *handler.SubagentHandler {
+	) *acathandler.SubagentHandler {
 		subagentSvc := service.NewSubagentService(subagents.LoadBuiltinSubagents, agents, store)
-		return handler.NewSubagentHandler(subagentSvc)
+		return acathandler.NewSubagentHandler(subagentSvc)
 	}))
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(

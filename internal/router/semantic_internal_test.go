@@ -2,7 +2,7 @@ package router
 
 import (
 	"github.com/Tencent/WeKnora/internal/config"
-	"github.com/Tencent/WeKnora/internal/handler"
+	kbhandler "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"net/http"
@@ -15,7 +15,7 @@ func TestSemanticInternalScopeRoute(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		r := gin.New()
 		cfg := &config.Config{Semantic: &config.SemanticServiceConfig{Enabled: enabled, ServiceToken: "service-token", Audience: "semantic"}}
-		RegisterSemanticInternalRoutes(r, cfg, handler.NewSemanticInternalHandler(cfg, nil))
+		RegisterSemanticInternalRoutes(r, cfg, kbhandler.NewSemanticInternalHandler(cfg, nil))
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/internal/semantic/scopes/resolve", nil))
 		if enabled {

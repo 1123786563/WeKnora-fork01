@@ -3250,7 +3250,7 @@ func appendUnique(arr types.StringArray, s string) types.StringArray {
 // Declared as a var (not const) so tests can override it and future config
 // plumbing can adjust it at runtime without a rebuild.
 // Pass B note (23-knowledge-wikifaq): the host package keeps a copy of the
-// default (W1 `minTextContentRunes`) for K4 readers; production code never
+// default (W1 `MinTextContentRunes`) for K4 readers; production code never
 // mutates either copy, see Integration Brief for the ib2 re-unification.
 var MinTextContentRunes = 10
 

@@ -175,7 +175,7 @@ func (s *knowledgeService) cleanupWikiReferences(
 	// below sees "knowledge gone" and bails out.
 	if s.redisClient != nil {
 		key := WikiDeletedTombstoneKey(kbID, knowledgeID)
-		if err := s.redisClient.Set(ctx, key, "1", wikiDeletedTTL).Err(); err != nil {
+		if err := s.redisClient.Set(ctx, key, "1", WikiDeletedTTL).Err(); err != nil {
 			cleanupErr = errors.Join(cleanupErr, err)
 		}
 	}
@@ -230,10 +230,10 @@ func (s *knowledgeService) cleanupWikiReferences(
 	}
 	lang := types.LanguageFromContextOrDefault(ctx)
 	tenantID, _ := types.TenantIDFromContext(ctx)
-	if err := enqueueWikiRetract(ctx, s.task, s.taskPendingRepo, WikiRetractPayload{
+	if err := EnqueueWikiRetractWithError(ctx, s.task, s.taskPendingRepo, WikiRetractPayload{
 		TenantID: tenantID, KnowledgeBaseID: kbID, KnowledgeID: knowledgeID,
 		DocTitle: docTitle, DocSummary: docSummary, Language: lang,
-		PageSlugs: pageSlugs, FolderIDs: uniqueWikiFolderIDs(folderIDs),
+		PageSlugs: pageSlugs, FolderIDs: UniqueWikiFolderIDs(folderIDs),
 	}); err != nil {
 		return errors.Join(cleanupErr, err)
 	}

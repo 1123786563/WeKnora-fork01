@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Tencent/WeKnora/internal/handler"
+	agentcataloghandler "github.com/Tencent/WeKnora/internal/agentcatalog/handler"
 )
 
 // RegisterSubagentRoutes registers the builtin sub-agent role catalog routes.
@@ -23,7 +23,7 @@ import (
 // guards and API-key policies of routes_agent.go's agentsRead/agentsWrite
 // matrices (creator OR Admin+; read_agents or manage_agents/full-access
 // keys).
-func RegisterSubagentRoutes(r *gin.RouterGroup, subagentHandler *handler.SubagentHandler, g *rbacGuards) {
+func RegisterSubagentRoutes(r *gin.RouterGroup, subagentHandler *agentcataloghandler.SubagentHandler, g *rbacGuards) {
 	catalog := g.apiKeyGroup(r.Group("/subagent-catalog"), apiKeyFullAccess())
 	{
 		// List the role library with installed flags — Viewer+

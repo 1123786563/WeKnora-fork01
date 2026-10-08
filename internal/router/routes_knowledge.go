@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/handler"
+	kbhandler "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 )
 
 // RegisterChunkerDebugRoutes wires the read-only chunker preview endpoint
@@ -272,7 +273,7 @@ func RegisterKnowledgeBaseRoutes(r *gin.RouterGroup, handler *handler.KnowledgeB
 // surface. It deliberately mirrors the KB lifecycle write boundary: this is
 // explicit owner consent to serve A01-authorized readers, not a requester
 // preference. A nil handler keeps optional deployments fail-closed.
-func RegisterSemanticModelPolicyRoutes(r *gin.RouterGroup, policyHandler *handler.SemanticModelPolicyHandler, g *rbacGuards) {
+func RegisterSemanticModelPolicyRoutes(r *gin.RouterGroup, policyHandler *kbhandler.SemanticModelPolicyHandler, g *rbacGuards) {
 	if policyHandler == nil {
 		return
 	}

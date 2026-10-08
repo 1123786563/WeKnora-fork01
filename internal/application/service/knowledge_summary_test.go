@@ -89,14 +89,14 @@ func TestCheckSufficientSummaryContent(t *testing.T) {
 }
 
 // TestCheckSufficientSummaryContent_ThresholdOverride verifies that
-// minTextContentRunes is a `var` (not const) so tests and future runtime
+// MinTextContentRunes is a `var` (not const) so tests and future runtime
 // configuration can adjust the threshold without a rebuild.
 func TestCheckSufficientSummaryContent_ThresholdOverride(t *testing.T) {
 	ctx := context.Background()
 	content := "Meeting at 3pm." // 15 runes
 
-	originalThreshold := minTextContentRunes
-	t.Cleanup(func() { minTextContentRunes = originalThreshold })
+	originalThreshold := MinTextContentRunes
+	t.Cleanup(func() { MinTextContentRunes = originalThreshold })
 
 	// With default threshold (10), this content passes.
 	if err := checkSufficientSummaryContent(ctx, "kid", content); err != nil {
@@ -104,7 +104,7 @@ func TestCheckSufficientSummaryContent_ThresholdOverride(t *testing.T) {
 	}
 
 	// With a tighter threshold (50), the same content is rejected.
-	minTextContentRunes = 50
+	MinTextContentRunes = 50
 	err := checkSufficientSummaryContent(ctx, "kid", content)
 	if !errors.Is(err, errInsufficientSummaryContent) {
 		t.Fatalf("tightened threshold: expected errInsufficientSummaryContent, got %v", err)

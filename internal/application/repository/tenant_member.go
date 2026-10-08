@@ -106,7 +106,7 @@ func (r *tenantMemberRepository) CountFilteredByTenant(
 	if search == "" {
 		err = q.Count(&total).Error
 	} else {
-		like := "%" + escapeLikePattern(search) + "%"
+		like := "%" + EscapeLikePattern(search) + "%"
 		err = q.
 			Joins(`INNER JOIN users ON users.id = tenant_members.user_id AND users.deleted_at IS NULL`).
 			Where(
@@ -133,7 +133,7 @@ func (r *tenantMemberRepository) ListPagedByTenant(
 	if search == "" {
 		err = q.Find(&members).Error
 	} else {
-		like := "%" + escapeLikePattern(search) + "%"
+		like := "%" + EscapeLikePattern(search) + "%"
 		err = q.
 			Joins(`INNER JOIN users ON users.id = tenant_members.user_id AND users.deleted_at IS NULL`).
 			Where(

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	agentcataloghandler "github.com/Tencent/WeKnora/internal/agentcatalog/handler"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -26,8 +27,7 @@ func TestSubagentRoutesRegisterBesideAgentAndExpertRoutes(t *testing.T) {
 	RegisterOrganizationRoutes(v1, &handler.OrganizationHandler{}, g)
 	RegisterPersonaRoutes(v1, &handler.PersonaHandler{}, g)
 	RegisterExpertRoutes(v1, &handler.ExpertHandler{}, g)
-	RegisterSubagentRoutes(v1, &handler.SubagentHandler{}, g)
-
+	RegisterSubagentRoutes(v1, &agentcataloghandler.SubagentHandler{}, g)
 	// The full production /agents/:id surface, the persona/expert sub-routes,
 	// and the new subagent routes coexist on one tree.
 	registered := map[string]bool{}
