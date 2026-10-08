@@ -1,9 +1,0 @@
-=== r5-verify four-object verification (#82 Task 17 step 7) ===
---- subscription (weknora-tenant-3-purchase) ---
-{"external_id":"weknora-tenant-3-purchase","status":"active","plan_code":"weknora-pro-v1"}
---- invoice 81a7f48a (gating) ---
-{"status":"finalized","number":"WEK-48D1-001-001","payment_status":"succeeded","fees":[{"amount_cents":1320,"item_type":"subscription"}]}
---- payments on the invoice ---
-[{"amount_cents":1320,"status":"succeeded"},{"amount_cents":1320,"status":"failed"}]
---- wallets (customer weknora-tenant-3) ---
-[{"name":"weknora-tenant-3-purchase-2026-09","status":"active","balance_cents":990,"granted_cents":null}]

@@ -1,2 +1,0 @@
-== R2 F-2 fix: product-side features face (GET /api/v1/commercial/account) ==
-{"plan":null,"credits_batches":0}

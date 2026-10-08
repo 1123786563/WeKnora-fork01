@@ -1,6 +1,0 @@
-DB-WATCH: using /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-lago/docs/plans/issue-72-ocr3-replay/verify-db-watch-samples.tsv
-samples: 326 (mid-run before 2026-09-23T10:30:49Z)  max_succeeded_payments: 1
-sub-a states: [4] (all incomplete=4: True)
-sub-b states: [1, 4] reached_active: True regressed: False
-sub-c states: [4] seen: True never_active: True
-DB-WATCH: PASS

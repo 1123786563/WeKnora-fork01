@@ -1,5 +1,0 @@
-"AXLabel":"Legacy tasks"
-"AXLabel":"Old chat sessions appear here with the same task identity. Only history-provable facts are shown."
-"AXLabel":"Reload"
-"AXLabel":"WeKnora"
-"AXLabel":"请先登录并激活空间，再查看历史任务。"

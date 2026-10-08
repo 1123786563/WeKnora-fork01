@@ -1,8 +1,0 @@
-== 重放同一签名 notify（幂等面：缺陷 B 下两者应同样 failure 404，不产生任何状态变化）==
-failure
-http 404
-== 订单状态复证（应仍 pending，未推进）==
-payment: pending fulfillment: pending state: pending
-== 本地 outbox/fulfillment 计数（无新事件）==
-0
-0

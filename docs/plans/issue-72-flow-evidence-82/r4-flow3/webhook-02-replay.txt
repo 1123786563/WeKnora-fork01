@@ -1,4 +1,0 @@
-BEFORE-replay: {"active_subs": 1, "payments": [["failed", "pi_3UK0pF2X9knJyx9h0FAha1Tn"], ["succeeded", "pi_3UK0pL2X9knJyx9h1Ap63W4i"]], "purchase_invoice": {"number": "WEK-A27D-014-002", "payment_status": "succeeded", "status": "finalized"}, "wallet_tx": "weknora-tenant-11-2026-09|1\nweknora-tenant-11-purchase-2026-09|1"}
-replay delivery HTTP 200 (same event id evt_t10_1790449510324)
-AFTER-replay:  {"active_subs": 1, "payments": [["failed", "pi_3UK0pF2X9knJyx9h0FAha1Tn"], ["succeeded", "pi_3UK0pL2X9knJyx9h1Ap63W4i"]], "purchase_invoice": {"number": "WEK-A27D-014-002", "payment_status": "succeeded", "status": "finalized"}, "wallet_tx": "weknora-tenant-11-2026-09|1\nweknora-tenant-11-purchase-2026-09|1"}
-IDENTICAL: PASS

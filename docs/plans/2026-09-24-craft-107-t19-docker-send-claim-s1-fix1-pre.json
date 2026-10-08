@@ -1,7 +1,0 @@
-{
-  "base_head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
-  "test_path": "internal/application/repository/craft_docker_send_claim_test.go",
-  "preimage_sha256": "962b6b04a714cf88c41e52ce8a208b79eb04abbfd09f3f701324461c7635031c",
-  "preimage_bytes": 10442,
-  "preimage_status": "uncommitted from prior S1 task"
-}

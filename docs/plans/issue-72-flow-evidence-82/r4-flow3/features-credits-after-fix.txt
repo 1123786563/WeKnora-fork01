@@ -1,7 +1,0 @@
-== R3 F-2'/F-4 fix verification (GET /api/v1/commercial/account, AFTER purchase active) ==
-{"plan":{"key":"base","state":"active","version":1},"features":{"advanced_models":true,"api_access":true,"priority_support":false},"credits":{"balance_micro":"10900000","batches":[{"balance_micro":"10900000","expires_at":"2026-10-01T00:00:00Z","period":"2026-09"}]}}
--- Lago side truth: wallets --
-{"name":"weknora-tenant-11-purchase-2026-09","credits_balance":"9.9"}
-{"name":"weknora-tenant-11-2026-09","credits_balance":"1.0"}
--- Lago side truth: entitlements (purchase leg) --
-["advanced_models"]

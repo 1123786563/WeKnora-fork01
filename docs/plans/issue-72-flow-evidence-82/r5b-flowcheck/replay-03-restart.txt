@@ -1,8 +1,0 @@
-== replay face 3: backend kill + restart (02:33:51) ==
-before: order=fulfilled activations=1 fulfill_events=1
-killing backend pid=6693
-port 8093 released
-restarted (launcher 10358)
-health=200 (restarted 02:33:56, many drain passes elapsed)
-after: order=fulfilled activations=1 fulfill_events=1
-outbox tail: fulfill:ord_86c00340e158d726|sent|8

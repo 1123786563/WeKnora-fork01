@@ -1,8 +1,0 @@
-== F-5 evidence: purchase projection collapses once the BASE subscription exists ==
--- GET /purchase (order ord_450538d2bbae2c55 already fulfilled, Lago sub active) --
-{"data":{"reason":"invalid_response","state":"absent"},"success":true}
--- root cause: TWO finalized subscription invoices on the customer --
-d4d69920-2d8c-4b08-acbb-91a97c04cf98|1|1
-ba5b262d-0065-4ce2-b941-39837ae9f085|1|1
--- readPurchaseInvoiceFees fail-closed: >1 finalized invoice -> invalid_response (lago_purchase.go:589-600 region) --
--- timeline: first /account call ran the lazy base onboarding (answered pending/unreachable mid-flight), second succeeded and the base 0-amount invoice finalized; every purchase snapshot read since collapses --

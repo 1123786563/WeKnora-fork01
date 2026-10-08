@@ -1,9 +1,0 @@
-tenant=52 (issue83-sw-a-ocrfix3@verify.local)
-purchase(wechat) try0: HTTP 201 order=ord_419e46a1f26de9f8 url=weixin://wxpay/bizpayurl?pr=issue83f737245bbea
-wechat order=ord_419e46a1f26de9f8 out_trade_no=mo_5c8f9e30ccdd56a7 (kept NOTPAY)
-purchase(alipay) try0: HTTP 201 order=ord_68e33e1d69e3be2e url=https://qr.alipay.com/issue82flowaec4712326978
-switch purchase: HTTP 201 order=ord_68e33e1d69e3be2e url=https://qr.alipay.com/issue82flowaec4712326978672
-wechat stub tail: [13:43:20] NATIVE out_trade_no=mo_5c8f9e30ccdd56a7 total=9900 appid=wx83v2flow mchid=1900000830 -> code_url=weixin://wxpay/bizpayurl?pr=issue83f737245bbea9 | [13:43:20] CLOSE mo_5c8f9e30ccdd56a7 -> 204 (closed) | [13:43:20] http "POST /v3/pay/transactions/out-trade-no/mo_5c8f9e30ccdd56a7/close HTTP/1.1" 204 -
-old order channel_failed=1 attempt state=closed
-late notify ok=true
-fulfill for closed order=1 over_payment total=0

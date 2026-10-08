@@ -1,2 +1,0 @@
-2026/10/02 11:25:40 [31;1m/Users/wuyongjun/trea/WeKnora-fork01/internal/application/repository/mobile_notification.go:247 [35;1mERROR: column d.app_id does no
-2026/10/02 11:25:42 [31;1m/Users/wuyongjun/trea/WeKnora-fork01/internal/application/repository/mobile_notification.go:247 [35;1mERROR: column d.app_id does no

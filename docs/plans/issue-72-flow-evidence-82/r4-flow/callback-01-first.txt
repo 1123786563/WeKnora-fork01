@@ -1,5 +1,0 @@
-== POST /api/v1/commercial/callbacks/alipay (signed notify, anonymous) ==
-success
-HTTP 200
-== GET /api/v1/commercial/purchase (tenant A JWT) ==
-{"state":"paid_awaiting_activation","order_id":"ord_4c6f2f41fb73f40e","order_payment":"paid","order_state":"paid","amount":"9900","plan":"pro"}

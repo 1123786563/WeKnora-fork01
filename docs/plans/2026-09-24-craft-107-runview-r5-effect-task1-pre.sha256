@@ -1,6 +1,0 @@
-32e70d4e3a66d332d1e261ce7c88a8c0e1a43e8086ba8f3913aa373267d7d563  docs/plans/2026-09-24-craft-107-runview-r5-effect-task3b-plan.md
-5d65c0b55920188ddce99d4c0508234a78b41fe1bba573562d145ec6ec2b3bba  internal/application/repository/craft_run_view_effect.go
-f9413ddbd6c9aba5a0c8f6fd291ea48b4e4489bc1961bc6cd5eecf76359281f6  internal/application/repository/craft_run_view_effect_test.go
-f3ad6b37fac5b9fad29a48648d52ff408d3e534759ba61cc01abd52843e30a11  internal/modules/craft/run_view_effect.go
-VACANT  migrations/sqlite/000126_craft_run_view_effect_request_digest.*.sql
-VACANT  migrations/versioned/000205_craft_run_view_effect_request_digest.*.sql

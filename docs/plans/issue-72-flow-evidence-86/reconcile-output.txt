@@ -1,9 +1,0 @@
-[PASS] sum(active balance_cents)*10^4 == balance_micro
-       lago=400c page=4000000u
-[PASS] each active wallet reconciles 1:1 (balance/expiry/grant)
-       weknora-tenant-10000-topup-d:400c/exp 2027-09-28T00:00:00Z -> page 4000000u granted 2026-09-28T02:34:33Z vs 2026-09-28T02:34:33Z OK; weknora-tenant-10000-topup-c:0c/exp 2027-02-01T00:00:00Z -> page 0u granted 2026-09-28T02:34:33Z vs 2026-09-28T02:34:33Z OK
-[PASS] page rows without an active wallet surface balance 0 (no carry-over, no resurrection)
-       orphan_rows=[('monthly', '2026-09', '0')]
-[PASS] available == balance - held - refund_locked
-       3800000 == 4000000 - 200000 - 0
-RECONCILE PASS

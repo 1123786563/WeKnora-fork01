@@ -1,1 +1,0 @@
-20402	0	UIKitApplication:com.weknora.mobile[ab9a][rb-legacy]

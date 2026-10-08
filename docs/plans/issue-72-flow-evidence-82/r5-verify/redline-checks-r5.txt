@@ -1,5 +1,0 @@
-=== r5-verify redline self-check (#82 Task 17 verdict e) ===
-[1] stripe/whsec literals in evidence+internal+deploy: 0 hits
-[2] plaintext login password (issue82-Flow): 0 hits
-[3] local force-active subscription writes (non-test): 0 hits
-[4] manual POST /api/v1/payments (premium route) calls: 0 hits

@@ -1,8 +1,0 @@
-== 重放同一签名 notify（AC3 渠道幂等）==
-success
-http 200
-== 事件/履约记录计数（前 1/0/ 后应一致）==
-after: 1/0/
-== 伪造签名 notify 负控（篡改 total_amount，应被验签拒绝）==
-failure
-http 401

@@ -1,5 +1,0 @@
-"AXLabel":"返回任务"
-"AXLabel":"任务材料"
-"AXLabel":"刷新材料"
-"AXLabel":"尚无材料索引"
-"AXLabel":"请先登录并激活空间，再查看任务材料。"

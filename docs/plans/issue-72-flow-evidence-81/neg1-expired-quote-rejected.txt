@@ -1,8 +1,0 @@
-== NEGATIVE PATH 1: expired quote must be rejected (AC4) — 2026-09-24 19:08:52 ==
--- fresh quote --
-quote: qt_8b81b3615a7be7d0 expires_at: 2026-09-24T11:38:52Z
--- force expiry via parameter-bound update (S2: no string concat of inputs) --
-qt_8b81b3615a7be7d0|2026-09-24 11:07:52
--- submit purchase on expired quote --
-{"error":"quote expired"}
-HTTP 409

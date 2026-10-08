@@ -1,5 +1,0 @@
-weknora-tenant-10000-topup-d | status: active | bal: 500
-weknora-tenant-10000-topup-c | status: active | bal: 400
-weknora-tenant-10000-topup-b | status: terminated | bal: 500
-weknora-tenant-10000-topup-a | status: terminated | bal: 300
-weknora-tenant-10000-2026-09 | status: terminated | bal: 0

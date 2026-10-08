@@ -1,5 +1,0 @@
-#83 act1 purchase state progression (2026-09-27T02:43:42.775Z)
-after-callback: "paid_awaiting_activation"
-poll-1: paid_awaiting_activation (webhook: deliver-pending (attempt 1, cus=cus_VKne2K9VKaDuNr))
-poll-2: paid_awaiting_activation (webhook: invoice: bb0b61ae-2cec-4ed2-8aa2-19bd91fae0fa)
-poll-3: active (webhook: invoice: bb0b61ae-2cec-4ed2-8aa2-19bd91fae0fa)

@@ -1,7 +1,0 @@
-== leg3 r2: 同单换交易号第二笔成功（用户双付）==
-success http=200
-== outbox（want over_payment pending）==
-fulfill|sent|fulfill:ord_baf3b4d5fc2c1c3c
-over_payment|pending|over_payment:ord_baf3b4d5fc2c1c3c:alipay:2088000000000084:txn84r2-leg3-b
-== 订单（want fulfilled 不变）==
-fulfilled

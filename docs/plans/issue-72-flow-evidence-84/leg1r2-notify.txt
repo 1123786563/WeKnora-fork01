@@ -1,6 +1,0 @@
-== leg1a r2: partial 5000 notify (order ord_67591d1310ff085a, mo_417c4d2d73909792) ==
-{"ok": true, "order": {"total": 9900, "state": "SUCCESS", "transaction_id": "txn84r2-leg1-a", "override_total": 5000}}
-== notify ==
-{"ok": true, "detail": "{\"code\":\"SUCCESS\",\"message\":\"OK\"}"}
-== replay ==
-{"ok": true, "detail": "{\"code\":\"SUCCESS\",\"message\":\"OK\"}"}

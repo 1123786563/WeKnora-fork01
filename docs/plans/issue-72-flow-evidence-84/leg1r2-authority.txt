@@ -1,9 +1,0 @@
-== GET order data（含恢复路径——币种比对不得洗白）==
-{"state":"pending","payment":"pending","fulfillment":"attention","payment_attention":true}
-== order state after recovery read (want still pending) ==
-pending|1
-== Lago sub for tenant 41 (want 0 active) ==
-0
-== Lago subscriptions for cust-41 (all states) ==
-== Lago payments for cust-41 (want 0) ==
-0

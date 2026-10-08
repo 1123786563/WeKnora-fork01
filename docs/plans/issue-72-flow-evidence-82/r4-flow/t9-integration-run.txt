@@ -1,8 +1,0 @@
-# T9 run header (env faces, secrets never printed)
-stack: weknora-lago-t11 (:48895), org c0c4afb7-…, real Stripe TEST key (env-injected), settle pm pm_card_visa, gate pm pm_card_threeDSecure2Required, webhook secret from provider (len 38)
-command: go test ./internal/modules/commercial/commercialplatform/ -tags lago_integration -count=1 -run TestLagoIntegrationSettle -v
-=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription
-=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/gated_create_leaves_the_purchase_incomplete_with_a_stuck_intent
-=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/settle_drives_the_rails_and_the_webhook_finalizes
-=== RUN   TestLagoIntegrationSettleActivatesGatedSubscription/settle_replay_is_a_zero-side-effect_no-op
---- PASS: TestLagoIntegrationSettleActivatesGatedSubscription (24.53s)

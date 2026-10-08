@@ -1,8 +1,0 @@
-== GET order（含恢复路径——修复后的币种比对不得洗白）==
-{"state":"pending","payment":"pending","fulfillment":"attention","payment_attention":true}
-== order state after recovery read ==
-pending|1
-== Lago sub (want 0) ==
-0
-== Lago payments cust-21 (want 0) ==
-0

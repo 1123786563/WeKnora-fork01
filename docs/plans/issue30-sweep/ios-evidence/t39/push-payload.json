@@ -1,4 +1,0 @@
-{
-  "Simulator Target Bundle": "com.weknora.mobile",
-  "aps": { "alert": { "title": "WeKnora", "body": "acceptance probe" }, "sound": "default" }
-}

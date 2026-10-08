@@ -1,4 +1,0 @@
-internal/container/craft_input_publish_linux.go
-internal/container/craft_input_publish_darwin.go
-internal/container/craft_input_publish_unsupported.go
-internal/container/craft_input_publish_test.go

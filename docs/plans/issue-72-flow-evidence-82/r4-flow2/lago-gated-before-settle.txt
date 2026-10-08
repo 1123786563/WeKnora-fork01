@@ -1,5 +1,0 @@
-== R2 Lago gated shape (tenant 9, order ord_450538d2bbae2c55) ==
-{"external_id":"weknora-tenant-9-purchase","status":"incomplete","activation_rules":[{"lago_id":"323b1c13-55c1-41db-8f7a-18b6df6fee6c","type":"payment","timeout_hours":0,"status":"pending","expires_at":null,"created_at":"2026-09-26T16:50:48Z","updated_at":"2026-09-26T16:50:48Z"}]}
-d4d69920-2d8c-4b08-acbb-91a97c04cf98|5|0|1650
--- Stripe gating intents (unsettled window) --
-[alipay-stub] PRECREATE out_trade_no=mo_d57377c8d934e3f8 total_amount=99.00 subject=WeKnora order ord_450538d2bbae2c55

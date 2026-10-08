@@ -1,7 +1,0 @@
-trigger ready: metric=weknora-86-metric-cf196d89 plan=weknora-86-plan-cf196d89 sub=weknora-86-sub-cf196d89 status=active
-balances before: {'weknora-tenant-10000-topup-b': 500, 'weknora-tenant-10000-topup-a': 500, 'weknora-tenant-10000-2026-09': 100}
-event fired: weknora-86-evt-ba191e42-fe62-4e64-9706-04fa7221ea92 (2 units = 2.00)
-consumption settled: True after 3s; balances after: {'weknora-tenant-10000-topup-b': 500, 'weknora-tenant-10000-topup-a': 300, 'weknora-tenant-10000-2026-09': 100}
-deltas: {'weknora-tenant-10000-topup-b': 0, 'weknora-tenant-10000-topup-a': 200, 'weknora-tenant-10000-2026-09': 0}
-saved: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees-issue72/lago-int/docs/plans/issue-72-flow-evidence-86/consume-leg1.json
-ORDER VERDICT: FAIL

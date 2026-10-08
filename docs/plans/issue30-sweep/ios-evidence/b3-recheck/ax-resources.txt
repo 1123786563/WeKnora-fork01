@@ -1,2 +1,0 @@
-"AXLabel":"Sign in to browse tenant resources."
-"AXLabel":"WeKnora"

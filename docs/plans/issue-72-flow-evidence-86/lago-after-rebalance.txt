@@ -1,3 +1,0 @@
-weknora-tenant-10000-2026-09 | prio: 1 | exp: 2026-10-01T00:00:00Z | bal_cents: 100 | created: 2026-09-28T02:25:18Z
-weknora-tenant-10000-topup-a | prio: 2 | exp: 2027-02-01T00:00:00Z | bal_cents: 500 | created: 2026-09-28T02:26:12Z
-weknora-tenant-10000-topup-b | prio: 3 | exp: 2027-09-28T00:00:00Z | bal_cents: 500 | created: 2026-09-28T02:26:13Z

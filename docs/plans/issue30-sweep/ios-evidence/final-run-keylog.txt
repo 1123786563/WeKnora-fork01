@@ -1,5 +1,0 @@
-2026-09-23 21:55:30.424 I  WeKnora[58491:a55ce1] [dev.expo.modules:expo] 🟢 Registering module 'ExpoSecureStore'
-2026-09-23 22:00:00.592 I  WeKnora[65123:a5c581] [dev.expo.modules:expo] 🟢 Registering module 'ExpoSecureStore'
-2026-09-23 22:00:01.033 I  WeKnora[65123:a5c581] [com.facebook.react.log:javascript] Running "main"
-2026-09-23 22:01:58.892 I  WeKnora[66393:a5df80] [dev.expo.modules:expo] 🟢 Registering module 'ExpoSecureStore'
-2026-09-23 22:01:59.203 I  WeKnora[66393:a5df80] [com.facebook.react.log:javascript] Running "main"

@@ -1,7 +1,0 @@
-trigger ready: metric=weknora-86-metric-96409be8 plan=weknora-86-plan-96409be8 sub=weknora-86-sub-96409be8 status=active
-balances before: {'weknora-tenant-10000-topup-d': 500, 'weknora-tenant-10000-topup-c': 500, 'weknora-tenant-10000-topup-b': 500, 'weknora-tenant-10000-topup-a': 300, 'weknora-tenant-10000-2026-09': 100}
-event fired: weknora-86-evt-74fda9a0-3624-498e-8fcd-02630fce1ac4 (2 units = 2.00)
-consumption settled: True after 3s; balances after: {'weknora-tenant-10000-topup-d': 500, 'weknora-tenant-10000-topup-c': 400, 'weknora-tenant-10000-topup-b': 500, 'weknora-tenant-10000-topup-a': 300, 'weknora-tenant-10000-2026-09': 0}
-deltas: {'weknora-tenant-10000-topup-d': 0, 'weknora-tenant-10000-topup-c': 100, 'weknora-tenant-10000-topup-b': 0, 'weknora-tenant-10000-topup-a': 0, 'weknora-tenant-10000-2026-09': 100}
-saved: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees-issue72/lago-int/docs/plans/issue-72-flow-evidence-86/consume-cny.json
-ORDER VERDICT: PASS (monthly first, then earliest-expiry topup)

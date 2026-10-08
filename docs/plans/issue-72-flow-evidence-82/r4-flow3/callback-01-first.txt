@@ -1,5 +1,0 @@
-== R3 POST /callbacks/alipay ==
-success
-HTTP 200
-== R3 GET /purchase ==
-{"state":"paid_awaiting_activation","order_id":"ord_53d9388fb2e4aa98","order_payment":"paid","plan":"pro"}

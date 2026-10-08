@@ -1,7 +1,0 @@
-== 第2轮清理效果核验：Lago customers 读面 ==
-weknora-tenant-4 | issue82-d's Workspace
-weknora-tenant-3 | issue82-c's Workspace
-weknora-tenant-2 | weknora-tenant-2
-weknora-tenant-1 | weknora-tenant-1
-== 环境存活：vite/stubs ==
-vite 200 alipay 200 wechat 200

@@ -1,5 +1,0 @@
-3eba64a66a4c69f1dc44cfaec26e714a1c16eee9e8a9b2d127b047b859873395  /Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/evidence/ios-evidence/t01-live/r2-01-app-login-authorized-origin.png
-8f62cd378946c73939ea2b2aad561bfeee6ec7d63c0fab0058fbef7822ac6e59  /Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/evidence/ios-evidence/t01-live/r2-02-after-sso-tap-unchanged.png
-f87a9000c558247c0db6bbcd4d1931439fb293dc3248af3fe0b1125eb79c1601  /Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/evidence/ios-evidence/t01-live/r2-03-safari-nipio-blocked.png
-ddff3c8bac7fce15d5ad4d26b4d5d9ef0f128ac9b55de23d2a1e3f0a715be05e  /Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/evidence/ios-evidence/t01-live/r2-04-debug-devclient-noscripturl-redbox.png
-aad4a1ceedec17e5678bc98a1c6d5101d6d3da335e0614c35f60d8b52224304f  /Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/evidence/ios-evidence/t01-live/t01-live-run-round2.txt

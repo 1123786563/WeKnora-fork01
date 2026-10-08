@@ -1,5 +1,0 @@
-== settle drive evidence (r5b, ) ==
-channel: signed alipay notify accepted [2026-09-28 02:27:25.820] -> order paid -> outbox fulfill -> drain -> settle
-stripe gating intents for cus_VL2rl1L1V8yBYd (invoice 8e813325-93d2-4058-9232-327a1c34aab8):
-pi_3UKMmO2X9knJyx9h0VJQ2xFT succeeded amount=1320 created=2026-09-27T18:26:28Z lago_invoice_id=8e813325-93d2-4058-9232-327a1c34aab8 pm=pm_1UKMnz2X9knJyx9hT0DyfEI9
-pi_3UKMmG2X9knJyx9h0GHFFPYs requires_payment_method amount=1320 created=2026-09-27T18:26:20Z lago_invoice_id=8e813325-93d2-4058-9232-327a1c34aab8 pm=null

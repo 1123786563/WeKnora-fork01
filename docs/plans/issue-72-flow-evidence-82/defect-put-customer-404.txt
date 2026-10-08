@@ -1,3 +1,0 @@
-== 复证：PUT /api/v1/customers/weknora-tenant-1（pinned v1.53.0 路由表无 customers update）==
-{"status":404,"error":"Not Found","code":"resource_not_found"}
-http 404

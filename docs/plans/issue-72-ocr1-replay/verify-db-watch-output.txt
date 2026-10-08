@@ -1,5 +1,0 @@
-samples: 319 (mid-run before 2026-09-23T08:10:34Z)  max_succeeded_payments: 1
-sub-a states: [4] (all incomplete=4: True)
-sub-b states: [1, 4] reached_active: True regressed: False
-sub-c states: [4] seen: True never_active: True
-DB-WATCH: PASS

@@ -1,6 +1,0 @@
-== 步骤5 呈现核验：GET /api/v1/commercial/purchase（回调阻断后）==
-{"data":{"amount_fen":"9900","currency":"CNY","order":{"amount_fen":"9900","checkout_error":"","checkout_url":"https://qr.alipay.com/issue82flow7d49bb9d3eb76ca4","currency":"CNY","fulfillment":"pending","id":"ord_98bb65420987f6fe","payment":"pending","provider":"","quote_id":"qt_62e733ea49654a29","state":"pending","version":1},"plan_key":"pro","plan_version":1,"state":"awaiting_payment"},"success":true}
-
-== 权益未开放探针（Lago entitlements raw probe, tenant-2）==
-{"status":404,"error":"Not Found","code":"resource_not_found"}
-http 404

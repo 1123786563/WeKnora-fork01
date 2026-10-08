@@ -1,2 +1,0 @@
-== leg2 r2 (tenant44): correct-amount alipay success notify ==
-success http=200

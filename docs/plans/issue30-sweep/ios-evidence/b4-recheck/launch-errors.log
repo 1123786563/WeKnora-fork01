@@ -1,5 +1,0 @@
-2026-09-25 15:09:35.156 Df WeKnora[85161:415770] [com.apple.xpc:connection] [0x1061d6e40] failed to do a bootstrap look-up: xpc_error=[3: No such process]
-2026-09-25 15:09:35.156 Df WeKnora[85161:415770] [com.apple.xpc:connection] [0x1061d6e40] invalidated after a failed init
-2026-09-25 15:09:35.160 Df WeKnora[85161:415776] [com.apple.UIIntelligenceSupport:xpc] agent connection cancelled (details: Underlying connection was invalidated. Reason: Connection init failed at lookup with error 3 - No such process)
-2026-09-25 15:09:35.185 E  WeKnora[85161:415770] [com.apple.UIIntelligenceSupport:xpc] unable to create XPCSession for service "com.apple.uiintelligencesupport.agent": The operation couldn’t be completed. (XPC.XPCRichError error 1.); underlying error: Underlying connection was invalidated. Reason: Connection init failed at lookup with error 3 - No such process
-2026-09-25 15:09:38.772 E  WeKnora[85161:4156e0] [com.apple.BoardServices:XPCErrors] non-launching port is incompatible with service identifier "com.apple.PointerUI.pointeruid.default-service"

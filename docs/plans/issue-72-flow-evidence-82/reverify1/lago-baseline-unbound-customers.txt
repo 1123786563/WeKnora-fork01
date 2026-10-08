@@ -1,3 +1,0 @@
-== 复验基线：onboarding 建立的新租户 C/D Lago customer（未绑定，缺陷 A 修复的真实前置）==
-tenant-3: fix82-1790308166's Workspace | binding: None
-tenant-4: None | binding: None

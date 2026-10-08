@@ -1,2 +1,0 @@
-success
-HTTP 200

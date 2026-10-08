@@ -1,7 +1,0 @@
-subscription weknora-tenant-46-purchase status=1 (Lago enum 1=active)
-invoice via API: status=finalized payment_status=succeeded fees_amount=1320 total=1320
-subscription fees = 1 (max amount 1320 fen)
-succeeded provider payments (cus=cus_VKqKbyB1bE6X10) = 1
-purchase wallets: weknora-tenant-46-purchase-2026-09|1|9.90000
-product credits={"balance_micro":"10900000","batches":[{"balance_micro":"10900000","expires_at":"2026-10-01T00:00:00Z","period":"2026-09"}]}
-product features={"advanced_models":true,"api_access":true,"priority_support":false}

@@ -1,4 +1,0 @@
-== replay face 1: duplicate signed notify (02:32:58) ==
-before: fulfilled_orders=1 fulfill_events=1 activations=1 attempts=1
-notify answer: successHTTP 200
-after:  fulfilled_orders=1 fulfill_events=1 activations=1 attempts=1

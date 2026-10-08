@@ -1,2 +1,0 @@
-{"data":{"amount_fen":"9900","currency":"CNY","order":{"amount_fen":"9900","checkout_error":"","checkout_url":"weixin://wxpay/bizpayurl?pr=issue81flow074872ea3c5f","currency":"CNY","fulfillment":"pending","id":"ord_93431a81afd7e038","payment":"pending","provider":"wechat","quote_id":"qt_2e0618f0f1a20bdf","state":"pending","version":1},"plan_key":"pro","plan_version":1,"state":"awaiting_payment"},"success":true}
-HTTP 201

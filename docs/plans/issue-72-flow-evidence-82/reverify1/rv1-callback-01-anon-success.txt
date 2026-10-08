@@ -1,6 +1,0 @@
-== 匿名签名 notify POST（缺陷1+2 修复联合验证：无 Authorization 头）==
-success
-http 200
-== 订单状态（应为 paid）==
-payment: paid | fulfillment: processing | state: paid
-== outbox/attempt 计数 ==

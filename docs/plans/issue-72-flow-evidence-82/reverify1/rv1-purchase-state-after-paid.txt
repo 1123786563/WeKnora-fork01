@@ -1,2 +1,0 @@
-== 付款后 GET /api/v1/commercial/purchase（D 租户）==
-{"data":{"amount_fen":"9900","currency":"CNY","order":{"amount_fen":"9900","checkout_error":"","checkout_url":"https://qr.alipay.com/issue82flowf7dd0a31dc519f22","currency":"CNY","fulfillment":"processing","id":"ord_bbf32eee096f1abb","payment":"paid","provider":"","quote_id":"qt_7e8de4454541c82c","state":"paid","version":2},"plan_key":"pro","plan_version":1,"state":"awaiting_payment"},"success":true}

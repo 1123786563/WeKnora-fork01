@@ -1,4 +1,0 @@
-balances before replay: {'weknora-tenant-10000-topup-d': 400, 'weknora-tenant-10000-topup-c': 0} total: 400
-replay accepted: http 200
-balances after replay: {'weknora-tenant-10000-topup-d': 400, 'weknora-tenant-10000-topup-c': 0} total: 400
-[PASS] identical event replay draws nothing extra (status=200, 400 == 400)

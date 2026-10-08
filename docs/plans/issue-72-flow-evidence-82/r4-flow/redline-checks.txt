@@ -1,8 +1,0 @@
-== redline (e) checks (run from worktree root) ==
--- credentials literal scan (docs/plans/issue-72-flow-evidence-82, internal/, deploy/) --
-hits: 0 (expect 0)
--- local force-active scan (commercialplatform lago*.go, non-test) --
-hits: 0 (expect 0)
--- make gates --
-modulemove: OK (16 manifests verified)
-architectureguard: OK (0 violations)

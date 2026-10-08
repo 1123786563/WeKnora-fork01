@@ -1,4 +1,0 @@
-{"external_id":"weknora-tenant-3-purchase","status":"active","plan_code":"weknora-pro-v1"}
-{"status":"finalized","number":"WEK-48D1-001-001","payment_status":"succeeded","fees":[{"amount_cents":1320,"item_type":"subscription"}]}
-[{"amount_cents":1320,"status":"succeeded"},{"amount_cents":1320,"status":"failed"}]
-[{"name":"weknora-tenant-3-purchase-2026-09","status":"active","balance_cents":990,"granted_cents":null}]

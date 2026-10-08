@@ -1,7 +1,0 @@
-== 缺陷复证：匿名 POST /api/v1/commercial/callbacks/alipay（真实渠道回调形态）==
-{"error":"Unauthorized: missing authentication"}
-http 401
-
-== 对照：同一签名 notify 携带合法 JWT（验证验签→ConfirmPayment 链路本身）==
-failure
-http 404

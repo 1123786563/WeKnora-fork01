@@ -1,2 +1,0 @@
-== 付款前基线 GET /api/v1/commercial/orders/ord_98bb65420987f6fe ==
-{"data":{"amount_fen":"9900","checkout_error":"","checkout_url":"https://qr.alipay.com/issue82flow7d49bb9d3eb76ca4","currency":"CNY","fulfillment":"pending","id":"ord_98bb65420987f6fe","payment":"pending","provider":"alipay","quote_id":"qt_62e733ea49654a29","state":"pending","version":1},"success":true}
