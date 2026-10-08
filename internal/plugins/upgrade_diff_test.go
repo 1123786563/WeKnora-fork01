@@ -117,7 +117,7 @@ type upgradeStack struct {
 
 // newManagerLister 把 airesource MCPManager 粘合到 EndpointLister 契约
 // （container.NewPluginMCPEndpointLister 的同款 nonce-exclusive 模式：
-// internal/modules 不得互相 import 容器装配，PG 集成同款本地 seam）。
+// internal/<feature> 功能包不得互相 import 容器装配，PG 集成同款本地 seam）。
 func newManagerLister(manager *internalmcp.MCPManager) plugins.EndpointLister {
 	return func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
 		var nonce [4]byte

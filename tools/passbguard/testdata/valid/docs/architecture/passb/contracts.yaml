@@ -7,13 +7,13 @@ contracts:
     signature: "CreateTask(ctx context.Context, req CreateTaskRequest) (Task, error)"
     stability: frozen
     consumers:
-      - internal/insights/service/scan.go
+      - internal/modules/insights/service/scan.go
     characterization_tests:
-      - internal/workbench/service/task_test.go
+      - internal/modules/workbench/service/task_test.go
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: frozen
     consumers: []

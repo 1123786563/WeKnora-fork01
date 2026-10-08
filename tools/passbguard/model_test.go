@@ -15,7 +15,7 @@ const (
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 aliases:
@@ -28,7 +28,7 @@ aliases:
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: frozen
     consumers: []
@@ -46,7 +46,7 @@ aliases:
     replay: source-query
     transport: in_process
     consumers:
-      - internal/insights
+      - internal/modules/insights
     required_metadata:
       - tenant_id
       - occurred_at
@@ -57,8 +57,8 @@ aliases:
 
 	tplExceptionLedger = `exceptions:
   - id: exc-0001
-    from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/commercial
+    from: internal/modules/appconnector/adapter.go
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -107,7 +107,7 @@ func TestLoadGovernanceAcceptsValidFixture(t *testing.T) {
 	// 字段完整落位。
 	require.Equal(t, "conversation", g.Legacy[0].Module)
 	require.Equal(t, PlanID("35-conversation-program"), g.Legacy[0].Plan)
-	require.Equal(t, "internal/conversation/service", g.Legacy[0].Destination)
+	require.Equal(t, "internal/modules/conversation/service", g.Legacy[0].Destination)
 	require.Equal(t, "ib3", g.Legacy[0].DeleteBarrier)
 
 	// contracts 按排序：conversation-route-set < workbench-task-port。
@@ -151,7 +151,7 @@ func TestLoadGovernanceNormalizesLeadingDotSlash(t *testing.T) {
   - path: ./internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -176,7 +176,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: /internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -189,7 +189,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/../../alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -202,7 +202,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal\application\service\alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -215,7 +215,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: ""
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -228,7 +228,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: ""
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -241,7 +241,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversations
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -254,7 +254,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: conversation
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 `,
@@ -267,7 +267,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: someday
 `,
@@ -313,7 +313,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: magic-port
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: frozen
 `,
@@ -326,7 +326,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: nope
     kind: route-set
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: frozen
 `,
@@ -352,7 +352,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: ""
 `,
@@ -365,13 +365,13 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - id: conversation-route-set
     owner: conversation
     kind: route-set
-    symbol: internal/conversation/routes.go
+    symbol: internal/modules/conversation/routes.go
     signature: ""
     stability: frozen
   - id: conversation-route-set
     owner: workbench
     kind: route-set
-    symbol: internal/workbench/routes.go
+    symbol: internal/modules/workbench/routes.go
     signature: ""
     stability: frozen
 `,
@@ -388,7 +388,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "version",
@@ -404,7 +404,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "cannot unmarshal",
@@ -420,7 +420,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [tenant_id]
 `,
 			want: "idempotency_key",
@@ -436,7 +436,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [tenant_id, event_id, idempotency_key]
 `,
 			want: "occurred_at",
@@ -468,7 +468,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "producer",
@@ -484,7 +484,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "imperative",
@@ -500,7 +500,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "dot-separated",
@@ -516,7 +516,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
   - id: conversation.turn.completed
     version: 1
@@ -525,7 +525,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/insights]
+    consumers: [internal/modules/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "producer/version",
@@ -536,7 +536,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			body: `exceptions:
   - id: exc-0001
     from: ""
-    to: github.com/Tencent/WeKnora/internal/commercial
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -548,8 +548,8 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/appconnector/adapter.txt
-    to: github.com/Tencent/WeKnora/internal/commercial
+    from: internal/modules/appconnector/adapter.txt
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -561,7 +561,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/appconnector/adapter.go
+    from: internal/modules/appconnector/adapter.go
     to: "github.com/Tencent/WeKnora/internal/modules/*"
     plan: 27-appconnector
     remove_at: ib2
@@ -574,8 +574,8 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/commercial
+    from: internal/modules/appconnector/adapter.go
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib0
     reason: fixture reason
@@ -587,14 +587,14 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
 			file: "docs/architecture/passb/exception-ledger.yaml",
 			body: `exceptions:
   - id: exc-0001
-    from: internal/appconnector/adapter.go
-    to: github.com/Tencent/WeKnora/internal/commercial
+    from: internal/modules/appconnector/adapter.go
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
   - id: exc-0001
-    from: internal/appconnector/action.go
-    to: github.com/Tencent/WeKnora/internal/commercial
+    from: internal/modules/appconnector/action.go
+    to: github.com/Tencent/WeKnora/internal/modules/commercial
     plan: 27-appconnector
     remove_at: ib2
     reason: fixture reason
@@ -608,13 +608,13 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
   - path: internal/application/service/alpha_chat.go
     module: workbench
     plan: 40-workbench
-    destination: internal/workbench/service
+    destination: internal/modules/workbench/service
     integration_owner: ""
     delete_barrier: ib4
 `,

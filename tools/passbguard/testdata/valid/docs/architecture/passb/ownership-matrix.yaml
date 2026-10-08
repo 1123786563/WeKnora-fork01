@@ -3,13 +3,13 @@ legacy_files:
   - path: internal/application/service/zeta_widget.go
     module: workbench
     plan: 40-workbench
-    destination: internal/workbench/service
+    destination: internal/modules/workbench/service
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/alpha_chat.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/conversation/service
+    destination: internal/modules/conversation/service
     integration_owner: ""
     delete_barrier: ib3
 aliases:

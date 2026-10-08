@@ -160,7 +160,7 @@ func newPluginStack(t *testing.T, db *gorm.DB, tenantID uint64) *pluginPGStack {
 
 	// Lister over the real manager, mirroring container.
 	// NewPluginMCPEndpointLister's nonce-exclusive client per verification
-	// (a local seam here: internal/modules 不得互相 import 容器装配)。
+	// (a local seam here: internal/<feature> 功能包不得互相 import 容器装配)。
 	lister := func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
 		var nonce [4]byte
 		if _, err := rand.Read(nonce[:]); err != nil {

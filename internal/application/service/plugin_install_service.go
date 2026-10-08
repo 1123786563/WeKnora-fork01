@@ -224,7 +224,7 @@ const driftMarkListTimeout = 10 * time.Second
 // against a NONCE-EXCLUSIVE throwaway service identity (globally unique ID,
 // disconnected and evicted on return) so the marker's listing can never alias
 // or evict a live session's cached client. This is the service-package twin
-// of container.NewPluginMCPEndpointLister — internal/modules must not import
+// of container.NewPluginMCPEndpointLister — internal/<feature> packages must not import
 // the container assembly, and agent_service (this package) needs the lister
 // at the provider wiring point without a constructor-signature change.
 func NewManagerEndpointLister(manager *mcp.MCPManager) plugins.EndpointLister {

@@ -37,7 +37,7 @@ func withListToolsDeadline(ctx context.Context) (context.Context, context.Cancel
 
 // NewPluginMCPEndpointLister verifies plugin endpoints through the production
 // MCP client stack. It lives in the composition root because
-// internal/modules 之间禁止互相 import（architectureguard forbidden-import）：
+// internal/<feature> 功能包之间禁止互相 import 容器装配（architectureguard forbidden-import）：
 // plugins 模块定义 EndpointLister/ErrOAuthProtectedEndpoint 契约，本适配器在此
 // 把 airesource 的 MCPManager 粘合到该契约上。
 //

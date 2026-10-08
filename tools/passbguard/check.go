@@ -913,7 +913,7 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) ([]string, 
 		// handler 注册位点。B0 口径正确的前提有二：RegisterWorkers 在 16 个
 		// module.go 中均为注释形态（无模块树内注册位点），注册全在
 		// internal/router；且树内/树外的 enqueue 生产方引用
-		// （internal/application/service/*、internal/datasource/connector/moauth/scheduler.go 等）
+		// （internal/application/service/*、internal/modules/datasource/scheduler.go 等）
 		// 与注册位点无法用"标识符被引用"区分，只能靠已知注册根圈定。
 		//
 		// B1+ 落地 RegisterWorkers 到模块树时，必须同步把 manifest

@@ -25,19 +25,19 @@ func fixtureDiscovery() *Discovery {
 		},
 		GoFiles: []string{
 			"internal/application/repository/widget.go",
-			"internal/knowledge/widgets/alias.go",
-			"internal/agentruntime/agent/engine.go",
+			"internal/modules/knowledge/widgets/alias.go",
+			"internal/modules/agentruntime/agent/engine.go",
 		},
 		Imports: map[string][]string{
-			"internal/knowledge/widgets/alias.go": {},
-			"internal/agentruntime/agent/engine.go": {
-				"github.com/Tencent/WeKnora/internal/airesource/models/chat",
+			"internal/modules/knowledge/widgets/alias.go": {},
+			"internal/modules/agentruntime/agent/engine.go": {
+				"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
 			},
 		},
 		Exceptions: []DiscoveredException{
 			{
-				ImporterFile: "internal/agentruntime/agent/engine.go",
-				ImportedPath: "github.com/Tencent/WeKnora/internal/airesource/models/chat",
+				ImporterFile: "internal/modules/agentruntime/agent/engine.go",
+				ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
 				Reason:       "预存横向包耦合",
 				PassBTask:    "B-agentruntime",
 			},
@@ -53,7 +53,7 @@ func fixtureGovernance() *Governance {
 				Path:             "internal/application/repository/widget.go",
 				Module:           "knowledge",
 				Plan:             "24-knowledge-process",
-				Destination:      "internal/knowledge/process",
+				Destination:      "internal/modules/knowledge/process",
 				IntegrationOwner: "ib2",
 				DeleteBarrier:    "ib2",
 			},
@@ -64,8 +64,8 @@ func fixtureGovernance() *Governance {
 		Exceptions: []Exception{
 			{
 				ID:       "exc-0001",
-				From:     "internal/agentruntime/agent/engine.go",
-				To:       "github.com/Tencent/WeKnora/internal/airesource/models/chat",
+				From:     "internal/modules/agentruntime/agent/engine.go",
+				To:       "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
 				Plan:     "33-agentruntime-engine",
 				RemoveAt: "ib3",
 				Reason:   "预存横向包耦合",
@@ -113,7 +113,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 				g.Legacy = append(g.Legacy, LegacyOwnership{
 					Path:   "internal/application/repository/widget.go",
 					Module: "workbench", Plan: "40-workbench",
-					Destination:   "internal/workbench/repository",
+					Destination:   "internal/modules/workbench/repository",
 					DeleteBarrier: "ib4",
 				})
 			},
@@ -138,10 +138,10 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			// 4b. 目标包落在别的模块树下。
 			name: "destination module mismatch",
 			mutG: func(g *Governance) {
-				g.Legacy[0].Destination = "internal/conversation/service"
+				g.Legacy[0].Destination = "internal/modules/conversation/service"
 			},
 			check: "legacy-destination",
-			want:  "internal/conversation/service",
+			want:  "internal/modules/conversation/service",
 		},
 		{
 			// 4c. 删除屏障早于属主计划阶段（B2 计划配 ib1）。
@@ -164,8 +164,8 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			mutG: func(g *Governance) {
 				g.Exceptions = append(g.Exceptions, Exception{
 					ID:   "exc-0002",
-					From: "internal/agentruntime/agent/ghost.go",
-					To:   "github.com/Tencent/WeKnora/internal/commercial",
+					From: "internal/modules/agentruntime/agent/ghost.go",
+					To:   "github.com/Tencent/WeKnora/internal/modules/commercial",
 					Plan: "33-agentruntime-engine", RemoveAt: "ib3", Reason: "invented",
 				})
 			},
@@ -212,7 +212,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			},
 			check:    "exception-overlap",
 			want:     "exc-0099",
-			wantPath: "internal/agentruntime/agent/engine.go",
+			wantPath: "internal/modules/agentruntime/agent/engine.go",
 		},
 	}
 	for _, tc := range cases {

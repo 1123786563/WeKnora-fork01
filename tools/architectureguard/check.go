@@ -114,118 +114,118 @@ var importExceptions = []importException{
 	// 存活边 + 7 条 guard-only 存活边（codedelivery→appconnector ×6、
 	// command_queue_next.go→agentruntime 模块根）。
 	{
-		ImporterFile: "internal/codedelivery/code_platform.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector",
+		ImporterFile: "internal/modules/codedelivery/code_platform.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/codedelivery/dispatcher.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector",
+		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/codedelivery/dispatcher.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector",
+		ImporterFile: "internal/modules/codedelivery/dispatcher.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/codedelivery/gitlab_client.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector",
+		ImporterFile: "internal/modules/codedelivery/gitlab_client.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/codedelivery/service.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector",
+		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/codedelivery/service.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector",
+		ImporterFile: "internal/modules/codedelivery/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector",
 		Reason:       "issue30 codedelivery 直连 appconnector 根包与内部包（预存耦合，Pass B 收口）",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/appconnector/service/appconnector/oc_recovery.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial/service/commercial",
+		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
 		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +
 			"oc_recovery 直接消费 commercial service），Pass A 不改边界",
 		PassBTask: "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/appconnector/adapter.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/appconnector/adapter.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/appconnector/service/appconnector/action.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/appconnector/service/appconnector/action.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
 		PassBTask:    "B-appconnector",
 	},
 	{
-		ImporterFile: "internal/appconnector/service/appconnector/oc_recovery.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
 		PassBTask:    "B-appconnector",
 	},
 	// ---- batch A4 搬迁显形的预存横向耦合：workbench 内文件消费其他模块内部包（Pass B 任务 B-workbench）----
 	{
-		ImporterFile: "internal/workbench/service/workbench/command_queue_next.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/agentruntime",
+		ImporterFile: "internal/modules/workbench/service/workbench/command_queue_next.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime",
 		Reason:       "命令队列映射错误时必须保留 AgentRun outcome identity；仅依赖 AgentRuntime 模块根错误哨兵，Pass A 不改边界",
 		PassBTask:    "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/admission.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/admission.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial/repository/commercial",
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/admission.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/execution",
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/remote_dispatch.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_dispatch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/remote_usage.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/remote_usage.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial/repository/commercial",
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
 	{
-		ImporterFile: "internal/workbench/service/workbench/remote_usage.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/execution",
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
@@ -233,15 +233,15 @@ var importExceptions = []importException{
 	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval semantic 面消费 commercial
 	// 域类型（22-knowledge-retrieval K2.3 搬迁后显形；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
 	{
-		ImporterFile: "internal/knowledge/retrieval/app/semantic_model_capability.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_capability.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
 			"K2.3 搬迁后显形），Pass B 不改边界",
 		PassBTask: "B-knowledge",
 	},
 	{
-		ImporterFile: "internal/knowledge/retrieval/app/semantic_model_policy.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/commercial",
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_policy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
 		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
 			"K2.3 搬迁后显形），Pass B 不改边界",
 		PassBTask: "B-knowledge",

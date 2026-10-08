@@ -29,7 +29,7 @@ func newControlledPluginHost(t *testing.T, manifestHandler http.HandlerFunc, mcp
 
 // 注：基于真实 MCPManager 的 EndpointLister 适配器测试（happy path / 并发隔离 /
 // 错误路径连接回收 / OAuth 哨兵映射）位于 internal/container/plugin_lister_test.go：
-// 适配器自本模块迁往组合根（internal/modules 之间禁止互相 import），测试随迁。
+// 适配器自本模块迁往组合根（internal/<feature> 功能包之间禁止互相 import），测试随迁。
 
 // TestFetchRejectsUserinfoCredentialsInManifestURL (OCR T01-R3-F2): the
 // manifest URL must be refused BEFORE any request when it embeds userinfo

@@ -105,9 +105,9 @@ func TestRunImportExceptionSuppressesExactPair(t *testing.T) {
 	// §15：例外必须精确到 file→package 对。命中豁免的精确组合不得报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 `,
 	})
 
@@ -124,9 +124,9 @@ func TestRunImportExceptionDoesNotCoverOtherFiles(t *testing.T) {
 	// 同一 package、不同文件的 import 不在豁免范围内，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/appconnector/service/appconnector/other_file.go": `package appconnector
+		"internal/modules/appconnector/service/appconnector/other_file.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 `,
 	})
 
@@ -143,7 +143,7 @@ func TestRunImportExceptionDoesNotCoverOtherPackages(t *testing.T) {
 	// 同一文件 import 其他模块的包不在豁免范围内，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/othermod/service/othermod"
 `,
@@ -164,15 +164,15 @@ func TestRunImportExceptionCoversCommercialRootImports(t *testing.T) {
 	// 导入不在豁免范围，仍须报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/appconnector/adapter.go": `package appconnector
+		"internal/modules/appconnector/adapter.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/appconnector/service/appconnector/action.go": `package appconnector
+		"internal/modules/appconnector/service/appconnector/action.go": `package appconnector
 
-import _ "github.com/Tencent/WeKnora/internal/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/appconnector/other_root.go": `package appconnector
+		"internal/modules/appconnector/other_root.go": `package appconnector
 
 import _ "github.com/Tencent/WeKnora/internal/modules/othermod"
 `,
@@ -201,13 +201,13 @@ func TestRunImportExceptionCoversKnowledgeRetrievalCommercialRoot(t *testing.T) 
 	// 不在豁免范围，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/knowledge/retrieval/app/semantic_model_capability.go": `package app
+		"internal/modules/knowledge/retrieval/app/semantic_model_capability.go": `package app
 
-import _ "github.com/Tencent/WeKnora/internal/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
+		"internal/modules/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
 
-import _ "github.com/Tencent/WeKnora/internal/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
 	})
 
@@ -229,12 +229,12 @@ func TestRunImportExceptionCoversAppconnectorOcRecoveryMixedImports(t *testing.T
 	// 未列包（execution 模块根不在清单）仍须报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/commercial"
-	_ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
-	_ "github.com/Tencent/WeKnora/internal/execution"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/execution"
 )
 `,
 	})
@@ -247,7 +247,7 @@ import (
 		t.Fatalf("命中豁免的 oc_recovery.go 两条 commercial 导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`oc_recovery.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/execution"`) {
+		`oc_recovery.go 导入了模块 execution 的内部包 "github.com/Tencent/WeKnora/internal/modules/execution"`) {
 		t.Fatalf("未列入豁免的 oc_recovery.go→execution 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
@@ -259,17 +259,17 @@ func TestRunImportExceptionCoversCodedeliveryAndWorkbench(t *testing.T) {
 	// （codedelivery/service.go→agentruntime/agent 不在清单）仍须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/codedelivery/service.go": `package codedelivery
+		"internal/modules/codedelivery/service.go": `package codedelivery
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/appconnector"
-	_ "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
-	_ "github.com/Tencent/WeKnora/internal/agentruntime/agent"
+	_ "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
 )
 `,
-		"internal/workbench/service/workbench/command_queue_next.go": `package workbench
+		"internal/modules/workbench/service/workbench/command_queue_next.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/agentruntime"
+import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
 `,
 	})
 
@@ -285,7 +285,7 @@ import _ "github.com/Tencent/WeKnora/internal/agentruntime"
 		t.Fatalf("在册的 command_queue_next.go→agentruntime 模块根导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`service.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent"`) {
+		`service.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"`) {
 		t.Fatalf("未列入豁免的 service.go→agentruntime/agent 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
@@ -296,16 +296,16 @@ func TestRunImportExceptionCoversWorkbenchRemoteUsagePairs(t *testing.T) {
 	// 相邻文件必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/workbench/service/workbench/remote_usage.go": `package workbench
+		"internal/modules/workbench/service/workbench/remote_usage.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/commercial"
-	_ "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 )
 `,
-		"internal/workbench/service/workbench/remote_usage_neighbor.go": `package workbench
+		"internal/modules/workbench/service/workbench/remote_usage_neighbor.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/commercial"
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
 	})
 
@@ -328,12 +328,12 @@ func TestRunImportExceptionCoversBatchA4Workbench(t *testing.T) {
 	// 归位删除，不再列入）。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/workbench/service/workbench/admission.go": `package workbench
+		"internal/modules/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/commercial"
-	_ "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
-	_ "github.com/Tencent/WeKnora/internal/execution"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/execution"
 )
 `,
 	})
@@ -353,16 +353,16 @@ func TestRunImportExceptionBatchA4DoesNotCoverUnlistedPairs(t *testing.T) {
 	// 仍须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/workbench/service/workbench/admission.go": `package workbench
+		"internal/modules/workbench/service/workbench/admission.go": `package workbench
 
 import (
-	_ "github.com/Tencent/WeKnora/internal/commercial"
-	_ "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial"
+	_ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 )
 `,
-		"internal/workbench/service/workbench/neighbor.go": `package workbench
+		"internal/modules/workbench/service/workbench/neighbor.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"
+import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 `,
 	})
 
@@ -372,12 +372,12 @@ import _ "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"
 	}
 	if hasCheck(rep.Diagnostics, "forbidden-import",
 		`admission.go 导入了模块 commercial 的内部包 `+
-			`"github.com/Tencent/WeKnora/internal/commercial"`) {
+			`"github.com/Tencent/WeKnora/internal/modules/commercial"`) {
 		t.Fatalf("batch A4 命中豁免的精确对 admission.go 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
 		`admission.go 导入了模块 commercial 的内部包 `+
-			`"github.com/Tencent/WeKnora/internal/commercial/service/commercial"`) {
+			`"github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"`) {
 		t.Fatalf("未列入豁免的 admission.go 指向 commercial/service 的导入必须照常报告:\n%s",
 			joinChecks(rep.Diagnostics))
 	}
