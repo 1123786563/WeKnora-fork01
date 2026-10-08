@@ -15,7 +15,7 @@ hooks 58）。
 move commit 为纯 rename（47/47 相似度 100%，0 insertions / 0 deletions）。
 目标目录原有的 F1 骨架（`module.go`、`README.md`、`legacy/README.md`）与搬入包同为
 `package craft`，合并为同一包，无冲突。包内唯一外部依赖是
-`internal/modules/agentruntime/agent/runtime` 与 `internal/modules/commercial`（均为既冻结的
+`internal/agentruntime/agent/runtime` 与 `internal/modules/commercial`（均为既冻结的
 模块路径，搬迁前后零变化）。
 
 ## 2. 旧路径别名（alias_obligations，1 处）
@@ -118,12 +118,12 @@ architectureguard 在本分支报 **4 条新** forbidden-import 诊断（IA3 基
 旧 platform 路径变成模块内部路径，暴露出**先于本次改造**的跨模块耦合；完整输出存档
 `/tmp/a13-guard.log`）：
 
-1. `internal/modules/agentruntime/agent/opencode/executor.go` 导入 `internal/modules/craft`
+1. `internal/agentruntime/agent/opencode/executor.go` 导入 `internal/modules/craft`
    （搬迁前导入 `internal/craft`，耦合预存；A13 仅按 manifest importers 做了 import 行修复，
    文件属 agentruntime 领地）
-2. `internal/modules/agentruntime/agent/opencode/normalizer.go` 导入 `internal/modules/craft`（同上）
-3. `internal/modules/agentruntime/agent/tools/craft_delegate.go` 导入 `internal/modules/craft`（同上）
-4. `internal/modules/craft/contracts.go` 导入 `internal/modules/agentruntime/agent/runtime`
+2. `internal/agentruntime/agent/opencode/normalizer.go` 导入 `internal/modules/craft`（同上）
+3. `internal/agentruntime/agent/tools/craft_delegate.go` 导入 `internal/modules/craft`（同上）
+4. `internal/modules/craft/contracts.go` 导入 `internal/agentruntime/agent/runtime`
    （耦合预存：搬迁前 `internal/craft/contracts.go` 即导入同一模块路径；此前 importer
    `internal/craft` 不在模块目录下故不触发；搬迁后 importer 变为模块内部路径而显形——
    IA3 例外登记表按精确 importer 文件路径匹配，需 IA4 增补/迁移对应条目）
@@ -136,7 +136,7 @@ architectureguard 在本分支报 **4 条新** forbidden-import 诊断（IA3 基
 
 - `go build ./...`
 - `go test ./internal/modules/craft/... -count=1`（manifest test_commands）
-- `go test ./internal/container/... ./internal/application/service/... ./internal/application/repository/... ./internal/handler/... ./internal/handler/session/... ./internal/modules/agentruntime/agent/tools/... -count=1`（直接消费方回归；opencode 全套按 F0 §2.5 已知不稳定处理，可用 `-run Craft` 定点）
+- `go test ./internal/container/... ./internal/application/service/... ./internal/application/repository/... ./internal/handler/... ./internal/handler/session/... ./internal/agentruntime/agent/tools/... -count=1`（直接消费方回归；opencode 全套按 F0 §2.5 已知不稳定处理，可用 `-run Craft` 定点）
 - `go run ./tools/modulemove verify --module craft`
 - `go run ./tools/architectureguard`（路由 633 / redis 23+lite 23 / hooks 58 不得变化；
   第 8 节 4 条 forbidden-import 诊断在集成处置前允许存在，其余必须 0）

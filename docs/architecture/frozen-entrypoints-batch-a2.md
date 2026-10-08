@@ -10,9 +10,9 @@
 | 模块 | 包路径（省略前缀 `github.com/Tencent/WeKnora/`） |
 |---|---|
 | execution | `internal/modules/execution`、`internal/modules/execution/browserskill`、`internal/modules/execution/sandbox` |
-| airesource | `internal/modules/airesource`、`internal/modules/airesource/mcp`、`internal/modules/airesource/storageurl`、`internal/modules/airesource/web_search`、`internal/modules/airesource/models/asr`、`internal/modules/airesource/models/chat`、`internal/modules/airesource/models/embedding`、`internal/modules/airesource/models/limiter`、`internal/modules/airesource/models/provider`、`internal/modules/airesource/models/rerank`、`internal/modules/airesource/models/utils`、`internal/modules/airesource/models/utils/ollama`、`internal/modules/airesource/models/vlm` |
+| airesource | `internal/airesource`、`internal/airesource/mcp`、`internal/airesource/storageurl`、`internal/airesource/web_search`、`internal/airesource/models/asr`、`internal/airesource/models/chat`、`internal/airesource/models/embedding`、`internal/airesource/models/limiter`、`internal/airesource/models/provider`、`internal/airesource/models/rerank`、`internal/airesource/models/utils`、`internal/airesource/models/utils/ollama`、`internal/airesource/models/vlm` |
 | agentcatalog | `internal/modules/agentcatalog`（仅 `module.go` 零逻辑骨架 + `legacy/README.md`，无子包） |
-| policy | `internal/modules/policy`、`internal/modules/policy/access`、`internal/modules/policy/embedpolicy`、`internal/modules/policy/ipclass`、`internal/modules/policy/ratelimit`、`internal/modules/policy/storageallowlist` |
+| policy | `internal/policy`、`internal/policy/access`、`internal/policy/embedpolicy`、`internal/policy/ipclass`、`internal/policy/ratelimit`、`internal/policy/storageallowlist` |
 
 四个模块根包（`module.go`）均为零逻辑骨架，仅以注释声明预期 façade（`NewModule` / `RegisterRoutes` / `RegisterWorkers` / `Start` / `Stop`），**当前无任何导出符号**；agentcatalog 亦无外部导入方（A11 为其首个消费者）。
 
@@ -97,11 +97,11 @@
 | 2 | `internal/modules/appconnector/adapter.go` | `modules/commercial` | B-appconnector |
 | 3 | `internal/modules/appconnector/service/appconnector/action.go` | `modules/commercial` | B-appconnector |
 | 4 | `internal/modules/appconnector/service/appconnector/oc_recovery.go` | `modules/commercial` | B-appconnector |
-| 5 | `internal/modules/airesource/models/chat/usage.go` | `modules/commercial` | B-airesource |
-| 6 | `internal/modules/channels/im/service.go` | `modules/airesource/mcp` | B-channels |
-| 7 | `internal/modules/channels/im/service.go` | `modules/airesource/storageurl` | B-channels |
-| 8 | `internal/modules/channels/im/service.go` | `modules/policy/ratelimit` | B-channels |
-| 9 | `internal/modules/channels/im/yunzhijia/url.go` | `modules/policy/ipclass` | B-channels |
+| 5 | `internal/airesource/models/chat/usage.go` | `modules/commercial` | B-airesource |
+| 6 | `internal/channels/im/service.go` | `modules/airesource/mcp` | B-channels |
+| 7 | `internal/channels/im/service.go` | `modules/airesource/storageurl` | B-channels |
+| 8 | `internal/channels/im/service.go` | `modules/policy/ratelimit` | B-channels |
+| 9 | `internal/channels/im/yunzhijia/url.go` | `modules/policy/ipclass` | B-channels |
 | 10 | `internal/modules/execution/sandbox/url_guard.go` | `modules/policy/ipclass` | B-execution |
 
 第 1–4 条为 IA1 batch-a1 登记（appconnector→commercial）；第 5–10 条为 batch-a2 搬迁显形的预存横向互引。全部为**临时豁免**：对应 Pass B 任务落地时逐条删除，worker 不应复用或扩大这些耦合。

@@ -13,9 +13,9 @@ Analytics、Evaluation、运营指标、报表、可重建分析投影（§5.14/
 
 | 原路径 | 目标路径 | 状态 |
 |---|---|---|
-| `internal/application/service/metric` | `internal/modules/insights/metric` | Pass A 已迁 |
-| `internal/application/repository/analytics.go`、`internal/handler/analytics.go` | `internal/modules/insights/analytics` | Pass B 已迁（B3-IN.3） |
-| `internal/application/service/{dataset,evaluation,metric_hook}.go`、`internal/handler/evaluation.go` | `internal/modules/insights/evaluation` | Pass B 已迁（B3-IN.4） |
+| `internal/application/service/metric` | `internal/insights/metric` | Pass A 已迁 |
+| `internal/application/repository/analytics.go`、`internal/handler/analytics.go` | `internal/insights/analytics` | Pass B 已迁（B3-IN.3） |
+| `internal/application/service/{dataset,evaluation,metric_hook}.go`、`internal/handler/evaluation.go` | `internal/insights/evaluation` | Pass B 已迁（B3-IN.4） |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -39,7 +39,7 @@ Analytics、Evaluation、运营指标、报表、可重建分析投影（§5.14/
 
 ## 验收命令
 
-- `go test ./internal/modules/insights/... -count=1`
+- `go test ./internal/insights/... -count=1`
 
 导入方（importers，现为 3 个真实宿主——compat shim 所在：`internal/application/repository`、`internal/application/service`、`internal/handler`）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/insights.yaml`。

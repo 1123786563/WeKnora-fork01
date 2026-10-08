@@ -264,12 +264,12 @@ func TestRunImportExceptionCoversCodedeliveryAndWorkbench(t *testing.T) {
 import (
 	_ "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	_ "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
-	_ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+	_ "github.com/Tencent/WeKnora/internal/agentruntime/agent"
 )
 `,
 		"internal/modules/workbench/service/workbench/command_queue_next.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+import _ "github.com/Tencent/WeKnora/internal/agentruntime"
 `,
 	})
 
@@ -285,7 +285,7 @@ import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime"
 		t.Fatalf("在册的 command_queue_next.go→agentruntime 模块根导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
-		`service.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"`) {
+		`service.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent"`) {
 		t.Fatalf("未列入豁免的 service.go→agentruntime/agent 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 }
@@ -362,7 +362,7 @@ import (
 `,
 		"internal/modules/workbench/service/workbench/neighbor.go": `package workbench
 
-import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+import _ "github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"
 `,
 	})
 

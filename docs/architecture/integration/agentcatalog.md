@@ -24,7 +24,7 @@ internal/application/service 拆分注记`）。IA1 在 batch A2 集成中**无�
 任务简报模板提到 "experts/persona/subagents/skills/catalog packages"，但**绑定事实源
 （manifest wins）**将 `internal/agent` 全树归 agentruntime：`docs/architecture/moves/
 agentruntime.yaml` move_packages 明确列出 `internal/agent` →
-`internal/modules/agentruntime/agent` 及其全部子包，包括：
+`internal/agentruntime/agent` 及其全部子包，包括：
 
 | 包 | 归属 | 内容佐证 |
 |---|---|---|

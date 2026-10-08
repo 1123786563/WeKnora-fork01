@@ -67,9 +67,9 @@ make check-backend-architecture
 # architectureguard: OK (0 violations)
 # EXIT_CODE=0（计数基线 633/23+23/58/16 三方一致口径的 guard 实测值）
 
-go test -count=1 ./internal/modules/insights/...
-# ?   	github.com/Tencent/WeKnora/internal/modules/insights	[no test files]
-# ok  	github.com/Tencent/WeKnora/internal/modules/insights/metric	0.891s
+go test -count=1 ./internal/insights/...
+# ?   	github.com/Tencent/WeKnora/internal/insights	[no test files]
+# ok  	github.com/Tencent/WeKnora/internal/insights/metric	0.891s
 # EXIT_CODE=0
 
 go test ./internal/application/repository -run TestAnalyticsAggregations -count=1
@@ -125,13 +125,13 @@ ok  github.com/Tencent/WeKnora/internal/handler 1.565s
 4 文件经 Write 通道落位 + `git rm` 删除宿主原件（环境备注：Mimosa 拦截 `git mv` 纯重命名——Bash 写源码通道策略，PreToolUse 指引改用 Write/Edit 提交同一内容；内容逐字等价，未变换写法）。`git status` 对 4 对路径全部识别为 rename（`R`）：
 
 ```text
-R  internal/handler/analytics.go -> internal/modules/insights/analytics/analytics_handler.go
-R  internal/handler/analytics_test.go -> internal/modules/insights/analytics/analytics_handler_test.go
-R  internal/application/repository/analytics.go -> internal/modules/insights/analytics/analytics_repository.go
-R  internal/application/repository/analytics_test.go -> internal/modules/insights/analytics/analytics_repository_test.go
+R  internal/handler/analytics.go -> internal/insights/analytics/analytics_handler.go
+R  internal/handler/analytics_test.go -> internal/insights/analytics/analytics_handler_test.go
+R  internal/application/repository/analytics.go -> internal/insights/analytics/analytics_repository.go
+R  internal/application/repository/analytics_test.go -> internal/insights/analytics/analytics_repository_test.go
 ```
 
-`git diff --cached -M --stat -- internal/application/repository/analytics.go internal/modules/insights/analytics/analytics_repository.go`：
+`git diff --cached -M --stat -- internal/application/repository/analytics.go internal/insights/analytics/analytics_repository.go`：
 
 ```text
  .../analytics.go => modules/insights/analytics/analytics_repository.go} | 2 +-
@@ -154,13 +154,13 @@ R  internal/application/repository/analytics_test.go -> internal/modules/insight
 
 **analytics_handler_test.go 采用外部测试包 `package analytics_test`**（计划原文「package analytics，本体零改动」）：
 
-- 根因：内部测试包编译图含被测包 —— `analytics(test) → internal/middleware（ErrorHandler）→ internal/application/repository（kb_access.go:7 apprepo）→ internal/modules/insights/analytics（本节点宿主 compat 转发）` 成环，`go vet`/`go test` 编译失败（实测报错 `import cycle not allowed in test`）。
+- 根因：内部测试包编译图含被测包 —— `analytics(test) → internal/middleware（ErrorHandler）→ internal/application/repository（kb_access.go:7 apprepo）→ internal/insights/analytics（本节点宿主 compat 转发）` 成环，`go vet`/`go test` 编译失败（实测报错 `import cycle not allowed in test`）。
 - 处置：改 `package analytics_test` + `&analytics.AnalyticsHandler{...}` 限定（Go 标准机制，外部测试包不参与被测包编译图）。**10 个顶层用例的用例名、路由挂载、请求、断言全部逐字保持**；差分口径不受影响（黑盒 HTTP 行为不变）。
 - 先例核对：其余模块测试（agentcatalog/handler、knowledge/retrieval/app/handler 等）import middleware 无环，因其宿主 compat 指向的模块包不在被测包编译链上；本节点 repository 侧 compat 恰指向被测包 `analytics` 本身，属计划撰写时未覆盖的真实约束。
 
 ### §2.4 模块位实跑 vs P-6 宿主位基线逐例比对
 
-`go test -count=1 -v ./internal/modules/insights/analytics/`（2026-09-28 实跑摘录）：
+`go test -count=1 -v ./internal/insights/analytics/`（2026-09-28 实跑摘录）：
 
 ```text
 === RUN   TestAnalyticsAggregations
@@ -187,7 +187,7 @@ R  internal/application/repository/analytics_test.go -> internal/modules/insight
 --- PASS: TestAnalyticsHandler_AgentMessagesEmptyAgentID (0.00s)
 --- PASS: TestAnalyticsHandler_RepoErrorMapsTo500 (0.00s)
 PASS
-ok  	github.com/Tencent/WeKnora/internal/modules/insights/analytics	2.877s
+ok  	github.com/Tencent/WeKnora/internal/insights/analytics	2.877s
 ```
 
 **逐例等价比对结论**（vs §1 P-6 宿主位基线）：
@@ -233,7 +233,7 @@ seam（§2.3(a)）：① `DeleteReferencedKnowledgeFunc` 类型（签名=宿主 
 
 ### §3.3 seam TDD：RED → GREEN（B3-IN.4 步骤 4）
 
-- **RED**（seam 测试先行、构造器尚无第 7 参）：`go test ./internal/modules/insights/evaluation -run TestEvalDatasetInvokesKnowledgeCleanupSeam -count=1` → 编译失败，输出两行：
+- **RED**（seam 测试先行、构造器尚无第 7 参）：`go test ./internal/insights/evaluation -run TestEvalDatasetInvokesKnowledgeCleanupSeam -count=1` → 编译失败，输出两行：
   - `evaluation.go:366:13: undefined: deleteReferencedKnowledge`（迁移后同包裸标识符断链，预期）
   - `evaluation_cleanup_test.go:106:3: too many arguments in call to NewEvaluationService ... want (..., interfaces.ModelService)`（第 7 参缺失，即计划预测的 RED 证据）
   - `FAIL ... [build failed]`
@@ -246,7 +246,7 @@ seam（§2.3(a)）：① `DeleteReferencedKnowledgeFunc` 类型（签名=宿主 
 | 命令 | 输出 | 退出码 |
 |---|---|---|
 | 宿主位：`go test ./internal/application/service -run 'TestGetPassageListGolden\|TestMetricListAppendAvg\|TestHookMetricRecordFinishMapsContentToPID' -count=1 -v`（BASE 树） | `--- PASS: TestGetPassageListGolden (0.00s)` / `--- PASS: TestMetricListAppendAvg (0.00s)` / `--- PASS: TestHookMetricRecordFinishMapsContentToPID (0.00s)` + `ok ... 0.946s` | 0 |
-| 模块位：`go test ./internal/modules/insights/evaluation -run '<同上三例>\|TestEvalDatasetInvokesKnowledgeCleanupSeam' -count=1 -v` | 同 3 例 PASS 逐字一致 + seam 1 例 PASS + `ok ... 1.293s` | 0 |
+| 模块位：`go test ./internal/insights/evaluation -run '<同上三例>\|TestEvalDatasetInvokesKnowledgeCleanupSeam' -count=1 -v` | 同 3 例 PASS 逐字一致 + seam 1 例 PASS + `ok ... 1.293s` | 0 |
 
 | 用例 | 宿主位（BASE） | 模块位（迁移后） | 等价 |
 |---|---|---|---|
@@ -269,13 +269,13 @@ seam（§2.3(a)）：① `DeleteReferencedKnowledgeFunc` 类型（签名=宿主 
 ### B3-IN.4（evaluation 面，与物理迁移同 commit）
 
 - `docs/architecture/moves/insights.yaml` legacy_files：删 4 行（`internal/application/service/{dataset,evaluation,metric_hook}.go`、`internal/handler/evaluation.go`，Ruling 1「可早删不可晚删」）；增 1 行 shim（`internal/application/service/insights_passb_compat.go`，reason「Pass B 过渡 shim，ib3 同 commit 随文件删行」、navigation_label「Insights host compat (application/service)」，Ruling 7 成对纪律）；shim 行排序对齐 datasource（repository → service → handler）。
-- `docs/architecture/passb/ownership-matrix.yaml`：删 4 行（原 :782-:787 dataset、:812-:817 evaluation(service)、:1034-:1039 metric_hook、:1550-:1555 evaluation(handler)）；增 1 行 shim（插于 fork_bootstrapper.go 与 kbshare.go 之间保持字典序；destination=`internal/modules/insights/evaluation`，integration_owner/delete_barrier=ib3）。
+- `docs/architecture/passb/ownership-matrix.yaml`：删 4 行（原 :782-:787 dataset、:812-:817 evaluation(service)、:1034-:1039 metric_hook、:1550-:1555 evaluation(handler)）；增 1 行 shim（插于 fork_bootstrapper.go 与 kbshare.go 之间保持字典序；destination=`internal/insights/evaluation`，integration_owner/delete_barrier=ib3）。
 - 门禁复核：`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`（计数基线 633/23+23/58/16 不变）。
 
 ### B3-IN.3（analytics 面，与物理迁移同 commit）
 
 - `docs/architecture/moves/insights.yaml` legacy_files：删 2 行（`internal/application/repository/analytics.go`、`internal/handler/analytics.go`，Ruling 1「可早删不可晚删」）；增 2 行 shim（`insights_passb_compat.go` ×2，reason「Pass B 过渡 shim，ib3 同 commit 随文件删行」，Ruling 7 成对纪律，行格式镜像 datasource.yaml:9-:12）。
-- `docs/architecture/passb/ownership-matrix.yaml`：删 analytics 2 行（原 :98-:103、:1478-:1483）；增 2 行 shim（repository 侧插于 feedback.go 与 kbshare.go 之间、handler 侧插于 initialization.go 与 knowledge.go 之间，保持字典序；destination=`internal/modules/insights/analytics`，integration_owner/delete_barrier=ib3，行格式镜像 datasource_passb_compat.go 行）。
+- `docs/architecture/passb/ownership-matrix.yaml`：删 analytics 2 行（原 :98-:103、:1478-:1483）；增 2 行 shim（repository 侧插于 feedback.go 与 kbshare.go 之间、handler 侧插于 initialization.go 与 knowledge.go 之间，保持字典序；destination=`internal/insights/analytics`，integration_owner/delete_barrier=ib3，行格式镜像 datasource_passb_compat.go 行）。
 - 门禁复核：`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`（计数基线 633/23+23/58/16 三方一致口径不变）。
 
 ## §5 门禁记录（B3-IN.7 待填）

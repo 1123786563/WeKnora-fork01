@@ -1,5 +1,5 @@
 // Command craft-egress-adapter runs the per-Run model-egress attempt
-// authority (internal/modules/craftegress) as the runtime-side producer of
+// authority (internal/craftegress) as the runtime-side producer of
 // X-Craft-Activity-ID. Configuration comes exclusively from the environment:
 //
 //	CRAFT_EGRESS_LISTEN              listen address (default 127.0.0.1:8787)
@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/craftegress"
+	"github.com/Tencent/WeKnora/internal/craftegress"
 )
 
 func main() {

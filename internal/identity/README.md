@@ -27,7 +27,7 @@
 
 ## 验收命令
 
-- `go test ./internal/modules/identity/... -count=1`
+- `go test ./internal/identity/... -count=1`
 
 导入方（import-path 修复对象，0 个）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/identity.yaml`。

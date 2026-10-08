@@ -87,8 +87,8 @@
 - Modify: `internal/modules/codedelivery/service_prepare_test.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next.go`
 - Modify: `internal/modules/workbench/service/workbench/command_queue_next_test.go`
-- Modify: `internal/modules/agentruntime/module.go`
-- Modify: `internal/modules/agentruntime/agent/runtime/contracts.go`
+- Modify: `internal/agentruntime/module.go`
+- Modify: `internal/agentruntime/agent/runtime/contracts.go`
 - Modify: `internal/container/code_delivery.go`
 - Add: `internal/modules/codedelivery/contracts.go`
 - Add: `internal/modules/codedelivery/contracts_test.go`
@@ -96,9 +96,9 @@
 **Interfaces:**
 - `codedelivery` owns these narrow contracts: `ActionLifecycle` (`Prepare(ctx, appconnector.Action) (string,error)`, `Execute(ctx,string) error`, `ResolveUnknown(ctx,string) error`); `RunReader` returning `RunIdentity{SessionID string}`; `ProviderSource` returning `ProviderInstallation{AppID string}`; `ActionStoreSource.FindAction(ctx,id) (ActionRecord,error)` where `ActionRecord` carries exactly `ID, TenantID, ActorID, ConnectionID, AppVersion, Target, Risk, ArgsDigest, State, Fence, ArgsSnapshot, AuthVersion, DigestVersion, ProviderResult`; `CredentialResolver.Resolve(ctx,connectionID,expectedVersion) ([]byte,error)`; and `A02Guard.Check(ctx, appconnector.OCSubject, connectionID, expectedVersion) error`.
 - `DeliveryDispatcher` uses codedelivery-owned `ActionSnapshot{ID,TenantID,ActorID,ConnectionID,Target,AuthVersion,Args}` and `DispatchOutcome{Status,ProviderResult}`. `internal/container/code_delivery.go` owns adapters mapping appconnector action snapshots/outcomes/errors, ActionStore rows, AgentRunStore session identity, and InstallationStore AppID to/from those contracts.
-- Define module-root `agentruntime.ErrNotFound` and `agentruntime.ErrConflict` in `internal/modules/agentruntime/module.go`; alias the existing `agent/runtime.ErrNotFound` and `ErrConflict` to those same values in `contracts.go`, so `errors.Is` identity remains exact.
+- Define module-root `agentruntime.ErrNotFound` and `agentruntime.ErrConflict` in `internal/agentruntime/module.go`; alias the existing `agent/runtime.ErrNotFound` and `ErrConflict` to those same values in `contracts.go`, so `errors.Is` identity remains exact.
 - Map codedelivery's `ErrDispatchNotStarted` and `ErrDispatchUnknown` to `appconnectorsvc.ErrDispatchNotStarted` / `ErrDispatchUnknown` in the composition adapter with `%w`, preserving both module-local and action-lifecycle classifications.
-- Workbench command queue consumes `internal/modules/agentruntime` root sentinels and retains existing output/status mapping; it must not import `agentruntime/agent/runtime`.
+- Workbench command queue consumes `internal/agentruntime` root sentinels and retains existing output/status mapping; it must not import `agentruntime/agent/runtime`.
 
 - [ ] Add contract tests proving adapter mapping preserves action/connection identity, dispatch result state, unknown vs not-started errors, and owner-scoped run session identity; add `errors.Is` tests proving the root/runtime sentinels are identical and the queue keeps its not-found/conflict mapping.
 - [ ] Run `go test -count=1 ./internal/modules/codedelivery/... ./internal/modules/workbench/...` and record the current Architecture Guard import findings before code changes.
@@ -197,7 +197,7 @@
 - Modify: `tools/architectureguard/check.go`
 - Modify: `tools/architectureguard/check_test.go`
 
-**Contract:** The workbench queue imports only the stable `github.com/Tencent/WeKnora/internal/modules/agentruntime` module root for `ErrNotFound` and `ErrConflict`; it does not import an agentruntime subpackage. Add one exact file→package exception with reason that queue mapping must preserve the AgentRun outcome identity and Pass B cleanup task `B-workbench`.
+**Contract:** The workbench queue imports only the stable `github.com/Tencent/WeKnora/internal/agentruntime` module root for `ErrNotFound` and `ErrConflict`; it does not import an agentruntime subpackage. Add one exact file→package exception with reason that queue mapping must preserve the AgentRun outcome identity and Pass B cleanup task `B-workbench`.
 
 - [ ] Add a focused failing guard assertion proving the exact workbench queue → agentruntime root pair is the only new allowlisted pair and a neighboring file remains forbidden.
 - [ ] Add one exact `importExceptions` entry; do not broaden owner rules or suppress any other import.

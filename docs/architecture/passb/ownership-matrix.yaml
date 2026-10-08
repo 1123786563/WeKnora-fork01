@@ -32,7 +32,7 @@ legacy_files:
   - path: internal/application/repository/agent_checkpoint.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_marketplace.go
@@ -44,43 +44,43 @@ legacy_files:
   - path: internal/application/repository/agent_run.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_decisions.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_events.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_inputs.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_lifecycle.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_snapshot.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_tools.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_share.go
@@ -104,7 +104,7 @@ legacy_files:
   - path: internal/application/repository/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/craft_preview_check.go
@@ -152,7 +152,7 @@ legacy_files:
   - path: internal/application/repository/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/repository
+    destination: internal/channels/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/execution_cleanup.go
@@ -194,7 +194,7 @@ legacy_files:
   - path: internal/application/repository/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/analytics
+    destination: internal/insights/analytics
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/kbshare.go
@@ -236,25 +236,25 @@ legacy_files:
   - path: internal/application/repository/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_oauth.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_tool_approval_repository.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/message.go
@@ -272,7 +272,7 @@ legacy_files:
   - path: internal/application/repository/mobile_auth_exchange.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mobile_device.go
@@ -296,7 +296,7 @@ legacy_files:
   - path: internal/application/repository/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/model_usage.go
@@ -308,67 +308,67 @@ legacy_files:
   - path: internal/application/repository/native_commit.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_events.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_lease.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_memory.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_oauth.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_pending.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_schema.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_session.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_tool_journal.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_usage.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/published_expert.go
@@ -392,13 +392,13 @@ legacy_files:
   - path: internal/application/repository/resource.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/resource_references.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/session.go
@@ -410,13 +410,13 @@ legacy_files:
   - path: internal/application/repository/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/system_setting.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/repository
+    destination: internal/system/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/temporary_document.go
@@ -428,13 +428,13 @@ legacy_files:
   - path: internal/application/repository/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_api_key.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_disabled_shared_agent.go
@@ -446,13 +446,13 @@ legacy_files:
   - path: internal/application/repository/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_sandbox_config.go
@@ -476,7 +476,7 @@ legacy_files:
   - path: internal/application/repository/user.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/user_resource_favorite.go
@@ -494,7 +494,7 @@ legacy_files:
   - path: internal/application/repository/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/voice_session.go
@@ -506,7 +506,7 @@ legacy_files:
   - path: internal/application/repository/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/workbench_list.go
@@ -530,13 +530,13 @@ legacy_files:
   - path: internal/application/service/agent_capabilities.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_history.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_marketplace.go
@@ -548,43 +548,43 @@ legacy_files:
   - path: internal/application/service/agent_run_decisions.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_graph.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_lifecycle.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_projection.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_resources.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_service.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_worker.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_service.go
@@ -608,7 +608,7 @@ legacy_files:
   - path: internal/application/service/agent_web_pages.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/artifact_collector.go
@@ -626,13 +626,13 @@ legacy_files:
   - path: internal/application/service/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/audit_log_retention.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/craft_artifacts.go
@@ -752,19 +752,19 @@ legacy_files:
   - path: internal/application/service/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/embed_session.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/embed_webhook.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/expert_market_source.go
@@ -800,7 +800,7 @@ legacy_files:
   - path: internal/application/service/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/evaluation
+    destination: internal/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/kbshare.go
@@ -956,19 +956,19 @@ legacy_files:
   - path: internal/application/service/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/mcp_tool_approval_service.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message.go
@@ -992,55 +992,55 @@ legacy_files:
   - path: internal/application/service/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/native_admission.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_archive.go
     module: agentruntime
     plan: 34-agentruntime-protocol
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_oauth.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_pending.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_recovery.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_usage.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/password_policy.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/pinned_session_sandbox.go
@@ -1064,7 +1064,7 @@ legacy_files:
   - path: internal/application/service/resource.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_auth.go
@@ -1154,13 +1154,13 @@ legacy_files:
   - path: internal/application/service/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/subagent_delegate.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/subagent_service.go
@@ -1172,7 +1172,7 @@ legacy_files:
   - path: internal/application/service/system_setting.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/service
+    destination: internal/system/service
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/tag.go
@@ -1196,13 +1196,13 @@ legacy_files:
   - path: internal/application/service/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_api_key.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_expert_market_service.go
@@ -1214,13 +1214,13 @@ legacy_files:
   - path: internal/application/service/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_sandbox_config.go
@@ -1346,7 +1346,7 @@ legacy_files:
   - path: internal/application/service/user.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_env.go
@@ -1370,37 +1370,37 @@ legacy_files:
   - path: internal/application/service/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/vectorstore_healthcheck.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search_state.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/weknoracloud.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/workspace_checkpointer.go
@@ -1436,19 +1436,19 @@ legacy_files:
   - path: internal/handler/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/auth.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/auth_register_by_invite.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/commercial.go
@@ -1478,13 +1478,13 @@ legacy_files:
   - path: internal/handler/deployment_capabilities.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/execution_registration.go
@@ -1514,19 +1514,19 @@ legacy_files:
   - path: internal/handler/im.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/initialization.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/analytics
+    destination: internal/insights/analytics
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/knowledge.go
@@ -1550,31 +1550,31 @@ legacy_files:
   - path: internal/handler/mcp_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_oauth.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_usage_instructions.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/me_env_var.go
@@ -1610,19 +1610,19 @@ legacy_files:
   - path: internal/handler/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/model_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/payment_callbacks.go
@@ -1640,7 +1640,7 @@ legacy_files:
   - path: internal/handler/rbac_lookups.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_check.go
@@ -1664,13 +1664,13 @@ legacy_files:
   - path: internal/handler/session/agent_run.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/agent_stream_handler.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/artifact_download.go
@@ -1754,7 +1754,7 @@ legacy_files:
   - path: internal/handler/session/native_archive.go
     module: agentruntime
     plan: 34-agentruntime-protocol
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/qa.go
@@ -1898,13 +1898,13 @@ legacy_files:
   - path: internal/handler/storage_allowlist.go
     module: policy
     plan: 42-system-policy
-    destination: internal/modules/policy/handler
+    destination: internal/policy/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/subagent.go
@@ -1916,13 +1916,13 @@ legacy_files:
   - path: internal/handler/system.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_expert_market.go
@@ -1934,25 +1934,25 @@ legacy_files:
   - path: internal/handler/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_invite_link.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_policy.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_skill_market.go
@@ -1976,37 +1976,37 @@ legacy_files:
   - path: internal/handler/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search_provider_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/wechat_qrcode.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/weknoracloud.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：

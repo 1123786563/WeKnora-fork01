@@ -8,18 +8,18 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/infrastructure/web_search` | `internal/modules/airesource/web_search` |
-| `internal/mcp` | `internal/modules/airesource/mcp` |
-| `internal/models/asr` | `internal/modules/airesource/models/asr` |
-| `internal/models/chat` | `internal/modules/airesource/models/chat` |
-| `internal/models/embedding` | `internal/modules/airesource/models/embedding` |
-| `internal/models/limiter` | `internal/modules/airesource/models/limiter` |
-| `internal/models/provider` | `internal/modules/airesource/models/provider` |
-| `internal/models/rerank` | `internal/modules/airesource/models/rerank` |
-| `internal/models/utils` | `internal/modules/airesource/models/utils` |
-| `internal/models/utils/ollama` | `internal/modules/airesource/models/utils/ollama` |
-| `internal/models/vlm` | `internal/modules/airesource/models/vlm` |
-| `internal/storageurl` | `internal/modules/airesource/storageurl` |
+| `internal/infrastructure/web_search` | `internal/airesource/web_search` |
+| `internal/mcp` | `internal/airesource/mcp` |
+| `internal/models/asr` | `internal/airesource/models/asr` |
+| `internal/models/chat` | `internal/airesource/models/chat` |
+| `internal/models/embedding` | `internal/airesource/models/embedding` |
+| `internal/models/limiter` | `internal/airesource/models/limiter` |
+| `internal/models/provider` | `internal/airesource/models/provider` |
+| `internal/models/rerank` | `internal/airesource/models/rerank` |
+| `internal/models/utils` | `internal/airesource/models/utils` |
+| `internal/models/utils/ollama` | `internal/airesource/models/utils/ollama` |
+| `internal/models/vlm` | `internal/airesource/models/vlm` |
+| `internal/storageurl` | `internal/airesource/storageurl` |
 
 共 188 个文件（含全部 `_test.go`；`internal/models/*` 按 manifest ruling 保留 `models/` 父层），
 move commit 为纯 rename（188/188 相似度 100%，0 insertions / 0 deletions）。
@@ -32,18 +32,18 @@ move commit 为纯 rename（188/188 相似度 100%，0 insertions / 0 deletions�
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件（符号数） |
 |---|---|---|
-| `internal/infrastructure/web_search` | `internal/modules/airesource/web_search` | `alias.go`（38） |
-| `internal/mcp` | `internal/modules/airesource/mcp` | `alias.go`（33） |
-| `internal/models/asr` | `internal/modules/airesource/models/asr` | `alias.go`（9） |
-| `internal/models/chat` | `internal/modules/airesource/models/chat` | `alias.go`（40） |
-| `internal/models/embedding` | `internal/modules/airesource/models/embedding` | `alias.go`（50） |
-| `internal/models/limiter` | `internal/modules/airesource/models/limiter` | `alias.go`（10） |
-| `internal/models/provider` | `internal/modules/airesource/models/provider` | `alias.go`（110） |
-| `internal/models/rerank` | `internal/modules/airesource/models/rerank` | `alias.go`（49） |
-| `internal/models/utils` | `internal/modules/airesource/models/utils` | `alias.go`（3） |
-| `internal/models/utils/ollama` | `internal/modules/airesource/models/utils/ollama` | `alias.go`（4） |
-| `internal/models/vlm` | `internal/modules/airesource/models/vlm` | `alias.go`（11） |
-| `internal/storageurl` | `internal/modules/airesource/storageurl` | `alias.go`（28） |
+| `internal/infrastructure/web_search` | `internal/airesource/web_search` | `alias.go`（38） |
+| `internal/mcp` | `internal/airesource/mcp` | `alias.go`（33） |
+| `internal/models/asr` | `internal/airesource/models/asr` | `alias.go`（9） |
+| `internal/models/chat` | `internal/airesource/models/chat` | `alias.go`（40） |
+| `internal/models/embedding` | `internal/airesource/models/embedding` | `alias.go`（50） |
+| `internal/models/limiter` | `internal/airesource/models/limiter` | `alias.go`（10） |
+| `internal/models/provider` | `internal/airesource/models/provider` | `alias.go`（110） |
+| `internal/models/rerank` | `internal/airesource/models/rerank` | `alias.go`（49） |
+| `internal/models/utils` | `internal/airesource/models/utils` | `alias.go`（3） |
+| `internal/models/utils/ollama` | `internal/airesource/models/utils/ollama` | `alias.go`（4） |
+| `internal/models/vlm` | `internal/airesource/models/vlm` | `alias.go`（11） |
+| `internal/storageurl` | `internal/airesource/storageurl` | `alias.go`（28） |
 
 别名面 = 搬迁包的全部导出符号（go/ast 枚举生成，共 385），保证禁改文件及任何集成期
 引用可解析。**注意**：`chat.LocalImageResolver` 的别名 `var` 只是值拷贝 —— Go 无 var
@@ -62,9 +62,9 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中引用旧导入路�
 
 **偏差说明（A6 已完成的一步）**：`internal/container/container.go` 原第 70 行
 `"github.com/Tencent/WeKnora/internal/models/chat"` 已在 A6 repair commit 中**改为**
-`"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"`。原因：`container.go:1133`
+`"github.com/Tencent/WeKnora/internal/airesource/models/chat"`。原因：`container.go:1133`
 （`registerChatLocalImageResolver`）对 `chat.LocalImageResolver` 赋值，该符号是可变导出 var
-（`internal/modules/airesource/models/chat/image_resolve.go:63`），var 转发别名无法保留赋值
+（`internal/airesource/models/chat/image_resolve.go:63`），var 转发别名无法保留赋值
 语义，会静默破坏多租户 `local://` 图片解析。除这一行 import 外 `container.go` 零 diff；
 这正是 IA2 原本要做的机械步骤之一，且消除了别名桥接期的行为回归窗口。
 
@@ -74,20 +74,20 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中引用旧导入路�
 
 **非禁改但非本模块领地的残留**（channels 模块文件，A6 未触碰，别名包当前为其解析）：
 
-- `internal/modules/channels/im/service.go:30` — `mcppkg "github.com/Tencent/WeKnora/internal/mcp"`
-- `internal/modules/channels/im/service.go:32` — `"github.com/Tencent/WeKnora/internal/storageurl"`
+- `internal/channels/im/service.go:30` — `mcppkg "github.com/Tencent/WeKnora/internal/mcp"`
+- `internal/channels/im/service.go:32` — `"github.com/Tencent/WeKnora/internal/storageurl"`
 
 （来源：manifest `owned_files.importers` 中的 `internal/im` 在 batch A1 已迁至
-`internal/modules/channels/im`；按并行批次边界规则 A6 不修改其他模块 owned 文件。）
+`internal/channels/im`；按并行批次边界规则 A6 不修改其他模块 owned 文件。）
 
 **给集成者的操作**：
 1. 在 `internal/container/container.go:67/69/70/71/72` 把 5 行 import 改为对应
-   `internal/modules/airesource/...` 路径（qualifier 不变，其余行零改动）；
-2. 顺手把 `internal/modules/channels/im/service.go:30/32` 两行 import 切到
-   `internal/modules/airesource/mcp`、`internal/modules/airesource/storageurl`
+   `internal/airesource/...` 路径（qualifier 不变，其余行零改动）；
+2. 顺手把 `internal/channels/im/service.go:30/32` 两行 import 切到
+   `internal/airesource/mcp`、`internal/airesource/storageurl`
    （该文件属 channels 领地，亦可留给 channels owner）；
 3. 改完后运行 `go build ./...` 通过，再删除第 2 节所列 12 个别名目录（连同 alias.go），
-   再次 `go build ./...` + `go test ./internal/modules/airesource/... -count=1` 确认。
+   再次 `go build ./...` + `go test ./internal/airesource/... -count=1` 确认。
    （当前仍在使用别名的只有上述 container.go 5 行与 channels/im 2 行；其余 5 个别名包
    `asr/chat/embedding/rerank/vlm`、`utils`、`utils/ollama`、`storageurl`*、`web_search`*
    无任何 importer，可先删。*storageurl/web_search 仅 channels/im / container 各自引用。）
@@ -137,15 +137,15 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中引用旧导入路�
 
 **凭据/秘密边界（外部契约，Pass A 未动）**：模型与 Provider 凭据的**存储**仍在既有
 storage 边界（`internal/application/{service,repository}` 的 model/resource/mcp 等 legacy
-文件 + storage backend 配置），`internal/modules/airesource/models/provider` 只承载
+文件 + storage backend 配置），`internal/airesource/models/provider` 只承载
 Provider 协议适配（鉴权头构造等），不落盘、不迁移任何秘密。Pass B `B-airesource` 拆分
 legacy 文件时不得改变凭据存取模式。
 
 ## 8. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/airesource/... -count=1`
-- `go test ./internal/container/... ./internal/handler/... ./internal/agent/... ./internal/application/... ./internal/modelcontext/... ./internal/modules/channels/im/... -count=1`
+- `go test ./internal/airesource/... -count=1`
+- `go test ./internal/container/... ./internal/handler/... ./internal/agent/... ./internal/application/... ./internal/modelcontext/... ./internal/channels/im/... -count=1`
 - `go run ./tools/modulemove verify --module airesource`
 - `go run ./tools/architectureguard`（基线：633 路由 / 23+23 worker / 58 hooks，不得变化；
   已知遗留：`airesource/models/chat/usage.go` 对 commercial 模块内部的 pre-existing

@@ -103,7 +103,7 @@ fix commit 已把 12 个文件上移到 `retriever/` 根并重写全部 import�
 不整体搬移）。18 个 worker 注册（第 5 节）全部经 `params.*` 句柄与 `types.Type*` 常量，
 不直接 import 本模块任何包。
 
-**`internal/modules/channels/im/service.go:28`（非禁改，但属 channels 领地，A9 未触碰）：**
+**`internal/channels/im/service.go:28`（非禁改，但属 channels 领地，A9 未触碰）：**
 `"github.com/Tencent/WeKnora/internal/infrastructure/docparser"` 经别名编译
 （消费 `IsImageFormat`/`IsSimpleFormat`/`SimpleFormatReader`，别名面已覆盖）。
 A6 先例：他模块 owned 文件留给 Integrator 统一翻转。**IA3 处置**：切到
@@ -177,7 +177,7 @@ chunker / semantic / searchutil / retriever 根包 零自有 env 键（其余配
 
 architectureguard 在本分支报 **4 条新 forbidden-import** 诊断（基线其他指标不变：
 routes 633 / redis 23 / lite 23 / hooks 58 / modules 16）。全部是**先于本次改造**的耦合被
-搬迁暴露（这些文件在旧路径时代就已 import `internal/modules/airesource/models/*`，
+搬迁暴露（这些文件在旧路径时代就已 import `internal/airesource/models/*`，
 A6 搬迁 airesource 时它们还在非模块路径，guard 不可见）：
 
 1. `internal/modules/knowledge/docparser/weknoracloud_http_reader.go` → `modules/airesource/models/utils`
@@ -196,7 +196,7 @@ Pass B 改走 airesource 模块门面；不得为过 guard 回退本搬迁。另
 - `go test ./internal/modules/knowledge/... -count=1`（manifest test_commands）
 - `go test -tags anydoc -count=1 ./internal/modules/knowledge/docparser/...`
   （镜像 .github/workflows/anydoc.yml；需先 `./scripts/build-anydoc-lib.sh` 构建原生库）
-- `go test ./internal/container/... ./internal/application/service/... ./internal/handler/... ./internal/agent/... ./internal/modules/channels/im/... -count=1`（直接消费方回归）
+- `go test ./internal/container/... ./internal/application/service/... ./internal/handler/... ./internal/agent/... ./internal/channels/im/... -count=1`（直接消费方回归）
 - `go run ./tools/modulemove verify --module knowledge`
 - `go run ./tools/architectureguard`（routes 633 / redis 23+lite 23 / hooks 58 不得变化；
   第 8 节 4 条诊断在集成处置前允许存在，其余必须 0）

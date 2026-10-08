@@ -213,8 +213,8 @@ Integration Brief §7.4（T4 定稿交付）。
 
    输出含包文档 + 全部导出常量/类型/函数（`RiskRead`/`ActionAwaitingApproval`/
    `NewModule` 门面契约等），双跑逐字节一致。
-3. **消费方持续编译**：`go build ./internal/modules/agentruntime/agent/tools/` 退出码 0
-   （`internal/modules/agentruntime/agent/tools/app_connector.go` 消费模块根包导出面，
+3. **消费方持续编译**：`go build ./internal/agentruntime/agent/tools/` 退出码 0
+   （`internal/agentruntime/agent/tools/app_connector.go` 消费模块根包导出面，
    B3 前持续编译成立）。
 
 ## 5. 计数核验（B2-AC.3，2026-09-24 @ HEAD `33f8c3ea3`）
@@ -340,7 +340,7 @@ moved 原签名逐字一致（§4.1）；`ErrMissingTenantScope` 模块副本消
   （adapter.go:9、action.go:12、oc_recovery.go:45、oc_recovery.go:46）——零删除、零改动。
 - **exc-0028 消费方**：`go doc ./internal/modules/appconnector` 双跑（临时 worktree
   @`67ac22c96` 802 行 vs HEAD `6e8c84860` 802 行）→ `diff` 输出空、退出码 0
-  （导出面零变化）；`go build ./internal/modules/agentruntime/agent/tools/` → 退出码 0。
+  （导出面零变化）；`go build ./internal/agentruntime/agent/tools/` → 退出码 0。
 - **计数门禁**：`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0
   total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`、退出码 0；
   `make verify-module-moves` → `OK (16 manifests verified)`、退出码 0。与 §5.1 逐字一致。

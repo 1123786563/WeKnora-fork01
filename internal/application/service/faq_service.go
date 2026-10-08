@@ -26,7 +26,7 @@ import (
 // 随迁副本已随包合并删除。
 
 // KBShareLookup 结构性镜像宿主 access.KBShareLookup
-// （internal/modules/policy/access knowledgebase.go:74，单方法）。faq 代码
+// （internal/policy/access knowledgebase.go:74，单方法）。faq 代码
 // 只把 s.kbShareService（interfaces.KBShareService）原样传入 seam；宿主
 // 接线侧把本接口值传给宿主 resolveKBReadTenant 的 access.KBShareLookup 形参，
 // 方法集满足，行为等价（wiki 包 SpanTracker 窄端口同型，spec §4.2）。

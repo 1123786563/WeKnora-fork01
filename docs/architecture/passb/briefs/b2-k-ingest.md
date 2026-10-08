@@ -189,7 +189,7 @@ ledger 严格解码失败掩蔽；ocr-r1-1 修复后可见，2026-09-25 实测�
 ## 10. exc-0088 删除批及 airesource 门面前置（plan §7.3）
 
 - exc-0088（exception-ledger.yaml，owner=21-knowledge-ingest，remove_at=ib2）：`internal/modules/knowledge/docparser/weknoracloud_http_reader.go` import `airesource/models/utils` 仅用 `utils.Sign`（:237 → signer.go:24）。
-- 前置（属 airesource/ib2 契约动作，非本节点）：airesource 根门面现为零逻辑骨架（`internal/modules/airesource/module.go` 无导出符号，K1.6 会话实测），无合法替代 import 可切。ib2 删除批 = airesource 根门面暴露 `Sign` 或等价端口 → docreader 消费切换 → 删 exc-0088 行。
+- 前置（属 airesource/ib2 契约动作，非本节点）：airesource 根门面现为零逻辑骨架（`internal/airesource/module.go` 无导出符号，K1.6 会话实测），无合法替代 import 可切。ib2 删除批 = airesource 根门面暴露 `Sign` 或等价端口 → docreader 消费切换 → 删 exc-0088 行。
 - 本节点不删行、不改 docparser 文件（Pass A 已在模块内，非本节点 9 文件）。
 
 ## 11. 搬迁显形 import 例外删除批（exc-0106..0111，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；commit fc14f4c2e 登记）

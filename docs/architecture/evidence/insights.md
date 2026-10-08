@@ -2,7 +2,7 @@
 
 - 分支 / worktree：`bm-passa-a14` / `.worktrees/bm-passa-a14`
 - base：`8fbc030a8`（= 集成线 "refactor: integrate pass-a core modules"，IA3 放行点）
-- move commit：`6f19c34d8` — `refactor(insights): move packages to internal/modules/insights`
+- move commit：`6f19c34d8` — `refactor(insights): move packages to internal/insights`
 - repair commit：`b476463d6` — `refactor(insights): repair imports and add pass-a aliases`
 - docs commit：见本文件所在提交
 - 环境：postgres :5432 / redis :6379（共享本地服务，未启停容器）；未派 subagent
@@ -32,13 +32,13 @@ payment TestProvidersFromEnvRejectsPartialAlipay）不在本模块测试面内�
 | 命令 | 结果 |
 |---|---|
 | `go run ./tools/modulemove verify --module insights` / `--all` | OK / OK（16 manifests） |
-| `go test ./internal/modules/insights/... -count=1`（manifest test_commands 逐字） | insights 骨架 no test files + metric ok 1.349s，FAIL 0 |
+| `go test ./internal/insights/... -count=1`（manifest test_commands 逐字） | insights 骨架 no test files + metric ok 1.349s，FAIL 0 |
 | `go test ./internal/application/service -count=1`（直接消费方全量） | ok 137.753s |
 | `go test ./internal/handler -run TestAnalyticsHandler -count=1` | ok 0.934s（11/11 PASS） |
 | `go test ./internal/application/repository -run TestAnalyticsAggregations -count=1` | ok 1.117s（sqlite PASS；`/postgres` SKIP，与 pre-move 同Skip，环境对等无回归） |
 | `go test ./internal/application/service/metric/... -count=1`（旧路径别名包，no test files 确认零残留） | no test files，exit 0 |
 | `go build ./...` | exit 0（仅既有 ld duplicate-library warning，与基线一致） |
-| `go vet ./internal/modules/insights/... ./internal/application/service/` | exit 0，无输出 |
+| `go vet ./internal/insights/... ./internal/application/service/` | exit 0，无输出 |
 | `go run ./tools/architectureguard` | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`（与 F0 基线一致），**OK (0 violations)**，落盘 `/tmp/a14-guard.log` |
 
 pre vs post 结论：测试集合相同、全部绿、零新失败；guard 计数器 633/23+23/58/16 与
@@ -78,7 +78,7 @@ $ git diff --name-only 8fbc030a8..HEAD -- internal/router/router.go internal/rou
 
 1. **Scope=manifest**：move 仅 `internal/application/service/metric` 1 包；
    analytics/evaluation/dataset/metric_hook 的 handler/service/repository 混合文件按
-   manifest legacy_files 留横向包（6 文件，索引见 `internal/modules/insights/legacy/README.md`
+   manifest legacy_files 留横向包（6 文件，索引见 `internal/insights/legacy/README.md`
    与 `docs/architecture/passb/insights.md`）。
 2. **别名面=空（moauth 先例）**：唯一 importer `metric_hook.go` 属非禁改 importer
    （owned_files.importers），直接翻转 import；翻转后旧路径零消费者，禁改文件从未引用

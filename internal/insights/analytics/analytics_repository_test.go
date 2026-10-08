@@ -27,7 +27,7 @@ import (
 // Ruling 2026-09-24-TEST-SUPPORT-SHIM 家族：analytics 随迁测试依赖宿主共享测试
 // 装置 openRunTestDB/seedRunFixtures/openPostgresRunTestDB（源 internal/
 // application/repository/agent_run_test.go:29-118，宿主原件随 agent_run 系留
-// 守）。模块侧自带副本，repoRoot 深度按本包位置改为 "../../../.."；
+// 守）。模块侧自带副本，repoRoot 深度按本包位置改为 "../../.."；
 // postgres 分支保留 TRPC_TEST_POSTGRES_DSN env-skip 语义。remove_at: ib3 后
 // 首次全量复核（副本无独立删除义务，随模块存续——agentcatalog 先例）。
 
@@ -35,7 +35,7 @@ func openRunTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../.."))
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
 	if strings.Contains(t.Name(), "/postgres") {
 		return openPostgresRunTestDB(t, repoRoot)
 	}

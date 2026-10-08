@@ -26,18 +26,18 @@ func fixtureDiscovery() *Discovery {
 		GoFiles: []string{
 			"internal/application/repository/widget.go",
 			"internal/modules/knowledge/widgets/alias.go",
-			"internal/modules/agentruntime/agent/engine.go",
+			"internal/agentruntime/agent/engine.go",
 		},
 		Imports: map[string][]string{
 			"internal/modules/knowledge/widgets/alias.go": {},
-			"internal/modules/agentruntime/agent/engine.go": {
-				"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+			"internal/agentruntime/agent/engine.go": {
+				"github.com/Tencent/WeKnora/internal/airesource/models/chat",
 			},
 		},
 		Exceptions: []DiscoveredException{
 			{
-				ImporterFile: "internal/modules/agentruntime/agent/engine.go",
-				ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+				ImporterFile: "internal/agentruntime/agent/engine.go",
+				ImportedPath: "github.com/Tencent/WeKnora/internal/airesource/models/chat",
 				Reason:       "预存横向包耦合",
 				PassBTask:    "B-agentruntime",
 			},
@@ -64,8 +64,8 @@ func fixtureGovernance() *Governance {
 		Exceptions: []Exception{
 			{
 				ID:       "exc-0001",
-				From:     "internal/modules/agentruntime/agent/engine.go",
-				To:       "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+				From:     "internal/agentruntime/agent/engine.go",
+				To:       "github.com/Tencent/WeKnora/internal/airesource/models/chat",
 				Plan:     "33-agentruntime-engine",
 				RemoveAt: "ib3",
 				Reason:   "预存横向包耦合",
@@ -164,7 +164,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			mutG: func(g *Governance) {
 				g.Exceptions = append(g.Exceptions, Exception{
 					ID:   "exc-0002",
-					From: "internal/modules/agentruntime/agent/ghost.go",
+					From: "internal/agentruntime/agent/ghost.go",
 					To:   "github.com/Tencent/WeKnora/internal/modules/commercial",
 					Plan: "33-agentruntime-engine", RemoveAt: "ib3", Reason: "invented",
 				})
@@ -212,7 +212,7 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			},
 			check:    "exception-overlap",
 			want:     "exc-0099",
-			wantPath: "internal/modules/agentruntime/agent/engine.go",
+			wantPath: "internal/agentruntime/agent/engine.go",
 		},
 	}
 	for _, tc := range cases {

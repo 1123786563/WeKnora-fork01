@@ -8,7 +8,7 @@ events:
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights
+      - internal/insights
     required_metadata:
       - tenant_id
       - occurred_at

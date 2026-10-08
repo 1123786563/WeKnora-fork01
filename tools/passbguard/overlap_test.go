@@ -75,12 +75,12 @@ func TestRulingOwnersDetectMissingWrongAndPlatformClaims(t *testing.T) {
 		{
 			Path:   "internal/application/service/native_archive.go",
 			Module: "agentruntime", Plan: "34-agentruntime-protocol",
-			Destination: "internal/modules/agentruntime/service", DeleteBarrier: "ib3",
+			Destination: "internal/agentruntime/service", DeleteBarrier: "ib3",
 		},
 		{
 			Path:   "internal/application/service/native_recovery.go",
 			Module: "agentruntime", Plan: "33-agentruntime-engine",
-			Destination: "internal/modules/agentruntime/service", DeleteBarrier: "ib3",
+			Destination: "internal/agentruntime/service", DeleteBarrier: "ib3",
 		},
 	}}
 	require.Empty(t, checkRulings(good, rulings, platform))

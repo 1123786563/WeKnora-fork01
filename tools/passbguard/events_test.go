@@ -46,7 +46,7 @@ func validEventYAML(id, producer string) string {
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights/projection.go
+      - internal/insights/projection.go
     required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin]
 `, id, producer)
 }
@@ -68,7 +68,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "id",
@@ -83,7 +83,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "version",
@@ -97,7 +97,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "producer",
@@ -111,7 +111,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "meaning",
@@ -125,7 +125,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     meaning: 事实
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "ordering",
@@ -139,7 +139,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     meaning: 事实
     ordering: per-session
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "replay",
@@ -153,7 +153,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     meaning: 事实
     ordering: per-session
     replay: source-query
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [idempotency_key]
 `,
 			want: "transport",
@@ -183,7 +183,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: []
 `,
 			want: "required_metadata",
@@ -198,7 +198,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [tenant_id, occurred_at, event_id]
 `,
 			want: "idempotency_key",
@@ -213,7 +213,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [tenant_id, event_id, idempotency_key]
 `,
 			want: "occurred_at",
@@ -228,7 +228,7 @@ func TestEventSchemaRequiresFactFields(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights/projection.go]
+    consumers: [internal/insights/projection.go]
     required_metadata: [tenant_id, occurred_at, idempotency_key]
 `,
 			want: "event_id",
@@ -288,7 +288,7 @@ func TestEventSchemaRejectsDuplicateProducerVersion(t *testing.T) {
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights/projection.go
+      - internal/insights/projection.go
     required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin]
   - id: conversation.turn.appended
     version: 1
@@ -298,7 +298,7 @@ func TestEventSchemaRejectsDuplicateProducerVersion(t *testing.T) {
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights/projection.go
+      - internal/insights/projection.go
     required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin]
 `
 	err := loadEventCatalogFixture(t, body)
@@ -322,7 +322,7 @@ func TestEventSchemaRequiresTenantScopedActorOrigin(t *testing.T) {
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights/projection.go
+      - internal/insights/projection.go
     required_metadata: [tenant_id, occurred_at, event_id, idempotency_key]
 `
 	err := loadEventCatalogFixture(t, body)
@@ -815,8 +815,8 @@ type importException struct {
 
 var importExceptions = []importException{
 	{
-		ImporterFile: "internal/modules/agentruntime/agent/engine.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		ImporterFile: "internal/agentruntime/agent/engine.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/airesource/models/chat",
 		Reason:       "fixture 预存横向包耦合",
 		PassBTask:    "B-agentruntime",
 	},

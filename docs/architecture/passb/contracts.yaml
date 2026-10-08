@@ -176,7 +176,7 @@ contracts:
     - id: agentruntime.facade
       owner: agentruntime
       kind: module-construction
-      symbol: internal/modules/agentruntime/module.go
+      symbol: internal/agentruntime/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -302,7 +302,7 @@ contracts:
     - id: airesource.facade
       owner: airesource
       kind: module-construction
-      symbol: internal/modules/airesource/module.go
+      symbol: internal/airesource/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -611,7 +611,7 @@ contracts:
     - id: channels.facade
       owner: channels
       kind: module-construction
-      symbol: internal/modules/channels/module.go
+      symbol: internal/channels/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1331,7 +1331,7 @@ contracts:
     - id: identity.facade
       owner: identity
       kind: module-construction
-      symbol: internal/modules/identity/module.go
+      symbol: internal/identity/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1546,7 +1546,7 @@ contracts:
     - id: insights.facade
       owner: insights
       kind: module-construction
-      symbol: internal/modules/insights/module.go
+      symbol: internal/insights/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1953,7 +1953,7 @@ contracts:
     - id: policy.facade
       owner: policy
       kind: module-construction
-      symbol: internal/modules/policy/module.go
+      symbol: internal/policy/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1996,7 +1996,7 @@ contracts:
     - id: system.facade
       owner: system
       kind: module-construction
-      symbol: internal/modules/system/module.go
+      symbol: internal/system/module.go
       signature: façade
       stability: frozen
       consumers: []

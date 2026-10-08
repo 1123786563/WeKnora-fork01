@@ -177,7 +177,7 @@ var importExceptions = []importException{
 	// ---- batch A4 搬迁显形的预存横向耦合：workbench 内文件消费其他模块内部包（Pass B 任务 B-workbench）----
 	{
 		ImporterFile: "internal/modules/workbench/service/workbench/command_queue_next.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/agentruntime",
 		Reason:       "命令队列映射错误时必须保留 AgentRun outcome identity；仅依赖 AgentRuntime 模块根错误哨兵，Pass A 不改边界",
 		PassBTask:    "B-workbench",
 	},

@@ -8,16 +8,16 @@
 
 | 旧路径（Pass A 别名保留） | 新路径 |
 |---|---|
-| internal/im | internal/modules/channels/im |
-| internal/im/dingtalk | internal/modules/channels/im/dingtalk |
-| internal/im/feishu | internal/modules/channels/im/feishu |
-| internal/im/mattermost | internal/modules/channels/im/mattermost |
-| internal/im/qqbot | internal/modules/channels/im/qqbot |
-| internal/im/slack | internal/modules/channels/im/slack |
-| internal/im/telegram | internal/modules/channels/im/telegram |
-| internal/im/wechat | internal/modules/channels/im/wechat |
-| internal/im/wecom | internal/modules/channels/im/wecom |
-| internal/im/yunzhijia | internal/modules/channels/im/yunzhijia |
+| internal/im | internal/channels/im |
+| internal/im/dingtalk | internal/channels/im/dingtalk |
+| internal/im/feishu | internal/channels/im/feishu |
+| internal/im/mattermost | internal/channels/im/mattermost |
+| internal/im/qqbot | internal/channels/im/qqbot |
+| internal/im/slack | internal/channels/im/slack |
+| internal/im/telegram | internal/channels/im/telegram |
+| internal/im/wechat | internal/channels/im/wechat |
+| internal/im/wecom | internal/channels/im/wecom |
+| internal/im/yunzhijia | internal/channels/im/yunzhijia |
 
 99 个文件（含全部 `_test.go`）纯改名搬迁；别名包为无逻辑转发，Pass B `B-channels` 删除。
 
@@ -68,7 +68,7 @@
 
 ## 5. 身份 / 会话绑定
 
-**IM 侧**（internal/modules/channels/im）：
+**IM 侧**（internal/channels/im）：
 - 外部平台用户按 `(tenant_id, channel_id, platform 用户标识)` 归一为 userKey；
   `withIMIdentity(ctx, tenantID, channelID, msg)`（service.go:438）把身份注入请求上下文。
 - `im_channels.bot_identity`（types.go:28）按平台+模式+凭据派生，全库唯一索引防重复绑定。
@@ -133,10 +133,10 @@ router 只依赖 handler。`internal/handler/custom_agent.go:12`、`im.go:10`、
 `wechat_qrcode.go:6` 已在本次 Compile-Repair 切到新路径（仅 import 行）。
 
 **切换指令（Pass B，B-channels）**：
-1. 把 container.go:82-91 的 10 条 import 改为 `internal/modules/channels/im[/子包]`
+1. 把 container.go:82-91 的 10 条 import 改为 `internal/channels/im[/子包]`
    （`imPkg` 别名可保留或去掉，`feishu.RegionFeishu/RegionLark` 用新路径直引）；
 2. `git rm -r internal/im`（10 个 alias.go，零逻辑，无其他引用方）；
-3. 跑 `go build ./... && go test ./internal/modules/channels/... ./internal/container/... -count=1`。
+3. 跑 `go build ./... && go test ./internal/channels/... ./internal/container/... -count=1`。
 
 ## 11. Legacy files 导航（横向包内，Pass B 拆分）
 
@@ -148,5 +148,5 @@ router 只依赖 handler。`internal/handler/custom_agent.go:12`、`im.go:10`、
 - internal/handler/im.go — Im (handler)
 - internal/handler/wechat_qrcode.go — Wechat qrcode (handler)
 
-模块骨架：internal/modules/channels/{README.md,module.go,legacy/README.md}（零逻辑 façade 占位，
+模块骨架：internal/channels/{README.md,module.go,legacy/README.md}（零逻辑 façade 占位，
 `NewModule/RegisterRoutes/RegisterWorkers/Start/Stop` 契约见 module.go 注释）。

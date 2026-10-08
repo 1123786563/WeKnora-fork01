@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 恢复必须过哈希链：helper.py = `c8d30121927350e3cea5fd3b5823ca230b1f4f550af1d730d29ac7e92fd87c2`（fix1 终态）或以 fix3 链文档核最新；`test_controller_integration.py` = `9c95492af5f2f72c78c1f95f742a82aed5d1e03c3269561be97007586a3c0bf8`。哈希不合=停下报告，不得手改凑数。
-- 不改 `internal/modules/craftegress`（Go 面冻结）；owned=新增 `deploy/craft/render-boundary/policy-helper/**` + 证据目录。
+- 不改 `internal/craftegress`（Go 面冻结）；owned=新增 `deploy/craft/render-boundary/policy-helper/**` + 证据目录。
 - 活体跑须真实 Docker（nft 计数器/回环/预览判据原样），不降断言；清理验证照旧。
 - 密钥不入库；不 push、不动 GitHub；提交带 `(T14 #129)`。
 

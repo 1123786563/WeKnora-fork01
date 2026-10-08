@@ -1,7 +1,7 @@
 package service
 
 // Pass B 过渡 shim（37-insights）——ib3 后收口：dataset.go / evaluation.go /
-// metric_hook.go 已随上游对齐 round 2 自 internal/modules/insights/evaluation
+// metric_hook.go 已随上游对齐 round 2 自 internal/insights/evaluation
 // 归位本包（真源现为 service/dataset.go、service/evaluation.go、
 // service/metric_hook.go）。NewDatasetService 真源签名与宿主旧装配面完全一致
 //（本文件历史转发已删除）；NewEvaluationService 保留 6 参旧装配签名作为

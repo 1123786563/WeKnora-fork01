@@ -134,11 +134,11 @@ owned_files:
   importers:
     []
   module_files:
-    - internal/modules/identity/README.md
-    - internal/modules/identity/module.go
-    - internal/modules/identity/legacy/README.md
+    - internal/identity/README.md
+    - internal/identity/module.go
+    - internal/identity/legacy/README.md
 test_commands:
-  - go test ./internal/modules/identity/... -count=1
+  - go test ./internal/identity/... -count=1
 integration_points:
   routes:
   - RegisterAuthRoutes — internal/router/routes_auth_tenant.go:206

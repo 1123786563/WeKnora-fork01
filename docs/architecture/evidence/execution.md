@@ -75,7 +75,7 @@ repair commit 内对 fixture 的二次 `git mv`：
 ## 7. 遗留与 IA2 关注点
 
 1. `internal/modules/execution/sandbox/url_guard.go` 导入 `internal/ipclass`（policy 模块，
-   A8 搬迁至 `internal/modules/policy/ipclass`）——A8 落地后需修复该一行 import，详见
+   A8 搬迁至 `internal/policy/ipclass`）——A8 落地后需修复该一行 import，详见
    integration brief §7。
 2. 旧路径别名覆盖面刻意收窄为禁改文件引用面（5 符号）；如需全量导出符号别名，
    按 integration brief §2 的说明补齐。

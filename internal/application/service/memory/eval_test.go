@@ -24,7 +24,7 @@ import (
 //
 //	WEKNORA_MEMORY_EVAL_MODEL=<model id> \
 //	WEKNORA_MEMORY_EVAL_BASE_URL=... WEKNORA_MEMORY_EVAL_API_KEY=... \
-//	go test ./internal/modules/agentruntime/memory/ -run TestPromptEval -v
+//	go test ./internal/agentruntime/memory/ -run TestPromptEval -v
 //
 // Scores are printed per case and in total. There is no pass threshold on
 // purpose: the number is only meaningful compared against the previous run of

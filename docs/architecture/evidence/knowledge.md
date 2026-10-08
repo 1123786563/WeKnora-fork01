@@ -31,7 +31,7 @@
   - `internal/application/service` ok（100.6s）+ `chat_pipeline` ok + file/memory/metric/workbench ok
   - `internal/handler` ok + `internal/handler/session` ok（19.1s）
   - `internal/agent`、`internal/agent/tools` 及 agent/** 全 ok（含已知 flaky `agent/opencode` 15.3s 本次通过、`recoverytest` 26.8s）
-  - `internal/modules/channels/im/...` 9 包全 ok
+  - `internal/channels/im/...` 9 包全 ok
 - `go build ./...` → OK；`go vet`（knowledge/container/handler/agent/channels + 旧路径别名包）→ 零输出。
 - `go run ./tools/modulemove verify --module knowledge` → OK（搬迁后 from 消失 + to 存在语义）。
 - `go run ./tools/architectureguard` → `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`，与 F0 基线一致；另有 §6 的 4 条 forbidden-import 新诊断（预存耦合暴露，未修、未加例外、未改工具）。
@@ -46,7 +46,7 @@
 
 ## 5. 禁改文件零触碰声明
 
-`internal/container/container.go`、`internal/router/{router,task,sync_task}.go`、`go.mod`、`go.sum`、`migrations/` 在本分支**零 diff**（曾因 sed 排除模式失误短暂改动 container.go/im/service.go，发现后立即 `git checkout --` 还原并复核，最终提交不含）。`internal/modules/channels/im/service.go:28` 保留旧路径别名导入（A6 先例：他模块 owned 文件不触碰），移交 IA3。
+`internal/container/container.go`、`internal/router/{router,task,sync_task}.go`、`go.mod`、`go.sum`、`migrations/` 在本分支**零 diff**（曾因 sed 排除模式失误短暂改动 container.go/im/service.go，发现后立即 `git checkout --` 还原并复核，最终提交不含）。`internal/channels/im/service.go:28` 保留旧路径别名导入（A6 先例：他模块 owned 文件不触碰），移交 IA3。
 
 ## 6. 移交 IA3 的 guard 发现（未修、未加例外、未改工具）
 

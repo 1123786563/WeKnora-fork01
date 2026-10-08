@@ -41,10 +41,10 @@ service/repository/handler 层衔接为完整模块栈。建议结构 `internal/
    `github.com/Tencent/WeKnora/internal/modules/craft`，此时旧路径零 importer，整目录删除。
 2. 上述 30 个 legacy 文件（含各自 `_test.go`）从横向包删除，迁入模块；
 3. A13 guard 移交的 4 条预存耦合中归 craft 侧的两条改走模块门面或在本任务删除例外：
-   - `internal/modules/agentruntime/agent/opencode/{executor,normalizer}.go`、
-     `internal/modules/agentruntime/agent/tools/craft_delegate.go` → `internal/modules/craft`
+   - `internal/agentruntime/agent/opencode/{executor,normalizer}.go`、
+     `internal/agentruntime/agent/tools/craft_delegate.go` → `internal/modules/craft`
      （agentruntime→craft 方向；与 B-agentruntime 协调，或经 craft 模块根门面收敛）；
-   - `internal/modules/craft/contracts.go` → `internal/modules/agentruntime/agent/runtime`
+   - `internal/modules/craft/contracts.go` → `internal/agentruntime/agent/runtime`
      （craft→agentruntime 方向，Pass B 引入窄端口或登记删除）。
 
 ## 集成点迁移（随文件拆分一并处理）

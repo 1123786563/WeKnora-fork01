@@ -11,16 +11,16 @@ IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化、出
 
 | 现路径 | 目标路径 |
 |---|---|
-| `internal/im` | `internal/modules/channels/im` |
-| `internal/im/dingtalk` | `internal/modules/channels/im/dingtalk` |
-| `internal/im/feishu` | `internal/modules/channels/im/feishu` |
-| `internal/im/mattermost` | `internal/modules/channels/im/mattermost` |
-| `internal/im/qqbot` | `internal/modules/channels/im/qqbot` |
-| `internal/im/slack` | `internal/modules/channels/im/slack` |
-| `internal/im/telegram` | `internal/modules/channels/im/telegram` |
-| `internal/im/wechat` | `internal/modules/channels/im/wechat` |
-| `internal/im/wecom` | `internal/modules/channels/im/wecom` |
-| `internal/im/yunzhijia` | `internal/modules/channels/im/yunzhijia` |
+| `internal/im` | `internal/channels/im` |
+| `internal/im/dingtalk` | `internal/channels/im/dingtalk` |
+| `internal/im/feishu` | `internal/channels/im/feishu` |
+| `internal/im/mattermost` | `internal/channels/im/mattermost` |
+| `internal/im/qqbot` | `internal/channels/im/qqbot` |
+| `internal/im/slack` | `internal/channels/im/slack` |
+| `internal/im/telegram` | `internal/channels/im/telegram` |
+| `internal/im/wechat` | `internal/channels/im/wechat` |
+| `internal/im/wecom` | `internal/channels/im/wecom` |
+| `internal/im/yunzhijia` | `internal/channels/im/yunzhijia` |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -38,7 +38,7 @@ IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化、出
 
 ## 验收命令
 
-- `go test ./internal/modules/channels/... -count=1`
+- `go test ./internal/channels/... -count=1`
 
 导入方（import-path 修复对象，11 个）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/channels.yaml`。

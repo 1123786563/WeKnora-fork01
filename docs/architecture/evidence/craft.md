@@ -27,8 +27,8 @@ pre-move 以旧路径等价形式执行（§2）。
 | `go test ./internal/container -count=1` | ok 3.129s |
 | `go test ./internal/handler -count=1` | ok 1.236s |
 | `go test ./internal/handler/session -count=1` | ok 12.226s |
-| `go test ./internal/modules/agentruntime/agent/tools -count=1` | ok 3.670s |
-| `go test ./internal/modules/agentruntime/agent/opencode -run 'Craft' -count=1`（定点；全套为 F0 §2.5 已知不稳定） | ok 1.113s |
+| `go test ./internal/agentruntime/agent/tools -count=1` | ok 3.670s |
+| `go test ./internal/agentruntime/agent/opencode -run 'Craft' -count=1`（定点；全套为 F0 §2.5 已知不稳定） | ok 1.113s |
 
 全部 exit 0。本轮未出现 TestAgentRunDecisionConcurrentOnlyOneRevision /
 TestProvidersFromEnvRejectsPartialAlipay flaky 面。
@@ -41,7 +41,7 @@ TestProvidersFromEnvRejectsPartialAlipay flaky 面。
 | `go test ./internal/modules/craft/... -count=1`（manifest test_commands 逐字） | ok 0.695s（首轮 FAIL 1 条为 testdata 相对路径深度，见 §6.1，修复后复跑全绿） |
 | 直接消费方（同 §2 七项，路径不变） | ok 7/7：repository 142.918s、service 86.394s、container 3.151s、handler 1.164s、session 13.345s、tools 3.455s、opencode(Craft 定点) 0.731s，FAIL 0 |
 | `go build ./...` | exit 0（仅既有 cmd/desktop、cmd/server ld duplicate-library warning，与基线一致） |
-| `go vet ./internal/craft/... ./internal/modules/craft/... ./internal/container/... ./internal/handler/... ./internal/handler/session/... ./internal/application/repository/... ./internal/application/service/... ./internal/modules/agentruntime/agent/{opencode,tools}/...` | exit 0，无输出 |
+| `go vet ./internal/craft/... ./internal/modules/craft/... ./internal/container/... ./internal/handler/... ./internal/handler/session/... ./internal/application/repository/... ./internal/application/service/... ./internal/agentruntime/agent/{opencode,tools}/...` | exit 0，无输出 |
 | gofmt（86 个修复文件 + alias.go + skill_test.go） | `gofmt -l` 零输出 |
 | `go run ./tools/architectureguard` | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`（与基线一致）+ **4 条新 forbidden-import 诊断**（见 §7） |
 
@@ -98,7 +98,7 @@ $ git diff 8fbc030a8 HEAD -- internal/container/container.go | wc -l
    旧路径当前唯一 importer 是禁改的 container.go；manifest ruling 2 只要求 1:1 别名包存在，
    面大小 worker 裁量。无可变导出 var，A6 式赋值翻转豁免不适用。
 5. manifest `owned_files.importers` 中 `internal/agent/opencode`、`internal/agent/tools` 为
-   batch A3 前的旧路径，IA3 后实际位于 `internal/modules/agentruntime/agent/{opencode,tools}`，
+   batch A3 前的旧路径，IA3 后实际位于 `internal/agentruntime/agent/{opencode,tools}`，
    按同一 importer 语义仅做 import 行修复（A8/A11 同类先例）。
 6. 未使用 guard 例外、未修改 architectureguard/modulemove 工具；未触碰 workbench（A12）、
    insights（A14）领地；冻结契约 Task/Timeline/Artifact 签名零变化（move commit 100% rename
@@ -107,10 +107,10 @@ $ git diff 8fbc030a8 HEAD -- internal/container/container.go | wc -l
 ## 7. Guard 新增发现（交 IA4，未处置；完整输出 /tmp/a13-guard.log）
 
 ```
-architectureguard: forbidden-import: internal/modules/agentruntime/agent/opencode/executor.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/agentruntime/agent/opencode/normalizer.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/agentruntime/agent/tools/craft_delegate.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
-architectureguard: forbidden-import: internal/modules/craft/contracts.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/agentruntime/agent/opencode/executor.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/agentruntime/agent/opencode/normalizer.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/agentruntime/agent/tools/craft_delegate.go 导入了模块 craft 的内部包 "github.com/Tencent/WeKnora/internal/modules/craft"（跨模块只能经模块根公共门面）
+architectureguard: forbidden-import: internal/modules/craft/contracts.go 导入了模块 agentruntime 的内部包 "github.com/Tencent/WeKnora/internal/agentruntime/agent/runtime"（跨模块只能经模块根公共门面）
 ```
 
 均为先于模块化改造的既有耦合被"platform 路径→craft 模块内部路径"的搬迁显形

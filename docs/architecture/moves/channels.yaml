@@ -3,25 +3,25 @@ module: channels
 description: IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化、出站投递（§5.11/§5.18）
 move_packages:
   - from: internal/im
-    to: internal/modules/channels/im
+    to: internal/channels/im
   - from: internal/im/dingtalk
-    to: internal/modules/channels/im/dingtalk
+    to: internal/channels/im/dingtalk
   - from: internal/im/feishu
-    to: internal/modules/channels/im/feishu
+    to: internal/channels/im/feishu
   - from: internal/im/mattermost
-    to: internal/modules/channels/im/mattermost
+    to: internal/channels/im/mattermost
   - from: internal/im/qqbot
-    to: internal/modules/channels/im/qqbot
+    to: internal/channels/im/qqbot
   - from: internal/im/slack
-    to: internal/modules/channels/im/slack
+    to: internal/channels/im/slack
   - from: internal/im/telegram
-    to: internal/modules/channels/im/telegram
+    to: internal/channels/im/telegram
   - from: internal/im/wechat
-    to: internal/modules/channels/im/wechat
+    to: internal/channels/im/wechat
   - from: internal/im/wecom
-    to: internal/modules/channels/im/wecom
+    to: internal/channels/im/wecom
   - from: internal/im/yunzhijia
-    to: internal/modules/channels/im/yunzhijia
+    to: internal/channels/im/yunzhijia
 alias_obligations:
   - old_import_path: internal/im
     passb_task: B-channels
@@ -85,16 +85,16 @@ owned_files:
   - internal/im/wecom
   - internal/im/yunzhijia
   move_targets:
-    - internal/modules/channels/im
-    - internal/modules/channels/im/dingtalk
-    - internal/modules/channels/im/feishu
-    - internal/modules/channels/im/mattermost
-    - internal/modules/channels/im/qqbot
-    - internal/modules/channels/im/slack
-    - internal/modules/channels/im/telegram
-    - internal/modules/channels/im/wechat
-    - internal/modules/channels/im/wecom
-    - internal/modules/channels/im/yunzhijia
+    - internal/channels/im
+    - internal/channels/im/dingtalk
+    - internal/channels/im/feishu
+    - internal/channels/im/mattermost
+    - internal/channels/im/qqbot
+    - internal/channels/im/slack
+    - internal/channels/im/telegram
+    - internal/channels/im/wechat
+    - internal/channels/im/wecom
+    - internal/channels/im/yunzhijia
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/im
     - internal/im/dingtalk
@@ -119,11 +119,11 @@ owned_files:
   - internal/im/wecom
   - internal/im/yunzhijia
   module_files:
-    - internal/modules/channels/README.md
-    - internal/modules/channels/module.go
-    - internal/modules/channels/legacy/README.md
+    - internal/channels/README.md
+    - internal/channels/module.go
+    - internal/channels/legacy/README.md
 test_commands:
-  - go test ./internal/modules/channels/... -count=1
+  - go test ./internal/channels/... -count=1
 integration_points:
   routes:
   - RegisterEmbedPublicRoutes — internal/router/routes_agent.go:220

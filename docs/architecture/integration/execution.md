@@ -94,7 +94,7 @@ manifest `lifecycle_hooks: []`。`internal/container/container.go` 对本模块�
 - **platform 依赖**：`internal/types`、`internal/logger`、`internal/tracing/langfuse`、`internal/common/redislock`。
 - **跨模块依赖（IA2 关注点）**：`internal/modules/execution/sandbox/url_guard.go` 导入
   `internal/ipclass`——该包归 **policy 模块**（`moves/policy.yaml`：`internal/ipclass` →
-  `internal/modules/policy/ipclass`，Pass A batch A2 的姊妹任务 A8 搬迁）。A8 搬迁后需
+  `internal/policy/ipclass`，Pass A batch A2 的姊妹任务 A8 搬迁）。A8 搬迁后需
   同步修复本文件这一行 import（属 ipclass 的 importer 修复面，非本模块动作）。
 - **配置键**（`internal/config`，仅列组）：
   - Docker：`Docker`、`DockerHost`、`DockerImage`、`DockerCPULimit`、`DockerMemoryBytes`、`DockerPidsLimit`、`DockerRuntime`、`DockerNetworkMode`、`DockerHTTPTimeout`、`DockerTLSCertPath`、`DockerIdleTTL`；

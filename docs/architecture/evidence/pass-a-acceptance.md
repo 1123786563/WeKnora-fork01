@@ -35,7 +35,7 @@
 
 ## 4. 在册债务与遗留（Pass B 输入）
 
-- 13 条 moved 文件 lint 债（internal/modules/agentruntime/**，lll/revive/unused，预存显形；裁定不加 nolint 以保 R100 证据链）→ B-agentruntime。
+- 13 条 moved 文件 lint 债（internal/agentruntime/**，lll/revive/unused，预存显形；裁定不加 nolint 以保 R100 证据链）→ B-agentruntime。
 - 预存横向耦合 113 条（105 条 Pass A 登记 + 8 条 Pass B 25b 迁移登记，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY，见 §3）→ 对应模块 Pass B 边界收紧时改走公开门面后删除例外。
 - A2 payment `TestProvidersFromEnvRejectsPartialAlipay`（map 序断言）→ B-commercial 修测试。
 - system housekeeping hook 实现文件归 knowledge → B-knowledge/B-system 协调。

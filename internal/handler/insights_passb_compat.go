@@ -1,7 +1,7 @@
 package handler
 
 // Pass B 过渡 shim（37-insights）：analytics.go 已物理迁移至
-// internal/modules/insights/analytics/analytics_handler.go（模块留驻）。
+// internal/insights/analytics/analytics_handler.go（模块留驻）。
 // order 60 handler 批：evaluation_handler.go 已迁回本包并改名 evaluation.go
 // （真身 EvaluationHandler/NewEvaluationHandler 同名同签名），Evaluation 侧
 // 别名随批删除；本文件继续为 analytics 留守宿主消费方提供 type 别名与
@@ -21,7 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Tencent/WeKnora/internal/modules/insights/analytics"
+	"github.com/Tencent/WeKnora/internal/insights/analytics"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 

@@ -46,7 +46,7 @@ aliases:
     replay: source-query
     transport: in_process
     consumers:
-      - internal/modules/insights
+      - internal/insights
     required_metadata:
       - tenant_id
       - occurred_at
@@ -388,7 +388,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "version",
@@ -404,7 +404,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "cannot unmarshal",
@@ -420,7 +420,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [tenant_id]
 `,
 			want: "idempotency_key",
@@ -436,7 +436,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [tenant_id, event_id, idempotency_key]
 `,
 			want: "occurred_at",
@@ -468,7 +468,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "producer",
@@ -484,7 +484,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "imperative",
@@ -500,7 +500,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "dot-separated",
@@ -516,7 +516,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
   - id: conversation.turn.completed
     version: 1
@@ -525,7 +525,7 @@ func TestLoadGovernanceRejectsStructuralViolations(t *testing.T) {
     ordering: per-session
     replay: source-query
     transport: in_process
-    consumers: [internal/modules/insights]
+    consumers: [internal/insights]
     required_metadata: [idempotency_key]
 `,
 			want: "producer/version",

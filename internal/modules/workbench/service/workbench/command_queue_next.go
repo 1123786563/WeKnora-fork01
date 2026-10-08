@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agentruntime"
 	workbench "github.com/Tencent/WeKnora/internal/modules/workbench"
 	"gorm.io/gorm"
 )

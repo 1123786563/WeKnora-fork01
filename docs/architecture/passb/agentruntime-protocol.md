@@ -40,11 +40,11 @@ admission/oauth/pending/usage/recovery）**独占归 33-agentruntime-engine**
    协议 pin（`opencode/testdata/protocol-lock.json`）为外部契约，不得变更。
 2. **tRPC 消费面收敛**：`agent_run_graph.go`、`agent_capabilities.go` 拆入模块后，
    application/service 层不得再 import `…/agent/trpc` 内部包。
-3. **Recovery 验收保持**：`go test -race ./internal/modules/agentruntime/agent/recoverytest
+3. **Recovery 验收保持**：`go test -race ./internal/agentruntime/agent/recoverytest
    -count=1 -v` 持续绿；PG 依赖用例维持 blocked-env skip 语义
    （`TRPC_RECOVERY_GRAPH_PROVIDER` 未设时 skip，不得改为 PASS 或删除）。
 4. **路由不变**：`RegisterNativeArchiveRoutes`（router.go:365）与
    agent-run session 子路由 ×4（routes_chat.go:125-128）挂载点与路径不变。
-5. **验证**：`go test ./internal/modules/agentruntime/agent/{native,nativecontract,
+5. **验证**：`go test ./internal/agentruntime/agent/{native,nativecontract,
    nativeprobe,trpc,opencode}/... -count=1`、recovery race、`go build ./...`、
    `make check-backend-architecture` 全绿。

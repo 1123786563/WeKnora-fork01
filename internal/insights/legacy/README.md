@@ -2,7 +2,7 @@
 
 与 `docs/architecture/moves/insights.yaml` 的 `legacy_files` 逐条镜像（同路径、同 Pass B 任务）。
 非测试 `.go` 文件；同目录 `_test.go` 随主题文件一并搬迁。
-标 **已迁移** 的行是已物理落位 `internal/modules/insights/...` 的迁移轨迹记录（manifest 行已按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 随物理迁移 commit 删除，此镜像行保留至 ib3 收口）。
+标 **已迁移** 的行是已物理落位 `internal/insights/...` 的迁移轨迹记录（manifest 行已按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 随物理迁移 commit 删除，此镜像行保留至 ib3 收口）。
 
 | 文件 | 导航标签 | Pass B 任务 |
 |---|---|---|

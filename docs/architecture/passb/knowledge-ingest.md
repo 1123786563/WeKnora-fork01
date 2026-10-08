@@ -27,7 +27,7 @@ chunker/docparser/searchutil 同模块互联），handler 薄层改为模块路�
 
 - 上述 9 文件从横向包移除后，`internal/application/repository`、`internal/application/service`、
   `internal/handler` 中对应文件删除；
-- 摄取路径对 `internal/modules/airesource/storageurl`、`policy/access` 等的消费经模块
+- 摄取路径对 `internal/airesource/storageurl`、`policy/access` 等的消费经模块
   公共门面（消除可预见的跨模块内部包 import）；
 - 完成后回收 §A9-integration 第 2 节 18 个别名中与本域相关的 alias（docparser 一族，
   若届时仍被禁改文件以外代码引用）。

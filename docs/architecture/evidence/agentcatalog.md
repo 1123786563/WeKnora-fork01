@@ -35,7 +35,7 @@ EXIT=0
   `packages: []` 的前提下自洽，说明这是设计而非遗漏。
 - `internal/agent/{experts,persona,skills,subagents}` 全部出现在
   `docs/architecture/moves/agentruntime.yaml` 的 move_packages
-  （→ `internal/modules/agentruntime/agent/...`，A11 领土）；`internal/agent/catalog`
+  （→ `internal/agentruntime/agent/...`，A11 领土）；`internal/agent/catalog`
   不存在。A7 未触碰 `internal/agent` 下任何文件（`git status` 全程仅两份新文档）。
 - 本模块业务实现 = 55 个 legacy_files（repository 11 / service 31 / handler 13，
   Pass B `B-agentcatalog`）。

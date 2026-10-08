@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/craftegress"
+	"github.com/Tencent/WeKnora/internal/craftegress"
 	"github.com/stretchr/testify/require"
 )
 

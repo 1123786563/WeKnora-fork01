@@ -9,7 +9,7 @@
 ## Goal（目标）
 
 把 agentruntime 的执行引擎与其 Run/Attempt 状态机、审批闸门收敛为模块内清晰边界：
-`internal/modules/agentruntime/agent`（引擎根包）与 `…/agent/runtime`、`…/agent/approval`
+`internal/agentruntime/agent`（引擎根包）与 `…/agent/runtime`、`…/agent/approval`
 不再依赖横向 host 包的内部符号；横向包中的 38 个引擎侧 agent/native 遗留文件按文件拆入模块；
 删除 Pass A 遗留的 4 个零逻辑别名与 container.go 的 4 行旧 import。
 （archive 双文件归 34-agentruntime-protocol，B0.3 Step 2 裁定，本 brief 不认领。）
@@ -56,7 +56,7 @@
 4. **状态机外部契约不变**：Run/Attempt 生命周期、审批 Gate 语义、fence/lease 协议
    （`agent/runtime`）为外部契约，签名冻结；引擎入口 `Engine.Execute` 调用方
    （`internal/container/agent_runtime.go`）经模块根或 runtime 包公共面消费。
-5. **验证**：`go test ./internal/modules/agentruntime/... -count=1`、
-   `go test -race ./internal/modules/agentruntime/agent/recoverytest -count=1`、
+5. **验证**：`go test ./internal/agentruntime/... -count=1`、
+   `go test -race ./internal/agentruntime/agent/recoverytest -count=1`、
    `go build ./...`、`make check-backend-architecture` 全绿；route/worker/hook 计数
    与 F0 基线一致（633/23+23/58）。

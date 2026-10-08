@@ -5,7 +5,7 @@
 
 ## 1. 现有代码给出的约束
 
-- [后端模块化规格](../../specs/2026-09-21-backend-domain-module-reorganization-design.md)要求新业务按纵向能力归位，模块只暴露少量稳定入口，业务事实有唯一写入所有者。当前 [Workbench Module](../../../internal/modules/workbench/module.go) 与 [Identity Module](../../../internal/modules/identity/module.go)仍是 Pass A 骨架，部分实现位于旧目录；新求职代码不应进入全局 handler、service、repository、types。
+- [后端模块化规格](../../specs/2026-09-21-backend-domain-module-reorganization-design.md)要求新业务按纵向能力归位，模块只暴露少量稳定入口，业务事实有唯一写入所有者。当前 [Workbench Module](../../../internal/modules/workbench/module.go) 与 [Identity Module](../../../internal/identity/module.go)仍是 Pass A 骨架，部分实现位于旧目录；新求职代码不应进入全局 handler、service、repository、types。
 - [移动深 Module 设计](../../specs/2026-09-20-mobile-module-seams.md)已经把 Deployment/Tenant scope、Task 提交与恢复放在 Mobile Runtime 和 Task Office 后。当前 [mobile-core](../../../packages/mobile-core/src/index.ts)主要实现 Runtime，原生端 [AuthorizedLandingScreen](../../../apps/mobile/src/screens/AuthorizedLandingScreen.tsx)仍是业务占位。
 - Web 已有对话、附件和产物入口；小程序 [任务页](../../../apps/miniprogram/src/features/execution/pages.tsx)已有部分 Task 流程。已有 [Workbench Artifact 下载](../../../internal/handler/session/workbench_artifacts.go)按 run、session、message、index 授权；它不能直接代表求职申请固定的材料版本。
 - [Tenant 创建入口](../../../internal/handler/tenant.go)受部署自助创建策略和个人空间数量限制。Career 不得绕过 Identity 自建 Tenant，也不能假设每位用户总能自助开通。

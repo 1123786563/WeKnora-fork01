@@ -11,11 +11,11 @@
 
 | 现路径 | 目标路径 |
 |---|---|
-| `internal/application/access` | `internal/modules/policy/access` |
-| `internal/embedpolicy` | `internal/modules/policy/embedpolicy` |
-| `internal/ipclass` | `internal/modules/policy/ipclass` |
-| `internal/ratelimit` | `internal/modules/policy/ratelimit` |
-| `internal/storageallowlist` | `internal/modules/policy/storageallowlist` |
+| `internal/application/access` | `internal/policy/access` |
+| `internal/embedpolicy` | `internal/policy/embedpolicy` |
+| `internal/ipclass` | `internal/policy/ipclass` |
+| `internal/ratelimit` | `internal/policy/ratelimit` |
+| `internal/storageallowlist` | `internal/policy/storageallowlist` |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -31,7 +31,7 @@
 
 ## 验收命令
 
-- `go test ./internal/modules/policy/... -count=1`
+- `go test ./internal/policy/... -count=1`
 
 导入方（import-path 修复对象，11 个）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/policy.yaml`。

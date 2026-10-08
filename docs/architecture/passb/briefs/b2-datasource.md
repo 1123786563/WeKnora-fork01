@@ -55,7 +55,7 @@
 |---|---|---|---|---|
 | exc-0132 | → `internal/modules/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
 | exc-0133 | → `internal/modules/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
-| exc-0134 | → `internal/modules/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
+| exc-0134 | → `internal/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
 
 **收口前置与方向裁决（与 K 系列例外同批，ib2 一并裁决）**：
 

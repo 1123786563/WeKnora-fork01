@@ -95,8 +95,8 @@ type importException struct {
 
 var importExceptions = []importException{
 	{
-		ImporterFile: "internal/modules/agentruntime/agent/engine.go",
-		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		ImporterFile: "internal/agentruntime/agent/engine.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/airesource/models/chat",
 		Reason:       "fixture 预存横向包耦合",
 		PassBTask:    "B-agentruntime",
 	},
@@ -126,7 +126,7 @@ var importExceptions = []importException{
 	// fixture 的三类缺属主诊断必须出现在输出中（check 前缀可机器分派）。
 	require.Contains(t, out, "legacy-missing: internal/application/repository/widget.go:")
 	require.Contains(t, out, "alias-missing: internal/application/service/widgets:")
-	require.Contains(t, out, "exception-missing: internal/modules/agentruntime/agent/engine.go:")
+	require.Contains(t, out, "exception-missing: internal/agentruntime/agent/engine.go:")
 	// OCR R1 #15：event-catalog.yaml 缺失（空集）必须报空目录诊断，
 	// 不得静默通过。
 	require.Contains(t, out, "event-catalog-empty:")

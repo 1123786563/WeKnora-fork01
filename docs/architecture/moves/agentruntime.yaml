@@ -3,45 +3,45 @@ module: agentruntime
 description: Agent 执行引擎、Run/Attempt、工具、审批、Compaction、Memory、Model Context、native/tRPC/OpenCode 协议（§5.5/§5.18）
 move_packages:
   - from: internal/agent
-    to: internal/modules/agentruntime/agent
+    to: internal/agentruntime/agent
   - from: internal/agent/approval
-    to: internal/modules/agentruntime/agent/approval
+    to: internal/agentruntime/agent/approval
   - from: internal/agent/compaction
-    to: internal/modules/agentruntime/agent/compaction
+    to: internal/agentruntime/agent/compaction
   - from: internal/agent/experts
-    to: internal/modules/agentruntime/agent/experts
+    to: internal/agentruntime/agent/experts
   - from: internal/agent/native
-    to: internal/modules/agentruntime/agent/native
+    to: internal/agentruntime/agent/native
   - from: internal/agent/nativecontract
-    to: internal/modules/agentruntime/agent/nativecontract
+    to: internal/agentruntime/agent/nativecontract
   - from: internal/agent/nativeprobe
-    to: internal/modules/agentruntime/agent/nativeprobe
+    to: internal/agentruntime/agent/nativeprobe
   - from: internal/agent/opencode
-    to: internal/modules/agentruntime/agent/opencode
+    to: internal/agentruntime/agent/opencode
   - from: internal/agent/persona
-    to: internal/modules/agentruntime/agent/persona
+    to: internal/agentruntime/agent/persona
   - from: internal/agent/recoverytest
-    to: internal/modules/agentruntime/agent/recoverytest
+    to: internal/agentruntime/agent/recoverytest
   - from: internal/agent/recoverytest/provider
-    to: internal/modules/agentruntime/agent/recoverytest/provider
+    to: internal/agentruntime/agent/recoverytest/provider
   - from: internal/agent/runtime
-    to: internal/modules/agentruntime/agent/runtime
+    to: internal/agentruntime/agent/runtime
   - from: internal/agent/skills
-    to: internal/modules/agentruntime/agent/skills
+    to: internal/agentruntime/agent/skills
   - from: internal/agent/skills/skillhub
-    to: internal/modules/agentruntime/agent/skills/skillhub
+    to: internal/agentruntime/agent/skills/skillhub
   - from: internal/agent/subagents
-    to: internal/modules/agentruntime/agent/subagents
+    to: internal/agentruntime/agent/subagents
   - from: internal/agent/token
-    to: internal/modules/agentruntime/agent/token
+    to: internal/agentruntime/agent/token
   - from: internal/agent/tools
-    to: internal/modules/agentruntime/agent/tools
+    to: internal/agentruntime/agent/tools
   - from: internal/agent/trpc
-    to: internal/modules/agentruntime/agent/trpc
+    to: internal/agentruntime/agent/trpc
   - from: internal/application/service/memory
-    to: internal/modules/agentruntime/memory
+    to: internal/agentruntime/memory
   - from: internal/modelcontext
-    to: internal/modules/agentruntime/modelcontext
+    to: internal/agentruntime/modelcontext
 alias_obligations:
   - old_import_path: internal/agent
     passb_task: B-agentruntime
@@ -300,26 +300,26 @@ owned_files:
   - internal/application/service/memory
   - internal/modelcontext
   move_targets:
-    - internal/modules/agentruntime/agent
-    - internal/modules/agentruntime/agent/approval
-    - internal/modules/agentruntime/agent/compaction
-    - internal/modules/agentruntime/agent/experts
-    - internal/modules/agentruntime/agent/native
-    - internal/modules/agentruntime/agent/nativecontract
-    - internal/modules/agentruntime/agent/nativeprobe
-    - internal/modules/agentruntime/agent/opencode
-    - internal/modules/agentruntime/agent/persona
-    - internal/modules/agentruntime/agent/recoverytest
-    - internal/modules/agentruntime/agent/recoverytest/provider
-    - internal/modules/agentruntime/agent/runtime
-    - internal/modules/agentruntime/agent/skills
-    - internal/modules/agentruntime/agent/skills/skillhub
-    - internal/modules/agentruntime/agent/subagents
-    - internal/modules/agentruntime/agent/token
-    - internal/modules/agentruntime/agent/tools
-    - internal/modules/agentruntime/agent/trpc
-    - internal/modules/agentruntime/memory
-    - internal/modules/agentruntime/modelcontext
+    - internal/agentruntime/agent
+    - internal/agentruntime/agent/approval
+    - internal/agentruntime/agent/compaction
+    - internal/agentruntime/agent/experts
+    - internal/agentruntime/agent/native
+    - internal/agentruntime/agent/nativecontract
+    - internal/agentruntime/agent/nativeprobe
+    - internal/agentruntime/agent/opencode
+    - internal/agentruntime/agent/persona
+    - internal/agentruntime/agent/recoverytest
+    - internal/agentruntime/agent/recoverytest/provider
+    - internal/agentruntime/agent/runtime
+    - internal/agentruntime/agent/skills
+    - internal/agentruntime/agent/skills/skillhub
+    - internal/agentruntime/agent/subagents
+    - internal/agentruntime/agent/token
+    - internal/agentruntime/agent/tools
+    - internal/agentruntime/agent/trpc
+    - internal/agentruntime/memory
+    - internal/agentruntime/modelcontext
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/agent
     - internal/agent/approval
@@ -364,12 +364,12 @@ owned_files:
   - internal/im
   - internal/types/interfaces
   module_files:
-    - internal/modules/agentruntime/README.md
-    - internal/modules/agentruntime/module.go
-    - internal/modules/agentruntime/legacy/README.md
+    - internal/agentruntime/README.md
+    - internal/agentruntime/module.go
+    - internal/agentruntime/legacy/README.md
 test_commands:
-  - go test ./internal/modules/agentruntime/... -count=1
-  - "go test -race ./internal/modules/agentruntime/agent/recoverytest -count=1 -v  # mirrors .github/workflows/agent-recovery.yml"
+  - go test ./internal/agentruntime/... -count=1
+  - "go test -race ./internal/agentruntime/agent/recoverytest -count=1 -v  # mirrors .github/workflows/agent-recovery.yml"
 integration_points:
   routes:
   - RegisterAgentSecurityRoutes — internal/router/routes_agent_security.go:17

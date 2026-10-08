@@ -96,7 +96,7 @@ func fixtureContractGovernance(t *testing.T, root string) *Governance {
 				Stability: "frozen",
 				Consumers: []string{
 					"internal/handler/tenant_api.go",
-					"internal/modules/insights/rogue_cross.go",
+					"internal/insights/rogue_cross.go",
 				},
 				CharacterizationTests: []string{"internal/handler/tenant_api_test.go"},
 			},
@@ -104,7 +104,7 @@ func fixtureContractGovernance(t *testing.T, root string) *Governance {
 				ID:        "identity.facade",
 				Owner:     "identity",
 				Kind:      "module-construction",
-				Symbol:    "internal/modules/identity/module.go",
+				Symbol:    "internal/identity/module.go",
 				Signature: "façade",
 				Stability: "frozen",
 				Items:     []string{"NewModule", "RegisterRoutes", "RegisterWorkers", "Start", "Stop"},
@@ -168,8 +168,8 @@ func fixtureContractGovernance(t *testing.T, root string) *Governance {
 		Exceptions: []Exception{
 			{
 				ID:   "exc-fixture-1",
-				From: "internal/modules/insights/rogue_cross.go",
-				To:   "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+				From: "internal/insights/rogue_cross.go",
+				To:   "github.com/Tencent/WeKnora/internal/airesource/models/chat",
 				Plan: "11-airesource", RemoveAt: "ib1", Reason: "fixture 在册例外",
 			},
 		},
@@ -200,7 +200,7 @@ func TestContractDiscoveryFindsProductionConsumersAndTests(t *testing.T) {
 	require.True(t, found)
 	consumers, tests, err := DiscoverSymbolConsumers(fixtureContractDiscovery(t, root), fact)
 	require.NoError(t, err)
-	require.Equal(t, []string{"internal/handler/tenant_api.go", "internal/modules/insights/rogue_cross.go"}, consumers)
+	require.Equal(t, []string{"internal/handler/tenant_api.go", "internal/insights/rogue_cross.go"}, consumers)
 	require.Equal(t, []string{"internal/handler/tenant_api_test.go"}, tests)
 }
 
@@ -286,7 +286,7 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 			"import \"github.com/Tencent/WeKnora/internal/types\"\n"+
 			"\n"+
 			"func RegisterTasks() { _ = types.TypeFoo }\n",
-		"internal/modules/identity/workers.go", "package identity\n"+
+		"internal/identity/workers.go", "package identity\n"+
 			"\n"+
 			"import \"github.com/Tencent/WeKnora/internal/types\"\n"+
 			"\n"+
@@ -298,9 +298,9 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	//    裸名同步进回退扫描集合——迁移中间态（新位点已登记、router 旧注册
 	//    未删）两个真实引用位点都必须被发现（防止迁移期假 vanished / 漏报）。
 	consumers, issues := discoverSetConsumers(d, "worker-set",
-		[]string{"TypeFoo — internal/modules/identity/workers.go:12"})
+		[]string{"TypeFoo — internal/identity/workers.go:12"})
 	require.Equal(t,
-		[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, consumers,
+		[]string{"internal/identity/workers.go", "internal/router/task.go"}, consumers,
 		"带位点后缀的条目必须从条目推导注册位点")
 	require.Empty(t, issues)
 
@@ -316,14 +316,14 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	//    位点与裸名都必须照常推导，回退扫描（router/task.go 引用 TypeFoo）
 	//    必须命中，不得因分隔符漂移把完整条目串静默塞进扫描集合。
 	for _, entry := range []string{
-		"TypeFoo – internal/modules/identity/workers.go:12", // en dash
-		"TypeFoo——internal/modules/identity/workers.go:12",  // 全角破折号
-		"TypeFoo—internal/modules/identity/workers.go:12",   // em dash 无空格
-		"TypeFoo - internal/modules/identity/workers.go:12", // 连字符带空格
+		"TypeFoo – internal/identity/workers.go:12", // en dash
+		"TypeFoo——internal/identity/workers.go:12",  // 全角破折号
+		"TypeFoo—internal/identity/workers.go:12",   // em dash 无空格
+		"TypeFoo - internal/identity/workers.go:12", // 连字符带空格
 	} {
 		got, entryIssues := discoverSetConsumers(d, "worker-set", []string{entry})
 		require.Equal(t,
-			[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, got,
+			[]string{"internal/identity/workers.go", "internal/router/task.go"}, got,
 			"条目 %q 的位点与裸名都必须照常推导", entry)
 		require.Empty(t, entryIssues, "条目 %q 不得产生诊断", entry)
 	}
@@ -333,25 +333,25 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	//    且位点不在磁盘——显式 entry-drift + file-missing 诊断，完整条目串
 	//    绝不静默进入回退扫描集合。
 	consumers, issues = discoverSetConsumers(d, "worker-set",
-		[]string{"TypeFoo-internal/modules/identity/workers.go:12"})
+		[]string{"TypeFoo-internal/identity/workers.go:12"})
 	require.Empty(t, consumers, "矛盾形态位点不得入集")
 	require.Len(t, issues, 2)
 	checks := []string{issues[0].Check, issues[1].Check}
 	require.ElementsMatch(t,
 		[]string{"contract-set-entry-drift", "contract-consumer-file-missing"}, checks)
 	for _, is := range issues {
-		require.Contains(t, is.Message, "TypeFoo-internal/modules/identity/workers.go")
+		require.Contains(t, is.Message, "TypeFoo-internal/identity/workers.go")
 	}
 
 	// 5. OCR R2 b0-ocr-r2-2：manifest 手写位点的点段形态（"./x"、"x/./y.go"）
 	//    必须 filepath.Clean 归一化后与 d.GoFiles 同形照常入集。
 	for _, entry := range []string{
-		"TypeFoo — ./internal/modules/identity/workers.go:12",
+		"TypeFoo — ./internal/identity/workers.go:12",
 		"TypeFoo — internal/modules/./identity/workers.go:12",
 	} {
 		got, entryIssues := discoverSetConsumers(d, "worker-set", []string{entry})
 		require.Equal(t,
-			[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, got,
+			[]string{"internal/identity/workers.go", "internal/router/task.go"}, got,
 			"条目 %q 的位点归一化后必须照常入集", entry)
 		require.Empty(t, entryIssues, "条目 %q", entry)
 	}
@@ -360,12 +360,12 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	//    入集（否则归一化后字符串不等会同时误报 unrecorded + vanished）也不
 	//    静默跳过；裸名仍进回退扫描集合（router 旧注册可被发现）。
 	consumers, issues = discoverSetConsumers(d, "worker-set",
-		[]string{"TypeFoo — internal/modules/identity/ghost.go:12"})
+		[]string{"TypeFoo — internal/identity/ghost.go:12"})
 	require.Equal(t, []string{"internal/router/task.go"}, consumers,
 		"幽灵位点不得入集，但裸名回退扫描仍须发现 router 旧注册")
 	require.Len(t, issues, 1)
 	require.Equal(t, "contract-consumer-file-missing", issues[0].Check)
-	require.Contains(t, issues[0].Message, "internal/modules/identity/ghost.go")
+	require.Contains(t, issues[0].Message, "internal/identity/ghost.go")
 }
 
 // TestDiscoverSetConsumersWorkerSetScanFailure 覆盖 OCR R1
@@ -513,7 +513,7 @@ func TestContractCheckDiagnostics(t *testing.T) {
 
 import (
 	ifaces "github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/modules/identity/adapters/thing"
+	"github.com/Tencent/WeKnora/internal/identity/adapters/thing"
 )
 
 func BadAdapters(s ifaces.TenantService) { _ = thing.Adapter{} }
@@ -669,14 +669,14 @@ func TestSomethingElse() {}
 			setup: func(t *testing.T) (*Governance, *Discovery) {
 				root := contractRepoRoot(t)
 				g := fixtureContractGovernance(t, root)
-				entry := "TypeFoo — internal/modules/identity/ghost.go:12"
+				entry := "TypeFoo — internal/identity/ghost.go:12"
 				g.Contracts[3].Items = []string{entry}
 				d := fixtureContractDiscovery(t, root)
 				d.Manifests[0].IntegrationPoints.Workers = []string{entry}
 				return g, d
 			},
 			check: "contract-consumer-file-missing",
-			want:  "internal/modules/identity/ghost.go",
+			want:  "internal/identity/ghost.go",
 		},
 		{
 			// 17. worker-set 条目位点命中但裸名不可推导（OCR R2 b0-ocr-r2-1

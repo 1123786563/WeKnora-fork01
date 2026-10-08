@@ -28,11 +28,11 @@ owned_files:
   - internal/application/service
   - internal/handler
   module_files:
-    - internal/modules/insights/README.md
-    - internal/modules/insights/module.go
-    - internal/modules/insights/legacy/README.md
+    - internal/insights/README.md
+    - internal/insights/module.go
+    - internal/insights/legacy/README.md
 test_commands:
-  - go test ./internal/modules/insights/... -count=1
+  - go test ./internal/insights/... -count=1
 integration_points:
   routes:
   - RegisterAnalyticsRoutes — internal/router/routes_analytics.go:15

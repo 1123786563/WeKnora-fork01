@@ -55,7 +55,7 @@ IB2 完成 §2 调用点切换后**同窗删除本文件**（连同 moves/appcon
 
 ## 5. airesource 过渡依赖登记
 
-模块 handler 包消费 `internal/application/repository/mcp_oauth.go`（11-airesource 属主 legacy 文件）导出面：`repocommercialmcp.MCPOAuthBindingStore`、`NewMCPOAuthBindingStore`（connection.go:25/:35）、`mcprepo.ErrOAuthBindingInvalid`、`ErrOAuthBindingActorNotMember`（oauth.go:241/:243）。该文件 B 期将迁入 `internal/modules/airesource`；请求 airesource 计划落位后由其 Integration Brief 提供导出面（或别名义务），本节点零改动该文件。import 链 `modules/appconnector/handler → application/repository → modules/appconnector` 为 A→B→C 无环（27 计划 §2.2 实读）。
+模块 handler 包消费 `internal/application/repository/mcp_oauth.go`（11-airesource 属主 legacy 文件）导出面：`repocommercialmcp.MCPOAuthBindingStore`、`NewMCPOAuthBindingStore`（connection.go:25/:35）、`mcprepo.ErrOAuthBindingInvalid`、`ErrOAuthBindingActorNotMember`（oauth.go:241/:243）。该文件 B 期将迁入 `internal/airesource`；请求 airesource 计划落位后由其 Integration Brief 提供导出面（或别名义务），本节点零改动该文件。import 链 `modules/appconnector/handler → application/repository → modules/appconnector` 为 A→B→C 无环（27 计划 §2.2 实读）。
 
 ## 6. 别名行核销申请
 

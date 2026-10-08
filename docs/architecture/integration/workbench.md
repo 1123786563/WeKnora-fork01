@@ -27,7 +27,7 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件（覆盖符号） | 存活原因（不可修复引用方） |
 |---|---|---|---|
-| `internal/application/service/workbench` | `internal/modules/workbench/service/workbench` | `alias.go`（10：`NotificationProvider`、`NotificationDeliveryWorker` 类型别名；`NewNotificationProjector`、`NewNotificationWorker`、`NewRemoteUsageServiceWithDB`、`NewPushNotificationProvider`、`NewHTTPNotificationProvider`、`NewNotificationDeliveryWorkerWithHealth`、`NewGormInteractionStore`、`NewInteractionServiceWithApproval` var 转发） | `container.go:39`（禁改）+ `internal/modules/agentruntime/agent/engine_test.go:11`（frozen batch-a3 模块，消费 `NewGormInteractionStore`、`NewInteractionServiceWithApproval` 两符号） |
+| `internal/application/service/workbench` | `internal/modules/workbench/service/workbench` | `alias.go`（10：`NotificationProvider`、`NotificationDeliveryWorker` 类型别名；`NewNotificationProjector`、`NewNotificationWorker`、`NewRemoteUsageServiceWithDB`、`NewPushNotificationProvider`、`NewHTTPNotificationProvider`、`NewNotificationDeliveryWorkerWithHealth`、`NewGormInteractionStore`、`NewInteractionServiceWithApproval` var 转发） | `container.go:39`（禁改）+ `internal/agentruntime/agent/engine_test.go:11`（frozen batch-a3 模块，消费 `NewGormInteractionStore`、`NewInteractionServiceWithApproval` 两符号） |
 | `internal/notification` | `internal/modules/workbench/notification` | `alias.go`（1：`NewExpoProvider`） | `container.go:106`（禁改） |
 | `internal/voice` | `internal/modules/workbench/voice` | `alias.go`（2：`Config` 类型别名、`NewManagedProvider` var） | `container.go:113`（禁改） |
 | `internal/workbench` | `internal/modules/workbench` | `alias.go`（**0 符号**，纯文档 stub） | 无 —— 所有引用方（application/repository、handler/session、service/workbench 自身）均在 manifest `owned_files.importers` 内，已全部修复 |

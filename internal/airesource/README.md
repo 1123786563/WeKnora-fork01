@@ -11,18 +11,18 @@
 
 | 现路径 | 目标路径 |
 |---|---|
-| `internal/infrastructure/web_search` | `internal/modules/airesource/web_search` |
-| `internal/mcp` | `internal/modules/airesource/mcp` |
-| `internal/models/asr` | `internal/modules/airesource/models/asr` |
-| `internal/models/chat` | `internal/modules/airesource/models/chat` |
-| `internal/models/embedding` | `internal/modules/airesource/models/embedding` |
-| `internal/models/limiter` | `internal/modules/airesource/models/limiter` |
-| `internal/models/provider` | `internal/modules/airesource/models/provider` |
-| `internal/models/rerank` | `internal/modules/airesource/models/rerank` |
-| `internal/models/utils` | `internal/modules/airesource/models/utils` |
-| `internal/models/utils/ollama` | `internal/modules/airesource/models/utils/ollama` |
-| `internal/models/vlm` | `internal/modules/airesource/models/vlm` |
-| `internal/storageurl` | `internal/modules/airesource/storageurl` |
+| `internal/infrastructure/web_search` | `internal/airesource/web_search` |
+| `internal/mcp` | `internal/airesource/mcp` |
+| `internal/models/asr` | `internal/airesource/models/asr` |
+| `internal/models/chat` | `internal/airesource/models/chat` |
+| `internal/models/embedding` | `internal/airesource/models/embedding` |
+| `internal/models/limiter` | `internal/airesource/models/limiter` |
+| `internal/models/provider` | `internal/airesource/models/provider` |
+| `internal/models/rerank` | `internal/airesource/models/rerank` |
+| `internal/models/utils` | `internal/airesource/models/utils` |
+| `internal/models/utils/ollama` | `internal/airesource/models/utils/ollama` |
+| `internal/models/vlm` | `internal/airesource/models/vlm` |
+| `internal/storageurl` | `internal/airesource/storageurl` |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -40,7 +40,7 @@
 
 ## 验收命令
 
-- `go test ./internal/modules/airesource/... -count=1`
+- `go test ./internal/airesource/... -count=1`
 
 导入方（import-path 修复对象，23 个）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/airesource.yaml`。

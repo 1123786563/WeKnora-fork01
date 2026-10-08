@@ -6,14 +6,14 @@
 
 ## Goal（目标）
 
-`internal/modules/agentruntime/agent/tools` 成为工具子系统唯一入口：对 execution/sandbox、
+`internal/agentruntime/agent/tools` 成为工具子系统唯一入口：对 execution/sandbox、
 execution/browserskill、airesource/mcp、airesource/models/rerank、appconnector 的依赖
 从"深 import 内部包"收敛为对模块根公共门面（或注入端口）的依赖，删除 integration §10
 中 tools 侧全部预存 forbidden-import 边。
 
 ## Scope（范围）
 
-**模块内已有包**：`internal/modules/agentruntime/agent/tools`（约 60 文件，含
+**模块内已有包**：`internal/agentruntime/agent/tools`（约 60 文件，含
 shell/沙箱文件操作、MCP 工具暴露与 OAuth、浏览器技能、知识检索、工作区读取、
 技能文件、schema 等工具实现与 journal）。
 
@@ -34,6 +34,6 @@ shell/沙箱文件操作、MCP 工具暴露与 OAuth、浏览器技能、知识�
 2. **工具外部契约不变**：工具名、JSON schema、审批标记（`approval` flag）、
    journal 事件为外部契约；`sanitize_messages.go`、`mcp_exposure.go` 的
    `airesource/models/chat` 消费面一并收敛。
-3. **验证**：`go test ./internal/modules/agentruntime/agent/tools/... -count=1`、
+3. **验证**：`go test ./internal/agentruntime/agent/tools/... -count=1`、
    `go build ./...`、`make check-backend-architecture` 中 tools 侧 forbidden-import
    归零；工具注册面（engine 工具数）不变。

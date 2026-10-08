@@ -34,7 +34,7 @@
 为什么不是 container.go 直接改 import：container.go 只调用 `chatpipeline.New*`
 构造器、**不赋值任何 chatpipeline 导出 var**（已 grep 验证），A6
 `chat.LocalImageResolver` 可变 var 翻转先例不适用——该 var 属
-`internal/modules/airesource/models/chat`（A6 领地），与本次搬迁无关。
+`internal/airesource/models/chat`（A6 领地），与本次搬迁无关。
 
 ## 3. 禁改共享文件 file:line 清单与切换步骤
 
@@ -124,12 +124,12 @@ architectureguard 在本分支报 **6 条新 forbidden-import** 诊断（搬迁�
 均为**先于本次改造**的耦合被搬迁暴露——同 6 个文件在旧路径
 `internal/application/service/chat_pipeline/` 下就有完全相同的 import 行）：
 
-1. `internal/modules/conversation/chat_pipeline/common.go` → `internal/modules/airesource/models/chat`
-2. `internal/modules/conversation/chat_pipeline/data_analysis.go` → `internal/modules/airesource/models/chat`
-3. `internal/modules/conversation/chat_pipeline/extract_entity.go` → `internal/modules/airesource/models/chat`
-4. `internal/modules/conversation/chat_pipeline/query_understand.go` → `internal/modules/airesource/models/chat`
-5. `internal/modules/conversation/chat_pipeline/references.go` → `internal/modules/airesource/models/chat`
-6. `internal/modules/conversation/chat_pipeline/rerank.go` → `internal/modules/airesource/models/rerank`
+1. `internal/modules/conversation/chat_pipeline/common.go` → `internal/airesource/models/chat`
+2. `internal/modules/conversation/chat_pipeline/data_analysis.go` → `internal/airesource/models/chat`
+3. `internal/modules/conversation/chat_pipeline/extract_entity.go` → `internal/airesource/models/chat`
+4. `internal/modules/conversation/chat_pipeline/query_understand.go` → `internal/airesource/models/chat`
+5. `internal/modules/conversation/chat_pipeline/references.go` → `internal/airesource/models/chat`
+6. `internal/modules/conversation/chat_pipeline/rerank.go` → `internal/airesource/models/rerank`
 
 张力点：这些 import 走的正是 batch-a2 冻结面**文档化的入口路径**
 （`frozen-entrypoints-batch-a2.md` §airesource 列出 `models/chat`、`models/rerank`，
