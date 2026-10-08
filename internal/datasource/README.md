@@ -13,18 +13,18 @@
 
 | 现路径 | 目标路径 |
 |---|---|
-| `internal/datasource` | `internal/modules/datasource` |
-| `internal/datasource/connector/confluence` | `internal/modules/datasource/connector/confluence` |
-| `internal/datasource/connector/dingtalk` | `internal/modules/datasource/connector/dingtalk` |
-| `internal/datasource/connector/feishu/core` | `internal/modules/datasource/connector/feishu/core` |
-| `internal/datasource/connector/feishu/drive` | `internal/modules/datasource/connector/feishu/drive` |
-| `internal/datasource/connector/feishu/wiki` | `internal/modules/datasource/connector/feishu/wiki` |
-| `internal/datasource/connector/gitlab` | `internal/modules/datasource/connector/gitlab` |
-| `internal/datasource/connector/ima` | `internal/modules/datasource/connector/ima` |
-| `internal/datasource/connector/moauth` | `internal/modules/datasource/connector/moauth` |
-| `internal/datasource/connector/notion` | `internal/modules/datasource/connector/notion` |
-| `internal/datasource/connector/rss` | `internal/modules/datasource/connector/rss` |
-| `internal/datasource/connector/yuque` | `internal/modules/datasource/connector/yuque` |
+| `internal/datasource` | `internal/datasource/connector/moauth` |
+| `internal/datasource/connector/confluence` | `internal/datasource/connector/moauth/connector/confluence` |
+| `internal/datasource/connector/dingtalk` | `internal/datasource/connector/moauth/connector/dingtalk` |
+| `internal/datasource/connector/feishu/core` | `internal/datasource/connector/moauth/connector/feishu/core` |
+| `internal/datasource/connector/feishu/drive` | `internal/datasource/connector/moauth/connector/feishu/drive` |
+| `internal/datasource/connector/feishu/wiki` | `internal/datasource/connector/moauth/connector/feishu/wiki` |
+| `internal/datasource/connector/gitlab` | `internal/datasource/connector/moauth/connector/gitlab` |
+| `internal/datasource/connector/ima` | `internal/datasource/connector/moauth/connector/ima` |
+| `internal/datasource/connector/moauth` | `internal/datasource/connector/moauth` |
+| `internal/datasource/connector/notion` | `internal/datasource/connector/moauth/connector/notion` |
+| `internal/datasource/connector/rss` | `internal/datasource/connector/moauth/connector/rss` |
+| `internal/datasource/connector/yuque` | `internal/datasource/connector/moauth/connector/yuque` |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -42,7 +42,7 @@
 
 ## 验收命令
 
-- `go test ./internal/modules/datasource/... -count=1`
+- `go test ./internal/datasource/connector/moauth/... -count=1`
 
 导入方（importers，现为 3 个真实宿主——compat shim 所在：`internal/application/service`、`internal/container`、`internal/handler`）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/datasource.yaml`。

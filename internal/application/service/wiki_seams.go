@@ -1,7 +1,7 @@
 package service
 
 // Wiki（23-knowledge-wikifaq K3.1/W0）消费侧 seam 定义：随上游对齐 round 2
-// 自 internal/modules/knowledge/wiki/seams.go 归位至 service 包。原 Span 装箱
+// 自 internal/knowledge/wiki/seams.go 归位至 service 包。原 Span 装箱
 // 句柄（Span/NewSpan/box SpanTracker/noopSpanTracker）随包合并删除——wiki
 // 侧代码现与宿主共享 knowledge_span_tracker.go 的具名 *Span/SpanTracker
 // （句柄始终按不透明指针传递，装箱/解箱仅在迁移期适配器存在）。

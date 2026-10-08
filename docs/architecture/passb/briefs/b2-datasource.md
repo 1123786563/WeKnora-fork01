@@ -7,7 +7,7 @@
 
 ## (a) 装配直连切换申请（container.go / routes_infra.go / router.go / 两 test 文件；切换后删 3 compat）
 
-**切换目标命名**（import 别名建议）：`repository.`→`dsrepo.`（`internal/modules/datasource/repository`）、`service.NewDataSourceService`→`dsservice.NewDataSourceService`（`internal/modules/datasource/service`）、`handler.*`→`dshandler.*`（`internal/modules/datasource/handler`）。container.go :77-87 已 import 模块根包 `datasource`（root）与 11 个 connector 包，与新别名无冲突。
+**切换目标命名**（import 别名建议）：`repository.`→`dsrepo.`（`internal/datasource/connector/moauth/repository`）、`service.NewDataSourceService`→`dsservice.NewDataSourceService`（`internal/datasource/connector/moauth/service`）、`handler.*`→`dshandler.*`（`internal/datasource/connector/moauth/handler`）。container.go :77-87 已 import 模块根包 `datasource`（root）与 11 个 connector 包，与新别名无冲突。
 
 | # | 消费点（HEAD 实测行号） | 现状解析 | ib2 切换目标 |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | 8 | `internal/router/router.go:118-119` `RouterParams` 字段 `DataSourceHandler` / `DataSourceCredentialsHandler`（`*handler.*`） | 同上 | 字段类型切 `*dshandler.*` |
 | 9 | `internal/router/router.go:408` `RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)` | 同上 | 实参零改动（随 #7/#8 类型切换自然解析） |
 | 10 | `internal/router/router_api_key_capabilities_test.go:353` `RegisterDataSourceRoutes(v1, &handler.DataSourceHandler{}, &handler.DataSourceCredentialsHandler{}, g)` | 同上（test-only 零字段字面量） | `&dshandler.DataSourceHandler{}` / `&dshandler.DataSourceCredentialsHandler{}` |
-| 11 | **R2 补列（test-only 跨属主）**：`internal/modules/appconnector/service/appconnector/sync_test.go:14` import `service "…/internal/application/service"`、:102 `func newTestService(…) *service.DataSourceService`、:103-104 `service.NewDataSourceService(&fakeDSRepo{…}, logs, nil, nil, enq, nil, nil, nil, nil, nil)`（10 参）、:105 `.(*service.DataSourceService)` | 宿主 service compat wrapper + type 别名 | import 与全部引用切 `dsservice`（构造器签名逐参一致，fake 实参经接口形参不变）；**IB2 执行或移交 appconnector 侧处置——本节点零触碰（§2.1 行，conventions §1.3）** |
+| 11 | **R2 补列（test-only 跨属主）**：`internal/appconnector/service/appconnector/sync_test.go:14` import `service "…/internal/application/service"`、:102 `func newTestService(…) *service.DataSourceService`、:103-104 `service.NewDataSourceService(&fakeDSRepo{…}, logs, nil, nil, enq, nil, nil, nil, nil, nil)`（10 参）、:105 `.(*service.DataSourceService)` | 宿主 service compat wrapper + type 别名 | import 与全部引用切 `dsservice`（构造器签名逐参一致，fake 实参经接口形参不变）；**IB2 执行或移交 appconnector 侧处置——本节点零触碰（§2.1 行，conventions §1.3）** |
 
 **worker 面（零切换，仅核验）**：`task.go:295/:314`（asynq 栈 `mux.HandleFunc(types.TypeDataSource{Purge,Sync}, params.DataSourceService.Process{DataSourcePurge,Sync})`）、`sync_task.go:160-161`（Lite 栈 `params.Executor.RegisterHandler`）、`task_inspector.go:100`——全部经 `interfaces.DataSourceService` 接口方法值 + `internal/types` 常量解析，与 compat 无关，ib2 零改动。
 
@@ -37,7 +37,7 @@
 
 ## (b) cleanup seam 终局（K4 补迁窗联动）
 
-**现状（本节点交付）**：模块侧 seam = `internal/modules/datasource/service/datasource_service.go` :53-:58（字段 `knowledgeCleanup func(ctx, tenant, bindings) context.Context` + 注释）、:119-:121（导出 setter `SetKnowledgeCleanup`）、:898-:899（`PurgeDataSourceDocuments` 内 `s.knowledgeCleanup` 调用点——计划原文 :885 为迁移前行号）；接线 = 宿主 service compat 构造 wrapper 内 `impl.SetKnowledgeCleanup(withKnowledgeCleanup)`（宿主 `knowledge_delete_plan.go:22`，K4 推迟件未导出）。等价性证据：purge_test 9 用例经 compat+seam 全 PASS，绑定清理断言（purge_test :349-:350 `bindingRows`）走完整清理链（evidence §差分 B2-DS.7）。
+**现状（本节点交付）**：模块侧 seam = `internal/datasource/connector/moauth/service/datasource_service.go` :53-:58（字段 `knowledgeCleanup func(ctx, tenant, bindings) context.Context` + 注释）、:119-:121（导出 setter `SetKnowledgeCleanup`）、:898-:899（`PurgeDataSourceDocuments` 内 `s.knowledgeCleanup` 调用点——计划原文 :885 为迁移前行号）；接线 = 宿主 service compat 构造 wrapper 内 `impl.SetKnowledgeCleanup(withKnowledgeCleanup)`（宿主 `knowledge_delete_plan.go:22`，K4 推迟件未导出）。等价性证据：purge_test 9 用例经 compat+seam 全 PASS，绑定清理断言（purge_test :349-:350 `bindingRows`）走完整清理链（evidence §差分 B2-DS.7）。
 
 **终局三时点分支（IB2 编排时按 K4 补迁窗实际时点择一）**：
 
@@ -49,13 +49,13 @@
 
 ## (c) 3 条例外行收口编排（remove_at=ib2）
 
-本节点 B2-DS.5 按 Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记的 3 对预存横向耦合（同一 importer `internal/modules/datasource/service/datasource_service.go`）：
+本节点 B2-DS.5 按 Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记的 3 对预存横向耦合（同一 importer `internal/datasource/connector/moauth/service/datasource_service.go`）：
 
 | id | from → to | ledger 行 | check.go 数据行 | 用途 |
 |---|---|---|---|---|
-| exc-0132 | → `internal/modules/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
-| exc-0133 | → `internal/modules/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
-| exc-0134 | → `internal/modules/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
+| exc-0132 | → `internal/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
+| exc-0133 | → `internal/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
+| exc-0134 | → `internal/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
 
 **收口前置与方向裁决（与 K 系列例外同批，ib2 一并裁决）**：
 
@@ -67,7 +67,7 @@
 
 ## (d) 门面实装申请（datasource.facade 五操作，K5.1 同法，IB2 时点实装）
 
-`contracts.yaml:1119` `datasource.facade`（stability: frozen；items = NewModule/RegisterRoutes/RegisterWorkers/Start/Stop）。实装蓝本 = `internal/modules/knowledge/module.go`（b2-k-integration K5.1，passbguard facade 形态契约 check.go:312-325：五操作须以 `//\t` 缩进显式声明、计数句式须与 manifest integration_points 冻结值一致——datasource 为 **1/2/2**）。本节点零触碰 `internal/modules/datasource/module.go`（22 行零逻辑骨架，passbguard 冻结其注释形态）。
+`contracts.yaml:1119` `datasource.facade`（stability: frozen；items = NewModule/RegisterRoutes/RegisterWorkers/Start/Stop）。实装蓝本 = `internal/knowledge/module.go`（b2-k-integration K5.1，passbguard facade 形态契约 check.go:312-325：五操作须以 `//\t` 缩进显式声明、计数句式须与 manifest integration_points 冻结值一致——datasource 为 **1/2/2**）。本节点零触碰 `internal/datasource/connector/moauth/module.go`（22 行零逻辑骨架，passbguard 冻结其注释形态）。
 
 **真实 seam（IB2 实装时逐项推导，Dependencies 字段从 container Invoke/Provide 面推导）**：
 
@@ -88,10 +88,10 @@
 | `internal/application/service/datasource_purge_test.go`（9 用例） | 留守宿主：:225 白盒构造 `&knowledgeService{}`（K4 属主未导出类型）不可迁；构造点已经 compat 重写（:242/:461）；purge 级联唯一覆盖（全仓 `PurgeDataSourceDocuments` 测试面仅此文件） | **最终随 K4 补迁窗处置**（宿主 `knowledgeService` 消亡时其白盒不可编译，届时迁入模块并以 fake/公开构造重建——K4 Brief (c)/(f) 已登记对应义务「datasource_purge_test.go→26-datasource/ib2」；本节点 Brief 复述，不代处置） |
 | `internal/application/service/datasource_delete_sqlite_test.go`（3 用例） | 留守宿主（B2-DS.3 偏差登记）：fixture 依赖 `knowledgeBaseService` K4 白盒（kbDelete 清理路径断言），随迁不可编译；构造点已经 compat 重写（:78-79/:106-107） | 同上随 K4 补迁窗处置（与 purge_test 同根因类 A）；差分侧已经宿主补跑 3/3 PASS 锚定（evidence §差分 B2-DS.7 ③） |
 | `internal/application/service/datasource_shim_test.go`（宿主包 Ruling 3 垫片） | K 属主留守测试（knowledge_replace_test.go:223 `bytesToFileHeader`、knowledge_write_access_test.go:419/:431 `processSyncTenantRepo`/`newSyncDeletionHarness` 等）消费随迁符号的逐字副本垫片；remove_at=ib2 | ib2 先到先删、最迟 B5（台账「临时测试装置垫片（B5 清理范围）」追踪；前置=对应 K 属主测试随 K4 补迁窗/K2 推迟件补迁窗处置） |
-| `internal/modules/datasource/service/datasource_kbdelete_shim_test.go`（模块包 Ruling 3 垫片） | 4 个随迁测试文件共享的 `kbDeleteDSRepo`（宿主原件属 K 属主 knowledgebase_delete_datasource_test.go）同包最小定义；remove_at=ib2 | K 侧测试装置在 K4/K2 补迁窗迁入后收殓为单一定义并删垫片（台账同上，B2-DS.3 报告追踪） |
+| `internal/datasource/connector/moauth/service/datasource_kbdelete_shim_test.go`（模块包 Ruling 3 垫片） | 4 个随迁测试文件共享的 `kbDeleteDSRepo`（宿主原件属 K 属主 knowledgebase_delete_datasource_test.go）同包最小定义；remove_at=ib2 | K 侧测试装置在 K4/K2 补迁窗迁入后收殓为单一定义并删垫片（台账同上，B2-DS.3 报告追踪） |
 | 3 个宿主 compat 文件 | 本节点过渡 shim（(a) 表） | ib2 装配直连切换批删除（前置见 (a) 删除前置段） |
 
-**manifest/matrix 剩余行状态快照（HEAD 实测）**：`datasource.yaml`——`move_packages: []`、`alias_obligations: []`（B2-DS.6 12 行核销）、`legacy_files:` 仅 3 条 shim 行（:9-:20）、`owned_files.move_sources/move_targets: []`、importers 3 条真实宿主（application/service、container、handler——compat 所在）、`test_commands` 1 条（`go test ./internal/modules/datasource/... -count=1`）、integration_points 1/2/2。matrix——datasource 属主业务行全部删除（4 legacy + 12 alias 已核销），仅余 3 条 shim 行（:158/:824/:1736，ib2 随 compat 删行）。宿主零业务残留：4 个旧路径（`internal/application/repository/datasource_repo.go`、`internal/application/service/datasource_service.go`、`internal/handler/datasource.go`、`internal/handler/datasource_credentials.go`）物理不存在（`ls` 实测）。
+**manifest/matrix 剩余行状态快照（HEAD 实测）**：`datasource.yaml`——`move_packages: []`、`alias_obligations: []`（B2-DS.6 12 行核销）、`legacy_files:` 仅 3 条 shim 行（:9-:20）、`owned_files.move_sources/move_targets: []`、importers 3 条真实宿主（application/service、container、handler——compat 所在）、`test_commands` 1 条（`go test ./internal/datasource/connector/moauth/... -count=1`）、integration_points 1/2/2。matrix——datasource 属主业务行全部删除（4 legacy + 12 alias 已核销），仅余 3 条 shim 行（:158/:824/:1736，ib2 随 compat 删行）。宿主零业务残留：4 个旧路径（`internal/application/repository/datasource_repo.go`、`internal/application/service/datasource_service.go`、`internal/handler/datasource.go`、`internal/handler/datasource_credentials.go`）物理不存在（`ls` 实测）。
 
 ## (f) 差分与计数证据指针 + worker/route/hook 奇偶声明
 

@@ -3,13 +3,13 @@ module: workbench
 description: Task 视图、Timeline、Inbox/Attention、通用 Artifact、通知、移动任务投影（§5.6/§5.18）
 move_packages:
   - from: internal/application/service/workbench
-    to: internal/modules/workbench/service/workbench
+    to: internal/workbench/service/workbench
   - from: internal/notification
-    to: internal/modules/workbench/notification
+    to: internal/workbench/notification
   - from: internal/voice
-    to: internal/modules/workbench/voice
+    to: internal/workbench/voice
   - from: internal/workbench
-    to: internal/modules/workbench
+    to: internal/workbench
 alias_obligations:
   - old_import_path: internal/application/service/workbench
     passb_task: B-workbench
@@ -175,10 +175,10 @@ owned_files:
   - internal/voice
   - internal/workbench
   move_targets:
-    - internal/modules/workbench/service/workbench
-    - internal/modules/workbench/notification
-    - internal/modules/workbench/voice
-    - internal/modules/workbench
+    - internal/workbench/service/workbench
+    - internal/workbench/notification
+    - internal/workbench/voice
+    - internal/workbench
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/application/service/workbench
     - internal/notification
@@ -196,11 +196,11 @@ owned_files:
   - internal/handler/session
   - internal/router
   module_files:
-    - internal/modules/workbench/README.md
-    - internal/modules/workbench/module.go
-    - internal/modules/workbench/legacy/README.md
+    - internal/workbench/README.md
+    - internal/workbench/module.go
+    - internal/workbench/legacy/README.md
 test_commands:
-  - go test ./internal/modules/workbench/... -count=1
+  - go test ./internal/workbench/... -count=1
 integration_points:
   routes:
   - RegisterWorkbenchOverviewRoutes — internal/router/routes_workbench.go:73

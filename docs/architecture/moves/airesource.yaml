@@ -3,29 +3,29 @@ module: airesource
 description: 模型、Provider 凭据、MCP、Web Search、Vector Store、Storage Backend、租户能力配置（§5.12/§5.18）
 move_packages:
   - from: internal/infrastructure/web_search
-    to: internal/modules/airesource/web_search
+    to: internal/airesource/web_search
   - from: internal/mcp
-    to: internal/modules/airesource/mcp
+    to: internal/airesource/mcp
   - from: internal/models/asr
-    to: internal/modules/airesource/models/asr
+    to: internal/airesource/models/asr
   - from: internal/models/chat
-    to: internal/modules/airesource/models/chat
+    to: internal/airesource/models/chat
   - from: internal/models/embedding
-    to: internal/modules/airesource/models/embedding
+    to: internal/airesource/models/embedding
   - from: internal/models/limiter
-    to: internal/modules/airesource/models/limiter
+    to: internal/airesource/models/limiter
   - from: internal/models/provider
-    to: internal/modules/airesource/models/provider
+    to: internal/airesource/models/provider
   - from: internal/models/rerank
-    to: internal/modules/airesource/models/rerank
+    to: internal/airesource/models/rerank
   - from: internal/models/utils
-    to: internal/modules/airesource/models/utils
+    to: internal/airesource/models/utils
   - from: internal/models/utils/ollama
-    to: internal/modules/airesource/models/utils/ollama
+    to: internal/airesource/models/utils/ollama
   - from: internal/models/vlm
-    to: internal/modules/airesource/models/vlm
+    to: internal/airesource/models/vlm
   - from: internal/storageurl
-    to: internal/modules/airesource/storageurl
+    to: internal/airesource/storageurl
 alias_obligations:
   - old_import_path: internal/infrastructure/web_search
     passb_task: B-airesource
@@ -199,18 +199,18 @@ owned_files:
   - internal/models/vlm
   - internal/storageurl
   move_targets:
-    - internal/modules/airesource/web_search
-    - internal/modules/airesource/mcp
-    - internal/modules/airesource/models/asr
-    - internal/modules/airesource/models/chat
-    - internal/modules/airesource/models/embedding
-    - internal/modules/airesource/models/limiter
-    - internal/modules/airesource/models/provider
-    - internal/modules/airesource/models/rerank
-    - internal/modules/airesource/models/utils
-    - internal/modules/airesource/models/utils/ollama
-    - internal/modules/airesource/models/vlm
-    - internal/modules/airesource/storageurl
+    - internal/airesource/web_search
+    - internal/airesource/mcp
+    - internal/airesource/models/asr
+    - internal/airesource/models/chat
+    - internal/airesource/models/embedding
+    - internal/airesource/models/limiter
+    - internal/airesource/models/provider
+    - internal/airesource/models/rerank
+    - internal/airesource/models/utils
+    - internal/airesource/models/utils/ollama
+    - internal/airesource/models/vlm
+    - internal/airesource/storageurl
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/infrastructure/web_search
     - internal/mcp
@@ -249,11 +249,11 @@ owned_files:
   - internal/types/interfaces
   - semantic/experiments/model_gateway
   module_files:
-    - internal/modules/airesource/README.md
-    - internal/modules/airesource/module.go
-    - internal/modules/airesource/legacy/README.md
+    - internal/airesource/README.md
+    - internal/airesource/module.go
+    - internal/airesource/legacy/README.md
 test_commands:
-  - go test ./internal/modules/airesource/... -count=1
+  - go test ./internal/airesource/... -count=1
 integration_points:
   routes:
   - RegisterModelRoutes — internal/router/routes_infra.go:23

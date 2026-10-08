@@ -117,7 +117,7 @@ grep 已验证：`internal/router/task.go`、`internal/router/sync_task.go`、`g
 ## 7. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/system/... -count=1`（manifest test_commands）
+- `go test ./internal/system/... -count=1`（manifest test_commands）
 - `go test ./internal/handler/... ./internal/application/service/... ./internal/application/repository/... -count=1`（legacy 文件所在横向包回归）
 - `go run ./tools/modulemove verify --module system`
 - `go run ./tools/architectureguard`（基线：633 路由 / 23+23 worker / 58 hooks，不得变化）

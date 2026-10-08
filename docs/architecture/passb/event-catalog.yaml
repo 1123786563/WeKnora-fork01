@@ -20,7 +20,7 @@ events:
       transport: durable
       consumers:
         - internal/application/repository/mobile_notification.go
-        - internal/modules/workbench/service/workbench/notification_worker.go
+        - internal/workbench/service/workbench/notification_worker.go
         - internal/handler/session/agent_run.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, session_id]
     - id: agentrun.run.attention_required
@@ -31,7 +31,7 @@ events:
       replay: source-query
       transport: durable
       consumers:
-        - internal/modules/workbench/service/workbench/interaction.go
+        - internal/workbench/service/workbench/interaction.go
         - internal/application/repository/mobile_notification.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, wait_kind]
     - id: agentrun.run.completed
@@ -43,7 +43,7 @@ events:
       transport: durable
       consumers:
         - internal/application/repository/mobile_notification.go
-        - internal/modules/workbench/service/workbench/notification.go
+        - internal/workbench/service/workbench/notification.go
         - internal/handler/session/agent_run.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, session_id]
     - id: agentrun.run.failed
@@ -87,7 +87,7 @@ events:
       transport: durable
       consumers:
         - internal/handler/mcp_service.go
-        - internal/modules/workbench/service/workbench/interaction.go
+        - internal/workbench/service/workbench/interaction.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, pending_id, approved]
     # ---- Conversation 家族（messages/sessions 权威表 + 进程内 EventBus 流）----
     - id: conversation.message.appended
@@ -163,7 +163,7 @@ events:
       transport: in_process
       consumers:
         - internal/application/service/knowledgebase_search.go
-        - internal/modules/knowledge/ingest/chunk_repo.go  # IB2 回写批：K1 迁移后路径
+        - internal/knowledge/ingest/chunk_repo.go  # IB2 回写批：K1 迁移后路径
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id, chunk_ids]
     - id: knowledge.deletion.completed
       version: 1
@@ -241,13 +241,13 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, revision]
     - id: usage.settlement.completed
       version: 1
-      producer: internal/modules/commercial/repository/commercial/budget_settlement.go:SettleReservationHold
+      producer: internal/commercial/repository/commercial/budget_settlement.go:SettleReservationHold
       meaning: 预算预留已结算（SettleReservationHold 幂等收口：占用量按水位落定，商用结算凭证持久化）
       ordering: per-reservation 结算恰一次（幂等水印去重）
       replay: source-query
       transport: durable
       consumers:
-        - internal/modules/commercial/service/commercial/settlement.go
+        - internal/commercial/service/commercial/settlement.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, reservation_key, watermark]
     # ---- Workbench 家族（工作台投影更新：source-query 重建）----
     - id: workbench.task.updated
@@ -262,7 +262,7 @@ events:
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, request_id, state]
     - id: workbench.attention.updated
       version: 1
-      producer: internal/modules/workbench/service/workbench/interaction.go:CreatePending
+      producer: internal/workbench/service/workbench/interaction.go:CreatePending
       meaning: 工作台注意项已登记（审批/交互 pending 入工作台交互表，等待用户决定）
       ordering: per-run pending 登记与裁决一次配对
       replay: source-query
@@ -300,7 +300,7 @@ events:
       replay: source-query
       transport: durable
       consumers:
-        - internal/modules/workbench/service/workbench/notification_delivery.go
+        - internal/workbench/service/workbench/notification_delivery.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, intent_id, receipt_id]
     - id: notification.delivery.failed
       version: 1
@@ -310,7 +310,7 @@ events:
       replay: source-query
       transport: durable
       consumers:
-        - internal/modules/workbench/service/workbench/notification_worker.go
+        - internal/workbench/service/workbench/notification_worker.go
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, intent_id, failure_reason]
     - id: channel.delivery.completed
       version: 1

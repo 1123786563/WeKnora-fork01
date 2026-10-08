@@ -6,15 +6,15 @@
 
 ## Goal（目标）
 
-`internal/modules/agentruntime/memory` 与 `…/modelcontext` 成为记忆/模型上下文唯一归属：
+`internal/agentruntime/memory` 与 `…/modelcontext` 成为记忆/模型上下文唯一归属：
 横向包中的 memory 仓储与 handler 拆入模块，`TypeMemoryExtract` worker 与
 `RegisterMemoryRoutes` 的实现面回到模块内，memory 侧别名与 airesource 耦合收敛。
 
 ## Scope（范围）
 
-**模块内已有包**：`internal/modules/agentruntime/memory`（service.go、extract、
+**模块内已有包**：`internal/agentruntime/memory`（service.go、extract、
 consolidate、topic_resolve、vector、persistence/postgres 一致性测试等 32 文件）、
-`internal/modules/agentruntime/modelcontext`（17 文件）。
+`internal/agentruntime/modelcontext`（17 文件）。
 
 **迁入（legacy_files 中归 memory 侧的文件）**：
 - `internal/application/repository/`：memory.go、memory_extraction.go、
@@ -36,8 +36,8 @@ consolidate、topic_resolve、vector、persistence/postgres 一致性测试等 3
    抽取/整合行为与迁移脚本（memory 4 个 versioned migration 测试）不变。
 4. **路由不变**：`RegisterMemoryRoutes`（router.go:411 ← routes_memory.go:17）挂载点、
    路径、RBAC guard 装配不变。
-5. **验证**：`go test ./internal/modules/agentruntime/memory/...
-   ./internal/modules/agentruntime/modelcontext/... -count=1`（PG 用例按既有
+5. **验证**：`go test ./internal/agentruntime/memory/...
+   ./internal/agentruntime/modelcontext/... -count=1`（PG 用例按既有
    blocked-env skip）、`go test ./internal/application/repository -count=1`、
    `go build ./...`、`make check-backend-architecture` 中 memory 侧 forbidden-import
    归零。

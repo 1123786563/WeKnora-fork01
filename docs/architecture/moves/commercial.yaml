@@ -3,19 +3,19 @@ module: commercial
 description: 套餐、权益、预算、Usage、账单、支付、履约、商业网关（§5.13/§5.18）
 move_packages:
   - from: internal/application/repository/commercial
-    to: internal/modules/commercial/repository/commercial
+    to: internal/commercial/repository/commercial
   - from: internal/application/service/commercial
-    to: internal/modules/commercial/service/commercial
+    to: internal/commercial/service/commercial
   - from: internal/commercial
-    to: internal/modules/commercial
+    to: internal/commercial
   - from: internal/infrastructure/commercialplatform
-    to: internal/modules/commercial/commercialplatform
+    to: internal/commercial/commercialplatform
   - from: internal/infrastructure/openmeter
-    to: internal/modules/commercial/openmeter
+    to: internal/commercial/openmeter
   - from: internal/payment
-    to: internal/modules/commercial/payment
+    to: internal/commercial/payment
   - from: internal/usage
-    to: internal/modules/commercial/usage
+    to: internal/commercial/usage
 alias_obligations:
   - old_import_path: internal/application/repository/commercial
     passb_task: B-commercial
@@ -74,13 +74,13 @@ owned_files:
   - internal/payment
   - internal/usage
   move_targets:
-    - internal/modules/commercial/repository/commercial
-    - internal/modules/commercial/service/commercial
-    - internal/modules/commercial
-    - internal/modules/commercial/commercialplatform
-    - internal/modules/commercial/openmeter
-    - internal/modules/commercial/payment
-    - internal/modules/commercial/usage
+    - internal/commercial/repository/commercial
+    - internal/commercial/service/commercial
+    - internal/commercial
+    - internal/commercial/commercialplatform
+    - internal/commercial/openmeter
+    - internal/commercial/payment
+    - internal/commercial/usage
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/application/repository/commercial
     - internal/application/service/commercial
@@ -109,11 +109,11 @@ owned_files:
   - internal/payment
   - internal/router
   module_files:
-    - internal/modules/commercial/README.md
-    - internal/modules/commercial/module.go
-    - internal/modules/commercial/legacy/README.md
+    - internal/commercial/README.md
+    - internal/commercial/module.go
+    - internal/commercial/legacy/README.md
 test_commands:
-  - go test ./internal/modules/commercial/... -count=1
+  - go test ./internal/commercial/... -count=1
 integration_points:
   routes:
   - RegisterCommercialRoutes — internal/router/routes_commercial.go:19

@@ -23,7 +23,7 @@ workbench（40）、craft（41），见 ownership-matrix.yaml 逐路径唯一属
 
 ## 边界目标
 
-浏览器/终端会话能力随 execution 模块拆分收进 `internal/modules/execution/`，
+浏览器/终端会话能力随 execution 模块拆分收进 `internal/execution/`，
 共享 host 包不再残留 execution 归属文件。
 
 ## 义务（B0 冻结口径）
@@ -37,6 +37,6 @@ workbench（40）、craft（41），见 ownership-matrix.yaml 逐路径唯一属
 2. **行为零变化**：浏览器/终端会话端点的 wire 语义（WebSocket 协议、
    sandbox 生命周期、bridge 超时）为外部契约，拆分不改行为；差分证据按
    conventions §7 高风险面（session stream 邻接面）执行。
-3. **验证**：`go test ./internal/modules/execution/... -count=1`、
+3. **验证**：`go test ./internal/execution/... -count=1`、
    `go build ./...`、`make check-backend-architecture` 全绿；route/worker/hook
    计数与 F0 基线一致（633/23+23/58）。

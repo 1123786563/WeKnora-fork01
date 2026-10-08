@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

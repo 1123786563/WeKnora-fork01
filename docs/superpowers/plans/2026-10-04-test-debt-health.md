@@ -19,7 +19,7 @@
 ### Task 1: benefits 日期敏感修复（subagent）
 - [ ] `septemberClock()` → 动态当月 15 日（`time.Date(y, m, 15, 10, 0, 0, 0, time.UTC)`）。
 - [ ] 8 处 `2026-09` 硬编码由 `domain.MonthlyPeriod(septemberClock()())` 派生；跨月测试的 October 推进改 `clock.AddDate(0, 1, 0)`；lot 钱包名同步派生。
-- [ ] 门禁：`go test ./internal/modules/commercial/service/commercial/ -count=1 -timeout 10m` 全绿。
+- [ ] 门禁：`go test ./internal/commercial/service/commercial/ -count=1 -timeout 10m` 全绿。
 
 ### Task 2: database 包修复（subagent）
 - [ ] migration 测试的相对路径改绝对路径（`runtime.Caller` 或测试内 `chdir`）。

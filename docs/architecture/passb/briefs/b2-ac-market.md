@@ -3,7 +3,7 @@
 > 状态：**定稿**（T5 Step 3，2026-09-25；提交 `docs(passb): passb b2-ac-market parity evidence and integration brief`）。
 > 分支：`codex/passb-b2-ac-market`，节点终态头 `53646cb10`；对齐后任务基线 `c0ddf768a`（Ruling 2026-09-24-WAVE-DEP-BASELINE：merge 25a `ad53c2185` + merge 25b `c0ddf768a`；基线对齐发生于 IB2 之前，IB2 正式职责不变）。
 > 计划：`docs/plans/passb/25c-marketplace.md`；证据：`docs/architecture/evidence/passb/b2-ac-market.md`；报告：`docs/plans/passb/reports/b2-ac-market.md`。
-> 交付范围：7 生产文件 + 6 随迁测试 + 1 parity 测试 + `market_host_adapters.go` 注入位迁入 `internal/modules/agentcatalog/{repository,service,handler}`；7 原路径过渡 shim（`remove_at: ib2`）；6 文件按裁定请求推迟留宿（§2）。节点 gates 全绿、633/23+23/58/537 计数零漂移。
+> 交付范围：7 生产文件 + 6 随迁测试 + 1 parity 测试 + `market_host_adapters.go` 注入位迁入 `internal/agentcatalog/{repository,service,handler}`；7 原路径过渡 shim（`remove_at: ib2`）；6 文件按裁定请求推迟留宿（§2）。节点 gates 全绿、633/23+23/58/537 计数零漂移。
 
 ## 1. IB2 装配变更申请：7 个 shim 的消费方切换与删除顺序
 
@@ -25,8 +25,8 @@
 
 ### 1.2 `isUniqueViolation` 族收口登记（conventions §7.1）
 
-- 本节点在 `internal/modules/agentcatalog/repository/agent_marketplace.go` 落地**第 4 份副本**（函数体逐字复制 `voice_session.go:289-300`；`gorm.ErrDuplicatedKey` + `UNIQUE constraint failed`/`duplicate key value`/`23505` 三标记）。全仓四份 = `voice_session.go:289`（40-workbench 留宿）、`internal/application/service/resource.go:358`（11-airesource）、`internal/modules/commercial/repository/commercial/planversion.go:323`（12-commercial 模块本地）、本副本。
-- 防漂移锚：`internal/modules/agentcatalog/repository/is_unique_violation_parity_test.go`（8 子用例表驱动，`remove_at: ib2`）。
+- 本节点在 `internal/agentcatalog/repository/agent_marketplace.go` 落地**第 4 份副本**（函数体逐字复制 `voice_session.go:289-300`；`gorm.ErrDuplicatedKey` + `UNIQUE constraint failed`/`duplicate key value`/`23505` 三标记）。全仓四份 = `voice_session.go:289`（40-workbench 留宿）、`internal/application/service/resource.go:358`（11-airesource）、`internal/commercial/repository/commercial/planversion.go:323`（12-commercial 模块本地）、本副本。
+- 防漂移锚：`internal/agentcatalog/repository/is_unique_violation_parity_test.go`（8 子用例表驱动，`remove_at: ib2`）。
 - **IB2 收口义务**：族收口为单一实现（建议收口位由协调者裁定，候选：共享 errors/util 包或最早属主导出）；收口后**同窗删除**本副本 + parity 测试。收口前四副本语义漂移风险由各处既有测试与 parity 表双向锚定。
 
 ### 1.3 删除顺序总表（IB2 执行序列）
@@ -54,21 +54,21 @@
 
 | # | 装置 | 位置 | remove_at |
 |---|---|---|---|
-| 1 | `openRunTestDB` 最小装置副本（sqlite 分支逐字，省略 postgres 分支与 `seedRunFixtures`——9 用例无该子测试） | `internal/modules/agentcatalog/repository/agent_marketplace_test.go` 文件内（随迁白名单文件内追加，未新建文件） | IB2 或宿主 `agent_run_test.go` 装置导出时（先到者） |
-| 2 | `requireAppErrorStatus` 包内副本（与留宿 `skill_market_service_test.go:292` 逐字同体） | `internal/modules/agentcatalog/service/tenant_skill_market_service_test.go:189-200` | #1 推迟件测试搬迁时同删（届时留宿定义随迁或抽取共享） |
+| 1 | `openRunTestDB` 最小装置副本（sqlite 分支逐字，省略 postgres 分支与 `seedRunFixtures`——9 用例无该子测试） | `internal/agentcatalog/repository/agent_marketplace_test.go` 文件内（随迁白名单文件内追加，未新建文件） | IB2 或宿主 `agent_run_test.go` 装置导出时（先到者） |
+| 2 | `requireAppErrorStatus` 包内副本（与留宿 `skill_market_service_test.go:292` 逐字同体） | `internal/agentcatalog/service/tenant_skill_market_service_test.go:189-200` | #1 推迟件测试搬迁时同删（届时留宿定义随迁或抽取共享） |
 | 3 | `fakePublisherNames` 宿主垫片追加（+26 行；留宿禁改测试 `tenant_expert_market_service_test.go:365` 断链补齐） | `internal/application/service/tenant_skill_testsupport_test.go`（25b 已建唯一垫片文件，本节点追加尾节） | 推迟件 `tenant_expert_market_service.go` 及其测试搬迁时（25a 批次 2/B3 窗口）随该测试同删 |
 
 ## 4. 拆分确认请求（13 文件逐条，供 `25-agentcatalog-program.md` 确认；ownership-matrix 56 行 `plan: 25-agentcatalog-program` 无子行，矩阵行级回写归 barrier/协调者）
 
 **已搬迁（7，终态头 `53646cb10`）**：
 
-1. `internal/application/repository/agent_marketplace.go` → `internal/modules/agentcatalog/repository/agent_marketplace.go`（+ 模块本地 `isUniqueViolation` 副本，§1.2）
+1. `internal/application/repository/agent_marketplace.go` → `internal/agentcatalog/repository/agent_marketplace.go`（+ 模块本地 `isUniqueViolation` 副本，§1.2）
 2. `internal/application/repository/expert_install.go` → 模块 repository 同名
 3. `internal/application/repository/published_skill.go` → 模块 repository 同名
 4. `internal/application/repository/published_expert.go` → 模块 repository 同名
-5. `internal/application/service/tenant_skill_market_service.go` → `internal/modules/agentcatalog/service/tenant_skill_market_service.go`
-6. `internal/application/service/agent_marketplace.go` → `internal/modules/agentcatalog/service/agent_marketplace.go`（+ `market_host_adapters.go` 注入位新文件，§4-③）
-7. `internal/handler/agent_marketplace.go` → `internal/modules/agentcatalog/handler/agent_marketplace.go`（+ `marketTenantID` 本地 helper）
+5. `internal/application/service/tenant_skill_market_service.go` → `internal/agentcatalog/service/tenant_skill_market_service.go`
+6. `internal/application/service/agent_marketplace.go` → `internal/agentcatalog/service/agent_marketplace.go`（+ `market_host_adapters.go` 注入位新文件，§4-③）
+7. `internal/handler/agent_marketplace.go` → `internal/agentcatalog/handler/agent_marketplace.go`（+ `marketTenantID` 本地 helper）
 
 **推迟留宿（6，§2 台账）**：`service/{skill_market_service, tenant_expert_market_service, expert_market_source}.go`、`handler/{skill_market, tenant_expert_market, tenant_skill_market}.go`。
 
@@ -78,7 +78,7 @@
 
 - **计数声明**：分支终态 `make check-backend-architecture` = `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`OK (0 violations)`；`make verify-module-moves` = `OK (16 manifests verified)`（原路径 shim 保留使 legacy `os.Stat` 全通过）——633/23+23/58/537 对基线**零漂移**（evidence §5）。
 - **contracts.yaml 回写申请（归 barrier，本节点未写治理 YAML）**：
-  - `agentcatalog.marketplace-service`（:78-89）：实现文件路径宿主 → `internal/modules/agentcatalog/service/agent_marketplace.go`；consumers 中 `service/agent_marketplace.go` → 模块路径（container.go 消费行不变，IB2 切换后同步）。
+  - `agentcatalog.marketplace-service`（:78-89）：实现文件路径宿主 → `internal/agentcatalog/service/agent_marketplace.go`；consumers 中 `service/agent_marketplace.go` → 模块路径（container.go 消费行不变，IB2 切换后同步）。
   - `agentcatalog.tenant-skill-market-service`（:130-140）：实现/消费路径同步为模块 service。
   - `agentcatalog.agent-version-service`（:9-23）：consumers `service/agent_marketplace.go`/`handler/agent_marketplace.go` 两行路径更新（门面本体零改动，本节点只消费）。
   - `agentcatalog.skill-market-service`（:119-129）：实现文件推迟（§2#1），consumers 路径**暂不变**，随推迟件搬迁窗口处置。

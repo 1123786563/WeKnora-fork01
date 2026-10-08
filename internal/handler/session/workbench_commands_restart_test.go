@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

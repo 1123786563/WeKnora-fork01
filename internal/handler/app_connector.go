@@ -3,14 +3,14 @@ package handler
 import (
 	"net/http"
 
-	appconnectorhandler "github.com/Tencent/WeKnora/internal/modules/appconnector/handler"
+	appconnectorhandler "github.com/Tencent/WeKnora/internal/appconnector/handler"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // Pass B (27-appconnector) transitional shim: the implementation moved to
-// internal/modules/appconnector/handler. Consumers kept compiling with zero
+// internal/appconnector/handler. Consumers kept compiling with zero
 // assembly changes: container.go:933-936/:980-999 (dig Provide + Invoke),
 // router.go:131-134/:413-417, routes_app_connectors.go:22-25 and
 // open_connector_test.go:386-389 (type aliases + constructor forwarding);

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
+	"github.com/Tencent/WeKnora/internal/workbench/voice"
 	"github.com/stretchr/testify/require"
 )
 

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"github.com/gin-gonic/gin"

@@ -7,8 +7,8 @@
 
 | 凭据族 | 证据 | 说明 |
 |---|---|---|
-| Lago 平台凭据 | `internal/modules/commercial/commercialplatform/config.go:26-30`（WEKNORA_COMMERCIAL_PLATFORM_API_KEY 等，env-only；常量拆串防扫描） | 空值=fail-closed（unconfigured），无默认回退 |
-| 支付渠道凭据 | `internal/modules/commercial/payment/providers_env.go:20-55`（alipay/wechat 全走 env 引用，源码零字面量）；`config.go:44-70`（Stripe 家族同纪律） | blocked-env 合法（无凭据即无通道），checkout/callbacks fail-closed |
+| Lago 平台凭据 | `internal/commercial/commercialplatform/config.go:26-30`（WEKNORA_COMMERCIAL_PLATFORM_API_KEY 等，env-only；常量拆串防扫描） | 空值=fail-closed（unconfigured），无默认回退 |
+| 支付渠道凭据 | `internal/commercial/payment/providers_env.go:20-55`（alipay/wechat 全走 env 引用，源码零字面量）；`config.go:44-70`（Stripe 家族同纪律） | blocked-env 合法（无凭据即无通道），checkout/callbacks fail-closed |
 | Webhook 验签密钥 | `internal/container/container.go:2841`（LAGO_WEBHOOK_SECRET env-gated，#98） | 未配置时验签面 fail-closed |
 | 前端/移动端 | `apps/web`、`apps/mobile` grep `LAGO_|commercial.*key` 零命中 | 商业凭据不出服务端 |
 

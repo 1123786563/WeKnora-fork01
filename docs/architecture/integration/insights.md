@@ -8,7 +8,7 @@ IA4 的交接说明：模块搬到了哪里、剩下哪些旧路径引用、IA4 
 
 | 旧导入路径 | 新导入路径 |
 |---|---|
-| `internal/application/service/metric` | `internal/modules/insights/metric` |
+| `internal/application/service/metric` | `internal/insights/metric` |
 
 1 包 / 13 文件（9 非测试 + 4 测试）`git mv` 纯改名，move commit 13/13 rename @100%、
 0 插入 0 删除；包名 `package metric` 不变。evidence 见
@@ -21,7 +21,7 @@ move 树零跨模块 import：metric 只依赖 stdlib + `internal/types`（platf
 
 ### 2.1 指标计算库（已入模块）
 
-`internal/modules/insights/metric`：Precision / Recall / NDCG / MRR / MAP / BLEU /
+`internal/insights/metric`：Precision / Recall / NDCG / MRR / MAP / BLEU /
 ROUGE 计算器（`New*Metric` 构造器 + `BLEU*N Gram` 常量），纯函数、无 I/O、无 config、
 无 worker。行为契约由包内 4 个测试文件钉住（MRR/MAP/Precision/Recall Compute）。
 
@@ -83,7 +83,7 @@ handler legacy 文件只提供方法；Pass A 未动。
 1. 删除空壳别名包 `internal/application/service/metric/`（仅 `alias.go`，零转发面，
    moauth 先例；manifest `alias_obligations` 一对一义务，Pass B 任务 `B-insights`）。
    当前零消费者，删除后跑 `go build ./...` +
-   `go test ./internal/modules/insights/... -count=1` +
+   `go test ./internal/insights/... -count=1` +
    `go run ./tools/modulemove verify --all`（别名全删后 insights 清单的 alias 1:1
    校验按"已执行"语义放行）。
 
@@ -97,9 +97,9 @@ forbidden-import，无需加例外（落盘 `/tmp/a14-guard.log`）。
 
 ## 5. 验收命令（后搬迁路径）
 
-- `go test ./internal/modules/insights/... -count=1`（manifest test_commands）
+- `go test ./internal/insights/... -count=1`（manifest test_commands）
 - 直接消费方：`go test ./internal/application/service -count=1`（metric 唯一生产
   importer 所在包）、`go test ./internal/handler -run TestAnalyticsHandler -count=1`、
   `go test ./internal/application/repository -run TestAnalyticsAggregations -count=1`
 - `go run ./tools/modulemove verify --module insights`（及 `--all`）
-- `go build ./...`、`go vet ./internal/modules/insights/... ./internal/application/service/`
+- `go build ./...`、`go vet ./internal/insights/... ./internal/application/service/`

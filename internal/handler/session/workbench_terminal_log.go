@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/workbench"
+	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 )
 

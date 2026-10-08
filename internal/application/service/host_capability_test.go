@@ -19,7 +19,7 @@ func testInstallShellExecutor(mgr sandbox.Manager) sandbox.SessionInstallShellEx
 }
 
 // 目录重构回归修复（restructure/upstream-align-round2）：本文件自
-// internal/modules/agentcatalog/service/ 随 tenant-skill 测试面迁回宿主包
+// internal/agentcatalog/service/ 随 tenant-skill 测试面迁回宿主包
 // （HostAdapters / SkillManifestView 真身已在本包 host_adapters.go）。
 // ctxWithTenant 原补齐副本随之删除——本包 knowledgebase_pr3_test.go 的
 // 同名 helper 重新同包可见。

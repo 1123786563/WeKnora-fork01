@@ -3,7 +3,7 @@
 // TestRepairContentLinks 原位于 service/wiki_page_test.go:176-228（package
 // service，同包直引 resolveDeadSlug）。wiki 域随上游对齐 round 2 归位本包后，
 // 该用例直接驱动本包实现（seams 仍按 W2 生产接线形态构造），断言逐字保持
-// 不变。仓库实现仍经 internal/modules/knowledge/wiki 的 wikiPageRepository
+// 不变。仓库实现仍经 internal/knowledge/wiki 的 wikiPageRepository
 // （Mimosa 拦截未随迁），故以 wiki.NewWikiPageRepository 构造仓储注入。
 package service
 
@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
+	"github.com/Tencent/WeKnora/internal/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

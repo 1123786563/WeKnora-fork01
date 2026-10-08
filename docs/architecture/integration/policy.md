@@ -8,11 +8,11 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/application/access` | `internal/modules/policy/access` |
-| `internal/embedpolicy` | `internal/modules/policy/embedpolicy` |
-| `internal/ipclass` | `internal/modules/policy/ipclass` |
-| `internal/ratelimit` | `internal/modules/policy/ratelimit` |
-| `internal/storageallowlist` | `internal/modules/policy/storageallowlist` |
+| `internal/application/access` | `internal/policy/access` |
+| `internal/embedpolicy` | `internal/policy/embedpolicy` |
+| `internal/ipclass` | `internal/policy/ipclass` |
+| `internal/ratelimit` | `internal/policy/ratelimit` |
+| `internal/storageallowlist` | `internal/policy/storageallowlist` |
 
 共 25 个文件（含全部 `_test.go` 与 access 的 README.md），move commit 为纯 rename
 （25/25 相似度 100%，0 insertions/deletions）。五包之间无相互导入（已 grep 验证）。
@@ -24,11 +24,11 @@
 
 | 旧路径（别名包目录） | 转发目标 | 别名文件 |
 |---|---|---|
-| `internal/application/access` | `internal/modules/policy/access` | `alias.go`（46 符号） |
-| `internal/embedpolicy` | `internal/modules/policy/embedpolicy` | `alias.go`（4 符号） |
-| `internal/ipclass` | `internal/modules/policy/ipclass` | `alias.go`（15 符号） |
-| `internal/ratelimit` | `internal/modules/policy/ratelimit` | `alias.go`（2 符号） |
-| `internal/storageallowlist` | `internal/modules/policy/storageallowlist` | `alias.go`（6 符号） |
+| `internal/application/access` | `internal/policy/access` | `alias.go`（46 符号） |
+| `internal/embedpolicy` | `internal/policy/embedpolicy` | `alias.go`（4 符号） |
+| `internal/ipclass` | `internal/policy/ipclass` | `alias.go`（15 符号） |
+| `internal/ratelimit` | `internal/policy/ratelimit` | `alias.go`（2 符号） |
+| `internal/storageallowlist` | `internal/policy/storageallowlist` | `alias.go`（6 符号） |
 
 别名面 = 搬迁包的全部导出符号（AST 枚举，73 个），风格与 A1 appconnector 别名一致。
 **当前唯一 load-bearing 的别名是 `internal/storageallowlist`**（禁改文件
@@ -49,11 +49,11 @@ Pass A 结束时（本分支 HEAD），禁改共享文件中引用旧导入路�
 
 **给集成者的操作**：
 1. 在 `internal/container/container.go:107` 把导入改为
-   `"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"`（import 行唯一改动，
+   `"github.com/Tencent/WeKnora/internal/policy/storageallowlist"`（import 行唯一改动，
    包名 qualifier `storageallowlist` 不变，`container.go` 其余行零改动）；
 2. `go build ./...` 通过后，删除第 2 节所列 5 个别名目录（连同 alias.go）——它们此刻已全部
    无 importer；
-3. 再次 `go build ./...` + `go test ./internal/modules/policy/... -count=1` +
+3. 再次 `go build ./...` + `go test ./internal/policy/... -count=1` +
    `go test ./internal/container/... ./internal/application/service/... ./internal/handler/... -count=1` 确认。
 
 ## 4. 路由集成点（routes）
@@ -82,7 +82,7 @@ router/sync_task.go 无本模块条目。
 
 ## 7. 配置键（模块读取）
 
-- `STORAGE_ALLOW_LIST` — `internal/modules/policy/storageallowlist/allowlist.go:21`
+- `STORAGE_ALLOW_LIST` — `internal/policy/storageallowlist/allowlist.go:21`
   （const `AllowListEnv`；逗号分隔的存储 provider 白名单）。这是五包唯一的 env 键。
 - `internal/ratelimit` 构造参数 `keyPrefix/window/instanceID` 由调用方（embed_auth）传入，
   无自有 env/配置键。
@@ -92,8 +92,8 @@ router/sync_task.go 无本模块条目。
 architectureguard 在本分支报 2 条**新** forbidden-import 诊断（基线 0 违规；搬迁把
 platform 路径变成模块内部路径，暴露出**先于本次改造**的跨模块耦合）：
 
-- `internal/modules/channels/im/service.go` 导入 `internal/modules/policy/ratelimit`
-- `internal/modules/channels/im/yunzhijia/url.go` 导入 `internal/modules/policy/ipclass`
+- `internal/channels/im/service.go` 导入 `internal/policy/ratelimit`
+- `internal/channels/im/yunzhijia/url.go` 导入 `internal/policy/ipclass`
 
 两条的旧路径写法（`internal/ratelimit`、`internal/ipclass`）即 batch A1 集成前 channels
 模块的既有依赖；A8 仅按 manifest importers 做了 import 行修复（文件属 channels 领地，
@@ -104,8 +104,8 @@ appconnector 先例在 guard 加精确路径例外（临时）或改走 policy �
 ## 9. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/policy/... -count=1`（manifest test_commands）
-- `go test ./internal/application/service/... ./internal/handler/... ./internal/middleware/... ./internal/sandbox/... ./internal/types/... ./internal/utils/... ./internal/container/... ./internal/router/... ./internal/modules/channels/im/... -count=1`（直接消费方回归）
+- `go test ./internal/policy/... -count=1`（manifest test_commands）
+- `go test ./internal/application/service/... ./internal/handler/... ./internal/middleware/... ./internal/sandbox/... ./internal/types/... ./internal/utils/... ./internal/container/... ./internal/router/... ./internal/channels/im/... -count=1`（直接消费方回归）
 - `go run ./tools/modulemove verify --module policy`
 - `go run ./tools/architectureguard`（路由 633 / worker 23+23 / hooks 58 不得变化；
   第 8 节两条 forbidden-import 诊断在集成处置前允许存在，其余必须 0）

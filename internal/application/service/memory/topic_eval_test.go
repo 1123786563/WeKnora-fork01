@@ -26,7 +26,7 @@ import (
 //
 //	WEKNORA_MEMORY_EVAL_MODEL=<model id> \
 //	WEKNORA_MEMORY_EVAL_BASE_URL=... WEKNORA_MEMORY_EVAL_API_KEY=... \
-//	go test ./internal/modules/agentruntime/memory/ -run TestTopicMergeEval -v
+//	go test ./internal/agentruntime/memory/ -run TestTopicMergeEval -v
 
 type topicEvalCase struct {
 	Name     string `json:"name"`

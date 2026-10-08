@@ -13,7 +13,7 @@
   `WEKNORA_COMMERCIAL_PLATFORM_*`：未设置=合法 blocked-env（调用 fail-closed），
   未知 provider 启动即失败（不静默回退）。
 - **OpenMeter 全链路删除**（expand-contract 的 contract 阶段，本轮执行）：
-  - `internal/modules/commercial/openmeter/`（official_v3 Gateway 适配器）已删；
+  - `internal/commercial/openmeter/`（official_v3 Gateway 适配器）已删；
   - `deploy/openmeter/`（本地 Kafka/ClickHouse 栈 + 镜像锁 + smoke）已删；
   - 环境变量 `WEKNORA_COMMERCIAL_GATEWAY_FAMILY|URL|API_KEY` 无任何代码读取；
   - container 装配改为 `commercialsvc.NewParkedGateway`（`dig.As(new(domain.CommercialGateway))`）。
@@ -34,7 +34,7 @@
 
 关闭前重验（2026-10-05，commit 见本文件同批提交）：
 
-- 回退轨道最后一次全量套件实跑：`go test ./internal/modules/commercial/openmeter/
+- 回退轨道最后一次全量套件实跑：`go test ./internal/commercial/openmeter/
   -count=1` 全绿（含 grant/lookup 恢复、业务拒绝非成功、unconfigured blocked-env
   四支契约测试）。证据：`.superpowers/sdd/2026-10-05-lago-final/rollback-rail-openmeter-suite.txt`
   （gitignored 报告目录）；此后该包删除，历史证据在 git 历史（本提交的父提交）。

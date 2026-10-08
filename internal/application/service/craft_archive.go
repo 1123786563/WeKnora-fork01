@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

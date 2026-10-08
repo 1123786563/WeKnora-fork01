@@ -10,7 +10,7 @@
 
 三域互不重叠（notion 连接器 / application/service 摘要 / rss 连接器），可并行。
 
-## 任务 N（#3836）：internal/modules/datasource/connector/notion/
+## 任务 N（#3836）：internal/datasource/connector/moauth/connector/notion/
 
 1. types.go paginatedResponse 增 request_status 解析（type/incomplete_reason）。
 2. client.go 分页循环**每页**反序列化后判 `type=="incomplete"`（厂商要求逐页检查）→ 返回可识别错误（哨兵，如含 query_result_limit_reached 与行数）。
@@ -24,7 +24,7 @@
 3. validateSummaryOutput 增 FinishReason 检查：length（预算截断）→ 按无效输出处理。
 4. 测试：坏 JSON（截断半截/裸换行）+默认模板 → 不落库原文、状态可重试；自定义模板纯文本 → 保留；FinishReason=length → 无效；正常 JSON → 不回归。service 包基线 338/90。
 
-## 任务 R（#3823）：internal/modules/datasource/connector/rss/
+## 任务 R（#3823）：internal/datasource/connector/moauth/connector/rss/
 
 1. resolveItem 的去重指纹纳入 title 与 link（或对文档 title/link 字段单独比对）——正文 hash 相同但 title/link 变更 → 产出一次更新（1 update），文档标题与 metadata.link 更新，正文/分块/文件 hash 不动。
 2. 不变式：完全不变的条目仍 0 update；正文变更行为不回归（既有）。

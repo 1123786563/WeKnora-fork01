@@ -3,12 +3,12 @@
 > 交付节点：`b2-ac-definition`（分支 `codex/passb-b2-ac-definition`，代码终点 `bd9e0f8e9`，证据终点 `5d543c49d`，本 Brief 为其后续纯文档提交）。
 > 受理 barrier：**IB2**（`ownership-matrix.yaml` agentcatalog 行 `integration_owner: ib2`、`delete_barrier: ib2`）。
 > 依据：计划 `docs/plans/passb/25a-agent-definition-version.md`（v3）§2.1/§2.3/§4-②/§4-③/§7；`conventions.md` §7（package-private 耦合处理）、§3（集成工程师独占文件）、framework:103（barrier 只从已评审 Brief 切换共享装配）。
-> 性质：本文件是**装配变更申请**——①§ 的消费方切换/shim 删除与②§ 的导出/去方法化/搬迁均由集成工程师在 IB2 串行执行；实施者不写 `internal/router/**`、`internal/container/container.go`、`internal/modules/agentcatalog/module.go`（conventions §3）。
+> 性质：本文件是**装配变更申请**——①§ 的消费方切换/shim 删除与②§ 的导出/去方法化/搬迁均由集成工程师在 IB2 串行执行；实施者不写 `internal/router/**`、`internal/container/container.go`、`internal/agentcatalog/module.go`（conventions §3）。
 > 所有行号除特别注明外为节点分支 HEAD `5d543c49d` 实测（grep/sed 实跑，见报告 `docs/plans/passb/reports/b2-ac-definition.md`）。
 
 ## 0. 交付摘要（本节点已落地，非申请项）
 
-- 批次 1 共 7 个生产文件已物理搬入 `internal/modules/agentcatalog/{repository,service,handler}`，内容 1:1（仅 package 行与 import 路径差异）；原路径重写为薄 shim（7 个，§①表 A 逐符号别名/转发，零业务语句，文件头带过渡注释）。
+- 批次 1 共 7 个生产文件已物理搬入 `internal/agentcatalog/{repository,service,handler}`，内容 1:1（仅 package 行与 import 路径差异）；原路径重写为薄 shim（7 个，§①表 A 逐符号别名/转发，零业务语句，文件头带过渡注释）。
 - 测试：3 份既有测试随迁（`git diff -M --summary` 实证 `rename (100%)`：`subagent_test.go`、`agent_share_source_test.go`、`tenant_subagent_test.go`）+ 4 份特征化新测试（repo/service/handler favorite 面，conventions §1.4 授权）。
 - 门禁全绿：DAG 四条 gates + 通用门禁，计数 `total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`modulemove: OK (16 manifests verified)`（evidence `docs/architecture/evidence/passb/b2-ac-definition.md` §1.3/§2.1）。
 - 批次 2 的 15 个文件**留宿**（推迟非缩水，物理约束同 10-identity §3.2 / 13-execution:65 先例），②§ 逐文件登记。
@@ -35,7 +35,7 @@ shim 间无相互依赖；模块包文件不 import 任何 shim（`module/handle
 **第一波（无推迟件依赖，切换后即可删 shim）**：S4、S5、S6、S3、S7。
 - S4：`container.go:307` 改 `agentcatalogrepository.NewUserResourceFavoriteRepository`（或按容器既有 import 别名风格）→ 删 `internal/application/repository/user_resource_favorite.go`。
 - S5：`container.go:430` 改模块 service 构造器 → 删 `internal/application/service/user_resource_favorite.go`（两个哨兵转发随之消失；宿主侧 `errors.Is` 链经模块同名 var 实体保持）。
-- S6：`router.go:104`、`routes_agent.go:61`、`container.go:800` 改引 `internal/modules/agentcatalog/handler` → 删 `internal/handler/user_resource_favorite.go`。
+- S6：`router.go:104`、`routes_agent.go:61`、`container.go:800` 改引 `internal/agentcatalog/handler` → 删 `internal/handler/user_resource_favorite.go`。
 - S3：`container.go:306` → 删 `internal/application/repository/tenant_disabled_shared_agent.go`。
 - S7：`router.go:103`/`:399`、`routes_subagent.go:26`、`routes_subagent_test.go:29`（零值字面量改 `&agentcataloghandler.SubagentHandler{}`）、`container.go:796`/`:798` → 删 `internal/handler/subagent.go`。
 
@@ -60,14 +60,14 @@ shim 间无相互依赖；模块包文件不 import 任何 shim（`module/handle
 | 3 | `service/agent_share.go` | `applyTenantRoleCap`@`kbshare.go:70`（22-K2 留宿）← :297/:356/:419 ×3 | 同 #1 import 环 | 提前导出走 Brief；或按 conventions §7.3 上报所有权重裁（org 角色封顶语义是否属 knowledge 由协调者裁） | IB2（导出案）/IB3（K2 搬迁案） |
 | 4 | `service/custom_agent.go` | `var _ installerAgentSource = (*customAgentService)(nil)`@`tenant_skill_install.go:2232`（25b 留宿）——对 25a 具体类型的断言 | 具体类型被留宿文件引用 | 排序约束：25b 合并后（两文件同入模块 service 包）即可搬，IB2 串行；其 `repository.ErrCustomAgentNotFound`（:162 等 5 点，定义 `repository/custom_agent.go:13`，同属批次 2）随同文件搬迁自然同包 | IB2（25b 后） |
 | 4b | `service/agent_version.go` | `ErrAgentNotFound` 裸引用 @:107（`errors.Is(err, ErrAgentNotFound)`）——定义于留宿 `service/custom_agent.go:21`（全包唯一定义） | 同层哨兵 import 环（§2.3 环检测） | 与 #4 同批（25b 合并后，`custom_agent.go` 已同入模块 service 包，裸标识符恢复同包可见）；**随迁测试义务**：`agent_version_test.go` 同批随迁，其 `repoRoot`（`agent_version_test.go:36`，`../../..`）须改 4 层 `../../../..`（实跑验证：host 三层=根，模块 service 三层=`internal`、四层=根）——IB2 执行单 | IB2（25b 后） |
-| 5 | `repository/custom_agent.go` | `customAgentModelUsageBindings`@宿主 `model_usage.go:31`（← :94）、`scopeCustomAgentsByModelID`@:80（← :72,:87）、`scopeCustomAgentsBySandboxConfigID`@:101（← :119,:136）——commercial 属主 | 同 #1 import 环 | **消费 IB1 已导出 model_usage 绑定族**：`internal/modules/commercial/repository/model_usage.go` 的 `CustomAgentModelUsageBindings/ScopeCustomAgentsByModelID/ScopeCustomAgentsBySandboxConfigID`（签名冻结于 12-commercial.md §4.1）。**前置门（当前未解除）**：该导出文件尚未落地（`test -f` 实测 `EXPORT-MISSING`，evidence §1.5/§2.5-2）；缺失即 conventions §5 blocked 上报，**不得自行实现或复制**（B1-CM 实施合入为排序前提） | IB2（B1-CM 后） |
-| 6 | `repository/agent_version.go` | `isUniqueViolation`@`internal/application/repository/voice_session.go:289`（40-workbench 留宿）← :89 ×1；同文件族另见 `repository/agent_marketplace.go:179`（25c 文件，同 def） | 同 #1 import 环 | conventions §7.1：isUniqueViolation 族现存三份（`voice_session.go:289`（workbench）、`service/resource.go:358`（11-airesource）、`internal/modules/commercial/repository/commercial/planversion.go:323`（12-commercial，Pass A 已入模块树）——grep 实证）由 IB2 收口为单一实现，收口后本文件改引之；备选：推迟至 IB4 workbench 搬迁 | IB2（收口）/IB4（备选） |
+| 5 | `repository/custom_agent.go` | `customAgentModelUsageBindings`@宿主 `model_usage.go:31`（← :94）、`scopeCustomAgentsByModelID`@:80（← :72,:87）、`scopeCustomAgentsBySandboxConfigID`@:101（← :119,:136）——commercial 属主 | 同 #1 import 环 | **消费 IB1 已导出 model_usage 绑定族**：`internal/commercial/repository/model_usage.go` 的 `CustomAgentModelUsageBindings/ScopeCustomAgentsByModelID/ScopeCustomAgentsBySandboxConfigID`（签名冻结于 12-commercial.md §4.1）。**前置门（当前未解除）**：该导出文件尚未落地（`test -f` 实测 `EXPORT-MISSING`，evidence §1.5/§2.5-2）；缺失即 conventions §5 blocked 上报，**不得自行实现或复制**（B1-CM 实施合入为排序前提） | IB2（B1-CM 后） |
+| 6 | `repository/agent_version.go` | `isUniqueViolation`@`internal/application/repository/voice_session.go:289`（40-workbench 留宿）← :89 ×1；同文件族另见 `repository/agent_marketplace.go:179`（25c 文件，同 def） | 同 #1 import 环 | conventions §7.1：isUniqueViolation 族现存三份（`voice_session.go:289`（workbench）、`service/resource.go:358`（11-airesource）、`internal/commercial/repository/commercial/planversion.go:323`（12-commercial，Pass A 已入模块树）——grep 实证）由 IB2 收口为单一实现，收口后本文件改引之；备选：推迟至 IB4 workbench 搬迁 | IB2（收口）/IB4（备选） |
 | 7 | `handler/agent_version.go` | `sandboxConfigTenantID`@`sandbox_config.go:92`（13-execution 留宿，B1-EX 未实施）← :45/:64/:89 ×3 | 同 #1 import 环 | execution 模块搬迁落地时其 handler 面导出；或提前导出走 Brief | IB3/IB4（B1-EX 后） |
 | 8 | `handler/custom_agent.go` | `pickUserDisplayName`@`knowledgebase.go:663`（22-K2 留宿）← :306 ×1；`rbac_lookups.go:66` 在 `*CustomAgentHandler` 上声明 `AgentCreatorLookup`（10-identity 推迟件留宿） | 同 #1 + 方法接收者跨 owner（§7.4） | identity 侧 §7.4 去方法化裁定；K2 搬迁/导出走 Brief | IB3（K2）/IB4（identity） |
-| 9 | `handler/expert.go`、`service/expert_service.go`、`service/expert_skills.go` | import `internal/modules/agentruntime/agent/{experts,skills}`（expert.go:15、expert_service.go:11、expert_skills.go:10-11）；`expert_skills.go:36/:43` 另引用 `installedSkillLister`@`tenant_skill_effective.go:19`（25b） | **guard forbidden-import**：入模块树后成 agentcatalog→agentruntime 内部包 import（architectureguard check.go:1210-1215 diagnostic），实施者禁新增例外 | 13-execution.md:65 同型：agentruntime 根门面 re-export 所需符号，或推迟至 B3 R 面搬迁协同收口；`installedSkillLister` 随 25b 同包化自然解除 | IB3 |
-| 10 | `service/subagent_service.go` | import `internal/modules/agentruntime/agent/subagents`（:15，`subagents.LoadBuiltinSubagents`） | 同 #9 | 同 #9 | IB3 |
-| 11 | `handler/persona.go` | import `internal/modules/agentruntime/agent/persona`（:11） | 同 #9 | 同 #9 | IB3 |
-| 12 | `handler/shared_agent_access.go` | import `internal/modules/agentruntime/agent/tools`（:10）、`internal/modules/policy/access`（:11）；消费 `service.ErrAgentShareNotFound/ErrAgentSharePermission/ErrAgentNotFoundForShare`（留宿 `service/agent_share.go:18/:19/:20`） | 同 #9 + #1 | 同 #9；哨兵消费随 #3 的 `agent_share.go` 搬迁转模块导出后改引 | IB3（#3 后） |
+| 9 | `handler/expert.go`、`service/expert_service.go`、`service/expert_skills.go` | import `internal/agentruntime/agent/{experts,skills}`（expert.go:15、expert_service.go:11、expert_skills.go:10-11）；`expert_skills.go:36/:43` 另引用 `installedSkillLister`@`tenant_skill_effective.go:19`（25b） | **guard forbidden-import**：入模块树后成 agentcatalog→agentruntime 内部包 import（architectureguard check.go:1210-1215 diagnostic），实施者禁新增例外 | 13-execution.md:65 同型：agentruntime 根门面 re-export 所需符号，或推迟至 B3 R 面搬迁协同收口；`installedSkillLister` 随 25b 同包化自然解除 | IB3 |
+| 10 | `service/subagent_service.go` | import `internal/agentruntime/agent/subagents`（:15，`subagents.LoadBuiltinSubagents`） | 同 #9 | 同 #9 | IB3 |
+| 11 | `handler/persona.go` | import `internal/agentruntime/agent/persona`（:11） | 同 #9 | 同 #9 | IB3 |
+| 12 | `handler/shared_agent_access.go` | import `internal/agentruntime/agent/tools`（:10）、`internal/policy/access`（:11）；消费 `service.ErrAgentShareNotFound/ErrAgentSharePermission/ErrAgentNotFoundForShare`（留宿 `service/agent_share.go:18/:19/:20`） | 同 #9 + #1 | 同 #9；哨兵消费随 #3 的 `agent_share.go` 搬迁转模块导出后改引 | IB3（#3 后） |
 
 ### ②.2 反向义务清单（agentcatalog 属主符号被他 owner 消费；本节点因本体留宿未断链，搬迁时由对应 barrier 执行）
 
@@ -96,8 +96,8 @@ DAG pair 2（agentcatalog→conversation，10 调用点 7 符号；定义 `inter
 
 ### ②.5 前置门汇总（缺失即 blocked 上报，禁止自行实现上游门面）
 
-1. B1-CM 导出 `internal/modules/commercial/repository/model_usage.go`——**当前 `EXPORT-MISSING`**（evidence §1.5 实测；旁证 `internal/modules/execution/service` 不存在）。阻塞台账 #5。
-2. B1-EX `internal/modules/execution/service`（`ResolveTenantSandboxForConfig`/handler 面导出）。阻塞台账 #7 及 25b 面调用点。
+1. B1-CM 导出 `internal/commercial/repository/model_usage.go`——**当前 `EXPORT-MISSING`**（evidence §1.5 实测；旁证 `internal/execution/service` 不存在）。阻塞台账 #5。
+2. B1-EX `internal/execution/service`（`ResolveTenantSandboxForConfig`/handler 面导出）。阻塞台账 #7 及 25b 面调用点。
 
 ### ②.6 已裁定 IB2 期执行的既有 low findings（OCR R1，登记防漏）
 
@@ -116,6 +116,6 @@ DAG pair 2（agentcatalog→conversation，10 调用点 7 符号；定义 `inter
 
 ## ④ 计数零漂移声明
 
-- 节点代码终点（`bd9e0f8e9`）T4 实测（evidence §2.1，命令原文与退出码在案）：`make check-backend-architecture` → `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`OK (0 violations)`；`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`go test -count=1 ./internal/modules/agentcatalog/...` 三包 ok。
+- 节点代码终点（`bd9e0f8e9`）T4 实测（evidence §2.1，命令原文与退出码在案）：`make check-backend-architecture` → `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16`、`OK (0 violations)`；`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`go test -count=1 ./internal/agentcatalog/...` 三包 ok。
 - 计数口径为 conventions §8 三方一致（guard 实测 == 台账 == manifests 发现），基线 `633 / 23+23 / 58 / 537` 零漂移。
 - 本 Brief 与实施报告为纯文档提交，零代码改动；T5 会话末在最终 HEAD 复跑四条 gates 复核（见报告 §3）。

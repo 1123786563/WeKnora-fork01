@@ -5,10 +5,10 @@ import (
 	"io"
 	"net/http"
 
-	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
-	repository "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	domain "github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/commercial/payment"
+	repository "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

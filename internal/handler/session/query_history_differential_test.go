@@ -32,9 +32,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/middleware"
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
-	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/testkit"
-	httptransport "github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/transport/http"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory/domain"
+	"github.com/Tencent/WeKnora/internal/conversation/queryhistory/testkit"
+	httptransport "github.com/Tencent/WeKnora/internal/conversation/queryhistory/transport/http"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

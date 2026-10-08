@@ -290,11 +290,11 @@ owned_files:
   importers:
     []
   module_files:
-    - internal/modules/agentcatalog/README.md
-    - internal/modules/agentcatalog/module.go
-    - internal/modules/agentcatalog/legacy/README.md
+    - internal/agentcatalog/README.md
+    - internal/agentcatalog/module.go
+    - internal/agentcatalog/legacy/README.md
 test_commands:
-  - go test ./internal/modules/agentcatalog/... -count=1
+  - go test ./internal/agentcatalog/... -count=1
 integration_points:
   routes:
   - RegisterPublicMarketplaceRoutes — internal/router/routes_public_marketplace.go:30

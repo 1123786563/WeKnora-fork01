@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

@@ -2,7 +2,7 @@
 
 - 分支 / worktree：`bm-passa-a1` / `.worktrees/bm-passa-a1`
 - base：`703884315`（= 集成线起点）
-- move commit：`00aeceef6` — `refactor(appconnector): move packages to internal/modules/appconnector`
+- move commit：`00aeceef6` — `refactor(appconnector): move packages to internal/appconnector`
 - repair commit：`16844f173` — `refactor(appconnector): repair imports and add pass-a aliases`
 - docs commit：见本文件所在提交
 - 环境：postgres :5432 / redis :6379（dev compose，未动容器）；Go 1.26.3
@@ -18,7 +18,7 @@ modulemove: OK (appconnector)
 
 | 命令 | 结果 |
 |---|---|
-| `go test ./internal/modules/appconnector/... -count=1`（manifest test_commands，逐字） | exit 0（仅骨架包，no test files） |
+| `go test ./internal/appconnector/... -count=1`（manifest test_commands，逐字） | exit 0（仅骨架包，no test files） |
 | `go test ./internal/appconnector/... ./internal/connectorcontrol/... ./internal/application/repository/appconnector/... ./internal/application/service/appconnector/... -count=1` | 5/5 包 ok，exit 0 |
 | 直接消费方（handler、container、agent/tools、application/repository+service、cmd/connector-control，同 post 口径） | 29 包 ok（ok 29 / FAIL 0），exit 0 |
 
@@ -30,10 +30,10 @@ modulemove: OK (appconnector)
 | 命令 | 结果 |
 |---|---|
 | `go run ./tools/modulemove verify --module appconnector` | `modulemove: OK (appconnector)` |
-| `go test ./internal/modules/appconnector/... -count=1`（manifest test_commands） | 5/5 包 ok（root 0.39s、connectorcontrol 3.50s、openconnector 2.21s、repository/appconnector 0.61s、service/appconnector 2.25s），FAIL 0 |
-| 直接消费方 + 模块全量：`go test ./internal/handler/... ./internal/container/... ./internal/agent/tools/... ./internal/application/repository/... ./internal/application/service/... ./cmd/connector-control/... ./internal/modules/appconnector/... -count=1` | ok 29 / FAIL 0，exit 0 |
+| `go test ./internal/appconnector/... -count=1`（manifest test_commands） | 5/5 包 ok（root 0.39s、connectorcontrol 3.50s、openconnector 2.21s、repository/appconnector 0.61s、service/appconnector 2.25s），FAIL 0 |
+| 直接消费方 + 模块全量：`go test ./internal/handler/... ./internal/container/... ./internal/agent/tools/... ./internal/application/repository/... ./internal/application/service/... ./cmd/connector-control/... ./internal/appconnector/... -count=1` | ok 29 / FAIL 0，exit 0 |
 | `go build ./...` | exit 0（仅既有的 cmd/desktop、cmd/server ld duplicate-library warning，与基线一致） |
-| `go vet ./internal/modules/appconnector/... ./tools/...` | exit 0，无输出 |
+| `go vet ./internal/appconnector/... ./tools/...` | exit 0，无输出 |
 | `go run ./tools/architectureguard` | `literal=564 apiKeyRoute=69 total=633 | redis=23 lite=23 | hooks=58 | modules=16`，`OK (0 violations)` —— 与 F0 基线完全一致 |
 
 ## 4. Rename 证据

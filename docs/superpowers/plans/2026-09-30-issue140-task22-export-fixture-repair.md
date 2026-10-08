@@ -24,11 +24,11 @@
 ## Task 1: Align export fixtures with submission projection
 **Dependency:** Task22 initial implementation.
 **Role:** `backend_implementer`; validator `backend_validator`; reviewer `reviewer`.
-**Files:** `internal/modules/career/career_export_test.go` only, unless a narrowly adjacent assertion requires correction.
+**Files:** `internal/career/career_export_test.go` only, unless a narrowly adjacent assertion requires correction.
 **Consumes / produces:** `RecordSubmission` produces both submission and progress event transactionally.
 **Steps:**
 - Add/adjust fixture expectations so archive tests first create the actual submission and obtain its linked submitted event without calling generic `AppendProgress` for submitted.
 - Run focused export tests and confirm they pass.
-- Run `go test -count=1 ./internal/modules/career` and `git diff --check`.
+- Run `go test -count=1 ./internal/career` and `git diff --check`.
 - Commit only owned test changes and report exact BASE/HEAD.
 **Acceptance:** Career export tests pass with the new domain contract and no production guard is relaxed.

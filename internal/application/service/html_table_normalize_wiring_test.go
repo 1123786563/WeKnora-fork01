@@ -98,7 +98,7 @@ func TestHTMLEmbeddedTableWiring_CallSitesPresent(t *testing.T) {
 	}
 
 	// chunker_debug.go 已随 stage 6 handler 迁移至 internal/handler
-	//（原 internal/modules/knowledge/ingest/chunker_debug.go），路径随迁。
+	//（原 internal/knowledge/ingest/chunker_debug.go），路径随迁。
 	previewSrc, err := os.ReadFile("../../handler/chunker_debug.go")
 	if err != nil {
 		t.Fatalf("read chunker_debug.go: %v", err)

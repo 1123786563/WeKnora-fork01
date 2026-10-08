@@ -17,14 +17,14 @@
 - `internal/application/service/query_history_policy.go` — 查询历史可见性/隐私策略
 - `internal/handler/session/query_history_admin.go` — Admin+ 审计查询 handler
 
-已就位：`internal/modules/conversation/chat_pipeline`（Pass A A10 整包搬迁）。
+已就位：`internal/conversation/chat_pipeline`（Pass A A10 整包搬迁）。
 相关注册入口：`RegisterQueryHistoryAdminRoutes`（`internal/router/routes_query_history.go:16`，
 挂载 router.go:378）与 worker `TypeQueryHistoryExport`（`internal/types/task.go:258`，
 注册 router/task.go:326 + sync_task.go:165）。
 
 ## Goal（goal）
 
-把查询历史导出/审计/隐私策略拆进 `internal/modules/conversation/`，使 SP13 引入的
+把查询历史导出/审计/隐私策略拆进 `internal/conversation/`，使 SP13 引入的
 Admin+ 异步查询历史 CSV 导出（审计 listing 平铺为 CSV）成为 conversation 模块内
 自洽的纵向切片；与 session 面拆分共享模块门面
 （`NewModule/RegisterRoutes/RegisterWorkers/Start/Stop`，见 module.go 契约声明）。

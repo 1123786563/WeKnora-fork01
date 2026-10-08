@@ -4,7 +4,7 @@
 
 ## 背景
 
-开放列表 51-100 名单里的同题族（此前误判「bug 已清尽」，本轮纠正）：存储/索引层吞错返回假成功——第八轮（#3880/#3872/#3854）的延续。五票均带票面精确行号定位。fork 路径：检索器在 `internal/modules/knowledge/retriever/`。
+开放列表 51-100 名单里的同题族（此前误判「bug 已清尽」，本轮纠正）：存储/索引层吞错返回假成功——第八轮（#3880/#3872/#3854）的延续。五票均带票面精确行号定位。fork 路径：检索器在 `internal/knowledge/retriever/`。
 
 - #3832：ES v8 丢弃 _bulk 响应（`res.Errors`/`Items` 全仓零使用），v7 降级为告警仍返回 nil——逐条被拒的文档静默缺失。
 - #3833：sqlite 三个索引 helper（insertVec/FTS insert/copyVec）void 吞 Exec 错误——入库成功但检索永远召不回；CopyIndices/copyVec 同病。

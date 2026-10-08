@@ -4,7 +4,7 @@
 
 **Architecture:** Keep the journal as the identity source. Both complete and torn gateway responses log durable resolution failures with the attempt identity and observed outcome; neither branch may silently erase a persistence failure. Status-only torn-response classification remains conservative.
 
-**Tech Stack:** Go, `net/http`, existing `internal/modules/craftegress` tests.
+**Tech Stack:** Go, `net/http`, existing `internal/craftegress` tests.
 
 **Spec:** Craft Web Artifact Spec #107 and the OCR round 3 partial report `docs/plans/craft-107-ocr-source-round3-partial.md`. This is an OCR-scoped repair to `craftegress`; it does not resolve the separately blocked F08/T04 build receipt seam.
 
@@ -31,8 +31,8 @@
 
 **Files owned:**
 
-- Modify: `internal/modules/craftegress/adapter.go`
-- Modify: focused tests in `internal/modules/craftegress/adapter_test.go` or `ocr_regression_test.go`
+- Modify: `internal/craftegress/adapter.go`
+- Modify: focused tests in `internal/craftegress/adapter_test.go` or `ocr_regression_test.go`
 - Create: `docs/plans/2026-09-29-craft-107-ocr-egress-fix-report.md`
 
 **Consumes:** Partial OCR report and current adapter/journal contracts.
@@ -44,7 +44,7 @@
 3. Remove the redundant 502 test from `responseBodyReadOutcomeIsDefinitive`; preserve explicit 409 exclusion and blanket 5xx exclusion. Adjust the helper comment to state that all 5xx remain unresolved.
 4. Run focused tests, package tests, formatting, and `git diff --check`; record hashes and results.
 
-**Verification:** `go test ./internal/modules/craftegress -run 'TestAdapterTornBody|TestGatewayOutcome' -count=1`; `go test ./internal/modules/craftegress -count=1`; `gofmt` and `git diff --check`.
+**Verification:** `go test ./internal/craftegress -run 'TestAdapterTornBody|TestGatewayOutcome' -count=1`; `go test ./internal/craftegress -count=1`; `gofmt` and `git diff --check`.
 
 **Acceptance:** Tests prove the logging behavior for journal failure and preserve all retry identity/status behavior; package tests pass; no unrelated diff is changed.
 

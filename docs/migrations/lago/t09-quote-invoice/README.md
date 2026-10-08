@@ -20,12 +20,12 @@ match gate → awaiting-payment product state), the t02–t08 convention.
 ## Artifacts
 
 - Operator timeline: `deploy/lago/evidence/t09-run.txt`
-- Tagged integration test: `internal/modules/commercial/commercialplatform/lago_purchase_integration_test.go`
+- Tagged integration test: `internal/commercial/commercialplatform/lago_purchase_integration_test.go`
   (`//go:build lago_integration`, env-gated on `LAGO_INTEGRATION_*`; skips honestly without a stack)
-- Seam additive types: `internal/modules/commercial/purchase_command.go`
-- Adapter implementation + tests: `internal/modules/commercial/commercialplatform/lago_purchase.go`,
+- Seam additive types: `internal/commercial/purchase_command.go`
+- Adapter implementation + tests: `internal/commercial/commercialplatform/lago_purchase.go`,
   `lago_purchase_test.go`; shared contract legs in `contract_test.go`
-- Service: `internal/modules/commercial/service/commercial/purchase.go` (+ tests)
+- Service: `internal/commercial/service/commercial/purchase.go` (+ tests)
 - HTTP surface: `internal/handler/commercial.go` (Purchase/PurchaseStatus),
   `internal/router/routes_commercial.go` (POST /commercial/purchases, GET /commercial/purchase),
   route tests `internal/router/commercial_purchase_route_test.go`

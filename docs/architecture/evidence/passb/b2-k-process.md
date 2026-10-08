@@ -23,15 +23,15 @@ T0 侧（/tmp/k45-t0 @5c3131e60；`SVC_RUN`/`REPO_RUN`/`HD_RUN` 为下表各 -ru
 | T0-2 | `go test -count=1 -v -run "$REPO_RUN" ./internal/application/repository/` | 0 | `ok ... 1.391s`；**24 PASS / 0 FAIL** |
 | T0-3 | `go test -count=1 -v -run "$HD_RUN" ./internal/handler/` | 0 | `ok ... 1.968s`；**9 PASS / 0 FAIL** |
 | T0-4 | `go test -count=1 -v -run "TestCopyAdmissionReserves…\|TestCopyAdmissionRequires…\|TestCopyAdmissionKeeps…" ./internal/handler/`（首轮 `HD_RUN` 模式笔误 `TestCopyAdmission_` 带下划线未匹配实际函数名，补跑 3 用例，两轮结果均在册） | 0 | **3 PASS / 0 FAIL** |
-| T0-5 | `go test -count=1 -v -run "TestNewChunkExtractServiceNilSeamFailFast\|TestNewChunkExtractServiceNilSpanTraceAllowed" ./internal/modules/knowledge/ingest/` | 0 | `ok ... 1.030s`；**2 PASS / 0 FAIL** |
+| T0-5 | `go test -count=1 -v -run "TestNewChunkExtractServiceNilSeamFailFast\|TestNewChunkExtractServiceNilSpanTraceAllowed" ./internal/knowledge/ingest/` | 0 | `ok ... 1.030s`；**2 PASS / 0 FAIL** |
 
 T1 侧（worktree @60ef71061）：
 
 | # | 命令 | 退出码 | 输出摘要 |
 |---|---|---|---|
-| T1-1 | `go test -count=1 -v -run "TestDocumentProcessTaskOptions_\|TestKnowledgePostProcessTaskOptions" ./internal/modules/knowledge/process/` | 0 | `ok ... 0.785s`；**4 PASS / 0 FAIL** |
-| T1-2 | `go test -count=1 -v -run "TestCreateKnowledgeDefaultsCustomMetadataToEmptyObject\|TestKnowledgeSourceSchemaAllowsObjectStorageURLs" ./internal/modules/knowledge/process/repository/` | 0 | `ok ... 0.796s`；**2 PASS / 0 FAIL** |
-| T1-3 | `go test -count=1 -v -run "TestRequireTaskProgressTenant_" ./internal/modules/knowledge/process/handler/` | 0 | `ok ... 0.929s`；**3 PASS / 0 FAIL** |
+| T1-1 | `go test -count=1 -v -run "TestDocumentProcessTaskOptions_\|TestKnowledgePostProcessTaskOptions" ./internal/knowledge/process/` | 0 | `ok ... 0.785s`；**4 PASS / 0 FAIL** |
+| T1-2 | `go test -count=1 -v -run "TestCreateKnowledgeDefaultsCustomMetadataToEmptyObject\|TestKnowledgeSourceSchemaAllowsObjectStorageURLs" ./internal/knowledge/process/repository/` | 0 | `ok ... 0.796s`；**2 PASS / 0 FAIL** |
+| T1-3 | `go test -count=1 -v -run "TestRequireTaskProgressTenant_" ./internal/knowledge/process/handler/` | 0 | `ok ... 0.929s`；**3 PASS / 0 FAIL** |
 | T1-4 | `go test -count=1 -v -run "$SVC_RUN 减随迁 4 用例" ./internal/application/service/` | 0 | `ok ... 1.542s`；**33 PASS / 0 FAIL** |
 | T1-5 | `go test -count=1 -v -run "$REPO_RUN 减随迁 2 用例" ./internal/application/repository/` | 0 | `ok ... 0.913s`；**22 PASS / 0 FAIL** |
 | T1-6 | `go test -count=1 -v -run "$HD_RUN 减随迁 3 用例" ./internal/handler/` | 0 | `ok ... 0.970s`；**6 PASS / 0 FAIL** |
@@ -65,7 +65,7 @@ ingest      : diff T0(2) vs T1(2)              → IDENTICAL
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | **0** | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接噪音，基线固有，K4.1 T0 起在册） |
-| `go test ./internal/modules/knowledge/... -count=1` | **0** | 25 包 `ok`（含 `process` 3.593s 量级、`process/repository`、`process/handler` 新包）、0 FAIL、4 包 `[no test files]`（retriever/elasticsearch、neo4j、postgres、knowledge 根——K4.0 T0 同态） |
+| `go test ./internal/knowledge/... -count=1` | **0** | 25 包 `ok`（含 `process` 3.593s 量级、`process/repository`、`process/handler` 新包）、0 FAIL、4 包 `[no test files]`（retriever/elasticsearch、neo4j、postgres、knowledge 根——K4.0 T0 同态） |
 | `make check-backend-architecture` | **0** | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |
 
@@ -93,7 +93,7 @@ ingest      : diff T0(2) vs T1(2)              → IDENTICAL
   - **K3 块**：exc-0106→**0117**、0107→0118、0108→0119、0109→0120、0110→0121、0111→0122、0112→0123、0113→0124、0114→0125、0115→0126、0116→0127、0117→0128、0118→0129（116→**129** 终值）；
   - 各前置分支 evidence 文件中的历史 exc 编号不回改（历史台账），映射关系以本表为准（K4.0 报告建议协调者记 DAG notes）。
 - **K4.4 新行衔接**：exc-**0130**（`process/handler/kb_access.go → modules/policy/access`）、exc-**0131**（`process/knowledge_write.go → modules/policy/access`），ID 顺延 P2 终值 0129；头部计数注释 129→**131**；ledger 现总条目 **131**（`grep -c '^  - id: exc-'` 实测）。
-- **K4.4 登记的原因与 Ruling 引用（K4.4 报告 Step 2 备妥内容，此处落盘）**：两对均为「搬迁前宿主原文件既有 import 纯移动显形」（`git show 34418f700^:internal/handler/kb_access.go:10`、`git show ff5ae6d21^:internal/application/service/knowledge_write.go:8` 实证），依据 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（精确 file→package 豁免、数据行非逻辑、同窗 ledger 行 owner=24-knowledge-process、remove_at=ib2）；根门面消费评估不可行（`internal/modules/policy` 根仅 module.go 门面注释、零 access 符号再导出），K3 `wiki_fixer_scope.go→policy/access` 同目标包豁免先例（check.go:108-114）；PassBTask 取 `B-knowledge`（映射表唯一 knowledge 键，passbguard/check.go:83-93；计划文本「K4.4」与 guard 事实源矛盾，按 Ruling 6 末句勘误——K4.4 报告 §3.1）。
+- **K4.4 登记的原因与 Ruling 引用（K4.4 报告 Step 2 备妥内容，此处落盘）**：两对均为「搬迁前宿主原文件既有 import 纯移动显形」（`git show 34418f700^:internal/handler/kb_access.go:10`、`git show ff5ae6d21^:internal/application/service/knowledge_write.go:8` 实证），依据 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（精确 file→package 豁免、数据行非逻辑、同窗 ledger 行 owner=24-knowledge-process、remove_at=ib2）；根门面消费评估不可行（`internal/policy` 根仅 module.go 门面注释、零 access 符号再导出），K3 `wiki_fixer_scope.go→policy/access` 同目标包豁免先例（check.go:108-114）；PassBTask 取 `B-knowledge`（映射表唯一 knowledge 键，passbguard/check.go:83-93；计划文本「K4.4」与 guard 事实源矛盾，按 Ruling 6 末句勘误——K4.4 报告 §3.1）。
 - **K4.4 多退少补勘误（在册）**：计划 §5.5 种子 3 对（横向包目标 internal/common ×2、internal/application/repository ×1）经 guard 判定面实证（check.go:1044 moduleImportBase + :1378-1382 前缀短路）**零诊断零登记**；表首「faq→repository 先例」引用不实（既有 129 条豁免目标 100% 为 internal/modules/ 路径）。
 - K4.0-R：exc-0117..0127 共 11 行 reason 对 check.go 事实源逐字对齐（F1 裁定；K3 分支继承漂移），`exception-reason-drift`=0（commit `5c3131e60`）。
 

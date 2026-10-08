@@ -2,7 +2,7 @@
 
 - 分支 / worktree：`bm-passa-a6` / `.worktrees/bm-passa-main/.worktrees/bm-passa-a6`
 - base：`03032f890`（= 集成线起点，batch A1 集成后）
-- move commit：`3a14875d4` — `refactor(airesource): move packages to internal/modules/airesource`
+- move commit：`3a14875d4` — `refactor(airesource): move packages to internal/airesource`
 - repair commit：`e9e2368db` — `refactor(airesource): repair imports and add pass-a aliases`
 - docs commit：见本文件与 `docs/architecture/integration/airesource.md` 所在提交
 - 环境：postgres :5432 / redis :6379（dev compose，未动容器）；Go 1.26.x
@@ -31,8 +31,8 @@ payment `TestProvidersFromEnvRejectsPartialAlipay`）均不在搬迁包测试面
 | 命令 | 结果 |
 |---|---|
 | `go run ./tools/modulemove verify --module airesource` | `modulemove: OK (airesource)` |
-| `go test ./internal/modules/airesource/... -count=1`（manifest test_commands） | 10/10 包 ok（mcp 3.13s、asr 3.67s、chat 2.93s、embedding 4.81s、limiter 3.84s、provider 4.01s、rerank 3.91s、vlm 3.61s、storageurl 4.41s、web_search 3.81s），FAIL 0 |
-| 直接消费方批次 1：`go test ./internal/container/... ./internal/handler/... ./internal/modelcontext/... ./internal/types/... ./internal/infrastructure/docparser/... ./semantic/experiments/model_gateway/... ./internal/modules/channels/im/... -count=1` | ok 21 / FAIL 0，exit 0 |
+| `go test ./internal/airesource/... -count=1`（manifest test_commands） | 10/10 包 ok（mcp 3.13s、asr 3.67s、chat 2.93s、embedding 4.81s、limiter 3.84s、provider 4.01s、rerank 3.91s、vlm 3.61s、storageurl 4.41s、web_search 3.81s），FAIL 0 |
+| 直接消费方批次 1：`go test ./internal/container/... ./internal/handler/... ./internal/modelcontext/... ./internal/types/... ./internal/infrastructure/docparser/... ./semantic/experiments/model_gateway/... ./internal/channels/im/... -count=1` | ok 21 / FAIL 0，exit 0 |
 | 直接消费方批次 2：`go test ./internal/application/... -count=1` | 全 ok（application/service 135.9s），FAIL 0 |
 | 直接消费方批次 3：`go test ./internal/agent/... -count=1 -timeout 600s` | **18/18 包 ok**（含 opencode 13.4s、recoverytest 21.3s），FAIL 0 |
 | `go build ./...` | exit 0（仅既有的 cmd/desktop、cmd/server ld duplicate-library warning，与基线一致） |
@@ -66,13 +66,13 @@ $ git diff 03032f890 HEAD --stat -- internal/router/router.go internal/router/ta
 （空输出 —— 零差异）
 $ git diff 03032f890 HEAD -- internal/container/container.go | grep -E '^[+-][^+-]'
 -	"github.com/Tencent/WeKnora/internal/models/chat"
-+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
++	"github.com/Tencent/WeKnora/internal/airesource/models/chat"
 ```
 
 **偏差（唯一，自主裁定并已向协调者报备）**：`internal/container/container.go` import 块
 仅翻转 `internal/models/chat` 一行指向新路径。原因：`container.go:1133` 附近
 （`registerChatLocalImageResolver`）对 `chat.LocalImageResolver` **赋值**，而该符号是搬迁包的
-可变导出 var（`internal/modules/airesource/models/chat/image_resolve.go:63`，由
+可变导出 var（`internal/airesource/models/chat/image_resolve.go:63`，由
 `readLocalStorageBytes` 在同包读取）。Go 没有 var alias，"var 转发"别名只能拷贝初值，
 赋值会落在别名副本上，静默丢失多租户 `local://` 图片解析 wiring（行为回归）。翻转这一行
 使赋值直达唯一真实 var，行为零变化；这正是 IA2 集成清单中的一步，提前执行并在此披露。
@@ -83,8 +83,8 @@ container.go 其余部分零 diff（行号未漂移：hooks 仍在 :439/:604/:61
 ## 6. architectureguard 新增 forbidden-import（记录给 IA2，未修、未加例外）
 
 ```
-forbidden-import: internal/modules/airesource/models/chat/usage.go 导入了模块 commercial 的
-内部包 "github.com/Tencent/WeKnora/internal/modules/commercial"（跨模块只能经模块根公共门面）
+forbidden-import: internal/airesource/models/chat/usage.go 导入了模块 commercial 的
+内部包 "github.com/Tencent/WeKnora/internal/commercial"（跨模块只能经模块根公共门面）
 ```
 
 核实：该 import 在搬迁前即存在（`git show 03032f890:internal/models/chat/usage.go` 第 9 行
@@ -101,14 +101,14 @@ web_search 38、mcp 33、asr 9、chat 40、embedding 50、limiter 10、provider 
 utils 3、utils/ollama 4、vlm 11、storageurl 28。
 头部均注明 `Deleted by Pass B task B-airesource`。
 **已知残留 importer**（别名为其解析，IA2 翻转后即可删除全部别名）：
-`internal/container/container.go` 5 行、`internal/modules/channels/im/service.go` 2 行
+`internal/container/container.go` 5 行、`internal/channels/im/service.go` 2 行
 （channels 文件属其他模块领地，A6 未触碰 —— manifest 声明的 importer `internal/im` 已在
-batch A1 迁移为 `internal/modules/channels/im`）。
+batch A1 迁移为 `internal/channels/im`）。
 
 ## 8. 假设与偏差记录
 
 1. container.go 单行 import 翻转（见 §5）——唯一禁改文件触碰，行为零变化，已披露。
-2. `internal/modules/channels/im/service.go`（manifest importer `internal/im` 的 A1 后身）
+2. `internal/channels/im/service.go`（manifest importer `internal/im` 的 A1 后身）
    **未**做 import 修复：该文件现属 channels 模块 owned 领地，并行批次下不修改他模块
    owned 文件；别名桥接保证编译与测试，交接 IA2（Integration Brief §3 第 2 步）。
 3. 别名面取全量导出符号（385），manifest 未指定最小面；与 A1 口径一致。

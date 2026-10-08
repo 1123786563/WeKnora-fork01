@@ -17,8 +17,8 @@ contracts:
         - internal/application/service/agent_version.go
         - internal/container/container.go
         - internal/handler/agent_version.go
-        - internal/modules/agentcatalog/handler/agent_marketplace.go
-        - internal/modules/agentcatalog/service/agent_marketplace.go
+        - internal/agentcatalog/handler/agent_marketplace.go
+        - internal/agentcatalog/service/agent_marketplace.go
       characterization_tests:
         - internal/application/service/agent_version_test.go
       items: []
@@ -54,7 +54,7 @@ contracts:
     - id: agentcatalog.facade
       owner: agentcatalog
       kind: module-construction
-      symbol: internal/modules/agentcatalog/module.go
+      symbol: internal/agentcatalog/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -84,8 +84,8 @@ contracts:
       stability: frozen
       consumers:
         - internal/container/container.go
-        - internal/modules/agentcatalog/handler/agent_marketplace.go
-        - internal/modules/agentcatalog/service/agent_marketplace.go
+        - internal/agentcatalog/handler/agent_marketplace.go
+        - internal/agentcatalog/service/agent_marketplace.go
       characterization_tests: []
       items: []
     - id: agentcatalog.routes
@@ -136,7 +136,7 @@ contracts:
       stability: frozen
       consumers:
         - internal/handler/tenant_skill_market.go
-        - internal/modules/agentcatalog/service/tenant_skill_market_service.go
+        - internal/agentcatalog/service/tenant_skill_market_service.go
       characterization_tests: []
       items: []
     - id: agentcatalog.workers
@@ -176,7 +176,7 @@ contracts:
     - id: agentruntime.facade
       owner: agentruntime
       kind: module-construction
-      symbol: internal/modules/agentruntime/module.go
+      symbol: internal/agentruntime/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -283,7 +283,7 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/subagent_service.go
-        - internal/modules/agentcatalog/handler/subagent.go
+        - internal/agentcatalog/handler/subagent.go
       characterization_tests:
         - internal/application/service/subagent_service_test.go
       items: []
@@ -302,7 +302,7 @@ contracts:
     - id: airesource.facade
       owner: airesource
       kind: module-construction
-      symbol: internal/modules/airesource/module.go
+      symbol: internal/airesource/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -362,7 +362,7 @@ contracts:
         - internal/application/service/message_suggestion.go
         - internal/application/service/model.go
         - internal/application/service/semantic_model.go
-        - internal/modules/knowledge/retrieval/app/semantic_model_policy.go
+        - internal/knowledge/retrieval/app/semantic_model_policy.go
         - internal/application/service/session.go
         - internal/application/service/tag.go
         - internal/application/service/temporary_document.go
@@ -561,7 +561,7 @@ contracts:
     - id: appconnector.facade
       owner: appconnector
       kind: module-construction
-      symbol: internal/modules/appconnector/module.go
+      symbol: internal/appconnector/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -611,7 +611,7 @@ contracts:
     - id: channels.facade
       owner: channels
       kind: module-construction
-      symbol: internal/modules/channels/module.go
+      symbol: internal/channels/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -659,13 +659,13 @@ contracts:
     - id: commercial.billing-access-decision
       owner: commercial
       kind: capability-port
-      symbol: internal/modules/commercial/access.go:CanManageBilling
+      symbol: internal/commercial/access.go:CanManageBilling
       signature: func CanManageBilling(role string, active, billingGrant bool) bool
       stability: frozen
       consumers:
         - internal/handler/commercial.go
       characterization_tests:
-        - internal/modules/commercial/access_test.go
+        - internal/commercial/access_test.go
       items: []
     - id: commercial.budget-adapter-construction
       owner: commercial
@@ -681,20 +681,20 @@ contracts:
     - id: commercial.budget-availability
       owner: commercial
       kind: capability-port
-      symbol: internal/modules/commercial/budget.go:Available
+      symbol: internal/commercial/budget.go:Available
       signature: func Available(verified, unreflected, held, refundLocked Credits) (Credits, error)
       stability: frozen
       consumers: []
       characterization_tests:
-        - internal/modules/commercial/budget_test.go
-        - internal/modules/commercial/repository/commercial/budget_test.go
-        - internal/modules/commercial/service/commercial/budget_test.go
-        - internal/modules/commercial/service/commercial/settlement_test.go
+        - internal/commercial/budget_test.go
+        - internal/commercial/repository/commercial/budget_test.go
+        - internal/commercial/service/commercial/budget_test.go
+        - internal/commercial/service/commercial/settlement_test.go
       items: []
     - id: commercial.facade
       owner: commercial
       kind: module-construction
-      symbol: internal/modules/commercial/module.go
+      symbol: internal/commercial/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -708,19 +708,19 @@ contracts:
     - id: commercial.funding-validation
       owner: commercial
       kind: capability-port
-      symbol: internal/modules/commercial/usage.go:ValidateFunding
+      symbol: internal/commercial/usage.go:ValidateFunding
       signature: func ValidateFunding(funding string) error
       stability: frozen
       consumers:
         - internal/application/service/craft_budget.go
         - internal/application/service/craft_usage.go
-        - internal/modules/knowledge/retrieval/app/semantic_model_policy.go
+        - internal/knowledge/retrieval/app/semantic_model_policy.go
         - internal/agent/commercial_adapter.go
-        - internal/modules/commercial/execution.go
-        - internal/modules/workbench/service/workbench/remote_usage.go
+        - internal/commercial/execution.go
+        - internal/workbench/service/workbench/remote_usage.go
       characterization_tests:
-        - internal/modules/commercial/execution_test.go
-        - internal/modules/commercial/usage_test.go
+        - internal/commercial/execution_test.go
+        - internal/commercial/usage_test.go
       items: []
     - id: commercial.lifecycle
       owner: commercial
@@ -741,13 +741,13 @@ contracts:
     - id: commercial.payment-validation
       owner: commercial
       kind: capability-port
-      symbol: internal/modules/commercial/order.go:ValidatePayment
+      symbol: internal/commercial/order.go:ValidatePayment
       signature: func ValidatePayment(o Order, f PaymentFact) error
       stability: frozen
       consumers:
-        - internal/modules/commercial/repository/commercial/order.go
+        - internal/commercial/repository/commercial/order.go
       characterization_tests:
-        - internal/modules/commercial/order_test.go
+        - internal/commercial/order_test.go
       items: []
     - id: commercial.routes
       owner: commercial
@@ -765,14 +765,14 @@ contracts:
     - id: commercial.settlement-key
       owner: commercial
       kind: capability-port
-      symbol: internal/modules/commercial/settlement.go:SettlementKey
+      symbol: internal/commercial/settlement.go:SettlementKey
       signature: func SettlementKey(tenantID uint64, callID, attemptID string, revision int64) string
       stability: frozen
       consumers:
-        - internal/modules/commercial/service/commercial/settlement.go
+        - internal/commercial/service/commercial/settlement.go
       characterization_tests:
-        - internal/modules/commercial/service/commercial/settlement_test.go
-        - internal/modules/commercial/settlement_test.go
+        - internal/commercial/service/commercial/settlement_test.go
+        - internal/commercial/settlement_test.go
       items: []
     - id: commercial.usage-data-ownership
       owner: commercial
@@ -849,7 +849,7 @@ contracts:
     - id: conversation.facade
       owner: conversation
       kind: module-construction
-      symbol: internal/modules/conversation/module.go
+      symbol: internal/conversation/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1015,7 +1015,7 @@ contracts:
         - internal/handler/session/handler.go
         - internal/handler/session/steer.go
         - internal/im/service.go
-        - internal/modules/workbench/service/workbench/interaction.go
+        - internal/workbench/service/workbench/interaction.go
         - internal/stream/factory.go
         - internal/stream/memory_manager.go
         - internal/stream/redis_manager.go
@@ -1062,7 +1062,7 @@ contracts:
     - id: craft.facade
       owner: craft
       kind: module-construction
-      symbol: internal/modules/craft/module.go
+      symbol: internal/craft/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1127,7 +1127,7 @@ contracts:
     - id: datasource.facade
       owner: datasource
       kind: module-construction
-      symbol: internal/modules/datasource/module.go
+      symbol: internal/datasource/connector/moauth/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1178,7 +1178,7 @@ contracts:
     - id: execution.facade
       owner: execution
       kind: module-construction
-      symbol: internal/modules/execution/module.go
+      symbol: internal/execution/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1331,7 +1331,7 @@ contracts:
     - id: identity.facade
       owner: identity
       kind: module-construction
-      symbol: internal/modules/identity/module.go
+      symbol: internal/identity/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1546,7 +1546,7 @@ contracts:
     - id: insights.facade
       owner: insights
       kind: module-construction
-      symbol: internal/modules/insights/module.go
+      symbol: internal/insights/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1630,7 +1630,7 @@ contracts:
     - id: knowledge.facade
       owner: knowledge
       kind: module-construction
-      symbol: internal/modules/knowledge/module.go
+      symbol: internal/knowledge/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1659,7 +1659,7 @@ contracts:
         - internal/application/service/knowledge_post_process.go
         - internal/application/service/knowledgebase.go
         - internal/application/service/message.go
-        - internal/modules/knowledge/retrieval/app/semantic_model_policy.go
+        - internal/knowledge/retrieval/app/semantic_model_policy.go
         - internal/application/service/session.go
         - internal/application/service/tag.go
         - internal/application/service/web_search.go
@@ -1700,7 +1700,7 @@ contracts:
         - internal/application/service/wiki_k3_ctor_compat.go
         - internal/application/service/faq_service.go
         - internal/application/service/ingest_seams.go
-        - internal/modules/knowledge/module.go
+        - internal/knowledge/module.go
       characterization_tests:
         - internal/application/service/agent_service_test.go
         - internal/application/service/custom_agent_suggestion_scope_test.go
@@ -1847,7 +1847,7 @@ contracts:
         - internal/application/service/span_trace_seam_adapter.go
         - internal/application/service/wiki_k3_ctor_compat.go
         - internal/application/service/ingest_seams.go
-        - internal/modules/knowledge/module.go
+        - internal/knowledge/module.go
       characterization_tests:
         - internal/application/service/agent_service_test.go
         - internal/application/service/datasource_purge_test.go
@@ -1882,7 +1882,7 @@ contracts:
         - internal/router/task.go
         - internal/container/container.go
         - internal/application/service/faq_service.go
-        - internal/modules/knowledge/module.go
+        - internal/knowledge/module.go
       characterization_tests:
         - internal/application/service/datasource_service_test.go
         - internal/handler/tag_delete_test.go
@@ -1953,7 +1953,7 @@ contracts:
     - id: policy.facade
       owner: policy
       kind: module-construction
-      symbol: internal/modules/policy/module.go
+      symbol: internal/policy/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -1996,7 +1996,7 @@ contracts:
     - id: system.facade
       owner: system
       kind: module-construction
-      symbol: internal/modules/system/module.go
+      symbol: internal/system/module.go
       signature: façade
       stability: frozen
       consumers: []
@@ -2056,7 +2056,7 @@ contracts:
     - id: workbench.facade
       owner: workbench
       kind: module-construction
-      symbol: internal/modules/workbench/module.go
+      symbol: internal/workbench/module.go
       signature: façade
       stability: frozen
       consumers: []

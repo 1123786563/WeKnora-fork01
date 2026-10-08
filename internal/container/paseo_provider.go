@@ -9,8 +9,8 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/execution"
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	"github.com/Tencent/WeKnora/internal/execution"
+	workbenchservice "github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 )
 
 type paseoRemoteProvider struct {

@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +25,7 @@ func loadCraftArchiveFixture(t *testing.T, name string) []byte {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	data, err := os.ReadFile(filepath.Join(repoRoot, "internal", "modules", "craft", "testdata", "archive", name))
+	data, err := os.ReadFile(filepath.Join(repoRoot, "internal", "craft", "testdata", "archive", name))
 	require.NoError(t, err)
 	return data
 }

@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	mcp "github.com/mark3labs/mcp-go/mcp"
 	sdkserver "github.com/mark3labs/mcp-go/server"

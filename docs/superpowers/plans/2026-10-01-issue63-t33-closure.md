@@ -32,7 +32,7 @@
 | T33-3 | 退役 Variant 只阻新 Task 创建；既有 Task 与普通 Agent 不受影响 | workbench/admission.go `checkAgentUse`；`admission_agent_use_test.go`（含 retire-replay） |
 | T33-4 | AC1–AC3 经认证 HTTP 生产装配全链可观测 | router/routes_agent_marketplace_lifecycle_test.go 六测试（含 `TestLifecycleRetireBlocksNewWorkEndToEnd`） |
 
-- [ ] Step 1: 逐波读标准与落点，跑四组聚焦测试并记录输出：`go test ./internal/application/repository/ -run 'TestAgentAdoption|TestDeprecateRelease|TestAdoptListing|TestConcurrentReciprocal' -count=1`；`go test ./internal/application/service/ -run 'TestUnlist|TestDeprecate|TestUpgradeReconcile|TestAcceptUpgrade' -count=1`；`go test ./internal/modules/workbench/service/workbench/ -run TestAdmissionAgentUse -count=1`（以实际测试名 grep 为准）；`go test ./internal/router/ -run TestLifecycle -count=1`。
+- [ ] Step 1: 逐波读标准与落点，跑四组聚焦测试并记录输出：`go test ./internal/application/repository/ -run 'TestAgentAdoption|TestDeprecateRelease|TestAdoptListing|TestConcurrentReciprocal' -count=1`；`go test ./internal/application/service/ -run 'TestUnlist|TestDeprecate|TestUpgradeReconcile|TestAcceptUpgrade' -count=1`；`go test ./internal/workbench/service/workbench/ -run TestAdmissionAgentUse -count=1`（以实际测试名 grep 为准）；`go test ./internal/router/ -run TestLifecycle -count=1`。
 - [ ] Step 2: PG 竞态复跑（本地 `WeKnora-postgres-dev`，DSN 只进环境变量）：`TRPC_TEST_POSTGRES_DSN='postgres://postgres:<本地开发密码>@127.0.0.1:5432/WeKnora?sslmode=disable' go test -tags semantic_integration ./internal/application/repository -run '^TestAgentAdoptionEndWaitsThenSeesCommittedVariant$' -count=1 -v`（密码向用户索取或用 `~/.weknora-func-creds.env` 邻域既有本地开发口令；拿不到则记 blocked-env）。
 - [ ] Step 3: 产出判定表（每波 verified / gap+严重级）与缺口清单，写入 task-1-report.md。
 

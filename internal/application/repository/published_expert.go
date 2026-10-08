@@ -1,11 +1,11 @@
 package repository
 
 import (
-	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
+	acrepo "github.com/Tencent/WeKnora/internal/agentcatalog/repository"
 )
 
 // Pass B (25c) transitional shim — the implementation moved to
-// internal/modules/agentcatalog/repository/published_expert.go. Consumers
+// internal/agentcatalog/repository/published_expert.go. Consumers
 // are switched to the module package by IB2, after which this file is
 // deleted (12-commercial §5.4 / 25a §2.3 pattern). No business logic may be
 // added here — remove_at: ib2.

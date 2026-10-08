@@ -11,7 +11,7 @@
   把依赖故障分为 `ready / degraded / unavailable`（API 探测 + worker /
   db / redis 逐项分类，clock 未知 → degraded，核心依赖未知 →
   unavailable），`deploy/lago/test_health.py` 单测覆盖分类矩阵。
-- seam 侧：`internal/modules/commercial/platform.go` 的闭合词表
+- seam 侧：`internal/commercial/platform.go` 的闭合词表
   `ReadinessState{ready,degraded,unavailable}` + 闭合 reason token
   （`unconfigured|unreachable|invalid_response`），适配器把依赖故障映射
   进 token（不透传 provider 文本）。

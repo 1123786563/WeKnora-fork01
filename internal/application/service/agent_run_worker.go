@@ -9,8 +9,8 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

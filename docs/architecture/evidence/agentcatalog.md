@@ -15,8 +15,8 @@ integrate pass-a batch a1"）。Manifest：`docs/architecture/moves/agentcatalog
 ## 2. 基线测试（manifest test_commands 全量，仅 1 条）
 
 ```
-go test ./internal/modules/agentcatalog/... -count=1
-?   	github.com/Tencent/WeKnora/internal/modules/agentcatalog	[no test files]
+go test ./internal/agentcatalog/... -count=1
+?   	github.com/Tencent/WeKnora/internal/agentcatalog	[no test files]
 EXIT=0
 ```
 
@@ -35,7 +35,7 @@ EXIT=0
   `packages: []` 的前提下自洽，说明这是设计而非遗漏。
 - `internal/agent/{experts,persona,skills,subagents}` 全部出现在
   `docs/architecture/moves/agentruntime.yaml` 的 move_packages
-  （→ `internal/modules/agentruntime/agent/...`，A11 领土）；`internal/agent/catalog`
+  （→ `internal/agentruntime/agent/...`，A11 领土）；`internal/agent/catalog`
   不存在。A7 未触碰 `internal/agent` 下任何文件（`git status` 全程仅两份新文档）。
 - 本模块业务实现 = 55 个 legacy_files（repository 11 / service 31 / handler 13，
   Pass B `B-agentcatalog`）。
@@ -44,7 +44,7 @@ EXIT=0
 
 - `go build ./...` → exit 0（仅 cmd/server、cmd/desktop 既有 ld "duplicate libraries"
   链接警告，与本任务无关）
-- `go vet ./internal/modules/agentcatalog/...` → exit 0
+- `go vet ./internal/agentcatalog/...` → exit 0
 - `go run ./tools/architectureguard` → `literal=564 apiKeyRoute=69 handle=0 total=633 |
   redis=23 lite=23 | hooks=58 | modules=16`，`OK (0 violations)` —— 与基线完全一致，
   **无新增禁改违例、无需记录暴露耦合**

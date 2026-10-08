@@ -2,7 +2,7 @@
 // 实现已随上游对齐 round 2 归位至本包（chunk.go + chunk_write.go + extract.go +
 // image_multimodal.go + ocr_sanitizer.go + parser_url_security.go +
 // ingest_seams.go）；chunk 持久化层（repository 侧 chunk.go/chunk_image_assets.go）
-// 仍驻 internal/modules/knowledge/ingest。本文件保留：
+// 仍驻 internal/knowledge/ingest。本文件保留：
 //   - 两枚 repository 哨兵的包级别名（errors.Is 链身份不变，真源在 ingest）；
 //   - 未导出调用面（knowledge_process.go 等）的同名薄包装；
 //   - dig 装配面（container.go）的 -DI 适配构造器：以旧装配签名接缝化新签名
@@ -17,7 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
+	"github.com/Tencent/WeKnora/internal/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/redis/go-redis/v9"

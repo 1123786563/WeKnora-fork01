@@ -36,8 +36,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol"
-	"github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	"github.com/Tencent/WeKnora/internal/appconnector/connectorcontrol"
+	"github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -17,10 +17,10 @@ owned_files:
   - internal/container
   - internal/handler
   module_files:
-    - internal/modules/datasource/module.go
-    - internal/modules/datasource/legacy/README.md
+    - internal/datasource/connector/moauth/module.go
+    - internal/datasource/connector/moauth/legacy/README.md
 test_commands:
-  - go test ./internal/modules/datasource/... -count=1
+  - go test ./internal/datasource/connector/moauth/... -count=1
 integration_points:
   routes:
   - RegisterDataSourceRoutes — internal/router/routes_infra.go:301

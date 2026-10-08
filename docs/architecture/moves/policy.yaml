@@ -3,15 +3,15 @@ module: policy
 description: 跨域配额、限流、存储白名单、embed/access policy、capability gate（§5.16/§5.18）
 move_packages:
   - from: internal/application/access
-    to: internal/modules/policy/access
+    to: internal/policy/access
   - from: internal/embedpolicy
-    to: internal/modules/policy/embedpolicy
+    to: internal/policy/embedpolicy
   - from: internal/ipclass
-    to: internal/modules/policy/ipclass
+    to: internal/policy/ipclass
   - from: internal/ratelimit
-    to: internal/modules/policy/ratelimit
+    to: internal/policy/ratelimit
   - from: internal/storageallowlist
-    to: internal/modules/policy/storageallowlist
+    to: internal/policy/storageallowlist
 alias_obligations:
   - old_import_path: internal/application/access
     passb_task: B-policy
@@ -36,11 +36,11 @@ owned_files:
   - internal/ratelimit
   - internal/storageallowlist
   move_targets:
-    - internal/modules/policy/access
-    - internal/modules/policy/embedpolicy
-    - internal/modules/policy/ipclass
-    - internal/modules/policy/ratelimit
-    - internal/modules/policy/storageallowlist
+    - internal/policy/access
+    - internal/policy/embedpolicy
+    - internal/policy/ipclass
+    - internal/policy/ratelimit
+    - internal/policy/storageallowlist
     # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
     - internal/application/access
     - internal/embedpolicy
@@ -60,11 +60,11 @@ owned_files:
   - internal/types
   - internal/utils
   module_files:
-    - internal/modules/policy/README.md
-    - internal/modules/policy/module.go
-    - internal/modules/policy/legacy/README.md
+    - internal/policy/README.md
+    - internal/policy/module.go
+    - internal/policy/legacy/README.md
 test_commands:
-  - go test ./internal/modules/policy/... -count=1
+  - go test ./internal/policy/... -count=1
 integration_points:
   routes:
   - embedFrameAncestorsMiddleware — internal/router/router.go:195-197 (embed 页面 frame-ancestors 策略，使用 internal/embedpolicy；无独立业务路由)

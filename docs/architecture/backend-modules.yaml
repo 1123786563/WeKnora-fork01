@@ -60,7 +60,7 @@ modules:
   career:
     description: 单成员私有求职空间、确认事实、申请证据与求职工作流（Issue #140；ADR 0015–0019）
     packages:
-      - internal/modules/career
+      - internal/career
     routes:
       - name: RegisterCareerArtifactRoutes
         source: internal/router/routes_career_artifacts.go

@@ -7,8 +7,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/models/chat"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"

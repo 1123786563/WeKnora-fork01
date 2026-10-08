@@ -13,15 +13,15 @@ owned_files:
   move_targets: []
   importers: []
   module_files:
-    - internal/modules/career/README.md
-    - internal/modules/career/module.go
+    - internal/career/README.md
+    - internal/career/module.go
 integration_points:
   routes:
     - RegisterCareerRoutes — internal/router/routes_career.go:8
   workers: []
   lifecycle_hooks: []
 test_commands:
-  - go test ./internal/modules/career/... -count=1
+  - go test ./internal/career/... -count=1
 forbidden_shared_files:
   - internal/router/router.go
   - internal/router/task.go

@@ -17,7 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -224,7 +224,7 @@ const driftMarkListTimeout = 10 * time.Second
 // against a NONCE-EXCLUSIVE throwaway service identity (globally unique ID,
 // disconnected and evicted on return) so the marker's listing can never alias
 // or evict a live session's cached client. This is the service-package twin
-// of container.NewPluginMCPEndpointLister — internal/modules must not import
+// of container.NewPluginMCPEndpointLister — internal/<feature> packages must not import
 // the container assembly, and agent_service (this package) needs the lister
 // at the provider wiring point without a constructor-signature change.
 func NewManagerEndpointLister(manager *mcp.MCPManager) plugins.EndpointLister {

@@ -10,10 +10,10 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	reporun "github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/modules/commercial"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/commercial/service/commercial"
+	"github.com/Tencent/WeKnora/internal/craft"
 
 	"gorm.io/gorm"
 )

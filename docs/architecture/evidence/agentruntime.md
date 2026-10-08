@@ -9,7 +9,7 @@ Worktree：`.worktrees/bm-passa-a11`（分支 `bm-passa-a11`，基线 `918f90000
 | # | SHA | 主题 | 内容 |
 |---|---|---|---|
 | 0 | `918f90000` | docs: correct batch-a2 evidence figures from ia2 review | 基线（不属本任务） |
-| 1 | `004248f84` | refactor(agentruntime): move packages to internal/modules/agentruntime | 纯 rename：371 文件 `git mv`，0 insertions / 0 deletions（继承自前任，已核验，未 amend） |
+| 1 | `004248f84` | refactor(agentruntime): move packages to internal/agentruntime | 纯 rename：371 文件 `git mv`，0 insertions / 0 deletions（继承自前任，已核验，未 amend） |
 | 2 | （本续作） | refactor(agentruntime): repair imports and add pass-a aliases | 全部非禁改 importer import 修复 + 4 个旧路径 alias.go + 测试相对路径深度修复 + gofmt |
 | 3 | （本续作） | docs(agentruntime): add integration brief, pass-b briefs and evidence | integration/agentruntime.md、passb/×4、evidence/agentruntime.md |
 
@@ -40,7 +40,7 @@ go test -race ./internal/agent/recoverytest -count=1 -v     → PASS（21.400s�
 ## 4. 内容改动披露（repair 变更，续作完成）
 
 - **import 路径修复**：`internal/agent/**`、`internal/modelcontext`、
-  `internal/application/service/memory` → `internal/modules/agentruntime/{agent/**,memory,modelcontext}`，
+  `internal/application/service/memory` → `internal/agentruntime/{agent/**,memory,modelcontext}`，
   覆盖 manifest `importers` 全部 21 个包目录中的非禁改文件（含搬入包内部互引）；
   `git diff -w` 下其余改动行全部为 import 行。
 - **旧路径别名（4 个，零逻辑）**：`internal/agent/{approval,experts,subagents}/alias.go`、
@@ -69,12 +69,12 @@ go test -race ./internal/agent/recoverytest -count=1 -v     → PASS（21.400s�
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| manifest test_commands | `go test ./internal/modules/agentruntime/... -count=1` | 21 包全 ok，EXIT=0（opencode 12.977s、recoverytest 19.700s；flaky 未触发） |
-| manifest race | `go test -race ./internal/modules/agentruntime/agent/recoverytest -count=1 -v` | PASS（24.747s），0 DATA RACE；provider 未设用例 SKIP（blocked-env） |
-| 直接消费方 | `go test ./internal/application/{repository,service}/... ./internal/container/... ./internal/craft/... ./internal/handler/... ./internal/modules/channels/im/... ./internal/types/interfaces/... -count=1` | 40 包全 ok（service 81.014s；`internal/im` 在基线后已不存在，manifest 该行过时） |
+| manifest test_commands | `go test ./internal/agentruntime/... -count=1` | 21 包全 ok，EXIT=0（opencode 12.977s、recoverytest 19.700s；flaky 未触发） |
+| manifest race | `go test -race ./internal/agentruntime/agent/recoverytest -count=1 -v` | PASS（24.747s），0 DATA RACE；provider 未设用例 SKIP（blocked-env） |
+| 直接消费方 | `go test ./internal/application/{repository,service}/... ./internal/container/... ./internal/craft/... ./internal/handler/... ./internal/channels/im/... ./internal/types/interfaces/... -count=1` | 40 包全 ok（service 81.014s；`internal/im` 在基线后已不存在，manifest 该行过时） |
 | flaky 专项 | `go test ./internal/application/repository -run TestAgentRunDecisionConcurrentOnlyOneRevision -count=1 -v` | PASS（0.34s），留档 |
 | 构建 | `go build ./...` | 通过（仅既有 `ld: warning: ignoring duplicate libraries: '-lc++'`） |
-| 静态检查 | `go vet ./internal/modules/agentruntime/... ./internal/application/... ./internal/container/... ./internal/craft/... ./internal/handler/... ./internal/types/interfaces/...` | 0 问题 |
+| 静态检查 | `go vet ./internal/agentruntime/... ./internal/application/... ./internal/container/... ./internal/craft/... ./internal/handler/... ./internal/types/interfaces/...` | 0 问题 |
 | 守卫 | `go run ./tools/architectureguard` | 49 条 forbidden-import（§6）；`literal=564 apiKeyRoute=69 handle=0 total=633`、`redis=23 lite=23`、`hooks=58`、`modules=16`，route/worker/hook 计数与基线一致 |
 
 ## 6. 守卫显形的预存耦合（IA3 关注，未加豁免、未改工具）

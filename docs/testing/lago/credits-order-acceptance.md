@@ -14,7 +14,7 @@
 
 ## 集成测试（`//go:build lago_integration`）
 
-`TestLagoCreditsOrder`（`internal/modules/commercial/commercialplatform/lago_credits_order_integration_test.go`）
+`TestLagoCreditsOrder`（`internal/commercial/commercialplatform/lago_credits_order_integration_test.go`）
 四阶段全 PASS（真实运行时 v1.53.0）：
 
 - **a** 月度钱包经 `EnsureBenefits` 创建后 `GET wallets` 断言 `priority == 1`（初值编码落线）。
@@ -25,7 +25,7 @@
 运行命令：
 ```
 LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48897 LAGO_INTEGRATION_API_KEY=<org key> \
-  go test -tags lago_integration ./internal/modules/commercial/commercialplatform/ -run TestLagoCreditsOrder -count=1 -v
+  go test -tags lago_integration ./internal/commercial/commercialplatform/ -run TestLagoCreditsOrder -count=1 -v
 ```
 输出：`--- PASS: TestLagoCreditsOrder (1.80s)`（四阶段日志见测试 stdout）。
 

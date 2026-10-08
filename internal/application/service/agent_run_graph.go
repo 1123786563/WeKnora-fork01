@@ -23,8 +23,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
-	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
-	"github.com/Tencent/WeKnora/internal/modules/craft"
+	repocommercial "github.com/Tencent/WeKnora/internal/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )

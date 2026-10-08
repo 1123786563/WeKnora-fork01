@@ -18,7 +18,7 @@ modulemove: OK (system)
 
 | 命令 | 结果 |
 |---|---|
-| `go test ./internal/modules/system/... -count=1`（manifest test_commands，逐字） | exit 0（`internal/modules/system` [no test files]，F1 骨架） |
+| `go test ./internal/system/... -count=1`（manifest test_commands，逐字） | exit 0（`internal/system` [no test files]，F1 骨架） |
 | `go build ./...` | exit 0（仅既有的 cmd/server、cmd/desktop ld duplicate-library warning，与基线一致） |
 | `go run ./tools/architectureguard` | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`，`OK (0 violations)` —— 与 F0 基线一致 |
 

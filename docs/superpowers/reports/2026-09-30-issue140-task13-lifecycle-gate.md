@@ -20,10 +20,10 @@
 
 ## Tests and commands
 
-- `go test -timeout=90s -count=1 ./internal/modules/career -run 'TestLifecycleGate|TestLifecycleClaim|TestTwoOfficesDeletionWaits|TestReconcileApplicationLinkKeepsClaim|TestMaterialPublishReplaysSameObjects|TestDeleteCareerRemovesPreviouslyRevokedExportObjects|TestDeleteCareerFailsClosedWhenExportStorageUnavailable|TestCareerDeletionBoundaryReturnsCountQueryErrors|TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders'` — PASS.
+- `go test -timeout=90s -count=1 ./internal/career -run 'TestLifecycleGate|TestLifecycleClaim|TestTwoOfficesDeletionWaits|TestReconcileApplicationLinkKeepsClaim|TestMaterialPublishReplaysSameObjects|TestDeleteCareerRemovesPreviouslyRevokedExportObjects|TestDeleteCareerFailsClosedWhenExportStorageUnavailable|TestCareerDeletionBoundaryReturnsCountQueryErrors|TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders'` — PASS.
 - `go test -count=1 ./internal/database -run 'TestMigrationVersionsUniquePerTrack|TestCareerLifecycleGateMigrationOpensPersistedSQLiteSchema|TestCareerExportMigrationUpAndDown|TestCareerOfficeOpensAfterVersionedSQLiteMigration'` — PASS. The full SQLite migration chain reaches version 143; the migrated database opens through `career.NewOffice` with gate columns present.
-- `go test -count=1 ./internal/modules/career ./internal/modules/workbench/service/workbench ./internal/container ./internal/database` — PASS for all four packages.
-- `go test -race -count=1 ./internal/modules/career -run 'TestLifecycleGate|TestLifecycleClaim|TestTwoOfficesDeletionWaits|TestReconcileApplicationLinkKeepsClaim|TestMaterialPublishReplaysSameObjectsAfterUnknownStorageOutcome'` — PASS.
+- `go test -count=1 ./internal/career ./internal/workbench/service/workbench ./internal/container ./internal/database` — PASS for all four packages.
+- `go test -race -count=1 ./internal/career -run 'TestLifecycleGate|TestLifecycleClaim|TestTwoOfficesDeletionWaits|TestReconcileApplicationLinkKeepsClaim|TestMaterialPublishReplaysSameObjectsAfterUnknownStorageOutcome'` — PASS.
 - `git diff --check` — PASS.
 - Two-Office tests pause the Workbench linker, application reconciliation lookup and material storage write while a second Office attempts deletion. Deletion remains busy until the original operation reaches a durable outcome; recovered publish reuses stable object keys; a stale post-receipt claim is resolved by exact replay.
 

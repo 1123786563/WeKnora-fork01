@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"

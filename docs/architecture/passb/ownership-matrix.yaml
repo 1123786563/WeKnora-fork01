@@ -32,1981 +32,1981 @@ legacy_files:
   - path: internal/application/repository/agent_checkpoint.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/agent_run.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_decisions.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_events.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_inputs.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_lifecycle.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_snapshot.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_run_tools.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/agent_share.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/artifact_version.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/craft_preview_check.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_snapshot.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_version.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/craft_workspace.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/repo
+    destination: internal/craft/repo
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/repository
+    destination: internal/channels/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/execution_cleanup.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_dispatch.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_observation.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/execution_target.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/expert_install.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/analytics
+    destination: internal/insights/analytics
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/kbshare.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_span_repo.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_tag.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledgebase.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_oauth.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mcp_tool_approval_repository.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/mobile_auth_exchange.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/mobile_device.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/mobile_notification.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/mobile_notification_provider.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/model_usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/repository
+    destination: internal/commercial/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/native_commit.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_events.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_lease.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_memory.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_oauth.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_pending.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_schema.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_session.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_tool_journal.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/native_usage.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/repository
+    destination: internal/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/published_expert.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/published_skill.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/query_history_export.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/resource.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/resource_references.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/session.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/system_setting.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/repository
+    destination: internal/system/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/repository
+    destination: internal/conversation/repository
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/repository/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_api_key.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_disabled_shared_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/repository
+    destination: internal/execution/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/tenant_skill.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/tenant_subagent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/user.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/repository
+    destination: internal/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/repository
+    destination: internal/agentcatalog/repository
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/user_usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/repository
+    destination: internal/commercial/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/voice_session.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/repository
+    destination: internal/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/repository/workbench_list.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/repository/workbench_request.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/repository
+    destination: internal/workbench/repository
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/agent_browser_preferences.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_capabilities.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_history.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_run_decisions.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_graph.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_lifecycle.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_projection.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_resources.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_service.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_run_worker.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/agent_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_share.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/agent_web_pages.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/artifact_collector.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/artifact_collector_store.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/audit_log_retention.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/craft_artifacts.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_budget.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_control.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_decision_delivery.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_delegate.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_inputs.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_interaction_store.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_knowledge.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_knowledge_tool.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_lifecycle.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_preview.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_recovery.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_session.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_snapshot.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_usage_view.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/craft_workspace.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/app
+    destination: internal/craft/app
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/embed_session.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/embed_webhook.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/service
+    destination: internal/channels/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/expert_market_source.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/expert_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/expert_skills.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/fork_bootstrapper.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/evaluation
+    destination: internal/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/kbshare.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_auto_tag.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_clone_move.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_create.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_delete.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_delete_plan.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_housekeeping.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_post_process.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_process.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_process_config.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_reparse_scope.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_replace.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_span_tracker.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_summary_refresh.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_util.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_fanout.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_faq.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_fusion.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_results.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_shared.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_storegroup.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/mcp_tool_approval_service.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message_artifact_versions.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/native_admission.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_archive.go
     module: agentruntime
     plan: 34-agentruntime-protocol
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_oauth.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_pending.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_recovery.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/native_usage.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/password_policy.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/pinned_session_sandbox.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/query_history_export.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/query_history_policy.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/resource.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_auth.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_service.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/sandbox_terminal_ticket.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/semantic_model.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/semantic_model_budget.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/service
+    destination: internal/commercial/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/session.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_agent_qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_attachment_staging.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_fork.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_knowledge_qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_qa_helpers.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_sandbox_pin.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/session_share.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/skill_market_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/subagent_delegate.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/service
+    destination: internal/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/subagent_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/system_setting.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/service
+    destination: internal/system/service
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/application/service/tag.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tag_access.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_api_key.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_expert_market_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_sandbox_resolve.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/tenant_skill_admin.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_bundle.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_catalog.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_effective.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_env_declare.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_files.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_install.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_progress.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_reaper.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_remove.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_runtime_verify.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_service.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_source.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_steer.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_stop.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_transcript.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tenant_skill_verify.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/usage_recorder.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/service
+    destination: internal/commercial/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/service
+    destination: internal/identity/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_env.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_env_resolver.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/service
+    destination: internal/execution/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/service
+    destination: internal/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/vectorstore_healthcheck.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/web_search_state.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/weknoracloud.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/service
+    destination: internal/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/application/service/workspace_checkpointer.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/service
+    destination: internal/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/agent_marketplace.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/agent_version.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/app_connector.go
     module: appconnector
     plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
+    destination: internal/appconnector/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/artifact_preview.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/audit_log.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/auth.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/auth_register_by_invite.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/commercial.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/commercial_task_budget.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/craft_model_gateway.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/custom_agent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/deployment_capabilities.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/embed_channel.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/execution_registration.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/execution_target.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/expert.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/feedback.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/im.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/initialization.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/insights_passb_compat.go
     module: insights
     plan: 37-insights
-    destination: internal/modules/insights/analytics
+    destination: internal/insights/analytics
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/knowledge_download.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/knowledgebase.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/mcp_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_metadata.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_oauth.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_service.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/mcp_usage_instructions.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/me_env_var.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/message.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/message_suggestion.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/mobile_device.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/mobile_voice.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/model.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/model_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/organization.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/payment_callbacks.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/persona.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/rbac_lookups.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_check.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_config.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/sandbox_skill.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/agent_run.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/agent_stream_handler.go
     module: agentruntime
     plan: 33-agentruntime-engine
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/artifact_download.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/artifact_reference.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/attachment_processor.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/browserskill.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/craft.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_interaction.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_preview.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_scheduled.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/craft_usage.go
     module: craft
     plan: 41-craft
-    destination: internal/modules/craft/http
+    destination: internal/craft/http
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/fork.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/handler.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/helpers.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/image_upload.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/native_archive.go
     module: agentruntime
     plan: 34-agentruntime-protocol
-    destination: internal/modules/agentruntime/handler
+    destination: internal/agentruntime/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/qa.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/query_history_admin.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/quick_answer_timeline.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/resource_urls.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/sandbox_terminal_bridge.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/sandbox_terminal_ws.go
     module: execution
     plan: 13-execution
-    destination: internal/modules/execution/handler
+    destination: internal/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/session/share.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/steer.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/stream.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/temporary_document.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/title.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/types.go
     module: conversation
     plan: 35-conversation-program
-    destination: internal/modules/conversation/handler
+    destination: internal/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/session/workbench_artifacts.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_commands.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_inbox.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_list.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_overview.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_read.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/session/workbench_start.go
     module: workbench
     plan: 40-workbench
-    destination: internal/modules/workbench/handler
+    destination: internal/workbench/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/shared_agent_access.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_catalog.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_handler.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/skill_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/storage_allowlist.go
     module: policy
     plan: 42-system-policy
-    destination: internal/modules/policy/handler
+    destination: internal/policy/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/storagebackend.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/subagent.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/system.go
     module: system
     plan: 42-system-policy
-    destination: internal/modules/system/handler
+    destination: internal/system/handler
     integration_owner: ib4
     delete_barrier: ib4
   - path: internal/handler/tenant.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_expert_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/tenant_invitation.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_invite_link.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_member.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_policy.go
     module: identity
     plan: 10-identity
-    destination: internal/modules/identity/handler
+    destination: internal/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/tenant_skill_market.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/usage.go
     module: commercial
     plan: 12-commercial
-    destination: internal/modules/commercial/handler
+    destination: internal/commercial/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/user_resource_favorite.go
     module: agentcatalog
     plan: 25-agentcatalog-program
-    destination: internal/modules/agentcatalog/handler
+    destination: internal/agentcatalog/handler
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/vectorstore.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search_provider.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/web_search_provider_credentials.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   - path: internal/handler/wechat_qrcode.go
     module: channels
     plan: 36-channels
-    destination: internal/modules/channels/handler
+    destination: internal/channels/handler
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/weknoracloud.go
     module: airesource
     plan: 11-airesource
-    destination: internal/modules/airesource/handler
+    destination: internal/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
   # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
@@ -2014,25 +2014,25 @@ legacy_files:
   - path: internal/application/repository/chunk_ingest_shim.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/chunk_ingest_shim.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/span_trace_seam_adapter.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kbprocess_passb_compat.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
 
@@ -2042,43 +2042,43 @@ legacy_files:
   - path: internal/application/repository/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/wiki_k3_repo_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_faq_k3_delegate.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
+    destination: internal/knowledge/faq
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/wiki_k3_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/wiki_k3_ctor_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app/handler
+    destination: internal/knowledge/retrieval/app/handler
     integration_owner: ib2
     delete_barrier: ib2
 aliases:

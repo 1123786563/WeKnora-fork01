@@ -113,7 +113,7 @@ bootstrap 只引用模块入口；同一路由、Worker 和钩子只注册一次
 **Pass A — Move First（功能归位）**：先让所有生产代码和测试按业务功能集中，快速获得可导航结构；保留模块内部原有 handler/service/repository 组织，不在移动提交中改变业务逻辑。
 
 ```text
-internal/modules/knowledge/
+internal/knowledge/
   README.md
   module.go
   legacy/
@@ -293,7 +293,7 @@ domain/application 返回稳定领域错误，不构造 Gin 响应。transport �
 Query History 当前跨 router、session handler、service、repository、types、container 和 worker router，具备完整路由、权限、隐私策略、异步导出、持久化和测试链路，作为首个纵向切片。
 
 ```text
-internal/modules/conversation/queryhistory/
+internal/conversation/queryhistory/
   transport/http/
   application/
   domain/

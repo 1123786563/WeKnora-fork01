@@ -14,7 +14,7 @@ import (
 
 // Characterization tests for the tenant disabled-shared-agent repository,
 // anchored on the legacy host-package implementation before the Pass B (25a)
-// move to internal/modules/agentcatalog/repository.
+// move to internal/agentcatalog/repository.
 
 func newDisabledSharedAgentTestRepo(t *testing.T) (interfaces.TenantDisabledSharedAgentRepository, *gorm.DB) {
 	t.Helper()

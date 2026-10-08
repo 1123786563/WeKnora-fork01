@@ -45,7 +45,7 @@
 
 - Execution branch: `codex/issue-140-issue30-base`; required original BASE: `db234c5eb171f2dde7427d382b55b503a038f879`. Design commit: `fa0b882def7e78ff3599cc7bef204ad2398063e5`.
 - Live issue audit: 2026-09-28; 34 issues, no children deeper than one level; no comments or post-snapshot updates; dependencies match `2026-09-24-issue-140-dag.md`.
-- `P0` owns new Career contracts/API-client and module boundary docs; backend domain tasks own `internal/modules/career/**` and paired migration assets; only P2 integration owner may modify central router/container/migration registration files.
+- `P0` owns new Career contracts/API-client and module boundary docs; backend domain tasks own `internal/career/**` and paired migration assets; only P2 integration owner may modify central router/container/migration registration files.
 - P5 owns `apps/web/src/career/**`, its dedicated route/nav registration, Career locale resources and tests. P6 owns only Mini Program career feature/subpackage/config/platform adapter additions. P7 owns only `apps/mobile/src/career/**`, its app composition additions, and Career-specific native adapter/test files.
 - Career Desk is an explicitly owned new package, not present in the selected baseline; freeze its ADR 0019 interface and tests before clients fork.
 - The following shared files are integration-owner only: `internal/router/router.go`, `internal/container/container.go`, central migration registration, `packages/contracts/src/index.ts`, `packages/api-client/src/client.ts`, Web route/shell registries, Mini Program `app.config.ts` and route registry, Mobile composition root, root workspace/lockfiles. Workers submit patch suggestions for these seams to the integrator.
@@ -137,7 +137,7 @@
 **Concurrency:** serial; only backend task allowed to define schema foundation or central migration registration.
 
 **Files:**
-- Create: `internal/modules/career/{README.md,module.go,manifest.go}` and `internal/modules/career/{repository,service,handler}/` scaffolding plus tests.
+- Create: `internal/career/{README.md,module.go,manifest.go}` and `internal/career/{repository,service,handler}/` scaffolding plus tests.
 - Modify: `docs/architecture/backend-modules.yaml`, `docs/architecture/moves/README.md`; add `docs/architecture/moves/career.yaml`.
 - Create: paired PostgreSQL `migrations/versioned/*_career_*.{up,down}.sql` and SQLite `migrations/sqlite/*_career_*.{up,down}.sql` with currently free sequence numbers; add narrowly owned registration only where repository convention requires it.
 - Central registration edits, if needed: only integration owner in `internal/container/container.go`, `internal/router/router.go`, central migration code.
@@ -150,7 +150,7 @@
 - [ ] Add Workbench Artifact public-interface tests for exact-version grant binding, download-time authorization/revocation recheck, cross-tenant/expired/tampered/revoked/deleted rejection, and regression success for existing Task artifact downloads; save one real Web download digest as evidence.
 - [ ] Implement Career module manifest and migration schema for single-member space, confirmed profile facts, idempotency receipts and append-only evidence with composite tenant/owner keys.
 - [ ] Register dependency ports without importing Workbench implementation internals or adding a second task runner.
-- [ ] Run `go test ./internal/modules/career/... ./internal/database/... ./internal/container/...`; run architecture boundary tests. Expected all pass, no new forbidden dependency.
+- [ ] Run `go test ./internal/career/... ./internal/database/... ./internal/container/...`; run architecture boundary tests. Expected all pass, no new forbidden dependency.
 - [ ] Commit `feat: establish career module and artifact grants`.
 
 ### Task 3: Profile confirmation, job intake, source snapshots and tri-state evaluation
@@ -160,7 +160,7 @@
 **Concurrency:** serial backend domain task; owns profile/source/opportunity/evaluation packages.
 
 **Files:**
-- Create/modify: `internal/modules/career/profile/**`, `source/**`, `opportunity/**`, `evaluation/**`, handlers/routes local to Career and scoped tests.
+- Create/modify: `internal/career/profile/**`, `source/**`, `opportunity/**`, `evaluation/**`, handlers/routes local to Career and scoped tests.
 - Add corresponding up/down migrations only through the Task 2 migration owner.
 
 **Consumes:** Task 1 DTOs and Task 2 actor/tenant persistence seam.
@@ -170,7 +170,7 @@
 - [ ] Write source tests for preserved URL/observed-at/completeness/error, restricted source prompting for full JD, no login bypass, and immutable snapshot digest.
 - [ ] Write eligibility tests for each tri-state value, hard conflict remaining visible despite high skill score, and user override preserving original evaluation.
 - [ ] Implement repository/service/handler behavior; reject untrusted JD instruction content from the Agent instruction path.
-- [ ] Run `go test ./internal/modules/career/...`; expected all new domain tests pass and package race test passes for repository scope.
+- [ ] Run `go test ./internal/career/...`; expected all new domain tests pass and package race test passes for repository scope.
 - [ ] Commit `feat: add confirmed career facts and evidence based evaluation`.
 
 ### Task 4: Search, application/task admission and quota behavior
@@ -180,9 +180,9 @@
 **Concurrency:** serial around Workbench adapter and central route/container wiring.
 
 **Files:**
-- Create/modify: `internal/modules/career/search/**`, `rule/**`, `admission/**`, `internal/modules/career/handler/**` and tests.
+- Create/modify: `internal/career/search/**`, `rule/**`, `admission/**`, `internal/career/handler/**` and tests.
 - Integration-owner only: `internal/container/container.go`, `internal/router/router.go`, migration runner registration if applicable.
-- Reuse existing Workbench admission in `internal/modules/workbench/service/workbench/admission.go` and `TaskBudgetPort`; do not edit shared Workbench internals unless separately reviewed.
+- Reuse existing Workbench admission in `internal/workbench/service/workbench/admission.go` and `TaskBudgetPort`; do not edit shared Workbench internals unless separately reviewed.
 
 **Consumes:** profile/opportunity/evaluation APIs; Workbench `AdmissionCoordinator.Start` and TaskBudget seam.
 **Produces:** one-shot search, explicit enable/disable continuous rule, opportunity batch-to-application admission, same-key unknown-outcome reconciliation, one application-to-one Workbench Task association, and #151 source reconciliation after search results exist. Merge only with strong job/employer/location/batch evidence; keep uncertain duplicates separate; preserve each source URL/check time; mark changed/expired/taken-down JD while retaining prior application snapshots; expose actual connected sources/city coverage; on failure preserve last success and stale time.
@@ -191,7 +191,7 @@
 - [ ] Test budget denial prevents a new billable Run but leaves profile and existing application reads available; subscriptions/reminders do not create duplicate rules.
 - [ ] Add named #151 tests `TestSearch_ReconcilesOnlyStronglySupportedDuplicateBatches`, `TestSearch_KeepsUncertainDuplicatesSeparate`, `TestSource_PreservesURLsAndCheckTimes`, `TestSource_AnnotatesChangedExpiredAndRemovedJDsWithoutChangingApplicationSnapshot`, `TestSearch_ReportsConnectedSourcesAndCityCoverage`, and `TestSourceFailure_PreservesLastSuccessAndStaleTime`; add Web evidence-diff/coverage tests in Task 7.
 - [ ] Implement Career owned admission adapter, search endpoints and route wiring; charge or enqueue only through existing Workbench/Usage port.
-- [ ] Run `go test ./internal/modules/career/... ./internal/modules/workbench/... ./internal/router/... ./internal/container/...`; expected all pass with no second execution runtime.
+- [ ] Run `go test ./internal/career/... ./internal/workbench/... ./internal/router/... ./internal/container/...`; expected all pass with no second execution runtime.
 - [ ] Commit `feat: integrate career search and application admission with workbench`.
 
 ### Task 5: Applications, immutable material versions, PDF/DOCX and user submission
@@ -201,7 +201,7 @@
 **Concurrency:** serial backend task; owns material and application records.
 
 **Files:**
-- Create/modify: `internal/modules/career/application/**`, `material/**`, `submission/**`, export/Artifact adapters and tests.
+- Create/modify: `internal/career/application/**`, `material/**`, `submission/**`, export/Artifact adapters and tests.
 
 **Consumes:** admitted application, frozen opportunity snapshot, confirmed profile facts, Workbench Task ID, Artifact permission port.
 **Produces:** versioned structured material body, immutable published PDF/DOCX artifact refs and digest, explicit user submission record with actual channel/time/version or unknown. This task establishes the submitted material-version input consumed by Task 6 Career Preparation; it owns no `preparation/**` files.
@@ -210,7 +210,7 @@
 - [ ] Test generated PDF and editable DOCX against the same structured-body digest and inspect real files before publish; corrupt/missing export remains unpublished.
 - [ ] Test user submission never invokes an external platform, accepts unknown actual version without guessing latest, and duplicate confirmation yields one submission event.
 - [ ] Implement handlers and service/repository logic using Artifact for protected files; enforce actor/tenant on every download grant.
-- [ ] Run `go test ./internal/modules/career/...`; include real fixture file parser/inspection test and API client response test.
+- [ ] Run `go test ./internal/career/...`; include real fixture file parser/inspection test and API client response test.
 - [ ] Commit `feat: add immutable career materials and submission records`.
 
 ### Task 6: Append-only progress, reminders, quota visibility, export and deletion
@@ -220,7 +220,7 @@
 **Concurrency:** serial backend lifecycle task; owns timeline, reminder, privacy and final migrations.
 
 **Files:**
-- Create/modify: `internal/modules/career/preparation/**`, `timeline/**`, `reminder/**`, `privacy/**`, handlers, paired migrations and focused tests. Task 6 is the sole owner of Career Preparation service/API and `preparation/**`.
+- Create/modify: `internal/career/preparation/**`, `timeline/**`, `reminder/**`, `privacy/**`, handlers, paired migrations and focused tests. Task 6 is the sole owner of Career Preparation service/API and `preparation/**`.
 
 **Consumes:** Task 5 submitted-material record, confirmed facts, immutable job snapshot, Task/Artifact ownership adapters, Usage/Budget and notification delivery ports.
 **Produces:** #156 Career Preparation service/API plus revision-guarded append-only event log/projection, idempotent in-app todos/minimal notifications, complete export, deletion receipt and revocation. Preparation drafts use only confirmed facts and immutable job snapshot, bind to actual submitted material version or explicitly unknown, expose editable source references, retain request/recovery after model failure, and never send or commit facts.

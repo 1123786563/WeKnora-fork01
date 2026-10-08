@@ -3,7 +3,7 @@
 > 交付对象：IB2（第二集成屏障，按 25a→25b→25c 汇总切换，framework:152）。barrier 只从已评审 Brief 切换共享装配（framework:103）。
 > 节点分支：`codex/passb-b2-ac-skills`；Brief 定稿于 T5（2026-09-24）。全部行号锚点在终态 HEAD 实测（grep/Read）。
 > 差分证据：`docs/architecture/evidence/passb/b2-ac-skills.md`；实施报告：`docs/plans/passb/reports/b2-ac-skills.md`。
-> 本面交付形态：20 个生产文件已迁入 `internal/modules/agentcatalog/{repository,service,handler}`（4 条 execution→agentcatalog 符号 + skillsForRun 已在新包导出化）；宿主旧路径仅存残差/占位，编译与全部既有测试绿；**装配未切换**（container/routes 仍指宿主残差，禁改文件零改动）。
+> 本面交付形态：20 个生产文件已迁入 `internal/agentcatalog/{repository,service,handler}`（4 条 execution→agentcatalog 符号 + skillsForRun 已在新包导出化）；宿主旧路径仅存残差/占位，编译与全部既有测试绿；**装配未切换**（container/routes 仍指宿主残差，禁改文件零改动）。
 
 ## (a) 残差全删清单（前置：(b)(c)(d) 切换完成且差分绿）
 
@@ -51,14 +51,14 @@
 
 ## (d) routes_agent.go RegisterSkillRoutes
 
-`internal/router/routes_agent.go:76`：参数 `*handler.SkillHandler` → `*acathandler.SkillHandler`；或改走 `internal/modules/agentcatalog/module.go` 的 `RegisterRoutes`——IB2 按 25a→25b→25c 汇总裁定（framework:152）。现状宿主残差别名下 `router_api_key_capabilities_test.go:448`、`routes_skill_market_test.go:31` 零改动编译（T4 实测）。
+`internal/router/routes_agent.go:76`：参数 `*handler.SkillHandler` → `*acathandler.SkillHandler`；或改走 `internal/agentcatalog/module.go` 的 `RegisterRoutes`——IB2 按 25a→25b→25c 汇总裁定（framework:152）。现状宿主残差别名下 `router_api_key_capabilities_test.go:448`、`routes_skill_market_test.go:31` 零改动编译（T4 实测）。
 
 ## (e) contracts.yaml 回写（barrier 义务，本节点零改动——T3 越权改动已整体回滚，见 evidence §5.4）
 
 1. `agentcatalog.facade/routes/lifecycle` 符号路径改指新包（`acatsvc`/`acathandler`）。
 2. `agentruntime.agent-engine/.agent-service` 的 characterization_tests 中 `tenant_skill_install_test.go` 改新路径。
 3. **`make check-passb-readiness` 当前红（10 条诊断 = IB2 收口清单，已登记 execution-ledger.md 2026-09-24 小节）**：
-   - consumer-unrecorded（7）：`agentcatalog.custom-agent-service`、`agentruntime.agent-engine`、`agentruntime.agent-service`、`airesource.model-service`、`airesource.storage-backend-resolver`、`conversation.session-service`、`conversation.stream-manager`×2——新包 `internal/modules/agentcatalog/service/tenant_skill_{service,install,transcript}.go` 引用未登记；
+   - consumer-unrecorded（7）：`agentcatalog.custom-agent-service`、`agentruntime.agent-engine`、`agentruntime.agent-service`、`airesource.model-service`、`airesource.storage-backend-resolver`、`conversation.session-service`、`conversation.stream-manager`×2——新包 `internal/agentcatalog/service/tenant_skill_{service,install,transcript}.go` 引用未登记；
    - consumer-vanished（3）：`agentruntime.agent-engine` → 宿主 `tenant_skill_install.go`（占位）、`conversation.stream-manager` → 宿主 `tenant_skill_transcript.go`（占位）/`tenant_skill_service.go`（残差）；
    - 收口动作：随 (a) 残差/占位删除与装配切换，把记录路径改指新包文件（stream-manager 的宿主残差 service.go 行随删除移除）；修后该 gate 应绿。
 
@@ -69,6 +69,6 @@
 
 ## (g) 例外台账（如实口径，替代计划 §9 撰写时点文本）
 
-- 本节点经 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（协调者授权，独立 commit 8978183b3）**新增 8 条**：`exc-0106..0113`（exception-ledger.yaml 105→113，`remove_at: ib2`，精确 file→package 豁免 `internal/modules/agentcatalog/**` → `internal/modules/execution/sandbox`；tools/architectureguard/check.go importExceptions `PassBTask: B-agentcatalog` 同步）。**IB2 随对端端口化删除该 8 条并同步 pass-a-acceptance.md 计数**（conventions §8 三方一致）。
+- 本节点经 **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（协调者授权，独立 commit 8978183b3）**新增 8 条**：`exc-0106..0113`（exception-ledger.yaml 105→113，`remove_at: ib2`，精确 file→package 豁免 `internal/agentcatalog/**` → `internal/execution/sandbox`；tools/architectureguard/check.go importExceptions `PassBTask: B-agentcatalog` 同步）。**IB2 随对端端口化删除该 8 条并同步 pass-a-acceptance.md 计数**（conventions §8 三方一致）。
 - 除上述裁定新增外：零删除、零通配、无其他 exc 提案（framework:38）。
 - 无新增长期别名：全部残差接缝（含 `RegisterReservedEnvNames`/`RegisterBundleParsers` 导出接缝）随 (a) 删除；`SkillHandler` 别名等由 IB2 装配切换取代（IB2 后本面不得仍有宿主包内 Skill 符号转发，计划 §9 禁止项）。

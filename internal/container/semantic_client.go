@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/config"
-	semanticinfra "github.com/Tencent/WeKnora/internal/modules/knowledge/semantic"
+	semanticinfra "github.com/Tencent/WeKnora/internal/knowledge/semantic"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 

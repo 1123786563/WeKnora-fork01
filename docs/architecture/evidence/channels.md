@@ -11,7 +11,7 @@ modulemove: OK (channels)
 
 ## 2. 测试基线（搬迁前，旧路径等价命令）
 
-`go test ./internal/im/... -count=1`（= manifest `go test ./internal/modules/channels/... -count=1`
+`go test ./internal/im/... -count=1`（= manifest `go test ./internal/channels/... -count=1`
 的前搬迁路径等价形式）：
 
 ```
@@ -32,19 +32,19 @@ ok  internal/im/yunzhijia 1.017s
 
 ## 3. 搬迁后验证（新路径）
 
-`go test ./internal/modules/channels/... -count=1`：
+`go test ./internal/channels/... -count=1`：
 
 ```
-ok  internal/modules/channels/im           3.791s
-ok  internal/modules/channels/im/dingtalk  1.787s
-ok  internal/modules/channels/im/feishu    2.298s
-ok  internal/modules/channels/im/mattermost 2.480s
-ok  internal/modules/channels/im/qqbot     2.289s
-ok  internal/modules/channels/im/slack     2.337s
-ok  internal/modules/channels/im/telegram  2.243s
-?   internal/modules/channels/im/wechat    [no test files]
-ok  internal/modules/channels/im/wecom     3.099s
-ok  internal/modules/channels/im/yunzhijia 2.324s
+ok  internal/channels/im           3.791s
+ok  internal/channels/im/dingtalk  1.787s
+ok  internal/channels/im/feishu    2.298s
+ok  internal/channels/im/mattermost 2.480s
+ok  internal/channels/im/qqbot     2.289s
+ok  internal/channels/im/slack     2.337s
+ok  internal/channels/im/telegram  2.243s
+?   internal/channels/im/wechat    [no test files]
+ok  internal/channels/im/wecom     3.099s
+ok  internal/channels/im/yunzhijia 2.324s
 ```
 
 别名包（旧路径）：10 包编译通过、`[no test files]`（纯转发，无测试）。
@@ -62,7 +62,7 @@ ok  internal/container       3.427s
 
 ```
 go build ./...            → exit 0
-go vet ./internal/modules/channels/... ./internal/im/... \
+go vet ./internal/channels/... ./internal/im/... \
        ./internal/handler/... ./internal/container/...  → exit 0
 go run ./tools/architectureguard → OK (0 violations)
                                   literal=564 apiKeyRoute=69 handle=0 total=633
@@ -103,7 +103,7 @@ $ git diff --stat 703884315..HEAD -- internal/router/router.go internal/router/t
 
 | SHA | 主题 |
 |---|---|
-| 1ee86e06b | refactor(channels): move packages to internal/modules/channels（纯改名，树不构建） |
+| 1ee86e06b | refactor(channels): move packages to internal/channels（纯改名，树不构建） |
 | db79358a2 | refactor(channels): repair imports and add pass-a aliases（import 行 + 别名包 + gofmt） |
 
 文档（integration/channels.md、evidence/channels.md）按 brief 允许折入 repair 提交。

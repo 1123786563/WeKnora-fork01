@@ -17,7 +17,7 @@
   API token，经 `/rest/api/3/myself` 验证后签发一次性授权码；凭据仅驻留内存，
   **不落盘、不写日志、不回显**。
 - **自托管清单**：`GET /manifest.json` 每次请求由代码动态序列化（digest 由
-  `internal/modules/plugins.ToolSchemaDigest` 计算，源码不写死字面量）。
+  `internal/plugins.ToolSchemaDigest` 计算，源码不写死字面量）。
 
 ## 工具
 

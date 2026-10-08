@@ -9,7 +9,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	appservice "github.com/Tencent/WeKnora/internal/application/service"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"

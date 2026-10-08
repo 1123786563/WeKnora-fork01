@@ -34,11 +34,11 @@ owned_files:
   importers:
     []
   module_files:
-    - internal/modules/system/README.md
-    - internal/modules/system/module.go
-    - internal/modules/system/legacy/README.md
+    - internal/system/README.md
+    - internal/system/module.go
+    - internal/system/legacy/README.md
 test_commands:
-  - go test ./internal/modules/system/... -count=1
+  - go test ./internal/system/... -count=1
 integration_points:
   routes:
   - RegisterInitializationRoutes — internal/router/routes_infra.go:102

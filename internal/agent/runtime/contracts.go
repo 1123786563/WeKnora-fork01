@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime"
+	agentruntime "github.com/Tencent/WeKnora/internal/agentruntime"
 	"time"
 )
 

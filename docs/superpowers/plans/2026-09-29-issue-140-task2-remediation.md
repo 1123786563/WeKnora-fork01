@@ -31,8 +31,8 @@
 ### Task 2R1: Fix Career caller scope and grant TTL boundaries
 
 **Files:**
-- Modify: `internal/modules/career/repository/scope.go` and scope tests.
-- Modify: `internal/modules/workbench/artifact_signing.go` and grant tests.
+- Modify: `internal/career/repository/scope.go` and scope tests.
+- Modify: `internal/workbench/artifact_signing.go` and grant tests.
 - Add SQLite GORM-backed Career repository tests and migration application/down tests in owned test paths.
 - No module/container/router production integration in this task.
 
@@ -43,7 +43,7 @@
 - [ ] Add failing TTL tests for 0, negative, positive subsecond, normal positive, and over-maximum. Reject nonpositive and subsecond durations; cap only positive values above `MaxArtifactGrantTTL`.
 - [ ] Add a GORM SQLite test against the applied Career migration: insert/read Career facts/receipts/evidence under one owner, verify another tenant/owner cannot read them, and verify composite FK/append-only constraints.
 - [ ] Apply SQLite up/down in a temporary migrated DB; run migration pairing/ID uniqueness tests. If a local PostgreSQL service exists, apply PostgreSQL up/down and run the same repository checks; otherwise record the exact missing service and add static migration parse/shape assertions without claiming live PostgreSQL verification.
-- [ ] Run `go test ./internal/modules/career/... ./internal/modules/workbench ./internal/database`; focused auth and migration tests; `git diff --check`; commit Task 2R1.
+- [ ] Run `go test ./internal/career/... ./internal/workbench ./internal/database`; focused auth and migration tests; `git diff --check`; commit Task 2R1.
 - [ ] When live PostgreSQL is unavailable, assert the PostgreSQL migration text includes JSONB payload columns, both composite tenant/owner foreign keys, and the append-only update/delete trigger; the SQLite-only test is not enough to claim static shape validation.
 - [ ] Bind the PostgreSQL shape fallback per table: receipt response JSONB and scoped FK; profile payload JSONB and scoped FK; evidence payload JSONB, scoped FK, and append-only trigger. A correct global count is insufficient if declarations can migrate between tables.
 - [ ] Store and verify version-grant expiry at nanosecond precision so non-millisecond-aligned issue time retains the exact requested TTL; test fractional nanoseconds, one-second and exact maximum TTL boundaries.
@@ -53,8 +53,8 @@
 **Dependency:** Task 2R1 reviewed and integrated.
 
 **Files:**
-- Modify: `internal/modules/career/**` for production owner/resource/version catalog authorization and issuance service.
-- Modify: `internal/modules/workbench/**` only for stable grant contracts if required.
+- Modify: `internal/career/**` for production owner/resource/version catalog authorization and issuance service.
+- Modify: `internal/workbench/**` only for stable grant contracts if required.
 - Modify: `internal/handler/session/artifact_download.go` or a narrowly scoped Career artifact handler for grant redemption before blob access.
 - Modify: `internal/container/container.go`, `internal/container/workbench.go`, `internal/router/router.go`, route/handler tests for central assembly owned by this subtask only. Do not alter unrelated central routes.
 - Add focused public handler/integration tests; preserve the Task artifact route unchanged.
@@ -67,7 +67,7 @@
 - [ ] Add public signed grant download route that verifies HMAC and expiry, calls catalog authorization on every request, then opens and streams the exact immutable bytes; do not accept client authority fields.
 - [ ] Add integration test from issuance to HTTP download, compare the downloaded bytes' SHA-256 with the exact stored version digest, revoke/delete, then prove the same URL is denied without reading bytes.
 - [ ] Run unchanged Workbench Task grant/download regression and route/resource static-file routing tests after final edits.
-- [ ] Run `go test ./internal/modules/career/... ./internal/modules/workbench ./internal/handler/session ./internal/router ./internal/container ./internal/database` plus architecture checks; compare architecture diagnostics against BASE and report any new finding.
+- [ ] Run `go test ./internal/career/... ./internal/workbench ./internal/handler/session ./internal/router ./internal/container ./internal/database` plus architecture checks; compare architecture diagnostics against BASE and report any new finding.
 - [ ] Provide Web-consumable issuance/download API evidence and a real downloadable version digest when a material fixture exists. If Task 5 material data is not yet available, use a real test artifact served through the registered HTTP route for transport proof and keep Task 5 material digest as a downstream release gate.
 - [ ] Commit only owned remediation files and evidence report; request independent backend validation and code review. Task 2 stays running until #142 lifecycle acceptance and Task 2 review both pass.
 

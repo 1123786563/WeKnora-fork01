@@ -3,7 +3,7 @@
 > child plan：**41-craft**（B0.3 裁定标注，framework:71）。
 > Manifest：`docs/architecture/moves/craft.yaml`（模块 craft）。本 brief 覆盖 B-craft 的
 > 全部义务：别名删除、container 切换、30 个 legacy 文件的域拆分。文件明细与
-> `internal/modules/craft/legacy/README.md` 逐条镜像。
+> `internal/craft/legacy/README.md` 逐条镜像。
 
 ## Scope（legacy_files，30 文件）
 
@@ -26,10 +26,10 @@ craft_preview.go、craft_scheduled.go、craft_usage.go
 ## 边界目标
 
 工作区/会话/运行/Interaction/Snapshot/Artifact Version+Preview/用量/Scheduled Task 全域
-归入 `internal/modules/craft`（§5.7/§5.18）。已搬入的域核心（contracts、request、
+归入 `internal/craft`（§5.7/§5.18）。已搬入的域核心（contracts、request、
 version、preview、document/spreadsheet/slides 渲染、budget、decision、lifecycle、recovery、
 interaction、knowledge、skill、usage、snapshot、scope、input、release）与 Pass B 拆入的
-service/repository/handler 层衔接为完整模块栈。建议结构 `internal/modules/craft/{app,repo,http}`
+service/repository/handler 层衔接为完整模块栈。建议结构 `internal/craft/{app,repo,http}`
 或按 A9-A11 先例分域子包；**craft 生命周期、Artifact 语义、schedule 语义是外部契约，
 拆分不改行为**。
 
@@ -38,13 +38,13 @@ service/repository/handler 层衔接为完整模块栈。建议结构 `internal/
 1. **别名目录** `internal/craft/`（alias.go，7 符号：Store、VersionStore、PreviewCheckStore、
    Workspace、Executor、KindWeb、KnownKind）——前置条件：IA4 已完成
    `internal/container/container.go:42` 的 import 切换到
-   `github.com/Tencent/WeKnora/internal/modules/craft`，此时旧路径零 importer，整目录删除。
+   `github.com/Tencent/WeKnora/internal/craft`，此时旧路径零 importer，整目录删除。
 2. 上述 30 个 legacy 文件（含各自 `_test.go`）从横向包删除，迁入模块；
 3. A13 guard 移交的 4 条预存耦合中归 craft 侧的两条改走模块门面或在本任务删除例外：
-   - `internal/modules/agentruntime/agent/opencode/{executor,normalizer}.go`、
-     `internal/modules/agentruntime/agent/tools/craft_delegate.go` → `internal/modules/craft`
+   - `internal/agentruntime/agent/opencode/{executor,normalizer}.go`、
+     `internal/agentruntime/agent/tools/craft_delegate.go` → `internal/craft`
      （agentruntime→craft 方向；与 B-agentruntime 协调，或经 craft 模块根门面收敛）；
-   - `internal/modules/craft/contracts.go` → `internal/modules/agentruntime/agent/runtime`
+   - `internal/craft/contracts.go` → `internal/agentruntime/agent/runtime`
      （craft→agentruntime 方向，Pass B 引入窄端口或登记删除）。
 
 ## 集成点迁移（随文件拆分一并处理）

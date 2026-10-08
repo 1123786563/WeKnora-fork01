@@ -1,11 +1,11 @@
 // Pass B 过渡 shim：删除点 ib2（Integration Brief 登记，plan 21-knowledge-ingest §6.2/§7.5）。
 // K1（b2-k-ingest）定义的 chunk 摄取域符号已随 repository/chunk.go 搬迁至
-// internal/modules/knowledge/ingest；本文件为宿主包仍被引用的调用方保留
+// internal/knowledge/ingest；本文件为宿主包仍被引用的调用方保留
 // 无逻辑转发声明（spec §13 M3 兼容别名，真源唯一在 ingest 包）。
 package repository
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
+	"github.com/Tencent/WeKnora/internal/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )

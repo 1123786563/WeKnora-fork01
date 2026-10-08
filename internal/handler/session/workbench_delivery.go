@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/codedelivery"
-	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
+	"github.com/Tencent/WeKnora/internal/codedelivery"
+	deliveryrepo "github.com/Tencent/WeKnora/internal/codedelivery/repository/codedelivery"
 	"github.com/gin-gonic/gin"
 )
 

@@ -9,26 +9,26 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/agent`（根包） | `internal/modules/agentruntime/agent` |
-| `internal/agent/approval` | `internal/modules/agentruntime/agent/approval` |
-| `internal/agent/compaction` | `internal/modules/agentruntime/agent/compaction` |
-| `internal/agent/experts` | `internal/modules/agentruntime/agent/experts` |
-| `internal/agent/native` | `internal/modules/agentruntime/agent/native` |
-| `internal/agent/nativecontract` | `internal/modules/agentruntime/agent/nativecontract` |
-| `internal/agent/nativeprobe` | `internal/modules/agentruntime/agent/nativeprobe` |
-| `internal/agent/opencode` | `internal/modules/agentruntime/agent/opencode` |
-| `internal/agent/persona` | `internal/modules/agentruntime/agent/persona` |
-| `internal/agent/recoverytest` | `internal/modules/agentruntime/agent/recoverytest` |
-| `internal/agent/recoverytest/provider` | `internal/modules/agentruntime/agent/recoverytest/provider` |
-| `internal/agent/runtime` | `internal/modules/agentruntime/agent/runtime` |
-| `internal/agent/skills` | `internal/modules/agentruntime/agent/skills` |
-| `internal/agent/skills/skillhub` | `internal/modules/agentruntime/agent/skills/skillhub` |
-| `internal/agent/subagents` | `internal/modules/agentruntime/agent/subagents` |
-| `internal/agent/token` | `internal/modules/agentruntime/agent/token` |
-| `internal/agent/tools` | `internal/modules/agentruntime/agent/tools` |
-| `internal/agent/trpc` | `internal/modules/agentruntime/agent/trpc` |
-| `internal/application/service/memory` | `internal/modules/agentruntime/memory` |
-| `internal/modelcontext` | `internal/modules/agentruntime/modelcontext` |
+| `internal/agent`（根包） | `internal/agentruntime/agent` |
+| `internal/agent/approval` | `internal/agentruntime/agent/approval` |
+| `internal/agent/compaction` | `internal/agentruntime/agent/compaction` |
+| `internal/agent/experts` | `internal/agentruntime/agent/experts` |
+| `internal/agent/native` | `internal/agentruntime/agent/native` |
+| `internal/agent/nativecontract` | `internal/agentruntime/agent/nativecontract` |
+| `internal/agent/nativeprobe` | `internal/agentruntime/agent/nativeprobe` |
+| `internal/agent/opencode` | `internal/agentruntime/agent/opencode` |
+| `internal/agent/persona` | `internal/agentruntime/agent/persona` |
+| `internal/agent/recoverytest` | `internal/agentruntime/agent/recoverytest` |
+| `internal/agent/recoverytest/provider` | `internal/agentruntime/agent/recoverytest/provider` |
+| `internal/agent/runtime` | `internal/agentruntime/agent/runtime` |
+| `internal/agent/skills` | `internal/agentruntime/agent/skills` |
+| `internal/agent/skills/skillhub` | `internal/agentruntime/agent/skills/skillhub` |
+| `internal/agent/subagents` | `internal/agentruntime/agent/subagents` |
+| `internal/agent/token` | `internal/agentruntime/agent/token` |
+| `internal/agent/tools` | `internal/agentruntime/agent/tools` |
+| `internal/agent/trpc` | `internal/agentruntime/agent/trpc` |
+| `internal/application/service/memory` | `internal/agentruntime/memory` |
+| `internal/modelcontext` | `internal/agentruntime/modelcontext` |
 
 共 20 个包、371 个文件（含全部 `_test.go`；`internal/agent/testdata/`、
 `opencode/testdata/protocol-lock.json` 随树搬迁）。move commit 为纯 rename
@@ -60,10 +60,10 @@ container.go 对这 4 个包的 9 处引用均为只读（无对可变导出 var
 
 | 文件:行 | 现内容 | 切换为 |
 |---|---|---|
-| `internal/container/container.go:36` | `"github.com/Tencent/WeKnora/internal/agent/approval"` | `"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"` |
-| `internal/container/container.go:37` | `"github.com/Tencent/WeKnora/internal/agent/experts"` | `"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"` |
-| `internal/container/container.go:38` | `"github.com/Tencent/WeKnora/internal/agent/subagents"` | `"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"` |
-| `internal/container/container.go:54` | `"github.com/Tencent/WeKnora/internal/application/service/memory"` | `"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"` |
+| `internal/container/container.go:36` | `"github.com/Tencent/WeKnora/internal/agent/approval"` | `"github.com/Tencent/WeKnora/internal/agentruntime/agent/approval"` |
+| `internal/container/container.go:37` | `"github.com/Tencent/WeKnora/internal/agent/experts"` | `"github.com/Tencent/WeKnora/internal/agentruntime/agent/experts"` |
+| `internal/container/container.go:38` | `"github.com/Tencent/WeKnora/internal/agent/subagents"` | `"github.com/Tencent/WeKnora/internal/agentruntime/agent/subagents"` |
+| `internal/container/container.go:54` | `"github.com/Tencent/WeKnora/internal/application/service/memory"` | `"github.com/Tencent/WeKnora/internal/agentruntime/memory"` |
 
 切换步骤（Pass B task **B-agentruntime**，非 Pass A）：
 1. 修改上述 4 行 import 路径；
@@ -87,7 +87,7 @@ legacy 文件，Pass B 拆分）；router 文件本身不 import 本模块任何
 
 | 任务类型 | Redis 注册 | Lite 注册 | 处理器 |
 |---|---|---|---|
-| `TypeMemoryExtract` | `internal/router/task.go:323` | `internal/router/sync_task.go:164` | `MemoryService.Handle`（`internal/modules/agentruntime/memory`） |
+| `TypeMemoryExtract` | `internal/router/task.go:323` | `internal/router/sync_task.go:164` | `MemoryService.Handle`（`internal/agentruntime/memory`） |
 
 两处均经 `params.MemoryService`（container 装配的类型）间接引用，router/task 文件
 零 import 本模块。architectureguard 实测：`redis=23 lite=23`，与 F0 基线一致。
@@ -106,7 +106,7 @@ architectureguard 实测 `hooks=58`，与基线一致。
 
 ## 7. 引擎入口与协议面（供 IA3 差异化验证与 Pass B 导航）
 
-- **引擎入口**：`internal/modules/agentruntime/agent`（`Engine`/`Execute`，ReAct 循环：
+- **引擎入口**：`internal/agentruntime/agent`（`Engine`/`Execute`，ReAct 循环：
   think → act → finalize）；durable worker 装配在 `internal/container/agent_runtime.go`
   （`agentruntime.Fence`、`RunKey`、Cancel/Recovery hook）。
 - **Run/Attempt 状态机**：`…/agent/runtime`（fence/lease/run key 契约）；持久化在
@@ -150,7 +150,7 @@ mcp_tool_approval_repository、memory ×4、native ×10）；
 agent_web_pages、mcp_tool_approval_service、native ×6、subagent_delegate）；
 `internal/handler/memory.go`；`internal/handler/session/`（3：agent_run、
 agent_stream_handler、native_archive）—— 见 manifest `legacy_files` 与
-`internal/modules/agentruntime/legacy/README.md`，Pass B task B-agentruntime 按文件拆出。
+`internal/agentruntime/legacy/README.md`，Pass B task B-agentruntime 按文件拆出。
 
 ## 10. IA3 关注：预存横向耦合显形（49 条 forbidden-import，未加豁免）
 
@@ -168,7 +168,7 @@ forbidden-import 扫描（只扫 `internal/modules/<owner>/`）首次覆盖到�
 | agentruntime → airesource/models/utils/ollama | 1 | `agent/recoverytest/provider/main.go` |
 | agentruntime → commercial | 1 | `agent/commercial_adapter.go` |
 | agentruntime → appconnector | 1 | `agent/tools/app_connector.go` |
-| channels/im → agentruntime/agent/tools | 2 | `internal/modules/channels/im/{service,cmd_search}.go` |
+| channels/im → agentruntime/agent/tools | 2 | `internal/channels/im/{service,cmd_search}.go` |
 
 按任务规程**未登记任何豁免、未改守卫工具**；全部移交 IA3 Integrator 裁量
 （登记精确豁免或在 Pass B 收敛）。route/worker/hook 计数不变（633/23+23/58）。

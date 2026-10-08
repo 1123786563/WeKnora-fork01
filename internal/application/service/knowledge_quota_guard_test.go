@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"github.com/stretchr/testify/require"
