@@ -2,7 +2,7 @@ package service
 
 // 本文件承载 K1 摄取域的 R2 消费侧 seam 类型定义（plan 21-knowledge-ingest §6.3，
 // spec §4.2「接口优先定义在使用方模块」）。随上游对齐 round 2 自
-// internal/modules/knowledge/ingest/seams.go 归位至 service 包。
+// internal/knowledge/ingest/seams.go 归位至 service 包。
 // seam 一律构造注入，禁包级 var 注入（spec §4.3）。
 
 import (

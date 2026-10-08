@@ -1,4 +1,4 @@
-// faq.go 迁自 internal/modules/knowledge/faq/faq_handler.go（Pass B
+// faq.go 迁自 internal/knowledge/faq/faq_handler.go（Pass B
 // 23-knowledge-wikifaq K3.2 物理迁出；order 60 handler 批迁回上游布局并
 // 改名 faq.go）。对 handler 包内两个 helper 的依赖恢复为同包直引
 // （迁移前形态）：

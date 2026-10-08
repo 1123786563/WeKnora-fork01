@@ -23,7 +23,7 @@ handler=`internal/handler/`。）
 
 Wiki 域（批量摄取 TypeWikiIngest/TypeWikiFinalize、citation、去重、taxonomy、linkify、
 lint、slug 体系、页面存储）与 FAQ 域（FAQ 导入 TypeFAQImport、批量、创建守卫、克隆同步）
-归入 `internal/modules/knowledge`（建议 `…/knowledge/wiki` 与 `…/knowledge/faq` 两个包）。
+归入 `internal/knowledge`（建议 `…/knowledge/wiki` 与 `…/knowledge/faq` 两个包）。
 `internal/handler/session/wiki_fixer_scope.go` 在横向 session handler 包内（plurality owner
 conversation），**B0.3 Step 3 裁定独占归本域/23-knowledge-wikifaq**，Pass B 细分时随本域
 拆出；其挂在 conversation 属主 `*Handler`（handler.go:24）上的方法拆出时必须去方法化
@@ -39,6 +39,6 @@ Invoke）的挂接改为模块 Start/Stop 语义时保持恢复行为不变（IB
 ## 删除义务
 
 - 上述 18 文件从横向包删除（含 handler/session 内该文件）；
-- `internal/modules/knowledge/docparser` 的 `IsImageFormat`/`IsSimpleFormat`/
+- `internal/knowledge/docparser` 的 `IsImageFormat`/`IsSimpleFormat`/
   `SimpleFormatReader` 别名面中与 wiki/faq 摄取相关消费切至新路径后回收；
 - FAQ 导入对 `internal/application/service` 内非本域符号的引用消除（改模块内依赖）。

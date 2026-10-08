@@ -25,11 +25,11 @@ func fixtureDiscovery() *Discovery {
 		},
 		GoFiles: []string{
 			"internal/application/repository/widget.go",
-			"internal/modules/knowledge/widgets/alias.go",
+			"internal/knowledge/widgets/alias.go",
 			"internal/agentruntime/agent/engine.go",
 		},
 		Imports: map[string][]string{
-			"internal/modules/knowledge/widgets/alias.go": {},
+			"internal/knowledge/widgets/alias.go": {},
 			"internal/agentruntime/agent/engine.go": {
 				"github.com/Tencent/WeKnora/internal/airesource/models/chat",
 			},
@@ -53,7 +53,7 @@ func fixtureGovernance() *Governance {
 				Path:             "internal/application/repository/widget.go",
 				Module:           "knowledge",
 				Plan:             "24-knowledge-process",
-				Destination:      "internal/modules/knowledge/process",
+				Destination:      "internal/knowledge/process",
 				IntegrationOwner: "ib2",
 				DeleteBarrier:    "ib2",
 			},

@@ -25,7 +25,7 @@ git -C .worktrees/passb-b2-datasource rev-parse codex/passb-b2-k-integration
 git -C .worktrees/passb-b2-datasource merge-base --is-ancestor codex/passb-b2-k-integration HEAD; echo "exit=$?"
 # exit=1  → Case A（非祖先，执行对齐 merge）
 git -C .worktrees/passb-b2-datasource merge --no-ff codex/passb-b2-k-integration -m "merge: passb b2-datasource P-2 基线对齐（合入 codex/passb-b2-k-integration @461d8c4b2，Ruling 2026-09-24-WAVE-DEP-BASELINE）"
-# MERGE_EXIT=0，无冲突（计划预判的 docs/plans/passb 冲突未发生：本侧 26-datasource.md 为本侧独有新增、K 系列 plan 文件为 K 侧独有新增，两侧文件集不相交，git 自动合并；internal/modules/knowledge/module.go 无冲突）
+# MERGE_EXIT=0，无冲突（计划预判的 docs/plans/passb 冲突未发生：本侧 26-datasource.md 为本侧独有新增、K 系列 plan 文件为 K 侧独有新增，两侧文件集不相交，git 自动合并；internal/knowledge/module.go 无冲突）
 ```
 
 `git log --oneline -3` 留档：
@@ -45,7 +45,7 @@ afe266402 docs(plan): passb b2-datasource R1 修订——repo 测试随迁补全
 ```bash
 ls docs/architecture/passb/briefs/b2-k-integration.md docs/architecture/evidence/passb/b2-k-integration.md
 # exit 0，两文件在位（25758B / 27780B）
-grep -c "^func RecordKBActivity|^func KBActivityTrigger|^func WithKBActivityTask|^func WithKBActivitySuppressed" internal/modules/knowledge/retrieval/app/kb_activity.go
+grep -c "^func RecordKBActivity|^func KBActivityTrigger|^func WithKBActivityTask|^func WithKBActivitySuppressed" internal/knowledge/retrieval/app/kb_activity.go
 # 4  ✓（K2 导出面就绪）
 grep -n "^func withKnowledgeCleanup" internal/application/service/knowledge_delete_plan.go
 # 22:func withKnowledgeCleanup(ctx context.Context, tenant uint64, bindings map[string]string) context.Context {  ✓（K4 推迟件留守未导出，§2.2 裁定前提成立）

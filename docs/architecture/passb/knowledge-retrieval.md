@@ -24,7 +24,7 @@ handler=`internal/handler/`。）
 
 检索面（TypeIndexDelete 索引清理的 tag 侧、KB 搜索 fanout/fusion/FAQ 混排/分组、
 知识图谱 graph、语义模型目录与能力/策略、semantic outbox/scope epoch 一致性、
-标签体系与访问判定、KB 活动与共享）归入 `internal/modules/knowledge`
+标签体系与访问判定、KB 活动与共享）归入 `internal/knowledge`
 （建议 `…/knowledge/retrieval/app` 应用层，与 A9 已搬入的
 `…/knowledge/retriever`（引擎仓+service）衔接成完整检索栈）。
 注意：`knowledgebase_search_*` 对 `searchutil`、`retriever`（新路径）的消费已在 A9
@@ -34,6 +34,6 @@ handler=`internal/handler/`。）
 
 - 上述 29 文件从横向包删除；
 - A9 guard 移交的预存耦合中归本域的两条改走 airesource 模块门面或登记后于本任务删除：
-  `internal/modules/knowledge/retriever/composite.go` 与
+  `internal/knowledge/retriever/composite.go` 与
   `keywords_vector_hybrid_indexer.go` → `modules/airesource/models/{embedding,utils}`；
 - `semantic_internal` 内部路由（routes_infra.go:14）委托改经模块门面。

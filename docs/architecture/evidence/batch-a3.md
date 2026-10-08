@@ -22,7 +22,7 @@
 
 ## 3. 关键裁决
 
-- **A9 retriever 布局（Critical→已修）**：`service/retriever` 曾落位 `retriever/service/`，与 manifest `to: internal/modules/knowledge/retriever` 不符；控制器裁定 manifest 布局合法（retriever/ 根放 service 包文件 + doris/ 等子目录并存），代码对齐（fb71b3084，12 文件 R100 上移 + 24 处 import 重写 + 3 处文档更正），re-review ADDRESSED。
+- **A9 retriever 布局（Critical→已修）**：`service/retriever` 曾落位 `retriever/service/`，与 manifest `to: internal/knowledge/retriever` 不符；控制器裁定 manifest 布局合法（retriever/ 根放 service 包文件 + doris/ 等子目录并存），代码对齐（fb71b3084，12 文件 R100 上移 + 24 处 import 重写 + 3 处文档更正），re-review ADDRESSED。
 - **lint 债（MOVED 文件）**：变更范围扩大使 13 个预存 lint 问题（lll/revive/unused）在纯改名文件（internal/agentruntime/**）中显形；控制器裁定不加 nolint（保 R100 纯移动证据链），记为在册 lint 债，Pass B B-agentruntime 收敛。importer 侧 15 项已修（e24e67d04）。
 
 ## 4. 门禁结果

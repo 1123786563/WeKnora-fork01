@@ -84,13 +84,13 @@ go test -count=1 -v ./internal/handler/ -run 'TestComputeChunkSizeStats|TestPrev
 
 ### 新实现（ingest 包，搬迁后重跑同清单，2026-09-25 K1.7 采集）
 
-命令原文（T0 三条命令的 -run 模式合并为一条——9 文件 + 11 随迁测试已同包落位 `internal/modules/knowledge/ingest`，逐字保留全部用例名模式）：
+命令原文（T0 三条命令的 -run 模式合并为一条——9 文件 + 11 随迁测试已同包落位 `internal/knowledge/ingest`，逐字保留全部用例名模式）：
 
 ```bash
-go test -count=1 -v ./internal/modules/knowledge/ingest/ -run 'TestDiffFAQChunkIDsByContentHash|TestFAQChunkDiff|TestTagFieldUpdatesReturnAllAffectedChunks|TestSaveChunkRevisionIsAtomicAndOptimistic|TestCreateChunks|TestKnowledgeTag_SQLite|TestValidateEditedChunkImages|TestImageChildMatchesEditedContent|TestSyncEditedChunkImages|TestBuildSampleDataDescription|TestShouldDropOrphanedMultimodal|TestImageMultimodalHandle|TestSanitizeOCRText|TestBuildVLMCaptionPrompt|TestValidateParserOverrideURLs|TestComputeChunkSizeStats|TestPreviewChunking'
+go test -count=1 -v ./internal/knowledge/ingest/ -run 'TestDiffFAQChunkIDsByContentHash|TestFAQChunkDiff|TestTagFieldUpdatesReturnAllAffectedChunks|TestSaveChunkRevisionIsAtomicAndOptimistic|TestCreateChunks|TestKnowledgeTag_SQLite|TestValidateEditedChunkImages|TestImageChildMatchesEditedContent|TestSyncEditedChunkImages|TestBuildSampleDataDescription|TestShouldDropOrphanedMultimodal|TestImageMultimodalHandle|TestSanitizeOCRText|TestBuildVLMCaptionPrompt|TestValidateParserOverrideURLs|TestComputeChunkSizeStats|TestPreviewChunking'
 ```
 
-结果摘要（退出码 0；`ok  github.com/Tencent/WeKnora/internal/modules/knowledge/ingest  1.391s`）：
+结果摘要（退出码 0；`ok  github.com/Tencent/WeKnora/internal/knowledge/ingest  1.391s`）：
 
 | 指标 | T0（三包分跑） | K1.7（ingest 单包） | 等价 |
 |---|---|---|---|
@@ -128,7 +128,7 @@ go test -count=1 -v ./internal/modules/knowledge/ingest/ -run 'TestDiffFAQChunkI
 
 ## §8 计数基线登记：legacy 台账 396 → 391（K1.6，Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION）
 
-- **变更**：4 个宿主过渡 shim 以「knowledge.yaml legacy_files 行 + ownership-matrix.yaml 行」成对补行（Ruling 方案 a，K1.1 报告遗留 1 升级、协调者 2026-09-25 批准）：`internal/application/repository/chunk_ingest_shim.go`、`internal/application/service/chunk_ingest_shim.go`、`internal/application/service/span_trace_seam_adapter.go`、`internal/handler/chunk_ingest_shim.go`（manifest reason「Pass B 过渡 shim，ib2 同 commit 随文件删行」/passb_task=B-knowledge；matrix module=knowledge/plan=21-knowledge-ingest/destination=internal/modules/knowledge/ingest/integration_owner=delete_barrier=ib2）。
+- **变更**：4 个宿主过渡 shim 以「knowledge.yaml legacy_files 行 + ownership-matrix.yaml 行」成对补行（Ruling 方案 a，K1.1 报告遗留 1 升级、协调者 2026-09-25 批准）：`internal/application/repository/chunk_ingest_shim.go`、`internal/application/service/chunk_ingest_shim.go`、`internal/application/service/span_trace_seam_adapter.go`、`internal/handler/chunk_ingest_shim.go`（manifest reason「Pass B 过渡 shim，ib2 同 commit 随文件删行」/passb_task=B-knowledge；matrix module=knowledge/plan=21-knowledge-ingest/destination=internal/knowledge/ingest/integration_owner=delete_barrier=ib2）。
 - **计数构成**：396 − 9（K1.1–K1.5 迁移删行，Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 范畴，本窗口补台账登记）+ 4（shim 行）= **391**；`tools/passbguard/ownership_test.go` wantPerModule knowledge 84→79 纯机械修正（判定逻辑不变，沿 Ruling 1 的 appconnector 7→1 先例）。台账条目落 `docs/architecture/evidence/pass-a-acceptance.md` §6（本分支新增该节；并行兄弟分支各自登记本分支基线，ib2 集成侧按 F5 口径合并复核）。
 - **ib2 闭环义务**：k-integration/ib2 收口时 shim 文件与其 manifest/matrix 行同 commit 删除，届时计数回落同样走 §8 登记（已写入 Brief 删除批）。
 - **验证命令与退出码**：见 K1.6 报告 §2——`make check-backend-architecture` 退出码 **0**（4 条 legacy-guard 全消解）、`make verify-module-moves` 退出码 0、`go run ./tools/passbguard -root .` 零新增诊断类别。

@@ -128,7 +128,7 @@ R1 导出改名（迁移 commit b981d13e3 / f6dfba041 内，行为零变化；�
 实测命令（2026-09-25，本 worktree HEAD）：
 
 ```
-grep -rn 'IsImageFormat\|IsSimpleFormat\|SimpleFormatReader' internal/modules/knowledge/wiki/ internal/modules/knowledge/faq/
+grep -rn 'IsImageFormat\|IsSimpleFormat\|SimpleFormatReader' internal/knowledge/wiki/ internal/knowledge/faq/
 # 退出码 1（零命中）
 ```
 

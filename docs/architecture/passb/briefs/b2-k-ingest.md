@@ -42,16 +42,16 @@ ledger 严格解码失败掩蔽；ocr-r1-1 修复后可见，2026-09-25 实测�
 1. **contracts.yaml 消费方路径更新**（3 条 contract-consumer-file-missing）：
    `airesource.model-service` / `knowledge.chunk-service` / `workbench.task-enqueuer`
    三个契约的 consumers 中 `internal/application/service/chunk.go` →
-   `internal/modules/knowledge/ingest/chunk_service.go`。
+   `internal/knowledge/ingest/chunk_service.go`。
 2. **contracts.yaml 消费方补录**（6 条 contract-consumer-unrecorded）：新文件
-   `internal/modules/knowledge/ingest/chunk_service.go`（ModelService/ChunkService/TaskEnqueuer）、
+   `internal/knowledge/ingest/chunk_service.go`（ModelService/ChunkService/TaskEnqueuer）、
    `internal/application/service/chunk_ingest_shim.go`（ModelService/ChunkService/TaskEnqueuer）、
    `internal/application/service/span_trace_seam_adapter.go`（TaskEnqueuer）按各契约
    consumers 登记（shim/适配器为过渡物，ib2 删除时同步去行）。
 3. **event-catalog.yaml knowledge.index.completed 路径更新**（event-catalog.yaml:159/:166）：
    producer `internal/application/service/chunk.go:CreateChunks` →
-   `internal/modules/knowledge/ingest/chunk_service.go:CreateChunks`；consumers 中
-   `internal/application/repository/chunk.go` → `internal/modules/knowledge/ingest/chunk_repo.go`
+   `internal/knowledge/ingest/chunk_service.go:CreateChunks`；consumers 中
+   `internal/application/repository/chunk.go` → `internal/knowledge/ingest/chunk_repo.go`
    （后者由 K1.1 迁移，该诊断自 K1.1 起已存在）。
 
 ## 4. K1.3（extract.go 搬迁）交付的 shim/seam/窄端口义务（K5/ib2 集成工程师执行）
@@ -188,7 +188,7 @@ ledger 严格解码失败掩蔽；ocr-r1-1 修复后可见，2026-09-25 实测�
 
 ## 10. exc-0088 删除批及 airesource 门面前置（plan §7.3）
 
-- exc-0088（exception-ledger.yaml，owner=21-knowledge-ingest，remove_at=ib2）：`internal/modules/knowledge/docparser/weknoracloud_http_reader.go` import `airesource/models/utils` 仅用 `utils.Sign`（:237 → signer.go:24）。
+- exc-0088（exception-ledger.yaml，owner=21-knowledge-ingest，remove_at=ib2）：`internal/knowledge/docparser/weknoracloud_http_reader.go` import `airesource/models/utils` 仅用 `utils.Sign`（:237 → signer.go:24）。
 - 前置（属 airesource/ib2 契约动作，非本节点）：airesource 根门面现为零逻辑骨架（`internal/airesource/module.go` 无导出符号，K1.6 会话实测），无合法替代 import 可切。ib2 删除批 = airesource 根门面暴露 `Sign` 或等价端口 → docreader 消费切换 → 删 exc-0088 行。
 - 本节点不删行、不改 docparser 文件（Pass A 已在模块内，非本节点 9 文件）。
 

@@ -1,6 +1,6 @@
 // Pass B (23-knowledge-wikifaq) 过渡 shim — 删除点 ib2（Integration Brief 登记）。
 //
-// D1：FAQ 域五文件 + handler/faq.go 已迁入 internal/modules/knowledge/faq
+// D1：FAQ 域五文件 + handler/faq.go 已迁入 internal/knowledge/faq
 // （K3.2）。本文件在宿主 *knowledgeService 上保留全部 FAQ 面方法，逐条一行
 // 委托到 Service：
 //

@@ -219,12 +219,12 @@ owned_files:
   - internal/infrastructure/chunker
   - internal/infrastructure/docparser
   module_files:
-    - internal/modules/knowledge/README.md
-    - internal/modules/knowledge/module.go
-    - internal/modules/knowledge/legacy/README.md
+    - internal/knowledge/README.md
+    - internal/knowledge/module.go
+    - internal/knowledge/legacy/README.md
 test_commands:
-  - go test ./internal/modules/knowledge/... -count=1
-  - "go test -tags anydoc -count=1 ./internal/modules/knowledge/docparser/...  # mirrors .github/workflows/anydoc.yml"
+  - go test ./internal/knowledge/... -count=1
+  - "go test -tags anydoc -count=1 ./internal/knowledge/docparser/...  # mirrors .github/workflows/anydoc.yml"
 integration_points:
   routes:
   - RegisterChunkerDebugRoutes — internal/router/routes_knowledge.go:18

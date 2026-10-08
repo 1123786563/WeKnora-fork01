@@ -48,7 +48,7 @@ forbidden_shared_files:           # router/container/全局 worker 注册/go.mod
    保持相对结构（如 `internal/agent/approval` → `internal/agentruntime/agent/approval`）。
    若无已拥有祖先包、但某祖先目录本身不是 Go 包且其下全部仓库包都属于本模块，
    则以该目录为搬移树根保留结构（`internal/application/repository/retriever/*` →
-   `internal/modules/knowledge/retriever/*`；`internal/models/*` → `internal/airesource/models/*`）。
+   `internal/knowledge/retriever/*`；`internal/models/*` → `internal/airesource/models/*`）。
 2. **别名**：每个 move_package 在旧路径留一个无逻辑转发别名包（Pass A 建议用 type alias +
    var/func 转发；不承载逻辑），与 move_packages 一一对应，Pass B `B-<module>` 删除。
 3. **legacy_files 粒度**：仅列非测试 `.go` 文件；同目录 `_test.go` 随其主题文件一并搬迁，不单列。

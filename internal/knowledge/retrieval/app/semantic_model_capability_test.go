@@ -8,7 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
-	repository "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
+	repository "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"

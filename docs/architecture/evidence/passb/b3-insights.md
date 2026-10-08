@@ -27,8 +27,8 @@ git -C .worktrees/passb-b3-insights merge-base --is-ancestor a2fbcf55e HEAD && e
 ### P-3 ib2 冻结门面在位（required_contracts 自核）
 
 ```bash
-ls internal/modules/knowledge/{ingest,retrieval,process,wiki}   # 四目录均存在 → P3-dirs: OK
-grep -c "^func RecordKBActivity" internal/modules/knowledge/retrieval/app/kb_activity.go
+ls internal/knowledge/{ingest,retrieval,process,wiki}   # 四目录均存在 → P3-dirs: OK
+grep -c "^func RecordKBActivity" internal/knowledge/retrieval/app/kb_activity.go
 # 1（≥1，K2 导出面就绪）
 grep -n "^func deleteReferencedKnowledge" internal/application/service/knowledge_delete_plan.go
 # 36:func deleteReferencedKnowledge(

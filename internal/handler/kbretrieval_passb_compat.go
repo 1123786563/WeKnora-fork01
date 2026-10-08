@@ -1,7 +1,7 @@
 package handler
 
 // Pass B 宿主兼容层（b2-k-retrieval / K2.6）：retrieval handler 3 文件曾物理迁移至
-// internal/modules/knowledge/retrieval/app/handler（docs/plans/passb/22-knowledge-retrieval.md §5.5 行 3）。
+// internal/knowledge/retrieval/app/handler（docs/plans/passb/22-knowledge-retrieval.md §5.5 行 3）。
 // order 60 handler 批：tag.go 与 tag_delete_test.go 已迁回本包（真身 TagHandler/
 // NewTagHandler 同名同签名），Tag 侧别名随批删除；semantic_internal.go 与
 // semantic_model_policy.go 仍留驻模块包（keepInPlace 待后续裁定），本文件继续为
@@ -10,7 +10,7 @@ package handler
 // 删除点：ib2 集成屏障直连后（Integration Brief 指令），随 manifest compat 登记行一并删除。
 
 import (
-	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
+	kbretrieval "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 )
 
 // --- type 别名（routes_infra.go:14、container.go）---

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/config"
-	service "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
+	service "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

@@ -19,9 +19,9 @@
 
 | 命令 | 结果 | 计数 | 与 T0 比对 |
 |---|---|---|---|
-| `go test -count=1 ./internal/modules/knowledge/wiki/...` | ok | 130 PASS / 0 FAIL / 0 SKIP | 集合 = T0 基线 85（repo 2 + service 83）+ session 5 + 测试类目展开（`-v` 顶层 RUN 计数口径：T0 顶层 92 → 迁入后同断言全 PASS；TestRepairContentLinks 移至宿主真实 seam 双跑，见 §1.3） |
+| `go test -count=1 ./internal/knowledge/wiki/...` | ok | 130 PASS / 0 FAIL / 0 SKIP | 集合 = T0 基线 85（repo 2 + service 83）+ session 5 + 测试类目展开（`-v` 顶层 RUN 计数口径：T0 顶层 92 → 迁入后同断言全 PASS；TestRepairContentLinks 移至宿主真实 seam 双跑，见 §1.3） |
 | `go test -count=1 ./internal/handler/session/... ./internal/application/service/ -run 'Wiki'` | ok | — | K4 留驻（knowledge_post_process_wiki_enqueue_test.go、knowledge_move_wiki_test.go、knowledge_summary_test.go、knowledge_housekeeping_test.go）经 W1/W2 PASS |
-| `go test -count=1 ./internal/modules/knowledge/kbfreeze/` | ok | 2 守卫 | R0 冻结面零违反 |
+| `go test -count=1 ./internal/knowledge/kbfreeze/` | ok | 2 守卫 | R0 冻结面零违反 |
 | `go test -count=1 ./internal/application/repository/`（全包） | ok（357s） | — | escapeLikePattern/哨兵留驻拓扑下 tenant_member 等全量绿 |
 | `make verify-module-moves` | `modulemove: OK (16 manifests verified)` | — | 12 wiki 行已删、5 兼容行已登记 |
 | `make check-backend-architecture` | `OK (0 violations)`，`total=633 \| redis=23 lite=23 \| hooks=58` | — | 路由/worker/hook 计数与 pass-a-acceptance 台账一致（§8 三方一致） |
@@ -75,13 +75,13 @@ T0 用例集合：service 18 = `TestFAQImportCompletedOutcome`、`TestFAQImportA
 
 | 命令 | 结果 | 计数 | 与 T0 比对 |
 |---|---|---|---|
-| `go test -count=1 ./internal/modules/knowledge/faq/` | ok | 8 顶层 PASS / 0 FAIL / 0 SKIP | = 3 守卫用例 + 3 filter 用例（同用例同断言随迁）+ 2 个 K3.2 Step 2 新锚定（TestNewService*，构造器接线/指针共享）；filter 第三用例断言面见 §2.4 |
+| `go test -count=1 ./internal/knowledge/faq/` | ok | 8 顶层 PASS / 0 FAIL / 0 SKIP | = 3 守卫用例 + 3 filter 用例（同用例同断言随迁）+ 2 个 K3.2 Step 2 新锚定（TestNewService*，构造器接线/指针共享）；filter 第三用例断言面见 §2.4 |
 | `go test -count=1 ./internal/application/service/ -run 'FAQ'` | ok | 15 顶层 PASS / 0 FAIL / 0 SKIP | = T0 18 − 随迁 3 守卫用例（精确差集，见 §2.5） |
 | `go test -count=1 ./internal/application/service/ -run 'FAQ\|Knowledge'` | ok | — | K2/K4 留驻面（含 clone/move、semantic scope、replace）经 D1 委托 PASS |
 | `go test -count=1 ./internal/handler/... ./internal/router/...` | ok（4 包） | — | H2 类型别名下 routes 注册与 `&handler.FAQHandler{}` 零字段字面量合法 |
 | `go build ./...` | exit 0 | — | knowledgeService 仍实现 interfaces.KnowledgeService（冻结端口满足性=编译器强制；接口零改动） |
-| `go vet ./internal/modules/knowledge/faq/... ./internal/application/service/` | exit 0 | — | sync.Map 指针共享无复制告警 |
-| `go test -count=1 ./internal/modules/knowledge/...` | ok（全域） | — | 含 kbfreeze 2 守卫：faq 包无影子类型（R0） |
+| `go vet ./internal/knowledge/faq/... ./internal/application/service/` | exit 0 | — | sync.Map 指针共享无复制告警 |
+| `go test -count=1 ./internal/knowledge/...` | ok（全域） | — | 含 kbfreeze 2 守卫：faq 包无影子类型（R0） |
 | `make verify-module-moves` | `modulemove: OK (16 manifests verified)` | — | faq 侧 6 legacy 行已删、D1/H2 已登记 |
 | `make check-backend-architecture` | `OK (0 violations)`，`total=633 \| redis=23 lite=23 \| hooks=58` | — | 计数奇偶不变（§8 三方一致） |
 
@@ -123,7 +123,7 @@ T0 service 18 − {TestAcquireFAQCreateGuard×3}（随迁 faq 包，3/3 PASS）=
 - **finding（critical）**：knowledge_faq_import.go `deleteFAQChunkVectors` 的 `knowledge.StorageSize` 扣减块在迁移 commit f6dfba041 中被误移入 `AdjustStorageUsed` 的 `err == nil` 分支内（BASE：tenant 记账失败仍扣减并经 UpdateKnowledge 持久化）——手写转录 2882 行文件时引入的大括号层级错误，未申报的行为变化（纯移动违规）。
 - **修复**：恢复 BASE 结构（`git show BASE:internal/application/service/knowledge_faq_import.go | sed -n '2160,2179p'` 与 HEAD 逐行比对确认）；fix commit 见分支 log。
 - **全面自查（防同类）**：对 5 个 service 侧迁移文件做「HEAD 逆向机械变换（package/接收者/seam 前缀/R1 改名）→ 与 BASE diff」——knowledge_faq_batch.go、knowledge_faq_create_guard.go 0 差异；faq_clone_sync.go/knowledge_faq.go/knowledge_faq_import.go 仅剩 22 行 R1 导出注释；faq_handler.go 仅剩 seam 机制声明差异（字段/构造器/访问器/2 调用点）；knowledge_faq_create_guard_test.go 仅剩构造面等价改写（`&knowledgeService{redisClient}`→`NewService(Deps{RedisClient})`）+注释。**无其他行为差异。**
-- **修复后复跑**：`go build ./...` exit0；`go test -count=1 ./internal/modules/knowledge/faq/...` ok；`go test -count=1 ./internal/application/service/ -run 'FAQ|Knowledge'` ok；`go test -count=1 ./internal/modules/knowledge/...` exit0；`make verify-module-moves` OK；`make check-backend-architecture` OK（633/23+23/58 不变）；`gofmt -l` 空。
+- **修复后复跑**：`go build ./...` exit0；`go test -count=1 ./internal/knowledge/faq/...` ok；`go test -count=1 ./internal/application/service/ -run 'FAQ|Knowledge'` ok；`go test -count=1 ./internal/knowledge/...` exit0；`make verify-module-moves` OK；`make check-backend-architecture` OK（633/23+23/58 不变）；`gofmt -l` 空。
 
 ## 3. K3.4 终稿 — 计划 §8 高风险差分四行终表 + hook 恢复手工差分（2026-09-25 实跑）
 
@@ -131,8 +131,8 @@ T0 service 18 − {TestAcquireFAQCreateGuard×3}（随迁 faq 包，3/3 PASS）=
 
 | 面（计划 §8） | 锚定用例清单 | 双跑命令与结果 | 等价比对结论 |
 |---|---|---|---|
-| ① `TypeWikiIngest`/`TypeWikiFinalize` 状态机 | `TestEnqueueWikiFinalizeOnlySchedulesAcceptedRows`、`TestProcessWikiFinalizeDefersFolderPruneWhileIngestIsPending`、`TestIsTransientLLMError_*` 5 用例、`TestWikiDeletedKnowledgeBaseCleanupFailureRetries`、guard 双任务类型 drain 用例（wiki_ingest_test.go / wiki_ingest_retry_test.go / wiki_ingest_dedup_test.go / wiki_deleted_kb_guard_test.go） | T0：§0（repo 2 + service 85/92 顶层口径）；T1/T2 终态：`go test -count=1 -v ./internal/modules/knowledge/wiki/` → **132 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0） | **等价**（§1.2 逐用例）：`wiki-finalize-<kbID>` TaskID 去重、5-docs-per-batch fan-out（`WikiMaxDocsPerBatch=5`）、MaxRetry 10、Timeout 60/30min、ErrWikiIngestConcurrent 同实例退避全部保留；132 = K3.1 记录 130 + OCR R1 回归 2（commit `7ffaf6cc4` seams_test.go 增 `TestNewSpanNormalizesNilAndTypedNil`/`TestSpanWrapperControlFlowParity`，git log 实证） |
-| ② FAQ 导入 `TypeFAQImport` | `TestAcquireFAQCreateGuard{RejectsConcurrentSameQuestion,IsolatesUnrelatedCreates,FallsBackWithoutRedis}`（随迁）、`TestParseOptionalFAQEnabled`/`TestFAQListEntries{Passes,Rejects}…`（随迁）、`TestNewService*` 2 锚定、留驻 `TestFAQImport{CompletedOutcome,ActivityDetails}` 等 15（经垫片委托） | T0：§2.1（service 18 + handler 3）；T1/T2 终态：`go test -count=1 -v ./internal/modules/knowledge/faq/` → **8 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0）；`go test -count=1 ./internal/application/service/ -run 'FAQ'` → 15 顶层 PASS（§2.2） | **等价**（§2.3/§2.5 逐用例）：dry-run 零写入、memFAQProgress 指针共享、失败 CSV 生成、断点续跑/幂等；集合差 = 随迁 3 守卫用例，逐一比对无缺漏 |
+| ① `TypeWikiIngest`/`TypeWikiFinalize` 状态机 | `TestEnqueueWikiFinalizeOnlySchedulesAcceptedRows`、`TestProcessWikiFinalizeDefersFolderPruneWhileIngestIsPending`、`TestIsTransientLLMError_*` 5 用例、`TestWikiDeletedKnowledgeBaseCleanupFailureRetries`、guard 双任务类型 drain 用例（wiki_ingest_test.go / wiki_ingest_retry_test.go / wiki_ingest_dedup_test.go / wiki_deleted_kb_guard_test.go） | T0：§0（repo 2 + service 85/92 顶层口径）；T1/T2 终态：`go test -count=1 -v ./internal/knowledge/wiki/` → **132 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0） | **等价**（§1.2 逐用例）：`wiki-finalize-<kbID>` TaskID 去重、5-docs-per-batch fan-out（`WikiMaxDocsPerBatch=5`）、MaxRetry 10、Timeout 60/30min、ErrWikiIngestConcurrent 同实例退避全部保留；132 = K3.1 记录 130 + OCR R1 回归 2（commit `7ffaf6cc4` seams_test.go 增 `TestNewSpanNormalizesNilAndTypedNil`/`TestSpanWrapperControlFlowParity`，git log 实证） |
+| ② FAQ 导入 `TypeFAQImport` | `TestAcquireFAQCreateGuard{RejectsConcurrentSameQuestion,IsolatesUnrelatedCreates,FallsBackWithoutRedis}`（随迁）、`TestParseOptionalFAQEnabled`/`TestFAQListEntries{Passes,Rejects}…`（随迁）、`TestNewService*` 2 锚定、留驻 `TestFAQImport{CompletedOutcome,ActivityDetails}` 等 15（经垫片委托） | T0：§2.1（service 18 + handler 3）；T1/T2 终态：`go test -count=1 -v ./internal/knowledge/faq/` → **8 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0）；`go test -count=1 ./internal/application/service/ -run 'FAQ'` → 15 顶层 PASS（§2.2） | **等价**（§2.3/§2.5 逐用例）：dry-run 零写入、memFAQProgress 指针共享、失败 CSV 生成、断点续跑/幂等；集合差 = 随迁 3 守卫用例，逐一比对无缺漏 |
 | ③ `recoverPendingWikiTasks` 重启恢复（hook 恢复手工差分，**K3.4 新增双跑**） | `TestRecoverPendingWikiTasks_RecreatesOneTriggerPerLaneAndKB`（reset_pending_tasks_test.go:355，构造 knowledge_bases 3 行 active×2+deleted×1 与 task_pending_ops 6 行：同 lane 重复 ×2、finalize lane、跨租户、kb-deleted、kb-missing）、`TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart`(:191)、`TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks`(:216) | **双跑**（同命令 `go test -count=1 -v ./internal/container/ -run 'TestRecoverPendingWikiTasks_RecreatesOneTriggerPerLaneAndKB|TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart|TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks'`）：旧侧 = 临时 worktree `git worktree add --detach /tmp/k34-base-1c9d812d 1c9d812d0`（迁移前基线），新侧 = 本分支 HEAD。两侧输出**逐字节一致**：`[WikiRecovery] removed 2 pending row(s) for deleted knowledge bases` + `recreated 3 trigger(s) from durable pending queues`，3/3 PASS，exit 0 | **等价**（§3.2 逐项论证）：重建数 3=3（同 lane 单 trigger）、fail-closed 清除数 2=2（deleted+missing）、payload 租户路由断言（7/7/8）双侧 PASS；Timeout 60/30min、MaxRetry 10、`asynq.TaskID("wiki-finalize-"+scopeID)` 去重——recover_pending_wiki_tasks.go 本节点零改动（§3.2） |
 | ④ Wiki 页面/文件夹操作 | wiki_page_test.go、wiki_page_revision_test.go、wiki_folder_prune_finalize_test.go、wiki_slug_handles_test.go、wiki_linkify_test.go、wiki_page_repository_test.go（4 哨兵） | 同①包内运行（132/132）；`TestRepairContentLinks` 宿主真实 seam 双跑见 §1.3（3/3 子用例 PASS） | **等价**（§1.2/§1.3）：冻结 WikiPageService 方法集逐用例一致；`ErrWikiPageNotFound/ErrWikiFolderNotFound/ErrWikiFolderNotEmpty/ErrWikiFolderConflict` 4 哨兵标识不变（随迁包内符号，断言未动） |
 
@@ -158,7 +158,7 @@ T0 service 18 − {TestAcquireFAQCreateGuard×3}（随迁 faq 包，3/3 PASS）=
 | 命令（原文） | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | 0 | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接器警告，与迁移无关） |
-| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 18 个有测试包全 `ok`、0 `FAIL`（含 `…/knowledge/faq`、`…/kbfreeze`、`…/wiki`） |
+| `go test -count=1 ./internal/knowledge/...` | 0 | 18 个有测试包全 `ok`、0 `FAIL`（含 `…/knowledge/faq`、`…/kbfreeze`、`…/wiki`） |
 | `make check-backend-architecture` | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
 | `git diff --stat 1c9d812d0..HEAD` | 0 | `57 files changed, 2326 insertions(+), 556 deletions(-)`（K3.4 commit 仅追加修改已列 2 产物文件，路径集合不变） |

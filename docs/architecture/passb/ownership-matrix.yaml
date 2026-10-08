@@ -200,37 +200,37 @@ legacy_files:
   - path: internal/application/repository/kbshare.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_span_repo.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_tag.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/knowledgebase.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/mcp_metadata.go
@@ -806,151 +806,151 @@ legacy_files:
   - path: internal/application/service/kbshare.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_auto_tag.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_clone_move.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_create.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_delete.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_delete_plan.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_housekeeping.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_post_process.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_process.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_process_config.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_reparse_scope.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_replace.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_span_tracker.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_summary_refresh.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_util.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_fanout.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_faq.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_fusion.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_results.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_shared.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase_search_storegroup.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/mcp_metadata.go
@@ -1088,7 +1088,7 @@ legacy_files:
   - path: internal/application/service/semantic_model.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/semantic_model_budget.go
@@ -1178,13 +1178,13 @@ legacy_files:
   - path: internal/application/service/tag.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/tag_access.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/temporary_document.go
@@ -1532,19 +1532,19 @@ legacy_files:
   - path: internal/handler/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/knowledge_download.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/knowledgebase.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/mcp_credentials.go
@@ -2014,25 +2014,25 @@ legacy_files:
   - path: internal/application/repository/chunk_ingest_shim.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/chunk_ingest_shim.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/span_trace_seam_adapter.go
     module: knowledge
     plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
+    destination: internal/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kbprocess_passb_compat.go
     module: knowledge
     plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
+    destination: internal/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
 
@@ -2042,43 +2042,43 @@ legacy_files:
   - path: internal/application/repository/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/repository/wiki_k3_repo_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
+    destination: internal/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_faq_k3_delegate.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
+    destination: internal/knowledge/faq
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/wiki_k3_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/wiki_k3_ctor_compat.go
     module: knowledge
     plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
+    destination: internal/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/kbretrieval_passb_compat.go
     module: knowledge
     plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app/handler
+    destination: internal/knowledge/retrieval/app/handler
     integration_owner: ib2
     delete_barrier: ib2
 aliases:

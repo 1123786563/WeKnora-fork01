@@ -2,7 +2,7 @@
 
 Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 brief 只覆盖
 其 legacy_files 的**摄取子集**（9 文件）。已搬入模块的引擎包
-（`internal/modules/knowledge/chunker`、`docparser(+anydoc)`）不再动。
+（`internal/knowledge/chunker`、`docparser(+anydoc)`）不再动。
 
 ## Scope（legacy_files 子集，9 文件）
 
@@ -20,7 +20,7 @@ Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 
 
 把"上传 → 解析（docparser）→ 分块（chunker）→ chunk 持久化/内容索引"的应用层入口
 从横向包 `internal/application/{repository,service}` 与 `internal/handler` 拆出，
-归入 `internal/modules/knowledge`（建议落位 `…/knowledge/ingest`，与 A9 已就位的
+归入 `internal/knowledge`（建议落位 `…/knowledge/ingest`，与 A9 已就位的
 chunker/docparser/searchutil 同模块互联），handler 薄层改为模块路由注册。
 
 ## 删除义务

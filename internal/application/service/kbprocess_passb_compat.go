@@ -2,7 +2,7 @@ package service
 
 // Pass B 宿主兼容层（b2-k-process / K4.2）：service 独立面自包含子集 3 文件
 // （knowledge_write.go、knowledge_index_content.go、knowledge_task_options.go）
-// 已物理迁移至 internal/modules/knowledge/process（docs/plans/passb/
+// 已物理迁移至 internal/knowledge/process（docs/plans/passb/
 // 24-knowledge-process.md §3.1；Ruling 2026-09-25-DEFERRED-FILE-SPLIT 收缩迁移，
 // span_tracker/housekeeping 两对生产+测试因 Mimosa DDL 测试常量阻断成对推迟，
 // 留守宿主原生解析，故本文件不含其别名面）。

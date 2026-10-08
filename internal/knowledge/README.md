@@ -11,24 +11,24 @@
 
 | 现路径 | 目标路径 |
 |---|---|
-| `internal/application/repository/retriever/doris` | `internal/modules/knowledge/retriever/doris` |
-| `internal/application/repository/retriever/elasticsearch` | `internal/modules/knowledge/retriever/elasticsearch` |
-| `internal/application/repository/retriever/elasticsearch/v7` | `internal/modules/knowledge/retriever/elasticsearch/v7` |
-| `internal/application/repository/retriever/elasticsearch/v8` | `internal/modules/knowledge/retriever/elasticsearch/v8` |
-| `internal/application/repository/retriever/milvus` | `internal/modules/knowledge/retriever/milvus` |
-| `internal/application/repository/retriever/neo4j` | `internal/modules/knowledge/retriever/neo4j` |
-| `internal/application/repository/retriever/opensearch` | `internal/modules/knowledge/retriever/opensearch` |
-| `internal/application/repository/retriever/postgres` | `internal/modules/knowledge/retriever/postgres` |
-| `internal/application/repository/retriever/qdrant` | `internal/modules/knowledge/retriever/qdrant` |
-| `internal/application/repository/retriever/sqlite` | `internal/modules/knowledge/retriever/sqlite` |
-| `internal/application/repository/retriever/tencentvectordb` | `internal/modules/knowledge/retriever/tencentvectordb` |
-| `internal/application/repository/retriever/weaviate` | `internal/modules/knowledge/retriever/weaviate` |
-| `internal/application/service/retriever` | `internal/modules/knowledge/retriever` |
-| `internal/infrastructure/chunker` | `internal/modules/knowledge/chunker` |
-| `internal/infrastructure/docparser` | `internal/modules/knowledge/docparser` |
-| `internal/infrastructure/docparser/anydoc` | `internal/modules/knowledge/docparser/anydoc` |
-| `internal/infrastructure/semantic` | `internal/modules/knowledge/semantic` |
-| `internal/searchutil` | `internal/modules/knowledge/searchutil` |
+| `internal/application/repository/retriever/doris` | `internal/knowledge/retriever/doris` |
+| `internal/application/repository/retriever/elasticsearch` | `internal/knowledge/retriever/elasticsearch` |
+| `internal/application/repository/retriever/elasticsearch/v7` | `internal/knowledge/retriever/elasticsearch/v7` |
+| `internal/application/repository/retriever/elasticsearch/v8` | `internal/knowledge/retriever/elasticsearch/v8` |
+| `internal/application/repository/retriever/milvus` | `internal/knowledge/retriever/milvus` |
+| `internal/application/repository/retriever/neo4j` | `internal/knowledge/retriever/neo4j` |
+| `internal/application/repository/retriever/opensearch` | `internal/knowledge/retriever/opensearch` |
+| `internal/application/repository/retriever/postgres` | `internal/knowledge/retriever/postgres` |
+| `internal/application/repository/retriever/qdrant` | `internal/knowledge/retriever/qdrant` |
+| `internal/application/repository/retriever/sqlite` | `internal/knowledge/retriever/sqlite` |
+| `internal/application/repository/retriever/tencentvectordb` | `internal/knowledge/retriever/tencentvectordb` |
+| `internal/application/repository/retriever/weaviate` | `internal/knowledge/retriever/weaviate` |
+| `internal/application/service/retriever` | `internal/knowledge/retriever` |
+| `internal/infrastructure/chunker` | `internal/knowledge/chunker` |
+| `internal/infrastructure/docparser` | `internal/knowledge/docparser` |
+| `internal/infrastructure/docparser/anydoc` | `internal/knowledge/docparser/anydoc` |
+| `internal/infrastructure/semantic` | `internal/knowledge/semantic` |
+| `internal/searchutil` | `internal/knowledge/searchutil` |
 
 ## 横向包遗留文件（legacy_files）
 
@@ -66,8 +66,8 @@ func (m *Module) Stop(ctx context.Context) error
 
 ## 验收命令
 
-- `go test ./internal/modules/knowledge/... -count=1`
-- `go test -tags anydoc -count=1 ./internal/modules/knowledge/docparser/...  # mirrors .github/workflows/anydoc.yml`
+- `go test ./internal/knowledge/... -count=1`
+- `go test -tags anydoc -count=1 ./internal/knowledge/docparser/...  # mirrors .github/workflows/anydoc.yml`
 
 导入方（import-path 修复对象，12 个）与禁改共享文件见同目录 manifest：
 `docs/architecture/moves/knowledge.yaml`。

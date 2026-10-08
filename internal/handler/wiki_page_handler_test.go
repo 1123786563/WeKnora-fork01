@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
+	"github.com/Tencent/WeKnora/internal/knowledge/wiki"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"

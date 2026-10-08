@@ -29,7 +29,7 @@
 
 | 合并 | 模块测试 | 消费者测试 |
 |---|---|---|
-| 1/4 k-integration | `go test ./internal/modules/knowledge/... -count=1` 29 包全 ok | application/{repository,service}、container、handler、handler/session、agentruntime/agent{,/tools}、channels/im、conversation/chat_pipeline 共 9 包全 ok |
+| 1/4 k-integration | `go test ./internal/knowledge/... -count=1` 29 包全 ok | application/{repository,service}、container、handler、handler/session、agentruntime/agent{,/tools}、channels/im、conversation/chat_pipeline 共 9 包全 ok |
 | 2/4 ac-market | `go test ./internal/modules/agentcatalog/... -count=1` 3 包 ok（根包 no test files） | application/{repository,service}、handler 共 3 包 ok |
 | 3/4 datasource | `go test ./internal/modules/datasource/... -count=1` 5 包 ok | application/{repository,service}、container、handler 共 4 包 ok |
 | 4/4 appconnector | `go test ./internal/modules/appconnector/... -count=1` 4 包 ok | application/{repository,service}、container、handler、agentruntime/agent/tools、datasource/service 共 6 包 ok |

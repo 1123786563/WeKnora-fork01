@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
+	"github.com/Tencent/WeKnora/internal/knowledge/wiki"
 	"context"
 	"fmt"
 	"os"

@@ -53,7 +53,7 @@
 
 | id | from → to | ledger 行 | check.go 数据行 | 用途 |
 |---|---|---|---|---|
-| exc-0132 | → `internal/modules/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
+| exc-0132 | → `internal/knowledge/retrieval/app` | exception-ledger.yaml:813 | check.go:1046-1051 | knowledge 活动端口（24 调用点直连，§2.2） |
 | exc-0133 | → `internal/modules/appconnector` | :819 | :1052-1057 | A07 scoped-sync 绑定存储（`SyncBindingStore` :46 / `BindingState` :83-86） |
 | exc-0134 | → `internal/policy/access` | :825 | :1058-1063 | KB 写入任务上下文门控（`access.WithKBTaskWrite` :1440 唯一调用点） |
 
@@ -67,7 +67,7 @@
 
 ## (d) 门面实装申请（datasource.facade 五操作，K5.1 同法，IB2 时点实装）
 
-`contracts.yaml:1119` `datasource.facade`（stability: frozen；items = NewModule/RegisterRoutes/RegisterWorkers/Start/Stop）。实装蓝本 = `internal/modules/knowledge/module.go`（b2-k-integration K5.1，passbguard facade 形态契约 check.go:312-325：五操作须以 `//\t` 缩进显式声明、计数句式须与 manifest integration_points 冻结值一致——datasource 为 **1/2/2**）。本节点零触碰 `internal/modules/datasource/module.go`（22 行零逻辑骨架，passbguard 冻结其注释形态）。
+`contracts.yaml:1119` `datasource.facade`（stability: frozen；items = NewModule/RegisterRoutes/RegisterWorkers/Start/Stop）。实装蓝本 = `internal/knowledge/module.go`（b2-k-integration K5.1，passbguard facade 形态契约 check.go:312-325：五操作须以 `//\t` 缩进显式声明、计数句式须与 manifest integration_points 冻结值一致——datasource 为 **1/2/2**）。本节点零触碰 `internal/modules/datasource/module.go`（22 行零逻辑骨架，passbguard 冻结其注释形态）。
 
 **真实 seam（IB2 实装时逐项推导，Dependencies 字段从 container Invoke/Provide 面推导）**：
 

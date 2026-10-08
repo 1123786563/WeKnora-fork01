@@ -9,12 +9,12 @@
 
 | 落位包（import path） | 包名 | 内容（15 生产 + 11 测试 + 3 seam 文件） |
 |---|---|---|
-| `github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository` | `repository` | semantic_model_invocation / semantic_model_policy / semantic_outbox / semantic_scope_epoch / tag（5 生产 + 5 测试）+ `escape_like_seam.go`（R2 seam） |
-| `github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app` | `app` | semantic_model_capability / semantic_model_policy / semantic_scope / knowledgebase_access / slug_fuzzy / graph / kb_activity（7 生产 + 3 测试：capability/policy/slug_fuzzy）+ `semantic_scope_guard.go`（§5.4 双轨）+ `audit_actor_seam.go`（§5.2 R2 seam） |
-| `github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler` | `handler` | semantic_internal / semantic_model_policy / tag（3 生产 + 3 测试） |
+| `github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/repository` | `repository` | semantic_model_invocation / semantic_model_policy / semantic_outbox / semantic_scope_epoch / tag（5 生产 + 5 测试）+ `escape_like_seam.go`（R2 seam） |
+| `github.com/Tencent/WeKnora/internal/knowledge/retrieval/app` | `app` | semantic_model_capability / semantic_model_policy / semantic_scope / knowledgebase_access / slug_fuzzy / graph / kb_activity（7 生产 + 3 测试：capability/policy/slug_fuzzy）+ `semantic_scope_guard.go`（§5.4 双轨）+ `audit_actor_seam.go`（§5.2 R2 seam） |
+| `github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler` | `handler` | semantic_internal / semantic_model_policy / tag（3 生产 + 3 测试） |
 
 - `git diff --summary --find-renames` 全 26 文件 rename 在案（72%–100%；<100% 均为 package/声明改名/R1 导出改名所致，函数体逻辑零改动，各任务报告逐块 diff 核验）。
-- 本节点**未触碰** `internal/modules/knowledge/module.go`（K5/ib2 装配，conventions §3）；`module.go` 门面如需暴露本域符号，导入路径以本表为准。
+- 本节点**未触碰** `internal/knowledge/module.go`（K5/ib2 装配，conventions §3）；`module.go` 门面如需暴露本域符号，导入路径以本表为准。
 
 ## 2. 已交付的导出端口（ib2 直连改写的目标符号）
 
@@ -125,7 +125,7 @@ router 侧测试引用两处亦经别名解析：`internal/router/router_api_key
 
 ## 8. 治理文件回写请求（barrier 窗口）
 
-1. `contracts.yaml`（本节点禁改）：`knowledge.tag-service` 的 characterization_tests/consumers 路径 `internal/handler/tag_delete_test.go` → `internal/modules/knowledge/retrieval/app/handler/tag_delete_test.go`（passbguard `contract-characterization-missing` 中间态根源，K2.6 报告 §4.2）；knowledge 区其余 status/consumers 面随 ib2 统一回写。
+1. `contracts.yaml`（本节点禁改）：`knowledge.tag-service` 的 characterization_tests/consumers 路径 `internal/handler/tag_delete_test.go` → `internal/knowledge/retrieval/app/handler/tag_delete_test.go`（passbguard `contract-characterization-missing` 中间态根源，K2.6 报告 §4.2）；knowledge 区其余 status/consumers 面随 ib2 统一回写。
 2. `ownership-matrix.yaml`：本节点 29 行中 15 行已物理迁移（行删除按 Ruling LEGACY-ROW-OWNERSHIP 归 barrier 回写窗口；物理迁移证据=manifest+git），14 推迟件行保留。
-3. `internal/modules/knowledge/module.go` 门面注释：归 K5/ib2（本节点零触碰）。
+3. `internal/knowledge/module.go` 门面注释：归 K5/ib2（本节点零触碰）。
 4. 遗留裁定请求：`app/graph.go` 构造器 `NewGraphBuilder` 全仓零消费（K2.4 grep 实证）——若属死装配面，请在 K5 门面设计时裁定（导出或删除）。

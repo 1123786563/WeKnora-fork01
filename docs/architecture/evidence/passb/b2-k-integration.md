@@ -30,13 +30,13 @@ grep -rln "\"$p\"" --include="*.go" . | grep -v _test.go   # 每条 old_import_p
 
 物理目录复检：`ls internal/application/repository/retriever internal/application/service/retriever internal/infrastructure/{chunker,docparser,semantic} internal/searchutil` → 全部 `No such file or directory`（退出码 1，旧路径 Pass A 已搬）。
 
-任意形式文本残留全仓扫描（`grep -rn` 18 条旧路径字面量、含注释，`--include="*.go"`）：唯一命中 = `internal/modules/knowledge/docparser/anydoc/convert_linked_test.go:19`（build 指令注释 `go test -tags anydoc ./internal/infrastructure/docparser/...`，非 import）——与计划 §7.5 预检一致。
+任意形式文本残留全仓扫描（`grep -rn` 18 条旧路径字面量、含注释，`--include="*.go"`）：唯一命中 = `internal/knowledge/docparser/anydoc/convert_linked_test.go:19`（build 指令注释 `go test -tags anydoc ./internal/infrastructure/docparser/...`，非 import）——与计划 §7.5 预检一致。
 
 ### 删行明细（commit 46447494a，+1/-92）
 
 - `docs/architecture/moves/knowledge.yaml`：`alias_obligations:` 区整体删除（L41-L77 共 37 行 = 标题 + 18 条 × 2 行）；删除后 YAML 解析合法，`legacy_files` 53 条原样保留、衔接处无残缺。
 - `docs/architecture/passb/ownership-matrix.yaml`：aliases 区 `plan: 20-knowledge-program` 的 18 个 3 行块（old_import_path/plan/delete_barrier）删除，删除前对每块断言 `plan: 20-knowledge-program` 与 `delete_barrier: ib2` 逐块通过；删除后 aliases 区余 81 条、plan-20 剩余 0 条，YAML 解析合法。
-- `internal/modules/knowledge/docparser/anydoc/convert_linked_test.go:19`：注释内 `internal/infrastructure/docparser` → `internal/modules/knowledge/docparser`（conventions §10 机械缺口就地补齐）。
+- `internal/knowledge/docparser/anydoc/convert_linked_test.go:19`：注释内 `internal/infrastructure/docparser` → `internal/knowledge/docparser`（conventions §10 机械缺口就地补齐）。
 
 ### 删行后 passbguard 快照比对（Step 2d）
 
@@ -48,9 +48,9 @@ go run ./tools/passbguard -root . 2>&1 | grep -v '^exit status' | sort | diff - 
 diff 输出恰为 P-K5-7 (ii) 预登记的 3 条新增（`<` 侧），逐字一致，消失集为空：
 
 ```
-contract-consumer-unrecorded: knowledge.knowledge-base-service: production consumer internal/modules/knowledge/module.go references KnowledgeBaseService but is not recorded
-contract-consumer-unrecorded: knowledge.service: production consumer internal/modules/knowledge/module.go references KnowledgeService but is not recorded
-contract-consumer-unrecorded: knowledge.tag-service: production consumer internal/modules/knowledge/module.go references KnowledgeTagService but is not recorded
+contract-consumer-unrecorded: knowledge.knowledge-base-service: production consumer internal/knowledge/module.go references KnowledgeBaseService but is not recorded
+contract-consumer-unrecorded: knowledge.service: production consumer internal/knowledge/module.go references KnowledgeService but is not recorded
+contract-consumer-unrecorded: knowledge.tag-service: production consumer internal/knowledge/module.go references KnowledgeTagService but is not recorded
 ```
 
 alias 双侧奇偶以 manifest↔matrix 行集对照为键（check.go:167-206 实读确认，无 18 字面计数断言）；删行前后该 3+0 差集恒定，奇偶保持。
@@ -74,7 +74,7 @@ alias 双侧奇偶以 manifest↔matrix 行集对照为键（check.go:167-206 �
 | `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`，OK 0 violations |
 | `go run ./tools/passbguard -root .` | 1（预期基线） | 快照 diff 基线仍恰为 P-K5-7 (ii) 预登记 3 条，消失集为空（manifest 出册不触及诊断面，实测确认） |
 | `make check-passb-readiness` | 2（= go run 退出码 1 的 make 层包装，Makefile:262 recipe 失败标准行为；与上轮 go run 口径 1 同一命令） | 诊断集与上行相同 |
-| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 26 包全 ok、0 FAIL（含 kbfreeze 守卫、module 门面五测试） |
+| `go test -count=1 ./internal/knowledge/...` | 0 | 26 包全 ok、0 FAIL（含 kbfreeze 守卫、module 门面五测试） |
 
 manifest 出册 commit：`a29abf40e`（refactor(passb) 同窗补齐，+3/-91）。
 
@@ -166,11 +166,11 @@ PASSB_BASE_SHA 采用值 = **ALIGN_SHA `b9c09f524`**（P-K5-2 登记；`git merg
 | 命令（原文） | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | **0** | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接噪音，K3/K4 evidence 同款基线固有） |
-| `go test -count=1 ./internal/modules/knowledge/...` | **0** | 26 包 `ok`（含 knowledge 根=K5.1 module_test、kbfreeze、ingest、retrieval/app×3、wiki、faq、process×3、retriever 11、chunker/docparser/anydoc/semantic/searchutil）+ 3 包 `[no test files]`（elasticsearch、neo4j、postgres）+ 0 FAIL（K4 时点 25 ok/4 no-test → knowledge 根补 module_test.go 后 26/3） |
+| `go test -count=1 ./internal/knowledge/...` | **0** | 26 包 `ok`（含 knowledge 根=K5.1 module_test、kbfreeze、ingest、retrieval/app×3、wiki、faq、process×3、retriever 11、chunker/docparser/anydoc/semantic/searchutil）+ 3 包 `[no test files]`（elasticsearch、neo4j、postgres）+ 0 FAIL（K4 时点 25 ok/4 no-test → knowledge 根补 module_test.go 后 26/3） |
 | `make check-backend-architecture` | **0** | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make check-passb-readiness` | **1**（make 包装退出码 2） | 基线 218 条既有诊断原样（P-K5-7 预裁定：修复面全部位于 K5 禁改清单，归零属 ib2）；快照比对见下 |
 | `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |
-| `go run ./tools/passbguard -root . 2>&1 \| grep -v '^exit status' \| sort \| diff - /tmp/k5-readiness-baseline.txt` | diff 退出码 1（有差异，恰为预登记 3 行） | 差集**恰为 P-K5-7 (ii) 预登记 3 行** `contract-consumer-unrecorded: knowledge.{service,knowledge-base-service,tag-service}: production consumer internal/modules/knowledge/module.go references Knowledge{,Base,Tag}Service but is not recorded`（门面 Dependencies 引用三个冻结端口名的预期显形，consumers 登记在 contracts.yaml=K5 禁改）；**消失集为空**（(iii) 判据满足，18 别名删行/注释修正不触及 passbguard 诊断面——实测证实） |
+| `go run ./tools/passbguard -root . 2>&1 \| grep -v '^exit status' \| sort \| diff - /tmp/k5-readiness-baseline.txt` | diff 退出码 1（有差异，恰为预登记 3 行） | 差集**恰为 P-K5-7 (ii) 预登记 3 行** `contract-consumer-unrecorded: knowledge.{service,knowledge-base-service,tag-service}: production consumer internal/knowledge/module.go references Knowledge{,Base,Tag}Service but is not recorded`（门面 Dependencies 引用三个冻结端口名的预期显形，consumers 登记在 contracts.yaml=K5 禁改）；**消失集为空**（(iii) 判据满足，18 别名删行/注释修正不触及 passbguard 诊断面——实测证实） |
 
 基线快照 `/tmp/k5-readiness-baseline.txt`（218 行，P-K5-7 时点录入，本任务开工在位未重录）；当前诊断 221 行 = 218 + 3 预登记。
 
@@ -200,7 +200,7 @@ PASSB_BASE_SHA 采用值 = **ALIGN_SHA `b9c09f524`**（P-K5-2 登记；`git merg
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | **0** | 仅 cmd/desktop、cmd/server `ld: warning: ignoring duplicate libraries: '-lc++'`（基线固有） |
-| `go test -count=1 ./internal/modules/knowledge/...` | **0** | 26 包 `ok` + 3 包 `[no test files]`（elasticsearch/neo4j/postgres）+ 0 FAIL（日志 /tmp/k53r2-gate-test.log） |
+| `go test -count=1 ./internal/knowledge/...` | **0** | 26 包 `ok` + 3 包 `[no test files]`（elasticsearch/neo4j/postgres）+ 0 FAIL（日志 /tmp/k53r2-gate-test.log） |
 | `make check-backend-architecture` | **0** | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make check-passb-readiness` | **2**（make 包装 go run 退出码 1，预裁定预期形态） | 诊断分布 `88 unrecorded + 42 file-missing + 33+33 legacy + 13 characterization + 10 legacy-missing + 1+1 event` = **221 = 218 基线 + 3 预登记** |
 | `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |

@@ -23,15 +23,15 @@ T0 侧（/tmp/k45-t0 @5c3131e60；`SVC_RUN`/`REPO_RUN`/`HD_RUN` 为下表各 -ru
 | T0-2 | `go test -count=1 -v -run "$REPO_RUN" ./internal/application/repository/` | 0 | `ok ... 1.391s`；**24 PASS / 0 FAIL** |
 | T0-3 | `go test -count=1 -v -run "$HD_RUN" ./internal/handler/` | 0 | `ok ... 1.968s`；**9 PASS / 0 FAIL** |
 | T0-4 | `go test -count=1 -v -run "TestCopyAdmissionReserves…\|TestCopyAdmissionRequires…\|TestCopyAdmissionKeeps…" ./internal/handler/`（首轮 `HD_RUN` 模式笔误 `TestCopyAdmission_` 带下划线未匹配实际函数名，补跑 3 用例，两轮结果均在册） | 0 | **3 PASS / 0 FAIL** |
-| T0-5 | `go test -count=1 -v -run "TestNewChunkExtractServiceNilSeamFailFast\|TestNewChunkExtractServiceNilSpanTraceAllowed" ./internal/modules/knowledge/ingest/` | 0 | `ok ... 1.030s`；**2 PASS / 0 FAIL** |
+| T0-5 | `go test -count=1 -v -run "TestNewChunkExtractServiceNilSeamFailFast\|TestNewChunkExtractServiceNilSpanTraceAllowed" ./internal/knowledge/ingest/` | 0 | `ok ... 1.030s`；**2 PASS / 0 FAIL** |
 
 T1 侧（worktree @60ef71061）：
 
 | # | 命令 | 退出码 | 输出摘要 |
 |---|---|---|---|
-| T1-1 | `go test -count=1 -v -run "TestDocumentProcessTaskOptions_\|TestKnowledgePostProcessTaskOptions" ./internal/modules/knowledge/process/` | 0 | `ok ... 0.785s`；**4 PASS / 0 FAIL** |
-| T1-2 | `go test -count=1 -v -run "TestCreateKnowledgeDefaultsCustomMetadataToEmptyObject\|TestKnowledgeSourceSchemaAllowsObjectStorageURLs" ./internal/modules/knowledge/process/repository/` | 0 | `ok ... 0.796s`；**2 PASS / 0 FAIL** |
-| T1-3 | `go test -count=1 -v -run "TestRequireTaskProgressTenant_" ./internal/modules/knowledge/process/handler/` | 0 | `ok ... 0.929s`；**3 PASS / 0 FAIL** |
+| T1-1 | `go test -count=1 -v -run "TestDocumentProcessTaskOptions_\|TestKnowledgePostProcessTaskOptions" ./internal/knowledge/process/` | 0 | `ok ... 0.785s`；**4 PASS / 0 FAIL** |
+| T1-2 | `go test -count=1 -v -run "TestCreateKnowledgeDefaultsCustomMetadataToEmptyObject\|TestKnowledgeSourceSchemaAllowsObjectStorageURLs" ./internal/knowledge/process/repository/` | 0 | `ok ... 0.796s`；**2 PASS / 0 FAIL** |
+| T1-3 | `go test -count=1 -v -run "TestRequireTaskProgressTenant_" ./internal/knowledge/process/handler/` | 0 | `ok ... 0.929s`；**3 PASS / 0 FAIL** |
 | T1-4 | `go test -count=1 -v -run "$SVC_RUN 减随迁 4 用例" ./internal/application/service/` | 0 | `ok ... 1.542s`；**33 PASS / 0 FAIL** |
 | T1-5 | `go test -count=1 -v -run "$REPO_RUN 减随迁 2 用例" ./internal/application/repository/` | 0 | `ok ... 0.913s`；**22 PASS / 0 FAIL** |
 | T1-6 | `go test -count=1 -v -run "$HD_RUN 减随迁 3 用例" ./internal/handler/` | 0 | `ok ... 0.970s`；**6 PASS / 0 FAIL** |
@@ -65,7 +65,7 @@ ingest      : diff T0(2) vs T1(2)              → IDENTICAL
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | **0** | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接噪音，基线固有，K4.1 T0 起在册） |
-| `go test ./internal/modules/knowledge/... -count=1` | **0** | 25 包 `ok`（含 `process` 3.593s 量级、`process/repository`、`process/handler` 新包）、0 FAIL、4 包 `[no test files]`（retriever/elasticsearch、neo4j、postgres、knowledge 根——K4.0 T0 同态） |
+| `go test ./internal/knowledge/... -count=1` | **0** | 25 包 `ok`（含 `process` 3.593s 量级、`process/repository`、`process/handler` 新包）、0 FAIL、4 包 `[no test files]`（retriever/elasticsearch、neo4j、postgres、knowledge 根——K4.0 T0 同态） |
 | `make check-backend-architecture` | **0** | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |
 

@@ -70,7 +70,7 @@
 
 ## (g) K1 `span_trace_seam_adapter.go`/R1-9 shim 的 ib2 切换目标
 
-- **已就绪**：write-family 4 函数（`WriteResourceIDs/WriteExecutionTenant/LoadKnowledgeWrite/LoadKnowledgeWriteBatch`）、`KnowledgeWriteKB`+`KnowledgeBaseWriteLookup`、`BuildKnowledgeIndexContent`、`DocumentProcessTaskOptions`/`KnowledgePostProcessTaskOptions` 已在 `internal/modules/knowledge/process` 导出（K4.2）。ib2 把 `span_trace_seam_adapter.go:103-108`（hostKnowledgeWriteGuard 四方法）、`:126-127`（BuildKnowledgeIndexContentProvider）、`:142-148`（KnowledgeWriteKBProvider）与 `chunk_ingest_shim.go:62` 等提供器/函数值改直连 process 导出名（现经宿主 compat 委托解析，(e) 表所列 K1 importer）。
+- **已就绪**：write-family 4 函数（`WriteResourceIDs/WriteExecutionTenant/LoadKnowledgeWrite/LoadKnowledgeWriteBatch`）、`KnowledgeWriteKB`+`KnowledgeBaseWriteLookup`、`BuildKnowledgeIndexContent`、`DocumentProcessTaskOptions`/`KnowledgePostProcessTaskOptions` 已在 `internal/knowledge/process` 导出（K4.2）。ib2 把 `span_trace_seam_adapter.go:103-108`（hostKnowledgeWriteGuard 四方法）、`:126-127`（BuildKnowledgeIndexContentProvider）、`:142-148`（KnowledgeWriteKBProvider）与 `chunk_ingest_shim.go:62` 等提供器/函数值改直连 process 导出名（现经宿主 compat 委托解析，(e) 表所列 K1 importer）。
 - **随推迟批**：`getFileType`/`normalizeFileExtension`/`isDataTableFileType`（R1-9 shim 函数值消费，knowledge_util.go 留守——链路原样编译零动作）、`enqueueSummaryRefresh`（K1 adapter 消费）、`attemptSuperseded`（同）、`ResolveProcessConfig`（chunk_ingest_shim 传宿主函数值，knowledge_process_config.go 留守——K4.1 §4.3「比原方案更简」口径）。`NoopSpanTracker` 导出随 span_tracker 对推迟顺延（K4.2 §5）。
 - K1 shim 链路本节点零触碰（span_trace_seam_adapter.go/chunk_ingest_shim.go 不在变更并集，`go build ./...` 0 反证）。
 

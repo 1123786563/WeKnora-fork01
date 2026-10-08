@@ -1,7 +1,7 @@
 // Package router —— knowledge 模块 worker 双栈装配点（Pass B IB2，K5 Brief (b)）。
 //
 // 本文件是集成工程师独占的装配切换面：把 knowledge 模块 18 个任务处理器经
-// 模块门面（internal/modules/knowledge.Module.RegisterWorkers）登记进 Redis
+// 模块门面（internal/knowledge.Module.RegisterWorkers）登记进 Redis
 // （asynq ServeMux）与 Lite（SyncTaskExecutor）双栈，替代 task.go / sync_task.go
 // 中原 18+18 行手写注册。Redis 与 Lite 为互斥运行模式（container.go 按配置
 // 二选一起动），每次进程内恰有一次 RegisterWorkers 调用，registry 的
@@ -16,7 +16,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/Tencent/WeKnora/internal/bootstrap"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge"
+	"github.com/Tencent/WeKnora/internal/knowledge"
 )
 
 // workerHandlerFunc 是 asynq 与 Lite 两栈统一的处理器签名。

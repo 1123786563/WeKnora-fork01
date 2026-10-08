@@ -46,7 +46,7 @@ service=`internal/application/service/`、handler=`internal/handler/`。）
 解析→分块→向量化→索引）、删除/级联（TypeKnowledgeListDelete/TypeIndexDelete/TypeKBDelete
 的删除计划与执行）、克隆/迁移（TypeKBClone/TypeKnowledgeMove）、后处理链
 （TypeKnowledgePostProcess/TypeKnowledgeAutoTag/TypeSummaryGeneration/
-TypeQuestionGeneration/TypeDataTableSummary）归入 `internal/modules/knowledge`
+TypeQuestionGeneration/TypeDataTableSummary）归入 `internal/knowledge`
 （建议 `…/knowledge/process`）。**删除与索引语义是外部契约**：asynq 任务类型、
 幂等/重试语义、Redis/Lite 双池注册行为零变化。
 

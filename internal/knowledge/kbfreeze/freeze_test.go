@@ -3,7 +3,7 @@
 //
 //  1. R0 类型单一事实源（计划 §5）：冻结的全部共享类型（Chunk/KnowledgeBase/
 //     Tag/semantic 族）唯一事实源是 internal/types（含 internal/types/interfaces），
-//     internal/modules/knowledge/** 内禁止出现同名/同形影子定义；K1-K4 搬迁
+//     internal/knowledge/** 内禁止出现同名/同形影子定义；K1-K4 搬迁
 //     不得复制类型，类型变更走 conventions §5 升级。
 //  2. B0 冻结的六个 capability-port 接口签名零漂移（contracts.yaml knowledge
 //     契约区，stability: frozen）：ChunkService（knowledge.chunk-service）、
@@ -71,17 +71,17 @@ func kbfreezePaths(t *testing.T) (string, string) {
 	if !ok {
 		t.Fatal("无法定位 freeze_test.go 源文件路径")
 	}
-	// freeze_test.go = <repoRoot>/internal/modules/knowledge/kbfreeze/freeze_test.go
+	// freeze_test.go = <repoRoot>/internal/knowledge/kbfreeze/freeze_test.go
 	dir := filepath.Dir(thisFile)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		dir = filepath.Dir(dir)
 	}
 	repoRoot := dir
-	return repoRoot, filepath.Join(repoRoot, "internal", "modules", "knowledge")
+	return repoRoot, filepath.Join(repoRoot, "internal", "knowledge")
 }
 
 // TestKnowledgeSharedTypesHaveNoShadowDefinitions 强制 R0：遍历
-// internal/modules/knowledge/** 全部 .go 文件（跳过 kbfreeze 守卫包自身与
+// internal/knowledge/** 全部 .go 文件（跳过 kbfreeze 守卫包自身与
 // _test.go），对冻结类型名做 ^type\s+Name\b 行级匹配；命中且不在豁免表内即失败。
 func TestKnowledgeSharedTypesHaveNoShadowDefinitions(t *testing.T) {
 	repoRoot, knowledgeRoot := kbfreezePaths(t)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/handler"
-	kbhandler "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/handler"
+	kbhandler "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app/handler"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

@@ -2,7 +2,7 @@
 
 > 提交方：work 节点 `b2-k-integration`（plan `docs/plans/passb/20-knowledge-program.md` Task K5.1）。
 > 消费方：ib2 集成屏障（集成工程师按本 Brief 串行执行共享装配切换；framework:103「IB 只从已评审 Brief 切换共享装配」）。
-> 事实源：K1–K4 四 Brief（`b2-k-ingest.md` / `b2-k-retrieval.md` / `b2-k-wikifaq.md` / `b2-k-process.md`，随本分支基线对齐 merge 可见）+ 门面实装 `internal/modules/knowledge/module.go`（K5.1）+ `module_test.go`（五测试）。
+> 事实源：K1–K4 四 Brief（`b2-k-ingest.md` / `b2-k-retrieval.md` / `b2-k-wikifaq.md` / `b2-k-process.md`，随本分支基线对齐 merge 可见）+ 门面实装 `internal/knowledge/module.go`（K5.1）+ `module_test.go`（五测试）。
 > 写权限边界：本 Brief 只登记装配变更申请；`internal/router/**`、`internal/container/**`、`internal/bootstrap/**`、`contracts.yaml`、`ownership-matrix.yaml` 的实际写入由集成工程师/barrier 独占（conventions §3；K5.1 门面 commit 零触碰这些文件，M4 预备态纯新增）。
 > 行号基准：本分支 ALIGN_SHA=b9c09f524（P-K5-2 Case A 对齐 merge，含 codex/passb-b2-k-process K1–K4 终态）实测；实施时点复核为准。
 
@@ -12,7 +12,7 @@
 |---|---|---|
 | K3 A1 | `internal/container/container.go:316` `must(container.Provide(knowledgeWiki.NewWikiPageRepository))` —— **已提前落地，无需再切**（Ruling 2026-09-25-CYCLE-FORCED-COMPOSITION：repository 侧转发 shim 因 `wiki→agentruntime→agent/tools→repository` import 环不可编译，container.go:312-315 注释登记）。IB2 核验项：该行 + import 行 `knowledgeWiki`（container.go:93）确已指向 wiki 包，并删除 repository 侧 `NewWikiPageRepository` 转发（`wiki_k3_repo_compat.go`，(e) W3） | K3 Brief (a) A1 |
 
-## (f) 门面五操作精确签名（K5.1 已实装，`internal/modules/knowledge/module.go`）
+## (f) 门面五操作精确签名（K5.1 已实装，`internal/knowledge/module.go`）
 
 ```
 func NewModule(deps Dependencies) (*Module, error)
@@ -97,7 +97,7 @@ func (m *Module) Stop(ctx context.Context) error
 | seam | 生产接线（ib2） | 现接线点 | 就绪状态 |
 |---|---|---|---|
 | `SpanTraceSeam` | `NewSpanTraceSeamAdapter(tr SpanTracker)`；container.go:374 `service.NewSpanTracker` 经适配器直供 R1-2/3/5 新参；K4 搬迁 knowledge_span_tracker.go 后指其导出包装 | span_trace_seam_adapter.go:30 | 随 K4 推迟批 |
-| `KnowledgeWriteGuard` | `KnowledgeWriteGuardProvider()` → **`process` 包已导出 write-family 4 函数**（K4 Brief (g) 已就绪） | :99 | **已就绪**（WriteResourceIDs/WriteExecutionTenant/LoadKnowledgeWrite/LoadKnowledgeWriteBatch，`internal/modules/knowledge/process`） |
+| `KnowledgeWriteGuard` | `KnowledgeWriteGuardProvider()` → **`process` 包已导出 write-family 4 函数**（K4 Brief (g) 已就绪） | :99 | **已就绪**（WriteResourceIDs/WriteExecutionTenant/LoadKnowledgeWrite/LoadKnowledgeWriteBatch，`internal/knowledge/process`） |
 | `KBByIDLookup` | `KnowledgeWriteKBProvider()` → `process.KnowledgeWriteKB`+`KnowledgeBaseWriteLookup`（已导出） | :146 | **已就绪** |
 | `enqueueSummaryRefresh` 闭包 | `EnqueueSummaryRefreshProvider(tr)`（参数 `summaryKnowledgeBaseReader` → KBByIDLookup） | :81 | 随推迟批 |
 | `BuildKnowledgeIndexContent` 闭包 | `BuildKnowledgeIndexContentProvider()` → `process.BuildKnowledgeIndexContent`（已导出） | :126 | **已就绪** |
@@ -155,12 +155,12 @@ Ruling TRANSITION-SHIM-ROW-REGISTRATION 成对删行口径：下表过渡物文�
 
 ## (g) K5.2 的 18 别名删除结论与例外 30 行收口编排（ib2 删除批输入）
 
-- **18 别名**（knowledge.yaml alias_obligations）：K5.2 按 20 计划 §7.5 预检结论执行成对删行（manifest + ownership-matrix aliases 区同 commit；2026-09-26 预检=18 旧路径物理目录已全部不存在、全仓 import 零命中，唯一文本残留 `internal/modules/knowledge/docparser/anydoc/convert_linked_test.go:19` build 指令注释就地修正）；passbguard alias 双侧奇偶以 manifest↔matrix 行集对照为键，无 18 字面计数断言（check.go:167-206 实读）。**K5.2 交付逐条结论，本 Brief 登记删除编排指针。**
+- **18 别名**（knowledge.yaml alias_obligations）：K5.2 按 20 计划 §7.5 预检结论执行成对删行（manifest + ownership-matrix aliases 区同 commit；2026-09-26 预检=18 旧路径物理目录已全部不存在、全仓 import 零命中，唯一文本残留 `internal/knowledge/docparser/anydoc/convert_linked_test.go:19` build 指令注释就地修正）；passbguard alias 双侧奇偶以 manifest↔matrix 行集对照为键，无 18 字面计数断言（check.go:167-206 实读）。**K5.2 交付逐条结论，本 Brief 登记删除编排指针。**
 - **例外 30 行**（exception-ledger.yaml，owner=21/22/23/24 计划，`remove_at: ib2`）：K1 7（exc-0088+0106..0111）、K2 8（0089-0091+0112..0116）、K3 13（0117..0129）、K4 2（0130/0131）。**K5 不删行**（conventions §3：行属主是 21/22/23/24）；ib2 删除批前置：
   - exc-0088：airesource 根门面暴露 `Sign` 或等价端口 → docparser 消费切换 → 删行（K1 Brief §10）；
   - exc-0089/0090/0091：两分支择一——①随 ib2 与 airesource 门面任务（embedding/utils 经模块根公共门面导出）收口后删除；②ADR 修订 `RetrieveEngineService` 签名后删除（K2 Brief §7）；
   - exc-0106..0131：各被导入包（airesource/models/{chat,embedding,utils/ollama,vlm}、policy/access、agentruntime/{agent,modelcontext}）门面/端口合法化后切换直连，删 check.go importExceptions 数据行 + ledger 行同窗（K1 Brief §11、K3 Brief 其它登记 1）。
-  - **`container.go:36-38` 三行旧路径 import 改写申请**（K0 §7.5/K1 Brief §12 义务）：ib2 把 knowledge 相关旧包 import 行改指 `internal/modules/knowledge/*` 落位路径（与 (a)/(b) 切换同窗评估）。
+  - **`container.go:36-38` 三行旧路径 import 改写申请**（K0 §7.5/K1 Brief §12 义务）：ib2 把 knowledge 相关旧包 import 行改指 `internal/knowledge/*` 落位路径（与 (a)/(b) 切换同窗评估）。
 - 治理文件回写请求（barrier 窗口，K5 禁改）：contracts.yaml knowledge 区 consumers/characterization 路径漂移回写（K1 Brief §3 12 条 + K2 Brief §8 tag_delete_test 路径等）与 status 字段（F2 补落盘后）；ownership-matrix legacy 行删除按各属主补迁窗口。
 
 ## (h) 推迟件汇总裁定请求（协调者在 ib2 前裁定补迁窗口归属）

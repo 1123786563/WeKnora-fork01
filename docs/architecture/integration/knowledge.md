@@ -9,27 +9,27 @@
 
 | from（旧导入路径） | to（新导入路径） |
 |---|---|
-| `internal/application/repository/retriever/doris` | `internal/modules/knowledge/retriever/doris` |
-| `internal/application/repository/retriever/elasticsearch` | `internal/modules/knowledge/retriever/elasticsearch` |
-| `internal/application/repository/retriever/elasticsearch/v7` | `internal/modules/knowledge/retriever/elasticsearch/v7` |
-| `internal/application/repository/retriever/elasticsearch/v8` | `internal/modules/knowledge/retriever/elasticsearch/v8` |
-| `internal/application/repository/retriever/milvus` | `internal/modules/knowledge/retriever/milvus` |
-| `internal/application/repository/retriever/neo4j` | `internal/modules/knowledge/retriever/neo4j` |
-| `internal/application/repository/retriever/opensearch` | `internal/modules/knowledge/retriever/opensearch` |
-| `internal/application/repository/retriever/postgres` | `internal/modules/knowledge/retriever/postgres` |
-| `internal/application/repository/retriever/qdrant` | `internal/modules/knowledge/retriever/qdrant` |
-| `internal/application/repository/retriever/sqlite` | `internal/modules/knowledge/retriever/sqlite` |
-| `internal/application/repository/retriever/tencentvectordb` | `internal/modules/knowledge/retriever/tencentvectordb` |
-| `internal/application/repository/retriever/weaviate` | `internal/modules/knowledge/retriever/weaviate` |
-| `internal/application/service/retriever` | `internal/modules/knowledge/retriever` |
-| `internal/infrastructure/chunker` | `internal/modules/knowledge/chunker` |
-| `internal/infrastructure/docparser` | `internal/modules/knowledge/docparser` |
-| `internal/infrastructure/docparser/anydoc` | `internal/modules/knowledge/docparser/anydoc` |
-| `internal/infrastructure/semantic` | `internal/modules/knowledge/semantic` |
-| `internal/searchutil` | `internal/modules/knowledge/searchutil` |
+| `internal/application/repository/retriever/doris` | `internal/knowledge/retriever/doris` |
+| `internal/application/repository/retriever/elasticsearch` | `internal/knowledge/retriever/elasticsearch` |
+| `internal/application/repository/retriever/elasticsearch/v7` | `internal/knowledge/retriever/elasticsearch/v7` |
+| `internal/application/repository/retriever/elasticsearch/v8` | `internal/knowledge/retriever/elasticsearch/v8` |
+| `internal/application/repository/retriever/milvus` | `internal/knowledge/retriever/milvus` |
+| `internal/application/repository/retriever/neo4j` | `internal/knowledge/retriever/neo4j` |
+| `internal/application/repository/retriever/opensearch` | `internal/knowledge/retriever/opensearch` |
+| `internal/application/repository/retriever/postgres` | `internal/knowledge/retriever/postgres` |
+| `internal/application/repository/retriever/qdrant` | `internal/knowledge/retriever/qdrant` |
+| `internal/application/repository/retriever/sqlite` | `internal/knowledge/retriever/sqlite` |
+| `internal/application/repository/retriever/tencentvectordb` | `internal/knowledge/retriever/tencentvectordb` |
+| `internal/application/repository/retriever/weaviate` | `internal/knowledge/retriever/weaviate` |
+| `internal/application/service/retriever` | `internal/knowledge/retriever` |
+| `internal/infrastructure/chunker` | `internal/knowledge/chunker` |
+| `internal/infrastructure/docparser` | `internal/knowledge/docparser` |
+| `internal/infrastructure/docparser/anydoc` | `internal/knowledge/docparser/anydoc` |
+| `internal/infrastructure/semantic` | `internal/knowledge/semantic` |
+| `internal/searchutil` | `internal/knowledge/searchutil` |
 
 共 142 个文件（含全部 `_test.go`），move commit 为**纯 rename**（142/142 相似度 100%，
-0 insertions/deletions）。注意 `internal/modules/knowledge/retriever` 目录根部即检索服务包
+0 insertions/deletions）。注意 `internal/knowledge/retriever` 目录根部即检索服务包
 （原 `application/service/retriever`，包名 `retriever`，12 个文件），与 doris/ elasticsearch/
 等 12 个引擎仓子目录同层——这正是 manifest `to:` 的精确落位（合法 Go：一目录一包、
 子目录为独立包）。
@@ -88,9 +88,9 @@ fix commit 已把 12 个文件上移到 `retriever/` 根并重写全部 import�
 
 **给集成者的操作（knowledge 部分）：**
 1. 把上述 13 行的路径前缀 `internal/application/repository/retriever/` →
-   `internal/modules/knowledge/retriever/`、`internal/application/service/retriever` →
-   `internal/modules/knowledge/retriever`、`internal/infrastructure/docparser` →
-   `internal/modules/knowledge/docparser`。全部 qualifier 与 container.go 其余行**零改动**
+   `internal/knowledge/retriever/`、`internal/application/service/retriever` →
+   `internal/knowledge/retriever`、`internal/infrastructure/docparser` →
+   `internal/knowledge/docparser`。全部 qualifier 与 container.go 其余行**零改动**
    （已验证所有引用均为构造器/类型只读消费，**无可变导出 var 赋值**，无需 A6
    LocalImageResolver 式翻转）；
 2. `go build ./...` 通过后，删除第 2 节所列 18 个别名目录（连同 alias.go）——
@@ -107,7 +107,7 @@ fix commit 已把 12 个文件上移到 `retriever/` 根并重写全部 import�
 `"github.com/Tencent/WeKnora/internal/infrastructure/docparser"` 经别名编译
 （消费 `IsImageFormat`/`IsSimpleFormat`/`SimpleFormatReader`，别名面已覆盖）。
 A6 先例：他模块 owned 文件留给 Integrator 统一翻转。**IA3 处置**：切到
-`internal/modules/knowledge/docparser` 时会在 guard 产生 `channels/im → modules/knowledge`
+`internal/knowledge/docparser` 时会在 guard 产生 `channels/im → modules/knowledge`
 跨模块内部包诊断（见第 8 节第 5 条），需按 appconnector 先例登记精确路径例外
 （临时，Pass B 删）或改走 knowledge 模块门面（Pass B）。
 
@@ -159,16 +159,16 @@ guard 基线 Redis=23 / Lite=23 不变。
 
 | 键 | 位置 |
 |---|---|
-| `MAX_FILE_SIZE_MB` | internal/modules/knowledge/docparser/grpc_parser.go:23 |
-| `IMAGE_HOST_KEEP_URL` | internal/modules/knowledge/docparser/image_resolver.go:255 |
-| `DORIS_COMPAT_MODE` | internal/modules/knowledge/retriever/doris/compat.go:14 |
-| `DORIS_TABLE_PREFIX` | internal/modules/knowledge/retriever/doris/repository.go:18 |
-| `MILVUS_COLLECTION` / `MILVUS_METRIC_TYPE` | internal/modules/knowledge/retriever/milvus/repository.go:24-25 |
-| `QDRANT_COLLECTION` | internal/modules/knowledge/retriever/qdrant/repository.go:18 |
-| `WEAVIATE_COLLECTION` | internal/modules/knowledge/retriever/weaviate/repository.go:23 |
-| `TENCENT_VECTORDB_DATABASE` / `_COLLECTION` / `_REPLICA_NUMBER` | internal/modules/knowledge/retriever/tencentvectordb/structs.go:11-13 |
-| `OPENSEARCH_INDEX` | internal/modules/knowledge/retriever/opensearch/repository.go:117（经 types.ResolveIndexName） |
-| `ELASTICSEARCH_INDEX` | internal/modules/knowledge/retriever/elasticsearch/{v7/repository.go:44,v8/repository.go:39} |
+| `MAX_FILE_SIZE_MB` | internal/knowledge/docparser/grpc_parser.go:23 |
+| `IMAGE_HOST_KEEP_URL` | internal/knowledge/docparser/image_resolver.go:255 |
+| `DORIS_COMPAT_MODE` | internal/knowledge/retriever/doris/compat.go:14 |
+| `DORIS_TABLE_PREFIX` | internal/knowledge/retriever/doris/repository.go:18 |
+| `MILVUS_COLLECTION` / `MILVUS_METRIC_TYPE` | internal/knowledge/retriever/milvus/repository.go:24-25 |
+| `QDRANT_COLLECTION` | internal/knowledge/retriever/qdrant/repository.go:18 |
+| `WEAVIATE_COLLECTION` | internal/knowledge/retriever/weaviate/repository.go:23 |
+| `TENCENT_VECTORDB_DATABASE` / `_COLLECTION` / `_REPLICA_NUMBER` | internal/knowledge/retriever/tencentvectordb/structs.go:11-13 |
+| `OPENSEARCH_INDEX` | internal/knowledge/retriever/opensearch/repository.go:117（经 types.ResolveIndexName） |
+| `ELASTICSEARCH_INDEX` | internal/knowledge/retriever/elasticsearch/{v7/repository.go:44,v8/repository.go:39} |
 
 chunker / semantic / searchutil / retriever 根包 零自有 env 键（其余配置经
 `*config.Config` 注入）。
@@ -180,10 +180,10 @@ routes 633 / redis 23 / lite 23 / hooks 58 / modules 16）。全部是**先于�
 搬迁暴露（这些文件在旧路径时代就已 import `internal/airesource/models/*`，
 A6 搬迁 airesource 时它们还在非模块路径，guard 不可见）：
 
-1. `internal/modules/knowledge/docparser/weknoracloud_http_reader.go` → `modules/airesource/models/utils`
-2. `internal/modules/knowledge/retriever/composite.go` → `modules/airesource/models/embedding`
-3. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
-4. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
+1. `internal/knowledge/docparser/weknoracloud_http_reader.go` → `modules/airesource/models/utils`
+2. `internal/knowledge/retriever/composite.go` → `modules/airesource/models/embedding`
+3. `internal/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
+4. `internal/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
 
 **处置建议（IA3）**：参照 batch-a1/a2 先例登记精确路径例外（B-knowledge 删），或
 Pass B 改走 airesource 模块门面；不得为过 guard 回退本搬迁。另：IA3 翻转
@@ -193,8 +193,8 @@ Pass B 改走 airesource 模块门面；不得为过 guard 回退本搬迁。另
 ## 9. 验收命令（集成后必跑）
 
 - `go build ./...`
-- `go test ./internal/modules/knowledge/... -count=1`（manifest test_commands）
-- `go test -tags anydoc -count=1 ./internal/modules/knowledge/docparser/...`
+- `go test ./internal/knowledge/... -count=1`（manifest test_commands）
+- `go test -tags anydoc -count=1 ./internal/knowledge/docparser/...`
   （镜像 .github/workflows/anydoc.yml；需先 `./scripts/build-anydoc-lib.sh` 构建原生库）
 - `go test ./internal/container/... ./internal/application/service/... ./internal/handler/... ./internal/agent/... ./internal/channels/im/... -count=1`（直接消费方回归）
 - `go run ./tools/modulemove verify --module knowledge`

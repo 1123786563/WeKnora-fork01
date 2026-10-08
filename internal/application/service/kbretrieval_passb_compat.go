@@ -1,7 +1,7 @@
 package service
 
 // Pass B 宿主兼容层（b2-k-retrieval / K2.3）：semantic 能力/策略/作用域 3 文件已物理迁移至
-// internal/modules/knowledge/retrieval/app（docs/plans/passb/22-knowledge-retrieval.md §5.5 行 2）。
+// internal/knowledge/retrieval/app（docs/plans/passb/22-knowledge-retrieval.md §5.5 行 2）。
 // 本文件为留守宿主消费方（container.go:196-197/:712/:1059-1069、推迟件 semantic_model.go、
 // handler/semantic_internal.go、handler/semantic_model_policy.go、宿主 semantic 面测试）提供
 // type/var 别名与 semanticScopeGuard 宿主侧同形定义（§5.4 双轨），调用点零改动。
@@ -11,7 +11,7 @@ import (
 	"context"
 
 	"github.com/Tencent/WeKnora/internal/application/access"
-	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
+	kbretrieval "github.com/Tencent/WeKnora/internal/knowledge/retrieval/app"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -107,7 +107,7 @@ var ErrSemanticModelPricingUnavailable = kbretrieval.ErrSemanticModelPricingUnav
 
 // --- K2.4 追加（22-knowledge-retrieval.md §5.1 读权限族 + §5.2 方法再归置）：
 // knowledgebase_access.go / slug_fuzzy.go / graph.go 已物理迁移至
-// internal/modules/knowledge/retrieval/app。以下一行委托保持留守宿主调用方
+// internal/knowledge/retrieval/app。以下一行委托保持留守宿主调用方
 // （knowledgebase_search_shared.go:45/83、tag.go:85、knowledge.go:830、
 // knowledge_faq.go:36、knowledge_create/delete_plan/write.go、
 // wiki_ingest.go:1670、wiki_page.go:1191 等）零改动编译；
@@ -135,7 +135,7 @@ func withKBWriteTenantInfo(
 // resolveDeadSlug 真源已随 slug_fuzzy.go 归位本包（本文件历史转发副本已删除）。
 
 // --- K2.5 追加（22-knowledge-retrieval.md §5.1 活动族 + §7.3 KB 活动审计流差分锚点）：
-// kb_activity.go 已物理迁移至 internal/modules/knowledge/retrieval/app。以下一行委托
+// kb_activity.go 已物理迁移至 internal/knowledge/retrieval/app。以下一行委托
 // 保持留守宿主调用方（datasource_service.go 17+4 处、knowledge_faq*.go、
 // knowledge_create/clone_move/delete/process/replace.go、knowledgebase.go、kbshare.go、
 // tag.go、wiki_ingest_batch.go、handler/wiki_page.go:401、kb_activity_test.go 等）

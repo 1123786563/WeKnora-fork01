@@ -1,5 +1,5 @@
 package service
-// FAQ 域锚定测试（原 internal/modules/knowledge/faq 包；随上游对齐 round 2 归位 service 包）：锚定（Pass B 23-knowledge-wikifaq K3.2 Step 2，TDD RED→GREEN）。
+// FAQ 域锚定测试（原 internal/knowledge/faq 包；随上游对齐 round 2 归位 service 包）：锚定（Pass B 23-knowledge-wikifaq K3.2 Step 2，TDD RED→GREEN）。
 //
 // TestNewService* 锚定 faq.Service 构造器语义（依赖接线、sync.Map 指针共享、
 // seam 透传）。acquireFAQCreateGuard 三用例的迁移前后双跑锚定由随迁的

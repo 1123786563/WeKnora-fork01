@@ -201,11 +201,11 @@ func TestRunImportExceptionCoversKnowledgeRetrievalCommercialRoot(t *testing.T) 
 	// 不在豁免范围，必须照常报告。
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
-		"internal/modules/knowledge/retrieval/app/semantic_model_capability.go": `package app
+		"internal/knowledge/retrieval/app/semantic_model_capability.go": `package app
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,
-		"internal/modules/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
+		"internal/knowledge/retrieval/app/semantic_capability_neighbor.go": `package app
 
 import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
 `,

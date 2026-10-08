@@ -1,6 +1,6 @@
 // Pass B (23-knowledge-wikifaq) 过渡 shim — 删除点 ib2（Integration Brief 登记）。
 //
-// wiki 域 12 文件随上游对齐 round 2 自 internal/modules/knowledge/wiki 归位
+// wiki 域 12 文件随上游对齐 round 2 自 internal/knowledge/wiki 归位
 // 本包（真源现为 wiki_ingest.go 等）。本文件仅为留驻宿主调用点（K1
 // extract/image_multimodal、K4 knowledge_*、router/task.go、
 // recover_pending_wiki_tasks.go 及留驻宿主测试）保留未导出调用面的同名

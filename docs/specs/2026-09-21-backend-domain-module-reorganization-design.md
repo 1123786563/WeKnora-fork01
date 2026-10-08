@@ -113,7 +113,7 @@ bootstrap 只引用模块入口；同一路由、Worker 和钩子只注册一次
 **Pass A — Move First（功能归位）**：先让所有生产代码和测试按业务功能集中，快速获得可导航结构；保留模块内部原有 handler/service/repository 组织，不在移动提交中改变业务逻辑。
 
 ```text
-internal/modules/knowledge/
+internal/knowledge/
   README.md
   module.go
   legacy/

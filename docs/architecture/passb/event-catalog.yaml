@@ -163,7 +163,7 @@ events:
       transport: in_process
       consumers:
         - internal/application/service/knowledgebase_search.go
-        - internal/modules/knowledge/ingest/chunk_repo.go  # IB2 回写批：K1 迁移后路径
+        - internal/knowledge/ingest/chunk_repo.go  # IB2 回写批：K1 迁移后路径
       required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id, chunk_ids]
     - id: knowledge.deletion.completed
       version: 1
